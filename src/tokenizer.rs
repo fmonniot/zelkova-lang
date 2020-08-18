@@ -4,6 +4,8 @@
 use crate::position::Position;
 use log::{trace, warn}; // Location in RustPython
 use std::cmp::Ordering;
+use std::str::FromStr;
+use unic_ucd_category::GeneralCategory;
 
 /// Represents the different part which constitute our source code
 #[derive(Clone, Debug, PartialEq)]
@@ -45,17 +47,12 @@ pub struct LexicalError {
 /// The type of error refered in `LexicalError`
 #[derive(Debug, PartialEq)]
 pub enum LexicalErrorType {
-    StringError,
-    UnicodeError,
+    StringError, // TODO String literal
+    UnicodeError, // TODO String literal
     IndentationError,
     TabError,
-    DefaultArgumentError,
     CommentError, // A comment call was issued on a non-comment character
-    DuplicateKeywordArgumentError,
     UnrecognizedToken { tok: char },
-    LineContinuationError,
-    EOF,
-    OtherError(String),
 }
 
 /// A `Token` enriched with its starting and ending position in the source code
@@ -220,6 +217,62 @@ where
         }
     }
 
+    /// Skip over the next character and return a `Spanned` with the
+    /// skipped character position.
+    fn skip_char_as(&mut self, token: Token) -> Spanned {
+        let start = self.position;
+        self.next_char().unwrap(); // skip over the char
+        let end = self.position;
+
+        (start, token, end)
+    }
+
+    /// Indicates whether the given `char` is fit to start an identifier
+    ///
+    /// An Elm identifier must beging with a character from the unicode categories:
+    /// - Uppercase letter (Lu) (modules, types)
+    /// - Lowercase letter (Ll) (functions, variables)
+    /// - Titlecase letter (Lt) (modules, types)
+    fn is_identifier_start(&self, c: char) -> bool {
+        // Fast check on ASCII characters, assuming that's the common case
+        match c {
+            'A'..='Z' => true,
+            'a'..='z' => true,
+            _ => GeneralCategory::of(c).is_cased_letter(),
+        }
+    }
+
+    /// Indicates wether the given `char` is fit to continue an identifier
+    ///
+    /// An Elm identifier can contains a character from the following unicode categories
+    /// - Uppercase letter (Lu)
+    /// - Lowercase letter (Ll)
+    /// - Titlecase letter (Lt)
+    /// - Modifier letter (Lm)
+    /// - Other letter (Lo)
+    /// - Decimal digit number (Nd)
+    /// - Letter number (Nl)
+    /// - Or be _ (except for in module names).
+    fn is_identifier_continuation(&self, c: char) -> bool {
+        // Fast check on ASCII characters, assuming that's the common case
+        match c {
+            'A'..='Z' => true,
+            'a'..='z' => true,
+            '0'..='9' => true,
+            '_' => true,
+            _ => matches!(
+                GeneralCategory::of(c),
+                GeneralCategory::UppercaseLetter |     // Lu
+                    GeneralCategory::LowercaseLetter | // Ll
+                    GeneralCategory::TitlecaseLetter | // Lt
+                    GeneralCategory::ModifierLetter |  // Lm
+                    GeneralCategory::OtherLetter |     // Lo
+                    GeneralCategory::DecimalNumber |   // Nd
+                    GeneralCategory::LetterNumber // Nl
+            ),
+        }
+    }
+
     //
     // Token processing
     //
@@ -228,8 +281,6 @@ where
         // Here we have to process characters until we can form a complete
         // token. We will also use this time to handle indentations.
 
-        let mut cnt = 0;
-
         // We have nothing to emit, continue processing chars
         while self.processed_tokens.is_empty() {
             // Start of a new line, let's get indentations out of the way
@@ -237,17 +288,7 @@ where
                 self.handle_indentation()?;
             }
 
-            trace!(
-                "after handle_indentation: self.processed_tokens={:?}",
-                self.processed_tokens
-            );
             self.consume_char()?;
-            cnt += 1;
-
-            // TODO Remove once bug is fixed
-            if cnt > 20 {
-                break;
-            }
         }
 
         Ok(self.processed_tokens.remove(0))
@@ -412,8 +453,64 @@ where
     /// have been handled by the [`process_next_tokens`](#method.process_next_tokens)
     /// method).
     fn consume_char(&mut self) -> Result<()> {
-        if let Some(_) = self.lookahead.0 {
-            Ok(()) // TODO
+        trace!(
+            "consume_char: lookahead={:?}, position={:?}",
+            self.lookahead,
+            self.position
+        );
+
+        if let Some(c) = self.lookahead.0 {
+            if self.is_identifier_start(c) {
+                let identifier = self.consume_identifier()?;
+                self.processed_tokens.push(identifier);
+            } else {
+                // Something else
+                match c {
+                    '0'..='9' => {
+                        let number = self.consume_number();
+                        self.processed_tokens.push(number);
+                    }
+                    '(' => {
+                        let spanned = self.skip_char_as(Token::LPar);
+                        self.processed_tokens.push(spanned);
+                    }
+                    ')' => {
+                        let spanned = self.skip_char_as(Token::RPar);
+                        self.processed_tokens.push(spanned);
+                    }
+                    ':' => {
+                        let spanned = self.skip_char_as(Token::Colon);
+                        self.processed_tokens.push(spanned);
+                    }
+                    '=' => {
+                        // TODO Here we have to disambiguate on ==
+                        let spanned = self.skip_char_as(Token::Equal);
+                        self.processed_tokens.push(spanned);
+                    }
+                    ' ' => {
+                        self.next_char().unwrap(); // let's skip over whitespace
+                    }
+                    '\t' => {
+                        return Err(LexicalError {
+                            error: LexicalErrorType::TabError,
+                            position: self.position,
+                        })
+                    }
+                    '\n' => {
+                        let spanned = self.skip_char_as(Token::Newline);
+                        self.processed_tokens.push(spanned);
+                    }
+                    _ => {
+                        let c = self.next_char().expect("lookahead.0 should be present");
+                        return Err(LexicalError {
+                            error: LexicalErrorType::UnrecognizedToken { tok: c },
+                            position: self.position,
+                        });
+                    }
+                }
+            }
+
+            Ok(())
         } else {
             // Nothing else to pull, let's wrap it up
 
@@ -439,6 +536,86 @@ where
 
             Ok(())
         }
+    }
+
+    fn consume_identifier(&mut self) -> Result<Spanned> {
+        trace!(
+            "consume_identifier: lookahead={:?}, position={:?}",
+            self.lookahead,
+            self.position
+        );
+        let mut name = String::new();
+
+        let start_pos = self.position;
+
+        let first = self.next_char().unwrap(); // if we ended up here, the first char should be present
+        name.push(first);
+
+        loop {
+            if let Some(c) = self.lookahead.0 {
+                if self.is_identifier_continuation(c) {
+                    name.push(self.next_char().unwrap());
+                } else {
+                    // Not fit for an ident, let's stop
+                    break;
+                }
+            } else {
+                // Nothing remaining in the iterator, so we're done
+                break;
+            }
+        }
+
+        let end_pos = self.position;
+
+        // TODO Check for keyword
+
+        Ok((start_pos, Token::Identifier { name }, end_pos))
+    }
+
+    fn consume_number(&mut self) -> Spanned {
+        trace!(
+            "consume_number: lookahead={:?}, position={:?}",
+            self.lookahead,
+            self.position
+        );
+        let start_pos = self.position;
+
+        let mut buf = String::new();
+        let mut is_float = false;
+
+        loop {
+            // looping over the iterator until we find a char which isn't
+            // a number or a dot.
+            if let Some(c) = self.lookahead.0 {
+                if c.is_numeric() {
+                    buf.push(c);
+                } else if c == '.' {
+                    is_float = true;
+                    buf.push(c);
+                } else {
+                    break; // Not a number, we are done
+                }
+
+                // We have looked at the current char, let's move to the next
+                self.next_char().unwrap();
+            } else {
+                break; // Stream finished, let's break the loop
+            }
+        }
+
+        let end_pos = self.position;
+
+        let token = if is_float {
+            Token::Float {
+                value: f32::from_str(&buf).unwrap(),
+            } //
+        } else {
+            Token::Integer {
+                value: i32::from_str(&buf).unwrap(),
+            }
+        };
+
+        (start_pos, token, end_pos)
     }
 }
 
@@ -479,10 +656,16 @@ mod tests {
         env_logger::builder().is_test(true).init();
     }
 
-    pub fn tokenize(source: &str) -> Vec<Token> {
+    fn tokenize(source: &str) -> Vec<Token> {
         make_tokenizer(source)
             .map(|x| x.expect("no error in tokenize").1)
             .collect()
+    }
+
+    fn ident_token(s: &str) -> Token {
+        Token::Identifier {
+            name: s.to_string(),
+        }
     }
 
     #[test]
@@ -533,7 +716,39 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_constant() {
+    fn test_consume_identifier() {
+        assert_eq!(
+            tokenize("ident"),
+            vec![ident_token("ident"), Token::Newline]
+        );
+    }
+
+    #[test]
+    fn test_skip_whitespaces_between_ident() {
+        assert_eq!(
+            tokenize("map f"),
+            vec![ident_token("map"), ident_token("f"), Token::Newline]
+        );
+        assert_eq!(
+            tokenize("map  f"),
+            vec![ident_token("map"), ident_token("f"), Token::Newline]
+        );
+    }
+
+    #[test]
+    fn test_refuse_tab_in_expression() {
+        assert_eq!(
+            make_tokenizer("map \ta").collect::<Result<Vec<_>, _>>(),
+            Err(LexicalError {
+                error: LexicalErrorType::TabError,
+                position: Position::new(0, 4)
+            })
+        );
+    }
+
+    #[test]
+    fn test_simple_program() {
+        enable_logs();
         let tokens = tokenize(indoc! {"
             module Main exposing(main)
 
@@ -541,33 +756,21 @@ mod tests {
             main = 42
         "});
         let expected: Vec<Token> = vec![
-            Token::Identifier {
-                name: "module".to_string(),
-            },
-            Token::Identifier {
-                name: "exposing".to_string(),
-            }, // Special token ?
+            ident_token("module"),
+            ident_token("Main"),
+            ident_token("exposing"),
             Token::LPar,
-            Token::Identifier {
-                name: "main".to_string(),
-            },
+            ident_token("main"),
             Token::RPar,
             Token::Newline,
-            Token::Newline,
-            Token::Identifier {
-                name: "main".to_string(),
-            },
+            ident_token("main"),
             Token::Colon,
-            Token::Identifier {
-                name: "Int".to_string(),
-            },
+            ident_token("Int"),
             Token::Newline,
-            Token::Identifier {
-                name: "main".to_string(),
-            },
+            ident_token("main"),
             Token::Equal,
             Token::Integer { value: 42 },
-            Token::EndOfFile,
+            Token::Newline,
         ];
 
         assert_eq!(tokens, expected)
