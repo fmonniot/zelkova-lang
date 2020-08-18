@@ -2,7 +2,7 @@
 // https://github.com/RustPython/RustPython/blob/master/parser/src/lexer.rs
 
 use crate::position::Position;
-use log::trace; // Location in RustPython
+use log::{trace, warn}; // Location in RustPython
 use std::cmp::Ordering;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -11,18 +11,28 @@ pub enum Token {
     Integer { value: i32 }, // web assembly support i/f 32/64
     Float { value: f32 },
 
+    // Control characters
     Newline,
     Indent,
     Dedent,
     StartProgram,
     EndOfFile,
 
+    // Symbols
     LPar,
     RPar,
     Colon,
     Equal,
+
+    // Keywords
+    Module,
+    Exposing,
+    If,
+    Else,
+    Then,
 }
 
+// TODO Rename to TokenizerError
 /// Represents an error during lexical scanning.
 #[derive(Debug, PartialEq)]
 pub struct LexicalError {
@@ -35,11 +45,10 @@ pub struct LexicalError {
 pub enum LexicalErrorType {
     StringError,
     UnicodeError,
-    NestingError,
     IndentationError,
     TabError,
     DefaultArgumentError,
-    PositionalArgumentError,
+    CommentError, // A comment call was issued on a non-comment character
     DuplicateKeywordArgumentError,
     UnrecognizedToken { tok: char },
     LineContinuationError,
@@ -170,6 +179,7 @@ where
 
         if current == Some('\n') {
             self.position.newline();
+            self.at_line_start = true;
         } else {
             self.position.go_right();
         };
@@ -178,6 +188,19 @@ where
 
         current
     }
+
+    /// Utility to skip character until the current char is a \n
+    /// (or we reached the end of the iterator).
+    fn skip_end_of_line(&mut self) {
+        loop {
+            match self.lookahead.0 {
+                Some('\n') => break,
+                Some(_) => (),
+                None => break,
+            }
+            self.next_char();
+        }
+    } 
 
     //
     // Token processing
@@ -245,7 +268,9 @@ where
         Ok(())
     }
 
-    // TODO Rename: remove the _level suffix
+    /// Consume the characters until we reach a non-indentation
+    /// and/or non-comment character, leaving the iterator to
+    /// point at it.
     fn consume_indentation(&mut self) -> Result<usize> {
         let mut spaces = 0;
 
@@ -264,7 +289,22 @@ where
                         position: self.position,
                     });
                 }
-                // TODO Comment character
+                Some('-') => {
+                    // Possible comment
+                    if let Some('-') = self.lookahead.1 {
+                        // This is a comment, let's skip it (and start counting again)
+                        self.consume_comment()?;
+                        spaces = 0;
+                    }
+
+                }
+                Some('{') => {
+                    if let Some('-') = self.lookahead.1 {
+                        // This is a comment, let's skip it (and start counting again)
+                        self.consume_comment()?;
+                        spaces = 0;
+                    }
+                }
                 Some('\n') => {
                     // We have an empty line, reset and start again
                     spaces = 0;
@@ -294,6 +334,49 @@ where
         }
 
         Ok(spaces)
+    }
+
+    /// Consume the iterator until the end of the comment.
+    /// Calling this method when the current character is not one
+    /// starting a comment will result in an error
+    fn consume_comment(&mut self) -> Result<()> {
+        if self.lookahead.0 == Some('-') && self.lookahead.1 == Some('-') {
+            // Single line comment end at the start of the next line
+            trace!("Start skipping single line comment {:?}", self.position);
+            self.skip_end_of_line();
+        
+        } else if self.lookahead.0 == Some('{') && self.lookahead.1 == Some('-') {
+            // A multi line comment end at the newline after the -} symbol
+            trace!("Start skipping multi line comment {:?}", self.position);
+            
+            loop {
+                match self.lookahead.0 {
+                    Some('-') => {
+                        if let Some('}') = self.lookahead.1 {
+                            // We have reached the end symbol, let's skip the rest of the line
+                            self.skip_end_of_line();
+                            break;
+                        }
+                    }
+                    Some(_) => (),
+                    None => break,
+                }
+                self.next_char();
+            }
+
+        } else {
+            // We aren't looking at the symbols -- or {-, this isn't a comment
+            warn!("Called Tokenizer.consume_comment on non-comment symbols ({})", self.position);
+            return Err(
+                LexicalError {
+                    error: LexicalErrorType::CommentError,
+                    position: self.position
+                }
+            )
+        }
+           
+        trace!("Comment skipped: lookahead={:?}, position={:?}", self.lookahead, self.position);
+        Ok(())
     }
 
     fn consume_char(&mut self) -> Result<()> {
@@ -349,14 +432,21 @@ mod tests {
     use super::{make_tokenizer, NewlineCollapser, Token, LexicalError, LexicalErrorType, Position};
     use indoc::indoc;
 
+    /// This function is useful when debugging a test failure.
+    /// When not used, the logs aren't properly redirected to
+    /// stdout and thus we don't see them.
+    /// 
+    /// See https://github.com/env-logger-rs/env_logger/issues/107
+    /// for context.
+    #[allow(dead_code)]
     fn enable_logs() {
-        // https://github.com/env-logger-rs/env_logger/issues/107
         env_logger::builder().is_test(true).init();
     }
 
     pub fn tokenize(source: &str) -> Vec<Token> {
-        let lexer = make_tokenizer(source);
-        lexer.map(|x| x.unwrap().1).collect()
+        make_tokenizer(source)
+            .map(|x| x.expect("no error in tokenize").1)
+            .collect()
     }
 
     #[test]
@@ -376,7 +466,6 @@ mod tests {
 
     #[test]
     fn test_invalid_indentation() {
-        enable_logs();
         assert_eq!(
             make_tokenizer(" a").collect::<Result<Vec<_>, _>>(), 
             Err(LexicalError {
@@ -392,6 +481,19 @@ mod tests {
                 position: Position::new(2, 0)
             })
         );
+    }
+
+    #[test]
+    fn test_comments() {
+        let tokens = tokenize(indoc! {
+            "-- this is a comment
+             {- and this is a
+                multiline comment
+             -}
+            "
+        });
+
+        assert_eq!(tokens, vec![]);
     }
 
 
