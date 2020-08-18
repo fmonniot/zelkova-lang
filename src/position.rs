@@ -15,12 +15,12 @@ impl Position {
     }
 
     pub fn newline(&mut self) {
-        self.line.0 = 0;
-        self.column.0 = self.column.0 + 1;
+        self.column.0 = 0;
+        self.line.0 = self.line.0 + 1;
     }
 
     pub fn go_right(&mut self) {
-        self.line.0 = self.line.0 + 1;
+        self.column.0 = self.column.0 + 1;
     }
 
     /// reset the position to the beginning of a document
@@ -50,7 +50,7 @@ mod tests {
         let mut position = Position::new(10, 1);
         position.newline();
 
-        let expected = Position::new(0, 2);
+        let expected = Position::new(11, 0);
 
         assert_eq!(position, expected);
     }
@@ -60,7 +60,7 @@ mod tests {
         let mut position = Position::new(10, 1);
         position.go_right();
 
-        let expected = Position::new(11, 1);
+        let expected = Position::new(10, 2);
 
         assert_eq!(position, expected);
     }

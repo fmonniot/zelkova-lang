@@ -506,7 +506,7 @@ mod tests {
             make_tokenizer(" a").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::IndentationError,
-                position: Position::new(1, 0)
+                position: Position::new(0, 1)
             })
         );
 
@@ -514,7 +514,7 @@ mod tests {
             make_tokenizer("  \ta").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::TabError,
-                position: Position::new(2, 0)
+                position: Position::new(0, 2)
             })
         );
     }
