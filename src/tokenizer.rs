@@ -14,6 +14,7 @@ pub enum Token {
     Identifier { name: String },
     Integer { value: i32 }, // web assembly support i/f 32/64
     Float { value: f32 },
+    Char { value: char },
 
     // Control characters
     Newline,
@@ -59,6 +60,7 @@ pub struct LexicalError {
 /// The type of error refered in `LexicalError`
 #[derive(Debug, PartialEq)]
 pub enum LexicalErrorType {
+    CharError,
     StringError,  // TODO String literal
     UnicodeError, // TODO String literal
     IndentationError,
@@ -502,6 +504,40 @@ where
                         let spanned = self.skip_char_as(Token::Equal);
                         self.processed_tokens.push(spanned);
                     }
+                    '\'' => {
+                        if let Some(value) = self.lookahead.1 {
+                            if let Some('\'') = self.lookahead.2 {
+                                let start_pos = self.position;
+                                // skip over the opening quote, char and closing quote
+                                self.next_char().unwrap();
+                                self.next_char().unwrap();
+                                self.next_char().unwrap();
+                                let end_pos = self.position;
+
+                                self.processed_tokens.push((
+                                    start_pos,
+                                    Token::Char { value },
+                                    end_pos,
+                                ));
+                            } else {
+                                // error: opened quote with char but no closing quote
+                                // We haven't moved the cursor yet, but we know the error
+                                // is on the next character, so we build the position manually
+                                let mut position = self.position.clone();
+                                position.go_right();
+                                return Err(LexicalError {
+                                    error: LexicalErrorType::CharError,
+                                    position: position,
+                                })
+                            }
+                        } else {
+                            // error: opened single quote without character following
+                            return Err(LexicalError {
+                                error: LexicalErrorType::CharError,
+                                position: self.position,
+                            })
+                        }
+                    }
                     ' ' => {
                         self.next_char().unwrap(); // let's skip over whitespace
                     }
@@ -696,6 +732,18 @@ mod tests {
         }
     }
 
+    fn int_token(value: i32) -> Token {
+        Token::Integer { value }
+    }
+
+    fn float_token(value: f32) -> Token {
+        Token::Float { value }
+    }
+
+    fn char_token(value: char) -> Token {
+        Token::Char { value }
+    }
+
     #[test]
     fn test_newline_collapser() {
         let src = "ab\ncd\r\ne";
@@ -709,6 +757,38 @@ mod tests {
         assert_eq!(make_tokenizer("").collect::<Vec<_>>(), vec![]);
         assert_eq!(make_tokenizer("    ").collect::<Vec<_>>(), vec![]);
         assert_eq!(make_tokenizer("  \n  ").collect::<Vec<_>>(), vec![]);
+    }
+
+    #[test]
+    fn test_literal_number() {
+        // Integer
+        assert_eq!(tokenize("42"), vec![int_token(42), Token::Newline]);
+        assert_eq!(tokenize("2"), vec![int_token(2), Token::Newline]);
+
+        // Float
+        assert_eq!(tokenize("42.99"), vec![float_token(42.99), Token::Newline]);
+        assert_eq!(tokenize("2.0"), vec![float_token(2.0), Token::Newline]);
+    }
+
+    #[test]
+    fn test_literal_char() {
+        assert_eq!(
+            make_tokenizer("'").collect::<Result<Vec<_>, _>>(),
+            Err(LexicalError {
+                error: LexicalErrorType::CharError,
+                position: Position::new(0, 0)
+            })
+        );
+
+        assert_eq!(
+            make_tokenizer("'a").collect::<Result<Vec<_>, _>>(),
+            Err(LexicalError {
+                error: LexicalErrorType::CharError,
+                position: Position::new(0, 1)
+            })
+        );
+
+        assert_eq!(tokenize("'a'"), vec![char_token('a'), Token::Newline]);
     }
 
     #[test]
