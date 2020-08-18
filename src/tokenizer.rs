@@ -5,6 +5,7 @@ use crate::position::Position;
 use log::{trace, warn}; // Location in RustPython
 use std::cmp::Ordering;
 
+/// Represents the different part which constitute our source code
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Identifier { name: String },
@@ -33,7 +34,7 @@ pub enum Token {
 }
 
 // TODO Rename to TokenizerError
-/// Represents an error during lexical scanning.
+/// Represents an error during tokenization.
 #[derive(Debug, PartialEq)]
 pub struct LexicalError {
     pub error: LexicalErrorType,
@@ -41,6 +42,7 @@ pub struct LexicalError {
 }
 
 // TODO Remove errors that aren't needed
+/// The type of error refered in `LexicalError`
 #[derive(Debug, PartialEq)]
 pub enum LexicalErrorType {
     StringError,
@@ -56,14 +58,23 @@ pub enum LexicalErrorType {
     OtherError(String),
 }
 
+/// A `Token` enriched with its starting and ending position in the source code
 pub type Spanned = (Position, Token, Position); // (start, tok, end) Location in RustPython
+
+/// Represent a standard `Result` scoped to a `LexicalError`
 pub type Result<T> = std::result::Result<T, LexicalError>;
 
+/// Take a source code and return an iterator of [`Spanned`](type.Spanned.html)
+///
+/// This is the access point of this module, and the only way to create the underlying
+/// `Tokenizer` (although it isn't exposed to public consumption)
 pub fn make_tokenizer<'a>(source: &'a str) -> impl Iterator<Item = Result<Spanned>> + 'a {
     let c = NewlineCollapser::new(source.chars());
     Tokenizer::new(c)
 }
 
+/// A structure taking an char iterator and collapsing newlines
+/// control characters into `\n`.
 struct NewlineCollapser<T: Iterator<Item = char>> {
     source: T,
     char_curr: Option<char>,
@@ -124,10 +135,13 @@ where
     }
 }
 
-// We use an intermediate Vec between the processing
-// and the iterator's next because some loop could
-// create more than one token (eg. end of an increment
-// block or end of file).
+/// Tokenizer is an iterator which consume a (UNIX) source and
+/// produces `Result<Token>`
+///  
+/// We use an intermediate Vec between the processing
+/// and the iterator's next because some loop could
+/// create more than one token (eg. end of an increment
+/// block or end of file).
 struct Tokenizer<I: Iterator<Item = char>> {
     chars: I,
     at_line_start: bool,
@@ -184,12 +198,16 @@ where
             self.position.go_right();
         };
 
-        trace!("next_char: lookahead={:?}, position={:?}", self.lookahead, self.position);
+        trace!(
+            "next_char: lookahead={:?}, position={:?}",
+            self.lookahead,
+            self.position
+        );
 
         current
     }
 
-    /// Utility to skip character until the current char is a \n
+    /// Utility to skip character until the current char is a `\n`
     /// (or we reached the end of the iterator).
     fn skip_end_of_line(&mut self) {
         loop {
@@ -200,7 +218,7 @@ where
             }
             self.next_char();
         }
-    } 
+    }
 
     //
     // Token processing
@@ -219,7 +237,10 @@ where
                 self.handle_indentation()?;
             }
 
-            trace!("after handle_indentation: self.processed_tokens={:?}", self.processed_tokens);
+            trace!(
+                "after handle_indentation: self.processed_tokens={:?}",
+                self.processed_tokens
+            );
             self.consume_char()?;
             cnt += 1;
 
@@ -239,7 +260,11 @@ where
     fn handle_indentation(&mut self) -> Result<()> {
         let indentation = self.consume_indentation()?;
 
-        trace!("handle_indentation: indentation={}, self.indentation={}", indentation, self.indentation);
+        trace!(
+            "handle_indentation: indentation={}, self.indentation={}",
+            indentation,
+            self.indentation
+        );
 
         match indentation.cmp(&self.indentation) {
             Ordering::Equal => {
@@ -251,7 +276,8 @@ where
 
                 // Emit one Indent token per indentation level
                 for _ in 1..(diff / 2) {
-                    self.processed_tokens.push((self.position, Token::Indent, self.position));
+                    self.processed_tokens
+                        .push((self.position, Token::Indent, self.position));
                 }
             }
             Ordering::Less => {
@@ -260,7 +286,8 @@ where
 
                 // TODO Does it actually make sense to emit multiple dedent per 2 spaces ?
                 for _ in 1..(diff / 2) {
-                    self.processed_tokens.push((self.position, Token::Dedent, self.position));
+                    self.processed_tokens
+                        .push((self.position, Token::Dedent, self.position));
                 }
             }
         }
@@ -296,7 +323,6 @@ where
                         self.consume_comment()?;
                         spaces = 0;
                     }
-
                 }
                 Some('{') => {
                     if let Some('-') = self.lookahead.1 {
@@ -319,18 +345,16 @@ where
                     // We arrived at the first character of the line
                     self.at_line_start = false;
                     break;
-                },
+                }
             }
         }
 
         // Indentation must be by 2 spaces, anything else is an error
         if spaces % 2 != 0 {
-            return Err(
-                LexicalError {
-                    error: LexicalErrorType::IndentationError,
-                    position: self.position
-                }
-            )
+            return Err(LexicalError {
+                error: LexicalErrorType::IndentationError,
+                position: self.position,
+            });
         }
 
         Ok(spaces)
@@ -344,11 +368,10 @@ where
             // Single line comment end at the start of the next line
             trace!("Start skipping single line comment {:?}", self.position);
             self.skip_end_of_line();
-        
         } else if self.lookahead.0 == Some('{') && self.lookahead.1 == Some('-') {
             // A multi line comment end at the newline after the -} symbol
             trace!("Start skipping multi line comment {:?}", self.position);
-            
+
             loop {
                 match self.lookahead.0 {
                     Some('-') => {
@@ -363,24 +386,32 @@ where
                 }
                 self.next_char();
             }
-
         } else {
             // We aren't looking at the symbols -- or {-, this isn't a comment
-            warn!("Called Tokenizer.consume_comment on non-comment symbols ({})", self.position);
-            return Err(
-                LexicalError {
-                    error: LexicalErrorType::CommentError,
-                    position: self.position
-                }
-            )
+            warn!(
+                "Called Tokenizer.consume_comment on non-comment symbols ({})",
+                self.position
+            );
+            return Err(LexicalError {
+                error: LexicalErrorType::CommentError,
+                position: self.position,
+            });
         }
-           
-        trace!("Comment skipped: lookahead={:?}, position={:?}", self.lookahead, self.position);
+
+        trace!(
+            "Comment skipped: lookahead={:?}, position={:?}",
+            self.lookahead,
+            self.position
+        );
         Ok(())
     }
 
+    /// The meat of the Tokenizer structure. This method is in charge
+    /// of producing the symbols, keywords, literals and other
+    /// identifier tokens (all the pesky details like comments should
+    /// have been handled by the [`process_next_tokens`](#method.process_next_tokens)
+    /// method).
     fn consume_char(&mut self) -> Result<()> {
-
         if let Some(_) = self.lookahead.0 {
             Ok(()) // TODO
         } else {
@@ -391,17 +422,20 @@ where
             // the end).
             if !self.at_line_start {
                 self.at_line_start = true;
-                self.processed_tokens.push((self.position, Token::Newline, self.position));
+                self.processed_tokens
+                    .push((self.position, Token::Newline, self.position));
             }
 
             // Next emit the remaining deindent tokens (if any)
             while self.indentation > 0 {
                 self.indentation -= 2;
-                self.processed_tokens.push((self.position, Token::Dedent, self.position));
+                self.processed_tokens
+                    .push((self.position, Token::Dedent, self.position));
             }
 
             // And finally emit the EOF token
-            self.processed_tokens.push((self.position, Token::EndOfFile, self.position));
+            self.processed_tokens
+                .push((self.position, Token::EndOfFile, self.position));
 
             Ok(())
         }
@@ -429,13 +463,15 @@ where
 #[cfg(test)]
 mod tests {
 
-    use super::{make_tokenizer, NewlineCollapser, Token, LexicalError, LexicalErrorType, Position};
+    use super::{
+        make_tokenizer, LexicalError, LexicalErrorType, NewlineCollapser, Position, Token,
+    };
     use indoc::indoc;
 
     /// This function is useful when debugging a test failure.
     /// When not used, the logs aren't properly redirected to
     /// stdout and thus we don't see them.
-    /// 
+    ///
     /// See https://github.com/env-logger-rs/env_logger/issues/107
     /// for context.
     #[allow(dead_code)]
@@ -467,7 +503,7 @@ mod tests {
     #[test]
     fn test_invalid_indentation() {
         assert_eq!(
-            make_tokenizer(" a").collect::<Result<Vec<_>, _>>(), 
+            make_tokenizer(" a").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::IndentationError,
                 position: Position::new(1, 0)
@@ -475,7 +511,7 @@ mod tests {
         );
 
         assert_eq!(
-            make_tokenizer("  \ta").collect::<Result<Vec<_>, _>>(), 
+            make_tokenizer("  \ta").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::TabError,
                 position: Position::new(2, 0)
@@ -495,8 +531,6 @@ mod tests {
 
         assert_eq!(tokens, vec![]);
     }
-
-
 
     #[test]
     fn test_simple_constant() {

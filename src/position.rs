@@ -30,10 +30,14 @@ impl Position {
     }
 }
 
-
 impl std::fmt::Display for Position {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "line: {}, column: {}", self.line.number(), self.column.number())
+        write!(
+            f,
+            "line: {}, column: {}",
+            self.line.number(),
+            self.column.number()
+        )
     }
 }
 
@@ -68,5 +72,4 @@ mod tests {
 
         assert_eq!(position, Position::new(0, 0));
     }
-
 }
