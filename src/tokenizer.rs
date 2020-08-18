@@ -4,6 +4,7 @@
 use crate::position::Position;
 use log::{trace, warn}; // Location in RustPython
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::str::FromStr;
 use unic_ucd_category::GeneralCategory;
 
@@ -31,8 +32,20 @@ pub enum Token {
     Module,
     Exposing,
     If,
-    Else,
     Then,
+    Else,
+}
+
+fn get_keywords() -> HashMap<String, Token> {
+    let mut m = HashMap::new();
+
+    m.insert("module".to_string(), Token::Module);
+    m.insert("exposing".to_string(), Token::Exposing);
+    m.insert("if".to_string(), Token::If);
+    m.insert("then".to_string(), Token::Then);
+    m.insert("else".to_string(), Token::Else);
+
+    m
 }
 
 // TODO Rename to TokenizerError
@@ -47,7 +60,7 @@ pub struct LexicalError {
 /// The type of error refered in `LexicalError`
 #[derive(Debug, PartialEq)]
 pub enum LexicalErrorType {
-    StringError, // TODO String literal
+    StringError,  // TODO String literal
     UnicodeError, // TODO String literal
     IndentationError,
     TabError,
@@ -146,12 +159,14 @@ struct Tokenizer<I: Iterator<Item = char>> {
     position: Position,
     lookahead: (Option<char>, Option<char>, Option<char>), // current char, next and +1
     indentation: usize,
+    keywords: HashMap<String, Token>,
 }
 
 impl<I> Tokenizer<I>
 where
     I: Iterator<Item = char>,
 {
+    /// Build a new Tokenizer based on a char iterator
     fn new(collapser: I) -> Tokenizer<I> {
         let mut tok = Tokenizer {
             chars: collapser,
@@ -160,6 +175,7 @@ where
             position: Position::new(0, 0),
             lookahead: (None, None, None),
             indentation: 0,
+            keywords: get_keywords(),
         };
 
         // Fill out the lookahead structure
@@ -538,6 +554,14 @@ where
         }
     }
 
+    /// Consume the iterator until we reach a char which isn't suited for an identifier.
+    ///
+    /// This can return two types of tokens:
+    /// - a keyword token (e.g. `Token::Module`) if the consumed identifier is part of
+    ///   the reserved list of keywords. See [`get_keywords()`](#function.get_keywords)
+    ///   for a list of keywords.
+    /// - a `Token::Identifier` if the identifier isn't a keyword, this encompass basically
+    ///   everything which isn't a symbol, literal or keyword in the language.
     fn consume_identifier(&mut self) -> Result<Spanned> {
         trace!(
             "consume_identifier: lookahead={:?}, position={:?}",
@@ -567,9 +591,14 @@ where
 
         let end_pos = self.position;
 
-        // TODO Check for keyword
+        // Check if the identifier is a reserved keyword
+        let token = if let Some(keyword) = self.keywords.get(&name) {
+            keyword.clone()
+        } else {
+            Token::Identifier { name }
+        };
 
-        Ok((start_pos, Token::Identifier { name }, end_pos))
+        Ok((start_pos, token, end_pos))
     }
 
     fn consume_number(&mut self) -> Spanned {
@@ -756,9 +785,9 @@ mod tests {
             main = 42
         "});
         let expected: Vec<Token> = vec![
-            ident_token("module"),
+            Token::Module,
             ident_token("Main"),
-            ident_token("exposing"),
+            Token::Exposing,
             Token::LPar,
             ident_token("main"),
             Token::RPar,
