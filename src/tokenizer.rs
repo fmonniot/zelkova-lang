@@ -789,6 +789,7 @@ mod tests {
         );
 
         assert_eq!(tokenize("'a'"), vec![char_token('a'), Token::Newline]);
+        assert_eq!(tokenize("'🙂'"), vec![char_token('🙂'), Token::Newline]);
     }
 
     #[test]
