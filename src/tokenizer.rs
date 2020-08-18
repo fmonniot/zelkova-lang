@@ -12,8 +12,8 @@ use unic_ucd_category::GeneralCategory;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Identifier { name: String },
-    Integer { value: i32 }, // web assembly support i/f 32/64
-    Float { value: f32 },
+    Integer { value: i64 }, // web assembly support i/f 32/64
+    Float { value: f64 },
     Char { value: char },
 
     // Control characters
@@ -671,11 +671,11 @@ where
 
         let token = if is_float {
             Token::Float {
-                value: f32::from_str(&buf).unwrap(),
+                value: f64::from_str(&buf).unwrap(),
             } //
         } else {
             Token::Integer {
-                value: i32::from_str(&buf).unwrap(),
+                value: i64::from_str(&buf).unwrap(),
             }
         };
 
@@ -732,11 +732,11 @@ mod tests {
         }
     }
 
-    fn int_token(value: i32) -> Token {
+    fn int_token(value: i64) -> Token {
         Token::Integer { value }
     }
 
-    fn float_token(value: f32) -> Token {
+    fn float_token(value: f64) -> Token {
         Token::Float { value }
     }
 
