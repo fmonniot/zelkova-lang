@@ -19,7 +19,6 @@ pub enum Token {
     Newline,
     Indent,
     Dedent,
-    StartProgram,
     EndOfFile,
 
     // Symbols
