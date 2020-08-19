@@ -77,8 +77,14 @@ AtomicExpr: Expression = {
     // <expr: AtomicExpr> "." <id: Ident> =>
     //     Expression::Projection(Box::new(expr), id),
     // 
-    "(" <elems: Comma<Expr>> ")" =>
-        Expression::Tuple(Box::new(elems)),
+
+    "(" <elems: Comma<Expr>> ")" => {
+        match elems.len() {
+            // This isn't a tuple by a parenthesis around an expression
+            1 => elems.first().unwrap().clone(),
+            _ => Expression::Tuple(Box::new(elems))
+        }
+    },
     
     // "[" <elems: CommaSlice<Expr>> "]" => 
     //     Expression::List { elems },

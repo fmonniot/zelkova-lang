@@ -6,7 +6,7 @@
 //! in function declaration is one such thing.
 
 /// new type over everything that is named in our language
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Name(pub String);
 
 #[derive(Debug, PartialEq)]
@@ -119,7 +119,7 @@ pub enum Pattern {
 }
 
 /// An Expression
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Lit(Literal), // Literal, as other are fully named
     Application(Box<Expression>, Box<Expression>),
@@ -128,7 +128,7 @@ pub enum Expression {
 }
 
 /// A literal
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
     Int(i64),
     Float(f64),

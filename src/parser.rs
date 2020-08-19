@@ -161,6 +161,30 @@ mod tests {
             ),
         );
 
+        // function application with parenthesis (`(map myfunction) 42`)
+        run_test(
+            vec![
+                ident_token("main"),
+                Token::Equal,
+                Token::LPar,
+                ident_token("map"),
+                ident_token("myfunction"),
+                Token::RPar,
+                Token::Integer { value: 2 },
+                Token::Newline,
+            ],
+            Expression::Application(
+                // map: (a -> b) -> a -> b
+                // first application result in: a -> b
+                // second application result in: b
+                Box::new(Expression::Application(
+                    Box::new(Expression::Variable(Name("map".to_string()))),
+                    Box::new(Expression::Variable(Name("myfunction".to_string()))),
+                )),
+                Box::new(Expression::Lit(Literal::Int(2))),
+            ),
+        );
+
         // infix operation
         run_test(
             vec![
