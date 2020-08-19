@@ -108,10 +108,16 @@ Expr = {
 
 // Declarations
 
-Type: Type = {
+AtomicType: Type = {
     <name:Ident> => Type::Named(name),
+}
 
-    <name:Ident> "->" <tpe:Type> => Type::Arrow(name, Box::new(tpe)),
+Type: Type = {
+    AtomicType,
+    
+    "(" <tpe1:Type> ")" "->" <tpe2:Type> => Type::curry_arrow(tpe1, tpe2),
+
+    <name:AtomicType> "->" <tpe:Type> => Type::curry_arrow(name, tpe),
 }
 
 // TODO Support function types (paired with pattern matching in bind groups)

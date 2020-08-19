@@ -12,7 +12,22 @@ pub struct Name(pub String);
 #[derive(Debug, PartialEq)]
 pub enum Type {
     Named(Name),
-    Arrow(Name, Box<Type>)
+    Arrow(Box<Type>, Box<Type>),
+}
+
+impl Type {
+    /// Special constructor for an arrow, when we want to apply currying
+    /// on the right hand side.
+    pub fn curry_arrow(t1: Type, t2: Type) -> Type {
+        match t2 {
+            Type::Arrow(t21, t22) => {
+                // t1 -> (t21 -> t22)
+                // we want t1 -> t21 -> t22
+                Type::Arrow(Box::new(Type::Arrow(Box::new(t1), t21)), t22)
+            }
+            _ => Type::Arrow(Box::new(t1), Box::new(t2)),
+        }
+    }
 }
 
 /// A Module is the top-level structure for a source file.
@@ -117,4 +132,38 @@ pub enum Literal {
     Int(i64),
     Float(f64),
     Char(char),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frontend_type_curry_arrow() {
+        // String -> Int
+        let arrow1 = Type::Arrow(
+            Box::new(Type::Named(Name("String".to_string()))),
+            Box::new(Type::Named(Name("Int".to_string()))),
+        );
+
+        // String -> Int
+        let arrow2 = Type::Arrow(
+            Box::new(Type::Named(Name("String".to_string()))),
+            Box::new(Type::Named(Name("Int".to_string()))),
+        );
+
+        // (String -> Int) -> String -> Int
+        let expected = Type::Arrow(
+            Box::new(Type::Arrow(
+                Box::new(Type::Arrow(
+                    Box::new(Type::Named(Name("String".to_string()))),
+                    Box::new(Type::Named(Name("Int".to_string()))),
+                )),
+                Box::new(Type::Named(Name("String".to_string()))),
+            )),
+            Box::new(Type::Named(Name("Int".to_string()))),
+        );
+
+        assert_eq!(Type::curry_arrow(arrow1, arrow2), expected);
+    }
 }

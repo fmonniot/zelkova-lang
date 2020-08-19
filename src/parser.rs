@@ -182,6 +182,7 @@ mod tests {
                 declarations,
             });
 
+            println!("actual: {:#?}", actual);
             assert_eq!(actual, expected);
         };
 
@@ -193,12 +194,10 @@ mod tests {
                 ident_token("Int"),
                 Token::Newline,
             ],
-            vec![
-                Declaration::FunctionType(FunType {
-                    name: Name("main".to_string()),
-                    tpe: Type::Named(Name("Int".to_string())),
-                }),
-            ]
+            vec![Declaration::FunctionType(FunType {
+                name: Name("main".to_string()),
+                tpe: Type::Named(Name("Int".to_string())),
+            })],
         );
 
         // Function type
@@ -211,17 +210,82 @@ mod tests {
                 ident_token("Int"),
                 Token::Newline,
             ],
-            vec![
-                Declaration::FunctionType(FunType {
-                    name: Name("length".to_string()),
-                    tpe: Type::Arrow(
-                        Name("String".to_string()),
-                        Box::new(Type::Named(Name("Int".to_string())))
-                    ),
-                }),
-            ]
+            vec![Declaration::FunctionType(FunType {
+                name: Name("length".to_string()),
+                tpe: Type::Arrow(
+                    Box::new(Type::Named(Name("String".to_string()))),
+                    Box::new(Type::Named(Name("Int".to_string()))),
+                ),
+            })],
         );
 
-        // TODO Higher kinded type (eg `(String -> Int) -> String -> Int`)
+        // Higher kinded type (eg `(String -> Int) -> String -> Int`)
+        run_test(
+            vec![
+                ident_token("length"),
+                Token::Colon,
+                Token::LPar,
+                ident_token("String"),
+                Token::Arrow,
+                ident_token("Int"),
+                Token::RPar,
+                Token::Arrow,
+                ident_token("String"),
+                Token::Arrow,
+                ident_token("Int"),
+                Token::Newline,
+            ],
+            vec![Declaration::FunctionType(FunType {
+                name: Name("length".to_string()),
+                tpe: Type::Arrow(
+                    Box::new(Type::Arrow(
+                        Box::new(Type::Arrow(
+                            Box::new(Type::Named(Name("String".to_string()))),
+                            Box::new(Type::Named(Name("Int".to_string()))),
+                        )),
+                        Box::new(Type::Named(Name("String".to_string()))),
+                    )),
+                    Box::new(Type::Named(Name("Int".to_string()))),
+                ),
+            })],
+        );
+
+        // `(String -> Int) -> (String -> Int) -> Int`)
+        run_test(
+            vec![
+                ident_token("length"),
+                Token::Colon,
+                Token::LPar,
+                ident_token("String"),
+                Token::Arrow,
+                ident_token("Int"),
+                Token::RPar,
+                Token::Arrow,
+                Token::LPar,
+                ident_token("String"),
+                Token::Arrow,
+                ident_token("Int"),
+                Token::RPar,
+                Token::Arrow,
+                ident_token("Int"),
+                Token::Newline,
+            ],
+            vec![Declaration::FunctionType(FunType {
+                name: Name("length".to_string()),
+                tpe: Type::Arrow(
+                    Box::new(Type::Arrow(
+                        Box::new(Type::Arrow(
+                            Box::new(Type::Named(Name("String".to_string()))),
+                            Box::new(Type::Named(Name("Int".to_string()))),
+                        )),
+                        Box::new(Type::Arrow(
+                            Box::new(Type::Named(Name("String".to_string()))),
+                            Box::new(Type::Named(Name("Int".to_string()))),
+                        )),
+                    )),
+                    Box::new(Type::Named(Name("Int".to_string()))),
+                ),
+            })],
+        );
     }
 }
