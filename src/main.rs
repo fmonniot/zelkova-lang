@@ -1,3 +1,8 @@
+#[macro_use]
+extern crate lalrpop_util;
+
+mod frontend;
+mod parser;
 mod position;
 mod tokenizer;
 
@@ -13,6 +18,7 @@ fn main() {
 
     // next passes
     // parser
+
     // desugar
     // type check
     // core (first IR)

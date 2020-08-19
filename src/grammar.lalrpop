@@ -1,0 +1,135 @@
+use crate::tokenizer::{LexicalError, Token};
+use crate::position::Position;
+use crate::frontend::*;
+
+grammar;
+
+extern {
+    type Location = Position;
+    type Error = LexicalError;
+
+    enum Token {
+        "identifier" => Token::Identifier{ name: <String>},
+        "integer" => Token::Integer { value: <i64> },
+        "float" => Token::Float { value: <f64> },
+        "char" => Token::Char { value: <char> },
+
+        "\n" => Token::Newline,
+        Indent => Token::Indent,
+        Dedent => Token::Dedent,
+        
+        "(" => Token::LPar,
+        ")" => Token::RPar,
+        ":" => Token::Colon,
+        "=" => Token::Equal,
+        "," => Token::Comma,
+
+        "module" => Token::Module,
+        "exposing" => Token::Exposing,
+        "if" => Token::If,
+        "then" => Token::Then,
+        "else" => Token::Else,
+    }
+}
+
+// Building a macro which accumulate tokens of certain type
+// which are separated by a comma
+Comma<T>: Vec<T> = {
+    <v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+}
+
+Ident: Name = <"identifier"> => Name(<>);
+
+
+
+
+// Expressions
+
+
+Lit: Literal = {
+    <"integer"> => Literal::Int(<>),
+    <"float"> => Literal::Float(<>),
+    <"char"> => Literal::Char(<>),
+};
+
+AtomicExpr: Expression = {
+    <id: Ident> =>
+        Expression::Variable(id),
+
+    <lit: Lit> =>
+        Expression::Lit(lit),
+
+    // <expr: AtomicExpr> "." <id: Ident> =>
+    //     Expression::Projection(Box::new(expr), id),
+    // 
+    // "(" <elems: CommaSlice<Expr>> ")" =>
+    //     Expression::Tuple { elems },
+    // 
+    // "[" <elems: CommaSlice<Expr>> "]" => 
+    //     Expression::List { elems },
+};
+
+AppExpr = {
+    AtomicExpr,
+
+    // TODO
+    <expr: AtomicExpr> <arg: Expr> =>
+        Expression::Application(Box::new(expr), Box::new(arg)),
+};
+
+Expr = {
+    AppExpr,
+
+
+    "if" <pred: Expr> "then" <if_true: Expr> "else" <if_false: Expr> =>
+        Expression::Variable(Name("TODO".to_string())),
+};
+
+// Declarations
+
+// TODO
+FunType: () = <"identifier"> ":" ":" <"identifier"> => ();
+
+BindGroup: BindGroup = <name:Ident> "=" <expr:Expr> => {
+    BindGroup {
+        name,
+        patterns: vec![
+            Match {
+                pattern: vec![],
+                body: expr
+            }
+        ]
+    }
+};
+
+
+Decl: Declaration = {
+    <BindGroup> => Declaration::Function(<>),
+    //<FunType> "\n" => Declaration::FunctionType,
+};
+
+// Module
+
+FileLine: Option<Declaration> = {
+    <Decl> "\n" => Some(<>),
+    "\n" => None,
+};
+
+// entry point for our parser, a source file always start by
+// declaring the module
+pub Module: Module = "module" <name: Ident> "exposing" "(" <exposing:Comma<Ident>> ")" "\n" <lines:FileLine*> => {
+    Module {
+        name,
+        exposing,
+        declarations: lines.into_iter().flatten().collect(),
+    }
+};
+
+// TODO Maybe something for the REPL. Might just be Decl.

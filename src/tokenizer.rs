@@ -27,6 +27,7 @@ pub enum Token {
     RPar,
     Colon,
     Equal,
+    Comma,
 
     // Keywords
     Module,
@@ -504,6 +505,7 @@ where
                         let spanned = self.skip_char_as(Token::Equal);
                         self.processed_tokens.push(spanned);
                     }
+                    // TODO Add support for comma
                     '\'' => {
                         if let Some(value) = self.lookahead.1 {
                             if let Some('\'') = self.lookahead.2 {
@@ -528,14 +530,14 @@ where
                                 return Err(LexicalError {
                                     error: LexicalErrorType::CharError,
                                     position: position,
-                                })
+                                });
                             }
                         } else {
                             // error: opened single quote without character following
                             return Err(LexicalError {
                                 error: LexicalErrorType::CharError,
                                 position: self.position,
-                            })
+                            });
                         }
                     }
                     ' ' => {
@@ -764,6 +766,7 @@ mod tests {
         // Integer
         assert_eq!(tokenize("42"), vec![int_token(42), Token::Newline]);
         assert_eq!(tokenize("2"), vec![int_token(2), Token::Newline]);
+        // TODO negative integer
 
         // Float
         assert_eq!(tokenize("42.99"), vec![float_token(42.99), Token::Newline]);

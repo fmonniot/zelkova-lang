@@ -1,6 +1,6 @@
 use codespan::{ColumnIndex, LineIndex};
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub struct Position {
     pub line: LineIndex,
     pub column: ColumnIndex,
@@ -21,6 +21,10 @@ impl Position {
 
     pub fn go_right(&mut self) {
         self.column.0 = self.column.0 + 1;
+    }
+
+    pub fn go_right_by(&mut self, inc: u32) {
+        self.column.0 = self.column.0 + inc;
     }
 
     /// reset the position to the beginning of a document
