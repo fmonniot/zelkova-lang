@@ -57,6 +57,7 @@ Lit: Literal = {
     <"integer"> => Literal::Int(<>),
     <"float"> => Literal::Float(<>),
     <"char"> => Literal::Char(<>),
+    // TODO boolean
 };
 
 AtomicExpr: Expression = {
@@ -74,29 +75,37 @@ AtomicExpr: Expression = {
     // 
     // "[" <elems: CommaSlice<Expr>> "]" => 
     //     Expression::List { elems },
+
+    // TODO record
 };
 
 AppExpr = {
     AtomicExpr,
 
-    // TODO
     <expr: AtomicExpr> <arg: Expr> =>
         Expression::Application(Box::new(expr), Box::new(arg)),
 };
 
+// TODO LambdaExpr which take AppExpr as a branch and replace AppExpr in Expr
+
 Expr = {
     AppExpr,
 
-
     "if" <pred: Expr> "then" <if_true: Expr> "else" <if_false: Expr> =>
-        Expression::Variable(Name("TODO".to_string())),
+        todo!(),
+
+    // TODO let binding: type
+    // TODO let binding: value
+
+    // TODO pattern matching
 };
 
 // Declarations
 
-// TODO
+// TODO (should be similar to "let binding: type")
 FunType: () = <"identifier"> ":" ":" <"identifier"> => ();
 
+// TODO Pattern matching needs to be fleshed out :)
 BindGroup: BindGroup = <name:Ident> "=" <expr:Expr> => {
     BindGroup {
         name,
