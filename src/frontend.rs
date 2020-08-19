@@ -124,6 +124,7 @@ pub enum Expression {
     Lit(Literal), // Literal, as other are fully named
     Application(Box<Expression>, Box<Expression>),
     Variable(Name),
+    Tuple(Box<Vec<Expression>>),
 }
 
 /// A literal

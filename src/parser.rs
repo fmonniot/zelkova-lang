@@ -182,6 +182,24 @@ mod tests {
                 Box::new(Expression::Lit(Literal::Int(3))),
             ),
         );
+
+        // tuple
+        run_test(
+            vec![
+                ident_token("main"),
+                Token::Equal,
+                Token::LPar,
+                Token::Integer { value: 2 },
+                Token::Comma,
+                Token::Integer { value: 3 },
+                Token::RPar,
+                Token::Newline,
+            ],
+            Expression::Tuple(Box::new(vec![
+                Expression::Lit(Literal::Int(2)),
+                Expression::Lit(Literal::Int(3)),
+            ])),
+        );
     }
 
     #[test]

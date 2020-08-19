@@ -77,9 +77,9 @@ AtomicExpr: Expression = {
     // <expr: AtomicExpr> "." <id: Ident> =>
     //     Expression::Projection(Box::new(expr), id),
     // 
-    // "(" <elems: CommaSlice<Expr>> ")" =>
-    //     Expression::Tuple { elems },
-    // 
+    "(" <elems: Comma<Expr>> ")" =>
+        Expression::Tuple(Box::new(elems)),
+    
     // "[" <elems: CommaSlice<Expr>> "]" => 
     //     Expression::List { elems },
 
