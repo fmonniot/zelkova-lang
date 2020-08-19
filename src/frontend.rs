@@ -9,6 +9,12 @@
 #[derive(Debug, PartialEq)]
 pub struct Name(pub String);
 
+#[derive(Debug, PartialEq)]
+pub enum Type {
+    Named(Name),
+    Arrow(Name, Box<Type>)
+}
+
 /// A Module is the top-level structure for a source file.
 ///
 /// It contains everything in the file.
@@ -35,7 +41,7 @@ pub enum Declaration {
 #[derive(Debug, PartialEq)]
 pub struct FunType {
     pub name: Name,
-    pub tpe: Name, // This might be a type annotation instead of a Name
+    pub tpe: Type,
 }
 
 /// A BindGroup is one of the (possibly) multiple function declaration.

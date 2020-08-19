@@ -28,6 +28,7 @@ pub enum Token {
     Colon,
     Equal,
     Comma,
+    Arrow,
 
     // Keywords
     Module,

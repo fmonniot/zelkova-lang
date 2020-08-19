@@ -23,6 +23,7 @@ extern {
         ":" => Token::Colon,
         "=" => Token::Equal,
         "," => Token::Comma,
+        "->" => Token::Arrow,
 
         "module" => Token::Module,
         "exposing" => Token::Exposing,
@@ -107,8 +108,14 @@ Expr = {
 
 // Declarations
 
+Type: Type = {
+    <name:Ident> => Type::Named(name),
+
+    <name:Ident> "->" <tpe:Type> => Type::Arrow(name, Box::new(tpe)),
+}
+
 // TODO Support function types (paired with pattern matching in bind groups)
-FunType: FunType = <name:Ident> ":" <tpe:Ident> => {
+FunType: FunType = <name:Ident> ":" <tpe:Type> => {
     FunType { name, tpe }
 };
 

@@ -161,45 +161,67 @@ mod tests {
 
     #[test]
     fn parser_module_decl_with_type_definition() {
-        let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(vec![
-            // module
-            Token::Module,
-            ident_token("Main"),
-            Token::Exposing,
-            Token::LPar,
-            ident_token("main"),
-            Token::RPar,
-            Token::Newline,
-            // tpe definition
-            ident_token("main"),
-            Token::Colon,
-            ident_token("Int"),
-            Token::Newline,
-            // function definition
-            ident_token("main"),
-            Token::Equal,
-            Token::Integer { value: 42 },
-            Token::Newline,
-        ]));
+        let run_test = |tokens, declarations| {
+            let mut base_tokens = vec![
+                Token::Module,
+                ident_token("Main"),
+                Token::Exposing,
+                Token::LPar,
+                ident_token("main"),
+                Token::RPar,
+                Token::Newline,
+            ];
 
-        let expected = Ok(Module {
-            name: Name("Main".to_string()),
-            exposing: vec![Name("main".to_string())],
-            declarations: vec![
+            base_tokens.extend(tokens);
+
+            let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(base_tokens));
+
+            let expected = Ok(Module {
+                name: Name("Main".to_string()),
+                exposing: vec![Name("main".to_string())],
+                declarations,
+            });
+
+            assert_eq!(actual, expected);
+        };
+
+        // Simple type
+        run_test(
+            vec![
+                ident_token("main"),
+                Token::Colon,
+                ident_token("Int"),
+                Token::Newline,
+            ],
+            vec![
                 Declaration::FunctionType(FunType {
                     name: Name("main".to_string()),
-                    tpe: Name("Int".to_string()),
+                    tpe: Type::Named(Name("Int".to_string())),
                 }),
-                Declaration::Function(BindGroup {
-                    name: Name("main".to_string()),
-                    patterns: vec![Match {
-                        pattern: vec![],
-                        body: Expression::Lit(Literal::Int(42)),
-                    }],
-                }),
-            ],
-        });
+            ]
+        );
 
-        assert_eq!(actual, expected);
+        // Function type
+        run_test(
+            vec![
+                ident_token("length"),
+                Token::Colon,
+                ident_token("String"),
+                Token::Arrow,
+                ident_token("Int"),
+                Token::Newline,
+            ],
+            vec![
+                Declaration::FunctionType(FunType {
+                    name: Name("length".to_string()),
+                    tpe: Type::Arrow(
+                        Name("String".to_string()),
+                        Box::new(Type::Named(Name("Int".to_string())))
+                    ),
+                }),
+            ]
+        );
+
+        // TODO Higher kinded type (eg `(String -> Int) -> String -> Int`)
     }
 }
