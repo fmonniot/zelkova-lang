@@ -29,6 +29,7 @@ pub enum Token {
     Equal,
     Comma,
     Arrow,
+    Plus,
 
     // Keywords
     Module,
@@ -504,6 +505,10 @@ where
                     '=' => {
                         // TODO Here we have to disambiguate on ==
                         let spanned = self.skip_char_as(Token::Equal);
+                        self.processed_tokens.push(spanned);
+                    }
+                    '+' => {
+                        let spanned = self.skip_char_as(Token::Plus);
                         self.processed_tokens.push(spanned);
                     }
                     // TODO Add support for comma

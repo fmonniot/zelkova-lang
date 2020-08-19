@@ -24,6 +24,7 @@ extern {
         "=" => Token::Equal,
         "," => Token::Comma,
         "->" => Token::Arrow,
+        "+" => Token::Plus,
 
         "module" => Token::Module,
         "exposing" => Token::Exposing,
@@ -61,6 +62,10 @@ Lit: Literal = {
     // TODO boolean
 };
 
+InfixOp: Name = {
+    "+" => Name("plus".to_string()),
+}
+
 // Base expression
 AtomicExpr: Expression = {
     <id: Ident> =>
@@ -88,14 +93,29 @@ AppExpr = {
 
     // Might be a bug here, as expr can be a lit, and, well, a literal
     // doesn't apply anything. or does it ?
-    <expr: AtomicExpr> <arg: Expr> =>
+    <expr: AppExpr> <arg: AtomicExpr> =>
         Expression::Application(Box::new(expr), Box::new(arg)),
 };
 
-// TODO LambdaExpr which take AppExpr as a branch and replace AppExpr in Expr
+InfixExpr = {
+    AppExpr,
+
+    // TODO LambdaExpr which take AppExpr as a branch and replace AppExpr in Expr
+
+    <lhs: AppExpr> <op: InfixOp> <rhs: InfixExpr> => {
+        Expression::Application(
+            Box::new(Expression::Application(
+                Box::new(Expression::Variable(op)),
+                Box::new(lhs),
+            )),
+            Box::new(rhs),
+        )
+    }
+}
+
 
 Expr = {
-    AppExpr,
+    InfixExpr,
 
     "if" <pred: Expr> "then" <if_true: Expr> "else" <if_false: Expr> =>
         todo!(),

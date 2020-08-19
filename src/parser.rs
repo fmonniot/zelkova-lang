@@ -86,7 +86,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_module_single_decl_assignment() {
+    fn parser_module_decl_simple_expression() {
         let run_test = |tokens, body| {
             let mut base_tokens = vec![
                 Token::Module,
@@ -117,7 +117,7 @@ mod tests {
             assert_eq!(actual, expected);
         };
 
-        // body literal
+        // constant
         run_test(
             vec![
                 ident_token("main"),
@@ -128,7 +128,7 @@ mod tests {
             Expression::Lit(Literal::Int(42)),
         );
 
-        // body single variable
+        // single variable
         run_test(
             vec![
                 ident_token("main"),
@@ -139,28 +139,53 @@ mod tests {
             Expression::Variable(Name("myvar".to_string())),
         );
 
-        // body function application
+        // function application (`map myfunction 42`)
         run_test(
             vec![
                 ident_token("main"),
                 Token::Equal,
                 ident_token("map"),
                 ident_token("myfunction"),
-                Token::Integer { value: 42 },
+                Token::Integer { value: 2 },
                 Token::Newline,
             ],
             Expression::Application(
-                Box::new(Expression::Variable(Name("map".to_string()))),
+                // map: (a -> b) -> a -> b
+                // first application result in: a -> b
+                // second application result in: b
                 Box::new(Expression::Application(
+                    Box::new(Expression::Variable(Name("map".to_string()))),
                     Box::new(Expression::Variable(Name("myfunction".to_string()))),
-                    Box::new(Expression::Lit(Literal::Int(42))),
                 )),
+                Box::new(Expression::Lit(Literal::Int(2))),
+            ),
+        );
+
+        // infix operation
+        run_test(
+            vec![
+                ident_token("main"),
+                Token::Equal,
+                Token::Integer { value: 2 },
+                Token::Plus,
+                Token::Integer { value: 3 },
+                Token::Newline,
+            ],
+            Expression::Application(
+                // map: (a -> b) -> a -> b
+                // first application result in: a -> b
+                // second application result in: b
+                Box::new(Expression::Application(
+                    Box::new(Expression::Variable(Name("plus".to_string()))),
+                    Box::new(Expression::Lit(Literal::Int(2))),
+                )),
+                Box::new(Expression::Lit(Literal::Int(3))),
             ),
         );
     }
 
     #[test]
-    fn parser_module_decl_with_type_definition() {
+    fn parser_module_decl_type_definition() {
         let run_test = |tokens, declarations| {
             let mut base_tokens = vec![
                 Token::Module,
@@ -219,7 +244,7 @@ mod tests {
             })],
         );
 
-        // Higher kinded type (eg `(String -> Int) -> String -> Int`)
+        // Higher order function type (`(String -> Int) -> String -> Int`)
         run_test(
             vec![
                 ident_token("length"),
