@@ -9,9 +9,6 @@
 #[derive(Debug, PartialEq)]
 pub struct Name(pub String);
 
-/// TODO Is it useful ?
-pub struct Type(String);
-
 /// A Module is the top-level structure for a source file.
 ///
 /// It contains everything in the file.
@@ -26,8 +23,19 @@ pub struct Module {
 #[derive(Debug, PartialEq)]
 pub enum Declaration {
     Function(BindGroup),
-    FunctionType,
+    FunctionType(FunType),
     // type aliases, custom types, import and ports will end up here
+}
+
+/// Represents the type signature of a particular function
+///
+/// The current representation is very simple and only
+/// represent constant functions. This will be iterated
+/// upon ;)
+#[derive(Debug, PartialEq)]
+pub struct FunType {
+    pub name: Name,
+    pub tpe: Name, // This might be a type annotation instead of a Name
 }
 
 /// A BindGroup is one of the (possibly) multiple function declaration.

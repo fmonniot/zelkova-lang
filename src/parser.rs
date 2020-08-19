@@ -1,12 +1,12 @@
 use crate::frontend::Module;
 use crate::position::Position;
-use crate::tokenizer::{LexicalError, Spanned, Token};
+use crate::tokenizer::{self, LexicalError, Spanned, Token};
 use lalrpop_util::ParseError;
 
-lalrpop_mod!(pub grammar);
+lalrpop_mod!(grammar);
 
 pub fn parse(
-    i: impl Iterator<Item = Spanned>,
+    i: impl Iterator<Item = tokenizer::Result<Spanned>>,
 ) -> Result<Module, ParseError<Position, Token, LexicalError>> {
     grammar::ModuleParser::new().parse(i)
 }
@@ -151,13 +151,55 @@ mod tests {
             ],
             Expression::Application(
                 Box::new(Expression::Variable(Name("map".to_string()))),
-                Box::new(
-                    Expression::Application(
-                        Box::new(Expression::Variable(Name("myfunction".to_string()))),
-                        Box::new(Expression::Lit(Literal::Int(42))),
-                    )
-                ),
+                Box::new(Expression::Application(
+                    Box::new(Expression::Variable(Name("myfunction".to_string()))),
+                    Box::new(Expression::Lit(Literal::Int(42))),
+                )),
             ),
         );
+    }
+
+    #[test]
+    fn parser_module_decl_with_type_definition() {
+        let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(vec![
+            // module
+            Token::Module,
+            ident_token("Main"),
+            Token::Exposing,
+            Token::LPar,
+            ident_token("main"),
+            Token::RPar,
+            Token::Newline,
+            // tpe definition
+            ident_token("main"),
+            Token::Colon,
+            ident_token("Int"),
+            Token::Newline,
+            // function definition
+            ident_token("main"),
+            Token::Equal,
+            Token::Integer { value: 42 },
+            Token::Newline,
+        ]));
+
+        let expected = Ok(Module {
+            name: Name("Main".to_string()),
+            exposing: vec![Name("main".to_string())],
+            declarations: vec![
+                Declaration::FunctionType(FunType {
+                    name: Name("main".to_string()),
+                    tpe: Name("Int".to_string()),
+                }),
+                Declaration::Function(BindGroup {
+                    name: Name("main".to_string()),
+                    patterns: vec![Match {
+                        pattern: vec![],
+                        body: Expression::Lit(Literal::Int(42)),
+                    }],
+                }),
+            ],
+        });
+
+        assert_eq!(actual, expected);
     }
 }

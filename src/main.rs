@@ -18,6 +18,8 @@ fn main() {
 
     // next passes
     // parser
+    let ast = parser::parse(tokens.into_iter());
+    println!("frontend AST: {:?}", ast);
 
     // desugar
     // type check

@@ -60,6 +60,7 @@ Lit: Literal = {
     // TODO boolean
 };
 
+// Base expression
 AtomicExpr: Expression = {
     <id: Ident> =>
         Expression::Variable(id),
@@ -79,9 +80,13 @@ AtomicExpr: Expression = {
     // TODO record
 };
 
+
+// Applicative expression
 AppExpr = {
     AtomicExpr,
 
+    // Might be a bug here, as expr can be a lit, and, well, a literal
+    // doesn't apply anything. or does it ?
     <expr: AtomicExpr> <arg: Expr> =>
         Expression::Application(Box::new(expr), Box::new(arg)),
 };
@@ -94,16 +99,18 @@ Expr = {
     "if" <pred: Expr> "then" <if_true: Expr> "else" <if_false: Expr> =>
         todo!(),
 
-    // TODO let binding: type
-    // TODO let binding: value
+    // TODO let binding: type  (FunType)
+    // TODO let binding: value (BindGroup)
 
     // TODO pattern matching
 };
 
 // Declarations
 
-// TODO (should be similar to "let binding: type")
-FunType: () = <"identifier"> ":" ":" <"identifier"> => ();
+// TODO Support function types (paired with pattern matching in bind groups)
+FunType: FunType = <name:Ident> ":" <tpe:Ident> => {
+    FunType { name, tpe }
+};
 
 // TODO Pattern matching needs to be fleshed out :)
 BindGroup: BindGroup = <name:Ident> "=" <expr:Expr> => {
@@ -121,7 +128,7 @@ BindGroup: BindGroup = <name:Ident> "=" <expr:Expr> => {
 
 Decl: Declaration = {
     <BindGroup> => Declaration::Function(<>),
-    //<FunType> "\n" => Declaration::FunctionType,
+    <FunType> => Declaration::FunctionType(<>),
 };
 
 // Module
