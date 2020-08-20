@@ -6,5 +6,5 @@ mod compiler;
 
 fn main() {
     // Will probably need more love than that :p
-    compiler::compile_file("tests/zelkova/simple_constant.zel");
+    compiler::compile_file("std/core/src/Maybe.zel");
 }

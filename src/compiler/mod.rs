@@ -12,6 +12,7 @@ pub fn compile_file<P: AsRef<Path>>(path: P) {
     // This is the first pass of our "compiler"
     let tokenizer = frontend::tokenizer::make_tokenizer(&source);
     let tokens: Vec<_> = tokenizer.collect();
+    println!("frontend tokens: {:?}", tokens);
 
     // next passes
     // parser
