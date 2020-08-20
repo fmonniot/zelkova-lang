@@ -4,6 +4,9 @@
 //! The frontend part is what the user interact with, and contains some
 //! syntax sugar to make their life easier. For example, pattern matching
 //! in function declaration is one such thing.
+//! 
+pub mod parser;
+pub mod tokenizer;
 
 /// new type over everything that is named in our language
 #[derive(Debug, PartialEq, Clone)]

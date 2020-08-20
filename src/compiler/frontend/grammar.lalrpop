@@ -1,6 +1,6 @@
-use crate::tokenizer::{LexicalError, Token};
-use crate::position::Position;
-use crate::frontend::*;
+use crate::compiler::position::Position;
+use crate::compiler::frontend::tokenizer::{LexicalError, Token};
+use crate::compiler::frontend::*;
 
 grammar;
 

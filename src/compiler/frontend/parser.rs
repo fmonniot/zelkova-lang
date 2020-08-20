@@ -1,9 +1,9 @@
-use crate::frontend::Module;
-use crate::position::Position;
-use crate::tokenizer::{self, LexicalError, Spanned, Token};
+use super::Module;
+use crate::compiler::position::Position;
+use crate::compiler::frontend::tokenizer::{self, LexicalError, Spanned, Token};
 use lalrpop_util::ParseError;
 
-lalrpop_mod!(grammar);
+lalrpop_mod!(grammar, "/compiler/frontend/grammar.rs");
 
 pub fn parse(
     i: impl Iterator<Item = tokenizer::Result<Spanned>>,
@@ -14,9 +14,9 @@ pub fn parse(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frontend::*;
-    use crate::position::Position;
-    use crate::tokenizer::Token;
+    use crate::compiler::position::Position;
+    use super::tokenizer::Token;
+    use crate::compiler::frontend::*;
 
     // Create an approximation for the token position in the stream.
     // We don't count the spaces between tokens, but it gives us enough

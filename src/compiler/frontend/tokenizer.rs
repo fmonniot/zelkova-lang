@@ -1,7 +1,7 @@
 // Directly inspired by the great work on the RustPython team
 // https://github.com/RustPython/RustPython/blob/master/parser/src/lexer.rs
 
-use crate::position::Position;
+use crate::compiler::position::Position;
 use log::{trace, warn}; // Location in RustPython
 use std::cmp::Ordering;
 use std::collections::HashMap;

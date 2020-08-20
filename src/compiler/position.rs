@@ -23,6 +23,8 @@ impl Position {
         self.column.0 = self.column.0 + 1;
     }
 
+    // Used by some tests
+    #[allow(dead_code)]
     pub fn go_right_by(&mut self, inc: u32) {
         self.column.0 = self.column.0 + inc;
     }
