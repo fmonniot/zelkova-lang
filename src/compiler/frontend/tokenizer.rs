@@ -43,6 +43,8 @@ pub enum Token {
     GreaterEqual,
     Greater,
     AmperAmper,
+    Pipe,
+    Underscore,
     PipePipe,
     BarGreater,
     LessBar,
@@ -547,6 +549,10 @@ where
                         let spanned = self.skip_char_as(Token::Comma);
                         self.processed_tokens.push(spanned);
                     }
+                    '_' => {
+                        let spanned = self.skip_char_as(Token::Underscore);
+                        self.processed_tokens.push(spanned);
+                    }
                     '.' => {
                         let spanned = if let Some('.') = self.lookahead.1 {
                             self.next_char();
@@ -626,14 +632,7 @@ where
                                 self.next_char();
                                 self.skip_char_as(Token::BarGreater)
                             }
-                            _ => {
-                                // This will probably need to change when introducing data type
-                                let c = self.next_char().expect("lookahead.0 should be present");
-                                return Err(LexicalError {
-                                    error: LexicalErrorType::UnrecognizedToken { tok: c },
-                                    position: self.position,
-                                });
-                            }
+                            _ => self.skip_char_as(Token::Pipe),
                         };
 
                         self.processed_tokens.push(spanned);
@@ -933,7 +932,7 @@ mod tests {
     #[test]
     fn test_symbols() {
         assert_eq!(
-            tokenize("(),[]. .. -> =+-/*== < <= >= > && || |> <|"),
+            tokenize("(),[]._ .. -> =+-/*== < <= >= > && || |> <| |"),
             vec![
                 Token::LPar,
                 Token::RPar,
@@ -941,6 +940,7 @@ mod tests {
                 Token::LBracket,
                 Token::RBracket,
                 Token::Dot,
+                Token::Underscore,
                 Token::DotDot,
                 Token::Arrow,
                 Token::Equal,
@@ -957,6 +957,7 @@ mod tests {
                 Token::PipePipe,
                 Token::BarGreater, // |>
                 Token::LessBar,    // <|
+                Token::Pipe,
                 Token::Newline
             ]
         );
