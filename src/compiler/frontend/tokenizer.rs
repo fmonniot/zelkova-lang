@@ -25,11 +25,27 @@ pub enum Token {
     // Symbols
     LPar,
     RPar,
+    LBracket,
+    RBracket,
     Colon,
     Equal,
     Comma,
     Arrow,
     Plus,
+    Dot,
+    DotDot,
+    Minus,
+    Slash,
+    Star,
+    EqualEq,
+    Less,
+    LessEqual,
+    GreaterEqual,
+    Greater,
+    AmperAmper,
+    PipePipe,
+    BarGreater,
+    LessBar,
 
     // Keywords
     Module,
@@ -383,6 +399,8 @@ where
                         // This is a comment, let's skip it (and start counting again)
                         self.consume_comment()?;
                         spaces = 0;
+                    } else {
+                        break;
                     }
                 }
                 Some('{') => {
@@ -390,6 +408,8 @@ where
                         // This is a comment, let's skip it (and start counting again)
                         self.consume_comment()?;
                         spaces = 0;
+                    } else {
+                        break;
                     }
                 }
                 Some('\n') => {
@@ -503,15 +523,121 @@ where
                         self.processed_tokens.push(spanned);
                     }
                     '=' => {
-                        // TODO Here we have to disambiguate on ==
-                        let spanned = self.skip_char_as(Token::Equal);
+                        let spanned = if let Some('=') = self.lookahead.1 {
+                            self.next_char();
+                            self.skip_char_as(Token::EqualEq)
+                        } else {
+                            self.skip_char_as(Token::Equal)
+                        };
                         self.processed_tokens.push(spanned);
                     }
                     '+' => {
                         let spanned = self.skip_char_as(Token::Plus);
                         self.processed_tokens.push(spanned);
                     }
-                    // TODO Add support for comma
+                    '[' => {
+                        let spanned = self.skip_char_as(Token::LBracket);
+                        self.processed_tokens.push(spanned);
+                    }
+                    ']' => {
+                        let spanned = self.skip_char_as(Token::RBracket);
+                        self.processed_tokens.push(spanned);
+                    }
+                    ',' => {
+                        let spanned = self.skip_char_as(Token::Comma);
+                        self.processed_tokens.push(spanned);
+                    }
+                    '.' => {
+                        let spanned = if let Some('.') = self.lookahead.1 {
+                            self.next_char();
+                            self.skip_char_as(Token::DotDot)
+                        } else {
+                            self.skip_char_as(Token::Dot)
+                        };
+
+                        self.processed_tokens.push(spanned);
+                    }
+                    '-' => {
+                        // TODO Add support for negative number
+                        let spanned = match self.lookahead.1 {
+                            Some('>') => {
+                                self.next_char();
+                                self.skip_char_as(Token::Arrow)
+                            }
+                            _ => self.skip_char_as(Token::Minus),
+                        };
+
+                        self.processed_tokens.push(spanned);
+                    }
+                    '/' => {
+                        let spanned = self.skip_char_as(Token::Slash);
+                        self.processed_tokens.push(spanned);
+                    }
+                    '*' => {
+                        let spanned = self.skip_char_as(Token::Star);
+                        self.processed_tokens.push(spanned);
+                    }
+                    '>' => {
+                        let spanned = match self.lookahead.1 {
+                            Some('=') => {
+                                self.next_char(); // skip > and then consume =
+                                self.skip_char_as(Token::GreaterEqual)
+                            }
+                            _ => self.skip_char_as(Token::Greater),
+                        };
+                        self.processed_tokens.push(spanned);
+                    }
+                    '<' => {
+                        // TODO Less or equal
+                        let spanned = match self.lookahead.1 {
+                            Some('=') => {
+                                self.next_char(); // skip < and then consume =
+                                self.skip_char_as(Token::LessEqual)
+                            }
+                            Some('|') => {
+                                self.next_char(); // skip < and then consume =
+                                self.skip_char_as(Token::LessBar)
+                            }
+                            _ => self.skip_char_as(Token::Less),
+                        };
+
+                        self.processed_tokens.push(spanned);
+                    }
+                    '&' => {
+                        if let Some('&') = self.lookahead.1 {
+                            self.next_char(); // consume the first AND second ampersand
+                            let spanned = self.skip_char_as(Token::AmperAmper);
+                            self.processed_tokens.push(spanned);
+                        } else {
+                            let c = self.next_char().expect("lookahead.0 should be present");
+                            return Err(LexicalError {
+                                error: LexicalErrorType::UnrecognizedToken { tok: c },
+                                position: self.position,
+                            });
+                        }
+                    }
+                    '|' => {
+                        let spanned = match self.lookahead.1 {
+                            Some('|') => {
+                                self.next_char();
+                                self.skip_char_as(Token::PipePipe)
+                            }
+                            Some('>') => {
+                                self.next_char();
+                                self.skip_char_as(Token::BarGreater)
+                            }
+                            _ => {
+                                // This will probably need to change when introducing data type
+                                let c = self.next_char().expect("lookahead.0 should be present");
+                                return Err(LexicalError {
+                                    error: LexicalErrorType::UnrecognizedToken { tok: c },
+                                    position: self.position,
+                                });
+                            }
+                        };
+
+                        self.processed_tokens.push(spanned);
+                    }
                     '\'' => {
                         if let Some(value) = self.lookahead.1 {
                             if let Some('\'') = self.lookahead.2 {
@@ -717,6 +843,8 @@ mod tests {
     };
     use indoc::indoc;
 
+    // utilities
+
     /// This function is useful when debugging a test failure.
     /// When not used, the logs aren't properly redirected to
     /// stdout and thus we don't see them.
@@ -752,6 +880,8 @@ mod tests {
         Token::Char { value }
     }
 
+    // actual tests
+
     #[test]
     fn test_newline_collapser() {
         let src = "ab\ncd\r\ne";
@@ -772,7 +902,6 @@ mod tests {
         // Integer
         assert_eq!(tokenize("42"), vec![int_token(42), Token::Newline]);
         assert_eq!(tokenize("2"), vec![int_token(2), Token::Newline]);
-        // TODO negative integer
 
         // Float
         assert_eq!(tokenize("42.99"), vec![float_token(42.99), Token::Newline]);
@@ -799,6 +928,38 @@ mod tests {
 
         assert_eq!(tokenize("'a'"), vec![char_token('a'), Token::Newline]);
         assert_eq!(tokenize("'🙂'"), vec![char_token('🙂'), Token::Newline]);
+    }
+
+    #[test]
+    fn test_symbols() {
+        assert_eq!(
+            tokenize("(),[]. .. -> =+-/*== < <= >= > && || |> <|"),
+            vec![
+                Token::LPar,
+                Token::RPar,
+                Token::Comma,
+                Token::LBracket,
+                Token::RBracket,
+                Token::Dot,
+                Token::DotDot,
+                Token::Arrow,
+                Token::Equal,
+                Token::Plus,
+                Token::Minus,
+                Token::Slash,
+                Token::Star,
+                Token::EqualEq,
+                Token::Less,
+                Token::LessEqual,
+                Token::GreaterEqual,
+                Token::Greater,
+                Token::AmperAmper,
+                Token::PipePipe,
+                Token::BarGreater, // |>
+                Token::LessBar,    // <|
+                Token::Newline
+            ]
+        );
     }
 
     #[test]
@@ -866,7 +1027,6 @@ mod tests {
 
     #[test]
     fn test_simple_program() {
-        enable_logs();
         let tokens = tokenize(indoc! {"
             module Main exposing(main)
 

@@ -1,9 +1,8 @@
 use std::path::Path;
 
 mod frontend;
-mod type_checker;
 mod position;
-
+mod type_checker;
 
 // Testing method, we will need compilation unit in the long run (collection of files/modules)
 pub fn compile_file<P: AsRef<Path>>(path: P) {
@@ -12,7 +11,10 @@ pub fn compile_file<P: AsRef<Path>>(path: P) {
     // This is the first pass of our "compiler"
     let tokenizer = frontend::tokenizer::make_tokenizer(&source);
     let tokens: Vec<_> = tokenizer.collect();
-    println!("frontend tokens: {:?}", tokens);
+    println!(
+        "frontend token errors: {:?}",
+        tokens.iter().filter(|r| r.is_err()).collect::<Vec<_>>()
+    );
 
     // next passes
     // parser
