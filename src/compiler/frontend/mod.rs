@@ -8,10 +8,11 @@
 pub mod parser;
 pub mod tokenizer;
 
-/// new type over everything that is named in our language
+/// new type over identifier names
 #[derive(Debug, PartialEq, Clone)]
 pub struct Name(pub String);
 
+/// A declared type in a module. This is used in type annotations.
 #[derive(Debug, PartialEq)]
 pub enum Type {
     Named(Name),
@@ -52,10 +53,6 @@ pub enum Declaration {
 }
 
 /// Represents the type signature of a particular function
-///
-/// The current representation is very simple and only
-/// represent constant functions. This will be iterated
-/// upon ;)
 #[derive(Debug, PartialEq)]
 pub struct FunType {
     pub name: Name,
@@ -88,7 +85,7 @@ pub struct FunType {
 /// ```
 /// Declaration::Function(
 ///     BindGroup {
-///         name: Name("const"),
+///         name: Name("identity"),
 ///         patterns: [
 ///             Match {
 ///                 pattern: [ Pattern::Var(Name("x")), Pattern::Var(Name("y")) ],

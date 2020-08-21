@@ -1,5 +1,7 @@
-// Directly inspired by the great work on the RustPython team
-// https://github.com/RustPython/RustPython/blob/master/parser/src/lexer.rs
+//! Module providing a transformation from a textual source code to a serie of tokens.
+//! 
+//! Directly inspired by the great work on the RustPython team
+//! https://github.com/RustPython/RustPython/blob/master/parser/src/lexer.rs
 
 use crate::compiler::position::Position;
 use log::{trace, warn}; // Location in RustPython
@@ -15,6 +17,7 @@ pub enum Token {
     Integer { value: i64 }, // web assembly support i/f 32/64
     Float { value: f64 },
     Char { value: char },
+    // TODO String literal
 
     // Control characters
     Newline,
@@ -57,6 +60,8 @@ pub enum Token {
     Else,
 }
 
+/// An utility function to build a map of reserved
+/// keywords with their associated tokens.
 fn get_keywords() -> HashMap<String, Token> {
     let mut m = HashMap::new();
 
@@ -175,12 +180,22 @@ where
 /// create more than one token (eg. end of an increment
 /// block or end of file).
 struct Tokenizer<I: Iterator<Item = char>> {
+    /// The source iterator
     chars: I,
+    /// Indicates whether the iterator is pointing to the first character of a line or not
     at_line_start: bool,
-    processed_tokens: Vec<Spanned>, // Tokens we have parsed but not yet emitted
+    /// Tokens we have parsed but not yet emitted
+    processed_tokens: Vec<Spanned>,
+    /// The current position in the source code
     position: Position,
-    lookahead: (Option<char>, Option<char>, Option<char>), // current char, next and +1
+    /// A preview of the current character (and the two following).
+    /// 
+    /// This is especially helpful to let us find symbols containing
+    /// more than one character.
+    lookahead: (Option<char>, Option<char>, Option<char>),
+    /// The indentation level at the current character.
     indentation: usize,
+    /// A dictionary of all keywords with their tokens representation.
     keywords: HashMap<String, Token>,
 }
 

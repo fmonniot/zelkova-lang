@@ -1,3 +1,5 @@
+//! Transform a serie of tokens into the frontend AST.
+
 use super::Module;
 use crate::compiler::frontend::tokenizer::{self, LexicalError, Spanned, Token};
 use crate::compiler::position::Position;
