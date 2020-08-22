@@ -221,14 +221,10 @@ Exposed: Exposed = {
     },
 };
 
-MultiLineExposedInner: Exposed = "," <Exposed> => <>;
-
-MultiLineExposed: Vec<Exposed> = "\n" Indent "," <es:Comma<Exposed>> => <>;
-
 Exposing: Exposing = {
     "(" ".." ")" => Exposing::Open,
     "(" <e: Comma<Exposed>> ")" => Exposing::Explicit(<>),
-    "\n" Indent "(" <e1: Exposed> <e: MultiLineExposed*> "\n" Indent ")" => {
+    "\n" Indent "(" <e1: Exposed> <e: ("\n" Indent "," <Comma<Exposed>>)*> "\n" Indent ")" => {
         let mut explicits = vec![e1];
         explicits.extend(e.into_iter().flatten());
         
