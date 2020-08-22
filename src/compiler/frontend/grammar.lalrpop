@@ -9,28 +9,39 @@ extern {
     type Error = LexicalError;
 
     enum Token {
+        // literals
         "identifier" => Token::Identifier{ name: <String>},
-        "integer" => Token::Integer { value: <i64> },
-        "float" => Token::Float { value: <f64> },
-        "char" => Token::Char { value: <char> },
+        "integer"    => Token::Integer { value: <i64> },
+        "float"      => Token::Float { value: <f64> },
+        "char"       => Token::Char { value: <char> },
 
-        "\n" => Token::Newline,
+        // layout
+        "\n"   => Token::Newline,
         Indent => Token::Indent,
         Dedent => Token::Dedent,
         
-        "(" => Token::LPar,
-        ")" => Token::RPar,
-        ":" => Token::Colon,
-        "=" => Token::Equal,
-        "," => Token::Comma,
+        // Symbol
+        "("  => Token::LPar,
+        ")"  => Token::RPar,
+        ":"  => Token::Colon,
+        "."  => Token::Dot,
+        ".." => Token::DotDot,
+        "="  => Token::Equal,
+        ","  => Token::Comma,
         "->" => Token::Arrow,
-        "+" => Token::Plus,
+        "+"  => Token::Plus,
+        "|"  => Token::Pipe,
 
-        "module" => Token::Module,
+        // keywords
+        "module"   => Token::Module,
         "exposing" => Token::Exposing,
-        "if" => Token::If,
-        "then" => Token::Then,
-        "else" => Token::Else,
+        "import"   => Token::Import,
+        "type"     => Token::Type,
+        "case"     => Token::Case,
+        "of"       => Token::Of,
+        "if"       => Token::If,
+        "then"     => Token::Then,
+        "else"     => Token::Else,
     }
 }
 
