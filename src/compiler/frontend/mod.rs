@@ -75,14 +75,8 @@ pub struct Module {
 /// `Exposing::Explicit` represents a selection of term exported
 /// (or imported) for a given module.
 ///
-/// `Exposing::Open` has two definitions, depending if we are in the import
-/// or export case:
-///
-/// - In the export case, it means every top-level terms are exposed as part of
-///   the module.
-/// - In the import case, it means we don't expose any terms in the module
-///   (and the user have to use fully qualified term to refer to what this
-///   module expose).
+/// `Exposing::Open` means every top-level terms are exported, or when
+/// used in imports, all exported terms are imported.
 #[derive(Debug, PartialEq)]
 pub enum Exposing {
     Open,

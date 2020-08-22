@@ -36,6 +36,7 @@ extern {
         "module"   => Token::Module,
         "exposing" => Token::Exposing,
         "import"   => Token::Import,
+        "as"       => Token::As,
         "type"     => Token::Type,
         "case"     => Token::Case,
         "of"       => Token::Of,
@@ -175,10 +176,23 @@ BindGroup: BindGroup = <name:Ident> "=" <expr:Expr> => {
     }
 };
 
+Import:Import = {
+    "import" <name: Ident> <alias: ("as" <Ident>)?> <exposing: ("exposing" <Exposing>)?> => {
+        let exposing = exposing.unwrap_or_else(|| Exposing::Explicit(vec![]));
+
+        Import {
+            name,
+            alias,
+            exposing,
+        }
+    }
+}
+
 
 Decl: Declaration = {
     <BindGroup> => Declaration::Function(<>),
     <FunType> => Declaration::FunctionType(<>),
+    <Import> => Declaration::Import(<>),
 };
 
 // Module

@@ -56,6 +56,7 @@ pub enum Token {
     Module,
     Exposing,
     Import,
+    As,
     Type,
     Case,
     Of,
@@ -72,6 +73,7 @@ fn get_keywords() -> HashMap<String, Token> {
     m.insert("module".to_string(), Token::Module);
     m.insert("exposing".to_string(), Token::Exposing);
     m.insert("import".to_string(), Token::Import);
+    m.insert("as".to_string(), Token::As);
     m.insert("type".to_string(), Token::Type);
     m.insert("case".to_string(), Token::Case);
     m.insert("of".to_string(), Token::Of);

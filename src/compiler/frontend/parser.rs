@@ -226,7 +226,6 @@ mod tests {
                 declarations,
             });
 
-            println!("actual: {:#?}", actual);
             assert_eq!(actual, expected);
         };
 
@@ -331,6 +330,147 @@ mod tests {
                 ),
             })],
         );
+    }
+
+    #[test]
+    fn parser_module_decl_imports() {
+        let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(vec![
+            // module MyModule exposing (..)
+            Token::Module,
+            ident_token("MyModule"),
+            Token::Exposing,
+            Token::LPar,
+            Token::DotDot,
+            Token::RPar,
+            Token::Newline,
+
+            // import List
+            Token::Import,
+            ident_token("List"),
+            Token::Newline,
+
+            // import List as L
+            Token::Import,
+            ident_token("List"),
+            Token::As,
+            ident_token("L"),
+            Token::Newline,
+
+            // import List as L exposing (..)
+            Token::Import,
+            ident_token("List"),
+            Token::As,
+            ident_token("L"),
+            Token::Exposing,
+            Token::LPar,
+            Token::DotDot,
+            Token::RPar,
+            Token::Newline,
+
+            // import List exposing (..)
+            Token::Import,
+            ident_token("List"),
+            Token::Exposing,
+            Token::LPar,
+            Token::DotDot,
+            Token::RPar,
+            Token::Newline,
+            
+            // import List exposing ( map, foldl )
+            Token::Import,
+            ident_token("List"),
+            Token::Exposing,
+            Token::LPar,
+            ident_token("map"),
+            Token::Comma,
+            ident_token("foldl"),
+            Token::RPar,
+            Token::Newline,
+            
+            // import Maybe exposing ( Maybe )
+            Token::Import,
+            ident_token("Maybe"),
+            Token::Exposing,
+            Token::LPar,
+            ident_token("Maybe"),
+            Token::RPar,
+            Token::Newline,
+
+            // import Maybe exposing ( Maybe(..) )
+            Token::Import,
+            ident_token("Maybe"),
+            Token::Exposing,
+            Token::LPar,
+            ident_token("Maybe"),
+            Token::LPar,
+            Token::DotDot,
+            Token::RPar,
+            Token::RPar,
+            Token::Newline,
+            
+        ]));
+
+        let expected = Ok(Module {
+            name: name("MyModule"),
+            exposing: Exposing::Open,
+            declarations: vec![
+                // import List
+                Declaration::Import(Import {
+                    name: name("List"),
+                    alias: None,
+                    exposing: Exposing::Explicit(vec![])
+                }),
+                // import List as L
+                Declaration::Import(Import {
+                    name: name("List"),
+                    alias: Some(name("L")),
+                    exposing: Exposing::Explicit(vec![])
+                }),
+                // import List as L exposing (..)
+                Declaration::Import(Import {
+                    name: name("List"),
+                    alias: Some(name("L")),
+                    exposing: Exposing::Open
+                }),
+
+                // import List exposing (..)
+                Declaration::Import(Import {
+                    name: name("List"),
+                    alias: None,
+                    exposing: Exposing::Open
+                }),
+
+                // import List exposing ( map, foldl )
+                Declaration::Import(Import {
+                    name: name("List"),
+                    alias: None,
+                    exposing: Exposing::Explicit(vec![
+                        Exposed::Lower(name("map")),
+                        Exposed::Lower(name("foldl")),
+                    ])
+                }),
+
+                // import Maybe exposing ( Maybe )
+                Declaration::Import(Import {
+                    name: name("Maybe"),
+                    alias: None,
+                    exposing: Exposing::Explicit(vec![
+                        Exposed::Upper(name("Maybe"), Privacy::Private),
+                    ])
+                }),
+
+                // import Maybe exposing ( Maybe(..) )
+                Declaration::Import(Import {
+                    name: name("Maybe"),
+                    alias: None,
+                    exposing: Exposing::Explicit(vec![
+                        Exposed::Upper(name("Maybe"), Privacy::Public),
+                    ])
+                }),
+            ],
+        });
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
