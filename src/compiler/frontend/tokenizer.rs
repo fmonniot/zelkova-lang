@@ -1,5 +1,5 @@
 //! Module providing a transformation from a textual source code to a serie of tokens.
-//! 
+//!
 //! Directly inspired by the great work on the RustPython team
 //! https://github.com/RustPython/RustPython/blob/master/parser/src/lexer.rs
 
@@ -197,7 +197,7 @@ struct Tokenizer<I: Iterator<Item = char>> {
     /// The current position in the source code
     position: Position,
     /// A preview of the current character (and the two following).
-    /// 
+    ///
     /// This is especially helpful to let us find symbols containing
     /// more than one character.
     lookahead: (Option<char>, Option<char>, Option<char>),

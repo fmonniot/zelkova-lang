@@ -15,6 +15,15 @@ pub fn compile_file<P: AsRef<Path>>(path: P) {
         "frontend token errors: {:?}",
         tokens.iter().filter(|r| r.is_err()).collect::<Vec<_>>()
     );
+    println!(
+        "first tokens: {:?}",
+        tokens
+            .iter()
+            .skip(0)
+            .take(35)
+            .map(|s| s.as_ref().map(|s| s.1.clone()))
+            .collect::<Vec<_>>()
+    );
 
     // next passes
     // parser
