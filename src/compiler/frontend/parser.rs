@@ -58,33 +58,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn parser_module_without_declarations() {
-        let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(vec![
-            Token::Module,
-            Token::Identifier {
-                name: "Main".to_string(),
-            },
-            Token::Exposing,
-            Token::LPar,
-            Token::Identifier {
-                name: "main".to_string(),
-            },
-            Token::Comma,
-            Token::Identifier {
-                name: "fun".to_string(),
-            },
-            Token::RPar,
-            Token::Newline,
-        ]));
-
-        let expected = Ok(Module {
-            name: Name("Main".to_string()),
-            exposing: vec![Name("main".to_string()), Name("fun".to_string())],
-            declarations: vec![],
-        });
-
-        assert_eq!(actual, expected)
+    fn name(s: &str) -> Name {
+        Name(s.to_string())
     }
 
     #[test]
@@ -106,7 +81,7 @@ mod tests {
 
             let expected = Ok(Module {
                 name: Name("Main".to_string()),
-                exposing: vec![Name("main".to_string())],
+                exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
                 declarations: vec![Declaration::Function(BindGroup {
                     name: Name("main".to_string()),
                     patterns: vec![Match {
@@ -247,7 +222,7 @@ mod tests {
 
             let expected = Ok(Module {
                 name: Name("Main".to_string()),
-                exposing: vec![Name("main".to_string())],
+                exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
                 declarations,
             });
 
@@ -356,5 +331,102 @@ mod tests {
                 ),
             })],
         );
+    }
+
+    #[test]
+    fn parser_module_exposing() {
+        /*
+        module Maybe exposing
+          ( Maybe(..)
+          , andThen
+          , map, map2, map3, map4, map5
+          , withDefault
+          )
+        */
+        let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(vec![
+            Token::Module,
+            ident_token("Maybe"),
+            Token::Exposing,
+            Token::Newline,
+            Token::Indent,
+            Token::LPar,
+            ident_token("Maybe"),
+            Token::LPar,
+            Token::DotDot,
+            Token::RPar,
+            Token::Newline,
+            Token::Indent,
+            Token::Comma,
+            ident_token("andThen"),
+            Token::Newline,
+            Token::Indent,
+            Token::Comma,
+            ident_token("map"),
+            Token::Comma,
+            ident_token("map2"),
+            Token::Comma,
+            ident_token("map3"),
+            Token::Comma,
+            ident_token("map4"),
+            Token::Comma,
+            ident_token("map5"),
+            Token::Newline,
+            Token::Indent,
+            Token::Comma,
+            ident_token("withDefault"),
+            Token::Newline,
+            Token::Indent,
+            Token::RPar,
+            Token::Newline,
+        ]));
+
+        let expected = Ok(Module {
+            name: name("Maybe"),
+            exposing: Exposing::Explicit(vec![
+                Exposed::Upper(name("Maybe"), Privacy::Public),
+                Exposed::Lower(name("andThen")),
+                Exposed::Lower(name("map")),
+                Exposed::Lower(name("map2")),
+                Exposed::Lower(name("map3")),
+                Exposed::Lower(name("map4")),
+                Exposed::Lower(name("map5")),
+                Exposed::Lower(name("withDefault")),
+            ]),
+            declarations: vec![],
+        });
+
+        assert_eq!(actual, expected);
+
+        /*
+        module Main exposing (main, fun)
+        */
+        let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(vec![
+            Token::Module,
+            Token::Identifier {
+                name: "Main".to_string(),
+            },
+            Token::Exposing,
+            Token::LPar,
+            Token::Identifier {
+                name: "main".to_string(),
+            },
+            Token::Comma,
+            Token::Identifier {
+                name: "fun".to_string(),
+            },
+            Token::RPar,
+            Token::Newline,
+        ]));
+
+        let expected = Ok(Module {
+            name: Name("Main".to_string()),
+            exposing: Exposing::Explicit(vec![
+                Exposed::Lower(name("main")),
+                Exposed::Lower(name("fun")),
+            ]),
+            declarations: vec![],
+        });
+
+        assert_eq!(actual, expected)
     }
 }

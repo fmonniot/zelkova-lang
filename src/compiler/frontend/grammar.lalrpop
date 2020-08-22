@@ -188,9 +188,43 @@ FileLine: Option<Declaration> = {
     "\n" => None,
 };
 
+Exposed: Exposed = {
+    // TODO Most operators have explicit tokens, which might
+    // or might not be a good thing after all.
+    "(" <InfixOp> ")" => Exposed::Operator(<>),
+
+    <i:Ident> => {
+        if i.is_type() {
+            Exposed::Upper(i, Privacy::Private)
+        } else {
+            Exposed::Lower(i)
+        }
+    },
+
+    <i:Ident> "(" ".." ")" => {
+        // TODO Restrict that to Ident with upper case first letter
+        Exposed::Upper(i, Privacy::Public)
+    },
+};
+
+MultiLineExposedInner: Exposed = "," <Exposed> => <>;
+
+MultiLineExposed: Vec<Exposed> = "\n" Indent "," <es:Comma<Exposed>> => <>;
+
+Exposing: Exposing = {
+    "(" ".." ")" => Exposing::Open,
+    "(" <e: Comma<Exposed>> ")" => Exposing::Explicit(<>),
+    "\n" Indent "(" <e1: Exposed> <e: MultiLineExposed*> "\n" Indent ")" => {
+        let mut explicits = vec![e1];
+        explicits.extend(e.into_iter().flatten());
+        
+        Exposing::Explicit(explicits)
+    }
+};
+
 // entry point for our parser, a source file always start by
 // declaring the module
-pub Module: Module = "module" <name: Ident> "exposing" "(" <exposing:Comma<Ident>> ")" "\n" <lines:FileLine*> => {
+pub Module: Module = "module" <name: Ident> "exposing" <exposing:Exposing> "\n" <lines:FileLine*> => {
     Module {
         name,
         exposing,

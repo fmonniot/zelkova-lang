@@ -12,6 +12,16 @@ pub mod tokenizer;
 #[derive(Debug, PartialEq, Clone)]
 pub struct Name(pub String);
 
+impl Name {
+    fn is_type(&self) -> bool {
+        // If the name exists, because it has to go through the tokenizer,
+        // it will have a length of at least one character.
+        let c = self.0.chars().next().unwrap();
+
+        c.is_uppercase()
+    }
+}
+
 /// A declared type in a module. This is used in type annotations.
 #[derive(Debug, PartialEq)]
 pub enum Type {
@@ -36,12 +46,73 @@ impl Type {
 
 /// A Module is the top-level structure for a source file.
 ///
-/// It contains everything in the file.
+/// It contains everything in a source file.
+///
+///
+/// The elm compiler declare a module as follow:
+/// ```
+/// data Module =
+///   Module
+///     { _name    :: ModuleName.Canonical
+///     , _exports :: Exports
+///     , _docs    :: Src.Docs
+///     , _decls   :: Decls
+///     , _unions  :: Map.Map Name Union
+///     , _aliases :: Map.Map Name Alias
+///     , _binops  :: Map.Map Name Binop
+///     , _effects :: Effects
+///     }
+/// ```
 #[derive(Debug, PartialEq)]
 pub struct Module {
     pub name: Name,
-    pub exposing: Vec<Name>,
+    pub exposing: Exposing,
     pub declarations: Vec<Declaration>,
+}
+
+/// Exposing represent whether an import (or export) expose terms.
+///
+/// `Exposing::Explicit` represents a selection of term exported
+/// (or imported) for a given module.
+///
+/// `Exposing::Open` has two definitions, depending if we are in the import
+/// or export case:
+///
+/// - In the export case, it means every top-level terms are exposed as part of
+///   the module.
+/// - In the import case, it means we don't expose any terms in the module
+///   (and the user have to use fully qualified term to refer to what this
+///   module expose).
+#[derive(Debug, PartialEq)]
+pub enum Exposing {
+    Open,
+    Explicit(Vec<Exposed>),
+}
+
+/// Exposed represent the terms exposed/imported by a module.
+#[derive(Debug, PartialEq)]
+pub enum Exposed {
+    Lower(Name),
+    Upper(Name, Privacy),
+    Operator(Name),
+}
+
+/// Privacy control how a custom type is exposed.
+///
+/// For example, given the following type:
+/// ```type MyType = VariantA | VariantB```
+///
+/// When importing or exporting this type, we have
+/// two privacy settings:
+/// - public: `MyType(..)`. In this mode the variant
+///   constructors are made public to other modules.
+/// - private: `MyType`. In this mode the custom type
+///   is behaving as an opaque type. Other module can't
+///   know what's inside this type.
+#[derive(Debug, PartialEq)]
+pub enum Privacy {
+    Public,
+    Private,
 }
 
 /// A Declaration is everything that compose a `Module`.
@@ -49,7 +120,16 @@ pub struct Module {
 pub enum Declaration {
     Function(BindGroup),
     FunctionType(FunType),
-    // type aliases, custom types, import and ports will end up here
+    Import(Import),
+    // type aliases, custom types and ports will end up here
+}
+
+/// A representation of the `import` declaration
+#[derive(Debug, PartialEq)]
+pub struct Import {
+    name: Name,
+    alias: Option<Name>,
+    exposing: Exposing,
 }
 
 /// Represents the type signature of a particular function
