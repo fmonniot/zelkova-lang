@@ -377,7 +377,7 @@ where
                 let diff = indentation - self.indentation;
 
                 // Emit one Indent token per indentation level
-                for _ in 1..(diff / 2) {
+                for _ in 0..(diff / 2) {
                     self.processed_tokens
                         .push((self.position, Token::Indent, self.position));
                 }
@@ -387,7 +387,7 @@ where
                 let diff = self.indentation - indentation;
 
                 // TODO Does it actually make sense to emit multiple dedent per 2 spaces ?
-                for _ in 1..(diff / 2) {
+                for _ in 0..(diff / 2) {
                     self.processed_tokens
                         .push((self.position, Token::Dedent, self.position));
                 }
