@@ -9,6 +9,8 @@ pub mod parser;
 pub mod tokenizer;
 
 /// new type over identifier names
+// TODO At some point I think it'd make sense to have Upper/Lower name
+// instead of a catch-all type.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Name(pub String);
 
@@ -22,11 +24,19 @@ impl Name {
     }
 }
 
-/// A declared type in a module. This is used in type annotations.
+/// A part of a declared type. This is also used in type annotations.
+///
+/// Types with no arguments will be composed of exactly one `Type`.
+/// As their name indicates, a type with arguments will requires more
+/// `Type` as arguments. For example the optional type will require
+/// one no-arg type: `Maybe Int` (this is another name for higher-kinded types)
 #[derive(Debug, PartialEq)]
 pub enum Type {
-    Named(Name),
+    Named(Name), // Unqualified type (without module). TODO Rename
     Arrow(Box<Type>, Box<Type>),
+    // Qualified type eg Maybe.Maybe
+    /// type variable
+    Variable(Name),
 }
 
 impl Type {
@@ -115,7 +125,8 @@ pub enum Declaration {
     Function(BindGroup),
     FunctionType(FunType),
     Import(Import),
-    // type aliases, custom types and ports will end up here
+    Union(UnionType), // Also called custom type
+                      // type aliases, infixes and ports will end up here
 }
 
 /// A representation of the `import` declaration
@@ -131,6 +142,13 @@ pub struct Import {
 pub struct FunType {
     pub name: Name,
     pub tpe: Type,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct UnionType {
+    pub name: Name,
+    pub type_arguments: Vec<Name>,
+    pub variants: Vec<(Name, Vec<Type>)>,
 }
 
 /// A BindGroup is one of the (possibly) multiple function declaration.

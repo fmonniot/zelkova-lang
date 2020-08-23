@@ -343,19 +343,16 @@ mod tests {
             Token::DotDot,
             Token::RPar,
             Token::Newline,
-
             // import List
             Token::Import,
             ident_token("List"),
             Token::Newline,
-
             // import List as L
             Token::Import,
             ident_token("List"),
             Token::As,
             ident_token("L"),
             Token::Newline,
-
             // import List as L exposing (..)
             Token::Import,
             ident_token("List"),
@@ -366,7 +363,6 @@ mod tests {
             Token::DotDot,
             Token::RPar,
             Token::Newline,
-
             // import List exposing (..)
             Token::Import,
             ident_token("List"),
@@ -375,7 +371,6 @@ mod tests {
             Token::DotDot,
             Token::RPar,
             Token::Newline,
-            
             // import List exposing ( map, foldl )
             Token::Import,
             ident_token("List"),
@@ -386,7 +381,6 @@ mod tests {
             ident_token("foldl"),
             Token::RPar,
             Token::Newline,
-            
             // import Maybe exposing ( Maybe )
             Token::Import,
             ident_token("Maybe"),
@@ -395,7 +389,6 @@ mod tests {
             ident_token("Maybe"),
             Token::RPar,
             Token::Newline,
-
             // import Maybe exposing ( Maybe(..) )
             Token::Import,
             ident_token("Maybe"),
@@ -407,7 +400,6 @@ mod tests {
             Token::RPar,
             Token::RPar,
             Token::Newline,
-            
         ]));
 
         let expected = Ok(Module {
@@ -418,28 +410,26 @@ mod tests {
                 Declaration::Import(Import {
                     name: name("List"),
                     alias: None,
-                    exposing: Exposing::Explicit(vec![])
+                    exposing: Exposing::Explicit(vec![]),
                 }),
                 // import List as L
                 Declaration::Import(Import {
                     name: name("List"),
                     alias: Some(name("L")),
-                    exposing: Exposing::Explicit(vec![])
+                    exposing: Exposing::Explicit(vec![]),
                 }),
                 // import List as L exposing (..)
                 Declaration::Import(Import {
                     name: name("List"),
                     alias: Some(name("L")),
-                    exposing: Exposing::Open
+                    exposing: Exposing::Open,
                 }),
-
                 // import List exposing (..)
                 Declaration::Import(Import {
                     name: name("List"),
                     alias: None,
-                    exposing: Exposing::Open
+                    exposing: Exposing::Open,
                 }),
-
                 // import List exposing ( map, foldl )
                 Declaration::Import(Import {
                     name: name("List"),
@@ -447,25 +437,25 @@ mod tests {
                     exposing: Exposing::Explicit(vec![
                         Exposed::Lower(name("map")),
                         Exposed::Lower(name("foldl")),
-                    ])
+                    ]),
                 }),
-
                 // import Maybe exposing ( Maybe )
                 Declaration::Import(Import {
                     name: name("Maybe"),
                     alias: None,
-                    exposing: Exposing::Explicit(vec![
-                        Exposed::Upper(name("Maybe"), Privacy::Private),
-                    ])
+                    exposing: Exposing::Explicit(vec![Exposed::Upper(
+                        name("Maybe"),
+                        Privacy::Private,
+                    )]),
                 }),
-
                 // import Maybe exposing ( Maybe(..) )
                 Declaration::Import(Import {
                     name: name("Maybe"),
                     alias: None,
-                    exposing: Exposing::Explicit(vec![
-                        Exposed::Upper(name("Maybe"), Privacy::Public),
-                    ])
+                    exposing: Exposing::Explicit(vec![Exposed::Upper(
+                        name("Maybe"),
+                        Privacy::Public,
+                    )]),
                 }),
             ],
         });
@@ -568,5 +558,126 @@ mod tests {
         });
 
         assert_eq!(actual, expected)
+    }
+
+    #[test]
+    fn parser_module_decl_union_type() {
+        let run_test = |tokens, tpe| {
+            let mut base_tokens = vec![
+                Token::Module,
+                ident_token("Main"),
+                Token::Exposing,
+                Token::LPar,
+                ident_token("main"),
+                Token::RPar,
+                Token::Newline,
+            ];
+
+            base_tokens.extend(tokens);
+
+            let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(base_tokens));
+
+            let expected = Ok(Module {
+                name: Name("Main".to_string()),
+                exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
+                declarations: vec![Declaration::Union(tpe)],
+            });
+
+            assert_eq!(actual, expected);
+        };
+
+        // type UserStatus = Regular | Visitor
+        run_test(
+            vec![
+                Token::Type,
+                ident_token("UserStatus"),
+                Token::Equal,
+                ident_token("Regular"),
+                Token::Pipe,
+                ident_token("Visitor"),
+                Token::Newline,
+            ],
+            UnionType {
+                name: name("UserStatus"),
+                type_arguments: vec![],
+                variants: vec![(name("Regular"), vec![]), (name("Visitor"), vec![])],
+            },
+        );
+
+        /*
+        type User
+          = Regular String Int
+          | Visitor String
+          | Anonymous
+        */
+        run_test(
+            vec![
+                Token::Type,
+                ident_token("User"),
+                Token::Newline,
+                Token::Indent,
+                Token::Equal,
+                ident_token("Regular"),
+                ident_token("String"),
+                ident_token("Int"),
+                Token::Newline,
+                Token::Indent,
+                Token::Pipe,
+                ident_token("Visitor"),
+                ident_token("String"),
+                Token::Newline,
+                Token::Indent,
+                Token::Pipe,
+                ident_token("Anonymous"),
+            ],
+            UnionType {
+                name: name("User"),
+                type_arguments: vec![],
+                variants: vec![
+                    (
+                        name("Regular"),
+                        vec![Type::Named(name("String")), Type::Named(name("Int"))],
+                    ),
+                    (name("Visitor"), vec![Type::Named(name("String"))]),
+                    (name("Anonymous"), vec![]),
+                ],
+            },
+        );
+
+        /*
+        type Msg
+          = ReceivedMessage { user : User, message : String }
+        */
+        // TODO Once we have support for records
+
+        /*
+        type Maybe a
+          = Just a
+          | Nothing
+        */
+        run_test(
+            vec![
+                Token::Type,
+                ident_token("Maybe"),
+                ident_token("a"),
+                Token::Newline,
+                Token::Indent,
+                Token::Equal,
+                ident_token("Just"),
+                ident_token("a"),
+                Token::Newline,
+                Token::Indent,
+                Token::Pipe,
+                ident_token("Nothing"),
+            ],
+            UnionType {
+                name: name("Maybe"),
+                type_arguments: vec![name("a")],
+                variants: vec![
+                    (name("Just"), vec![Type::Variable(name("a"))]),
+                    (name("Nothing"), vec![]),
+                ],
+            },
+        );
     }
 }

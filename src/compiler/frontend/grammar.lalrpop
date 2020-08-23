@@ -59,6 +59,17 @@ Comma<T>: Vec<T> = {
     }
 }
 
+Pipe<T>: Vec<T> = {
+    <v:(<T> "|")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+}
+
 Ident: Name = <"identifier"> => Name(<>);
 
 
@@ -188,11 +199,22 @@ Import:Import = {
     }
 }
 
+Union: UnionType = {
+    "type" <name: Ident> "=" <variants: Pipe<Ident>> => {
+        UnionType {
+            name,
+            type_arguments: vec![],
+            variants: variants.into_iter().map(|n| (n, vec![])).collect()
+        }
+    }
+}
+
 
 Decl: Declaration = {
     <BindGroup> => Declaration::Function(<>),
     <FunType> => Declaration::FunctionType(<>),
     <Import> => Declaration::Import(<>),
+    <Union> => Declaration::Union(<>),
 };
 
 // Module
