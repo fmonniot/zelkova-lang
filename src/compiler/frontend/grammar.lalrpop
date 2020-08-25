@@ -200,7 +200,7 @@ Import:Import = {
 }
 
 Union: UnionType = {
-    "type" <name: Ident> "=" <variants: Pipe<Ident>> => {
+    "type" <name: Ident> "=" <variants: Pipe<Ident>> "\n" => {
         UnionType {
             name,
             type_arguments: vec![],
@@ -210,19 +210,15 @@ Union: UnionType = {
 }
 
 
-Decl: Declaration = {
-    <BindGroup> => Declaration::Function(<>),
-    <FunType> => Declaration::FunctionType(<>),
-    <Import> => Declaration::Import(<>),
-    <Union> => Declaration::Union(<>),
+Decl: Option<Declaration> = {
+    <BindGroup> "\n" => Some(Declaration::Function(<>)),
+    <FunType> "\n" => Some(Declaration::FunctionType(<>)),
+    <Import> "\n" => Some(Declaration::Import(<>)),
+    <Union> => Some(Declaration::Union(<>)),
+    "\n" => None,
 };
 
 // Module
-
-FileLine: Option<Declaration> = {
-    <Decl> "\n" => Some(<>),
-    "\n" => None,
-};
 
 Exposed: Exposed = {
     // TODO Most operators have explicit tokens, which might
@@ -256,11 +252,11 @@ Exposing: Exposing = {
 
 // entry point for our parser, a source file always start by
 // declaring the module
-pub Module: Module = "module" <name: Ident> "exposing" <exposing:Exposing> "\n" <lines:FileLine*> => {
+pub Module: Module = "module" <name: Ident> "exposing" <exposing:Exposing> "\n" <decl:Decl*> => {
     Module {
         name,
         exposing,
-        declarations: lines.into_iter().flatten().collect(),
+        declarations: decl.into_iter().flatten().collect(),
     }
 };
 
