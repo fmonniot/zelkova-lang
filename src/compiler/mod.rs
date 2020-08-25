@@ -25,9 +25,14 @@ pub fn compile_file<P: AsRef<Path>>(path: P) {
             .collect::<Vec<_>>()
     );
 
-    // next passes
+    
     // parser
     let ast = frontend::parser::parse(tokens.into_iter());
+
+    // TODO Be a bit smarter in how we show the tokens above, instead of taking the first
+    // we should take the one around the error below.
+    // Ultimately using codespan-reporting could even be better as it would point to
+    // the source code itself. Although having tokens is valuable to debug the parser itself.
     println!("frontend AST: {:#?}", ast);
 
     // desugar

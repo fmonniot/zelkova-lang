@@ -158,7 +158,13 @@ Expr = {
 // Declarations
 
 AtomicType: Type = {
-    <name:Ident> => Type::Named(name),
+    <name:Ident> => {
+        if name.is_type() {
+            Type::Named(name)
+        } else {
+            Type::Variable(name)
+        }
+    },
 }
 
 Type: Type = {
@@ -199,14 +205,35 @@ Import:Import = {
     }
 }
 
+// Annoyingly here it could be double indent or not
+// TODO Sort out the identation. It can be 2 or 4 spaces, as long as it is consistent…
+// I'm of two mind here:
+// - should we deviate from the elm implementation, at the risk of not being able to
+//   compile the elm ecosystem if needs be (instead of duplicating)
+// - or should we take on the complex task of changing how indentation is validated
+//   in zelkova ?
+Variant: (Name, Vec<Type>) = {
+    "\n" Indent Indent "=" <Ident> <Type*> => (<>),
+    "\n" Indent Indent "|" <Ident> <Type*> => (<>),
+}
+
+// The current encoding means we don't support multiline with one variant, like so:
+// type A = \n Indent Constructor
 Union: UnionType = {
-    "type" <name: Ident> "=" <variants: Pipe<Ident>> "\n" => {
+    "type" <name: Ident> <type_arguments: Ident*> "=" <variants: Pipe<Ident>> "\n" => {
         UnionType {
             name,
             type_arguments: vec![],
             variants: variants.into_iter().map(|n| (n, vec![])).collect()
         }
-    }
+    },
+    "type" <name: Ident> <type_arguments: Ident*> <variants: Variant+> "\n" => {
+        UnionType {
+            name,
+            type_arguments,
+            variants
+        }
+    },
 }
 
 

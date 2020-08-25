@@ -606,9 +606,9 @@ mod tests {
 
         /*
         type User
-          = Regular String Int
-          | Visitor String
-          | Anonymous
+            = Regular String Int
+            | Visitor String
+            | Anonymous
         */
         run_test(
             vec![
@@ -616,19 +616,23 @@ mod tests {
                 ident_token("User"),
                 Token::Newline,
                 Token::Indent,
+                Token::Indent,
                 Token::Equal,
                 ident_token("Regular"),
                 ident_token("String"),
                 ident_token("Int"),
                 Token::Newline,
                 Token::Indent,
+                Token::Indent,
                 Token::Pipe,
                 ident_token("Visitor"),
                 ident_token("String"),
                 Token::Newline,
                 Token::Indent,
+                Token::Indent,
                 Token::Pipe,
                 ident_token("Anonymous"),
+                Token::Newline,
             ],
             UnionType {
                 name: name("User"),
@@ -646,14 +650,14 @@ mod tests {
 
         /*
         type Msg
-          = ReceivedMessage { user : User, message : String }
+            = ReceivedMessage { user : User, message : String }
         */
         // TODO Once we have support for records
 
         /*
         type Maybe a
-          = Just a
-          | Nothing
+            = Just a
+            | Nothing
         */
         run_test(
             vec![
@@ -662,13 +666,16 @@ mod tests {
                 ident_token("a"),
                 Token::Newline,
                 Token::Indent,
+                Token::Indent,
                 Token::Equal,
                 ident_token("Just"),
                 ident_token("a"),
                 Token::Newline,
                 Token::Indent,
+                Token::Indent,
                 Token::Pipe,
                 ident_token("Nothing"),
+                Token::Newline,
             ],
             UnionType {
                 name: name("Maybe"),
