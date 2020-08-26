@@ -5,6 +5,7 @@
 //! syntax sugar to make their life easier. For example, pattern matching
 //! in function declaration is one such thing.
 //!
+pub mod indentation;
 pub mod parser;
 pub mod tokenizer;
 

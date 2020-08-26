@@ -25,7 +25,6 @@ pub fn compile_file<P: AsRef<Path>>(path: P) {
             .collect::<Vec<_>>()
     );
 
-    
     // parser
     let ast = frontend::parser::parse(tokens.into_iter());
 

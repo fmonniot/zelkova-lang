@@ -86,7 +86,7 @@ fn get_keywords() -> HashMap<String, Token> {
 
 // TODO Rename to TokenizerError
 /// Represents an error during tokenization.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct LexicalError {
     pub error: LexicalErrorType,
     pub position: Position,
@@ -94,7 +94,7 @@ pub struct LexicalError {
 
 // TODO Remove errors that aren't needed
 /// The type of error refered in `LexicalError`
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum LexicalErrorType {
     CharError,
     StringError,  // TODO String literal
