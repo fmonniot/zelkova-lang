@@ -115,6 +115,7 @@ pub type Result<T> = std::result::Result<T, LexicalError>;
 ///
 /// This is the access point of this module, and the only way to create the underlying
 /// `Tokenizer` (although it isn't exposed to public consumption)
+// TODO return super::error::Result instead of the module one
 pub fn make_tokenizer<'a>(source: &'a str) -> impl Iterator<Item = Result<Spanned>> + 'a {
     let c = NewlineCollapser::new(source.chars());
     Tokenizer::new(c)

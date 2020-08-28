@@ -1,6 +1,6 @@
 use crate::compiler::position::Position;
 use crate::compiler::frontend::tokenizer::Token;
-use crate::compiler::frontend::indentation::Error;
+use crate::compiler::frontend::error::Error;
 use crate::compiler::frontend::*;
 
 grammar;

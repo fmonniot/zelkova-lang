@@ -1,24 +1,27 @@
 //! Simplify the indentation manager for the parser
 //! by doing it in before the token iterator is passed to the parser.
 
-use super::tokenizer::{LexicalError, Spanned, Token};
+use super::error::Error;
+use super::tokenizer::{Spanned, Token};
 use crate::compiler::position::Position;
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Error {
-    LexicalError(LexicalError),
+pub enum IndentationError {
     IndentationError { context: Context, spanned: Spanned },
     NotInitialized,
 }
 
-pub fn layout<I: Iterator<Item = Result<Spanned, LexicalError>>>(
+pub fn layout<I: Iterator<Item = Result<Spanned, Error>>>(
     iter: I,
 ) -> impl Iterator<Item = Result<Spanned, Error>> {
     let mut l = Layout {
         tokens: iter,
         contexts: vec![],
         processed_tokens: vec![],
-        lookahead: (Err(Error::NotInitialized), Err(Error::NotInitialized)),
+        lookahead: (
+            Err(Error::Indentation(IndentationError::NotInitialized)),
+            Err(Error::Indentation(IndentationError::NotInitialized)),
+        ),
     };
 
     // Fill out the lookahead structure
@@ -64,7 +67,7 @@ struct Layout<I> {
 
 impl<I> Layout<I>
 where
-    I: Iterator<Item = Result<Spanned, LexicalError>>,
+    I: Iterator<Item = Result<Spanned, Error>>,
 {
     /// A simple function which manage the internal lookahead structure
     /// in tandem with the source iterator.
@@ -74,16 +77,12 @@ where
         let current = self.lookahead.0.clone(); // should probably use reference here
 
         self.lookahead.0 = self.lookahead.1.clone();
-        self.lookahead.1 = self
-            .tokens
-            .next()
-            .unwrap_or_else(|| {
-                // This position is discarded, so can be rubish
-                let position = Position::new(0, 0);
+        self.lookahead.1 = self.tokens.next().unwrap_or_else(|| {
+            // This position is discarded, so can be rubish
+            let position = Position::new(0, 0);
 
-                Ok((position, Token::EndOfFile, position))
-            })
-            .map_err(Error::LexicalError);
+            Ok((position, Token::EndOfFile, position))
+        });
 
         current
     }
@@ -139,10 +138,12 @@ where
                         if i != &current_indent {
                             // Indent mismatch, let's emit an error
                             // TODO
-                            self.processed_tokens.push(Err(Error::IndentationError {
-                                context: Context::Type(Some(*i)),
-                                spanned: spanned.clone(),
-                            }))
+                            self.processed_tokens
+                                .push(Err(IndentationError::IndentationError {
+                                    context: Context::Type(Some(*i)),
+                                    spanned: spanned.clone(),
+                                }
+                                .into()))
                         }
                     }
                     None => {
@@ -209,7 +210,7 @@ where
 
 impl<I> Iterator for Layout<I>
 where
-    I: Iterator<Item = Result<Spanned, LexicalError>>,
+    I: Iterator<Item = Result<Spanned, Error>>,
 {
     type Item = Result<Spanned, Error>;
 
@@ -237,7 +238,7 @@ mod tests {
     // Create an approximation for the token position in the stream.
     // We don't count the spaces between tokens, but it gives us enough
     // to understand where a failure happened.
-    fn tokens_to_spanned(tokens: &Vec<Token>) -> Vec<Result<Spanned, LexicalError>> {
+    fn tokens_to_spanned(tokens: &Vec<Token>) -> Vec<Result<Spanned, Error>> {
         let mut pos = Position::new(0, 0);
 
         tokens
@@ -370,10 +371,11 @@ mod tests {
                 Ok(ident_token("Just")),
                 Ok(ident_token("a")),
                 Ok(Token::Newline),
-                Err(Error::IndentationError {
+                Err(IndentationError::IndentationError {
                     context: Context::Type(Some(1)),
-                    spanned: (Position::new(2, 4), Token::Pipe, Position::new(2,5)),
-                }),
+                    spanned: (Position::new(2, 4), Token::Pipe, Position::new(2, 5)),
+                }
+                .into()),
                 Ok(Token::Pipe),
                 Ok(ident_token("Nothing")),
                 Ok(Token::Newline),

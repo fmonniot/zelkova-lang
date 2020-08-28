@@ -9,9 +9,11 @@ pub fn compile_file<P: AsRef<Path>>(path: P) {
     let source = std::fs::read_to_string(path).expect("Can't read file");
 
     // This is the first pass of our "compiler"
-    let tokenizer = frontend::tokenizer::make_tokenizer(&source);
+    let tokenizer = frontend::tokenizer::make_tokenizer(&source).map(|r| r.map_err(|e| e.into()));
+
     // TODO Insert indentation between tokenizer and tokens
-    let indented = frontend::indentation::layout(frontend::tokenizer::make_tokenizer(&source));
+    let indented = frontend::indentation::layout(tokenizer);
+
     let tokens: Vec<_> = indented.collect();
     println!(
         "frontend token errors: {:?}",
