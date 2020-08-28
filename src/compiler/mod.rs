@@ -10,7 +10,9 @@ pub fn compile_file<P: AsRef<Path>>(path: P) {
 
     // This is the first pass of our "compiler"
     let tokenizer = frontend::tokenizer::make_tokenizer(&source);
-    let tokens: Vec<_> = tokenizer.collect();
+    // TODO Insert indentation between tokenizer and tokens
+    let indented = frontend::indentation::layout(frontend::tokenizer::make_tokenizer(&source));
+    let tokens: Vec<_> = indented.collect();
     println!(
         "frontend token errors: {:?}",
         tokens.iter().filter(|r| r.is_err()).collect::<Vec<_>>()
@@ -26,6 +28,8 @@ pub fn compile_file<P: AsRef<Path>>(path: P) {
     );
 
     // parser
+    // TODO Needs to use indentation::Error now, which lead me to think we should probably
+    // have a frontend::Error enum instead of each module taking over the previous one.
     let ast = frontend::parser::parse(tokens.into_iter());
 
     // TODO Be a bit smarter in how we show the tokens above, instead of taking the first
