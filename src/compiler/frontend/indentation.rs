@@ -14,21 +14,7 @@ pub enum IndentationError {
 pub fn layout<I: Iterator<Item = Result<Spanned, Error>>>(
     iter: I,
 ) -> impl Iterator<Item = Result<Spanned, Error>> {
-    let mut l = Layout {
-        tokens: iter,
-        contexts: vec![],
-        processed_tokens: vec![],
-        lookahead: (
-            Err(Error::Indentation(IndentationError::NotInitialized)),
-            Err(Error::Indentation(IndentationError::NotInitialized)),
-        ),
-    };
-
-    // Fill out the lookahead structure
-    l.next_token();
-    l.next_token();
-
-    l
+    Layout::new(iter)
 }
 
 /// Context represent the kind of expression we are looking at.
@@ -38,6 +24,9 @@ pub fn layout<I: Iterator<Item = Result<Spanned, Error>>>(
 pub enum Context {
     /// This is a type context with its indentation level
     Type(Option<u8>),
+
+    /// We are declaring a module.
+    Module,
 }
 
 /// The Layout struct is an iterator over a serie of Spanned tokens
@@ -47,9 +36,9 @@ pub enum Context {
 /// represent what kind of terms we are looking at and what indentation
 /// rules we should apply.
 ///
-/// TODO: I really need to use references with this one. There are too many
-/// `clone()` call on something which is part of the core loop. Let's do so
-/// once I have a somewhat working algorithm.
+/// > **TODO**: I really need to use references with this structure. There are too many
+/// > `clone()` call on something which is part of the core loop. Let's do so
+/// > once I have a somewhat working algorithm.
 struct Layout<I> {
     /// The source iterator
     tokens: I,
@@ -69,6 +58,25 @@ impl<I> Layout<I>
 where
     I: Iterator<Item = Result<Spanned, Error>>,
 {
+    /// Create and initialize a new `Layout` iterator
+    pub fn new(iter: I) -> Layout<I> {
+        let mut l = Layout {
+            tokens: iter,
+            contexts: vec![],
+            processed_tokens: vec![],
+            lookahead: (
+                Err(Error::Indentation(IndentationError::NotInitialized)),
+                Err(Error::Indentation(IndentationError::NotInitialized)),
+            ),
+        };
+
+        // Fill out the lookahead structure
+        let _ = l.next_token();
+        let _ = l.next_token();
+
+        l
+    }
+
     /// A simple function which manage the internal lookahead structure
     /// in tandem with the source iterator.
     ///
@@ -105,6 +113,52 @@ where
                 return;
             }
 
+            /* We are declaring a module. There are two cases here:
+
+                1. This is a single line declaration, in which case no context needs
+                   to be created and pushed on the stack. We know it is a single line declaration
+                   when the last token is a closing parenthesis.
+                2. This a multi line declaration (eg. the closing parenthesis is somewhere
+                   in later lines). We require an indentation level of at least one space.
+            */
+            (Ok((_, Token::Module, _)), None) => {
+                // TODO Check we are emitting the module token
+                let last = self.emit_to_end_of_line(false);
+
+                if let Some(Ok((_, Token::RPar, end))) = last {
+                    // the module declaration is closed on the same line, we are done
+
+                    // still emit the new line we skipped over previously
+                    // (this is only necessary until we have a block concept in place. At which
+                    // point we will close the block instead)
+                    let mut real_end = end.clone();
+                    real_end.newline();
+                    self.emit(Ok((end, Token::Newline, real_end)));
+                } else {
+                    self.contexts.push(Context::Module);
+                }
+            }
+
+            (Ok((_, _, _)), Some(Context::Module)) => {
+                // Current indentation level needs to be at least 1
+                if current_indent < 1 {
+                    // TODO not good, emit an error
+                }
+
+                let last = self.emit_to_end_of_line(false);
+                if let Some(Ok((_, Token::RPar, end))) = last {
+                    // the module declaration is closed, let's remove the context
+                    self.contexts.pop();
+
+                    // and emit the new line we skipped over previously
+                    // (this is only necessary until we have a block concept in place. At which
+                    // point we will close the block instead)
+                    let mut real_end = end.clone();
+                    real_end.newline();
+                    self.emit(Ok((end, Token::Newline, real_end)));
+                }
+            }
+
             // We enter a type definition section. They can only happens without indentation,
             // hence there must be no context available.
             (Ok((_, Token::Type, _)), None) => {
@@ -112,7 +166,7 @@ where
                 self.contexts.push(Context::Type(None));
 
                 // Let's emit the current line
-                self.emit_to_end_of_line();
+                self.emit_to_end_of_line(true);
 
                 // Alg:
                 // 1. Skip to end of the line
@@ -154,7 +208,7 @@ where
                 }
 
                 // Then consume the rest of the line
-                self.emit_to_end_of_line();
+                self.emit_to_end_of_line(true);
             }
 
             // Another type of token, let's just emit it as is
@@ -175,7 +229,7 @@ where
         loop {
             if let Ok((_, Token::Indent, _)) = self.lookahead.0 {
                 indent += 1;
-                self.next_token(); // skip over the indent token
+                let _ = self.next_token(); // skip over the indent token
             } else {
                 // We found a non-indent character, let's stop here
                 break;
@@ -189,19 +243,57 @@ where
     // Utility functions
     //
 
+    /// emit the given token to the `processed_tokens` buffer
     fn emit(&mut self, tok: Result<Spanned, Error>) {
         self.processed_tokens.push(tok);
     }
 
-    fn emit_to_end_of_line(&mut self) {
-        loop {
-            let next = self.next_token();
-            self.emit(next.clone()); // TODO Find a way to not clone here
+    /// Emit all tokens until the end of the line, leaving the pointer after the newline/eof
+    /// token and returning the token just before the newline/eof (when there is one)
+    ///
+    /// TODO Remove emit_new_line once we have a block concept to use in our grammar.
+    /// e.g. the grammar won't need to know about new lines at all.
+    fn emit_to_end_of_line(&mut self, emit_new_line: bool) -> Option<Result<Spanned, Error>> {
+        // First let's look at the current token.
+        // If we are already looking at a newline/eof, there is nothing to return.
+        // Let's consume and emit the token and be done
+        match self.lookahead.0 {
+            Ok((_, Token::Newline, _)) => {
+                let current = self.next_token();
+                if emit_new_line {
+                    self.emit(current);
+                }
+                return None;
+            }
+            Ok((_, Token::EndOfFile, _)) => {
+                let current = self.next_token();
+                self.emit(current);
+                return None;
+            }
+            _ => (),
+        };
 
-            // Breaking here means we have already emitted the nl/eof token
-            match next {
-                Ok((_, Token::Newline, _)) => break,
-                Ok((_, Token::EndOfFile, _)) => break,
+        // Ok here we know we have at least two tokens in the buffer.
+        // So let's peak at current + 1 token, and if it's a newline/eof
+        // we can return the current token, advance our iterator by 2 and then return
+        loop {
+            let prev = self.next_token();
+            self.emit(prev.clone()); // TODO Find a way to not clone here
+
+            // Looking at the new current
+            match self.lookahead.0 {
+                Ok((_, Token::Newline, _)) => {
+                    let newline = self.next_token();
+                    if emit_new_line {
+                        self.emit(newline);
+                    }
+                    return Some(prev);
+                }
+                Ok((_, Token::EndOfFile, _)) => {
+                    let eof = self.next_token();
+                    self.emit(eof);
+                    return Some(prev);
+                }
                 _ => (),
             }
         }
@@ -277,22 +369,102 @@ mod tests {
     }
 
     #[test]
-    fn emit_module_declaration() {
-        let module_tokens = vec![
+    fn emit_end_of_line() {
+        let tokens = tokens_to_spanned(&vec![
+            ident_token("Main"),
+            Token::Newline,
+            ident_token("main"),
+            Token::Equal,
+            ident_token("const"),
+            Token::Newline,
+            Token::Newline,
+        ]);
+
+        let mut layout = Layout::new(tokens.iter().cloned());
+
+        // Test with one token in a line
+        let ret = layout.emit_to_end_of_line(true);
+        assert_eq!(ret, Some((&tokens[0]).clone()));
+
+        // Test with multiple token in a line
+        let ret = layout.emit_to_end_of_line(true);
+        assert_eq!(ret, Some((&tokens[4]).clone()));
+
+        // Test with an empty line
+        let ret = layout.emit_to_end_of_line(true);
+        assert_eq!(ret, None);
+
+        // Test at the end of the file
+        let ret = layout.emit_to_end_of_line(true);
+        assert_eq!(ret, None);
+    }
+
+    #[test]
+    fn emit_module_declaration_single_line() {
+        let module_tokens = tokens_to_spanned(&vec![
             Token::Module,
             ident_token("Main"),
             Token::Exposing,
             Token::LPar,
             ident_token("main"),
+            Token::Comma,
+            ident_token("const"),
             Token::RPar,
             Token::Newline,
-        ];
+        ]);
+        let spanned = module_tokens
+            .iter()
+            .cloned()
+            .map(|r| r.unwrap())
+            .collect::<Vec<_>>();
 
-        let v: Vec<_> = layout(tokens_to_spanned(&module_tokens).into_iter())
-            .map(|x| x.expect("no error in layout").1)
+        let v: Vec<_> = layout(module_tokens.iter().cloned())
+            .map(|x| x.expect("no error in layout"))
             .collect();
 
-        assert_eq!(v, module_tokens);
+        assert_eq!(v, spanned);
+    }
+
+    #[test]
+    fn emit_module_declaration_multi_line() {
+        let module_tokens = tokens_to_spanned(&vec![
+            Token::Module,
+            ident_token("Main"),
+            Token::Exposing,
+            Token::Newline,
+            Token::Indent,
+            Token::LPar,
+            ident_token("main"),
+            Token::Newline,
+            Token::Indent,
+            Token::Comma,
+            ident_token("const"),
+            Token::Newline,
+            Token::Indent,
+            Token::RPar,
+            Token::Newline,
+        ]);
+        let max_index = module_tokens.len() - 1;
+        let spanned = module_tokens
+            .iter()
+            .cloned()
+            .map(|r| r.unwrap())
+            .enumerate()
+            .filter_map(|(idx, s)| {
+                // Filter out indent and newlines, except for the last new line
+                if s.1 == Token::Indent || (s.1 == Token::Newline && idx != max_index) {
+                    None
+                } else {
+                    Some(s)
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let v: Vec<_> = layout(module_tokens.iter().cloned())
+            .map(|x| x.expect("no error in layout"))
+            .collect();
+
+        assert_eq!(v, spanned);
     }
 
     #[test]

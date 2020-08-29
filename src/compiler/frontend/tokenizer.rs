@@ -21,8 +21,8 @@ pub enum Token {
 
     // Control characters
     Newline,
-    Indent,
-    Dedent,
+    Indent, // TODO Include the number of spaces
+    Dedent, // TODO Do we still need these tokens now that we have the indentation module ?
     EndOfFile,
 
     // Symbols
