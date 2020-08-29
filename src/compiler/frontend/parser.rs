@@ -14,8 +14,8 @@ pub fn parse(i: impl Iterator<Item = Result<Spanned, Error>>) -> Result<Module, 
 mod tests {
     use super::*;
     use crate::compiler::frontend::*;
-    use tokenizer::Token;
     use crate::compiler::position::Position;
+    use tokenizer::Token;
 
     // Create an approximation for the token position in the stream.
     // We don't count the spaces between tokens, but it gives us enough

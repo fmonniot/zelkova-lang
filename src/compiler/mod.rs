@@ -8,37 +8,57 @@ mod type_checker;
 pub fn compile_file<P: AsRef<Path>>(path: P) {
     let source = std::fs::read_to_string(path).expect("Can't read file");
 
-    // This is the first pass of our "compiler"
+    // Tokenize the source code into a serie of tokens
     let tokenizer = frontend::tokenizer::make_tokenizer(&source).map(|r| r.map_err(|e| e.into()));
 
-    // TODO Insert indentation between tokenizer and tokens
+    // Then manage the indentation aspect of our code
     let indented = frontend::indentation::layout(tokenizer);
 
+    // Some debug intsruction to easily find errors early on.
+    // This is for development only, and we should have a better error reporting
+    // system in the future.
     let tokens: Vec<_> = indented.collect();
-    println!(
-        "frontend token errors: {:?}",
-        tokens.iter().filter(|r| r.is_err()).collect::<Vec<_>>()
-    );
-    println!(
-        "first tokens: {:?}",
-        tokens
-            .iter()
-            .skip(0)
-            .take(35)
-            .map(|s| s.as_ref().map(|s| s.1.clone()))
-            .collect::<Vec<_>>()
-    );
+    let token_errors: Vec<_> = tokens.iter().filter(|r| r.is_err()).collect();
+    if !token_errors.is_empty() {
+        println!("frontend token errors: {:?}", token_errors);
+    }
 
     // parser
-    // TODO Needs to use indentation::Error now, which lead me to think we should probably
-    // have a frontend::Error enum instead of each module taking over the previous one.
-    let ast = frontend::parser::parse(tokens.into_iter());
+    // TODO Should works on reference and not consume the original iterator
+    let ast = frontend::parser::parse(tokens.iter().cloned());
 
-    // TODO Be a bit smarter in how we show the tokens above, instead of taking the first
-    // we should take the one around the error below.
+    // Debug purpose: we show either the AST or an error with its list of tokens for debug.
     // Ultimately using codespan-reporting could even be better as it would point to
     // the source code itself. Although having tokens is valuable to debug the parser itself.
-    println!("frontend AST: {:#?}", ast);
+    match ast {
+        Ok(ast) => println!("frontend AST: {:#?}", ast),
+        Err(err) => {
+            let pos = err.position_start();
+            let token_position = tokens
+                .iter()
+                .position(|t| match t {
+                    Ok(t) => &t.0 == pos,
+                    Err(_) => false,
+                })
+                .expect("Can't find error's position in the token stream");
+
+            let around = tokens
+                .iter()
+                .skip(if token_position >= 5 {
+                    token_position - 5
+                } else {
+                    0
+                })
+                .take(20)
+                .map(|s| s.as_ref().map(|s| s.1.clone()))
+                .collect::<Vec<_>>();
+
+            println!(
+                "Error found\nToken around error: {:?}\nError: {:#?}",
+                around, err
+            );
+        }
+    }
 
     // desugar
     // type check
