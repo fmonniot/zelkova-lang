@@ -1,7 +1,7 @@
 use super::indentation::IndentationError;
 use super::tokenizer::{LexicalError, Spanned, Token};
-use lalrpop_util::ParseError;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
+use lalrpop_util::ParseError;
 
 use crate::compiler::position::Position;
 
@@ -27,11 +27,9 @@ pub enum Error {
 }
 
 impl Error {
-
     pub fn diagnostic(&self) -> Diagnostic<()> {
-
         match self {
-            Error::UnexpectedToken { token , expected } => {
+            Error::UnexpectedToken { token, expected } => {
                 let (start, token, end) = token;
                 let range = start.absolute..end.absolute;
 
@@ -40,14 +38,31 @@ impl Error {
                     .with_labels(vec![
                         Label::primary((), range).with_message("unexpected token")
                     ])
-                    .with_notes(vec![
-                        format!("we were expecting one of the following tokens: {:?}", expected).to_owned()
-                    ])
+                    .with_notes(vec![format!(
+                        "we were expecting one of the following tokens: {:?}",
+                        expected
+                    )
+                    .to_owned()])
             }
 
             _ => todo!(),
         }
     }
+}
+
+/// lalrpop expected tokens in error are wrapped in double quote, which we don't really want
+fn unquote_tokens(mut tokens: Vec<String>) -> Vec<String> {
+    for token in &mut tokens {
+        if token.starts_with('"') {
+            token.remove(0);
+        }
+
+        if token.ends_with('"') {
+            token.pop();
+        }
+    }
+
+    tokens.to_vec()
 }
 
 impl From<ParseError<Position, Token, Error>> for Error {
@@ -56,11 +71,12 @@ impl From<ParseError<Position, Token, Error>> for Error {
             ParseError::InvalidToken { location } => Error::InvalidToken(location),
             ParseError::UnrecognizedEOF { location, expected } => Error::UnexpectedEOF {
                 position: location,
-                expected,
+                expected: unquote_tokens(expected),
             },
-            ParseError::UnrecognizedToken { token, expected } => {
-                Error::UnexpectedToken { token, expected }
-            }
+            ParseError::UnrecognizedToken { token, expected } => Error::UnexpectedToken {
+                token,
+                expected: unquote_tokens(expected),
+            },
             ParseError::ExtraToken { token } => Error::ExtraToken { token },
             ParseError::User { error } => error,
         }

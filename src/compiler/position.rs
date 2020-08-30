@@ -1,4 +1,3 @@
-
 #[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub struct Position {
     /// The byte index in the original source code
@@ -11,7 +10,7 @@ impl Position {
             absolute: byte_index,
         }
     }
-    
+
     pub fn increment(&mut self) {
         self.increment_by(1);
     }
@@ -33,7 +32,7 @@ mod tests {
     #[test]
     fn position_increment() {
         let mut position = Position::new(0);
-        
+
         position.increment();
         assert_eq!(position, Position::new(1));
 
