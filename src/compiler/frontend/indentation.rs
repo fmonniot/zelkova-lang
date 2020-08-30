@@ -4,6 +4,7 @@
 use super::error::Error;
 use super::tokenizer::{Spanned, Token};
 use crate::compiler::position::Position;
+use log::trace;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum IndentationError {
@@ -104,6 +105,13 @@ where
         let current_indent = self.consume_indent();
         let current_context = self.contexts.last();
 
+        trace!(
+            "consume. current_index:{}, current_context:{:?}, self.lookahead.0:{:?}",
+            current_indent,
+            current_context,
+            self.lookahead.0
+        );
+
         match (self.lookahead.0.as_ref(), current_context) {
             // end early if we have reached the end of the stream and deindented everything.
             (Ok((_, Token::EndOfFile, _)), _) => {
@@ -122,7 +130,6 @@ where
                    in later lines). We require an indentation level of at least one space.
             */
             (Ok((_, Token::Module, _)), None) => {
-                // TODO Check we are emitting the module token
                 let last = self.emit_to_end_of_line(false);
 
                 if let Some(Ok((_, Token::RPar, end))) = last {
@@ -145,17 +152,33 @@ where
                     // TODO not good, emit an error
                 }
 
-                let last = self.emit_to_end_of_line(false);
-                if let Some(Ok((_, Token::RPar, end))) = last {
-                    // the module declaration is closed, let's remove the context
-                    self.contexts.pop();
+                let mut par_count = 0;
 
-                    // and emit the new line we skipped over previously
-                    // (this is only necessary until we have a block concept in place. At which
-                    // point we will close the block instead)
-                    let mut real_end = end.clone();
-                    real_end.newline();
-                    self.emit(Ok((end, Token::Newline, real_end)));
+                let last = self.consume_line(false, |tok| match tok {
+                    Ok((_, Token::LPar, _)) => par_count += 1,
+                    Ok((_, Token::RPar, _)) => par_count -= 1,
+                    _ => (),
+                });
+
+                /*  in the module context, a closing parenthesis at the end of a line can mean two things:
+                      1. end of the module context
+                      2. end of an open type export
+
+                    To know in which case we are, we count the number of parenthesis. If we have more open
+                    parenthesis, it means we are opening the module block. Otherwise it's either we have
+                    none and should continue, or we are closing the module.
+                */
+                if let Some(Ok((_, Token::RPar, end))) = last {
+                    if par_count < 1 {
+                        self.contexts.pop();
+
+                        // and emit the new line we skipped over previously
+                        // (this is only necessary until we have a block concept in place. At which
+                        // point we will close the block instead)
+                        let mut real_end = end.clone();
+                        real_end.newline();
+                        self.emit(Ok((end, Token::Newline, real_end)));
+                    }
                 }
             }
 
@@ -248,12 +271,23 @@ where
         self.processed_tokens.push(tok);
     }
 
+    /// A shortcut function for `consume_line` which doesn't take a closure
+    fn emit_to_end_of_line(&mut self, emit_new_line: bool) -> Option<Result<Spanned, Error>> {
+        self.consume_line(emit_new_line, |_| ())
+    }
+
     /// Emit all tokens until the end of the line, leaving the pointer after the newline/eof
-    /// token and returning the token just before the newline/eof (when there is one)
+    /// token and returning the token just before the newline/eof (when there is one).
+    ///
+    /// The given closure is invoked on every non-newline/eof tokens. This is especially useful
+    /// if the caller needs to be aware of what tokens are defined in the line.
     ///
     /// TODO Remove emit_new_line once we have a block concept to use in our grammar.
     /// e.g. the grammar won't need to know about new lines at all.
-    fn emit_to_end_of_line(&mut self, emit_new_line: bool) -> Option<Result<Spanned, Error>> {
+    fn consume_line<F>(&mut self, emit_new_line: bool, mut f: F) -> Option<Result<Spanned, Error>>
+    where
+        F: FnMut(&Result<Spanned, Error>) -> (),
+    {
         // First let's look at the current token.
         // If we are already looking at a newline/eof, there is nothing to return.
         // Let's consume and emit the token and be done
@@ -270,7 +304,7 @@ where
                 self.emit(current);
                 return None;
             }
-            _ => (),
+            _ => f(&self.lookahead.0),
         };
 
         // Ok here we know we have at least two tokens in the buffer.
@@ -294,7 +328,7 @@ where
                     self.emit(eof);
                     return Some(prev);
                 }
-                _ => (),
+                _ => f(&self.lookahead.0),
             }
         }
     }
@@ -429,16 +463,23 @@ mod tests {
     fn emit_module_declaration_multi_line() {
         let module_tokens = tokens_to_spanned(&vec![
             Token::Module,
-            ident_token("Main"),
+            ident_token("Maybe"),
             Token::Exposing,
             Token::Newline,
             Token::Indent,
             Token::LPar,
-            ident_token("main"),
+            ident_token("Maybe"),
+            Token::LPar,
+            Token::DotDot,
+            Token::RPar,
             Token::Newline,
             Token::Indent,
             Token::Comma,
-            ident_token("const"),
+            ident_token("andThen"),
+            Token::Newline,
+            Token::Indent,
+            Token::Comma,
+            ident_token("map"),
             Token::Newline,
             Token::Indent,
             Token::RPar,
