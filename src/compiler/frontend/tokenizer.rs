@@ -220,7 +220,7 @@ where
             chars: collapser,
             at_line_start: true, // Nothing have been read yet, so…
             processed_tokens: vec![],
-            position: Position::new(0, 0, 0),
+            position: Position::new(0),
             lookahead: (None, None, None),
             indentation: 0,
             keywords: get_keywords(),
@@ -252,12 +252,10 @@ where
         self.lookahead.1 = self.lookahead.2;
         self.lookahead.2 = self.chars.next();
 
+        self.position.increment();
         if current == Some('\n') {
-            self.position.newline();
             self.at_line_start = true;
-        } else {
-            self.position.go_right();
-        };
+        }
 
         trace!(
             "next_char: lookahead={:?}, position={:?}",
@@ -498,7 +496,7 @@ where
         } else {
             // We aren't looking at the symbols -- or {-, this isn't a comment
             warn!(
-                "Called Tokenizer.consume_comment on non-comment symbols ({})",
+                "Called Tokenizer.consume_comment on non-comment symbols ({:?})",
                 self.position
             );
             return Err(LexicalError {
@@ -683,7 +681,7 @@ where
                                 // We haven't moved the cursor yet, but we know the error
                                 // is on the next character, so we build the position manually
                                 let mut position = self.position.clone();
-                                position.go_right();
+                                position.increment();
                                 return Err(LexicalError {
                                     error: LexicalErrorType::CharError,
                                     position: position,
@@ -939,7 +937,7 @@ mod tests {
             make_tokenizer("'").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::CharError,
-                position: Position::new(0, 0, 0)
+                position: Position::new(0)
             })
         );
 
@@ -947,7 +945,7 @@ mod tests {
             make_tokenizer("'a").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::CharError,
-                position: Position::new(0, 1, 1)
+                position: Position::new(1)
             })
         );
 
@@ -995,7 +993,7 @@ mod tests {
             make_tokenizer(" a").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::IndentationError,
-                position: Position::new(0, 1, 1)
+                position: Position::new(1)
             })
         );
 
@@ -1003,7 +1001,7 @@ mod tests {
             make_tokenizer("  \ta").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::TabError,
-                position: Position::new(0, 2, 2)
+                position: Position::new(2)
             })
         );
     }
@@ -1047,7 +1045,7 @@ mod tests {
             make_tokenizer("map \ta").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::TabError,
-                position: Position::new(0, 4, 4)
+                position: Position::new(4)
             })
         );
     }

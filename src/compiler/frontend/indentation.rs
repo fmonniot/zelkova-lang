@@ -88,7 +88,7 @@ where
         self.lookahead.0 = self.lookahead.1.clone();
         self.lookahead.1 = self.tokens.next().unwrap_or_else(|| {
             // This position is discarded, so can be rubish
-            let position = Position::new(0, 0, 0);
+            let position = Position::new(0);
 
             Ok((position, Token::EndOfFile, position))
         });
@@ -139,7 +139,7 @@ where
                     // (this is only necessary until we have a block concept in place. At which
                     // point we will close the block instead)
                     let mut real_end = end.clone();
-                    real_end.newline();
+                    real_end.increment();
                     self.emit(Ok((end, Token::Newline, real_end)));
                 } else {
                     self.contexts.push(Context::Module);
@@ -176,7 +176,7 @@ where
                         // (this is only necessary until we have a block concept in place. At which
                         // point we will close the block instead)
                         let mut real_end = end.clone();
-                        real_end.newline();
+                        real_end.increment();
                         self.emit(Ok((end, Token::Newline, real_end)));
                     }
                 }
@@ -365,7 +365,7 @@ mod tests {
     // We don't count the spaces between tokens, but it gives us enough
     // to understand where a failure happened.
     fn tokens_to_spanned(tokens: &Vec<Token>) -> Vec<Result<Spanned, Error>> {
-        let mut pos = Position::new(0, 0, 0);
+        let mut pos = Position::new(0);
 
         tokens
             .into_iter()
@@ -380,14 +380,11 @@ mod tests {
                     Token::Comma => 1,
                     Token::Indent => 2,
                     Token::Pipe => 1,
+                    Token::Newline => 1,
                     _ => 0,
                 };
 
-                pos.go_right_by(inc);
-
-                if token == Token::Newline {
-                    pos.newline();
-                }
+                pos.increment_by(inc);
 
                 let end = pos.clone();
 
@@ -587,9 +584,9 @@ mod tests {
                 Err(IndentationError::IndentationError {
                     context: Context::Type(Some(1)),
                     spanned: (
-                        Position::new(2, 4, 19),
+                        Position::new(19),
                         Token::Pipe,
-                        Position::new(2, 5, 20)
+                        Position::new(20)
                     ),
                 }
                 .into()),

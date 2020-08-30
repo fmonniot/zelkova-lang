@@ -21,7 +21,7 @@ mod tests {
     // We don't count the spaces between tokens, but it gives us enough
     // to understand where a failure happened.
     fn tokens_to_spanned(tokens: Vec<Token>) -> Vec<Spanned> {
-        let mut pos = Position::new(0, 0, 0);
+        let mut pos = Position::new(0);
 
         tokens
             .into_iter()
@@ -33,14 +33,11 @@ mod tests {
                     Token::Exposing => 8,
                     Token::LPar | Token::RPar => 1,
                     Token::Comma => 1,
+                    Token::Newline => 1,
                     _ => 0,
                 };
 
-                pos.go_right_by(inc);
-
-                if token == Token::Newline {
-                    pos.newline();
-                }
+                pos.increment_by(inc);
 
                 let end = pos.clone();
 
