@@ -88,7 +88,7 @@ where
         self.lookahead.0 = self.lookahead.1.clone();
         self.lookahead.1 = self.tokens.next().unwrap_or_else(|| {
             // This position is discarded, so can be rubish
-            let position = Position::new(0, 0);
+            let position = Position::new(0, 0, 0);
 
             Ok((position, Token::EndOfFile, position))
         });
@@ -365,7 +365,7 @@ mod tests {
     // We don't count the spaces between tokens, but it gives us enough
     // to understand where a failure happened.
     fn tokens_to_spanned(tokens: &Vec<Token>) -> Vec<Result<Spanned, Error>> {
-        let mut pos = Position::new(0, 0);
+        let mut pos = Position::new(0, 0, 0);
 
         tokens
             .into_iter()
@@ -374,7 +374,7 @@ mod tests {
                 let start = pos.clone();
                 let inc = match &token {
                     Token::Module => 6,
-                    Token::Identifier { name } => name.len() as u32,
+                    Token::Identifier { name } => name.len(),
                     Token::Exposing => 8,
                     Token::LPar | Token::RPar => 1,
                     Token::Comma => 1,
@@ -586,7 +586,11 @@ mod tests {
                 Ok(Token::Newline),
                 Err(IndentationError::IndentationError {
                     context: Context::Type(Some(1)),
-                    spanned: (Position::new(2, 4), Token::Pipe, Position::new(2, 5)),
+                    spanned: (
+                        Position::new(2, 4, 19),
+                        Token::Pipe,
+                        Position::new(2, 5, 20)
+                    ),
                 }
                 .into()),
                 Ok(Token::Pipe),

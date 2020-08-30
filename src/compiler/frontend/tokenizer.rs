@@ -220,7 +220,7 @@ where
             chars: collapser,
             at_line_start: true, // Nothing have been read yet, so…
             processed_tokens: vec![],
-            position: Position::new(0, 0),
+            position: Position::new(0, 0, 0),
             lookahead: (None, None, None),
             indentation: 0,
             keywords: get_keywords(),
@@ -939,7 +939,7 @@ mod tests {
             make_tokenizer("'").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::CharError,
-                position: Position::new(0, 0)
+                position: Position::new(0, 0, 0)
             })
         );
 
@@ -947,7 +947,7 @@ mod tests {
             make_tokenizer("'a").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::CharError,
-                position: Position::new(0, 1)
+                position: Position::new(0, 1, 1)
             })
         );
 
@@ -995,7 +995,7 @@ mod tests {
             make_tokenizer(" a").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::IndentationError,
-                position: Position::new(0, 1)
+                position: Position::new(0, 1, 1)
             })
         );
 
@@ -1003,7 +1003,7 @@ mod tests {
             make_tokenizer("  \ta").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::TabError,
-                position: Position::new(0, 2)
+                position: Position::new(0, 2, 2)
             })
         );
     }
@@ -1047,7 +1047,7 @@ mod tests {
             make_tokenizer("map \ta").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::TabError,
-                position: Position::new(0, 4)
+                position: Position::new(0, 4, 4)
             })
         );
     }

@@ -1,10 +1,11 @@
 use super::indentation::IndentationError;
 use super::tokenizer::{LexicalError, Spanned, Token};
 use lalrpop_util::ParseError;
+use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::compiler::position::Position;
 
-pub type Result<T> = std::result::Result<T, Error>;
+//pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Error {
@@ -26,17 +27,25 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn position_start(&self) -> &Position {
+
+    pub fn diagnostic(&self) -> Diagnostic<()> {
+
         match self {
-            Error::Tokenizer(e) => &e.position,
-            Error::Indentation(IndentationError::IndentationError { spanned, .. }) => &spanned.0,
-            Error::Indentation(IndentationError::NotInitialized) => {
-                panic!("Error shouldn't be reachable")
+            Error::UnexpectedToken { token , expected } => {
+                let (start, token, end) = token;
+                let range = start.absolute..end.absolute;
+
+                Diagnostic::error()
+                    .with_message(format!("unexpected token: `{:?}`", token)) // TODO display instead of debug
+                    .with_labels(vec![
+                        Label::primary((), range).with_message("unexpected token")
+                    ])
+                    .with_notes(vec![
+                        format!("we were expecting one of the following tokens: {:?}", expected).to_owned()
+                    ])
             }
-            Error::InvalidToken(position) => &position,
-            Error::UnexpectedEOF { position, .. } => &position,
-            Error::UnexpectedToken { token, .. } => &token.0,
-            Error::ExtraToken { token } => &token.0,
+
+            _ => todo!(),
         }
     }
 }

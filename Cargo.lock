@@ -684,6 +684,7 @@ name = "zelkova-lang"
 version = "0.1.0"
 dependencies = [
  "codespan",
+ "codespan-reporting",
  "env_logger",
  "indoc",
  "lalrpop",
