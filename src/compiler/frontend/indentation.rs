@@ -506,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn emit_type_declaration_ok() {
+    fn emit_type_declaration_multi_line() {
         let v: Vec<_> = layout(
             tokens_to_spanned(&vec![
                 Token::Type,
@@ -583,11 +583,7 @@ mod tests {
                 Ok(Token::Newline),
                 Err(IndentationError::IndentationError {
                     context: Context::Type(Some(1)),
-                    spanned: (
-                        Position::new(19),
-                        Token::Pipe,
-                        Position::new(20)
-                    ),
+                    spanned: (Position::new(19), Token::Pipe, Position::new(20)),
                 }
                 .into()),
                 Ok(Token::Pipe),

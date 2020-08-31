@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn parser_module_decl_type_definition() {
-        let run_test = |tokens, declarations| {
+        let run_test = |msg, tokens, declarations| {
             let mut base_tokens = vec![
                 Token::Module,
                 ident_token("Main"),
@@ -220,11 +220,11 @@ mod tests {
                 declarations,
             });
 
-            assert_eq!(actual, expected);
+            assert_eq!(actual, expected, "\n{}", msg);
         };
 
-        // Simple type
         run_test(
+            "Constant => main : Int",
             vec![
                 ident_token("main"),
                 Token::Colon,
@@ -233,12 +233,12 @@ mod tests {
             ],
             vec![Declaration::FunctionType(FunType {
                 name: Name("main".to_string()),
-                tpe: Type::Named(Name("Int".to_string())),
+                tpe: Type::unqualified(Name("Int".to_string())),
             })],
         );
 
-        // Function type
         run_test(
+            "Function type => length: String -> Int",
             vec![
                 ident_token("length"),
                 Token::Colon,
@@ -250,14 +250,14 @@ mod tests {
             vec![Declaration::FunctionType(FunType {
                 name: Name("length".to_string()),
                 tpe: Type::Arrow(
-                    Box::new(Type::Named(Name("String".to_string()))),
-                    Box::new(Type::Named(Name("Int".to_string()))),
+                    Box::new(Type::unqualified(Name("String".to_string()))),
+                    Box::new(Type::unqualified(Name("Int".to_string()))),
                 ),
             })],
         );
 
-        // Higher order function type (`(String -> Int) -> String -> Int`)
         run_test(
+            "Higher order function type => (String -> Int) -> String -> Int",
             vec![
                 ident_token("length"),
                 Token::Colon,
@@ -268,41 +268,6 @@ mod tests {
                 Token::RPar,
                 Token::Arrow,
                 ident_token("String"),
-                Token::Arrow,
-                ident_token("Int"),
-                Token::Newline,
-            ],
-            vec![Declaration::FunctionType(FunType {
-                name: Name("length".to_string()),
-                tpe: Type::Arrow(
-                    Box::new(Type::Arrow(
-                        Box::new(Type::Arrow(
-                            Box::new(Type::Named(Name("String".to_string()))),
-                            Box::new(Type::Named(Name("Int".to_string()))),
-                        )),
-                        Box::new(Type::Named(Name("String".to_string()))),
-                    )),
-                    Box::new(Type::Named(Name("Int".to_string()))),
-                ),
-            })],
-        );
-
-        // `(String -> Int) -> (String -> Int) -> Int`)
-        run_test(
-            vec![
-                ident_token("length"),
-                Token::Colon,
-                Token::LPar,
-                ident_token("String"),
-                Token::Arrow,
-                ident_token("Int"),
-                Token::RPar,
-                Token::Arrow,
-                Token::LPar,
-                ident_token("String"),
-                Token::Arrow,
-                ident_token("Int"),
-                Token::RPar,
                 Token::Arrow,
                 ident_token("Int"),
                 Token::Newline,
@@ -312,18 +277,81 @@ mod tests {
                 tpe: Type::Arrow(
                     Box::new(Type::Arrow(
                         Box::new(Type::Arrow(
-                            Box::new(Type::Named(Name("String".to_string()))),
-                            Box::new(Type::Named(Name("Int".to_string()))),
+                            Box::new(Type::unqualified(Name("String".to_string()))),
+                            Box::new(Type::unqualified(Name("Int".to_string()))),
                         )),
-                        Box::new(Type::Arrow(
-                            Box::new(Type::Named(Name("String".to_string()))),
-                            Box::new(Type::Named(Name("Int".to_string()))),
-                        )),
+                        Box::new(Type::unqualified(Name("String".to_string()))),
                     )),
-                    Box::new(Type::Named(Name("Int".to_string()))),
+                    Box::new(Type::unqualified(Name("Int".to_string()))),
                 ),
             })],
         );
+
+        run_test(
+            "(String -> Int) -> (String -> Int) -> Int",
+            vec![
+                ident_token("length"),
+                Token::Colon,
+                Token::LPar,
+                ident_token("String"),
+                Token::Arrow,
+                ident_token("Int"),
+                Token::RPar,
+                Token::Arrow,
+                Token::LPar,
+                ident_token("String"),
+                Token::Arrow,
+                ident_token("Int"),
+                Token::RPar,
+                Token::Arrow,
+                ident_token("Int"),
+                Token::Newline,
+            ],
+            vec![Declaration::FunctionType(FunType {
+                name: Name("length".to_string()),
+                tpe: Type::Arrow(
+                    Box::new(Type::Arrow(
+                        Box::new(Type::Arrow(
+                            Box::new(Type::unqualified(Name("String".to_string()))),
+                            Box::new(Type::unqualified(Name("Int".to_string()))),
+                        )),
+                        Box::new(Type::Arrow(
+                            Box::new(Type::unqualified(Name("String".to_string()))),
+                            Box::new(Type::unqualified(Name("Int".to_string()))),
+                        )),
+                    )),
+                    Box::new(Type::unqualified(Name("Int".to_string()))),
+                ),
+            })],
+        );
+
+        run_test(
+            "polymorphic function type => withDefault : a -> Maybe a -> a",
+            vec![
+                ident_token("withDefault"),
+                Token::Colon,
+                ident_token("a"),
+                Token::Arrow,
+                ident_token("Maybe"),
+                ident_token("a"),
+                Token::Arrow,
+                ident_token("a"),
+                Token::Newline,
+            ],
+            vec![Declaration::FunctionType(FunType {
+                name: name("withDefault"),
+                tpe: Type::Arrow(
+                    Box::new(Type::Arrow(
+                        Box::new(Type::Variable(name("a"))),
+                        Box::new(Type::unqualified_with(
+                            name("Maybe"),
+                            vec![Type::Variable(name("a"))],
+                        )),
+                    )),
+                    Box::new(Type::Variable(name("a"))),
+                ),
+            })],
+        )
     }
 
     #[test]
@@ -594,7 +622,10 @@ mod tests {
             UnionType {
                 name: name("UserStatus"),
                 type_arguments: vec![],
-                variants: vec![(name("Regular"), vec![]), (name("Visitor"), vec![])],
+                variants: vec![
+                    Type::unqualified(name("Regular")),
+                    Type::unqualified(name("Visitor")),
+                ],
             },
         );
 
@@ -609,21 +640,15 @@ mod tests {
                 Token::Type,
                 ident_token("User"),
                 Token::Newline,
-                Token::Indent,
-                Token::Indent,
                 Token::Equal,
                 ident_token("Regular"),
                 ident_token("String"),
                 ident_token("Int"),
                 Token::Newline,
-                Token::Indent,
-                Token::Indent,
                 Token::Pipe,
                 ident_token("Visitor"),
                 ident_token("String"),
                 Token::Newline,
-                Token::Indent,
-                Token::Indent,
                 Token::Pipe,
                 ident_token("Anonymous"),
                 Token::Newline,
@@ -632,12 +657,18 @@ mod tests {
                 name: name("User"),
                 type_arguments: vec![],
                 variants: vec![
-                    (
+                    Type::unqualified_with(
                         name("Regular"),
-                        vec![Type::Named(name("String")), Type::Named(name("Int"))],
+                        vec![
+                            Type::unqualified(name("String")),
+                            Type::unqualified(name("Int")),
+                        ],
                     ),
-                    (name("Visitor"), vec![Type::Named(name("String"))]),
-                    (name("Anonymous"), vec![]),
+                    Type::unqualified_with(
+                        name("Visitor"),
+                        vec![Type::unqualified(name("String"))],
+                    ),
+                    Type::unqualified(name("Anonymous")),
                 ],
             },
         );
@@ -659,14 +690,10 @@ mod tests {
                 ident_token("Maybe"),
                 ident_token("a"),
                 Token::Newline,
-                Token::Indent,
-                Token::Indent,
                 Token::Equal,
                 ident_token("Just"),
                 ident_token("a"),
                 Token::Newline,
-                Token::Indent,
-                Token::Indent,
                 Token::Pipe,
                 ident_token("Nothing"),
                 Token::Newline,
@@ -675,8 +702,8 @@ mod tests {
                 name: name("Maybe"),
                 type_arguments: vec![name("a")],
                 variants: vec![
-                    (name("Just"), vec![Type::Variable(name("a"))]),
-                    (name("Nothing"), vec![]),
+                    Type::unqualified_with(name("Just"), vec![Type::Variable(name("a"))]),
+                    Type::unqualified(name("Nothing")),
                 ],
             },
         );

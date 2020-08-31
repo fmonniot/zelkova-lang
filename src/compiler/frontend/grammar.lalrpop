@@ -161,19 +161,28 @@ Expr = {
 AtomicType: Type = {
     <name:Ident> => {
         if name.is_type() {
-            Type::Named(name)
+            Type::unqualified(name)
         } else {
             Type::Variable(name)
         }
     },
 }
 
-Type: Type = {
+ArgType: Type = {
     AtomicType,
+
+    <name: Ident> <types: AtomicType+> => {
+        Type::unqualified_with(name, types)
+    },
+
+}
+
+Type: Type = {
+    ArgType,
     
     "(" <tpe1:Type> ")" "->" <tpe2:Type> => Type::curry_arrow(tpe1, tpe2),
 
-    <name:AtomicType> "->" <tpe:Type> => Type::curry_arrow(name, tpe),
+    <name:ArgType> "->" <tpe:Type> => Type::curry_arrow(name, tpe),
 }
 
 // TODO Support function types (paired with pattern matching in bind groups)
@@ -213,19 +222,19 @@ Import:Import = {
 //   compile the elm ecosystem if needs be (instead of duplicating)
 // - or should we take on the complex task of changing how indentation is validated
 //   in zelkova ?
-Variant: (Name, Vec<Type>) = {
-    "\n" Indent Indent "=" <Ident> <Type*> => (<>),
-    "\n" Indent Indent "|" <Ident> <Type*> => (<>),
+Variant: Type = {
+    "\n" "=" <Type> => <>,
+    "\n" "|" <Type> => <>,
 }
 
 // The current encoding means we don't support multiline with one variant, like so:
 // type A = \n Indent Constructor
 Union: UnionType = {
-    "type" <name: Ident> <type_arguments: Ident*> "=" <variants: Pipe<Ident>> "\n" => {
+    "type" <name: Ident> <type_arguments: Ident*> "=" <variants: Pipe<Type>> "\n" => {
         UnionType {
             name,
             type_arguments: vec![],
-            variants: variants.into_iter().map(|n| (n, vec![])).collect()
+            variants
         }
     },
     "type" <name: Ident> <type_arguments: Ident*> <variants: Variant+> "\n" => {

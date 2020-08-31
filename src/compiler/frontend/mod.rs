@@ -34,7 +34,8 @@ impl Name {
 /// one no-arg type: `Maybe Int` (this is another name for higher-kinded types)
 #[derive(Debug, PartialEq)]
 pub enum Type {
-    Named(Name), // Unqualified type (without module). TODO Rename
+    /// Type constructor
+    Unqualified(Name, Box<Vec<Type>>),
     Arrow(Box<Type>, Box<Type>),
     // Qualified type eg Maybe.Maybe
     /// type variable
@@ -53,6 +54,14 @@ impl Type {
             }
             _ => Type::Arrow(Box::new(t1), Box::new(t2)),
         }
+    }
+
+    pub fn unqualified(name: Name) -> Type {
+        Type::Unqualified(name, Box::new(vec![]))
+    }
+
+    pub fn unqualified_with(name: Name, types: Vec<Type>) -> Type {
+        Type::Unqualified(name, Box::new(types))
     }
 }
 
@@ -150,7 +159,7 @@ pub struct FunType {
 pub struct UnionType {
     pub name: Name,
     pub type_arguments: Vec<Name>,
-    pub variants: Vec<(Name, Vec<Type>)>,
+    pub variants: Vec<Type>, // TODO Restrict to Type::Unqualified
 }
 
 /// A BindGroup is one of the (possibly) multiple function declaration.
@@ -237,26 +246,26 @@ mod tests {
     fn frontend_type_curry_arrow() {
         // String -> Int
         let arrow1 = Type::Arrow(
-            Box::new(Type::Named(Name("String".to_string()))),
-            Box::new(Type::Named(Name("Int".to_string()))),
+            Box::new(Type::unqualified(Name("String".to_string()))),
+            Box::new(Type::unqualified(Name("Int".to_string()))),
         );
 
         // String -> Int
         let arrow2 = Type::Arrow(
-            Box::new(Type::Named(Name("String".to_string()))),
-            Box::new(Type::Named(Name("Int".to_string()))),
+            Box::new(Type::unqualified(Name("String".to_string()))),
+            Box::new(Type::unqualified(Name("Int".to_string()))),
         );
 
         // (String -> Int) -> String -> Int
         let expected = Type::Arrow(
             Box::new(Type::Arrow(
                 Box::new(Type::Arrow(
-                    Box::new(Type::Named(Name("String".to_string()))),
-                    Box::new(Type::Named(Name("Int".to_string()))),
+                    Box::new(Type::unqualified(Name("String".to_string()))),
+                    Box::new(Type::unqualified(Name("Int".to_string()))),
                 )),
-                Box::new(Type::Named(Name("String".to_string()))),
+                Box::new(Type::unqualified(Name("String".to_string()))),
             )),
-            Box::new(Type::Named(Name("Int".to_string()))),
+            Box::new(Type::unqualified(Name("Int".to_string()))),
         );
 
         assert_eq!(Type::curry_arrow(arrow1, arrow2), expected);
