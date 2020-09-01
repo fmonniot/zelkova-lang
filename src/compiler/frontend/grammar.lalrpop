@@ -143,6 +143,14 @@ InfixExpr = {
     }
 }
 
+Pattern: Pattern = {
+    <Ident> =>
+        Pattern::Variable(<>),
+
+    <Lit> =>
+        Pattern::Literal(<>),
+}
+
 
 Expr = {
     InfixExpr,
@@ -191,12 +199,12 @@ FunType: FunType = <name:Ident> ":" <tpe:Type> => {
 };
 
 // TODO Pattern matching needs to be fleshed out :)
-BindGroup: BindGroup = <name:Ident> "=" <expr:Expr> => {
+BindGroup: BindGroup = <name:Ident> <pattern: Pattern*> "=" <expr:Expr> => {
     BindGroup {
         name,
         patterns: vec![
             Match {
-                pattern: vec![],
+                pattern,
                 body: expr
             }
         ]

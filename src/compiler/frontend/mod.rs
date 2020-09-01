@@ -217,8 +217,8 @@ pub struct Match {
 /// or as part of the `case of` syntax.
 #[derive(Debug, PartialEq)]
 pub enum Pattern {
-    Var(Name),
-    Lit(Literal),
+    Variable(Name),
+    Literal(Literal),
 }
 
 /// An Expression
