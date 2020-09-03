@@ -7,6 +7,7 @@
 //!
 pub mod error;
 pub mod indentation;
+pub mod layout;
 pub mod parser;
 pub mod tokenizer;
 

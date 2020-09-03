@@ -24,3 +24,4 @@ Here is a list of resources I consulted while working on this project:
 - http://steshaw.org/hm/hindley-milner.pdf
 - https://pdfs.semanticscholar.org/8983/233b3dff2c5b94efb31235f62bddc22dc899.pdf (not yet)
 - http://gallium.inria.fr/~fpottier/publis/fpottier-elaboration.pdf (not yet)
+- [_Principled Parsing for Indentation-Sensitive Languages_ by Michael D. Adams](https://michaeldadams.org/papers/layout_parsing/LayoutParsing.pdf)

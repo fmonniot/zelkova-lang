@@ -63,6 +63,12 @@ pub enum Token {
     If,
     Then,
     Else,
+    Let,
+    In,
+
+    // Layout
+    OpenBlock,
+    CloseBlock,
 }
 
 /// An utility function to build a map of reserved
@@ -80,6 +86,8 @@ fn get_keywords() -> HashMap<String, Token> {
     m.insert("if".to_string(), Token::If);
     m.insert("then".to_string(), Token::Then);
     m.insert("else".to_string(), Token::Else);
+    m.insert("let".to_string(), Token::Let);
+    m.insert("in".to_string(), Token::In);
 
     m
 }
@@ -220,7 +228,7 @@ where
             chars: collapser,
             at_line_start: true, // Nothing have been read yet, so…
             processed_tokens: vec![],
-            position: Position::new(0),
+            position: Position::new(0, 1, 1),
             lookahead: (None, None, None),
             indentation: 0,
             keywords: get_keywords(),
@@ -252,9 +260,11 @@ where
         self.lookahead.1 = self.lookahead.2;
         self.lookahead.2 = self.chars.next();
 
-        self.position.increment();
         if current == Some('\n') {
             self.at_line_start = true;
+            self.position.new_line();
+        } else {
+            self.position.increment();
         }
 
         trace!(
@@ -937,7 +947,7 @@ mod tests {
             make_tokenizer("'").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::CharError,
-                position: Position::new(0)
+                position: Position::new(0, 1, 1)
             })
         );
 
@@ -945,7 +955,7 @@ mod tests {
             make_tokenizer("'a").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::CharError,
-                position: Position::new(1)
+                position: Position::new(1, 2, 1)
             })
         );
 
@@ -993,7 +1003,7 @@ mod tests {
             make_tokenizer(" a").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::IndentationError,
-                position: Position::new(1)
+                position: Position::new(1, 2, 1)
             })
         );
 
@@ -1001,7 +1011,7 @@ mod tests {
             make_tokenizer("  \ta").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::TabError,
-                position: Position::new(2)
+                position: Position::new(2, 3, 1)
             })
         );
     }
@@ -1045,7 +1055,7 @@ mod tests {
             make_tokenizer("map \ta").collect::<Result<Vec<_>, _>>(),
             Err(LexicalError {
                 error: LexicalErrorType::TabError,
-                position: Position::new(4)
+                position: Position::new(4, 5, 1)
             })
         );
     }

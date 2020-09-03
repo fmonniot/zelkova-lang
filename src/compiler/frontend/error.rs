@@ -1,4 +1,5 @@
 use super::indentation::IndentationError;
+use super::layout::LayoutError;
 use super::tokenizer::{LexicalError, Spanned, Token};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use lalrpop_util::ParseError;
@@ -11,6 +12,7 @@ use crate::compiler::position::Position;
 pub enum Error {
     Tokenizer(LexicalError),
     Indentation(IndentationError),
+    Layout(LayoutError),
     // Errors coming from the parser
     InvalidToken(Position),
     UnexpectedEOF {
@@ -92,5 +94,11 @@ impl From<LexicalError> for Error {
 impl From<IndentationError> for Error {
     fn from(e: IndentationError) -> Self {
         Error::Indentation(e)
+    }
+}
+
+impl From<LayoutError> for Error {
+    fn from(e: LayoutError) -> Self {
+        Error::Layout(e)
     }
 }
