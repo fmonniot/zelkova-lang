@@ -158,7 +158,7 @@ where
 
                 let mut par_count = 0;
 
-                let last = self.consume_line(false, |tok| match tok {
+                let last = self.emit_line(false, |tok| match tok {
                     Ok((_, Token::LPar, _)) => par_count += 1,
                     Ok((_, Token::RPar, _)) => par_count -= 1,
                     _ => (),
@@ -188,9 +188,11 @@ where
 
             /* We are going to enter a case of construct. Here are the rules:
 
-                case <expression> of \n
-                    indent + 1 <pattern> -> <expression> or \n
-                        indent + 1 <expression>
+                case <e1: expression> of \n
+                    indent + 1 <pattern> -> <e2: expression> or \n
+                        indent + 1 <e3: expression>
+
+                with `e1` and `e2` must be one liner (!= from elm implementation)
 
                 repeate cases until we find something with less indent, at what
                 point we can close the current block.
@@ -199,25 +201,53 @@ where
             (Ok((_, Token::Case, _)), None) => {
                 self.emit_until(|t| t == &Token::Of);
 
+                let t = self.next_token();
+
                 // we require the `of` to be last thing on the line
-                match self.lookahead.0 {
-                    Ok((_, Token::Newline, _)) => self.contexts.push(Context::Case(current_indent + 1)),
-                    Ok(token) => self.emit(Err(Error::UnexpectedToken { token, expected: vec!["\\\n".to_owned()]})),
-                    Err(err) => self.emit(Err(err)), // swallow this indentation error and just emit the original
+                match &t {
+                    Ok((_, Token::Newline, _)) => self.contexts.push(Context::Case(current_indent)),
+                    Ok(token) => self.emit(Err(Error::UnexpectedToken {
+                        token: token.clone(),
+                        expected: vec!["\\\n".to_owned()],
+                    })),
+                    Err(_) => (),
                 }
 
-                let t = self.next_token();
                 self.emit(t);
             }
 
-            (Ok((_, _, _)), Some(Context::Case(expected_indent))) => {
+            (Ok((_, _, _)), Some(Context::Case(case_indent))) => {
                 // Here we can be in multiple state:
                 //  - We are looking at a pattern line without body: ends with an arrow and next line should start at indent + 1
                 //  - We are looking at a body: the indentation should be indent + 1 and we have to evaluate as an expression
                 //                              (meaning that we can potentially have nested construct)
                 //  - We are looking at the end of the case statement: the indentation level is the one of the previous context
 
-                todo!()
+                if current_indent == case_indent + 1 {
+                    let line = self.consume_line();
+                    let line_max_pos = line.len() - 1;
+                    let arrow_pos = line
+                        .iter()
+                        .position(|r| r.as_ref().map(|t| t.1 == Token::Arrow).unwrap_or(false));
+
+                    match arrow_pos {
+                        Some(len) if len == line_max_pos => {
+                            trace!("arrow found in last position")
+                            // TODO self.contexts.push(Context::CaseBranch(current_indent)) // or ::Case(<>)
+                        }
+                        Some(p) => trace!(
+                            "arrow found at {} and line was {} ({:?})",
+                            p,
+                            line_max_pos,
+                            line
+                        ),
+                        None => (), // no arrow found, syntax error by parser
+                    };
+                } else if current_indent == case_indent + 2 {
+                    // Need to have something a bit more principled for nested expression
+                } else {
+                    // TODO indent error or end of case block
+                }
             }
 
             // We enter a type definition section. They can only happens without indentation,
@@ -309,25 +339,30 @@ where
         self.processed_tokens.push(tok);
     }
 
-    /// A shortcut function for `consume_line` which doesn't take a closure
+    /// A shortcut function for `emit_line` which doesn't take a closure
     fn emit_to_end_of_line(&mut self, emit_new_line: bool) -> Option<Result<Spanned, Error>> {
-        self.consume_line(emit_new_line, |_| ())
+        self.emit_line(emit_new_line, |_| ())
     }
 
     /// continuously emit tokens from the source stream until the given closure return true.
-    /// 
+    ///
     /// Note that the indentation iterator will point to the character _following_ the closure
     /// returning true.
-    fn emit_until<F>(&mut self, f: F) where F: Fn(&Token) -> bool {
+    fn emit_until<F>(&mut self, f: F)
+    where
+        F: Fn(&Token) -> bool,
+    {
         loop {
             let token = self.next_token();
             self.emit(token.clone());
 
             match token {
                 Ok((_, Token::EndOfFile, _)) => return,
-                Ok((_, tok, _)) => if f(&tok) {
-                    return
-                },
+                Ok((_, tok, _)) => {
+                    if f(&tok) {
+                        return;
+                    }
+                }
                 Err(_) => (),
             }
         }
@@ -341,7 +376,7 @@ where
     ///
     /// TODO Remove emit_new_line once we have a block concept to use in our grammar.
     /// e.g. the grammar won't need to know about new lines at all.
-    fn consume_line<F>(&mut self, emit_new_line: bool, mut f: F) -> Option<Result<Spanned, Error>>
+    fn emit_line<F>(&mut self, emit_new_line: bool, mut f: F) -> Option<Result<Spanned, Error>>
     where
         F: FnMut(&Result<Spanned, Error>) -> (),
     {
@@ -388,6 +423,23 @@ where
                 _ => f(&self.lookahead.0),
             }
         }
+    }
+
+    /// Consume all source token until a newline/eof token is found and return the consumed token.
+    ///
+    /// The iterator is left pointing to the nl/eof token.
+    fn consume_line(&mut self) -> Vec<Result<Spanned, Error>> {
+        let mut tokens = vec![];
+
+        loop {
+            match self.lookahead.0 {
+                Ok((_, Token::Newline, _)) => break,
+                Ok((_, Token::EndOfFile, _)) => break,
+                _ => tokens.push(self.next_token()),
+            }
+        }
+
+        tokens
     }
 }
 
