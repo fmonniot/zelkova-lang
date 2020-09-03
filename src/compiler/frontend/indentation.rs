@@ -28,6 +28,10 @@ pub enum Context {
 
     /// We are declaring a module.
     Module,
+
+    /// Context for a case expression with the number of indents required
+    /// for each branch expression.
+    Case(u8),
 }
 
 /// The Layout struct is an iterator over a serie of Spanned tokens
@@ -182,6 +186,40 @@ where
                 }
             }
 
+            /* We are going to enter a case of construct. Here are the rules:
+
+                case <expression> of \n
+                    indent + 1 <pattern> -> <expression> or \n
+                        indent + 1 <expression>
+
+                repeate cases until we find something with less indent, at what
+                point we can close the current block.
+
+            */
+            (Ok((_, Token::Case, _)), None) => {
+                self.emit_until(|t| t == &Token::Of);
+
+                // we require the `of` to be last thing on the line
+                match self.lookahead.0 {
+                    Ok((_, Token::Newline, _)) => self.contexts.push(Context::Case(current_indent + 1)),
+                    Ok(token) => self.emit(Err(Error::UnexpectedToken { token, expected: vec!["\\\n".to_owned()]})),
+                    Err(err) => self.emit(Err(err)), // swallow this indentation error and just emit the original
+                }
+
+                let t = self.next_token();
+                self.emit(t);
+            }
+
+            (Ok((_, _, _)), Some(Context::Case(expected_indent))) => {
+                // Here we can be in multiple state:
+                //  - We are looking at a pattern line without body: ends with an arrow and next line should start at indent + 1
+                //  - We are looking at a body: the indentation should be indent + 1 and we have to evaluate as an expression
+                //                              (meaning that we can potentially have nested construct)
+                //  - We are looking at the end of the case statement: the indentation level is the one of the previous context
+
+                todo!()
+            }
+
             // We enter a type definition section. They can only happens without indentation,
             // hence there must be no context available.
             (Ok((_, Token::Type, _)), None) => {
@@ -274,6 +312,25 @@ where
     /// A shortcut function for `consume_line` which doesn't take a closure
     fn emit_to_end_of_line(&mut self, emit_new_line: bool) -> Option<Result<Spanned, Error>> {
         self.consume_line(emit_new_line, |_| ())
+    }
+
+    /// continuously emit tokens from the source stream until the given closure return true.
+    /// 
+    /// Note that the indentation iterator will point to the character _following_ the closure
+    /// returning true.
+    fn emit_until<F>(&mut self, f: F) where F: Fn(&Token) -> bool {
+        loop {
+            let token = self.next_token();
+            self.emit(token.clone());
+
+            match token {
+                Ok((_, Token::EndOfFile, _)) => return,
+                Ok((_, tok, _)) => if f(&tok) {
+                    return
+                },
+                Err(_) => (),
+            }
+        }
     }
 
     /// Emit all tokens until the end of the line, leaving the pointer after the newline/eof
