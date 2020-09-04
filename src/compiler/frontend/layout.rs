@@ -238,7 +238,7 @@ where
                     // mean we have reached the end of the previous block and are
                     // starting a new one.
 
-                    self.reprocess_tokens.push(token.clone());                    
+                    self.reprocess_tokens.push(token.clone());
 
                     // Furthermore in case of implicitely terminated block,
                     // pop the context from the stack and let the parser complain
@@ -316,6 +316,14 @@ mod tests {
             .collect()
     }
 
+    fn test_layout_without_error(source: Vec<Token>, expectation: Vec<Token>) {
+        let v: Vec<_> = layout(tokens_to_spanned(&source).into_iter())
+            .map(|x| x.expect("no error in layout").1)
+            .collect();
+
+        assert_eq!(v, expectation);
+    }
+
     fn ident_token(s: &str) -> Token {
         Token::Identifier {
             name: s.to_string(),
@@ -323,9 +331,9 @@ mod tests {
     }
 
     #[test]
-    fn emit_module_declaration_single_line() {
-        let v: Vec<_> = layout(
-            tokens_to_spanned(&vec![
+    fn module_declaration_single_line() {
+        test_layout_without_error(
+            vec![
                 Token::Module,
                 ident_token("Main"),
                 Token::Exposing,
@@ -335,35 +343,26 @@ mod tests {
                 ident_token("const"),
                 Token::RPar,
                 Token::Newline,
-            ])
-            .into_iter(),
+            ],
+            vec![
+                Token::OpenBlock,
+                Token::Module,
+                ident_token("Main"),
+                Token::Exposing,
+                Token::LPar,
+                ident_token("main"),
+                Token::Comma,
+                ident_token("const"),
+                Token::RPar,
+                Token::CloseBlock,
+            ],
         )
-        .map(|x| x.expect("no error in layout").1)
-        .collect();
-
-        let expected: Vec<_> = tokens_to_spanned(&vec![
-            Token::OpenBlock,
-            Token::Module,
-            ident_token("Main"),
-            Token::Exposing,
-            Token::LPar,
-            ident_token("main"),
-            Token::Comma,
-            ident_token("const"),
-            Token::RPar,
-            Token::CloseBlock,
-        ])
-        .into_iter()
-        .map(|x| x.expect("no error in layout").1)
-        .collect();
-
-        assert_eq!(v, expected);
     }
 
     #[test]
-    fn emit_module_declaration_multi_line() {
-        let v: Vec<_> = layout(
-            tokens_to_spanned(&vec![
+    fn module_declaration_multi_line() {
+        test_layout_without_error(
+            vec![
                 Token::Module,
                 ident_token("Maybe"),
                 Token::Exposing,
@@ -386,40 +385,31 @@ mod tests {
                 Token::Indent,
                 Token::RPar,
                 Token::Newline,
-            ])
-            .into_iter(),
+            ],
+            vec![
+                Token::OpenBlock,
+                Token::Module,
+                ident_token("Maybe"),
+                Token::Exposing,
+                Token::LPar,
+                ident_token("Maybe"),
+                Token::LPar,
+                Token::DotDot,
+                Token::RPar,
+                Token::Comma,
+                ident_token("andThen"),
+                Token::Comma,
+                ident_token("map"),
+                Token::RPar,
+                Token::CloseBlock,
+            ],
         )
-        .map(|x| x.expect("no error in layout").1)
-        .collect();
-
-        let expected = tokens_to_spanned(&vec![
-            Token::OpenBlock,
-            Token::Module,
-            ident_token("Maybe"),
-            Token::Exposing,
-            Token::LPar,
-            ident_token("Maybe"),
-            Token::LPar,
-            Token::DotDot,
-            Token::RPar,
-            Token::Comma,
-            ident_token("andThen"),
-            Token::Comma,
-            ident_token("map"),
-            Token::RPar,
-            Token::CloseBlock,
-        ])
-        .into_iter()
-        .map(|x| x.expect("no error in layout").1)
-        .collect::<Vec<_>>();
-
-        assert_eq!(v, expected);
     }
 
     #[test]
-    fn emit_type_declaration_multi_line() {
-        let v: Vec<_> = layout(
-            tokens_to_spanned(&vec![
+    fn type_declaration_multi_line() {
+        test_layout_without_error(
+            vec![
                 Token::Type,
                 ident_token("Maybe"),
                 ident_token("a"),
@@ -433,14 +423,7 @@ mod tests {
                 Token::Pipe,
                 ident_token("Nothing"),
                 Token::Newline,
-            ])
-            .into_iter(),
-        )
-        .map(|x| x.expect("no error in layout").1)
-        .collect();
-
-        assert_eq!(
-            v,
+            ],
             vec![
                 Token::OpenBlock,
                 Token::Type,
@@ -452,14 +435,14 @@ mod tests {
                 Token::Pipe,
                 ident_token("Nothing"),
                 Token::CloseBlock,
-            ]
-        );
+            ],
+        )
     }
 
     #[test]
     fn top_level_implicit_code_block() {
-        let v: Vec<_> = layout(
-            tokens_to_spanned(&vec![
+        test_layout_without_error(
+            vec![
                 Token::Type,
                 ident_token("Maybe"),
                 ident_token("a"),
@@ -472,31 +455,23 @@ mod tests {
                 Token::Pipe,
                 ident_token("Nothing"),
                 Token::Newline,
-            ])
-            .into_iter(),
-        )
-        .map(|x| x.map(|s| s.1))
-        .collect();
-
-
-        assert_eq!(
-            v,
+            ],
             vec![
-                Ok(Token::OpenBlock),
-                Ok(Token::Type),
-                Ok(ident_token("Maybe")),
-                Ok(ident_token("a")),
-                Ok(Token::Equal),
-                Ok(ident_token("Just")),
-                Ok(ident_token("a")),
-                Ok(Token::CloseBlock),
+                Token::OpenBlock,
+                Token::Type,
+                ident_token("Maybe"),
+                ident_token("a"),
+                Token::Equal,
+                ident_token("Just"),
+                ident_token("a"),
+                Token::CloseBlock,
                 // Because we missed the indent, we went back to the beginning
                 // of the line and triggered a new block.
-                Ok(Token::OpenBlock),
-                Ok(Token::Pipe),
-                Ok(ident_token("Nothing")),
-                Ok(Token::CloseBlock),
-            ]
-        );
+                Token::OpenBlock,
+                Token::Pipe,
+                ident_token("Nothing"),
+                Token::CloseBlock,
+            ],
+        )
     }
 }
