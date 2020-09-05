@@ -153,18 +153,16 @@ where
     fn handle_next_token(&mut self) -> Result<Spanned, Error> {
         let token = self.next_token()?;
 
-        // Short circuit handling of EOF, unless we have some indentation
-        // level to pop.
+        // Short circuit handling of EOF, and verify we don't have any
+        // remaining contexts to clean.
         if let (start, Token::EndOfFile, end) = &token {
-            // We need to clean up all the accumulated contexts
-            while let Some(offside) = self.contexts.pop() {
-                if offside.context == Context::TopLevelDeclaration {
+            return match self.contexts.pop() {
+                Some(offside) => {
                     self.reprocess_tokens.push(token.clone());
-                    return Ok((*start, Token::CloseBlock, *end));
+                    Ok((*start, Token::CloseBlock, *end))
                 }
-            }
-
-            return Ok(token);
+                None => Ok(token),
+            };
         }
 
         // Retrieve the current offside and, if none exists, create one,
@@ -198,7 +196,7 @@ where
             indentation. Probably something loosely based on what elm-format recommend. Let's be draconian and enforce uniformity :pirate:.
         */
 
-        println!("step 1: {:?}, offside: {:?}", token.1, offside);
+        trace!("step 1: {:?}, offside: {:?}", token.1, offside);
 
         // First, we check if we have a closing token with an associated context.
         // If we do, let's remove the context and return the token
@@ -256,9 +254,11 @@ where
             let token_column = token.0.column;
             let context_column = offside.indent;
 
-            println!(
+            trace!(
                 "step 2: {:?}, token:{:?}, context:{:?}",
-                offside.context, token_column, context_column
+                offside.context,
+                token_column,
+                context_column
             );
 
             match &offside.context {
@@ -303,9 +303,12 @@ where
 
         // Third, we create new tokens, new contexts and emit block tokens as required
 
-        println!(
+        trace!(
             "step 3: {:?} ({}:{}), context: {:?}",
-            token.1, token.0.column, token.2.column, offside.context
+            token.1,
+            token.0.column,
+            token.2.column,
+            offside.context
         );
         match (&token.1, &offside.context) {
             (Token::Case, _) => {
@@ -331,10 +334,10 @@ where
                 indent: token.0.column + 1,
                 line: token.0.line,
             }),
-            (Token::Arrow, Context::CaseBlock(_)) => {
+            (Token::Arrow, Context::CaseBlock(Some(min_indent))) => {
                 self.contexts.push(Offside {
                     context: Context::CaseBranch,
-                    indent: offside.indent + 1,
+                    indent: min_indent + 1,
                     line: token.0.line,
                 });
                 self.reprocess_tokens
@@ -376,8 +379,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let res = self.handle_next_token();
-
-        println!("step 4: {:?}\n", res);
+        trace!("step 4: {:?}", res);
 
         match res {
             Ok((_, Token::EndOfFile, _)) => None,
@@ -599,37 +601,37 @@ mod tests {
                 ident_token("maybe"),
                 Token::Equal,
                 Token::Newline,
-                  Token::Indent,
-                  Token::Case,
-                  ident_token("maybe"),
-                  Token::Of,
-                  Token::Newline,
-                    Token::Indent,
-                    Token::Indent,
-                    ident_token("Just"),
-                    ident_token("value"),
-                    Token::Arrow,
-                    Token::Newline,
-                      Token::Indent,
-                      Token::Indent,
-                      Token::Indent,
-                      ident_token("Just"),
-                      Token::LPar,
-                      ident_token("f"),
-                      ident_token("value"),
-                      Token::RPar,
-                      Token::Newline,
+                Token::Indent,
+                Token::Case,
+                ident_token("maybe"),
+                Token::Of,
                 Token::Newline,
-                    Token::Indent,
-                    Token::Indent,
-                    ident_token("Nothing"),
-                    Token::Arrow,
-                    Token::Newline,
-                      Token::Indent,
-                      Token::Indent,
-                      Token::Indent,
-                      ident_token("Nothing"),
-                      Token::Newline,
+                Token::Indent,
+                Token::Indent,
+                ident_token("Just"),
+                ident_token("value"),
+                Token::Arrow,
+                Token::Newline,
+                Token::Indent,
+                Token::Indent,
+                Token::Indent,
+                ident_token("Just"),
+                Token::LPar,
+                ident_token("f"),
+                ident_token("value"),
+                Token::RPar,
+                Token::Newline,
+                Token::Newline,
+                Token::Indent,
+                Token::Indent,
+                ident_token("Nothing"),
+                Token::Arrow,
+                Token::Newline,
+                Token::Indent,
+                Token::Indent,
+                Token::Indent,
+                ident_token("Nothing"),
+                Token::Newline,
             ],
             vec![
                 Token::OpenBlock,
@@ -637,28 +639,28 @@ mod tests {
                 ident_token("f"),
                 ident_token("maybe"),
                 Token::Equal,
-                  Token::Case,
-                  Token::OpenBlock,
-                  ident_token("maybe"),
-                  Token::CloseBlock,
-                  Token::Of,
-                  Token::OpenBlock,
-                    ident_token("Just"),
-                    ident_token("value"),
-                    Token::Arrow,
-                    Token::OpenBlock,
-                      ident_token("Just"),
-                      Token::LPar,
-                      ident_token("f"),
-                      ident_token("value"),
-                      Token::RPar,
-                    Token::CloseBlock,
-                    ident_token("Nothing"),
-                    Token::Arrow,
-                    Token::OpenBlock,
-                      ident_token("Nothing"),
-                    Token::CloseBlock,
-                  Token::CloseBlock,
+                Token::Case,
+                Token::OpenBlock,
+                ident_token("maybe"),
+                Token::CloseBlock,
+                Token::Of,
+                Token::OpenBlock,
+                ident_token("Just"),
+                ident_token("value"),
+                Token::Arrow,
+                Token::OpenBlock,
+                ident_token("Just"),
+                Token::LPar,
+                ident_token("f"),
+                ident_token("value"),
+                Token::RPar,
+                Token::CloseBlock,
+                ident_token("Nothing"),
+                Token::Arrow,
+                Token::OpenBlock,
+                ident_token("Nothing"),
+                Token::CloseBlock,
+                Token::CloseBlock,
                 Token::CloseBlock,
             ],
         )
