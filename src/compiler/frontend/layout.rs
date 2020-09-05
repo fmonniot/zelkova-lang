@@ -22,12 +22,31 @@ pub fn layout<I: Iterator<Item = Result<Spanned, Error>>>(
 /// Context represent the kind of expression we are looking at.
 ///
 /// It let us associate context-aware indentation rules
-// TODO Remove context parameters
+///
+/// ## Examples
+/// Here is an example of context for a pattern matching expression
+///
+/// ```
+///    case maybe of
+///         |---| is a CaseExpression
+/// |-   Just value ->       -|
+/// |      Just (f value)    -|- is a CaseBranch
+/// |    Nothing ->        -|
+/// |-     Nothing         -|- is a second CaseBranch
+/// |
+/// |-- is a `CaseBlock`
+/// ```
 #[derive(Debug, PartialEq, Clone)]
 pub enum Context {
-    /// Context for a case expression with the number of indents required
-    /// for each branch expression.
-    Case,
+    /// Context for the expression a pattern matching will match on
+    CaseExpression,
+
+    /// Context for the block containing the different matches of a catch/of
+    /// A case block minimum indentation is set by the first token after the block is opened
+    CaseBlock(Option<usize>),
+
+    /// Context for a branch in a case/of expression.
+    CaseBranch,
 
     /// Context for a let expression
     Let,
@@ -152,7 +171,7 @@ where
         // put the current token on the back burner and emit the new block.
         // In theory this should only happens when we are looking at a top
         // level declaration (or it's a bug)
-        let offside = match self.contexts.last() {
+        let mut offside = match self.contexts.stack.last_mut() {
             Some(offside) => offside,
             None => {
                 let off = Offside {
@@ -167,6 +186,7 @@ where
             }
         };
 
+        // TODO Move this to the structure documentation
         /*  Elm has surprisingly few indentation rules:
             - case <> of must be followed by branches on indent + 1 level, and the content of each branch must be indent + 1 if on a next line
             - let <> in <>: the first block must be indent + 1 compared to the let keyword, and the in expression must be on indent + 1 of the _parent_ block
@@ -178,21 +198,30 @@ where
             indentation. Probably something loosely based on what elm-format recommend. Let's be draconian and enforce uniformity :pirate:.
         */
 
-        trace!("token: {:?}, offside: {:?}", token, offside);
+        println!("step 1: {:?}, offside: {:?}", token.1, offside);
 
         // First, we check if we have a closing token with an associated context.
         // If we do, let's remove the context and return the token
-        match (&token.1, &offside.context) {
-            (Token::Of, Context::Case) => {
+        match (&token.1, &mut offside.context) {
+            (Token::Of, Context::CaseExpression) => {
                 // TODO Strange thing is, this might probably be wrong in retrospect.
                 // Needs to investigate the parser, but we will probably need a case
                 // block after Of, to group the different branches.
                 self.contexts.pop();
-                return Ok(token);
+                self.reprocess_tokens.push(token.clone());
+                return Ok((token.0, Token::CloseBlock, token.2));
+            }
+            (Token::OpenBlock, Context::CaseBlock(None)) => (),
+            (_, Context::CaseBlock(c @ None)) => {
+                // Here we are seeing the first token after opening the block, and
+                // this token set the minimum indentation for the block.
+                c.replace(token.0.column);
             }
             (Token::In, Context::Let) => {
                 // TODO akin to of/case above, we might have to create a let/in block
                 // to let the parser know when the let part ended. Not sure yet.
+                // TODO We might need to check for the `in` indentation here, needs to be
+                // same as `let`.
                 self.contexts.pop();
                 return Ok(token);
             }
@@ -203,8 +232,65 @@ where
             _ => (),
         }
 
-        // Second, we enforce the indentation rules we have on record
-        match token.0.column.cmp(&offside.indent) {
+        // Now that we have checked explicit context poping, let's check the implicit one.
+        // These apply to contexts which are terminated by simply having a token on a column
+        // less than the one required by the context.
+        let offside = loop {
+            // We repeat the contexts checking here, because we are going to remove contexts
+            // and
+            let offside = match self.contexts.last() {
+                Some(offside) => offside,
+                None => {
+                    let off = Offside {
+                        context: Context::TopLevelDeclaration,
+                        indent: token.0.column,
+                        line: token.0.line,
+                    };
+                    self.contexts.push(off);
+
+                    self.reprocess_tokens.push(token.clone());
+                    return Ok((token.0, Token::OpenBlock, token.0));
+                }
+            };
+
+            let token_column = token.0.column;
+            let context_column = offside.indent;
+
+            println!(
+                "step 2: {:?}, token:{:?}, context:{:?}",
+                offside.context, token_column, context_column
+            );
+
+            match &offside.context {
+                // case branch terminates when we have a token at a level
+                Context::CaseBranch | Context::CaseBlock(_) => {
+                    if token_column <= context_column {
+                        //   value // token
+                        // Nothing // context
+                        // i i
+                        // Here we have a token on an indentation level lower than the case
+                        // context, so we close that context.
+                        self.contexts.pop();
+                        self.reprocess_tokens.push(token.clone());
+                        return Ok((token.0, Token::CloseBlock, token.2));
+                    }
+                }
+
+                // let and top level declaration aren't managed here
+                // although tld could be.
+                _ => (),
+            };
+
+            break offside;
+        };
+
+        // Second, we enforce the indentation rule we have on record
+        let min_indent_required = match &offside.context {
+            Context::CaseBlock(Some(min)) => min,
+            _ => &offside.indent,
+        };
+
+        match token.0.column.cmp(min_indent_required) {
             Ordering::Less => {
                 let offside = offside.clone();
 
@@ -215,23 +301,47 @@ where
             ord => (), // ok
         };
 
-        // Third, we create new tokens and emit block tokens as required
+        // Third, we create new tokens, new contexts and emit block tokens as required
 
-        match token.1 {
-            Token::Case => {
+        println!(
+            "step 3: {:?} ({}:{}), context: {:?}",
+            token.1, token.0.column, token.2.column, offside.context
+        );
+        match (&token.1, &offside.context) {
+            (Token::Case, _) => {
                 self.contexts.push(Offside {
-                    context: Context::Case,
+                    context: Context::CaseExpression,
                     indent: token.0.column + 1,
                     line: token.0.line,
                 });
+                self.reprocess_tokens
+                    .push((token.2, Token::OpenBlock, token.2));
             }
-            Token::Let => self.contexts.push(Offside {
+            (Token::Of, c) => {
+                self.contexts.push(Offside {
+                    context: Context::CaseBlock(None),
+                    indent: offside.indent + 1,
+                    line: token.0.line,
+                });
+                self.reprocess_tokens
+                    .push((token.2, Token::OpenBlock, token.2));
+            }
+            (Token::Let, _) => self.contexts.push(Offside {
                 context: Context::Let,
                 indent: token.0.column + 1,
                 line: token.0.line,
             }),
-            Token::OpenBlock => (),
-            _ => {
+            (Token::Arrow, Context::CaseBlock(_)) => {
+                self.contexts.push(Offside {
+                    context: Context::CaseBranch,
+                    indent: offside.indent + 1,
+                    line: token.0.line,
+                });
+                self.reprocess_tokens
+                    .push((token.2, Token::OpenBlock, token.2));
+            }
+            (Token::OpenBlock, _) => (),
+            (t, c) => {
                 if token.0.column == 1 && token.0.line > offside.line {
                     // Here we have a token which isn't OpenBlock (special case above)
                     // but which is at the beginning of a new line. This most probably
@@ -249,7 +359,7 @@ where
                         self.contexts.pop();
                     }
 
-                    return Ok((token.0, Token::CloseBlock, token.2));
+                    return Ok((token.0, Token::CloseBlock, token.0));
                 }
             }
         }
@@ -265,7 +375,11 @@ where
     type Item = Result<Spanned, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.handle_next_token() {
+        let res = self.handle_next_token();
+
+        println!("step 4: {:?}\n", res);
+
+        match res {
             Ok((_, Token::EndOfFile, _)) => None,
             tok => Some(tok),
         }
@@ -299,7 +413,8 @@ mod tests {
                     Token::Indent => 2,
                     Token::Pipe => 1,
                     Token::Equal => 1,
-                    Token::Type => 4,
+                    Token::Type | Token::Case => 4,
+                    Token::Of | Token::Arrow => 2,
                     _ => 0,
                 };
 
@@ -470,6 +585,80 @@ mod tests {
                 Token::OpenBlock,
                 Token::Pipe,
                 ident_token("Nothing"),
+                Token::CloseBlock,
+            ],
+        )
+    }
+
+    #[test]
+    fn top_level_case_expression() {
+        test_layout_without_error(
+            vec![
+                ident_token("map"),
+                ident_token("f"),
+                ident_token("maybe"),
+                Token::Equal,
+                Token::Newline,
+                  Token::Indent,
+                  Token::Case,
+                  ident_token("maybe"),
+                  Token::Of,
+                  Token::Newline,
+                    Token::Indent,
+                    Token::Indent,
+                    ident_token("Just"),
+                    ident_token("value"),
+                    Token::Arrow,
+                    Token::Newline,
+                      Token::Indent,
+                      Token::Indent,
+                      Token::Indent,
+                      ident_token("Just"),
+                      Token::LPar,
+                      ident_token("f"),
+                      ident_token("value"),
+                      Token::RPar,
+                      Token::Newline,
+                Token::Newline,
+                    Token::Indent,
+                    Token::Indent,
+                    ident_token("Nothing"),
+                    Token::Arrow,
+                    Token::Newline,
+                      Token::Indent,
+                      Token::Indent,
+                      Token::Indent,
+                      ident_token("Nothing"),
+                      Token::Newline,
+            ],
+            vec![
+                Token::OpenBlock,
+                ident_token("map"),
+                ident_token("f"),
+                ident_token("maybe"),
+                Token::Equal,
+                  Token::Case,
+                  Token::OpenBlock,
+                  ident_token("maybe"),
+                  Token::CloseBlock,
+                  Token::Of,
+                  Token::OpenBlock,
+                    ident_token("Just"),
+                    ident_token("value"),
+                    Token::Arrow,
+                    Token::OpenBlock,
+                      ident_token("Just"),
+                      Token::LPar,
+                      ident_token("f"),
+                      ident_token("value"),
+                      Token::RPar,
+                    Token::CloseBlock,
+                    ident_token("Nothing"),
+                    Token::Arrow,
+                    Token::OpenBlock,
+                      ident_token("Nothing"),
+                    Token::CloseBlock,
+                  Token::CloseBlock,
                 Token::CloseBlock,
             ],
         )
