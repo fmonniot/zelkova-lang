@@ -27,7 +27,7 @@ pub fn compile_file<P: AsRef<Path>>(path: P) {
     let tokenizer = frontend::tokenizer::make_tokenizer(&source).map(|r| r.map_err(|e| e.into()));
 
     // Then manage the indentation aspect of our code
-    let indented = frontend::indentation::layout(tokenizer);
+    let indented = frontend::layout::layout(tokenizer);
 
     // Some debug instruction to easily find errors early on.
     // This is for development only, and we should have a better error reporting

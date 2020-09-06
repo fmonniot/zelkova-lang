@@ -17,9 +17,8 @@ extern {
         "char"       => Token::Char { value: <char> },
 
         // layout
-        "\n"   => Token::Newline,
-        Indent => Token::Indent,
-        Dedent => Token::Dedent,
+        "open block" => Token::OpenBlock,
+        "close block" => Token::CloseBlock,
         
         // Symbol
         "("  => Token::LPar,
@@ -211,60 +210,6 @@ BindGroup: BindGroup = <name:Ident> <pattern: Pattern*> "=" <expr:Expr> => {
     }
 };
 
-Import:Import = {
-    "import" <name: Ident> <alias: ("as" <Ident>)?> <exposing: ("exposing" <Exposing>)?> => {
-        let exposing = exposing.unwrap_or_else(|| Exposing::Explicit(vec![]));
-
-        Import {
-            name,
-            alias,
-            exposing,
-        }
-    }
-}
-
-// Annoyingly here it could be double indent or not
-// TODO Sort out the identation. It can be 2 or 4 spaces, as long as it is consistent…
-// I'm of two mind here:
-// - should we deviate from the elm implementation, at the risk of not being able to
-//   compile the elm ecosystem if needs be (instead of duplicating)
-// - or should we take on the complex task of changing how indentation is validated
-//   in zelkova ?
-Variant: Type = {
-    "\n" "=" <Type> => <>,
-    "\n" "|" <Type> => <>,
-}
-
-// The current encoding means we don't support multiline with one variant, like so:
-// type A = \n Indent Constructor
-Union: UnionType = {
-    "type" <name: Ident> <type_arguments: Ident*> "=" <variants: Pipe<Type>> "\n" => {
-        UnionType {
-            name,
-            type_arguments: vec![],
-            variants
-        }
-    },
-    "type" <name: Ident> <type_arguments: Ident*> <variants: Variant+> "\n" => {
-        UnionType {
-            name,
-            type_arguments,
-            variants
-        }
-    },
-}
-
-
-Decl: Option<Declaration> = {
-    <BindGroup> "\n" => Some(Declaration::Function(<>)),
-    <FunType> "\n" => Some(Declaration::FunctionType(<>)),
-    <Import> "\n" => Some(Declaration::Import(<>)),
-    <Union> => Some(Declaration::Union(<>)),
-    "\n" => None,
-};
-
-// Module
-
 Exposed: Exposed = {
     // TODO Most operators have explicit tokens, which might
     // or might not be a good thing after all.
@@ -287,22 +232,45 @@ Exposed: Exposed = {
 Exposing: Exposing = {
     "(" ".." ")" => Exposing::Open,
     "(" <e: Comma<Exposed>> ")" => Exposing::Explicit(<>),
-    "\n" Indent "(" <e1: Exposed> <e: ("\n" Indent "," <Comma<Exposed>>)*> "\n" Indent ")" => {
-        let mut explicits = vec![e1];
-        explicits.extend(e.into_iter().flatten());
-        
-        Exposing::Explicit(explicits)
-    }
 };
+
+Import:Import = {
+    "import" <name: Ident> <alias: ("as" <Ident>)?> <exposing: ("exposing" <Exposing>)?> => {
+        let exposing = exposing.unwrap_or_else(|| Exposing::Explicit(vec![]));
+
+        Import {
+            name,
+            alias,
+            exposing,
+        }
+    }
+}
+
+Union: UnionType = {
+    "type" <name: Ident> <type_arguments: Ident*> "=" <variants: Pipe<Type>> => {
+        UnionType {
+            name,
+            type_arguments,
+            variants
+        }
+    },
+}
+
+
+Decl: Declaration = {
+    "open block" <BindGroup> "close block" => Declaration::Function(<>),
+    "open block" <FunType> "close block" => Declaration::FunctionType(<>),
+    "open block" <Import> "close block" => Declaration::Import(<>),
+    "open block" <Union> "close block" => Declaration::Union(<>),
+};
+
+// Module
 
 // entry point for our parser, a source file always start by
 // declaring the module
-pub Module: Module = "module" <name: Ident> "exposing" <exposing:Exposing> "\n" <decl:Decl*> => {
-    Module {
-        name,
-        exposing,
-        declarations: decl.into_iter().flatten().collect(),
-    }
-};
+pub Module: Module = 
+    "open block"
+        "module" <name: Ident> "exposing" <exposing:Exposing>
+    "close block" <declarations:Decl*> => Module { <> };
 
 // TODO Maybe something for the REPL. Might just be Decl.

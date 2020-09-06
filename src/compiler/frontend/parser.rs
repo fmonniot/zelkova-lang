@@ -60,13 +60,14 @@ mod tests {
     fn parser_module_decl_simple_expression() {
         let run_test = |tokens, body| {
             let mut base_tokens = vec![
+                Token::OpenBlock,
                 Token::Module,
                 ident_token("Main"),
                 Token::Exposing,
                 Token::LPar,
                 ident_token("main"),
                 Token::RPar,
-                Token::Newline,
+                Token::CloseBlock,
             ];
 
             base_tokens.extend(tokens);
@@ -91,10 +92,11 @@ mod tests {
         // constant
         run_test(
             vec![
+                Token::OpenBlock,
                 ident_token("main"),
                 Token::Equal,
                 Token::Integer { value: 42 },
-                Token::Newline,
+                Token::CloseBlock,
             ],
             Expression::Lit(Literal::Int(42)),
         );
@@ -102,10 +104,11 @@ mod tests {
         // single variable
         run_test(
             vec![
+                Token::OpenBlock,
                 ident_token("main"),
                 Token::Equal,
                 ident_token("myvar"),
-                Token::Newline,
+                Token::CloseBlock,
             ],
             Expression::Variable(Name("myvar".to_string())),
         );
@@ -113,12 +116,13 @@ mod tests {
         // function application (`map myfunction 42`)
         run_test(
             vec![
+                Token::OpenBlock,
                 ident_token("main"),
                 Token::Equal,
                 ident_token("map"),
                 ident_token("myfunction"),
                 Token::Integer { value: 2 },
-                Token::Newline,
+                Token::CloseBlock,
             ],
             Expression::Application(
                 // map: (a -> b) -> a -> b
@@ -135,6 +139,7 @@ mod tests {
         // function application with parenthesis (`(map myfunction) 42`)
         run_test(
             vec![
+                Token::OpenBlock,
                 ident_token("main"),
                 Token::Equal,
                 Token::LPar,
@@ -142,7 +147,7 @@ mod tests {
                 ident_token("myfunction"),
                 Token::RPar,
                 Token::Integer { value: 2 },
-                Token::Newline,
+                Token::CloseBlock,
             ],
             Expression::Application(
                 // map: (a -> b) -> a -> b
@@ -159,12 +164,13 @@ mod tests {
         // infix operation
         run_test(
             vec![
+                Token::OpenBlock,
                 ident_token("main"),
                 Token::Equal,
                 Token::Integer { value: 2 },
                 Token::Plus,
                 Token::Integer { value: 3 },
-                Token::Newline,
+                Token::CloseBlock,
             ],
             Expression::Application(
                 // map: (a -> b) -> a -> b
@@ -181,6 +187,7 @@ mod tests {
         // tuple
         run_test(
             vec![
+                Token::OpenBlock,
                 ident_token("main"),
                 Token::Equal,
                 Token::LPar,
@@ -188,7 +195,7 @@ mod tests {
                 Token::Comma,
                 Token::Integer { value: 3 },
                 Token::RPar,
-                Token::Newline,
+                Token::CloseBlock,
             ],
             Expression::Tuple(Box::new(vec![
                 Expression::Lit(Literal::Int(2)),
@@ -201,13 +208,14 @@ mod tests {
     fn parser_module_decl_type_definition() {
         let run_test = |msg, tokens, declarations| {
             let mut base_tokens = vec![
+                Token::OpenBlock,
                 Token::Module,
                 ident_token("Main"),
                 Token::Exposing,
                 Token::LPar,
                 ident_token("main"),
                 Token::RPar,
-                Token::Newline,
+                Token::CloseBlock,
             ];
 
             base_tokens.extend(tokens);
@@ -226,10 +234,11 @@ mod tests {
         run_test(
             "Constant => main : Int",
             vec![
+                Token::OpenBlock,
                 ident_token("main"),
                 Token::Colon,
                 ident_token("Int"),
-                Token::Newline,
+                Token::CloseBlock,
             ],
             vec![Declaration::FunctionType(FunType {
                 name: Name("main".to_string()),
@@ -240,12 +249,13 @@ mod tests {
         run_test(
             "Function type => length: String -> Int",
             vec![
+                Token::OpenBlock,
                 ident_token("length"),
                 Token::Colon,
                 ident_token("String"),
                 Token::Arrow,
                 ident_token("Int"),
-                Token::Newline,
+                Token::CloseBlock,
             ],
             vec![Declaration::FunctionType(FunType {
                 name: Name("length".to_string()),
@@ -259,6 +269,7 @@ mod tests {
         run_test(
             "Higher order function type => (String -> Int) -> String -> Int",
             vec![
+                Token::OpenBlock,
                 ident_token("length"),
                 Token::Colon,
                 Token::LPar,
@@ -270,7 +281,7 @@ mod tests {
                 ident_token("String"),
                 Token::Arrow,
                 ident_token("Int"),
-                Token::Newline,
+                Token::CloseBlock,
             ],
             vec![Declaration::FunctionType(FunType {
                 name: Name("length".to_string()),
@@ -290,6 +301,7 @@ mod tests {
         run_test(
             "(String -> Int) -> (String -> Int) -> Int",
             vec![
+                Token::OpenBlock,
                 ident_token("length"),
                 Token::Colon,
                 Token::LPar,
@@ -305,7 +317,7 @@ mod tests {
                 Token::RPar,
                 Token::Arrow,
                 ident_token("Int"),
-                Token::Newline,
+                Token::CloseBlock,
             ],
             vec![Declaration::FunctionType(FunType {
                 name: Name("length".to_string()),
@@ -328,6 +340,7 @@ mod tests {
         run_test(
             "polymorphic function type => withDefault : a -> Maybe a -> a",
             vec![
+                Token::OpenBlock,
                 ident_token("withDefault"),
                 Token::Colon,
                 ident_token("a"),
@@ -336,7 +349,7 @@ mod tests {
                 ident_token("a"),
                 Token::Arrow,
                 ident_token("a"),
-                Token::Newline,
+                Token::CloseBlock,
             ],
             vec![Declaration::FunctionType(FunType {
                 name: name("withDefault"),
@@ -358,24 +371,28 @@ mod tests {
     fn parser_module_decl_imports() {
         let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(vec![
             // module MyModule exposing (..)
+            Token::OpenBlock,
             Token::Module,
             ident_token("MyModule"),
             Token::Exposing,
             Token::LPar,
             Token::DotDot,
             Token::RPar,
-            Token::Newline,
+            Token::CloseBlock,
             // import List
+            Token::OpenBlock,
             Token::Import,
             ident_token("List"),
-            Token::Newline,
+            Token::CloseBlock,
             // import List as L
+            Token::OpenBlock,
             Token::Import,
             ident_token("List"),
             Token::As,
             ident_token("L"),
-            Token::Newline,
+            Token::CloseBlock,
             // import List as L exposing (..)
+            Token::OpenBlock,
             Token::Import,
             ident_token("List"),
             Token::As,
@@ -384,16 +401,18 @@ mod tests {
             Token::LPar,
             Token::DotDot,
             Token::RPar,
-            Token::Newline,
+            Token::CloseBlock,
             // import List exposing (..)
+            Token::OpenBlock,
             Token::Import,
             ident_token("List"),
             Token::Exposing,
             Token::LPar,
             Token::DotDot,
             Token::RPar,
-            Token::Newline,
+            Token::CloseBlock,
             // import List exposing ( map, foldl )
+            Token::OpenBlock,
             Token::Import,
             ident_token("List"),
             Token::Exposing,
@@ -402,16 +421,18 @@ mod tests {
             Token::Comma,
             ident_token("foldl"),
             Token::RPar,
-            Token::Newline,
+            Token::CloseBlock,
             // import Maybe exposing ( Maybe )
+            Token::OpenBlock,
             Token::Import,
             ident_token("Maybe"),
             Token::Exposing,
             Token::LPar,
             ident_token("Maybe"),
             Token::RPar,
-            Token::Newline,
+            Token::CloseBlock,
             // import Maybe exposing ( Maybe(..) )
+            Token::OpenBlock,
             Token::Import,
             ident_token("Maybe"),
             Token::Exposing,
@@ -421,7 +442,7 @@ mod tests {
             Token::DotDot,
             Token::RPar,
             Token::RPar,
-            Token::Newline,
+            Token::CloseBlock,
         ]));
 
         let expected = Ok(Module {
@@ -496,22 +517,17 @@ mod tests {
           )
         */
         let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(vec![
+            Token::OpenBlock,
             Token::Module,
             ident_token("Maybe"),
             Token::Exposing,
-            Token::Newline,
-            Token::Indent,
             Token::LPar,
             ident_token("Maybe"),
             Token::LPar,
             Token::DotDot,
             Token::RPar,
-            Token::Newline,
-            Token::Indent,
             Token::Comma,
             ident_token("andThen"),
-            Token::Newline,
-            Token::Indent,
             Token::Comma,
             ident_token("map"),
             Token::Comma,
@@ -522,14 +538,10 @@ mod tests {
             ident_token("map4"),
             Token::Comma,
             ident_token("map5"),
-            Token::Newline,
-            Token::Indent,
             Token::Comma,
             ident_token("withDefault"),
-            Token::Newline,
-            Token::Indent,
             Token::RPar,
-            Token::Newline,
+            Token::CloseBlock,
         ]));
 
         let expected = Ok(Module {
@@ -548,51 +560,20 @@ mod tests {
         });
 
         assert_eq!(actual, expected);
-
-        /*
-        module Main exposing (main, fun)
-        */
-        let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(vec![
-            Token::Module,
-            Token::Identifier {
-                name: "Main".to_string(),
-            },
-            Token::Exposing,
-            Token::LPar,
-            Token::Identifier {
-                name: "main".to_string(),
-            },
-            Token::Comma,
-            Token::Identifier {
-                name: "fun".to_string(),
-            },
-            Token::RPar,
-            Token::Newline,
-        ]));
-
-        let expected = Ok(Module {
-            name: Name("Main".to_string()),
-            exposing: Exposing::Explicit(vec![
-                Exposed::Lower(name("main")),
-                Exposed::Lower(name("fun")),
-            ]),
-            declarations: vec![],
-        });
-
-        assert_eq!(actual, expected)
     }
 
     #[test]
     fn parser_module_decl_union_type() {
         let run_test = |tokens, tpe| {
             let mut base_tokens = vec![
+                Token::OpenBlock,
                 Token::Module,
                 ident_token("Main"),
                 Token::Exposing,
                 Token::LPar,
                 ident_token("main"),
                 Token::RPar,
-                Token::Newline,
+                Token::CloseBlock,
             ];
 
             base_tokens.extend(tokens);
@@ -611,13 +592,14 @@ mod tests {
         // type UserStatus = Regular | Visitor
         run_test(
             vec![
+                Token::OpenBlock,
                 Token::Type,
                 ident_token("UserStatus"),
                 Token::Equal,
                 ident_token("Regular"),
                 Token::Pipe,
                 ident_token("Visitor"),
-                Token::Newline,
+                Token::CloseBlock,
             ],
             UnionType {
                 name: name("UserStatus"),
@@ -637,21 +619,19 @@ mod tests {
         */
         run_test(
             vec![
+                Token::OpenBlock,
                 Token::Type,
                 ident_token("User"),
-                Token::Newline,
                 Token::Equal,
                 ident_token("Regular"),
                 ident_token("String"),
                 ident_token("Int"),
-                Token::Newline,
                 Token::Pipe,
                 ident_token("Visitor"),
                 ident_token("String"),
-                Token::Newline,
                 Token::Pipe,
                 ident_token("Anonymous"),
-                Token::Newline,
+                Token::CloseBlock,
             ],
             UnionType {
                 name: name("User"),
@@ -686,17 +666,16 @@ mod tests {
         */
         run_test(
             vec![
+                Token::OpenBlock,
                 Token::Type,
                 ident_token("Maybe"),
                 ident_token("a"),
-                Token::Newline,
                 Token::Equal,
                 ident_token("Just"),
                 ident_token("a"),
-                Token::Newline,
                 Token::Pipe,
                 ident_token("Nothing"),
-                Token::Newline,
+                Token::CloseBlock,
             ],
             UnionType {
                 name: name("Maybe"),
