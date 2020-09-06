@@ -157,7 +157,7 @@ where
         // remaining contexts to clean.
         if let (start, Token::EndOfFile, end) = &token {
             return match self.contexts.pop() {
-                Some(offside) => {
+                Some(_) => {
                     self.reprocess_tokens.push(token.clone());
                     Ok((*start, Token::CloseBlock, *end))
                 }
@@ -169,7 +169,7 @@ where
         // put the current token on the back burner and emit the new block.
         // In theory this should only happens when we are looking at a top
         // level declaration (or it's a bug)
-        let mut offside = match self.contexts.stack.last_mut() {
+        let offside = match self.contexts.stack.last_mut() {
             Some(offside) => offside,
             None => {
                 let off = Offside {
@@ -230,6 +230,8 @@ where
             _ => (),
         }
 
+        drop(offside);
+
         // Now that we have checked explicit context poping, let's check the implicit one.
         // These apply to contexts which are terminated by simply having a token on a column
         // less than the one required by the context.
@@ -281,7 +283,9 @@ where
                 _ => (),
             };
 
-            break offside;
+            // we release the reference on self.contexts because we need to
+            // mutate it down the line.
+            break offside.clone();
         };
 
         // Second, we enforce the indentation rule we have on record
@@ -298,7 +302,7 @@ where
 
                 return Err(LayoutError::LayoutError { offside, token }.into());
             }
-            ord => (), // ok
+            _ => (), // ok
         };
 
         // Third, we create new tokens, new contexts and emit block tokens as required
@@ -320,7 +324,7 @@ where
                 self.reprocess_tokens
                     .push((token.2, Token::OpenBlock, token.2));
             }
-            (Token::Of, c) => {
+            (Token::Of, _) => {
                 self.contexts.push(Offside {
                     context: Context::CaseBlock(None),
                     indent: offside.indent + 1,
@@ -344,7 +348,7 @@ where
                     .push((token.2, Token::OpenBlock, token.2));
             }
             (Token::OpenBlock, _) => (),
-            (t, c) => {
+            _ => {
                 if token.0.column == 1 && token.0.line > offside.line {
                     // Here we have a token which isn't OpenBlock (special case above)
                     // but which is at the beginning of a new line. This most probably
