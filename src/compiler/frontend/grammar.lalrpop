@@ -31,6 +31,7 @@ extern {
         "->" => Token::Arrow,
         "+"  => Token::Plus,
         "|"  => Token::Pipe,
+        "_"  => Token::Underscore,
 
         // keywords
         "module"   => Token::Module,
@@ -143,11 +144,17 @@ InfixExpr = {
 }
 
 Pattern: Pattern = {
+    "_" => Pattern::Anything,
+
     <Ident> =>
         Pattern::Variable(<>),
 
     <Lit> =>
         Pattern::Literal(<>),
+}
+
+CaseBranch: CaseBranch = {
+    <patterns: Pattern+> "->" "open block" <expression: Expr> "close block" => CaseBranch {<>}
 }
 
 
@@ -161,6 +168,9 @@ Expr = {
     // TODO let binding: value (BindGroup)
 
     // TODO pattern matching
+    "case" "open block" <exp: Expr> "close block" "of" "open block" <branches: CaseBranch+> "close block" => {
+        Expression::Case(Box::new(exp), branches)
+    }
 };
 
 // Declarations

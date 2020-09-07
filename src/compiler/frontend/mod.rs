@@ -215,10 +215,21 @@ pub struct Match {
 ///
 /// A pattern-matching expression can be present in function declaration
 /// or as part of the `case of` syntax.
-#[derive(Debug, PartialEq)]
+/// 
+/// ## Missing Patterns
+/// - `Record [Name]`
+/// - `Alias Pattern (Name)`
+/// - `Unit`
+/// - `Tuple Pattern Pattern [Pattern]`
+/// - `Ctor Name [Pattern]`
+/// - `CtorQual Name Name [Pattern]`
+/// - `List [Pattern]`
+/// - `Cons Pattern Pattern`
+#[derive(Debug, PartialEq, Clone)]
 pub enum Pattern {
     Variable(Name),
     Literal(Literal),
+    Anything,
 }
 
 /// An Expression
@@ -228,6 +239,13 @@ pub enum Expression {
     Application(Box<Expression>, Box<Expression>),
     Variable(Name),
     Tuple(Box<Vec<Expression>>),
+    Case(Box<Expression>, Vec<CaseBranch>)
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct CaseBranch {
+    patterns: Vec<Pattern>,
+    expression: Expression,
 }
 
 /// A literal
