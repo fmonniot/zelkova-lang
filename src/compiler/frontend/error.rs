@@ -1,4 +1,3 @@
-use super::indentation::IndentationError;
 use super::layout::LayoutError;
 use super::tokenizer::{LexicalError, Spanned, Token};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
@@ -11,7 +10,6 @@ use crate::compiler::position::Position;
 #[derive(Debug, PartialEq, Clone)]
 pub enum Error {
     Tokenizer(LexicalError),
-    Indentation(IndentationError),
     Layout(LayoutError),
     // Errors coming from the parser
     InvalidToken(Position),
@@ -90,13 +88,6 @@ impl From<LexicalError> for Error {
         Error::Tokenizer(e)
     }
 }
-
-impl From<IndentationError> for Error {
-    fn from(e: IndentationError) -> Self {
-        Error::Indentation(e)
-    }
-}
-
 impl From<LayoutError> for Error {
     fn from(e: LayoutError) -> Self {
         Error::Layout(e)

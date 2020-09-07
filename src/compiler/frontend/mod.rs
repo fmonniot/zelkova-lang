@@ -6,7 +6,6 @@
 //! in function declaration is one such thing.
 //!
 pub mod error;
-pub mod indentation;
 pub mod layout;
 pub mod parser;
 pub mod tokenizer;
