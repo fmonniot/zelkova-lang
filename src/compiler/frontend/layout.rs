@@ -7,7 +7,6 @@ use crate::compiler::position::Position;
 use log::trace;
 use std::cmp::Ordering;
 
-// TODO Don't use context, maybe offside ?
 #[derive(Debug, PartialEq, Clone)]
 pub enum LayoutError {
     LayoutError { offside: Offside, token: Spanned },
@@ -22,16 +21,16 @@ pub fn layout<I: Iterator<Item = Result<Spanned, Error>>>(
 /// Context represent the kind of expression we are looking at.
 ///
 /// It let us associate context-aware indentation rules
-/// 
+///
 /// ## Elm Rules
-/// 
+///
 /// Elm has surprisingly few indentation rules:
 /// - `case <> of` must be followed by branches on indent + 1 level, and the content of each branch must be indent + 1 if on a next line
 /// - `let <> in`: the first block must be indent + 1 compared to the let keyword, and the in expression must be on indent + 1 of the _parent_ block
 ///                 Note that I'll probably change the in rule to be at the same level.
 /// - top level declaration body must either be one liner or be in an opened block at indent + 1 (this apply to function, custom types or type alias)
 /// - function application have no rules on where they should be. Meaning the let/in and case/of rules apply.
-/// 
+///
 /// We will start with those rules, but will probably implement a "strict mode" along the road to enforce some convention on
 /// indentation. Probably something loosely based on what elm-format recommend. Let's be draconian and enforce uniformity :pirate:.
 ///
@@ -202,9 +201,6 @@ where
         // If we do, let's remove the context and return the token
         match (&token.1, &mut offside.context) {
             (Token::Of, Context::CaseExpression) => {
-                // TODO Strange thing is, this might probably be wrong in retrospect.
-                // Needs to investigate the parser, but we will probably need a case
-                // block after Of, to group the different branches.
                 self.contexts.pop();
                 self.reprocess_tokens.push(token.clone());
                 return Ok((token.0, Token::CloseBlock, token.2));

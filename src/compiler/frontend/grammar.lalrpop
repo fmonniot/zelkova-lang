@@ -207,7 +207,6 @@ FunType: FunType = <name:Ident> ":" <tpe:Type> => {
     FunType { name, tpe }
 };
 
-// TODO Pattern matching needs to be fleshed out :)
 BindGroup: BindGroup = <name:Ident> <pattern: Pattern*> "=" <expr:Expr> => {
     BindGroup {
         name,
