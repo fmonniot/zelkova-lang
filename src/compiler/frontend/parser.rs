@@ -77,13 +77,16 @@ mod tests {
             let expected = Ok(Module {
                 name: Name("Main".to_string()),
                 exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
-                declarations: vec![Declaration::Function(BindGroup {
+                imports: vec![],
+                types: vec![],
+                functions: vec![Function {
                     name: Name("main".to_string()),
-                    patterns: vec![Match {
-                        pattern: vec![],
+                    tpe: None,
+                    bindings: vec![Match {
+                        patterns: vec![],
                         body,
                     }],
-                })],
+                }],
             });
 
             assert_eq!(actual, expected);
@@ -206,14 +209,14 @@ mod tests {
 
     #[test]
     fn parser_module_decl_type_definition() {
-        let run_test = |msg, tokens, declarations| {
+        let run_test = |msg, tokens, tpe| {
             let mut base_tokens = vec![
                 Token::OpenBlock,
                 Token::Module,
                 ident_token("Main"),
                 Token::Exposing,
                 Token::LPar,
-                ident_token("main"),
+                ident_token("length"),
                 Token::RPar,
                 Token::CloseBlock,
             ];
@@ -224,26 +227,29 @@ mod tests {
 
             let expected = Ok(Module {
                 name: Name("Main".to_string()),
-                exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
-                declarations,
+                exposing: Exposing::Explicit(vec![Exposed::Lower(name("length"))]),
+                imports: vec![],
+                types: vec![],
+                functions: vec![Function {
+                    name: Name("length".to_string()),
+                    tpe: Some(tpe),
+                    bindings: vec![],
+                }],
             });
 
             assert_eq!(actual, expected, "\n{}", msg);
         };
 
         run_test(
-            "Constant => main : Int",
+            "Constant => length : Int",
             vec![
                 Token::OpenBlock,
-                ident_token("main"),
+                ident_token("length"),
                 Token::Colon,
                 ident_token("Int"),
                 Token::CloseBlock,
             ],
-            vec![Declaration::FunctionType(FunType {
-                name: Name("main".to_string()),
-                tpe: Type::unqualified(Name("Int".to_string())),
-            })],
+            Type::unqualified(Name("Int".to_string())),
         );
 
         run_test(
@@ -257,13 +263,10 @@ mod tests {
                 ident_token("Int"),
                 Token::CloseBlock,
             ],
-            vec![Declaration::FunctionType(FunType {
-                name: Name("length".to_string()),
-                tpe: Type::Arrow(
-                    Box::new(Type::unqualified(Name("String".to_string()))),
-                    Box::new(Type::unqualified(Name("Int".to_string()))),
-                ),
-            })],
+            Type::Arrow(
+                Box::new(Type::unqualified(Name("String".to_string()))),
+                Box::new(Type::unqualified(Name("Int".to_string()))),
+            ),
         );
 
         run_test(
@@ -283,19 +286,16 @@ mod tests {
                 ident_token("Int"),
                 Token::CloseBlock,
             ],
-            vec![Declaration::FunctionType(FunType {
-                name: Name("length".to_string()),
-                tpe: Type::Arrow(
+            Type::Arrow(
+                Box::new(Type::Arrow(
                     Box::new(Type::Arrow(
-                        Box::new(Type::Arrow(
-                            Box::new(Type::unqualified(Name("String".to_string()))),
-                            Box::new(Type::unqualified(Name("Int".to_string()))),
-                        )),
                         Box::new(Type::unqualified(Name("String".to_string()))),
+                        Box::new(Type::unqualified(Name("Int".to_string()))),
                     )),
-                    Box::new(Type::unqualified(Name("Int".to_string()))),
-                ),
-            })],
+                    Box::new(Type::unqualified(Name("String".to_string()))),
+                )),
+                Box::new(Type::unqualified(Name("Int".to_string()))),
+            ),
         );
 
         run_test(
@@ -319,29 +319,26 @@ mod tests {
                 ident_token("Int"),
                 Token::CloseBlock,
             ],
-            vec![Declaration::FunctionType(FunType {
-                name: Name("length".to_string()),
-                tpe: Type::Arrow(
+            Type::Arrow(
+                Box::new(Type::Arrow(
                     Box::new(Type::Arrow(
-                        Box::new(Type::Arrow(
-                            Box::new(Type::unqualified(Name("String".to_string()))),
-                            Box::new(Type::unqualified(Name("Int".to_string()))),
-                        )),
-                        Box::new(Type::Arrow(
-                            Box::new(Type::unqualified(Name("String".to_string()))),
-                            Box::new(Type::unqualified(Name("Int".to_string()))),
-                        )),
+                        Box::new(Type::unqualified(Name("String".to_string()))),
+                        Box::new(Type::unqualified(Name("Int".to_string()))),
                     )),
-                    Box::new(Type::unqualified(Name("Int".to_string()))),
-                ),
-            })],
+                    Box::new(Type::Arrow(
+                        Box::new(Type::unqualified(Name("String".to_string()))),
+                        Box::new(Type::unqualified(Name("Int".to_string()))),
+                    )),
+                )),
+                Box::new(Type::unqualified(Name("Int".to_string()))),
+            ),
         );
 
         run_test(
-            "polymorphic function type => withDefault : a -> Maybe a -> a",
+            "polymorphic function type => length : a -> Maybe a -> a",
             vec![
                 Token::OpenBlock,
-                ident_token("withDefault"),
+                ident_token("length"),
                 Token::Colon,
                 ident_token("a"),
                 Token::Arrow,
@@ -351,19 +348,16 @@ mod tests {
                 ident_token("a"),
                 Token::CloseBlock,
             ],
-            vec![Declaration::FunctionType(FunType {
-                name: name("withDefault"),
-                tpe: Type::Arrow(
-                    Box::new(Type::Arrow(
-                        Box::new(Type::Variable(name("a"))),
-                        Box::new(Type::unqualified_with(
-                            name("Maybe"),
-                            vec![Type::Variable(name("a"))],
-                        )),
-                    )),
+            Type::Arrow(
+                Box::new(Type::Arrow(
                     Box::new(Type::Variable(name("a"))),
-                ),
-            })],
+                    Box::new(Type::unqualified_with(
+                        name("Maybe"),
+                        vec![Type::Variable(name("a"))],
+                    )),
+                )),
+                Box::new(Type::Variable(name("a"))),
+            ),
         )
     }
 
@@ -448,58 +442,60 @@ mod tests {
         let expected = Ok(Module {
             name: name("MyModule"),
             exposing: Exposing::Open,
-            declarations: vec![
+            types: vec![],
+            functions: vec![],
+            imports: vec![
                 // import List
-                Declaration::Import(Import {
+                Import {
                     name: name("List"),
                     alias: None,
                     exposing: Exposing::Explicit(vec![]),
-                }),
+                },
                 // import List as L
-                Declaration::Import(Import {
+                Import {
                     name: name("List"),
                     alias: Some(name("L")),
                     exposing: Exposing::Explicit(vec![]),
-                }),
+                },
                 // import List as L exposing (..)
-                Declaration::Import(Import {
+                Import {
                     name: name("List"),
                     alias: Some(name("L")),
                     exposing: Exposing::Open,
-                }),
+                },
                 // import List exposing (..)
-                Declaration::Import(Import {
+                Import {
                     name: name("List"),
                     alias: None,
                     exposing: Exposing::Open,
-                }),
+                },
                 // import List exposing ( map, foldl )
-                Declaration::Import(Import {
+                Import {
                     name: name("List"),
                     alias: None,
                     exposing: Exposing::Explicit(vec![
                         Exposed::Lower(name("map")),
                         Exposed::Lower(name("foldl")),
                     ]),
-                }),
+                },
                 // import Maybe exposing ( Maybe )
-                Declaration::Import(Import {
+                Import {
                     name: name("Maybe"),
                     alias: None,
                     exposing: Exposing::Explicit(vec![Exposed::Upper(
                         name("Maybe"),
                         Privacy::Private,
                     )]),
-                }),
+                },
                 // import Maybe exposing ( Maybe(..) )
-                Declaration::Import(Import {
+                Import {
                     name: name("Maybe"),
                     alias: None,
                     exposing: Exposing::Explicit(vec![Exposed::Upper(
                         name("Maybe"),
                         Privacy::Public,
                     )]),
-                }),
+                },
             ],
         });
 
@@ -556,7 +552,9 @@ mod tests {
                 Exposed::Lower(name("map5")),
                 Exposed::Lower(name("withDefault")),
             ]),
-            declarations: vec![],
+            imports: vec![],
+            types: vec![],
+            functions: vec![],
         });
 
         assert_eq!(actual, expected);
@@ -583,7 +581,9 @@ mod tests {
             let expected = Ok(Module {
                 name: Name("Main".to_string()),
                 exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
-                declarations: vec![Declaration::Union(tpe)],
+                imports: vec![],
+                types: vec![tpe],
+                functions: vec![],
             });
 
             assert_eq!(actual, expected);

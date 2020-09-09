@@ -10,10 +10,12 @@ pub mod layout;
 pub mod parser;
 pub mod tokenizer;
 
+use std::collections::HashMap;
+
 /// new type over identifier names
 // TODO At some point I think it'd make sense to have Upper/Lower name
 // instead of a catch-all type.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct Name(pub String);
 
 impl Name {
@@ -88,7 +90,80 @@ impl Type {
 pub struct Module {
     pub name: Name,
     pub exposing: Exposing,
-    pub declarations: Vec<Declaration>,
+    pub imports: Vec<Import>,
+    pub types: Vec<UnionType>,
+    pub functions: Vec<Function>,
+}
+
+impl Module {
+    fn from_declarations(name: Name, exposing: Exposing, declarations: Vec<Declaration>) -> Module {
+        let mut imports = vec![];
+        let mut types = vec![];
+        let mut functions = HashMap::<Name, Vec<Declaration>>::new();
+
+        for declaration in declarations {
+            match declaration {
+                Declaration::Function(FunBinding { ref name, .. })
+                | Declaration::FunctionType(FunType { ref name, .. }) => {
+                    match functions.get_mut(&name) {
+                        Some(decls) => decls.push(declaration),
+                        None => {
+                            functions.insert(name.clone(), vec![declaration]);
+                        }
+                    }
+                }
+                Declaration::Import(i) => imports.push(i),
+                Declaration::Union(t) => types.push(t),
+            }
+        }
+
+        let functions = functions.into_iter().map(|(name, decls)| {
+            let mut tpe = None;
+            let mut bindings = vec![];
+
+            // TODO Error if more than function type is defined
+
+            for d in decls {
+                match d {
+                    Declaration::Function(b) => bindings.push(b.pattern),
+                    Declaration::FunctionType(t) => {tpe.replace(t.tpe);}
+                    _ => panic!("Invalid kind of declaration used in functions, report this error ({:?})", d),
+                }
+            }
+
+            Function { name, tpe, bindings }
+        }).collect::<Vec<_>>();
+
+        Module {
+            name,
+            exposing,
+            imports,
+            types,
+            functions,
+        }
+    }
+}
+
+/// `Function` represent a function declaration in the source code.
+///
+/// In _zelkova_, like in _Haskell_ but as opposed to _Elm_, we can
+/// use pattern matching and multiple line to declare a function:
+///
+/// ```zel
+/// map : (a -> b) -> Maybe a -> Maybe b
+/// map f (Just value) = f value
+/// map _ Nothing => Nothing
+/// ```
+///
+/// Because of this syntax, a function is defined as a list of `Match`
+/// statement, which each entry specifying a line. The parser will happily let
+/// us define a function which doesn't match all cases, a later phase will
+/// need to check this.
+#[derive(Debug, PartialEq)]
+pub struct Function {
+    name: Name,
+    tpe: Option<Type>,
+    bindings: Vec<Match>,
 }
 
 /// Exposing represent whether an import (or export) expose terms.
@@ -130,14 +205,15 @@ pub enum Privacy {
     Private,
 }
 
-/// A Declaration is everything that compose a `Module`.
+/// A Declaration is a top-level block and is the basis for a `Module`.
 #[derive(Debug, PartialEq)]
 pub enum Declaration {
-    Function(BindGroup),
+    Function(FunBinding),
     FunctionType(FunType),
     Import(Import),
-    Union(UnionType), // Also called custom type
-                      // type aliases, infixes and ports will end up here
+    /// Union types are also called custom types in Elm
+    Union(UnionType),
+    // type aliases, infixes and ports will end up here
 }
 
 /// A representation of the `import` declaration
@@ -162,23 +238,20 @@ pub struct UnionType {
     pub variants: Vec<Type>, // TODO Restrict to Type::Unqualified
 }
 
-/// A BindGroup is one of the (possibly) multiple function declaration.
+/// A `FunBinding` is one of the (possibly multiple) function declaration.
 ///
-/// Example:
+/// ## Examples
 ///
-/// ### Function decomposition
 ///
 /// `const = 42` in Zelkova will result in the following AST:
 /// ```
 /// Declaration::Function(
-///     BindGroup {
+///     FunBinding {
 ///         name: Name("const"),
-///         patterns: [
-///             Match {
-///                 pattern: [],
-///                 body: Expression::Lit(Literal::Int(42)),
-///             }
-///         ]
+///         patterns: Match {
+///             pattern: [],
+///             body: Expression::Lit(Literal::Int(42)),
+///         }
 ///     }
 /// )
 /// ```
@@ -187,27 +260,25 @@ pub struct UnionType {
 /// `identity x y = x` in Zelkova will result in the following AST:
 /// ```
 /// Declaration::Function(
-///     BindGroup {
+///     FunBinding {
 ///         name: Name("identity"),
-///         patterns: [
-///             Match {
-///                 pattern: [ Pattern::Var(Name("x")), Pattern::Var(Name("y")) ],
-///                 body: Expression::Var(Name("x")),
-///             }
+///         pattern: Match {
+///             patterns: [ Pattern::Var(Name("x")), Pattern::Var(Name("y")) ],
+///             body: Expression::Var(Name("x")),
 ///         ]
 ///     }
 /// )
 /// ```
 #[derive(Debug, PartialEq)]
-pub struct BindGroup {
+pub struct FunBinding {
     pub name: Name,
-    pub patterns: Vec<Match>,
+    pub pattern: Match,
 }
 
 /// The match structure is composed of a serie of patterns and an associated expression
 #[derive(Debug, PartialEq)]
 pub struct Match {
-    pub pattern: Vec<Pattern>,
+    pub patterns: Vec<Pattern>,
     pub body: Expression,
 }
 
@@ -215,7 +286,7 @@ pub struct Match {
 ///
 /// A pattern-matching expression can be present in function declaration
 /// or as part of the `case of` syntax.
-/// 
+///
 /// ## Missing Patterns
 /// - `Record [Name]`
 /// - `Alias Pattern (Name)`
@@ -239,7 +310,7 @@ pub enum Expression {
     Application(Box<Expression>, Box<Expression>),
     Variable(Name),
     Tuple(Box<Vec<Expression>>),
-    Case(Box<Expression>, Vec<CaseBranch>)
+    Case(Box<Expression>, Vec<CaseBranch>),
 }
 
 #[derive(Debug, PartialEq, Clone)]

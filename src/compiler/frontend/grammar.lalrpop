@@ -165,9 +165,8 @@ Expr = {
         todo!(),
 
     // TODO let binding: type  (FunType)
-    // TODO let binding: value (BindGroup)
+    // TODO let binding: value (FunBinding)
 
-    // TODO pattern matching
     "case" "open block" <exp: Expr> "close block" "of" "open block" <branches: CaseBranch+> "close block" => {
         Expression::Case(Box::new(exp), branches)
     }
@@ -202,20 +201,17 @@ Type: Type = {
     <name:ArgType> "->" <tpe:Type> => Type::curry_arrow(name, tpe),
 }
 
-// TODO Support function types (paired with pattern matching in bind groups)
 FunType: FunType = <name:Ident> ":" <tpe:Type> => {
     FunType { name, tpe }
 };
 
-BindGroup: BindGroup = <name:Ident> <pattern: Pattern*> "=" <expr:Expr> => {
-    BindGroup {
+FunBinding: FunBinding = <name:Ident> <patterns: Pattern*> "=" <expr:Expr> => {
+    FunBinding {
         name,
-        patterns: vec![
-            Match {
-                pattern,
-                body: expr
-            }
-        ]
+        pattern: Match {
+            patterns,
+            body: expr
+        }
     }
 };
 
@@ -267,7 +263,7 @@ Union: UnionType = {
 
 
 Decl: Declaration = {
-    "open block" <BindGroup> "close block" => Declaration::Function(<>),
+    "open block" <FunBinding> "close block" => Declaration::Function(<>),
     "open block" <FunType> "close block" => Declaration::FunctionType(<>),
     "open block" <Import> "close block" => Declaration::Import(<>),
     "open block" <Union> "close block" => Declaration::Union(<>),
@@ -280,6 +276,6 @@ Decl: Declaration = {
 pub Module: Module = 
     "open block"
         "module" <name: Ident> "exposing" <exposing:Exposing>
-    "close block" <declarations:Decl*> => Module { <> };
+    "close block" <declarations:Decl*> => Module::from_declarations(<>);
 
 // TODO Maybe something for the REPL. Might just be Decl.
