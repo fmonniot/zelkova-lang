@@ -17,6 +17,8 @@ pub enum Token {
     Integer { value: i64 }, // web assembly support i/f 32/64
     Float { value: f64 },
     Char { value: char },
+    True,
+    False,
     // TODO String literal
 
     // Control characters
@@ -88,6 +90,8 @@ fn get_keywords() -> HashMap<String, Token> {
     m.insert("else".to_string(), Token::Else);
     m.insert("let".to_string(), Token::Let);
     m.insert("in".to_string(), Token::In);
+    m.insert("true".to_string(), Token::True);
+    m.insert("false".to_string(), Token::False);
 
     m
 }
@@ -939,6 +943,12 @@ mod tests {
         // Float
         assert_eq!(tokenize("42.99"), vec![float_token(42.99), Token::Newline]);
         assert_eq!(tokenize("2.0"), vec![float_token(2.0), Token::Newline]);
+    }
+
+    #[test]
+    fn test_literal_boolean() {
+        assert_eq!(tokenize("true"), vec![Token::True, Token::Newline]);
+        assert_eq!(tokenize("false"), vec![Token::False, Token::Newline]);
     }
 
     #[test]

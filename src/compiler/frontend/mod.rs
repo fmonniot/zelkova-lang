@@ -308,7 +308,7 @@ pub enum Pattern {
 pub enum Expression {
     Lit(Literal), // Literal, as other are fully named
     Application(Box<Expression>, Box<Expression>),
-    Variable(Name),
+    Variable(Name), // TODO Qualified variable
     Tuple(Box<Vec<Expression>>),
     Case(Box<Expression>, Vec<CaseBranch>),
 }
@@ -325,6 +325,7 @@ pub enum Literal {
     Int(i64),
     Float(f64),
     Char(char),
+    Bool(bool),
 }
 
 #[cfg(test)]
