@@ -208,6 +208,90 @@ mod tests {
     }
 
     #[test]
+    fn parser_module_decl_if_expression() {
+        let run_test = |tokens, body| {
+            let mut base_tokens = vec![
+                Token::OpenBlock,
+                Token::Module,
+                ident_token("Main"),
+                Token::Exposing,
+                Token::LPar,
+                ident_token("main"),
+                Token::RPar,
+                Token::CloseBlock,
+                Token::OpenBlock,
+                ident_token("main"),
+                Token::Equal,
+            ];
+
+            base_tokens.extend(tokens);
+            base_tokens.push(Token::CloseBlock);
+
+            let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(base_tokens));
+
+            let expected = Ok(Module {
+                name: Name("Main".to_string()),
+                exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
+                imports: vec![],
+                types: vec![],
+                functions: vec![Function {
+                    name: Name("main".to_string()),
+                    tpe: None,
+                    bindings: vec![Match {
+                        patterns: vec![],
+                        body,
+                    }],
+                }],
+            });
+
+            assert_eq!(actual, expected);
+        };
+
+        // simple if
+        run_test(
+            vec![
+                Token::If,
+                Token::True,
+                Token::Then,
+                Token::Integer { value: 2 },
+                Token::Else,
+                Token::Integer { value: 3 },
+            ],
+            Expression::If(
+                Box::new(Expression::Lit(Literal::Bool(true))),
+                Box::new(Expression::Lit(Literal::Int(2))),
+                Box::new(Expression::Lit(Literal::Int(3))),
+            ),
+        );
+
+        // if - else if - else -
+        run_test(
+            vec![
+                Token::If,
+                Token::False,
+                Token::Then,
+                Token::Integer { value: 2 },
+                Token::Else,
+                Token::If,
+                Token::True,
+                Token::Then,
+                Token::Integer { value: 3 },
+                Token::Else,
+                Token::Integer { value: 4 },
+            ],
+            Expression::If(
+                Box::new(Expression::Lit(Literal::Bool(false))),
+                Box::new(Expression::Lit(Literal::Int(2))),
+                Box::new(Expression::If(
+                    Box::new(Expression::Lit(Literal::Bool(true))),
+                    Box::new(Expression::Lit(Literal::Int(3))),
+                    Box::new(Expression::Lit(Literal::Int(4))),
+                )),
+            ),
+        );
+    }
+
+    #[test]
     fn parser_module_decl_type_definition() {
         let run_test = |msg, tokens, tpe| {
             let mut base_tokens = vec![

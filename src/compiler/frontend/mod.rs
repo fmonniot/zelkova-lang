@@ -311,6 +311,7 @@ pub enum Expression {
     Variable(Name), // TODO Qualified variable
     Tuple(Box<Vec<Expression>>),
     Case(Box<Expression>, Vec<CaseBranch>),
+    If(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
 #[derive(Debug, PartialEq, Clone)]

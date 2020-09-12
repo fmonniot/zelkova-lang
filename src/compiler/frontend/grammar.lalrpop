@@ -114,7 +114,7 @@ AtomicExpr: Expression = {
         }
     },
     
-    // "[" <elems: CommaSlice<Expr>> "]" => 
+    // "[" <elems: Comma<Expr>> "]" => 
     //     Expression::List { elems },
 
     // TODO record
@@ -166,7 +166,7 @@ Expr = {
     InfixExpr,
 
     "if" <pred: Expr> "then" <if_true: Expr> "else" <if_false: Expr> =>
-        todo!(),
+        Expression::If(Box::new(pred),Box::new(if_true),Box::new(if_false)),
 
     // TODO let binding: type  (FunType)
     // TODO let binding: value (FunBinding)
