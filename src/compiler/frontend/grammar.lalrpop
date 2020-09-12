@@ -17,6 +17,7 @@ extern {
         "char"       => Token::Char { value: <char> },
         "true"       => Token::True,
         "false"      => Token::False,
+        "op"         => Token::Operator(<String>),
 
         // layout
         "open block" => Token::OpenBlock,
@@ -31,7 +32,6 @@ extern {
         "="  => Token::Equal,
         ","  => Token::Comma,
         "->" => Token::Arrow,
-        "+"  => Token::Plus,
         "|"  => Token::Pipe,
         "_"  => Token::Underscore,
 
@@ -89,8 +89,9 @@ Lit: Literal = {
     "false" => Literal::Bool(false),
 };
 
+// TODO
 InfixOp: Name = {
-    "+" => Name("plus".to_string()),
+    "op" => Name(<>),
 }
 
 // Base expression

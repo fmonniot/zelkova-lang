@@ -171,7 +171,7 @@ mod tests {
                 ident_token("main"),
                 Token::Equal,
                 Token::Integer { value: 2 },
-                Token::Plus,
+                Token::Operator("+".to_string()),
                 Token::Integer { value: 3 },
                 Token::CloseBlock,
             ],
@@ -180,7 +180,7 @@ mod tests {
                 // first application result in: a -> b
                 // second application result in: b
                 Box::new(Expression::Application(
-                    Box::new(Expression::Variable(Name("plus".to_string()))),
+                    Box::new(Expression::Variable(Name("+".to_string()))),
                     Box::new(Expression::Lit(Literal::Int(2))),
                 )),
                 Box::new(Expression::Lit(Literal::Int(3))),

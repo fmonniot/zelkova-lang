@@ -19,6 +19,7 @@ pub enum Token {
     Char { value: char },
     True,
     False,
+    Operator(String),
     // TODO String literal
 
     // Control characters
@@ -32,27 +33,14 @@ pub enum Token {
     RPar,
     LBracket,
     RBracket,
-    Colon,
-    Equal,
     Comma,
     Arrow,
-    Plus,
     Dot,
     DotDot,
-    Minus,
-    Slash,
-    Star,
-    EqualEq,
-    Less,
-    LessEqual,
-    GreaterEqual,
-    Greater,
-    AmperAmper,
-    Pipe,
     Underscore,
-    PipePipe,
-    BarGreater,
-    LessBar,
+    Colon,
+    Pipe,
+    Equal,
 
     // Keywords
     Module,
@@ -94,6 +82,14 @@ fn get_keywords() -> HashMap<String, Token> {
     m.insert("false".to_string(), Token::False);
 
     m
+}
+
+fn is_operator_char(c: char) -> bool {
+    match c {
+        '!' | '#' | '$' | '%' | '&' | '*' | '+' | '-' | '.' | '/' | '<' | '=' | '>' | '?' | '@'
+        | '\\' | '^' | '|' | '~' | ':' => true,
+        _ => false,
+    }
 }
 
 // TODO Rename to TokenizerError
@@ -540,195 +536,116 @@ where
         );
 
         if let Some(c) = self.lookahead.0 {
-            if self.is_identifier_start(c) {
-                let identifier = self.consume_identifier()?;
-                self.processed_tokens.push(identifier);
-            } else {
-                // Something else
-                match c {
-                    '0'..='9' => {
-                        let number = self.consume_number();
-                        self.processed_tokens.push(number);
-                    }
-                    '(' => {
-                        let spanned = self.skip_char_as(Token::LPar);
-                        self.processed_tokens.push(spanned);
-                    }
-                    ')' => {
-                        let spanned = self.skip_char_as(Token::RPar);
-                        self.processed_tokens.push(spanned);
-                    }
-                    ':' => {
-                        let spanned = self.skip_char_as(Token::Colon);
-                        self.processed_tokens.push(spanned);
-                    }
-                    '=' => {
-                        let spanned = if let Some('=') = self.lookahead.1 {
+            // Something else
+            match c {
+                c if self.is_identifier_start(c) => {
+                    let identifier = self.consume_identifier()?;
+                    self.processed_tokens.push(identifier);
+                }
+                c if is_operator_char(c) => {
+                    let operator = self.consume_operator();
+                    self.processed_tokens.push(operator);
+                }
+                '0'..='9' => {
+                    let number = self.consume_number();
+                    self.processed_tokens.push(number);
+                }
+                '(' => {
+                    let spanned = self.skip_char_as(Token::LPar);
+                    self.processed_tokens.push(spanned);
+                }
+                ')' => {
+                    let spanned = self.skip_char_as(Token::RPar);
+                    self.processed_tokens.push(spanned);
+                }
+                '[' => {
+                    let spanned = self.skip_char_as(Token::LBracket);
+                    self.processed_tokens.push(spanned);
+                }
+                ']' => {
+                    let spanned = self.skip_char_as(Token::RBracket);
+                    self.processed_tokens.push(spanned);
+                }
+                ',' => {
+                    let spanned = self.skip_char_as(Token::Comma);
+                    self.processed_tokens.push(spanned);
+                }
+                '_' => {
+                    let spanned = self.skip_char_as(Token::Underscore);
+                    self.processed_tokens.push(spanned);
+                }
+                '.' => {
+                    let spanned = if let Some('.') = self.lookahead.1 {
+                        self.next_char();
+                        self.skip_char_as(Token::DotDot)
+                    } else {
+                        self.skip_char_as(Token::Dot)
+                    };
+
+                    self.processed_tokens.push(spanned);
+                }
+                '-' => {
+                    // TODO Add support for negative number
+                    let spanned = match self.lookahead.1 {
+                        Some('>') => {
                             self.next_char();
-                            self.skip_char_as(Token::EqualEq)
-                        } else {
-                            self.skip_char_as(Token::Equal)
-                        };
-                        self.processed_tokens.push(spanned);
-                    }
-                    '+' => {
-                        let spanned = self.skip_char_as(Token::Plus);
-                        self.processed_tokens.push(spanned);
-                    }
-                    '[' => {
-                        let spanned = self.skip_char_as(Token::LBracket);
-                        self.processed_tokens.push(spanned);
-                    }
-                    ']' => {
-                        let spanned = self.skip_char_as(Token::RBracket);
-                        self.processed_tokens.push(spanned);
-                    }
-                    ',' => {
-                        let spanned = self.skip_char_as(Token::Comma);
-                        self.processed_tokens.push(spanned);
-                    }
-                    '_' => {
-                        let spanned = self.skip_char_as(Token::Underscore);
-                        self.processed_tokens.push(spanned);
-                    }
-                    '.' => {
-                        let spanned = if let Some('.') = self.lookahead.1 {
-                            self.next_char();
-                            self.skip_char_as(Token::DotDot)
-                        } else {
-                            self.skip_char_as(Token::Dot)
-                        };
-
-                        self.processed_tokens.push(spanned);
-                    }
-                    '-' => {
-                        // TODO Add support for negative number
-                        let spanned = match self.lookahead.1 {
-                            Some('>') => {
-                                self.next_char();
-                                self.skip_char_as(Token::Arrow)
-                            }
-                            _ => self.skip_char_as(Token::Minus),
-                        };
-
-                        self.processed_tokens.push(spanned);
-                    }
-                    '/' => {
-                        let spanned = self.skip_char_as(Token::Slash);
-                        self.processed_tokens.push(spanned);
-                    }
-                    '*' => {
-                        let spanned = self.skip_char_as(Token::Star);
-                        self.processed_tokens.push(spanned);
-                    }
-                    '>' => {
-                        let spanned = match self.lookahead.1 {
-                            Some('=') => {
-                                self.next_char(); // skip > and then consume =
-                                self.skip_char_as(Token::GreaterEqual)
-                            }
-                            _ => self.skip_char_as(Token::Greater),
-                        };
-                        self.processed_tokens.push(spanned);
-                    }
-                    '<' => {
-                        // TODO Less or equal
-                        let spanned = match self.lookahead.1 {
-                            Some('=') => {
-                                self.next_char(); // skip < and then consume =
-                                self.skip_char_as(Token::LessEqual)
-                            }
-                            Some('|') => {
-                                self.next_char(); // skip < and then consume =
-                                self.skip_char_as(Token::LessBar)
-                            }
-                            _ => self.skip_char_as(Token::Less),
-                        };
-
-                        self.processed_tokens.push(spanned);
-                    }
-                    '&' => {
-                        if let Some('&') = self.lookahead.1 {
-                            self.next_char(); // consume the first AND second ampersand
-                            let spanned = self.skip_char_as(Token::AmperAmper);
-                            self.processed_tokens.push(spanned);
-                        } else {
-                            let c = self.next_char().expect("lookahead.0 should be present");
-                            return Err(LexicalError {
-                                error: LexicalErrorType::UnrecognizedToken { tok: c },
-                                position: self.position,
-                            });
+                            self.skip_char_as(Token::Arrow)
                         }
-                    }
-                    '|' => {
-                        let spanned = match self.lookahead.1 {
-                            Some('|') => {
-                                self.next_char();
-                                self.skip_char_as(Token::PipePipe)
-                            }
-                            Some('>') => {
-                                self.next_char();
-                                self.skip_char_as(Token::BarGreater)
-                            }
-                            _ => self.skip_char_as(Token::Pipe),
-                        };
+                        _ => self.consume_operator(),
+                    };
 
-                        self.processed_tokens.push(spanned);
-                    }
-                    '\'' => {
-                        if let Some(value) = self.lookahead.1 {
-                            if let Some('\'') = self.lookahead.2 {
-                                let start_pos = self.position;
-                                // skip over the opening quote, char and closing quote
-                                self.next_char().unwrap();
-                                self.next_char().unwrap();
-                                self.next_char().unwrap();
-                                let end_pos = self.position;
+                    self.processed_tokens.push(spanned);
+                }
+                '\'' => {
+                    if let Some(value) = self.lookahead.1 {
+                        if let Some('\'') = self.lookahead.2 {
+                            let start_pos = self.position;
+                            // skip over the opening quote, char and closing quote
+                            self.next_char().unwrap();
+                            self.next_char().unwrap();
+                            self.next_char().unwrap();
+                            let end_pos = self.position;
 
-                                self.processed_tokens.push((
-                                    start_pos,
-                                    Token::Char { value },
-                                    end_pos,
-                                ));
-                            } else {
-                                // error: opened quote with char but no closing quote
-                                // We haven't moved the cursor yet, but we know the error
-                                // is on the next character, so we build the position manually
-                                let mut position = self.position.clone();
-                                position.increment();
-                                return Err(LexicalError {
-                                    error: LexicalErrorType::CharError,
-                                    position: position,
-                                });
-                            }
+                            self.processed_tokens
+                                .push((start_pos, Token::Char { value }, end_pos));
                         } else {
-                            // error: opened single quote without character following
+                            // error: opened quote with char but no closing quote
+                            // We haven't moved the cursor yet, but we know the error
+                            // is on the next character, so we build the position manually
+                            let mut position = self.position.clone();
+                            position.increment();
                             return Err(LexicalError {
                                 error: LexicalErrorType::CharError,
-                                position: self.position,
+                                position: position,
                             });
                         }
-                    }
-                    ' ' => {
-                        self.next_char().unwrap(); // let's skip over whitespace
-                    }
-                    '\t' => {
+                    } else {
+                        // error: opened single quote without character following
                         return Err(LexicalError {
-                            error: LexicalErrorType::TabError,
-                            position: self.position,
-                        })
-                    }
-                    '\n' => {
-                        let spanned = self.skip_char_as(Token::Newline);
-                        self.processed_tokens.push(spanned);
-                    }
-                    _ => {
-                        let c = self.next_char().expect("lookahead.0 should be present");
-                        return Err(LexicalError {
-                            error: LexicalErrorType::UnrecognizedToken { tok: c },
+                            error: LexicalErrorType::CharError,
                             position: self.position,
                         });
                     }
+                }
+                ' ' => {
+                    self.next_char().unwrap(); // let's skip over whitespace
+                }
+                '\t' => {
+                    return Err(LexicalError {
+                        error: LexicalErrorType::TabError,
+                        position: self.position,
+                    })
+                }
+                '\n' => {
+                    let spanned = self.skip_char_as(Token::Newline);
+                    self.processed_tokens.push(spanned);
+                }
+                _ => {
+                    let c = self.next_char().expect("lookahead.0 should be present");
+                    return Err(LexicalError {
+                        error: LexicalErrorType::UnrecognizedToken { tok: c },
+                        position: self.position,
+                    });
                 }
             }
 
@@ -805,6 +722,39 @@ where
         };
 
         Ok((start_pos, token, end_pos))
+    }
+
+    fn consume_operator(&mut self) -> Spanned {
+        let mut buf = String::new();
+        let start_pos = self.position;
+
+        loop {
+            if let Some(c) = self.lookahead.0 {
+                if is_operator_char(c) {
+                    buf.push(c);
+                    
+                    self.next_char().unwrap();
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        let end_pos = self.position;
+
+        let tok = match buf.as_ref() {
+            "."  => Token::Dot,
+            ".." => Token::DotDot,
+            "|"  => Token::Pipe,
+            "="  => Token::Equal,
+            ":"  => Token::Colon,
+            "->" => Token::Arrow,
+            _    => Token::Operator(buf),
+        };
+
+        (start_pos, tok, end_pos)
     }
 
     fn consume_number(&mut self) -> Spanned {
@@ -975,8 +925,9 @@ mod tests {
 
     #[test]
     fn test_symbols() {
+        let op = |s: &str| Token::Operator(s.to_owned());
         assert_eq!(
-            tokenize("(),[]._ .. -> =+-/*== < <= >= > && || |> <| |"),
+            tokenize("(),[]._ .. -> = + - / * == < <= >= > && || |> <| |"),
             vec![
                 Token::LPar,
                 Token::RPar,
@@ -988,19 +939,19 @@ mod tests {
                 Token::DotDot,
                 Token::Arrow,
                 Token::Equal,
-                Token::Plus,
-                Token::Minus,
-                Token::Slash,
-                Token::Star,
-                Token::EqualEq,
-                Token::Less,
-                Token::LessEqual,
-                Token::GreaterEqual,
-                Token::Greater,
-                Token::AmperAmper,
-                Token::PipePipe,
-                Token::BarGreater, // |>
-                Token::LessBar,    // <|
+                op("+"),
+                op("-"),
+                op("/"),
+                op("*"),
+                op("=="),
+                op("<"),
+                op("<="),
+                op(">="),
+                op(">"),
+                op("&&"),
+                op("||"),
+                op("|>"),
+                op("<|"),
                 Token::Pipe,
                 Token::Newline
             ]
