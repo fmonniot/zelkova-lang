@@ -333,6 +333,9 @@ pub enum Literal {
 mod tests {
     use super::*;
 
+    // TODO Reverse how we do currying.
+    // Currently a -> b -> b is interpreted as (a -> b) -> c
+    // whereas it should be a -> (b -> c)
     #[test]
     fn frontend_type_curry_arrow() {
         // String -> Int
