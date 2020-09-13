@@ -27,7 +27,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn diagnostic(&self) -> Diagnostic<()> {
+    pub fn diagnostic(&self, name: usize) -> Diagnostic<usize> {
         match self {
             Error::UnexpectedToken { token, expected } => {
                 let (start, token, end) = token;
@@ -36,7 +36,7 @@ impl Error {
                 Diagnostic::error()
                     .with_message(format!("unexpected token: `{:?}`", token)) // TODO display instead of debug
                     .with_labels(vec![
-                        Label::primary((), range).with_message("unexpected token")
+                        Label::primary(name, range).with_message("unexpected token")
                     ])
                     .with_notes(vec![format!(
                         "we were expecting one of the following tokens: {:?}",
@@ -45,7 +45,7 @@ impl Error {
                     .to_owned()])
             }
 
-            _ => todo!(),
+            e => todo!("{:?}", e),
         }
     }
 }
