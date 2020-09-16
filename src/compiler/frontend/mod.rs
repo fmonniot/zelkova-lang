@@ -13,8 +13,14 @@ pub mod tokenizer;
 use std::collections::HashMap;
 
 /// new type over identifier names
-// TODO At some point I think it'd make sense to have Upper/Lower name
-// instead of a catch-all type.
+// TODO names are currently stored as a String, and destructured on-demand
+// when checking for qualified/unqualified (including types). We should
+// probably have a different internal representation, implement the Display
+// trait and hide its internals. This will require modifying basically every
+// tests we have though :(.
+// TODO This might also be too generic as a solution, or we use Name too often,
+// as it might conflict with record projection. Let's see when we implement
+// records.
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct Name(pub String);
 
@@ -22,9 +28,21 @@ impl Name {
     fn is_type(&self) -> bool {
         // If the name exists, because it has to go through the tokenizer,
         // it will have a length of at least one character.
-        let c = self.0.chars().next().unwrap();
+        let last = self.0.rsplit('.').next().unwrap();
+        let c2 = last.chars().next().unwrap();
 
-        c.is_uppercase()
+        c2.is_uppercase()
+    }
+
+    /// Qualify the existing name with a module
+    fn qualify_with(self, s: String) -> Name {
+        // TODO We want a check on s to make sure it's upper case
+        Name(format!("{}.{}", s, self.0))
+    }
+
+    /// Whether this `Name` represents a qualified identifier or not
+    fn is_qualified(&self) -> bool {
+        self.0.chars().any(|c| c == '.')
     }
 }
 
@@ -363,5 +381,27 @@ mod tests {
         );
 
         assert_eq!(Type::curry_arrow(arrow1, arrow2), expected);
+    }
+
+    #[test]
+    fn name_unqualified() {
+        let n = Name("variable".to_owned());
+        assert_eq!(n.is_type(), false);
+        assert_eq!(n.is_qualified(), false);
+
+        let n = Name("Type".to_owned());
+        assert_eq!(n.is_type(), true);
+        assert_eq!(n.is_qualified(), false);
+    }
+
+    #[test]
+    fn name_qualified() {
+        let n = Name("Module.variable".to_owned());
+        assert_eq!(n.is_type(), false, "should not be a type");
+        assert_eq!(n.is_qualified(), true);
+
+        let n = Name("Module.Type".to_owned());
+        assert_eq!(n.is_type(), true);
+        assert_eq!(n.is_qualified(), true);
     }
 }

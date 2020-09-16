@@ -73,7 +73,12 @@ Pipe<T>: Vec<T> = {
     }
 }
 
-Ident: Name = <"identifier"> => Name(<>);
+Ident: Name = {
+    <"identifier"> => Name(<>),
+    <i:"identifier"> "." <n:Ident> => {
+        n.qualify_with(i)
+    }
+};
 
 
 
