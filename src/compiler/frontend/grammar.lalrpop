@@ -2,6 +2,7 @@ use crate::compiler::position::Position;
 use crate::compiler::frontend::tokenizer::Token;
 use crate::compiler::frontend::error::Error;
 use crate::compiler::frontend::*;
+use std::convert::TryFrom;
 
 grammar;
 
@@ -46,6 +47,12 @@ extern {
         "if"       => Token::If,
         "then"     => Token::Then,
         "else"     => Token::Else,
+        "infix"    => Token::Infix,
+
+        // soft keywords (authorized as identifier)
+        "left"  => Token::Left,
+        "right" => Token::Right,
+        "non"   => Token::Non,
     }
 }
 
@@ -74,6 +81,11 @@ Pipe<T>: Vec<T> = {
 }
 
 Ident: Name = {
+    // soft keywords are authorized identifier
+    "left" => Name("left".to_string()),
+    "right" => Name("right".to_string()),
+    "non" => Name("non".to_string()),
+
     <"identifier"> => Name(<>),
     <i:"identifier"> "." <n:Ident> => {
         n.qualify_with(i)
@@ -93,11 +105,6 @@ Lit: Literal = {
     "true" => Literal::Bool(true),
     "false" => Literal::Bool(false),
 };
-
-// TODO
-InfixOp: Name = {
-    "op" => Name(<>),
-}
 
 // Base expression
 AtomicExpr: Expression = {
@@ -141,10 +148,13 @@ InfixExpr = {
 
     // TODO LambdaExpr which take AppExpr as a branch and replace AppExpr in Expr
 
-    <lhs: AppExpr> <op: InfixOp> <rhs: InfixExpr> => {
+    <lhs: AppExpr> <op: "op"> <rhs: InfixExpr> => {
+        // TODO Might need a custom node here, to be able to establish
+        // the correct application order in a next pass (once we have all
+        // infix rules).
         Expression::Application(
             Box::new(Expression::Application(
-                Box::new(Expression::Variable(op)),
+                Box::new(Expression::Variable(Name(op))),
                 Box::new(lhs),
             )),
             Box::new(rhs),
@@ -227,7 +237,7 @@ FunBinding: FunBinding = <name:Ident> <patterns: Pattern*> "=" <expr:Expr> => {
 Exposed: Exposed = {
     // TODO Most operators have explicit tokens, which might
     // or might not be a good thing after all.
-    "(" <InfixOp> ")" => Exposed::Operator(<>),
+    "(" <"op"> ")" => Exposed::Operator(Name(<>)),
 
     <i:Ident> => {
         if i.is_type() {
@@ -270,11 +280,32 @@ Union: UnionType = {
     },
 }
 
+Associativity: Associativity = {
+    "left" => Associativity::Left,
+    "right" => Associativity::Right,
+    "non" => Associativity::None,
+}
+
+Infix: Infix = {
+    "infix" <a:Associativity> <p:"integer"> "(" <o:"op"> ")" "=" <n:Ident> => {
+        // TODO don't panic once we have a way to collect errors
+        let precedence = u8::try_from(p).unwrap();
+
+        Infix {
+            operator: Name(o),
+            associativy: a,
+            precedence,
+            function_name: n
+        }
+    }
+}
+
 
 Decl: Declaration = {
     "open block" <FunBinding> "close block" => Declaration::Function(<>),
     "open block" <FunType> "close block" => Declaration::FunctionType(<>),
     "open block" <Import> "close block" => Declaration::Import(<>),
+    "open block" <Infix> "close block" => Declaration::Infix(<>),
     "open block" <Union> "close block" => Declaration::Union(<>),
 };
 

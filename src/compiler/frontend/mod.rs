@@ -109,6 +109,7 @@ pub struct Module {
     pub name: Name,
     pub exposing: Exposing,
     pub imports: Vec<Import>,
+    pub infixes: Vec<Infix>,
     pub types: Vec<UnionType>,
     pub functions: Vec<Function>,
 }
@@ -117,6 +118,7 @@ impl Module {
     fn from_declarations(name: Name, exposing: Exposing, declarations: Vec<Declaration>) -> Module {
         let mut imports = vec![];
         let mut types = vec![];
+        let mut infixes = vec![];
         let mut functions = HashMap::<Name, Vec<Declaration>>::new();
 
         for declaration in declarations {
@@ -131,6 +133,7 @@ impl Module {
                     }
                 }
                 Declaration::Import(i) => imports.push(i),
+                Declaration::Infix(i) => infixes.push(i),
                 Declaration::Union(t) => types.push(t),
             }
         }
@@ -156,6 +159,7 @@ impl Module {
             name,
             exposing,
             imports,
+            infixes,
             types,
             functions,
         }
@@ -231,6 +235,7 @@ pub enum Declaration {
     Import(Import),
     /// Union types are also called custom types in Elm
     Union(UnionType),
+    Infix(Infix),
     // type aliases, infixes and ports will end up here
 }
 
@@ -254,6 +259,21 @@ pub struct UnionType {
     pub name: Name,
     pub type_arguments: Vec<Name>,
     pub variants: Vec<Type>, // TODO Restrict to Type::Unqualified
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Infix {
+    pub operator: Name,
+    pub associativy: Associativity,
+    /// Precedence rules the order in which part of the expression are parsed
+    /// (in absence of parenthesis). The higher precedence will be parsed first.
+    pub precedence: u8,
+    pub function_name: Name,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Associativity {
+    Left, None, Right
 }
 
 /// A `FunBinding` is one of the (possibly multiple) function declaration.

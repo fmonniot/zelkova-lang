@@ -47,6 +47,7 @@ pub enum Token {
     Exposing,
     Import,
     As,
+    Infix,
     Type,
     Case,
     Of,
@@ -55,6 +56,11 @@ pub enum Token {
     Else,
     Let,
     In,
+
+    // Soft keywords
+    Left,
+    Right,
+    Non,
 
     // Layout
     OpenBlock,
@@ -70,6 +76,7 @@ fn get_keywords() -> HashMap<String, Token> {
     m.insert("exposing".to_string(), Token::Exposing);
     m.insert("import".to_string(), Token::Import);
     m.insert("as".to_string(), Token::As);
+    m.insert("infix".to_string(), Token::Infix);
     m.insert("type".to_string(), Token::Type);
     m.insert("case".to_string(), Token::Case);
     m.insert("of".to_string(), Token::Of);
@@ -80,6 +87,11 @@ fn get_keywords() -> HashMap<String, Token> {
     m.insert("in".to_string(), Token::In);
     m.insert("true".to_string(), Token::True);
     m.insert("false".to_string(), Token::False);
+
+    // soft keywords
+    m.insert("left".to_string(), Token::Left);
+    m.insert("right".to_string(), Token::Right);
+    m.insert("non".to_string(), Token::Non);
 
     m
 }
@@ -506,7 +518,7 @@ where
         } else {
             // We aren't looking at the symbols -- or {-, this isn't a comment
             warn!(
-                "Called Tokenizer.consume_comment on non-comment symbols ({:?})",
+                "Called Tokenizer.consume_comment on non-comment symbol ({:?})",
                 self.position
             );
             return Err(LexicalError {
@@ -538,14 +550,6 @@ where
         if let Some(c) = self.lookahead.0 {
             // Something else
             match c {
-                c if self.is_identifier_start(c) => {
-                    let identifier = self.consume_identifier()?;
-                    self.processed_tokens.push(identifier);
-                }
-                c if is_operator_char(c) => {
-                    let operator = self.consume_operator();
-                    self.processed_tokens.push(operator);
-                }
                 '0'..='9' => {
                     let number = self.consume_number();
                     self.processed_tokens.push(number);
@@ -574,27 +578,23 @@ where
                     let spanned = self.skip_char_as(Token::Underscore);
                     self.processed_tokens.push(spanned);
                 }
-                '.' => {
-                    let spanned = if let Some('.') = self.lookahead.1 {
-                        self.next_char();
-                        self.skip_char_as(Token::DotDot)
-                    } else {
-                        self.skip_char_as(Token::Dot)
-                    };
-
-                    self.processed_tokens.push(spanned);
-                }
                 '-' => {
                     // TODO Add support for negative number
                     let spanned = match self.lookahead.1 {
                         Some('>') => {
                             self.next_char();
-                            self.skip_char_as(Token::Arrow)
+                            Some(self.skip_char_as(Token::Arrow))
                         }
-                        _ => self.consume_operator(),
+                        Some('-') => {
+                            self.consume_comment()?;
+                            None
+                        },
+                        _ => Some(self.consume_operator()),
                     };
 
-                    self.processed_tokens.push(spanned);
+                    if let Some(spanned) = spanned {
+                        self.processed_tokens.push(spanned);
+                    }
                 }
                 '\'' => {
                     if let Some(value) = self.lookahead.1 {
@@ -639,6 +639,14 @@ where
                 '\n' => {
                     let spanned = self.skip_char_as(Token::Newline);
                     self.processed_tokens.push(spanned);
+                }
+                c if self.is_identifier_start(c) => {
+                    let identifier = self.consume_identifier()?;
+                    self.processed_tokens.push(identifier);
+                }
+                c if is_operator_char(c) => {
+                    let operator = self.consume_operator();
+                    self.processed_tokens.push(operator);
                 }
                 _ => {
                     let c = self.next_char().expect("lookahead.0 should be present");
@@ -732,7 +740,7 @@ where
             if let Some(c) = self.lookahead.0 {
                 if is_operator_char(c) {
                     buf.push(c);
-                    
+
                     self.next_char().unwrap();
                 } else {
                     break;
@@ -745,13 +753,13 @@ where
         let end_pos = self.position;
 
         let tok = match buf.as_ref() {
-            "."  => Token::Dot,
+            "." => Token::Dot,
             ".." => Token::DotDot,
-            "|"  => Token::Pipe,
-            "="  => Token::Equal,
-            ":"  => Token::Colon,
+            "|" => Token::Pipe,
+            "=" => Token::Equal,
+            ":" => Token::Colon,
             "->" => Token::Arrow,
-            _    => Token::Operator(buf),
+            _ => Token::Operator(buf),
         };
 
         (start_pos, tok, end_pos)

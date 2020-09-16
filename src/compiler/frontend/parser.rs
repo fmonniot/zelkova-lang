@@ -78,6 +78,7 @@ mod tests {
                 name: Name("Main".to_string()),
                 exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
                 imports: vec![],
+                infixes: vec![],
                 types: vec![],
                 functions: vec![Function {
                     name: Name("main".to_string()),
@@ -233,6 +234,7 @@ mod tests {
                 name: Name("Main".to_string()),
                 exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
                 imports: vec![],
+                infixes: vec![],
                 types: vec![],
                 functions: vec![Function {
                     name: Name("main".to_string()),
@@ -313,6 +315,7 @@ mod tests {
                 name: Name("Main".to_string()),
                 exposing: Exposing::Explicit(vec![Exposed::Lower(name("length"))]),
                 imports: vec![],
+                infixes: vec![],
                 types: vec![],
                 functions: vec![Function {
                     name: Name("length".to_string()),
@@ -528,6 +531,7 @@ mod tests {
             exposing: Exposing::Open,
             types: vec![],
             functions: vec![],
+            infixes: vec![],
             imports: vec![
                 // import List
                 Import {
@@ -637,6 +641,7 @@ mod tests {
                 Exposed::Lower(name("withDefault")),
             ]),
             imports: vec![],
+            infixes: vec![],
             types: vec![],
             functions: vec![],
         });
@@ -666,6 +671,7 @@ mod tests {
                 name: Name("Main".to_string()),
                 exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
                 imports: vec![],
+                infixes: vec![],
                 types: vec![tpe],
                 functions: vec![],
             });
@@ -768,6 +774,104 @@ mod tests {
                     Type::unqualified_with(name("Just"), vec![Type::Variable(name("a"))]),
                     Type::unqualified(name("Nothing")),
                 ],
+            },
+        );
+    }
+
+
+    #[test]
+    fn parser_module_infix() {
+        let run_test = |tokens, infix| {
+            let mut base_tokens = vec![
+                Token::OpenBlock,
+                Token::Module,
+                ident_token("Main"),
+                Token::Exposing,
+                Token::LPar,
+                ident_token("main"),
+                Token::RPar,
+                Token::CloseBlock,
+            ];
+
+            base_tokens.extend(tokens);
+
+            let actual = grammar::ModuleParser::new().parse(tokens_to_spanned(base_tokens));
+
+            let expected = Ok(Module {
+                name: Name("Main".to_string()),
+                exposing: Exposing::Explicit(vec![Exposed::Lower(name("main"))]),
+                imports: vec![],
+                infixes: vec![infix],
+                types: vec![],
+                functions: vec![],
+            });
+
+            assert_eq!(actual, expected);
+        };
+
+        // infix right 0 (<|) = apL
+        run_test(
+            vec![
+                Token::OpenBlock,
+                Token::Infix,
+                Token::Right,
+                Token::Integer { value: 0 },
+                Token::LPar,
+                Token::Operator("<|".to_string()),
+                Token::RPar,
+                Token::Equal,
+                ident_token("apL"),
+                Token::CloseBlock,
+            ],
+            Infix {
+                operator: Name("<|".to_string()),
+                associativy: Associativity::Right,
+                precedence: 0,
+                function_name: Name("apL".to_string())
+            },
+        );
+
+        // infix left  7 (//) = idiv
+        run_test(
+            vec![
+                Token::OpenBlock,
+                Token::Infix,
+                Token::Left,
+                Token::Integer { value: 7 },
+                Token::LPar,
+                Token::Operator("//".to_string()),
+                Token::RPar,
+                Token::Equal,
+                ident_token("idiv"),
+                Token::CloseBlock,
+            ],
+            Infix {
+                operator: Name("//".to_string()),
+                associativy: Associativity::Left,
+                precedence: 7,
+                function_name: Name("idiv".to_string())
+            },
+        );
+
+        // infix non   4 (==) = eq
+        run_test(
+            vec![
+                Token::OpenBlock,
+                Token::Infix,
+                Token::Non,
+                Token::Integer { value: 4 },
+                Token::LPar,
+                Token::Operator("==".to_string()),
+                Token::RPar,
+                Token::Equal,
+                ident_token("eq"),
+                Token::CloseBlock,
+            ],
+            Infix {
+                operator: Name("==".to_string()),
+                associativy: Associativity::None,
+                precedence: 4,
+                function_name: Name("eq".to_string())
             },
         );
     }
