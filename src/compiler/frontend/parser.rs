@@ -778,7 +778,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn parser_module_infix() {
         let run_test = |tokens, infix| {
@@ -827,7 +826,7 @@ mod tests {
                 operator: Name("<|".to_string()),
                 associativy: Associativity::Right,
                 precedence: 0,
-                function_name: Name("apL".to_string())
+                function_name: Name("apL".to_string()),
             },
         );
 
@@ -849,7 +848,7 @@ mod tests {
                 operator: Name("//".to_string()),
                 associativy: Associativity::Left,
                 precedence: 7,
-                function_name: Name("idiv".to_string())
+                function_name: Name("idiv".to_string()),
             },
         );
 
@@ -871,7 +870,7 @@ mod tests {
                 operator: Name("==".to_string()),
                 associativy: Associativity::None,
                 precedence: 4,
-                function_name: Name("eq".to_string())
+                function_name: Name("eq".to_string()),
             },
         );
     }

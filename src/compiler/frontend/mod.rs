@@ -273,7 +273,9 @@ pub struct Infix {
 
 #[derive(Debug, PartialEq)]
 pub enum Associativity {
-    Left, None, Right
+    Left,
+    None,
+    Right,
 }
 
 /// A `FunBinding` is one of the (possibly multiple) function declaration.
