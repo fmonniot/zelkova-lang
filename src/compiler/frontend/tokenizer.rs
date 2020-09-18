@@ -275,7 +275,11 @@ where
         if current == Some('\n') {
             self.at_line_start = true;
             self.position.new_line();
+        } else if let Some(c) = current {
+            self.position.increment_by(c.len_utf8());
         } else {
+            // EOF, we increment by one (even though I'm not sure we use
+            // this position)
             self.position.increment();
         }
 
@@ -588,7 +592,7 @@ where
                         Some('-') => {
                             self.consume_comment()?;
                             None
-                        },
+                        }
                         _ => Some(self.consume_operator()),
                     };
 
@@ -1003,6 +1007,32 @@ mod tests {
         assert_eq!(
             tokenize("ident"),
             vec![ident_token("ident"), Token::Newline]
+        );
+    }
+
+    #[test]
+    fn test_large_utf8_glyphs() {
+        let spans: Vec<_> = make_tokenizer(indoc! {"
+            -- 1.602e−19
+            ident
+        "})
+        .map(|x| x.expect("must be Ok"))
+        .collect();
+
+        assert_eq!(
+            spans,
+            vec![
+                (
+                    Position::new(15, 1, 2),
+                    ident_token("ident"),
+                    Position::new(20, 6, 2)
+                ),
+                (
+                    Position::new(20, 6, 2),
+                    Token::Newline,
+                    Position::new(21, 1, 3)
+                )
+            ]
         );
     }
 
