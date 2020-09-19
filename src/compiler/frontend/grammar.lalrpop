@@ -35,6 +35,7 @@ extern {
         "->" => Token::Arrow,
         "|"  => Token::Pipe,
         "_"  => Token::Underscore,
+        "-"  => Token::Minus,
 
         // keywords
         "module"   => Token::Module,
@@ -92,6 +93,11 @@ Ident: Name = {
     }
 };
 
+Op: Name = {
+    <"op"> => Name(<>),
+    "-" => Name("-".to_string()),
+}
+
 
 
 
@@ -148,13 +154,13 @@ InfixExpr = {
 
     // TODO LambdaExpr which take AppExpr as a branch and replace AppExpr in Expr
 
-    <lhs: AppExpr> <op: "op"> <rhs: InfixExpr> => {
+    <lhs: AppExpr> <op: Op> <rhs: InfixExpr> => {
         // TODO Might need a custom node here, to be able to establish
         // the correct application order in a next pass (once we have all
         // infix rules).
         Expression::Application(
             Box::new(Expression::Application(
-                Box::new(Expression::Variable(Name(op))),
+                Box::new(Expression::Variable(op)),
                 Box::new(lhs),
             )),
             Box::new(rhs),
@@ -179,6 +185,16 @@ CaseBranch: CaseBranch = {
 
 Expr = {
     InfixExpr,
+
+    "-" <e: Expr> => {
+        Expression::Application(
+            Box::new(Expression::Application(
+                Box::new(Expression::Variable(Name("-".to_string()))),
+                Box::new(Expression::Lit(Literal::Int(0))),
+            )),
+            Box::new(e),
+        )
+    },
 
     "if" <pred: Expr> "then" <if_true: Expr> "else" <if_false: Expr> =>
         Expression::If(Box::new(pred),Box::new(if_true),Box::new(if_false)),
@@ -237,7 +253,7 @@ FunBinding: FunBinding = <name:Ident> <patterns: Pattern*> "=" <expr:Expr> => {
 Exposed: Exposed = {
     // TODO Most operators have explicit tokens, which might
     // or might not be a good thing after all.
-    "(" <"op"> ")" => Exposed::Operator(Name(<>)),
+    "(" <Op> ")" => Exposed::Operator(<>),
 
     <i:Ident> => {
         if i.is_type() {
@@ -287,12 +303,12 @@ Associativity: Associativity = {
 }
 
 Infix: Infix = {
-    "infix" <a:Associativity> <p:"integer"> "(" <o:"op"> ")" "=" <n:Ident> => {
+    "infix" <a:Associativity> <p:"integer"> "(" <o:Op> ")" "=" <n:Ident> => {
         // TODO don't panic once we have a way to collect errors
         let precedence = u8::try_from(p).unwrap();
 
         Infix {
-            operator: Name(o),
+            operator: o,
             associativy: a,
             precedence,
             function_name: n

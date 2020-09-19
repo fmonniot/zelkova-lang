@@ -41,6 +41,7 @@ pub enum Token {
     Colon,
     Pipe,
     Equal,
+    Minus,
 
     // Keywords
     Module,
@@ -593,6 +594,9 @@ where
                             self.consume_comment()?;
                             None
                         }
+                        Some(c) if !is_operator_char(c) => {
+                            Some(self.skip_char_as(Token::Minus))
+                        }
                         _ => Some(self.consume_operator()),
                     };
 
@@ -952,7 +956,7 @@ mod tests {
                 Token::Arrow,
                 Token::Equal,
                 op("+"),
-                op("-"),
+                Token::Minus,
                 op("/"),
                 op("*"),
                 op("=="),
