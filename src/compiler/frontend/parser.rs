@@ -357,6 +357,44 @@ mod tests {
         );
 
         run_test(
+            "Tuples => length: (a -> b, b -> c) -> a",
+            vec![
+                Token::OpenBlock,
+                ident_token("length"),
+                Token::Colon,
+                Token::LPar,
+                ident_token("a"),
+                Token::Arrow,
+                ident_token("b"),
+                Token::Comma,
+                ident_token("b"),
+                Token::Arrow,
+                ident_token("c"),
+                Token::RPar,
+                Token::Arrow,
+                ident_token("a"),
+                Token::CloseBlock,
+            ],
+            Type::Arrow(
+                Box::new(Type::Tuple(
+                    Box::new(
+                        Type::Arrow(
+                            Box::new(Type::Variable(Name("a".to_string()))),
+                            Box::new(Type::Variable(Name("b".to_string())))
+                        )
+                    ),
+                    Box::new(vec![
+                        Type::Arrow(
+                            Box::new(Type::Variable(Name("b".to_string()))),
+                            Box::new(Type::Variable(Name("c".to_string())))
+                        )
+                    ])
+                )),
+                Box::new(Type::Variable(Name("a".to_string()))),
+            ),
+        );
+
+        run_test(
             "Higher order function type => (String -> Int) -> String -> Int",
             vec![
                 Token::OpenBlock,

@@ -60,6 +60,7 @@ pub enum Type {
     // Qualified type eg Maybe.Maybe
     /// type variable
     Variable(Name),
+    Tuple(Box<Type>, Box<Vec<Type>>),
 }
 
 impl Type {

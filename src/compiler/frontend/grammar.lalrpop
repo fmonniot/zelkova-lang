@@ -230,8 +230,26 @@ ArgType: Type = {
 
 Type: Type = {
     ArgType,
-    
-    "(" <tpe1:Type> ")" "->" <tpe2:Type> => Type::curry_arrow(tpe1, tpe2),
+
+    // This support two kind of syntax:
+    // 1. when the arrow is not present, we have a tuple/parenthesis group
+    // 2. when an arrow is present, this is a call with precendence (parenthesis)
+    "(" <mut elems: Comma<Type>> ")" <tpe2:("->" <Type>)?> => {
+        let tpe1 = match elems.len() {
+            0 => todo!("Unit type"),
+            1 => elems.swap_remove(0),
+            _ => {
+                let head = elems.swap_remove(0);
+
+                Type::Tuple(Box::new(head), Box::new(elems))
+            },
+        };
+
+        match tpe2 {
+            Some(tpe2) => Type::curry_arrow(tpe1, tpe2),
+            None => tpe1,
+        }
+    },
 
     <name:ArgType> "->" <tpe:Type> => Type::curry_arrow(name, tpe),
 }
