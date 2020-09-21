@@ -176,6 +176,23 @@ Pattern: Pattern = {
 
     <Lit> =>
         Pattern::Literal(<>),
+
+    "(" <mut elems: Comma<Pattern>> ")" => {
+        match elems.len() {
+            0 => todo!("Unit type"),
+            1 => todo!("Parenthesis in pattern matching"),
+            _ => {
+                let first = elems.swap_remove(0);
+                let second = elems.swap_remove(0);
+
+                Pattern::Tuple(
+                    Box::new(first),
+                    Box::new(second),
+                    elems
+                )
+            },
+        }
+    }
 }
 
 CaseBranch: CaseBranch = {

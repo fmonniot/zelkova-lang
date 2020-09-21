@@ -332,7 +332,6 @@ pub struct Match {
 /// - `Record [Name]`
 /// - `Alias Pattern (Name)`
 /// - `Unit`
-/// - `Tuple Pattern Pattern [Pattern]`
 /// - `Ctor Name [Pattern]`
 /// - `CtorQual Name Name [Pattern]`
 /// - `List [Pattern]`
@@ -341,9 +340,12 @@ pub struct Match {
 pub enum Pattern {
     Variable(Name),
     Literal(Literal),
+    Tuple(Box<Pattern>, Box<Pattern>, Vec<Pattern>),
     Anything,
 }
 
+// TODO Inline all Box<Vec into Vec
+// which make sense, as vectors are already on the heap
 /// An Expression
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
