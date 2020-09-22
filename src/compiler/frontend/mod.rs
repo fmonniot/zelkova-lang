@@ -359,7 +359,7 @@ pub enum Expression {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CaseBranch {
-    patterns: Vec<Pattern>,
+    pattern: Pattern,
     expression: Expression,
 }
 

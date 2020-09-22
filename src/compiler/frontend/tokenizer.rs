@@ -13,7 +13,8 @@ use unic_ucd_category::GeneralCategory;
 /// Represents the different part which constitute our source code
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
-    Identifier { name: String },
+    UpperIdentifier(String),
+    LowerIdentifier(String),
     Integer { value: i64 }, // web assembly support i/f 32/64
     Float { value: f64 },
     Char { value: char },
@@ -699,7 +700,7 @@ where
     /// - a keyword token (e.g. `Token::Module`) if the consumed identifier is part of
     ///   the reserved list of keywords. See [`get_keywords()`](#function.get_keywords)
     ///   for a list of keywords.
-    /// - a `Token::Identifier` if the identifier isn't a keyword, this encompass basically
+    /// - a `Token::*Identifier` if the identifier isn't a keyword, this encompass basically
     ///   everything which isn't a symbol, literal or keyword in the language.
     fn consume_identifier(&mut self) -> Result<Spanned> {
         trace!(
@@ -734,7 +735,12 @@ where
         let token = if let Some(keyword) = self.keywords.get(&name) {
             keyword.clone()
         } else {
-            Token::Identifier { name }
+            let first = name.chars().next().unwrap();
+            if first.is_uppercase() {
+                Token::UpperIdentifier(name)
+            } else {
+                Token::LowerIdentifier(name)
+            }
         };
 
         Ok((start_pos, token, end_pos))
@@ -866,9 +872,12 @@ mod tests {
     }
 
     fn ident_token(s: &str) -> Token {
-        Token::Identifier {
-            name: s.to_string(),
-        }
+        let first = s.chars().next().unwrap();
+            if first.is_uppercase() {
+                Token::UpperIdentifier(s.to_string())
+            } else {
+                Token::LowerIdentifier(s.to_string())
+            }
     }
 
     fn int_token(value: i64) -> Token {

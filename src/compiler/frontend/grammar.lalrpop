@@ -12,7 +12,8 @@ extern {
 
     enum Token {
         // literals
-        "identifier" => Token::Identifier{ name: <String>},
+        "lo_ident"   => Token::LowerIdentifier(<String>),
+        "up_ident"   => Token::UpperIdentifier(<String>),
         "integer"    => Token::Integer { value: <i64> },
         "float"      => Token::Float { value: <f64> },
         "char"       => Token::Char { value: <char> },
@@ -81,17 +82,28 @@ Pipe<T>: Vec<T> = {
     }
 }
 
-Ident: Name = {
+// TODO We will need further distinction between qualified and non-qualified 
+// identities. Some accept the qualified (e.g. variable in expression) while
+// some don't (e.g. type variables).
+
+VarIdent: Name = {
     // soft keywords are authorized identifier
     "left" => Name("left".to_string()),
     "right" => Name("right".to_string()),
     "non" => Name("non".to_string()),
 
-    <"identifier"> => Name(<>),
-    <i:"identifier"> "." <n:Ident> => {
+    <"lo_ident"> => Name(<>),
+    <i:"up_ident"> "." <n:VarIdent> => {
         n.qualify_with(i)
     }
 };
+
+TypeIdent: Name = {
+    <"up_ident"> => Name(<>),
+    <i:"up_ident"> "." <n:TypeIdent> => {
+        n.qualify_with(i)
+    }
+}
 
 Op: Name = {
     <"op"> => Name(<>),
@@ -114,7 +126,7 @@ Lit: Literal = {
 
 // Base expression
 AtomicExpr: Expression = {
-    <id: Ident> =>
+    <id: VarIdent> =>
         Expression::Variable(id),
 
     <lit: Lit> =>
@@ -171,7 +183,7 @@ InfixExpr = {
 Pattern: Pattern = {
     "_" => Pattern::Anything,
 
-    <Ident> =>
+    <VarIdent> =>
         Pattern::Variable(<>),
 
     <Lit> =>
@@ -196,7 +208,7 @@ Pattern: Pattern = {
 }
 
 CaseBranch: CaseBranch = {
-    <patterns: Pattern+> "->" "open block" <expression: Expr> "close block" => CaseBranch {<>}
+    <pattern: Pattern> "->" "open block" <expression: Expr> "close block" => CaseBranch {<>}
 }
 
 
@@ -227,19 +239,14 @@ Expr = {
 // Declarations
 
 AtomicType: Type = {
-    <name:Ident> => {
-        if name.is_type() {
-            Type::unqualified(name)
-        } else {
-            Type::Variable(name)
-        }
-    },
+    <TypeIdent> => Type::unqualified(<>),
+    <VarIdent> => Type::Variable(<>),
 }
 
 ArgType: Type = {
     AtomicType,
 
-    <name: Ident> <types: AtomicType+> => {
+    <name: TypeIdent> <types: AtomicType+> => {
         Type::unqualified_with(name, types)
     },
 
@@ -271,11 +278,11 @@ Type: Type = {
     <name:ArgType> "->" <tpe:Type> => Type::curry_arrow(name, tpe),
 }
 
-FunType: FunType = <name:Ident> ":" <tpe:Type> => {
+FunType: FunType = <name:VarIdent> ":" <tpe:Type> => {
     FunType { name, tpe }
 };
 
-FunBinding: FunBinding = <name:Ident> <patterns: Pattern*> "=" <expr:Expr> => {
+FunBinding: FunBinding = <name:VarIdent> <patterns: Pattern*> "=" <expr:Expr> => {
     FunBinding {
         name,
         pattern: Match {
@@ -290,17 +297,11 @@ Exposed: Exposed = {
     // or might not be a good thing after all.
     "(" <Op> ")" => Exposed::Operator(<>),
 
-    <i:Ident> => {
-        if i.is_type() {
-            Exposed::Upper(i, Privacy::Private)
-        } else {
-            Exposed::Lower(i)
-        }
-    },
+    <VarIdent> => Exposed::Lower(<>),
+    <TypeIdent> => Exposed::Upper(<>, Privacy::Private),
 
-    <i:Ident> "(" ".." ")" => {
-        // TODO Restrict that to Ident with upper case first letter
-        Exposed::Upper(i, Privacy::Public)
+    <TypeIdent> "(" ".." ")" => {
+        Exposed::Upper(<>, Privacy::Public)
     },
 };
 
@@ -310,7 +311,7 @@ Exposing: Exposing = {
 };
 
 Import:Import = {
-    "import" <name: Ident> <alias: ("as" <Ident>)?> <exposing: ("exposing" <Exposing>)?> => {
+    "import" <name: TypeIdent> <alias: ("as" <TypeIdent>)?> <exposing: ("exposing" <Exposing>)?> => {
         let exposing = exposing.unwrap_or_else(|| Exposing::Explicit(vec![]));
 
         Import {
@@ -322,7 +323,7 @@ Import:Import = {
 }
 
 Union: UnionType = {
-    "type" <name: Ident> <type_arguments: Ident*> "=" <variants: Pipe<Type>> => {
+    "type" <name: TypeIdent> <type_arguments: VarIdent*> "=" <variants: Pipe<Type>> => {
         UnionType {
             name,
             type_arguments,
@@ -338,7 +339,7 @@ Associativity: Associativity = {
 }
 
 Infix: Infix = {
-    "infix" <a:Associativity> <p:"integer"> "(" <o:Op> ")" "=" <n:Ident> => {
+    "infix" <a:Associativity> <p:"integer"> "(" <o:Op> ")" "=" <n:VarIdent> => {
         // TODO don't panic once we have a way to collect errors
         let precedence = u8::try_from(p).unwrap();
 
@@ -366,7 +367,7 @@ Decl: Declaration = {
 // declaring the module
 pub Module: Module = 
     "open block"
-        "module" <name: Ident> "exposing" <exposing:Exposing>
+        "module" <name: TypeIdent> "exposing" <exposing:Exposing>
     "close block" <declarations:Decl*> => Module::from_declarations(<>);
 
 // TODO Maybe something for the REPL. Might just be Decl.

@@ -29,7 +29,8 @@ mod tests {
                 let start = pos.clone();
                 let inc = match &token {
                     Token::Module => 6,
-                    Token::Identifier { name } => name.len(),
+                    Token::LowerIdentifier(name) => name.len(),
+                    Token::UpperIdentifier(name) => name.len(),
                     Token::Exposing => 8,
                     Token::LPar | Token::RPar => 1,
                     Token::Comma => 1,
@@ -47,8 +48,11 @@ mod tests {
     }
 
     fn ident_token(s: &str) -> Token {
-        Token::Identifier {
-            name: s.to_string(),
+        let first = s.chars().next().unwrap();
+        if first.is_uppercase() {
+            Token::UpperIdentifier(s.to_string())
+        } else {
+            Token::LowerIdentifier(s.to_string())
         }
     }
 
