@@ -587,16 +587,9 @@ where
                 '-' => {
                     // TODO Add support for negative number
                     let spanned = match self.lookahead.1 {
-                        Some('>') => {
-                            self.next_char();
-                            Some(self.skip_char_as(Token::Arrow))
-                        }
                         Some('-') => {
                             self.consume_comment()?;
                             None
-                        }
-                        Some(c) if !is_operator_char(c) => {
-                            Some(self.skip_char_as(Token::Minus))
                         }
                         _ => Some(self.consume_operator()),
                     };
@@ -773,6 +766,7 @@ where
             "=" => Token::Equal,
             ":" => Token::Colon,
             "->" => Token::Arrow,
+            "-" => Token::Minus,
             _ => Token::Operator(buf),
         };
 
@@ -873,11 +867,11 @@ mod tests {
 
     fn ident_token(s: &str) -> Token {
         let first = s.chars().next().unwrap();
-            if first.is_uppercase() {
-                Token::UpperIdentifier(s.to_string())
-            } else {
-                Token::LowerIdentifier(s.to_string())
-            }
+        if first.is_uppercase() {
+            Token::UpperIdentifier(s.to_string())
+        } else {
+            Token::LowerIdentifier(s.to_string())
+        }
     }
 
     fn int_token(value: i64) -> Token {
