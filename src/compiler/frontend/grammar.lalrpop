@@ -93,14 +93,22 @@ VarIdent: Name = {
     "non" => Name("non".to_string()),
 
     <"lo_ident"> => Name(<>),
-    <i:"up_ident"> "." <n:VarIdent> => {
+};
+
+QualVarIdent: Name = {
+    <VarIdent> => <>,
+    <i:"up_ident"> "." <n:QualVarIdent> => {
         n.qualify_with(i)
     }
-};
+}
 
 TypeIdent: Name = {
     <"up_ident"> => Name(<>),
-    <i:"up_ident"> "." <n:TypeIdent> => {
+}
+
+QualTypeIdent: Name = {
+    <TypeIdent> => <>,
+    <i:"up_ident"> "." <n:QualTypeIdent> => {
         n.qualify_with(i)
     }
 }
@@ -126,7 +134,7 @@ Lit: Literal = {
 
 // Base expression
 AtomicExpr: Expression = {
-    <id: VarIdent> =>
+    <id: QualVarIdent> =>
         Expression::Variable(id),
 
     <lit: Lit> =>
@@ -238,15 +246,18 @@ Expr = {
 
 // Declarations
 
+// TODO This is actually unqualified OR qualified, depending on the underlying name
+// Let's change the function to take that into account
 AtomicType: Type = {
-    <TypeIdent> => Type::unqualified(<>),
+    <QualTypeIdent> => Type::unqualified(<>),
     <VarIdent> => Type::Variable(<>),
 }
 
 ArgType: Type = {
     AtomicType,
 
-    <name: TypeIdent> <types: AtomicType+> => {
+    // Here I need to think about this some more (and need better test coverage)
+    <name: QualTypeIdent> <types: AtomicType+> => {
         Type::unqualified_with(name, types)
     },
 
@@ -311,7 +322,7 @@ Exposing: Exposing = {
 };
 
 Import:Import = {
-    "import" <name: TypeIdent> <alias: ("as" <TypeIdent>)?> <exposing: ("exposing" <Exposing>)?> => {
+    "import" <name: QualTypeIdent> <alias: ("as" <TypeIdent>)?> <exposing: ("exposing" <Exposing>)?> => {
         let exposing = exposing.unwrap_or_else(|| Exposing::Explicit(vec![]));
 
         Import {
