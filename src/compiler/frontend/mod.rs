@@ -341,6 +341,7 @@ pub enum Pattern {
     Variable(Name),
     Literal(Literal),
     Tuple(Box<Pattern>, Box<Pattern>, Vec<Pattern>),
+    Constructor(Name, Vec<Pattern>),
     Anything,
 }
 

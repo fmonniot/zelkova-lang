@@ -191,16 +191,14 @@ InfixExpr = {
 Pattern: Pattern = {
     "_" => Pattern::Anything,
 
-    <VarIdent> =>
-        Pattern::Variable(<>),
+    <VarIdent> => Pattern::Variable(<>),
 
-    <Lit> =>
-        Pattern::Literal(<>),
+    <Lit> => Pattern::Literal(<>),
 
-    "(" <mut elems: Comma<Pattern>> ")" => {
+    "(" <mut elems: Comma<AtomicPattern>> ")" => {
         match elems.len() {
             0 => todo!("Unit type"),
-            1 => todo!("Parenthesis in pattern matching"),
+            1 => elems.swap_remove(0),
             _ => {
                 let first = elems.swap_remove(0);
                 let second = elems.swap_remove(0);
@@ -212,11 +210,27 @@ Pattern: Pattern = {
                 )
             },
         }
-    }
+    },
+}
+
+CasePattern: Pattern = {
+    Pattern,
+
+    <n:QualTypeIdent> <p:AtomicPattern*> => Pattern::Constructor(n, p),
+}
+
+// DeclPattern is for function binding. The syntax require parenthesis when there are multiple
+// patterns. I'm sure we are missing quite a bit of legal syntax, so I'll need to go back on that
+// later on.
+DeclPattern: Pattern = {
+    Pattern,
+    
+    QualTypeIdent => Pattern::Constructor(<>, vec![]),
+    "(" <n:QualTypeIdent> <p:AtomicPattern*> ")" => Pattern::Constructor(n, p),
 }
 
 CaseBranch: CaseBranch = {
-    <pattern: Pattern> "->" "open block" <expression: Expr> "close block" => CaseBranch {<>}
+    <pattern: CasePattern> "->" "open block" <expression: Expr> "close block" => CaseBranch {<>}
 }
 
 
@@ -293,7 +307,7 @@ FunType: FunType = <name:VarIdent> ":" <tpe:Type> => {
     FunType { name, tpe }
 };
 
-FunBinding: FunBinding = <name:VarIdent> <patterns: Pattern*> "=" <expr:Expr> => {
+FunBinding: FunBinding = <name:VarIdent> <patterns: DeclPattern*> "=" <expr:Expr> => {
     FunBinding {
         name,
         pattern: Match {
