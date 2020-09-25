@@ -136,6 +136,8 @@ Lit: Literal = {
 AtomicExpr: Expression = {
     <id: QualVarIdent> =>
         Expression::Variable(id),
+    
+    <QualTypeIdent> => Expression::TypeConstructor(<>),
 
     <lit: Lit> =>
         Expression::Lit(lit),

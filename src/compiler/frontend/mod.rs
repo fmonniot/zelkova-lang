@@ -353,6 +353,7 @@ pub enum Expression {
     Lit(Literal), // Literal, as other are fully named
     Application(Box<Expression>, Box<Expression>),
     Variable(Name), // TODO Qualified variable
+    TypeConstructor(Name),
     Tuple(Box<Vec<Expression>>),
     Case(Box<Expression>, Vec<CaseBranch>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
