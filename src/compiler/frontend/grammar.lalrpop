@@ -197,7 +197,7 @@ Pattern: Pattern = {
 
     <Lit> => Pattern::Literal(<>),
 
-    "(" <mut elems: Comma<AtomicPattern>> ")" => {
+    "(" <mut elems: Comma<Pattern>> ")" => {
         match elems.len() {
             0 => todo!("Unit type"),
             1 => elems.swap_remove(0),
@@ -218,7 +218,7 @@ Pattern: Pattern = {
 CasePattern: Pattern = {
     Pattern,
 
-    <n:QualTypeIdent> <p:AtomicPattern*> => Pattern::Constructor(n, p),
+    <n:QualTypeIdent> <p:Pattern*> => Pattern::Constructor(n, p),
 }
 
 // DeclPattern is for function binding. The syntax require parenthesis when there are multiple
@@ -228,7 +228,7 @@ DeclPattern: Pattern = {
     Pattern,
     
     QualTypeIdent => Pattern::Constructor(<>, vec![]),
-    "(" <n:QualTypeIdent> <p:AtomicPattern*> ")" => Pattern::Constructor(n, p),
+    "(" <n:QualTypeIdent> <p:Pattern*> ")" => Pattern::Constructor(n, p),
 }
 
 CaseBranch: CaseBranch = {
