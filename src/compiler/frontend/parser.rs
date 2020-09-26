@@ -381,18 +381,14 @@ mod tests {
             ],
             Type::Arrow(
                 Box::new(Type::Tuple(
-                    Box::new(
-                        Type::Arrow(
-                            Box::new(Type::Variable(Name("a".to_string()))),
-                            Box::new(Type::Variable(Name("b".to_string())))
-                        )
-                    ),
-                    Box::new(vec![
-                        Type::Arrow(
-                            Box::new(Type::Variable(Name("b".to_string()))),
-                            Box::new(Type::Variable(Name("c".to_string())))
-                        )
-                    ])
+                    Box::new(Type::Arrow(
+                        Box::new(Type::Variable(Name("a".to_string()))),
+                        Box::new(Type::Variable(Name("b".to_string()))),
+                    )),
+                    Box::new(vec![Type::Arrow(
+                        Box::new(Type::Variable(Name("b".to_string()))),
+                        Box::new(Type::Variable(Name("c".to_string()))),
+                    )]),
                 )),
                 Box::new(Type::Variable(Name("a".to_string()))),
             ),
