@@ -5,12 +5,33 @@
 //! syntax sugar to make their life easier. For example, pattern matching
 //! in function declaration is one such thing.
 //!
+use codespan_reporting::files::SimpleFile;
+
 pub mod error;
 pub mod layout;
 pub mod parser;
 pub mod tokenizer;
 
 use std::collections::HashMap;
+
+pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, error::Error> {
+    let source = source_file.source();
+
+    // Tokenize the source code into a serie of tokens
+    let tokenizer = tokenizer::make_tokenizer(source).map(|r| r.map_err(|e| e.into()));
+
+    // Then manage the indentation aspect of our code
+    let indented = layout::layout(tokenizer);
+
+    // Some debug instruction to easily find errors early on.
+    // This is for development only, and we should have a better error reporting
+    // system in the future.
+    let tokens: Vec<_> = indented.collect();
+
+    // parser
+    // TODO Should works on reference and not consume the original iterator
+    parser::parse(tokens.iter().cloned())
+}
 
 /// new type over identifier names
 // TODO names are currently stored as a String, and destructured on-demand
@@ -92,7 +113,7 @@ impl Type {
 ///
 ///
 /// The elm compiler declare a module as follow:
-/// ```
+/// ```haskell
 /// data Module =
 ///   Module
 ///     { _name    :: ModuleName.Canonical
@@ -213,7 +234,9 @@ pub enum Exposed {
 /// Privacy control how a custom type is exposed.
 ///
 /// For example, given the following type:
-/// ```type MyType = VariantA | VariantB```
+/// ```zel
+/// type MyType = VariantA | VariantB
+/// ```
 ///
 /// When importing or exporting this type, we have
 /// two privacy settings:
@@ -285,7 +308,7 @@ pub enum Associativity {
 ///
 ///
 /// `const = 42` in Zelkova will result in the following AST:
-/// ```
+/// ```text
 /// Declaration::Function(
 ///     FunBinding {
 ///         name: Name("const"),
@@ -299,7 +322,7 @@ pub enum Associativity {
 ///
 ///
 /// `identity x y = x` in Zelkova will result in the following AST:
-/// ```
+/// ```text
 /// Declaration::Function(
 ///     FunBinding {
 ///         name: Name("identity"),
