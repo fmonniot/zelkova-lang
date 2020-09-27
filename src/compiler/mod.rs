@@ -6,10 +6,10 @@ use codespan_reporting::term::{self, ColorArg};
 use std::io::Write;
 use std::str::FromStr;
 
-mod frontend;
-mod position;
-mod source_files;
-mod type_checker;
+pub mod frontend;
+pub mod position;
+pub mod source_files;
+pub mod type_checker;
 
 use source_files::SourceFiles;
 

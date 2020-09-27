@@ -1,7 +1,4 @@
-#[macro_use]
-extern crate lalrpop_util;
-
-mod compiler;
+use zelkova_lang::compiler;
 
 fn main() {
     // Will probably need more love than that :p

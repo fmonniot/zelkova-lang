@@ -717,28 +717,6 @@ mod tests {
             assert_eq!(actual, expected);
         };
 
-        // type UserStatus = Regular | Visitor
-        run_test(
-            vec![
-                Token::OpenBlock,
-                Token::Type,
-                ident_token("UserStatus"),
-                Token::Equal,
-                ident_token("Regular"),
-                Token::Pipe,
-                ident_token("Visitor"),
-                Token::CloseBlock,
-            ],
-            UnionType {
-                name: name("UserStatus"),
-                type_arguments: vec![],
-                variants: vec![
-                    Type::unqualified(name("Regular")),
-                    Type::unqualified(name("Visitor")),
-                ],
-            },
-        );
-
         /*
         type User
             = Regular String Int
