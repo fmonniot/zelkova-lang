@@ -27,7 +27,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn diagnostic(&self, name: usize) -> Diagnostic<usize> {
+    pub fn diagnostic<Id>(&self, name: Id) -> Diagnostic<Id> {
         match self {
             Error::UnexpectedToken { token, expected } => {
                 let (start, token, end) = token;
