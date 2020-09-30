@@ -205,9 +205,9 @@ impl Module {
 /// need to check this.
 #[derive(Debug, PartialEq)]
 pub struct Function {
-    name: Name,
-    tpe: Option<Type>,
-    bindings: Vec<Match>,
+    pub name: Name,
+    pub tpe: Option<Type>,
+    pub bindings: Vec<Match>,
 }
 
 /// Exposing represent whether an import (or export) expose terms.
@@ -266,9 +266,9 @@ pub enum Declaration {
 /// A representation of the `import` declaration
 #[derive(Debug, PartialEq)]
 pub struct Import {
-    name: Name,
-    alias: Option<Name>,
-    exposing: Exposing,
+    pub name: Name,
+    pub alias: Option<Name>,
+    pub exposing: Exposing,
 }
 
 /// Represents the type signature of a particular function

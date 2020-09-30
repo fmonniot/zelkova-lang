@@ -34,12 +34,7 @@ macro_rules! test_parse_ok {
                     };
 
                     term::emit(&mut writer.lock(), &config, &file, &err.diagnostic(())).unwrap();
-                    assert_eq!(
-                        None,
-                        Some(err),
-                        "{} should not produce an error",
-                        test_name
-                    );
+                    assert_eq!(None, Some(err), "{} should not produce an error", test_name);
                 }
             }
         }
