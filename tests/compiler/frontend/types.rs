@@ -129,7 +129,6 @@ test_parse_ok!(
     module_function_type(Type::unqualified(Name("Int".to_string())))
 );
 
-
 test_parse_ok!(
     type_annotation_function,
     r#"
