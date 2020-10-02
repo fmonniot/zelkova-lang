@@ -1,7 +1,7 @@
 //! Helpers functions and macros to support testing the frontend
 //! part of the compiler.
 //!
-use zelkova_lang::compiler::frontend::*;
+use zelkova_lang::compiler::source::*;
 
 // macros to simplify tests
 
@@ -14,7 +14,7 @@ macro_rules! test_parse_ok {
             use codespan_reporting::term::termcolor::StandardStream;
             use codespan_reporting::term::{self, ColorArg};
             use std::str::FromStr;
-            use zelkova_lang::compiler::frontend;
+            use zelkova_lang::compiler::source;
 
             let test_name = stringify!($test_name);
 
@@ -22,7 +22,7 @@ macro_rules! test_parse_ok {
             let source = indoc::indoc! {$source}.to_string();
             let file = SimpleFile::new(test_name.to_owned(), source);
 
-            let e = frontend::parse(&file);
+            let e = source::parse(&file);
 
             match e {
                 Ok(expr) => assert_eq!(expr, $expected),

@@ -381,8 +381,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::frontend::*;
     use crate::compiler::position::Position;
+    use crate::compiler::source::*;
     use tokenizer::Token;
 
     // Create an approximation for the token position in the stream.

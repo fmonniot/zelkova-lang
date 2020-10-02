@@ -6,8 +6,8 @@ use codespan_reporting::term::{self, ColorArg};
 use std::io::Write;
 use std::str::FromStr;
 
-pub mod frontend;
 pub mod position;
+pub mod source;
 pub mod source_files;
 pub mod type_checker;
 
@@ -34,11 +34,11 @@ where
         ..codespan_reporting::term::Config::default()
     };
 
-    // frontend pass
+    // source pass
     let results: Vec<_> = files
         .iter()
         .enumerate()
-        .map(|(idx, file)| frontend::parse(file).map_err(|err| err.diagnostic(idx)))
+        .map(|(idx, file)| source::parse(file).map_err(|err| err.diagnostic(idx)))
         .collect();
 
     for result in results {
@@ -49,7 +49,7 @@ where
                     .unwrap();
                 write!(&mut writer, "success").unwrap();
                 writer.reset().unwrap();
-                writeln!(&mut writer, ": frontend pass on module {}", m.name.0).unwrap();
+                writeln!(&mut writer, ": source pass on module {}", m.name.0).unwrap();
             }
             Err(err) => {
                 term::emit(&mut writer.lock(), &config, &files, &err).unwrap();

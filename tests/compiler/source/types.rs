@@ -1,5 +1,5 @@
-use crate::compiler::frontend::support::*;
-use zelkova_lang::compiler::frontend::*;
+use super::support::*;
+use zelkova_lang::compiler::source::*;
 
 // Let's simplify how we build module for our type tests
 fn module_custom_type(tpe: UnionType) -> Module {

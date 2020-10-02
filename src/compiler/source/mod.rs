@@ -1,9 +1,9 @@
-//! This module contains all the data types representing the frontend
+//! This module contains all the data types representing the source
 //! of our language.
 //!
-//! The frontend part is what the user interact with, and contains some
-//! syntax sugar to make their life easier. For example, pattern matching
-//! in function declaration is one such thing.
+//! This is the part the user interact with, and contains some syntax sugar
+//! to make their life easier (for example, pattern matching in function
+//! declaration)
 //!
 use codespan_reporting::files::SimpleFile;
 
@@ -405,7 +405,7 @@ mod tests {
     // Currently a -> b -> b is interpreted as (a -> b) -> c
     // whereas it should be a -> (b -> c)
     #[test]
-    fn frontend_type_curry_arrow() {
+    fn type_curry_arrow() {
         // String -> Int
         let arrow1 = Type::Arrow(
             Box::new(Type::unqualified(Name("String".to_string()))),

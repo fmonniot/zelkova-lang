@@ -1,6 +1,6 @@
 //! This module contains the type checker pass of the language
 //!
-//! It works with the result of the frontend and will perform two jobs:
+//! It works with the source AST and will perform two jobs:
 //! - type checks the different declarations and expression
 //! - infer the types when not declared in the source
 //!

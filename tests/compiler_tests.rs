@@ -1,5 +1,5 @@
 mod compiler {
-    mod frontend {
+    mod source {
         #[macro_use]
         mod support;
 
