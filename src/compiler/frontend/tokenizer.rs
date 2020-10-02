@@ -5,7 +5,6 @@
 
 use crate::compiler::position::Position;
 use log::{trace, warn}; // Location in RustPython
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::str::FromStr;
 use unic_ucd_category::GeneralCategory;
@@ -23,10 +22,7 @@ pub enum Token {
     Operator(String),
     // TODO String literal
 
-    // Control characters
-    Newline,
-    Indent, // TODO Include the number of spaces
-    Dedent, // TODO Do we still need these tokens now that we have the indentation module ?
+    // Control character
     EndOfFile,
 
     // Symbols
@@ -388,48 +384,10 @@ where
     // Character consumption helpers
     //
 
-    fn handle_indentation(&mut self) -> Result<()> {
-        let indentation = self.consume_indentation()?;
-
-        trace!(
-            "handle_indentation: indentation={}, self.indentation={}",
-            indentation,
-            self.indentation
-        );
-
-        match indentation.cmp(&self.indentation) {
-            Ordering::Equal => {
-                // Same level as previous line, nothing to do
-            }
-            Ordering::Greater => {
-                // Current level is greater than previous line
-                let diff = indentation - self.indentation;
-
-                // Emit one Indent token per indentation level
-                for _ in 0..(diff / 2) {
-                    self.processed_tokens
-                        .push((self.position, Token::Indent, self.position));
-                }
-            }
-            Ordering::Less => {
-                // We have less indentation than previous line
-                let diff = self.indentation - indentation;
-
-                // TODO Does it actually make sense to emit multiple dedent per 2 spaces ?
-                for _ in 0..(diff / 2) {
-                    self.processed_tokens
-                        .push((self.position, Token::Dedent, self.position));
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     /// Consume the characters until we reach a non-indentation
     /// and/or non-comment character, leaving the iterator to
     /// point at it.
-    fn consume_indentation(&mut self) -> Result<usize> {
+    fn handle_indentation(&mut self) -> Result<usize> {
         let mut spaces = 0;
 
         trace!("consume_indentation()");
@@ -629,18 +587,14 @@ where
                         });
                     }
                 }
-                ' ' => {
-                    self.next_char().unwrap(); // let's skip over whitespace
+                ' ' | '\n' => {
+                    self.next_char().unwrap(); // let's skip over whitespace and new lines
                 }
                 '\t' => {
                     return Err(LexicalError {
                         error: LexicalErrorType::TabError,
                         position: self.position,
                     })
-                }
-                '\n' => {
-                    let spanned = self.skip_char_as(Token::Newline);
-                    self.processed_tokens.push(spanned);
                 }
                 c if self.is_identifier_start(c) => {
                     let identifier = self.consume_identifier()?;
@@ -662,24 +616,6 @@ where
             Ok(())
         } else {
             // Nothing else to pull, let's wrap it up
-
-            // Insert a trailing Newline if none, this is to simplify the
-            // parser step (making it assume there is always a newline at
-            // the end).
-            if !self.at_line_start {
-                self.at_line_start = true;
-                self.processed_tokens
-                    .push((self.position, Token::Newline, self.position));
-            }
-
-            // Next emit the remaining deindent tokens (if any)
-            while self.indentation > 0 {
-                self.indentation -= 2;
-                self.processed_tokens
-                    .push((self.position, Token::Dedent, self.position));
-            }
-
-            // And finally emit the EOF token
             self.processed_tokens
                 .push((self.position, Token::EndOfFile, self.position));
 
@@ -906,18 +842,18 @@ mod tests {
     #[test]
     fn test_literal_number() {
         // Integer
-        assert_eq!(tokenize("42"), vec![int_token(42), Token::Newline]);
-        assert_eq!(tokenize("2"), vec![int_token(2), Token::Newline]);
+        assert_eq!(tokenize("42"), vec![int_token(42)]);
+        assert_eq!(tokenize("2"), vec![int_token(2)]);
 
         // Float
-        assert_eq!(tokenize("42.99"), vec![float_token(42.99), Token::Newline]);
-        assert_eq!(tokenize("2.0"), vec![float_token(2.0), Token::Newline]);
+        assert_eq!(tokenize("42.99"), vec![float_token(42.99)]);
+        assert_eq!(tokenize("2.0"), vec![float_token(2.0)]);
     }
 
     #[test]
     fn test_literal_boolean() {
-        assert_eq!(tokenize("true"), vec![Token::True, Token::Newline]);
-        assert_eq!(tokenize("false"), vec![Token::False, Token::Newline]);
+        assert_eq!(tokenize("true"), vec![Token::True]);
+        assert_eq!(tokenize("false"), vec![Token::False]);
     }
 
     #[test]
@@ -938,8 +874,8 @@ mod tests {
             })
         );
 
-        assert_eq!(tokenize("'a'"), vec![char_token('a'), Token::Newline]);
-        assert_eq!(tokenize("'🙂'"), vec![char_token('🙂'), Token::Newline]);
+        assert_eq!(tokenize("'a'"), vec![char_token('a')]);
+        assert_eq!(tokenize("'🙂'"), vec![char_token('🙂')]);
     }
 
     #[test]
@@ -971,8 +907,7 @@ mod tests {
                 op("||"),
                 op("|>"),
                 op("<|"),
-                Token::Pipe,
-                Token::Newline
+                Token::Pipe
             ]
         );
     }
@@ -1011,10 +946,7 @@ mod tests {
 
     #[test]
     fn test_consume_identifier() {
-        assert_eq!(
-            tokenize("ident"),
-            vec![ident_token("ident"), Token::Newline]
-        );
+        assert_eq!(tokenize("ident"), vec![ident_token("ident")]);
     }
 
     #[test]
@@ -1028,18 +960,11 @@ mod tests {
 
         assert_eq!(
             spans,
-            vec![
-                (
-                    Position::new(15, 1, 2),
-                    ident_token("ident"),
-                    Position::new(20, 6, 2)
-                ),
-                (
-                    Position::new(20, 6, 2),
-                    Token::Newline,
-                    Position::new(21, 1, 3)
-                )
-            ]
+            vec![(
+                Position::new(15, 1, 2),
+                ident_token("ident"),
+                Position::new(20, 6, 2)
+            )]
         );
     }
 
@@ -1047,11 +972,11 @@ mod tests {
     fn test_skip_whitespaces_between_ident() {
         assert_eq!(
             tokenize("map f"),
-            vec![ident_token("map"), ident_token("f"), Token::Newline]
+            vec![ident_token("map"), ident_token("f")]
         );
         assert_eq!(
             tokenize("map  f"),
-            vec![ident_token("map"), ident_token("f"), Token::Newline]
+            vec![ident_token("map"), ident_token("f")]
         );
     }
 
@@ -1081,15 +1006,12 @@ mod tests {
             Token::LPar,
             ident_token("main"),
             Token::RPar,
-            Token::Newline,
             ident_token("main"),
             Token::Colon,
             ident_token("Int"),
-            Token::Newline,
             ident_token("main"),
             Token::Equal,
             Token::Integer { value: 42 },
-            Token::Newline,
         ];
 
         assert_eq!(tokens, expected)

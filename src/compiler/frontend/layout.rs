@@ -137,23 +137,13 @@ where
     /// It also convert the end of the source iterator into `Token::EndOfFile`.
     fn next_token(&mut self) -> Result<Spanned, Error> {
         self.reprocess_tokens.pop().map(Ok).unwrap_or_else(|| {
-            let next = self.tokens.next().unwrap_or_else(|| {
+            self.tokens.next().unwrap_or_else(|| {
                 // The absolute part is unused (hence 0) but the column value is important
                 // (we want a value of 1 to match the first token of a line)
                 let position = Position::new(0, 1, 1);
 
                 Ok((position, Token::EndOfFile, position))
-            });
-
-            if let Ok((_, t, _)) = &next {
-                if t == &Token::Newline || t == &Token::Indent || t == &Token::Dedent {
-                    // Skip over newline or indentation tokens, which should be done in the tokenizer.
-                    // We will do it once I'm convinced the approach in this module is worth it.
-                    return self.next_token();
-                }
-            }
-
-            next
+            })
         })
     }
 
@@ -404,16 +394,14 @@ mod tests {
         tokens
             .into_iter()
             .cloned()
-            .map(|token| {
+            .filter_map(|token| {
                 let start = pos.clone();
                 let inc = match &token {
                     Token::Module => 6,
-                    Token::LowerIdentifier(name) => name.len(),
                     Token::UpperIdentifier(name) => name.len(),
                     Token::Exposing => 8,
                     Token::LPar | Token::RPar => 1,
                     Token::Comma => 1,
-                    Token::Indent => 2,
                     Token::Pipe => 1,
                     Token::Equal => 1,
                     Token::Type | Token::Case => 4,
@@ -421,15 +409,34 @@ mod tests {
                     _ => 0,
                 };
 
-                if &token == &Token::Newline {
-                    pos.new_line();
+                // Hack to simulate new lines and indentation
+                let emit = if let Token::LowerIdentifier(name) = &token {
+                    match name.as_str() {
+                        "\n" => {
+                            pos.new_line();
+                            false
+                        }
+                        "  " => {
+                            pos.increment_by(2);
+                            false
+                        }
+                        _ => {
+                            pos.increment_by(name.len());
+                            true
+                        }
+                    }
                 } else {
                     pos.increment_by(inc);
-                }
+                    true
+                };
 
                 let end = pos.clone();
 
-                Ok((start, token, end))
+                if emit {
+                    Some(Ok((start, token, end)))
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -451,6 +458,14 @@ mod tests {
         }
     }
 
+    // hack to control tokens_to_spanned behavior regarding source code position
+    fn newline() -> Token {
+        Token::LowerIdentifier("\n".to_string())
+    }
+    fn indent() -> Token {
+        Token::LowerIdentifier("  ".to_string())
+    }
+
     #[test]
     fn module_declaration_single_line() {
         test_layout_without_error(
@@ -463,7 +478,7 @@ mod tests {
                 Token::Comma,
                 ident_token("const"),
                 Token::RPar,
-                Token::Newline,
+                newline(),
             ],
             vec![
                 Token::OpenBlock,
@@ -487,25 +502,25 @@ mod tests {
                 Token::Module,
                 ident_token("Maybe"),
                 Token::Exposing,
-                Token::Newline,
-                Token::Indent,
+                newline(),
+                indent(),
                 Token::LPar,
                 ident_token("Maybe"),
                 Token::LPar,
                 Token::DotDot,
                 Token::RPar,
-                Token::Newline,
-                Token::Indent,
+                newline(),
+                indent(),
                 Token::Comma,
                 ident_token("andThen"),
-                Token::Newline,
-                Token::Indent,
+                newline(),
+                indent(),
                 Token::Comma,
                 ident_token("map"),
-                Token::Newline,
-                Token::Indent,
+                newline(),
+                indent(),
                 Token::RPar,
-                Token::Newline,
+                newline(),
             ],
             vec![
                 Token::OpenBlock,
@@ -534,16 +549,16 @@ mod tests {
                 Token::Type,
                 ident_token("Maybe"),
                 ident_token("a"),
-                Token::Newline,
-                Token::Indent,
+                newline(),
+                indent(),
                 Token::Equal,
                 ident_token("Just"),
                 ident_token("a"),
-                Token::Newline,
-                Token::Indent,
+                newline(),
+                indent(),
                 Token::Pipe,
                 ident_token("Nothing"),
-                Token::Newline,
+                newline(),
             ],
             vec![
                 Token::OpenBlock,
@@ -567,15 +582,15 @@ mod tests {
                 Token::Type,
                 ident_token("Maybe"),
                 ident_token("a"),
-                Token::Newline,
-                Token::Indent,
+                newline(),
+                indent(),
                 Token::Equal,
                 ident_token("Just"),
                 ident_token("a"),
-                Token::Newline, // Here we are missing an indent
+                newline(), // Here we are missing an indent
                 Token::Pipe,
                 ident_token("Nothing"),
-                Token::Newline,
+                newline(),
             ],
             vec![
                 Token::OpenBlock,
@@ -604,38 +619,38 @@ mod tests {
                 ident_token("f"),
                 ident_token("maybe"),
                 Token::Equal,
-                Token::Newline,
-                Token::Indent,
+                newline(),
+                indent(),
                 Token::Case,
                 ident_token("maybe"),
                 Token::Of,
-                Token::Newline,
-                Token::Indent,
-                Token::Indent,
+                newline(),
+                indent(),
+                indent(),
                 ident_token("Just"),
                 ident_token("value"),
                 Token::Arrow,
-                Token::Newline,
-                Token::Indent,
-                Token::Indent,
-                Token::Indent,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
                 ident_token("Just"),
                 Token::LPar,
                 ident_token("f"),
                 ident_token("value"),
                 Token::RPar,
-                Token::Newline,
-                Token::Newline,
-                Token::Indent,
-                Token::Indent,
+                newline(),
+                newline(),
+                indent(),
+                indent(),
                 ident_token("Nothing"),
                 Token::Arrow,
-                Token::Newline,
-                Token::Indent,
-                Token::Indent,
-                Token::Indent,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
                 ident_token("Nothing"),
-                Token::Newline,
+                newline(),
             ],
             vec![
                 Token::OpenBlock,
