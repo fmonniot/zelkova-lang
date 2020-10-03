@@ -4,11 +4,14 @@
 //! [lalrpop]: https://github.com/lalrpop/lalrpop/
 
 use super::error::Error;
-use super::tokenizer::Spanned;
+use super::tokenizer::Token;
 use super::Module;
+use crate::compiler::position::BytePos;
 
 lalrpop_mod!(grammar, "/compiler/source/grammar.rs");
 
-pub fn parse(i: impl Iterator<Item = Result<Spanned, Error>>) -> Result<Module, Error> {
+pub fn parse(
+    i: impl Iterator<Item = Result<(BytePos, Token, BytePos), Error>>,
+) -> Result<Module, Error> {
     Ok(grammar::ModuleParser::new().parse(i)?)
 }

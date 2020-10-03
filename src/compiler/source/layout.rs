@@ -2,19 +2,22 @@
 //! by doing it in before the token iterator is passed to the parser.
 
 use super::error::Error;
-use super::tokenizer::{Spanned, Token};
-use crate::compiler::position::Position;
+use super::tokenizer::Token;
+use crate::compiler::position::{spanned, BytePos, Position, Span, Spanned};
 use log::trace;
 use std::cmp::Ordering;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum LayoutError {
-    LayoutError { offside: Offside, token: Spanned },
+    LayoutError {
+        offside: Offside,
+        token: Spanned<Position, Token>,
+    },
 }
 
-pub fn layout<I: Iterator<Item = Result<Spanned, Error>>>(
+pub fn layout<I: Iterator<Item = Result<Spanned<Position, Token>, Error>>>(
     iter: I,
-) -> impl Iterator<Item = Result<Spanned, Error>> {
+) -> impl Iterator<Item = Result<(BytePos, Token, BytePos), Error>> {
     Layout::new(iter)
 }
 
@@ -115,12 +118,12 @@ struct Layout<I> {
     ///
     /// For example, when opening a block we return the OpenBlock token and thus
     /// we have to reprocess the original token.
-    reprocess_tokens: Vec<Spanned>,
+    reprocess_tokens: Vec<Spanned<Position, Token>>,
 }
 
 impl<I> Layout<I>
 where
-    I: Iterator<Item = Result<Spanned, Error>>,
+    I: Iterator<Item = Result<Spanned<Position, Token>, Error>>,
 {
     /// Create and initialize a new `Layout` iterator
     pub fn new(iter: I) -> Layout<I> {
@@ -135,14 +138,14 @@ where
     /// in tandem with the source iterator.
     ///
     /// It also convert the end of the source iterator into `Token::EndOfFile`.
-    fn next_token(&mut self) -> Result<Spanned, Error> {
+    fn next_token(&mut self) -> Result<Spanned<Position, Token>, Error> {
         self.reprocess_tokens.pop().map(Ok).unwrap_or_else(|| {
             self.tokens.next().unwrap_or_else(|| {
                 // The absolute part is unused (hence 0) but the column value is important
                 // (we want a value of 1 to match the first token of a line)
                 let position = Position::new(0, 1, 1);
 
-                Ok((position, Token::EndOfFile, position))
+                Ok(spanned(position, position, Token::EndOfFile))
             })
         })
     }
@@ -151,16 +154,20 @@ where
     ///
     /// It is called by the iterator's next on each token.
     ///
-    fn handle_next_token(&mut self) -> Result<Spanned, Error> {
+    fn handle_next_token(&mut self) -> Result<Spanned<Position, Token>, Error> {
         let token = self.next_token()?;
 
         // Short circuit handling of EOF, and verify we don't have any
         // remaining contexts to clean.
-        if let (start, Token::EndOfFile, end) = &token {
+        if let Spanned {
+            value: Token::EndOfFile,
+            span: Span { start, end },
+        } = &token
+        {
             return match self.contexts.pop() {
                 Some(_) => {
                     self.reprocess_tokens.push(token.clone());
-                    Ok((*start, Token::CloseBlock, *end))
+                    Ok(spanned(*start, *end, Token::CloseBlock))
                 }
                 None => Ok(token),
             };
@@ -173,33 +180,34 @@ where
         let offside = match self.contexts.stack.last_mut() {
             Some(offside) => offside,
             None => {
+                let start = token.start();
                 let off = Offside {
                     context: Context::TopLevelDeclaration,
-                    indent: token.0.column,
-                    line: token.0.line,
+                    indent: start.column,
+                    line: start.line,
                 };
                 self.contexts.push(off);
 
                 self.reprocess_tokens.push(token.clone());
-                return Ok((token.0, Token::OpenBlock, token.0));
+                return Ok(spanned(*start, *start, Token::OpenBlock));
             }
         };
 
-        trace!("step 1: {:?}, offside: {:?}", token.1, offside);
+        trace!("step 1: {:?}, offside: {:?}", token.value, offside);
 
         // First, we check if we have a closing token with an associated context.
         // If we do, let's remove the context and return the token
-        match (&token.1, &mut offside.context) {
+        match (&token.value, &mut offside.context) {
             (Token::Of, Context::CaseExpression) => {
                 self.contexts.pop();
                 self.reprocess_tokens.push(token.clone());
-                return Ok((token.0, Token::CloseBlock, token.2));
+                return Ok(token.map(|_| Token::CloseBlock));
             }
             (Token::OpenBlock, Context::CaseBlock(None)) => (),
             (_, Context::CaseBlock(c @ None)) => {
                 // Here we are seeing the first token after opening the block, and
                 // this token set the minimum indentation for the block.
-                c.replace(token.0.column);
+                c.replace(token.start().column);
             }
             (Token::In, Context::Let) => {
                 // TODO akin to of/case above, we might have to create a let/in block
@@ -227,19 +235,20 @@ where
             let offside = match self.contexts.last() {
                 Some(offside) => offside,
                 None => {
+                    let start = *token.start();
                     let off = Offside {
                         context: Context::TopLevelDeclaration,
-                        indent: token.0.column,
-                        line: token.0.line,
+                        indent: start.column,
+                        line: start.line,
                     };
                     self.contexts.push(off);
 
                     self.reprocess_tokens.push(token.clone());
-                    return Ok((token.0, Token::OpenBlock, token.0));
+                    return Ok(spanned(start, start, Token::OpenBlock));
                 }
             };
 
-            let token_column = token.0.column;
+            let token_column = token.start().column;
             let context_column = offside.indent;
 
             trace!(
@@ -260,7 +269,7 @@ where
                         // context, so we close that context.
                         self.contexts.pop();
                         self.reprocess_tokens.push(token.clone());
-                        return Ok((token.0, Token::CloseBlock, token.2));
+                        return Ok(token.map(|_| Token::CloseBlock));
                     }
                 }
 
@@ -280,7 +289,7 @@ where
             _ => &offside.indent,
         };
 
-        match token.0.column.cmp(min_indent_required) {
+        match token.start().column.cmp(min_indent_required) {
             Ordering::Less => {
                 let offside = offside.clone();
 
@@ -295,47 +304,47 @@ where
 
         trace!(
             "step 3: {:?} ({}:{}), context: {:?}",
-            token.1,
-            token.0.column,
-            token.2.column,
+            token.value,
+            token.start().column,
+            token.end().column,
             offside.context
         );
-        match (&token.1, &offside.context) {
+        match (&token.value, &offside.context) {
             (Token::Case, _) => {
                 self.contexts.push(Offside {
                     context: Context::CaseExpression,
-                    indent: token.0.column + 1,
-                    line: token.0.line,
+                    indent: token.start().column + 1,
+                    line: token.start().line,
                 });
                 self.reprocess_tokens
-                    .push((token.2, Token::OpenBlock, token.2));
+                    .push(spanned(*token.end(), *token.end(), Token::OpenBlock));
             }
             (Token::Of, _) => {
                 self.contexts.push(Offside {
                     context: Context::CaseBlock(None),
                     indent: offside.indent + 1,
-                    line: token.0.line,
+                    line: token.start().line,
                 });
                 self.reprocess_tokens
-                    .push((token.2, Token::OpenBlock, token.2));
+                    .push(spanned(*token.end(), *token.end(), Token::OpenBlock));
             }
             (Token::Let, _) => self.contexts.push(Offside {
                 context: Context::Let,
-                indent: token.0.column + 1,
-                line: token.0.line,
+                indent: token.start().column + 1,
+                line: token.start().line,
             }),
             (Token::Arrow, Context::CaseBlock(Some(min_indent))) => {
                 self.contexts.push(Offside {
                     context: Context::CaseBranch,
                     indent: min_indent + 1,
-                    line: token.0.line,
+                    line: token.start().line,
                 });
                 self.reprocess_tokens
-                    .push((token.2, Token::OpenBlock, token.2));
+                    .push(spanned(*token.end(), *token.end(), Token::OpenBlock));
             }
             (Token::OpenBlock, _) => (),
             _ => {
-                if token.0.column == 1 && token.0.line > offside.line {
+                if token.start().column == 1 && token.start().line > offside.line {
                     // Here we have a token which isn't OpenBlock (special case above)
                     // but which is at the beginning of a new line. This most probably
                     // mean we have reached the end of the previous block and are
@@ -352,7 +361,7 @@ where
                         self.contexts.pop();
                     }
 
-                    return Ok((token.0, Token::CloseBlock, token.0));
+                    return Ok(spanned(*token.start(), *token.start(), Token::CloseBlock));
                 }
             }
         }
@@ -363,17 +372,23 @@ where
 
 impl<I> Iterator for Layout<I>
 where
-    I: Iterator<Item = Result<Spanned, Error>>,
+    I: Iterator<Item = Result<Spanned<Position, Token>, Error>>,
 {
-    type Item = Result<Spanned, Error>;
+    type Item = Result<(BytePos, Token, BytePos), Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let res = self.handle_next_token();
         trace!("step 4: {:?}", res);
 
         match res {
-            Ok((_, Token::EndOfFile, _)) => None,
-            tok => Some(tok),
+            Ok(Spanned {
+                value: Token::EndOfFile,
+                ..
+            }) => None,
+            Ok(Spanned { value, span }) => {
+                Some(Ok((span.start.absolute, value, span.end.absolute)))
+            }
+            Err(err) => Some(Err(err)),
         }
     }
 }
@@ -388,7 +403,7 @@ mod tests {
     // Create an approximation for the token position in the stream.
     // We don't count the spaces between tokens, but it gives us enough
     // to understand where a failure happened.
-    fn tokens_to_spanned(tokens: &Vec<Token>) -> Vec<Result<Spanned, Error>> {
+    fn tokens_to_spanned(tokens: &Vec<Token>) -> Vec<Result<Spanned<Position, Token>, Error>> {
         let mut pos = Position::new(0, 1, 1);
 
         tokens
@@ -433,7 +448,7 @@ mod tests {
                 let end = pos.clone();
 
                 if emit {
-                    Some(Ok((start, token, end)))
+                    Some(Ok(spanned(start, end, token)))
                 } else {
                     None
                 }

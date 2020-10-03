@@ -3,7 +3,7 @@
 //! Directly inspired by the great work on the RustPython team
 //! https://github.com/RustPython/RustPython/blob/master/parser/src/lexer.rs
 
-use crate::compiler::position::Position;
+use crate::compiler::position::{spanned, Position, Spanned};
 use log::{trace, warn}; // Location in RustPython
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -123,9 +123,6 @@ pub enum LexicalErrorType {
     UnrecognizedToken { tok: char },
 }
 
-/// A `Token` enriched with its starting and ending position in the source code
-pub type Spanned = (Position, Token, Position); // (start, tok, end) Location in RustPython
-
 /// Represent a standard `Result` scoped to a `LexicalError`
 pub type Result<T> = std::result::Result<T, LexicalError>;
 
@@ -134,7 +131,9 @@ pub type Result<T> = std::result::Result<T, LexicalError>;
 /// This is the access point of this module, and the only way to create the underlying
 /// `Tokenizer` (although it isn't exposed to public consumption)
 // TODO return super::error::Result instead of the module one
-pub fn make_tokenizer<'a>(source: &'a str) -> impl Iterator<Item = Result<Spanned>> + 'a {
+pub fn make_tokenizer<'a>(
+    source: &'a str,
+) -> impl Iterator<Item = Result<Spanned<Position, Token>>> + 'a {
     let c = NewlineCollapser::new(source.chars());
     Tokenizer::new(c)
 }
@@ -214,7 +213,7 @@ struct Tokenizer<I: Iterator<Item = char>> {
     /// Indicates whether the iterator is pointing to the first character of a line or not
     at_line_start: bool,
     /// Tokens we have parsed but not yet emitted
-    processed_tokens: Vec<Spanned>,
+    processed_tokens: Vec<Spanned<Position, Token>>,
     /// The current position in the source code
     position: Position,
     /// A preview of the current character (and the two following).
@@ -303,14 +302,14 @@ where
         }
     }
 
-    /// Skip over the next character and return a `Spanned` with the
+    /// Skip over the next character and return a `Spanned<Position, Token>` with the
     /// skipped character position.
-    fn skip_char_as(&mut self, token: Token) -> Spanned {
+    fn skip_char_as(&mut self, token: Token) -> Spanned<Position, Token> {
         let start = self.position;
         self.next_char().unwrap(); // skip over the char
         let end = self.position;
 
-        (start, token, end)
+        spanned(start, end, token)
     }
 
     /// Indicates whether the given `char` is fit to start an identifier
@@ -363,7 +362,7 @@ where
     // Token processing
     //
 
-    fn process_next_tokens(&mut self) -> Result<Spanned> {
+    fn process_next_tokens(&mut self) -> Result<Spanned<Position, Token>> {
         // Here we have to process characters until we can form a complete
         // token. We will also use this time to handle indentations.
 
@@ -566,8 +565,11 @@ where
                             self.next_char().unwrap();
                             let end_pos = self.position;
 
-                            self.processed_tokens
-                                .push((start_pos, Token::Char { value }, end_pos));
+                            self.processed_tokens.push(spanned(
+                                start_pos,
+                                end_pos,
+                                Token::Char { value },
+                            ));
                         } else {
                             // error: opened quote with char but no closing quote
                             // We haven't moved the cursor yet, but we know the error
@@ -617,7 +619,7 @@ where
         } else {
             // Nothing else to pull, let's wrap it up
             self.processed_tokens
-                .push((self.position, Token::EndOfFile, self.position));
+                .push(spanned(self.position, self.position, Token::EndOfFile));
 
             Ok(())
         }
@@ -631,7 +633,7 @@ where
     ///   for a list of keywords.
     /// - a `Token::*Identifier` if the identifier isn't a keyword, this encompass basically
     ///   everything which isn't a symbol, literal or keyword in the language.
-    fn consume_identifier(&mut self) -> Result<Spanned> {
+    fn consume_identifier(&mut self) -> Result<Spanned<Position, Token>> {
         trace!(
             "consume_identifier: lookahead={:?}, position={:?}",
             self.lookahead,
@@ -672,10 +674,10 @@ where
             }
         };
 
-        Ok((start_pos, token, end_pos))
+        Ok(spanned(start_pos, end_pos, token))
     }
 
-    fn consume_operator(&mut self) -> Spanned {
+    fn consume_operator(&mut self) -> Spanned<Position, Token> {
         let mut buf = String::new();
         let start_pos = self.position;
 
@@ -706,10 +708,10 @@ where
             _ => Token::Operator(buf),
         };
 
-        (start_pos, tok, end_pos)
+        spanned(start_pos, end_pos, tok)
     }
 
-    fn consume_number(&mut self) -> Spanned {
+    fn consume_number(&mut self) -> Spanned<Position, Token> {
         trace!(
             "consume_number: lookahead={:?}, position={:?}",
             self.lookahead,
@@ -752,7 +754,7 @@ where
             }
         };
 
-        (start_pos, token, end_pos)
+        spanned(start_pos, end_pos, token)
     }
 }
 
@@ -760,7 +762,7 @@ impl<T> Iterator for Tokenizer<T>
 where
     T: Iterator<Item = char>,
 {
-    type Item = Result<Spanned>;
+    type Item = Result<Spanned<Position, Token>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let token = self.process_next_tokens();
@@ -768,7 +770,10 @@ where
         trace!("Tokenizer.next. token={:?}", token);
 
         match token {
-            Ok((_, Token::EndOfFile, _)) => None,
+            Ok(Spanned {
+                value: Token::EndOfFile,
+                ..
+            }) => None,
             r => Some(r),
         }
     }
@@ -778,7 +783,7 @@ where
 mod tests {
 
     use super::{
-        make_tokenizer, LexicalError, LexicalErrorType, NewlineCollapser, Position, Token,
+        make_tokenizer, LexicalError, LexicalErrorType, NewlineCollapser, Position, Token, spanned,
     };
     use indoc::indoc;
 
@@ -797,7 +802,7 @@ mod tests {
 
     fn tokenize(source: &str) -> Vec<Token> {
         make_tokenizer(source)
-            .map(|x| x.expect("no error in tokenize").1)
+            .map(|x| x.expect("no error in tokenize").value)
             .collect()
     }
 
@@ -960,10 +965,10 @@ mod tests {
 
         assert_eq!(
             spans,
-            vec![(
+            vec![spanned(
                 Position::new(15, 1, 2),
+                Position::new(20, 6, 2),
                 ident_token("ident"),
-                Position::new(20, 6, 2)
             )]
         );
     }

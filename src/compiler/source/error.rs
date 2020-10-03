@@ -1,28 +1,25 @@
 use super::layout::LayoutError;
-use super::tokenizer::{LexicalError, Spanned, Token};
+use super::tokenizer::{LexicalError, Token};
+use crate::compiler::position::{BytePos, Spanned};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use lalrpop_util::ParseError;
-
-use crate::compiler::position::Position;
-
-//pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Error {
     Tokenizer(LexicalError),
     Layout(LayoutError),
     // Errors coming from the parser
-    InvalidToken(Position),
+    InvalidToken(BytePos),
     UnexpectedEOF {
-        position: Position,
+        position: BytePos,
         expected: Vec<String>, // The kind of token the parser was expecting
     },
     UnexpectedToken {
-        token: Spanned,
+        token: Spanned<BytePos, Token>,
         expected: Vec<String>, // The kind of token the parser was expecting
     },
     ExtraToken {
-        token: Spanned,
+        token: Spanned<BytePos, Token>,
     },
 }
 
@@ -30,14 +27,10 @@ impl Error {
     pub fn diagnostic<Id>(&self, name: Id) -> Diagnostic<Id> {
         match self {
             Error::UnexpectedToken { token, expected } => {
-                let (start, token, end) = token;
-                let range = start.absolute..end.absolute;
-
                 Diagnostic::error()
-                    .with_message(format!("unexpected token: `{:?}`", token)) // TODO display instead of debug
-                    .with_labels(vec![
-                        Label::primary(name, range).with_message("unexpected token")
-                    ])
+                    .with_message(format!("unexpected token: `{:?}`", token.value)) // TODO display instead of debug
+                    .with_labels(vec![Label::primary(name, token.span.to_range())
+                        .with_message("unexpected token")])
                     .with_notes(vec![format!(
                         "we were expecting one of the following tokens: {:?}",
                         expected
@@ -65,8 +58,8 @@ fn unquote_tokens(mut tokens: Vec<String>) -> Vec<String> {
     tokens.to_vec()
 }
 
-impl From<ParseError<Position, Token, Error>> for Error {
-    fn from(e: ParseError<Position, Token, Error>) -> Self {
+impl From<ParseError<BytePos, Token, Error>> for Error {
+    fn from(e: ParseError<BytePos, Token, Error>) -> Self {
         match e {
             ParseError::InvalidToken { location } => Error::InvalidToken(location),
             ParseError::UnrecognizedEOF { location, expected } => Error::UnexpectedEOF {
@@ -74,10 +67,12 @@ impl From<ParseError<Position, Token, Error>> for Error {
                 expected: unquote_tokens(expected),
             },
             ParseError::UnrecognizedToken { token, expected } => Error::UnexpectedToken {
-                token,
+                token: token.into(),
                 expected: unquote_tokens(expected),
             },
-            ParseError::ExtraToken { token } => Error::ExtraToken { token },
+            ParseError::ExtraToken { token } => Error::ExtraToken {
+                token: token.into(),
+            },
             ParseError::User { error } => error,
         }
     }

@@ -1,4 +1,4 @@
-use crate::compiler::position::Position;
+use crate::compiler::position::BytePos;
 use crate::compiler::source::tokenizer::Token;
 use crate::compiler::source::error::Error;
 use crate::compiler::source::*;
@@ -7,7 +7,7 @@ use std::convert::TryFrom;
 grammar;
 
 extern {
-    type Location = Position;
+    type Location = BytePos;
     type Error = Error;
 
     enum Token {
