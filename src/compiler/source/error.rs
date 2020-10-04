@@ -1,12 +1,12 @@
 use super::layout::LayoutError;
-use super::tokenizer::{LexicalError, Token};
+use super::tokenizer::{Token, TokenizerError};
 use crate::compiler::position::{BytePos, Spanned};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use lalrpop_util::ParseError;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Error {
-    Tokenizer(LexicalError),
+    Tokenizer(TokenizerError),
     Layout(LayoutError),
     // Errors coming from the parser
     InvalidToken(BytePos),
@@ -78,8 +78,8 @@ impl From<ParseError<BytePos, Token, Error>> for Error {
     }
 }
 
-impl From<LexicalError> for Error {
-    fn from(e: LexicalError) -> Self {
+impl From<TokenizerError> for Error {
+    fn from(e: TokenizerError) -> Self {
         Error::Tokenizer(e)
     }
 }

@@ -102,18 +102,16 @@ fn is_operator_char(c: char) -> bool {
     }
 }
 
-// TODO Rename to TokenizerError
 /// Represents an error during tokenization.
 #[derive(Debug, PartialEq, Clone)]
-pub struct LexicalError {
-    pub error: LexicalErrorType,
+pub struct TokenizerError {
+    pub error: TokenizerErrorType,
     pub position: Position,
 }
 
-// TODO Remove errors that aren't needed
-/// The type of error refered in `LexicalError`
+/// The type of error refered in `TokenizerError`
 #[derive(Debug, PartialEq, Clone)]
-pub enum LexicalErrorType {
+pub enum TokenizerErrorType {
     CharError,
     StringError,  // TODO String literal
     UnicodeError, // TODO String literal
@@ -123,8 +121,8 @@ pub enum LexicalErrorType {
     UnrecognizedToken { tok: char },
 }
 
-/// Represent a standard `Result` scoped to a `LexicalError`
-pub type Result<T> = std::result::Result<T, LexicalError>;
+/// Represent a standard `Result` scoped to a `TokenizerError`
+pub type Result<T> = std::result::Result<T, TokenizerError>;
 
 /// Take a source code and return an iterator of [`Spanned`](type.Spanned.html)
 ///
@@ -399,8 +397,8 @@ where
                 }
                 Some('\t') => {
                     // Zelkova forbid the use of tabs for indentation
-                    return Err(LexicalError {
-                        error: LexicalErrorType::TabError,
+                    return Err(TokenizerError {
+                        error: TokenizerErrorType::TabError,
                         position: self.position,
                     });
                 }
@@ -443,8 +441,8 @@ where
 
         // Indentation must be by 2 spaces, anything else is an error
         if spaces % 2 != 0 {
-            return Err(LexicalError {
-                error: LexicalErrorType::IndentationError,
+            return Err(TokenizerError {
+                error: TokenizerErrorType::IndentationError,
                 position: self.position,
             });
         }
@@ -484,8 +482,8 @@ where
                 "Called Tokenizer.consume_comment on non-comment symbol ({:?})",
                 self.position
             );
-            return Err(LexicalError {
-                error: LexicalErrorType::CommentError,
+            return Err(TokenizerError {
+                error: TokenizerErrorType::CommentError,
                 position: self.position,
             });
         }
@@ -576,15 +574,15 @@ where
                             // is on the next character, so we build the position manually
                             let mut position = self.position.clone();
                             position.increment();
-                            return Err(LexicalError {
-                                error: LexicalErrorType::CharError,
+                            return Err(TokenizerError {
+                                error: TokenizerErrorType::CharError,
                                 position: position,
                             });
                         }
                     } else {
                         // error: opened single quote without character following
-                        return Err(LexicalError {
-                            error: LexicalErrorType::CharError,
+                        return Err(TokenizerError {
+                            error: TokenizerErrorType::CharError,
                             position: self.position,
                         });
                     }
@@ -593,8 +591,8 @@ where
                     self.next_char().unwrap(); // let's skip over whitespace and new lines
                 }
                 '\t' => {
-                    return Err(LexicalError {
-                        error: LexicalErrorType::TabError,
+                    return Err(TokenizerError {
+                        error: TokenizerErrorType::TabError,
                         position: self.position,
                     })
                 }
@@ -608,8 +606,8 @@ where
                 }
                 _ => {
                     let c = self.next_char().expect("lookahead.0 should be present");
-                    return Err(LexicalError {
-                        error: LexicalErrorType::UnrecognizedToken { tok: c },
+                    return Err(TokenizerError {
+                        error: TokenizerErrorType::UnrecognizedToken { tok: c },
                         position: self.position,
                     });
                 }
@@ -783,7 +781,8 @@ where
 mod tests {
 
     use super::{
-        make_tokenizer, LexicalError, LexicalErrorType, NewlineCollapser, Position, Token, spanned,
+        make_tokenizer, spanned, NewlineCollapser, Position, Token, TokenizerError,
+        TokenizerErrorType,
     };
     use indoc::indoc;
 
@@ -865,16 +864,16 @@ mod tests {
     fn test_literal_char() {
         assert_eq!(
             make_tokenizer("'").collect::<Result<Vec<_>, _>>(),
-            Err(LexicalError {
-                error: LexicalErrorType::CharError,
+            Err(TokenizerError {
+                error: TokenizerErrorType::CharError,
                 position: Position::new(0, 1, 1)
             })
         );
 
         assert_eq!(
             make_tokenizer("'a").collect::<Result<Vec<_>, _>>(),
-            Err(LexicalError {
-                error: LexicalErrorType::CharError,
+            Err(TokenizerError {
+                error: TokenizerErrorType::CharError,
                 position: Position::new(1, 2, 1)
             })
         );
@@ -921,16 +920,16 @@ mod tests {
     fn test_invalid_indentation() {
         assert_eq!(
             make_tokenizer(" a").collect::<Result<Vec<_>, _>>(),
-            Err(LexicalError {
-                error: LexicalErrorType::IndentationError,
+            Err(TokenizerError {
+                error: TokenizerErrorType::IndentationError,
                 position: Position::new(1, 2, 1)
             })
         );
 
         assert_eq!(
             make_tokenizer("  \ta").collect::<Result<Vec<_>, _>>(),
-            Err(LexicalError {
-                error: LexicalErrorType::TabError,
+            Err(TokenizerError {
+                error: TokenizerErrorType::TabError,
                 position: Position::new(2, 3, 1)
             })
         );
@@ -989,8 +988,8 @@ mod tests {
     fn test_refuse_tab_in_expression() {
         assert_eq!(
             make_tokenizer("map \ta").collect::<Result<Vec<_>, _>>(),
-            Err(LexicalError {
-                error: LexicalErrorType::TabError,
+            Err(TokenizerError {
+                error: TokenizerErrorType::TabError,
                 position: Position::new(4, 5, 1)
             })
         );
