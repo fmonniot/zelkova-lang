@@ -77,27 +77,18 @@ impl Name {
 pub enum Type {
     /// Type constructor
     Unqualified(Name, Box<Vec<Type>>),
-    Arrow(Box<Type>, Box<Type>),
     // Qualified type eg Maybe.Maybe
-    /// type variable
+    /// Type constructor →
+    /// 
+    /// Applications of the type constructor → are written infix and
+    /// associate to the right, so T → T' → T" stands for T → (T' → T").
+    Arrow(Box<Type>, Box<Type>),
+    /// Type variable
     Variable(Name),
     Tuple(Box<Type>, Box<Vec<Type>>),
 }
 
 impl Type {
-    /// Special constructor for an arrow, when we want to apply currying
-    /// on the right hand side.
-    pub fn curry_arrow(t1: Type, t2: Type) -> Type {
-        match t2 {
-            Type::Arrow(t21, t22) => {
-                // t1 -> (t21 -> t22)
-                // we want t1 -> t21 -> t22
-                Type::Arrow(Box::new(Type::Arrow(Box::new(t1), t21)), t22)
-            }
-            _ => Type::Arrow(Box::new(t1), Box::new(t2)),
-        }
-    }
-
     pub fn unqualified(name: Name) -> Type {
         Type::Unqualified(name, Box::new(vec![]))
     }
@@ -400,38 +391,6 @@ pub enum Literal {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // TODO Reverse how we do currying.
-    // Currently a -> b -> b is interpreted as (a -> b) -> c
-    // whereas it should be a -> (b -> c)
-    #[test]
-    fn type_curry_arrow() {
-        // String -> Int
-        let arrow1 = Type::Arrow(
-            Box::new(Type::unqualified(Name("String".to_string()))),
-            Box::new(Type::unqualified(Name("Int".to_string()))),
-        );
-
-        // String -> Int
-        let arrow2 = Type::Arrow(
-            Box::new(Type::unqualified(Name("String".to_string()))),
-            Box::new(Type::unqualified(Name("Int".to_string()))),
-        );
-
-        // (String -> Int) -> String -> Int
-        let expected = Type::Arrow(
-            Box::new(Type::Arrow(
-                Box::new(Type::Arrow(
-                    Box::new(Type::unqualified(Name("String".to_string()))),
-                    Box::new(Type::unqualified(Name("Int".to_string()))),
-                )),
-                Box::new(Type::unqualified(Name("String".to_string()))),
-            )),
-            Box::new(Type::unqualified(Name("Int".to_string()))),
-        );
-
-        assert_eq!(Type::curry_arrow(arrow1, arrow2), expected);
-    }
 
     #[test]
     fn name_unqualified() {

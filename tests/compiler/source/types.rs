@@ -136,9 +136,9 @@ test_parse_ok!(
 
     main : String -> Int
     "#,
-    module_function_type(Type::Arrow(
-        Box::new(Type::unqualified(Name("String".to_string()))),
-        Box::new(Type::unqualified(Name("Int".to_string()))),
+    module_function_type(type_arrow(
+        Type::unqualified(Name("String".to_string())),
+        Type::unqualified(Name("Int".to_string())),
     ))
 );
 
@@ -149,18 +149,18 @@ test_parse_ok!(
 
     main : (a -> b, b -> c) -> a
     "#,
-    module_function_type(Type::Arrow(
-        Box::new(Type::Tuple(
-            Box::new(Type::Arrow(
-                Box::new(Type::Variable(Name("a".to_string()))),
-                Box::new(Type::Variable(Name("b".to_string()))),
-            )),
-            Box::new(vec![Type::Arrow(
-                Box::new(Type::Variable(Name("b".to_string()))),
-                Box::new(Type::Variable(Name("c".to_string()))),
-            )]),
-        )),
-        Box::new(Type::Variable(Name("a".to_string()))),
+    module_function_type(type_arrow(
+        type_tuple2(
+            type_arrow(
+                Type::Variable(Name("a".to_string())),
+                Type::Variable(Name("b".to_string())),
+            ),
+            type_arrow(
+                Type::Variable(Name("b".to_string())),
+                Type::Variable(Name("c".to_string())),
+            ),
+        ),
+        Type::Variable(Name("a".to_string())),
     ))
 );
 
@@ -171,15 +171,15 @@ test_parse_ok!(
 
     main : (String -> Int) -> String -> Int
     "#,
-    module_function_type(Type::Arrow(
-        Box::new(Type::Arrow(
-            Box::new(Type::Arrow(
-                Box::new(Type::unqualified(Name("String".to_string()))),
-                Box::new(Type::unqualified(Name("Int".to_string()))),
-            )),
-            Box::new(Type::unqualified(Name("String".to_string()))),
-        )),
-        Box::new(Type::unqualified(Name("Int".to_string()))),
+    module_function_type(type_arrow(
+        type_arrow(
+            Type::unqualified(Name("String".to_string())),
+            Type::unqualified(Name("Int".to_string())),
+        ),
+        type_arrow(
+            Type::unqualified(Name("String".to_string())),
+            Type::unqualified(Name("Int".to_string())),
+        ),
     ))
 );
 
@@ -190,18 +190,18 @@ test_parse_ok!(
 
     main : (String -> Int) -> (Int -> String) -> Int
     "#,
-    module_function_type(Type::Arrow(
-        Box::new(Type::Arrow(
-            Box::new(Type::Arrow(
-                Box::new(Type::unqualified(Name("String".to_string()))),
-                Box::new(Type::unqualified(Name("Int".to_string()))),
-            )),
-            Box::new(Type::Arrow(
-                Box::new(Type::unqualified(Name("Int".to_string()))),
-                Box::new(Type::unqualified(Name("String".to_string()))),
-            )),
-        )),
-        Box::new(Type::unqualified(Name("Int".to_string()))),
+    module_function_type(type_arrow(
+        type_arrow(
+            Type::unqualified(Name("String".to_string())),
+            Type::unqualified(Name("Int".to_string())),
+        ),
+        type_arrow(
+            type_arrow(
+                Type::unqualified(Name("Int".to_string())),
+                Type::unqualified(Name("String".to_string())),
+            ),
+            Type::unqualified(Name("Int".to_string())),
+        ),
     ))
 );
 
@@ -212,14 +212,11 @@ test_parse_ok!(
 
     main : a -> Maybe a -> a
     "#,
-    module_function_type(Type::Arrow(
-        Box::new(Type::Arrow(
-            Box::new(Type::Variable(name("a"))),
-            Box::new(Type::unqualified_with(
-                name("Maybe"),
-                vec![Type::Variable(name("a"))],
-            )),
-        )),
-        Box::new(Type::Variable(name("a"))),
+    module_function_type(type_arrow(
+        Type::Variable(name("a")),
+        type_arrow(
+            Type::unqualified_with(name("Maybe"), vec![Type::Variable(name("a"))]),
+            Type::Variable(name("a")),
+        ),
     ))
 );

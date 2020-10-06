@@ -297,12 +297,12 @@ Type: Type = {
         };
 
         match tpe2 {
-            Some(tpe2) => Type::curry_arrow(tpe1, tpe2),
+            Some(tpe2) => Type::Arrow(Box::new(tpe1), Box::new(tpe2)),
             None => tpe1,
         }
     },
 
-    <name:ArgType> "->" <tpe:Type> => Type::curry_arrow(name, tpe),
+    <tpe1:ArgType> "->" <tpe2:Type> => Type::Arrow(Box::new(tpe1), Box::new(tpe2)),
 }
 
 FunType: FunType = <name:VarIdent> ":" <tpe:Type> => {

@@ -48,3 +48,11 @@ macro_rules! test_parse_ok {
 pub fn name(name: &str) -> Name {
     Name(name.to_string())
 }
+
+pub fn type_arrow(tpe1: Type, tpe2: Type) -> Type {
+    Type::Arrow(Box::new(tpe1), Box::new(tpe2))
+}
+
+pub fn type_tuple2(tpe1: Type, tpe2: Type) -> Type {
+    Type::Tuple(Box::new(tpe1), Box::new(vec![tpe2]))
+}
