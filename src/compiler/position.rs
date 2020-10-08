@@ -86,7 +86,7 @@ pub fn spanned<I, T>(start: I, end: I, value: T) -> Spanned<I, T> {
 }
 
 /// A `Span` represents a section of the original source code
-/// 
+///
 /// TODO `Span` is curently generic. Once we have something working
 /// end to end, we should see if we are using `BytePos` everywhere
 /// or not.
@@ -97,7 +97,7 @@ pub struct Span<I> {
 }
 
 /// The raw byte index.
-/// 
+///
 /// We use a 32-bit integer here for space efficiency, assuming we won't
 /// be working with sources larger than 4GB.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]

@@ -12,9 +12,11 @@ pub mod layout;
 pub mod parser;
 pub mod tokenizer;
 
+pub use error::Error;
+
 use std::collections::HashMap;
 
-pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, error::Error> {
+pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> {
     let source = source_file.source();
 
     // Tokenize the source code into a serie of tokens
