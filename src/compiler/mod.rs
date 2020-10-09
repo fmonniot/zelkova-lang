@@ -37,7 +37,7 @@ mod exhaustiveness;
 pub mod position;
 pub mod source;
 pub mod source_files;
-pub mod typing;
+pub mod typer;
 
 use source_files::{SourceFile, SourceFileId, SourceFiles};
 
@@ -111,8 +111,8 @@ impl From<canonical::Error> for CompilationError {
     }
 }
 
-impl From<typing::Error> for CompilationError {
-    fn from(err: typing::Error) -> Self {
+impl From<typer::Error> for CompilationError {
+    fn from(err: typer::Error) -> Self {
         todo!()
     }
 }
@@ -250,7 +250,7 @@ pub fn check_module(
     // - type checking and inference
     // TODO Here either type checks return the new types, or it take a mutable canonical
     // representation and "fill the blank" directly on the canonical AST.
-    typing::type_check(&canonical)?;
+    typer::type_check(&canonical)?;
 
     // verify in pattern matching branches that all variants are covered
     exhaustiveness::check(&canonical)?;
