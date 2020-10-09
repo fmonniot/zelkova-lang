@@ -6,8 +6,8 @@
 //! terms (most notably while type checking a module).
 use super::source;
 use super::Interface;
+use super::{ModuleName, PackageName};
 use std::collections::HashMap;
-use super::{PackageName, ModuleName};
 
 pub struct Module {}
 

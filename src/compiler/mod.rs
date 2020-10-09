@@ -28,7 +28,7 @@ use codespan_reporting::term::termcolor::{Color, ColorSpec, StandardStream};
 use codespan_reporting::term::{self, ColorArg};
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
 use walkdir::WalkDir;
 
@@ -39,8 +39,7 @@ pub mod source;
 pub mod source_files;
 pub mod typing;
 
-use source_files::{SourceFileId, SourceFile, SourceFiles};
-
+use source_files::{SourceFile, SourceFileId, SourceFiles};
 
 /// A package name is composed of an author and project name and is written as `author/project`.
 #[derive(Eq, PartialEq, Hash)]
@@ -73,14 +72,30 @@ pub struct Interface {
 
 #[derive(Debug)]
 pub enum CompilationError {
-    Source(source::Error, SourceFileId)
+    LoadingFiles(Vec<source_files::SourceFileError>),
+    Source(source::Error, SourceFileId),
 }
 
 impl<'a> CompilationError {
     fn as_diagnostic(&self) -> Diagnostic<SourceFileId> {
         match self {
-            CompilationError::Source(err, file_id) => {
-                err.diagnostic(*file_id)
+            CompilationError::Source(err, file_id) => err.diagnostic(*file_id),
+            CompilationError::LoadingFiles(errors) => {
+                let notes = errors
+                    .iter()
+                    .map(|error| {
+                        format!(
+                            "{}\n{}\n{}",
+                            error.file_name(),
+                            error.message(),
+                            error.note().unwrap_or_else(|| "".to_owned())
+                        )
+                    })
+                    .collect();
+
+                Diagnostic::error()
+                    .with_message("Error while loading the package files")
+                    .with_notes(notes)
             }
         }
     }
@@ -109,8 +124,8 @@ impl From<exhaustiveness::Error> for CompilationError {
 }
 
 impl From<Vec<source_files::SourceFileError>> for CompilationError {
-    fn from(err: Vec<source_files::SourceFileError>) -> Self {
-        todo!()
+    fn from(errors: Vec<source_files::SourceFileError>) -> Self {
+        CompilationError::LoadingFiles(errors)
     }
 }
 
@@ -146,7 +161,9 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     let modules: Vec<_> = {
         let (oks, fails): (Vec<_>, Vec<Result<_, CompilationError>>) = sources
             .iter()
-            .map(|(id, file)| source::parse(file.file()).map_err(|err| CompilationError::from(err, id)))
+            .map(|(id, file)| {
+                source::parse(file.file()).map_err(|err| CompilationError::from(err, id))
+            })
             .partition(Result::is_ok);
 
         diagnostics.extend(

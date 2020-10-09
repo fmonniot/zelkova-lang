@@ -1,3 +1,4 @@
+use codespan_reporting::diagnostic::Diagnostic;
 use codespan_reporting::files::{Files, SimpleFile};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -15,26 +16,31 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
-
     /// Load a `SourceFile` from the file system
-    pub fn load(
-        abs_path: PathBuf,
-        root: &Path,
-    ) -> Result<SourceFile, SourceFileError> {
+    pub fn load(abs_path: PathBuf, root: &Path) -> Result<SourceFile, SourceFileError> {
+        SourceFile::load_private(&abs_path, root)
+            .map_err(|error| SourceFileError { error, abs_path })
+    }
+
+    fn load_private(abs_path: &PathBuf, root: &Path) -> Result<SourceFile, SourceFileErrorType> {
         let relative_path = abs_path.strip_prefix(root)?.to_path_buf();
 
         let file_name = relative_path
             .to_str()
-            .ok_or_else(|| SourceFileError::NonUtf8Module(relative_path.clone()))?
+            .ok_or_else(|| SourceFileErrorType::NonUtf8Module(relative_path.clone()))?
             .to_owned();
-    
+
         let module_name = file_name
             .trim_end_matches(".zel")
             .replace(std::path::MAIN_SEPARATOR, ".");
-    
+
         let source = std::fs::read_to_string(abs_path)?;
-    
-        Ok(SourceFile { module_name, relative_path, file: SimpleFile::new(file_name, source) })
+
+        Ok(SourceFile {
+            module_name,
+            relative_path,
+            file: SimpleFile::new(file_name, source),
+        })
     }
 
     pub fn file(&self) -> &SimpleFile<String, String> {
@@ -43,21 +49,57 @@ impl SourceFile {
 }
 
 #[derive(Debug)]
-pub enum SourceFileError {
-    PathPrefix(std::path::StripPrefixError),
+pub struct SourceFileError {
+    error: SourceFileErrorType,
+    abs_path: PathBuf,
+}
+
+impl SourceFileError {
+    pub fn file_name(&self) -> String {
+        format!("{}", self.abs_path.display())
+    }
+
+    pub fn message(&self) -> &'static str {
+        match &self.error {
+            SourceFileErrorType::InvalidPathPrefix => {
+                "The module path doesn't start with the package path."
+            }
+            SourceFileErrorType::Io(_) => "An I/O error occured while reading the module",
+            SourceFileErrorType::NonUtf8Module(_) => {
+                // Maybe we should add some details as to where the incorrect characters are ?
+                "Module name must be utf-8 encoded"
+            }
+        }
+    }
+
+    pub fn note(&self) -> Option<String> {
+        match &self.error {
+            SourceFileErrorType::InvalidPathPrefix => None,
+            SourceFileErrorType::Io(err) => Some(format!("detailled error: {:?}", err)),
+            SourceFileErrorType::NonUtf8Module(rel_path) => {
+                // Maybe we should add some details as to where the incorrect characters are ?
+                Some(format!("relative path: {}", rel_path.display()))
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum SourceFileErrorType {
+    InvalidPathPrefix,
     Io(std::io::Error),
     NonUtf8Module(PathBuf),
 }
 
-impl From<std::path::StripPrefixError> for SourceFileError {
-    fn from(err: std::path::StripPrefixError) -> Self {
-        SourceFileError::PathPrefix(err)
+impl From<std::path::StripPrefixError> for SourceFileErrorType {
+    fn from(_err: std::path::StripPrefixError) -> Self {
+        SourceFileErrorType::InvalidPathPrefix
     }
 }
 
-impl From<std::io::Error> for SourceFileError {
+impl From<std::io::Error> for SourceFileErrorType {
     fn from(err: std::io::Error) -> Self {
-        SourceFileError::Io(err)
+        SourceFileErrorType::Io(err)
     }
 }
 
@@ -92,8 +134,11 @@ impl<'a> SourceFiles {
         self.files.get(file_id.0).map(|f| &f.file)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=(SourceFileId, &'_ SourceFile)> + '_ {
-        self.files.iter().enumerate().map(|(i, v)| (SourceFileId(i), v))
+    pub fn iter(&self) -> impl Iterator<Item = (SourceFileId, &'_ SourceFile)> + '_ {
+        self.files
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (SourceFileId(i), v))
     }
 
     // Will probably need an accessor module name -> Option<SourceFileId>
@@ -120,7 +165,6 @@ impl<'a> Files<'a> for SourceFiles {
         self.get(file_id)?.line_range((), line_index)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
