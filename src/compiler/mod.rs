@@ -8,10 +8,10 @@
 //!
 //! 1. Start at the src/ folder. We name it root. (later on defined in a `zelkova.json` manifest)
 //! 2. Collect all `*.zelkova` files with their path name relatives to the root.
-//! 3. Create a `SourceFiles` mapping from `ModuleName` to `source::Module`.
+//! 3. Create a `SourceFiles` mapping from `ModuleName` to `parser::Module`.
 //!     a. module names are deduced from file name
-//!     b. parsing is done through `source::parse`
-//!     c. Verify that source::Module.name match the one from the file system
+//!     b. parsing is done through `parser::parse`
+//!     c. Verify that parser::Module.name match the one from the file system
 //! 4. Build a dependency graphs from the modules import
 //!     a. build it
 //!     b. Verify there is no cyclic relation between modules
@@ -35,7 +35,7 @@ use walkdir::WalkDir;
 pub mod canonical;
 mod exhaustiveness;
 pub mod position;
-pub mod source;
+pub mod parser;
 pub mod source_files;
 pub mod typer;
 
@@ -63,17 +63,17 @@ pub struct ModuleName {
 /// parsed module and only load this information on module depending on it.
 pub struct Interface {
     package: PackageName,
-    values: HashMap<source::Name, source::Type>,
-    types: HashMap<source::Name, source::UnionType>,
+    values: HashMap<parser::Name, parser::Type>,
+    types: HashMap<parser::Name, parser::UnionType>,
     // TODO type aliases
-    //aliases: HashMap<source::Name, >
-    infixes: HashMap<source::Name, source::Infix>,
+    //aliases: HashMap<parser::Name, >
+    infixes: HashMap<parser::Name, parser::Infix>,
 }
 
 #[derive(Debug)]
 pub enum CompilationError {
     LoadingFiles(Vec<source_files::SourceFileError>),
-    Source(source::Error, SourceFileId),
+    Source(parser::Error, SourceFileId),
 }
 
 impl<'a> CompilationError {
@@ -100,7 +100,7 @@ impl<'a> CompilationError {
         }
     }
 
-    fn from(err: source::Error, source_id: SourceFileId) -> Self {
+    fn from(err: parser::Error, source_id: SourceFileId) -> Self {
         CompilationError::Source(err, source_id)
     }
 }
@@ -162,7 +162,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
         let (oks, fails): (Vec<_>, Vec<Result<_, CompilationError>>) = sources
             .iter()
             .map(|(id, file)| {
-                source::parse(file.file()).map_err(|err| CompilationError::from(err, id))
+                parser::parse(file.file()).map_err(|err| CompilationError::from(err, id))
             })
             .partition(Result::is_ok);
 
@@ -180,7 +180,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 
     // Step 3.c
     // TODO Verify modules name match file system.
-    // TODO Include this into the source::parse() function (w/ module name as argument) ?
+    // TODO Include this into the parser::parse() function (w/ module name as argument) ?
 
     // Step 4
     // TODO Build dependency graphs between modules
@@ -237,7 +237,7 @@ fn load_package_sources(root: &Path) -> Result<SourceFiles, CompilationError> {
 pub fn check_module(
     package: PackageName,
     interfaces: HashMap<ModuleName, Interface>,
-    source: source::Module,
+    source: parser::Module,
 ) -> Result<canonical::Module, CompilationError> {
     // - desugar ~?~ *!*
     // Should I have an intermediate AST before type checking ?
@@ -257,4 +257,3 @@ pub fn check_module(
 
     Ok(canonical)
 }
-

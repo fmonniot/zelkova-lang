@@ -8,8 +8,9 @@ use super::tokenizer::Token;
 use super::Module;
 use crate::compiler::position::BytePos;
 
-lalrpop_mod!(grammar, "/compiler/source/grammar.rs");
+lalrpop_mod!(grammar, "/compiler/parser/grammar.rs");
 
+// TODO Inline within mod::parse
 pub fn parse(
     i: impl Iterator<Item = Result<(BytePos, Token, BytePos), Error>>,
 ) -> Result<Module, Error> {

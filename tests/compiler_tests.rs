@@ -1,5 +1,5 @@
 mod compiler {
-    mod source {
+    mod parser {
         #[macro_use]
         mod support;
 

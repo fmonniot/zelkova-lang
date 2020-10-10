@@ -1,5 +1,5 @@
 use super::support::*;
-use zelkova_lang::compiler::source::*;
+use zelkova_lang::compiler::parser::*;
 
 // exposing
 

@@ -4,7 +4,7 @@
 //! For example, all terms and types will be scoped to their proper package and
 //! module name. This let us have one global scope when referencing to other
 //! terms (most notably while type checking a module).
-use super::source;
+use super::parser;
 use super::Interface;
 use super::{ModuleName, PackageName};
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ pub enum Error {}
 pub fn canonicalize(
     package: PackageName,
     interfaces: HashMap<ModuleName, Interface>,
-    source: source::Module,
+    source: parser::Module,
 ) -> Result<Module, Error> {
     todo!()
 }

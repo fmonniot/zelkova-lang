@@ -4,6 +4,8 @@ use crate::compiler::position::{BytePos, Spanned};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use lalrpop_util::ParseError;
 
+// TODO Make integration tests for errors. Can be inspired from insta with generate-tests crate
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Error {
     Tokenizer(TokenizerError),

@@ -397,7 +397,7 @@ where
 mod tests {
     use super::*;
     use crate::compiler::position::Position;
-    use crate::compiler::source::*;
+    use crate::compiler::parser::*;
     use tokenizer::Token;
 
     // Create an approximation for the token position in the stream.

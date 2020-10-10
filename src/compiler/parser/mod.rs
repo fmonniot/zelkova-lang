@@ -5,6 +5,14 @@
 //! to make their life easier (for example, pattern matching in function
 //! declaration)
 //!
+//! TODO Fill in the sections below
+//!
+//! ## Compiler phase
+//! `parse`
+//! ## AST
+//! TODO
+//! ## Modules
+//! TODO hierarchy and modules.
 use codespan_reporting::files::SimpleFile;
 
 pub mod error;
@@ -34,6 +42,8 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
     // TODO Should works on reference and not consume the original iterator
     parser::parse(tokens.iter().cloned())
 }
+
+// TODO Simplify all Box<Vec<_>> into Vec<_> (vec is already on the heap, no need to box it)
 
 /// new type over identifier names
 // TODO names are currently stored as a String, and destructured on-demand
@@ -81,7 +91,7 @@ pub enum Type {
     Unqualified(Name, Box<Vec<Type>>),
     // Qualified type eg Maybe.Maybe
     /// Type constructor →
-    /// 
+    ///
     /// Applications of the type constructor → are written infix and
     /// associate to the right, so T → T' → T" stands for T → (T' → T").
     Arrow(Box<Type>, Box<Type>),

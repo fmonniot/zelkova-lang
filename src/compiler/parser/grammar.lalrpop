@@ -1,7 +1,7 @@
 use crate::compiler::position::BytePos;
-use crate::compiler::source::tokenizer::Token;
-use crate::compiler::source::error::Error;
-use crate::compiler::source::*;
+use crate::compiler::parser::tokenizer::Token;
+use crate::compiler::parser::error::Error;
+use crate::compiler::parser::*;
 use std::convert::TryFrom;
 
 grammar;
