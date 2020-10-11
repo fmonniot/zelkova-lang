@@ -1,4 +1,3 @@
-use codespan_reporting::diagnostic::Diagnostic;
 use codespan_reporting::files::{Files, SimpleFile};
 use std::ops::Range;
 use std::path::{Path, PathBuf};

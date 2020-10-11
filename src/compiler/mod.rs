@@ -22,7 +22,6 @@
 //! 7. TODO Try a way to weave error management in each of those passes :)
 
 use codespan_reporting::diagnostic::Diagnostic;
-use codespan_reporting::files::SimpleFile;
 use codespan_reporting::term::termcolor::WriteColor;
 use codespan_reporting::term::termcolor::{Color, ColorSpec, StandardStream};
 use codespan_reporting::term::{self, ColorArg};
@@ -30,16 +29,15 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use std::str::FromStr;
-use walkdir::WalkDir;
 
 pub mod canonical;
 mod exhaustiveness;
-pub mod position;
 pub mod parser;
-pub mod source_files;
+pub mod position;
+pub mod source;
 pub mod typer;
 
-use source_files::{SourceFile, SourceFileId, SourceFiles};
+use source::files::{SourceFileError, SourceFileId};
 
 /// A package name is composed of an author and project name and is written as `author/project`.
 #[derive(Eq, PartialEq, Hash)]
@@ -72,7 +70,7 @@ pub struct Interface {
 
 #[derive(Debug)]
 pub enum CompilationError {
-    LoadingFiles(Vec<source_files::SourceFileError>),
+    LoadingFiles(Vec<SourceFileError>),
     Source(parser::Error, SourceFileId),
 }
 
@@ -123,8 +121,8 @@ impl From<exhaustiveness::Error> for CompilationError {
     }
 }
 
-impl From<Vec<source_files::SourceFileError>> for CompilationError {
-    fn from(errors: Vec<source_files::SourceFileError>) -> Self {
+impl From<Vec<SourceFileError>> for CompilationError {
+    fn from(errors: Vec<SourceFileError>) -> Self {
         CompilationError::LoadingFiles(errors)
     }
 }
@@ -151,7 +149,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     // Step 1: package_path parameter
 
     // Step 2 and 3.a
-    let sources = load_package_sources(&package_path)?;
+    let sources = source::load_package_sources(&package_path)?;
 
     // Further steps will produces errors. We aggregates them here and will report them at
     // the end of the compilation phase.
@@ -194,43 +192,6 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     }
 
     Ok(())
-}
-
-// We don't support non-UTF8 characters in path
-fn load_package_sources(root: &Path) -> Result<SourceFiles, CompilationError> {
-    let walk = WalkDir::new(root)
-        .follow_links(true)
-        .into_iter()
-        .filter_map(|r| r.ok())
-        .filter_map(|entry| {
-            let path = entry.path().to_path_buf();
-            let ext = path.extension();
-
-            match ext {
-                Some(os_str) if os_str == "zel" => Some(path),
-                _ => None,
-            }
-        });
-
-    let mut sources = SourceFiles::new();
-    let mut errors = vec![];
-
-    for abs_path in walk {
-        match SourceFile::load(abs_path, root) {
-            Ok(src) => {
-                sources.add_file(src);
-            }
-            Err(err) => {
-                errors.push(err);
-            }
-        };
-    }
-
-    if errors.is_empty() {
-        Ok(sources)
-    } else {
-        Err(errors.into())
-    }
 }
 
 /// Take a parsed module file within the ecosystem and apply all checks to it
