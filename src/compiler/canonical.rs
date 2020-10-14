@@ -21,6 +21,8 @@ use std::collections::HashMap;
 // Some elements which are common to both AST
 pub use parser::{Associativity, Name};
 
+// begin AST
+
 /// A resolved module
 #[derive(Debug)]
 pub struct Module {
@@ -45,7 +47,7 @@ pub enum ExportType {
     UnionPrivate,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Infix {
     associativity: Associativity,
     precedence: u8,
@@ -58,6 +60,9 @@ pub struct UnionType;// TODO
 #[derive(Debug)]
 pub struct Value;// TODO
 
+
+// end AST
+
 #[derive(Debug)]
 pub enum Error {
     ExportNotFound(Name, ExportType)
@@ -66,17 +71,18 @@ pub enum Error {
 /// Transform a given `parser::Module` into a `canonical::Module`
 pub fn canonicalize(
     package: PackageName,
-    _interfaces: HashMap<ModuleName, Interface>,
+    interfaces: HashMap<ModuleName, Interface>,
     source: parser::Module,
 ) -> Result<Module, Vec<Error>> {
     let mut errors: Vec<Error> = vec![];
+    let mut env = NamedEnvironment::from_interfaces(&interfaces);
 
     let name = ModuleName {
         package,
         name: source.name.clone(),
     };
 
-    let infixes = do_infixes(&source.infixes);
+    let infixes = do_infixes(&source.infixes, &mut env);
 
     let values = do_values().unwrap_or_else(|err| {
         errors.extend(err);
@@ -90,7 +96,7 @@ pub fn canonicalize(
 
     // We do exports at the end, and verify that all exported value do
     // have a reference within the current module
-    let exports = do_exports(source.exposing, &infixes).unwrap_or_else(|err| {
+    let exports = do_exports(source.exposing, &env).unwrap_or_else(|err| {
         errors.extend(err);
         Exports::Everything // Never exposed, as we will return the errors instead
     });
@@ -116,19 +122,21 @@ fn do_types() -> Result<HashMap<Name, UnionType>, Vec<Error>> {
     Ok(HashMap::new())
 }
 
-fn do_infixes(infixes: &Vec<parser::Infix>) -> HashMap<Name, Infix> {
+fn do_infixes(infixes: &Vec<parser::Infix>, env: &mut NamedEnvironment) -> HashMap<Name, Infix> {
     infixes
         .iter()
         .map(|infix| {
             // resolve function name
-            (
-                infix.operator.clone(),
-                Infix {
-                    associativity: infix.associativy,
-                    precedence: infix.precedence,
-                    function_name: infix.function_name.clone(),
-                },
-            )
+            let op_name = infix.operator.clone();
+            let infix = Infix {
+                associativity: infix.associativy,
+                precedence: infix.precedence,
+                function_name: infix.function_name.clone(),
+            };
+
+            env.insert_local_infix(op_name.clone(), infix.clone());
+
+            (op_name, infix)
         })
         .collect()
 }
@@ -136,7 +144,7 @@ fn do_infixes(infixes: &Vec<parser::Infix>) -> HashMap<Name, Infix> {
 // TODO Add existence checks for values and types
 fn do_exports(
     source_exposing: parser::Exposing,
-    infixes: &HashMap<Name, Infix>,
+    env: &NamedEnvironment,
 ) -> Result<Exports, Vec<Error>> {
     match source_exposing {
         parser::Exposing::Open => Ok(Exports::Everything),
@@ -152,7 +160,7 @@ fn do_exports(
                         Ok((name, ExportType::UnionPrivate))
                     }
                     parser::Exposed::Operator(name) => {
-                        if infixes.contains_key(&name) {
+                        if env.local_infix_exists(&name) {
                             Ok((name, ExportType::Infix))
                         } else {
                             Err(Error::ExportNotFound(name, ExportType::Infix))
@@ -164,6 +172,40 @@ fn do_exports(
 
             Ok(Exports::Specifics(specifics.into_iter().collect()))
         }
+    }
+}
+
+
+#[derive(Default)]
+struct NamedEnvironment {
+    infixes: HashMap<Name, Infix>,
+    values: HashMap<Name, Value>
+}
+
+impl NamedEnvironment {
+    fn from_interfaces(interfaces: &HashMap<ModuleName, Interface>) -> NamedEnvironment {
+        let mut env = NamedEnvironment::default();
+
+        for (_module_name, interface) in interfaces {
+            for (n, infix) in &interface.infixes {
+                env.insert_local_infix(n.clone(), Infix {
+                    associativity: infix.associativy,
+                    precedence: infix.precedence,
+                    function_name: infix.function_name.clone(),
+                });
+            }
+        }
+
+        todo!()
+    }
+
+    // TODO Do we need a local/foreign distinction for infixes ? (or in general ?)
+    fn insert_local_infix(&mut self, name: Name, infix: Infix) {
+        self.infixes.insert(name, infix);
+    }
+
+    fn local_infix_exists(&self, name: &Name) -> bool {
+        self.infixes.contains_key(&name)
     }
 }
 
