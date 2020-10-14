@@ -103,8 +103,8 @@ impl<'a> CompilationError {
     }
 }
 
-impl From<canonical::Error> for CompilationError {
-    fn from(err: canonical::Error) -> Self {
+impl From<Vec<canonical::Error>> for CompilationError {
+    fn from(_err: Vec<canonical::Error>) -> Self {
         todo!()
     }
 }
