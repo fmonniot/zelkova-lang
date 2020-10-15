@@ -17,12 +17,13 @@ use codespan_reporting::files::SimpleFile;
 
 pub mod error;
 pub mod layout;
-pub mod parser;
 pub mod tokenizer;
 
 pub use error::Error;
 
 use std::collections::HashMap;
+
+lalrpop_mod!(grammar, "/compiler/parser/grammar.rs");
 
 pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> {
     let source = source_file.source();
@@ -30,17 +31,17 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
     // Tokenize the source code into a serie of tokens
     let tokenizer = tokenizer::make_tokenizer(source).map(|r| r.map_err(|e| e.into()));
 
-    // Then manage the indentation aspect of our code
+    // Manage the indentation aspect of our code
     let indented = layout::layout(tokenizer);
 
-    // Some debug instruction to easily find errors early on.
-    // This is for development only, and we should have a better error reporting
-    // system in the future.
-    let tokens: Vec<_> = indented.collect();
-
-    // parser
+    // Parse the tokens into an AST
     // TODO Should works on reference and not consume the original iterator
-    parser::parse(tokens.iter().cloned())
+    let module = grammar::ModuleParser::new().parse(indented)?;
+
+    // And do some early nitpicking
+    // TODO Check module name is valid. Need to take SourceFile instead of SimpleFile as parameter.
+
+    Ok(module)
 }
 
 // TODO Simplify all Box<Vec<_>> into Vec<_> (vec is already on the heap, no need to box it)
@@ -291,14 +292,14 @@ pub struct UnionType {
 #[derive(Debug, PartialEq)]
 pub struct Infix {
     pub operator: Name,
-    pub associativy: Associativity,
+    pub associativy: Associativity, // TODO Fix typo
     /// Precedence rules the order in which part of the expression are parsed
     /// (in absence of parenthesis). The higher precedence will be parsed first.
     pub precedence: u8,
     pub function_name: Name,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Associativity {
     Left,
     None,
