@@ -219,8 +219,6 @@ struct Tokenizer<I: Iterator<Item = char>> {
     /// This is especially helpful to let us find symbols containing
     /// more than one character.
     lookahead: (Option<char>, Option<char>, Option<char>),
-    /// The indentation level at the current character.
-    indentation: usize,
     /// A dictionary of all keywords with their tokens representation.
     keywords: HashMap<String, Token>,
 }
@@ -237,7 +235,6 @@ where
             processed_tokens: vec![],
             position: Position::new(0, 1, 1),
             lookahead: (None, None, None),
-            indentation: 0,
             keywords: get_keywords(),
         };
 
@@ -829,7 +826,7 @@ mod tests {
     // actual tests
 
     #[test]
-    fn test_newline_collapser() {
+    fn newline_collapser() {
         let src = "ab\ncd\r\ne";
         let result: Vec<_> = NewlineCollapser::new(src.chars()).collect();
 
@@ -837,14 +834,14 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_programs() {
+    fn empty_programs() {
         assert_eq!(make_tokenizer("").collect::<Vec<_>>(), vec![]);
         assert_eq!(make_tokenizer("    ").collect::<Vec<_>>(), vec![]);
         assert_eq!(make_tokenizer("  \n  ").collect::<Vec<_>>(), vec![]);
     }
 
     #[test]
-    fn test_literal_number() {
+    fn literal_number() {
         // Integer
         assert_eq!(tokenize("42"), vec![int_token(42)]);
         assert_eq!(tokenize("2"), vec![int_token(2)]);
@@ -855,13 +852,13 @@ mod tests {
     }
 
     #[test]
-    fn test_literal_boolean() {
+    fn literal_boolean() {
         assert_eq!(tokenize("true"), vec![Token::True]);
         assert_eq!(tokenize("false"), vec![Token::False]);
     }
 
     #[test]
-    fn test_literal_char() {
+    fn literal_char() {
         assert_eq!(
             make_tokenizer("'").collect::<Result<Vec<_>, _>>(),
             Err(TokenizerError {
@@ -883,7 +880,7 @@ mod tests {
     }
 
     #[test]
-    fn test_symbols() {
+    fn symbols() {
         let op = |s: &str| Token::Operator(s.to_owned());
         assert_eq!(
             tokenize("(),[]._ .. -> = + - / * == < <= >= > && || |> <| |"),
@@ -917,7 +914,7 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_indentation() {
+    fn invalid_indentation() {
         assert_eq!(
             make_tokenizer(" a").collect::<Result<Vec<_>, _>>(),
             Err(TokenizerError {
@@ -936,7 +933,7 @@ mod tests {
     }
 
     #[test]
-    fn test_comments() {
+    fn comments() {
         let tokens = tokenize(indoc! {
             "-- this is a comment
              {- and this is a
@@ -949,12 +946,12 @@ mod tests {
     }
 
     #[test]
-    fn test_consume_identifier() {
+    fn consume_identifier() {
         assert_eq!(tokenize("ident"), vec![ident_token("ident")]);
     }
 
     #[test]
-    fn test_large_utf8_glyphs() {
+    fn large_utf8_glyphs() {
         let spans: Vec<_> = make_tokenizer(indoc! {"
             -- 1.602e−19
             ident
@@ -973,7 +970,7 @@ mod tests {
     }
 
     #[test]
-    fn test_skip_whitespaces_between_ident() {
+    fn skip_whitespaces_between_ident() {
         assert_eq!(
             tokenize("map f"),
             vec![ident_token("map"), ident_token("f")]
@@ -985,7 +982,7 @@ mod tests {
     }
 
     #[test]
-    fn test_refuse_tab_in_expression() {
+    fn refuse_tab_in_expression() {
         assert_eq!(
             make_tokenizer("map \ta").collect::<Result<Vec<_>, _>>(),
             Err(TokenizerError {
@@ -996,7 +993,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_program() {
+    fn simple_program() {
         let tokens = tokenize(indoc! {"
             module Main exposing(main)
 
