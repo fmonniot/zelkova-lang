@@ -3,15 +3,15 @@
 //!
 //! This phase is where we integrate the local parsed module into the rest of the
 //! program. We do the following steps:
-//! 
+//!
 //! - Resolve all imports
 //! - Qualify all `Name` (eg. a local value `test` in a `Mod.A` module will be renamed `Mod.A.test`)
 //! - Checks that exported names are actually present in the module
 //! - Checks there is none cyclic dependency between this module and others (Might be done earlier, let's see)
-//! 
+//!
 //! Note that we use `HashMap`'s a lot in this module's structures. This is because later phases will
 //! want to have cheap access to the different components of a `Module`.
-//! 
+//!
 //! TODO Rename this to core ? I feel it's going to be te main internal representation of the language.
 use super::parser;
 use super::Interface;
@@ -54,28 +54,49 @@ pub struct Infix {
     function_name: Name,
 }
 
-#[derive(Debug)]
-pub struct UnionType;// TODO
+#[derive(Debug, Clone)]
+pub struct UnionType {
+    variables: Vec<Name>,
+    variants: Vec<TypeConstructor>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeConstructor {
+    name: Name,
+    types: Vec<Type>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Type {
+    Variable(Name),
+    Type(ModuleName, Name, Vec<Type>),
+    // Record
+    // Unit
+    Arrow(Box<Type>, Box<Type>),
+    /// Tuple in elm have size 2 or 3, so the third argument is optional.
+    /// Should we keep the same restriction in zelkova ?
+    Tuple(Box<Type>, Box<Type>, Option<Box<Type>>),
+    // Alias
+}
 
 #[derive(Debug)]
-pub struct Value;// TODO
-
+pub struct Value; // TODO
 
 // end AST
 
 #[derive(Debug)]
 pub enum Error {
-    ExportNotFound(Name, ExportType)
+    ExportNotFound(Name, ExportType),
 }
 
 /// Transform a given `parser::Module` into a `canonical::Module`
 pub fn canonicalize(
     package: PackageName,
-    interfaces: HashMap<ModuleName, Interface>,
+    interfaces: HashMap<Name, Interface>,
     source: parser::Module,
 ) -> Result<Module, Vec<Error>> {
     let mut errors: Vec<Error> = vec![];
-    let mut env = NamedEnvironment::from_interfaces(&interfaces);
+    let mut env = NamedEnvironment::new(&interfaces, source.imports);
 
     let name = ModuleName {
         package,
@@ -84,6 +105,7 @@ pub fn canonicalize(
 
     let infixes = do_infixes(&source.infixes, &mut env);
 
+    // TODO Should I manage infixes rewrite here too ?
     let values = do_values().unwrap_or_else(|err| {
         errors.extend(err);
         HashMap::new()
@@ -149,24 +171,22 @@ fn do_exports(
     match source_exposing {
         parser::Exposing::Open => Ok(Exports::Everything),
         parser::Exposing::Explicit(exposed) => {
-            let specifics = exposed
-                .into_iter()
-                .map(|exposed| match exposed {
-                    parser::Exposed::Lower(name) => Ok((name, ExportType::Value)),
-                    parser::Exposed::Upper(name, parser::Privacy::Public) => {
-                        Ok((name, ExportType::UnionPublic))
+            let specifics = exposed.into_iter().map(|exposed| match exposed {
+                parser::Exposed::Lower(name) => Ok((name, ExportType::Value)),
+                parser::Exposed::Upper(name, parser::Privacy::Public) => {
+                    Ok((name, ExportType::UnionPublic))
+                }
+                parser::Exposed::Upper(name, parser::Privacy::Private) => {
+                    Ok((name, ExportType::UnionPrivate))
+                }
+                parser::Exposed::Operator(name) => {
+                    if env.local_infix_exists(&name) {
+                        Ok((name, ExportType::Infix))
+                    } else {
+                        Err(Error::ExportNotFound(name, ExportType::Infix))
                     }
-                    parser::Exposed::Upper(name, parser::Privacy::Private) => {
-                        Ok((name, ExportType::UnionPrivate))
-                    }
-                    parser::Exposed::Operator(name) => {
-                        if env.local_infix_exists(&name) {
-                            Ok((name, ExportType::Infix))
-                        } else {
-                            Err(Error::ExportNotFound(name, ExportType::Infix))
-                        }
-                    },
-                });
+                }
+            });
 
             let specifics = collect_accumulate(specifics)?;
 
@@ -175,28 +195,107 @@ fn do_exports(
     }
 }
 
-
 #[derive(Default)]
 struct NamedEnvironment {
     infixes: HashMap<Name, Infix>,
-    values: HashMap<Name, Value>
+    types: HashMap<Name, ()>,
+    variables: HashMap<Name, ()>,
+    aliases: HashMap<Name, Name>,
+}
+
+enum EnvError {
+    InterfaceNotFound(Name),
+    UnionNotFound(Name),
+    InfixNotFound(Name),
+    Multiple(Vec<EnvError>),
 }
 
 impl NamedEnvironment {
-    fn from_interfaces(interfaces: &HashMap<ModuleName, Interface>) -> NamedEnvironment {
+    fn new(
+        interfaces: &HashMap<Name, Interface>,
+        imports: Vec<parser::Import>,
+    ) -> NamedEnvironment {
         let mut env = NamedEnvironment::default();
+        let mut errors = vec![];
 
-        for (_module_name, interface) in interfaces {
-            for (n, infix) in &interface.infixes {
-                env.insert_local_infix(n.clone(), Infix {
-                    associativity: infix.associativy,
-                    precedence: infix.precedence,
-                    function_name: infix.function_name.clone(),
-                });
+        for parser::Import {
+            name,
+            alias,
+            exposing,
+        } in imports
+        {
+            match env.process_import(interfaces, &name, &alias, &exposing) {
+                Ok(_) => (),
+                Err(err) => {
+                    errors.push(err);
+                }
             }
         }
 
-        todo!()
+        env
+    }
+
+    fn process_import(
+        &mut self,
+        interfaces: &HashMap<Name, Interface>,
+        name: &Name,
+        alias: &Option<Name>,
+        exposing: &parser::Exposing,
+    ) -> Result<(), EnvError> {
+        let interface = interfaces.get(&name).ok_or_else(|| EnvError::InterfaceNotFound(name.clone()))?;
+
+        match exposing {
+            parser::Exposing::Open => {
+                // We add everything to the current environment
+                for (union_name, union) in &interface.unions {
+                    self.types.insert(union_name.qualify_with_name(name), ());
+
+                    for variant in &union.variants {
+                        self.types.insert(variant.name.qualify_with_name(name), ());
+                    }
+                }
+            }
+            parser::Exposing::Explicit(exposeds) => {
+                let iter = exposeds.iter().map(|exposed| {
+                    match exposed {
+                        parser::Exposed::Lower(variable_name) => {
+                            self.variables
+                                .insert(variable_name.qualify_with_name(name), ());
+                        }
+                        parser::Exposed::Upper(type_name, parser::Privacy::Private) => {
+                            self.types.insert(type_name.qualify_with_name(name), ());
+                        },
+                        parser::Exposed::Upper(type_name, parser::Privacy::Public) => {
+                            let union = interface.unions.get(&type_name).ok_or_else(|| EnvError::UnionNotFound(type_name.clone()))?; // TODO Return error instead
+
+                            for variant in &union.variants {
+                                self.types.insert(variant.name.qualify_with_name(name), ());
+                            }
+                        },
+                        parser::Exposed::Operator(variable_name) => {
+                            let infix = interface.infixes.get(&variable_name).ok_or_else(|| EnvError::InfixNotFound(variable_name.clone()))?;
+
+                            self.infixes.insert(variable_name.clone(), Infix {
+                                associativity: infix.associativy,
+                                precedence: infix.precedence,
+                                function_name: infix.function_name.clone(),
+                            });
+                            // How do we represent infixes ?
+                        },
+                    };
+
+                    Ok(())
+                });
+
+                collect_accumulate(iter).map_err(EnvError::Multiple)?;
+            }
+        };
+
+        if let Some(alias) = alias {
+            self.aliases.insert(alias.clone(), name.clone());
+        }
+
+        Ok(())
     }
 
     // TODO Do we need a local/foreign distinction for infixes ? (or in general ?)
@@ -210,11 +309,14 @@ impl NamedEnvironment {
 }
 
 /// This let use collect an iterator of result into a result of vectors.
-/// 
+///
 /// The generic signature, assuming `I: FromIterator` would look like `Iterator<Result<T, E>> -> Result<I<T>, I<E>>`.
 /// I wish this was part of the standard library, but as it is not here is my custom version. And because
 /// I don't particulary need to work with something else than `Vec` at the moment, the output type is fixed :)
-fn collect_accumulate<T, E, I>(iterator: I) -> Result<Vec<T>, Vec<E>> where I: Iterator<Item=Result<T, E>> {
+fn collect_accumulate<T, E, I>(iterator: I) -> Result<Vec<T>, Vec<E>>
+where
+    I: Iterator<Item = Result<T, E>>,
+{
     let mut items = vec![];
     let mut errors = vec![];
 
