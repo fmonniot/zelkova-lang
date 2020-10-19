@@ -74,6 +74,10 @@ impl Name {
         Name(format!("{}.{}", s, self.0))
     }
 
+    pub fn qualify_with_name(&self, qual: &Name) -> Name {
+        Name(format!("{}.{}", qual.0, self.0))
+    }
+
     /// Whether this `Name` represents a qualified identifier or not
     fn is_qualified(&self) -> bool {
         self.0.chars().any(|c| c == '.')
