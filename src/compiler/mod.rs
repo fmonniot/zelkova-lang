@@ -40,17 +40,32 @@ pub mod typer;
 use source::files::{SourceFileError, SourceFileId};
 
 /// A package name is composed of an author and project name and is written as `author/project`.
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub struct PackageName {
     author: String,
     project: String,
 }
 
+impl PackageName {
+    pub fn new<S: Into<String>>(author: S, project: S) -> PackageName {
+        PackageName {
+            author: author.into(),
+            project: project.into(),
+        }
+    }
+}
+
 /// A module name represent
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub struct ModuleName {
     package: PackageName,
-    name: String, // including dots
+    name: parser::Name, // including dots
+}
+
+impl ModuleName {
+    pub fn new(package: PackageName, name: parser::Name) -> ModuleName {
+        ModuleName { package, name }
+    }
 }
 
 /// An interface is trim down version of a module.
@@ -59,13 +74,15 @@ pub struct ModuleName {
 /// an optimization technique. Instead of parsing every source files on each
 /// file compilation, we save the publicly exposed information of a successfully
 /// parsed module and only load this information on module depending on it.
+///
+/// TODO Decide if the Name in the maps are fully qualified or not
 pub struct Interface {
     package: PackageName,
-    values: HashMap<parser::Name, parser::Type>,
-    types: HashMap<parser::Name, parser::UnionType>,
+    values: HashMap<parser::Name, canonical::Type>,
+    unions: HashMap<parser::Name, canonical::UnionType>,
     // TODO type aliases
     //aliases: HashMap<parser::Name, >
-    infixes: HashMap<parser::Name, parser::Infix>,
+    pub infixes: HashMap<parser::Name, parser::Infix>,
 }
 
 #[derive(Debug)]
@@ -197,7 +214,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 /// Take a parsed module file within the ecosystem and apply all checks to it
 pub fn check_module(
     package: PackageName,
-    interfaces: HashMap<ModuleName, Interface>,
+    interfaces: HashMap<parser::Name, Interface>,
     source: parser::Module,
 ) -> Result<canonical::Module, CompilationError> {
     // - desugar ~?~ *!*

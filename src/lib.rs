@@ -2,3 +2,4 @@
 extern crate lalrpop_util;
 
 pub mod compiler;
+mod utils;
