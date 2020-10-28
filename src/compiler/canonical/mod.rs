@@ -93,6 +93,7 @@ pub struct Value; // TODO
 pub enum Error {
     ExportNotFound(Name, ExportType),
     EnvironmentErrors(Vec<EnvError>),
+    InfixReferenceInvalidValue(Name, Name), // (infix, function)
 }
 
 impl From<Vec<EnvError>> for Error {
@@ -115,9 +116,15 @@ pub fn canonicalize(
         name: source.name.clone(),
     };
 
-    let infixes = do_infixes(&source.infixes, &mut env);
+    // Because we are rewriting infixes in this phase, we must do this check before
+    // resolving values.
+    let infixes = do_infixes(&source.infixes, &mut env, &source.functions).unwrap_or_else(|err| {
+        errors.extend(err);
+        HashMap::new()
+    });
 
     // TODO Should I manage infixes rewrite here too ?
+    // Yes I should do it here
     let values = do_values().unwrap_or_else(|err| {
         errors.extend(err);
         HashMap::new()
@@ -156,23 +163,36 @@ fn do_types() -> Result<HashMap<Name, UnionType>, Vec<Error>> {
     Ok(HashMap::new())
 }
 
-fn do_infixes(infixes: &Vec<parser::Infix>, env: &mut Environment) -> HashMap<Name, Infix> {
-    infixes
-        .iter()
-        .map(|infix| {
-            // resolve function name
-            let op_name = infix.operator.clone();
+fn do_infixes(
+    infixes: &Vec<parser::Infix>,
+    env: &mut Environment,
+    functions: &Vec<parser::Function>,
+) -> Result<HashMap<Name, Infix>, Vec<Error>> {
+    let iter = infixes.iter().map(|infix| {
+        let op_name = infix.operator.clone();
+        let function_name = infix.function_name.clone();
+
+        let function_exist = functions
+            .iter()
+            .find(|f| f.name == infix.function_name)
+            .is_some();
+
+        if function_exist {
             let infix = Infix {
                 associativity: infix.associativy,
                 precedence: infix.precedence,
-                function_name: infix.function_name.clone(),
+                function_name,
             };
 
             env.insert_local_infix(op_name.clone(), infix.clone());
 
-            (op_name, infix)
-        })
-        .collect()
+            Ok((op_name, infix))
+        } else {
+            Err(Error::InfixReferenceInvalidValue(op_name, function_name))
+        }
+    });
+
+    collect_accumulate(iter).map(|vec| vec.into_iter().collect())
 }
 
 // TODO Add existence checks for values and types
