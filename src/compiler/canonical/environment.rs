@@ -1,5 +1,5 @@
 use super::parser;
-use super::{Infix, Interface, Name, TypeConstructor};
+use super::{Infix, Interface, Name, TypeConstructor, UnionType};
 use crate::utils::collect_accumulate;
 use std::collections::HashMap;
 
@@ -64,12 +64,7 @@ impl Environment {
             parser::Exposing::Open => {
                 // We add everything to the current environment
                 for (union_name, union) in &interface.unions {
-                    self.types.insert(union_name.qualify_with_name(name), ());
-
-                    for variant in &union.variants {
-                        self.constructors
-                            .insert(variant.name.qualify_with_name(name), variant.clone());
-                    }
+                    import_union_type(self, name, union_name, union);
                 }
             }
             parser::Exposing::Explicit(exposeds) => {
@@ -88,10 +83,7 @@ impl Environment {
                                 .get(&type_name)
                                 .ok_or_else(|| EnvError::UnionNotFound(type_name.clone()))?;
 
-                            for variant in &union.variants {
-                                self.constructors
-                                    .insert(variant.name.qualify_with_name(name), variant.clone());
-                            }
+                            import_union_type(self, name, type_name, union);
                         }
                         parser::Exposed::Operator(variable_name) => {
                             let infix = interface
@@ -133,6 +125,18 @@ impl Environment {
 
     pub fn local_infix_exists(&self, name: &Name) -> bool {
         self.infixes.contains_key(&name)
+    }
+}
+
+fn import_union_type(env: &mut Environment,
+                     module_name: &Name,
+                     union_name: &Name,
+                     union: &UnionType) {
+    env.types.insert(union_name.qualify_with_name(module_name), ());
+
+    for variant in &union.variants {
+        env.constructors
+            .insert(variant.name.qualify_with_name(module_name), variant.clone());
     }
 }
 
@@ -267,7 +271,10 @@ mod tests {
         let imports = vec![import(
             "Maybe".into(),
             None,
-            exposing_explicit(vec![parser::Exposed::Lower("andThen".into())]),
+            exposing_explicit(vec![
+                parser::Exposed::Upper("Maybe".into(), parser::Privacy::Private),
+                parser::Exposed::Lower("andThen".into())
+            ]),
         )];
         let mut interfaces = HashMap::new();
         {
@@ -277,7 +284,7 @@ mod tests {
         let env = Environment::new(&interfaces, imports)?;
 
         assert_eq!(env.infixes.len(), 0);
-        assert_eq!(env.types.len(), 0);
+        assert_eq!(env.types.len(), 1);
         assert_eq!(env.constructors.len(), 0);
         assert_eq!(env.variables.len(), 1);
         assert_eq!(env.aliases.len(), 0);
