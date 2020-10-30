@@ -25,6 +25,7 @@ use codespan_reporting::diagnostic::Diagnostic;
 use codespan_reporting::term::termcolor::WriteColor;
 use codespan_reporting::term::termcolor::{Color, ColorSpec, StandardStream};
 use codespan_reporting::term::{self, ColorArg};
+use log::debug;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
@@ -82,13 +83,17 @@ pub struct Interface {
     unions: HashMap<parser::Name, canonical::UnionType>,
     // TODO type aliases
     //aliases: HashMap<parser::Name, >
-    pub infixes: HashMap<parser::Name, parser::Infix>,
+    /// infixes is a map from the operator symbol to its information
+    infixes: HashMap<parser::Name, canonical::Infix>,
 }
 
+// We may be able to not list all errors by asking a trait
+// AsDiagnostic instead. Maybe. Or just a Diagnostic.
 #[derive(Debug)]
 pub enum CompilationError {
     LoadingFiles(Vec<SourceFileError>),
     Source(parser::Error, SourceFileId),
+    Canonical(Vec<canonical::Error>),
 }
 
 impl<'a> CompilationError {
@@ -112,6 +117,11 @@ impl<'a> CompilationError {
                     .with_message("Error while loading the package files")
                     .with_notes(notes)
             }
+            CompilationError::Canonical(errors) => {
+                Diagnostic::warning()
+                    .with_message("Canonical error messages are not implemented yet")
+                    .with_notes(errors.iter().map(|e| format!("{:?}", e)).collect())
+            }
         }
     }
 
@@ -121,19 +131,19 @@ impl<'a> CompilationError {
 }
 
 impl From<Vec<canonical::Error>> for CompilationError {
-    fn from(_err: Vec<canonical::Error>) -> Self {
-        todo!()
+    fn from(errors: Vec<canonical::Error>) -> Self {
+        CompilationError::Canonical(errors)
     }
 }
 
 impl From<typer::Error> for CompilationError {
-    fn from(err: typer::Error) -> Self {
+    fn from(_err: typer::Error) -> Self {
         todo!()
     }
 }
 
 impl From<exhaustiveness::Error> for CompilationError {
-    fn from(err: exhaustiveness::Error) -> Self {
+    fn from(_err: exhaustiveness::Error) -> Self {
         todo!()
     }
 }
@@ -166,6 +176,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     // Step 1: package_path parameter
 
     // Step 2 and 3.a
+    debug!("phase: load package sources");
     let sources = source::load_package_sources(&package_path)?;
 
     // Further steps will produces errors. We aggregates them here and will report them at
@@ -173,6 +184,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     let mut diagnostics: Vec<codespan_reporting::diagnostic::Diagnostic<SourceFileId>> = vec![];
 
     // Step 3.b
+    debug!("phase: parse package sources");
     let modules: Vec<_> = {
         let (oks, fails): (Vec<_>, Vec<Result<_, CompilationError>>) = sources
             .iter()
@@ -197,11 +209,23 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     // TODO Verify modules name match file system.
     // TODO Include this into the parser::parse() function (w/ module name as argument) ?
 
+    debug!("phase: Build module dependency graph");
     // Step 4
     // TODO Build dependency graphs between modules
 
+    // TODO Load those information from somewhere
+    let package_name = PackageName::new("zelkova", "core");
+    let interfaces = std::collections::HashMap::new();
+
+    debug!("phase: Checks modules");
     // Step 5
     // TODO Follow graph and call check_module on each
+    let results5: Vec<_> = modules.iter().map(|m| {
+        check_module(&package_name, &interfaces, m)
+    }).collect();
+    print_success(format!("{:#?}", results5));
+
+    debug!("phase: codegen");
 
     // Step 7
     for err in diagnostics {
@@ -212,10 +236,14 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 }
 
 /// Take a parsed module file within the ecosystem and apply all checks to it
+///
+/// TODO canonicalization must happens before checkings, because type check (at least)
+/// will require access to other modules canonical representation.
+/// That probably mean moving the `canonical::canonicalize` call out of this function
 pub fn check_module(
-    package: PackageName,
-    interfaces: HashMap<parser::Name, Interface>,
-    source: parser::Module,
+    package: &PackageName,
+    interfaces: &HashMap<parser::Name, Interface>,
+    source: &parser::Module,
 ) -> Result<canonical::Module, CompilationError> {
     // - desugar ~?~ *!*
     // Should I have an intermediate AST before type checking ?

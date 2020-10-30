@@ -23,7 +23,7 @@ pub enum EnvError {
 impl Environment {
     pub fn new(
         interfaces: &HashMap<Name, Interface>,
-        imports: Vec<parser::Import>,
+        imports: &Vec<parser::Import>,
     ) -> Result<Environment, Vec<EnvError>> {
         let mut env = Environment::default();
         let mut errors = vec![];

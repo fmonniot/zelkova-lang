@@ -104,15 +104,15 @@ impl From<Vec<EnvError>> for Error {
 
 /// Transform a given `parser::Module` into a `canonical::Module`
 pub fn canonicalize(
-    package: PackageName,
-    interfaces: HashMap<Name, Interface>,
-    source: parser::Module,
+    package: &PackageName,
+    interfaces: &HashMap<Name, Interface>,
+    source: &parser::Module,
 ) -> Result<Module, Vec<Error>> {
     let mut errors: Vec<Error> = vec![];
-    let mut env = Environment::new(&interfaces, source.imports).map_err(|e| vec![e.into()])?;
+    let mut env = Environment::new(&interfaces, &source.imports).map_err(|e| vec![e.into()])?;
 
     let name = ModuleName {
-        package,
+        package: package.clone(),
         name: source.name.clone(),
     };
 
@@ -196,23 +196,23 @@ fn do_infixes(
 }
 
 // TODO Add existence checks for values and types
-fn do_exports(source_exposing: parser::Exposing, env: &Environment) -> Result<Exports, Vec<Error>> {
+fn do_exports(source_exposing: &parser::Exposing, env: &Environment) -> Result<Exports, Vec<Error>> {
     match source_exposing {
         parser::Exposing::Open => Ok(Exports::Everything),
         parser::Exposing::Explicit(exposed) => {
             let specifics = exposed.into_iter().map(|exposed| match exposed {
-                parser::Exposed::Lower(name) => Ok((name, ExportType::Value)),
+                parser::Exposed::Lower(name) => Ok((name.clone(), ExportType::Value)),
                 parser::Exposed::Upper(name, parser::Privacy::Public) => {
-                    Ok((name, ExportType::UnionPublic))
+                    Ok((name.clone(), ExportType::UnionPublic))
                 }
                 parser::Exposed::Upper(name, parser::Privacy::Private) => {
-                    Ok((name, ExportType::UnionPrivate))
+                    Ok((name.clone(), ExportType::UnionPrivate))
                 }
                 parser::Exposed::Operator(name) => {
                     if env.local_infix_exists(&name) {
-                        Ok((name, ExportType::Infix))
+                        Ok((name.clone(), ExportType::Infix))
                     } else {
-                        Err(Error::ExportNotFound(name, ExportType::Infix))
+                        Err(Error::ExportNotFound(name.clone(), ExportType::Infix))
                     }
                 }
             });

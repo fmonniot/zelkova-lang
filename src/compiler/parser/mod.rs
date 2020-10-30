@@ -90,7 +90,7 @@ impl Name {
 /// As their name indicates, a type with arguments will requires more
 /// `Type` as arguments. For example the optional type will require
 /// one no-arg type: `Maybe Int` (this is another name for higher-kinded types)
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Type {
     /// Type constructor
     Unqualified(Name, Box<Vec<Type>>),
