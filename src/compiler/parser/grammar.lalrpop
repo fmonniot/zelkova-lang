@@ -2,6 +2,7 @@ use crate::compiler::position::BytePos;
 use crate::compiler::parser::tokenizer::Token;
 use crate::compiler::parser::error::Error;
 use crate::compiler::parser::*;
+use crate::compiler::name::Name;
 use std::convert::TryFrom;
 
 grammar;

@@ -23,8 +23,9 @@ mod environment;
 use environment::EnvError;
 
 // Some elements which are common to both AST
+use crate::compiler::name::Name;
 pub use environment::Environment;
-pub use parser::{Associativity, Name};
+pub use parser::Associativity;
 
 // begin AST
 
@@ -91,22 +92,21 @@ impl Type {
                 match env.find_type(&name) {
                     Some(t) => t.clone(),
                     None => {
-                        let types = vars.iter().map(|t| Type::from_parser_type(env, &t)).collect();
+                        let types = vars
+                            .iter()
+                            .map(|t| Type::from_parser_type(env, &t))
+                            .collect();
 
                         // TODO Insert back into Environment ?
                         Type::Type(name.clone(), types)
                     }
                 }
             }
-            parser::Type::Arrow(t1, t2) => {
-                Type::Arrow(
-                    Box::new(Type::from_parser_type(env, t1)),
-                    Box::new(Type::from_parser_type(env, t2)),
-                )
-            }
-            parser::Type::Variable(n) => {
-                Type::Variable(n.clone())
-            }
+            parser::Type::Arrow(t1, t2) => Type::Arrow(
+                Box::new(Type::from_parser_type(env, t1)),
+                Box::new(Type::from_parser_type(env, t2)),
+            ),
+            parser::Type::Variable(n) => Type::Variable(n.clone()),
             parser::Type::Tuple(t1, t_many) => {
                 let (t2, t3) = match t_many.len() {
                     0 => panic!("Tuple of length 1 is not suported by the parser"),
@@ -117,7 +117,7 @@ impl Type {
                 Type::Tuple(
                     Box::new(Type::from_parser_type(env, t1)),
                     Box::new(Type::from_parser_type(env, &t2)),
-                    t3.map(|t| Box::new(Type::from_parser_type(env, t)))
+                    t3.map(|t| Box::new(Type::from_parser_type(env, t))),
                 )
             }
         }
@@ -199,8 +199,10 @@ fn do_values() -> Result<HashMap<Name, Value>, Vec<Error>> {
     Ok(HashMap::new())
 }
 
-fn do_types(env: &mut Environment, types: &Vec<parser::UnionType>) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
-
+fn do_types(
+    env: &mut Environment,
+    types: &Vec<parser::UnionType>,
+) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
     let iter = types.iter().map(|tpe| {
         let name = tpe.name.clone();
         let variables = tpe.type_arguments.clone();
@@ -210,28 +212,34 @@ fn do_types(env: &mut Environment, types: &Vec<parser::UnionType>) -> Result<Has
         // variants are represented as parser::Type::Unqualified. Other types
         // can be safely ignored in this context.
 
-        let variants = tpe.variants.iter().filter_map(|t| {
+        let variants = tpe
+            .variants
+            .iter()
+            .filter_map(|t| {
+                match t {
+                    parser::Type::Unqualified(name, vars) => {
+                        // TODO It might actually make more sense to put Type::from_parser_type
+                        // on `Environment`.
+                        Some(TypeConstructor {
+                            name: name.clone(), // TODO Qualify with current module name
+                            types: vars
+                                .iter()
+                                .map(|t| Type::from_parser_type(&env, t))
+                                .collect(),
+                        })
+                    }
+                    _ => None,
+                }
+            })
+            .collect();
 
-            match t {
-                parser::Type::Unqualified(name, vars) => {
-
-                    // TODO It might actually make more sense to put Type::from_parser_type
-                    // on `Environment`.
-                    Some(TypeConstructor {
-                        name: name.clone(), // TODO Qualify with current module name
-                        types: vars.iter().map(|t| Type::from_parser_type(&env, t)).collect(),
-                    })
-                },
-                _ => None
-            }
-        }).collect();
-        
-
-
-        Ok((name, UnionType {
-            variables,
-            variants,
-        }))
+        Ok((
+            name,
+            UnionType {
+                variables,
+                variants,
+            },
+        ))
     });
 
     collect_accumulate(iter).map(|vec| vec.into_iter().collect())
@@ -270,7 +278,10 @@ fn do_infixes(
 }
 
 // TODO Add existence checks for values and types
-fn do_exports(source_exposing: &parser::Exposing, env: &Environment) -> Result<Exports, Vec<Error>> {
+fn do_exports(
+    source_exposing: &parser::Exposing,
+    env: &Environment,
+) -> Result<Exports, Vec<Error>> {
     match source_exposing {
         parser::Exposing::Open => Ok(Exports::Everything),
         parser::Exposing::Explicit(exposed) => {

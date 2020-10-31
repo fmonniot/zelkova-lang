@@ -1,4 +1,5 @@
 use super::support::*;
+use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser::*;
 
 fn module(body: Expression) -> Module {

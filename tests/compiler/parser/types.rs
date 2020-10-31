@@ -1,4 +1,5 @@
 use super::support::*;
+use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser::*;
 
 // Let's simplify how we build module for our type tests

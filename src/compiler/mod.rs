@@ -33,11 +33,13 @@ use std::str::FromStr;
 
 pub mod canonical;
 mod exhaustiveness;
+pub mod name;
 pub mod parser;
 pub mod position;
 pub mod source;
 pub mod typer;
 
+use name::Name;
 use source::files::{SourceFileError, SourceFileId};
 
 /// A package name is composed of an author and project name and is written as `author/project`.
@@ -60,11 +62,11 @@ impl PackageName {
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub struct ModuleName {
     package: PackageName,
-    name: parser::Name, // including dots
+    name: Name, // including dots
 }
 
 impl ModuleName {
-    pub fn new(package: PackageName, name: parser::Name) -> ModuleName {
+    pub fn new(package: PackageName, name: Name) -> ModuleName {
         ModuleName { package, name }
     }
 }
@@ -78,13 +80,13 @@ impl ModuleName {
 ///
 /// TODO Decide if the Name in the maps are fully qualified or not
 pub struct Interface {
-    package: PackageName,
-    values: HashMap<parser::Name, canonical::Type>,
-    unions: HashMap<parser::Name, canonical::UnionType>,
+    _package: PackageName,
+    values: HashMap<Name, canonical::Type>,
+    unions: HashMap<Name, canonical::UnionType>,
     // TODO type aliases
-    //aliases: HashMap<parser::Name, >
+    //aliases: HashMap<Name, >
     /// infixes is a map from the operator symbol to its information
-    infixes: HashMap<parser::Name, canonical::Infix>,
+    infixes: HashMap<Name, canonical::Infix>,
 }
 
 // We may be able to not list all errors by asking a trait
@@ -242,7 +244,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 /// That probably mean moving the `canonical::canonicalize` call out of this function
 pub fn check_module(
     package: &PackageName,
-    interfaces: &HashMap<parser::Name, Interface>,
+    interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
 ) -> Result<canonical::Module, CompilationError> {
     // - desugar ~?~ *!*

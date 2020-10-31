@@ -1,6 +1,7 @@
 //! Helpers functions and macros to support testing the frontend
 //! part of the compiler.
 //!
+use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser::*;
 
 // macros to simplify tests
