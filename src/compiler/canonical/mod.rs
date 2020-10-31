@@ -74,7 +74,7 @@ pub struct TypeConstructor {
 #[derive(Debug, Clone)]
 pub enum Type {
     Variable(Name),
-    Type(ModuleName, Name, Vec<Type>),
+    Type(Name, Vec<Type>),
     // Record
     // Unit
     Arrow(Box<Type>, Box<Type>),
@@ -82,6 +82,46 @@ pub enum Type {
     /// Should we keep the same restriction in zelkova ?
     Tuple(Box<Type>, Box<Type>, Option<Box<Type>>),
     // Alias
+}
+
+impl Type {
+    fn from_parser_type(env: &Environment, tpe: &parser::Type) -> Type {
+        match tpe {
+            parser::Type::Unqualified(name, vars) => {
+                match env.find_type(&name) {
+                    Some(t) => t.clone(),
+                    None => {
+                        let types = vars.iter().map(|t| Type::from_parser_type(env, &t)).collect();
+
+                        // TODO Insert back into Environment ?
+                        Type::Type(name.clone(), types)
+                    }
+                }
+            }
+            parser::Type::Arrow(t1, t2) => {
+                Type::Arrow(
+                    Box::new(Type::from_parser_type(env, t1)),
+                    Box::new(Type::from_parser_type(env, t2)),
+                )
+            }
+            parser::Type::Variable(n) => {
+                Type::Variable(n.clone())
+            }
+            parser::Type::Tuple(t1, t_many) => {
+                let (t2, t3) = match t_many.len() {
+                    0 => panic!("Tuple of length 1 is not suported by the parser"),
+                    1 | 2 => (t_many.get(0).unwrap().clone(), t_many.get(1).clone()),
+                    _ => panic!("For now we restrict tuple to sizes 2 and 3"),
+                };
+
+                Type::Tuple(
+                    Box::new(Type::from_parser_type(env, t1)),
+                    Box::new(Type::from_parser_type(env, &t2)),
+                    t3.map(|t| Box::new(Type::from_parser_type(env, t)))
+                )
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -130,14 +170,14 @@ pub fn canonicalize(
         HashMap::new()
     });
 
-    let types = do_types().unwrap_or_else(|err| {
+    let types = do_types(&mut env, &source.types).unwrap_or_else(|err| {
         errors.extend(err);
         HashMap::new()
     });
 
     // We do exports at the end, and verify that all exported value do
     // have a reference within the current module
-    let exports = do_exports(source.exposing, &env).unwrap_or_else(|err| {
+    let exports = do_exports(&source.exposing, &env).unwrap_or_else(|err| {
         errors.extend(err);
         Exports::Everything // Never exposed, as we will return the errors instead
     });
@@ -159,8 +199,42 @@ fn do_values() -> Result<HashMap<Name, Value>, Vec<Error>> {
     Ok(HashMap::new())
 }
 
-fn do_types() -> Result<HashMap<Name, UnionType>, Vec<Error>> {
-    Ok(HashMap::new())
+fn do_types(env: &mut Environment, types: &Vec<parser::UnionType>) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
+
+    let iter = types.iter().map(|tpe| {
+        let name = tpe.name.clone();
+        let variables = tpe.type_arguments.clone();
+
+        println!("do_types(in:{:?})", tpe);
+
+        // variants are represented as parser::Type::Unqualified. Other types
+        // can be safely ignored in this context.
+
+        let variants = tpe.variants.iter().filter_map(|t| {
+
+            match t {
+                parser::Type::Unqualified(name, vars) => {
+
+                    // TODO It might actually make more sense to put Type::from_parser_type
+                    // on `Environment`.
+                    Some(TypeConstructor {
+                        name: name.clone(), // TODO Qualify with current module name
+                        types: vars.iter().map(|t| Type::from_parser_type(&env, t)).collect(),
+                    })
+                },
+                _ => None
+            }
+        }).collect();
+        
+
+
+        Ok((name, UnionType {
+            variables,
+            variants,
+        }))
+    });
+
+    collect_accumulate(iter).map(|vec| vec.into_iter().collect())
 }
 
 fn do_infixes(

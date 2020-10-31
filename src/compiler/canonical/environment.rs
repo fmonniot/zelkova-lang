@@ -1,14 +1,14 @@
 use super::parser;
-use super::{Infix, Interface, Name, TypeConstructor, UnionType};
+use super::{Infix, Interface, Name, Type, TypeConstructor, UnionType};
 use crate::utils::collect_accumulate;
 use std::collections::HashMap;
 
 #[derive(Default)]
 pub struct Environment {
     infixes: HashMap<Name, Infix>,
-    types: HashMap<Name, ()>,
+    types: HashMap<Name, Type>,
     constructors: HashMap<Name, TypeConstructor>,
-    variables: HashMap<Name, ()>,
+    variables: HashMap<Name, ()>, // Store real Type for type check
     aliases: HashMap<Name, Name>,
 }
 
@@ -66,6 +66,15 @@ impl Environment {
                 for (union_name, union) in &interface.unions {
                     import_union_type(self, name, union_name, union);
                 }
+
+                for (value_name, _) in &interface.values {
+                    self.variables
+                        .insert(value_name.qualify_with_name(name), ());
+                }
+
+                for (op_name, infix) in &interface.infixes {
+                    self.infixes.insert(op_name.clone(), infix.clone());
+                }
             }
             parser::Exposing::Explicit(exposeds) => {
                 let iter = exposeds.iter().map(|exposed| {
@@ -75,7 +84,9 @@ impl Environment {
                                 .insert(variable_name.qualify_with_name(name), ());
                         }
                         parser::Exposed::Upper(type_name, parser::Privacy::Private) => {
-                            self.types.insert(type_name.qualify_with_name(name), ());
+                            let tpe = Type::Type(type_name.clone(), vec![]);
+
+                            self.types.insert(type_name.qualify_with_name(name), tpe);
                         }
                         parser::Exposed::Upper(type_name, parser::Privacy::Public) => {
                             let union = interface
@@ -91,14 +102,7 @@ impl Environment {
                                 .get(&variable_name)
                                 .ok_or_else(|| EnvError::InfixNotFound(variable_name.clone()))?;
 
-                            self.infixes.insert(
-                                variable_name.clone(),
-                                Infix {
-                                    associativity: infix.associativy,
-                                    precedence: infix.precedence,
-                                    function_name: infix.function_name.clone(),
-                                },
-                            );
+                            self.infixes.insert(variable_name.clone(), infix.clone());
                             // How do we represent infixes ?
                             // When do we do rewrite them ?
                         }
@@ -126,13 +130,21 @@ impl Environment {
     pub fn local_infix_exists(&self, name: &Name) -> bool {
         self.infixes.contains_key(&name)
     }
+
+    pub fn find_type(&self, name: &Name) -> Option<&Type> {
+        self.types.get(name)
+    }
 }
 
-fn import_union_type(env: &mut Environment,
-                     module_name: &Name,
-                     union_name: &Name,
-                     union: &UnionType) {
-    env.types.insert(union_name.qualify_with_name(module_name), ());
+fn import_union_type(
+    env: &mut Environment,
+    module_name: &Name,
+    union_name: &Name,
+    union: &UnionType,
+) {
+    let tpe = Type::Type(union_name.clone(), vec![]);
+    env.types
+        .insert(union_name.qualify_with_name(module_name), tpe);
 
     for variant in &union.variants {
         env.constructors
@@ -173,7 +185,7 @@ mod tests {
 
         let type_var = |name: &str| Type::Variable(name.into());
 
-        let type_hk = |name: &str, params| Type::Type(module.clone(), name.into(), params);
+        let type_hk = |name: &str, params| Type::Type(name.into(), params);
 
         let type_fun = |t1, t2| Type::Arrow(Box::new(t1), Box::new(t2));
 
@@ -244,7 +256,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        Environment::new(&interfaces, vec![]).map(drop)
+        Environment::new(&interfaces, &vec![]).map(drop)
     }
 
     #[test]
@@ -255,13 +267,13 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = Environment::new(&interfaces, imports)?;
+        let env = Environment::new(&interfaces, &imports)?;
 
-        assert_eq!(env.infixes.len(), 0);
-        assert_eq!(env.types.len(), 1);
-        assert_eq!(env.constructors.len(), 2);
-        assert_eq!(env.variables.len(), 0);
-        assert_eq!(env.aliases.len(), 0);
+        assert_eq!(env.infixes.len(), 0, "infixes");
+        assert_eq!(env.types.len(), 1, "types");
+        assert_eq!(env.constructors.len(), 2, "constructors");
+        assert_eq!(env.variables.len(), 3, "variables={:?}", env.variables);
+        assert_eq!(env.aliases.len(), 0, "aliases");
 
         Ok(())
     }
@@ -273,7 +285,7 @@ mod tests {
             None,
             exposing_explicit(vec![
                 parser::Exposed::Upper("Maybe".into(), parser::Privacy::Private),
-                parser::Exposed::Lower("andThen".into())
+                parser::Exposed::Lower("andThen".into()),
             ]),
         )];
         let mut interfaces = HashMap::new();
@@ -281,7 +293,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = Environment::new(&interfaces, imports)?;
+        let env = Environment::new(&interfaces, &imports)?;
 
         assert_eq!(env.infixes.len(), 0);
         assert_eq!(env.types.len(), 1);
