@@ -701,6 +701,7 @@ dependencies = [
  "lalrpop",
  "lalrpop-util",
  "log",
+ "petgraph",
  "unic-ucd-category",
  "walkdir",
 ]

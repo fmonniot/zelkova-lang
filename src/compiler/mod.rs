@@ -9,17 +9,19 @@
 //! 1. Start at the src/ folder. We name it root. (later on defined in a `zelkova.json` manifest)
 //! 2. Collect all `*.zelkova` files with their path name relatives to the root.
 //! 3. Create a `SourceFiles` mapping from `ModuleName` to `parser::Module`.
-//!     a. module names are deduced from file name
-//!     b. parsing is done through `parser::parse`
-//!     c. Verify that parser::Module.name match the one from the file system
+//!     1. module names are deduced from file name
+//!     2. parsing is done through `parser::parse`
+//!     3. Verify that `parser::Module.name` match the one from the file system
 //! 4. Build a dependency graphs from the modules import
-//!     a. build it
-//!     b. Verify there is no cyclic relation between modules
-//! 5. Following the deps graph, compile each module (checking type, exhaustiveness, etc…)
-//!     a. do it
-//!     b. Bonus point to parallelize the tree branches which are not dependent on each others
+//!     1. build it
+//!     2. Verify there is no cyclic relation between modules
+//! 5. Following the deps graph,
+//!     1. canonicalize each modules
+//!     1. check each module (type check, exhaustiveness, etc…)
+//!     1. Bonus point to parallelize the tree branches which are not dependent on each others
 //! 6. Once we have a module with all checks passing, create its interface and emit AST/interface
 //! 7. TODO Try a way to weave error management in each of those passes :)
+//!
 
 use codespan_reporting::diagnostic::Diagnostic;
 use codespan_reporting::term::termcolor::WriteColor;
@@ -32,6 +34,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 pub mod canonical;
+mod dependencies;
 mod exhaustiveness;
 pub mod name;
 pub mod parser;
@@ -96,6 +99,9 @@ pub enum CompilationError {
     LoadingFiles(Vec<SourceFileError>),
     Source(parser::Error, SourceFileId),
     Canonical(Vec<canonical::Error>),
+
+    /// Not an error, but something I use until I get to implement the actual error
+    PlaceHolder,
 }
 
 impl<'a> CompilationError {
@@ -119,10 +125,11 @@ impl<'a> CompilationError {
                     .with_message("Error while loading the package files")
                     .with_notes(notes)
             }
-            CompilationError::Canonical(errors) => {
-                Diagnostic::warning()
-                    .with_message("Canonical error messages are not implemented yet")
-                    .with_notes(errors.iter().map(|e| format!("{:?}", e)).collect())
+            CompilationError::Canonical(errors) => Diagnostic::warning()
+                .with_message("Canonical error messages are not implemented yet")
+                .with_notes(errors.iter().map(|e| format!("{:?}", e)).collect()),
+            CompilationError::PlaceHolder => {
+                Diagnostic::bug().with_message("A non implemented error message have been emitted")
             }
         }
     }
@@ -213,19 +220,20 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 
     debug!("phase: Build module dependency graph");
     // Step 4
-    // TODO Build dependency graphs between modules
+    let walker =
+        dependencies::ModuleWalker::new(&modules).map_err(|_err| CompilationError::PlaceHolder)?;
 
     // TODO Load those information from somewhere
     let package_name = PackageName::new("zelkova", "core");
     let interfaces = std::collections::HashMap::new();
 
     debug!("phase: Checks modules");
-    // Step 5
-    // TODO Follow graph and call check_module on each
-    let results5: Vec<_> = modules.iter().map(|m| {
-        check_module(&package_name, &interfaces, m)
-    }).collect();
-    print_success(format!("{:#?}", results5));
+
+    // Step 5: Follow graph and call check_module on each
+    let can_mods = walker
+        .process(|m| check_module(&package_name, &interfaces, m))
+        .map_err(|_errors| CompilationError::PlaceHolder)?;
+    print_success(format!("{:#?}", can_mods));
 
     debug!("phase: codegen");
 

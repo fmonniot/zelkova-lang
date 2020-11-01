@@ -17,6 +17,7 @@ env_logger = "0.8"
 unic-ucd-category = "0.9"
 lalrpop-util = "0.19.1"
 walkdir = "2.3"
+petgraph = "0.5"
 
 [dev-dependencies]
 indoc = "1.0"
