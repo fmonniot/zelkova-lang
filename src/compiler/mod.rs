@@ -99,8 +99,10 @@ pub enum CompilationError {
     LoadingFiles(Vec<SourceFileError>),
     Source(parser::Error, SourceFileId),
     Canonical(Vec<canonical::Error>),
+    DependenciesError(dependencies::Error),
 
-    /// Not an error, but something I use until I get to implement the actual error
+    /// Not an error, but something I use until I get to implement the actual error.
+    /// Ultimately, this error should be removed from the code base
     PlaceHolder,
 }
 
@@ -131,6 +133,9 @@ impl<'a> CompilationError {
             CompilationError::PlaceHolder => {
                 Diagnostic::bug().with_message("A non implemented error message have been emitted")
             }
+            CompilationError::DependenciesError(err) => Diagnostic::warning()
+                .with_message("Dependencies error messages are not implemented yet")
+                .with_notes(vec![format!("{:?}", err)]),
         }
     }
 
@@ -154,6 +159,12 @@ impl From<typer::Error> for CompilationError {
 impl From<exhaustiveness::Error> for CompilationError {
     fn from(_err: exhaustiveness::Error) -> Self {
         todo!()
+    }
+}
+
+impl From<dependencies::Error> for CompilationError {
+    fn from(err: dependencies::Error) -> Self {
+        CompilationError::DependenciesError(err)
     }
 }
 
@@ -220,8 +231,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 
     debug!("phase: Build module dependency graph");
     // Step 4
-    let walker =
-        dependencies::ModuleWalker::new(&modules).map_err(|_err| CompilationError::PlaceHolder)?;
+    let walker = dependencies::ModuleWalker::new(&modules)?;
 
     // TODO Load those information from somewhere
     let package_name = PackageName::new("zelkova", "core");
@@ -232,8 +242,12 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     // Step 5: Follow graph and call check_module on each
     let can_mods = walker
         .process(|m| check_module(&package_name, &interfaces, m))
-        .map_err(|_errors| CompilationError::PlaceHolder)?;
-    print_success(format!("{:#?}", can_mods));
+        .unwrap_or_else(|errors| {
+            diagnostics.extend(errors.into_iter().map(|e| e.as_diagnostic()));
+
+            vec![]
+        });
+    print_success(format!("checked modules: {:#?}", can_mods));
 
     debug!("phase: codegen");
 
