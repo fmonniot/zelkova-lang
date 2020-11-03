@@ -72,6 +72,10 @@ impl ModuleName {
     pub fn new(package: PackageName, name: Name) -> ModuleName {
         ModuleName { package, name }
     }
+
+    pub fn name(&self) -> &Name {
+        &self.name
+    }
 }
 
 /// An interface is trim down version of a module.
@@ -83,7 +87,6 @@ impl ModuleName {
 ///
 /// TODO Decide if the Name in the maps are fully qualified or not
 pub struct Interface {
-    _package: PackageName,
     values: HashMap<Name, canonical::Type>,
     unions: HashMap<Name, canonical::UnionType>,
     // TODO type aliases
@@ -235,13 +238,13 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 
     // TODO Load those information from somewhere
     let package_name = PackageName::new("zelkova", "core");
-    let interfaces = std::collections::HashMap::new();
+    let mut interfaces = std::collections::HashMap::new();
 
     debug!("phase: Checks modules");
 
     // Step 5: Follow graph and call check_module on each
     let can_mods = walker
-        .process(|m| check_module(&package_name, &interfaces, m))
+        .check_in_order(&package_name, &mut interfaces, check_module)
         .unwrap_or_else(|errors| {
             diagnostics.extend(errors.into_iter().map(|e| e.as_diagnostic()));
 

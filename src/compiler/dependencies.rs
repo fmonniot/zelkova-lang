@@ -99,8 +99,34 @@ impl<'a> ModuleWalker<'a> {
         }
     }
 
-    pub fn process<T, E>(&self, f: impl Fn(&'a Module) -> Result<T, E>) -> Result<Vec<T>, Vec<E>> {
-        let iter = self.modules.iter().map(|module| f(module));
+    /// Given a package name, a set of existing interfaces and a checker function,
+    /// Check each module in its dependencies order
+    pub fn check_in_order<E>(
+        &self,
+        package: &crate::compiler::PackageName,
+        interfaces: &mut HashMap<Name, crate::compiler::Interface>,
+        check: fn(
+            package: &crate::compiler::PackageName,
+            interfaces: &HashMap<Name, crate::compiler::Interface>,
+            source: &crate::compiler::parser::Module,
+        ) -> Result<super::canonical::Module, E>,
+    ) -> Result<Vec<crate::compiler::canonical::Module>, Vec<E>> {
+        let iter = self
+            .modules
+            .iter()
+            .map(|module| match check(package, interfaces, module) {
+                Ok(m) => {
+                    // Once we have successfuly checked a module, we can add it to the available interfaces
+                    // for the following modules.
+                    // TODO We might want to have a less strict approach if we want to make some progress
+                    // in dependent modules even if the current one doesn't pass all checks (accumulate
+                    // more errors to show at once to the programmer).
+                    interfaces.insert(m.name.name().clone(), m.to_interface());
+
+                    Ok(m)
+                }
+                Err(err) => Err(err),
+            });
 
         collect_accumulate(iter)
     }
@@ -110,6 +136,7 @@ impl<'a> ModuleWalker<'a> {
 mod tests {
     use super::*;
     use crate::compiler::parser::{Exposing, Import};
+    use crate::compiler::{canonical, parser, Interface, ModuleName, Name, PackageName};
 
     fn module<S: Into<String>>(name: S, deps: Vec<S>) -> Module {
         let imports = deps
@@ -135,11 +162,31 @@ mod tests {
         Name(s.into())
     }
 
+    fn dummy_check(
+        package: &PackageName,
+        _interfaces: &HashMap<Name, Interface>,
+        source: &parser::Module,
+    ) -> Result<canonical::Module, ()> {
+        Ok(canonical::Module {
+            name: ModuleName::new(package.clone(), source.name.clone()),
+            exports: canonical::Exports::Everything,
+            infixes: HashMap::new(),
+            types: HashMap::new(),
+            values: HashMap::new(),
+        })
+    }
+
     fn assert_walker_processed_order(walker: ModuleWalker, expected: Vec<&str>) {
-        let res: Result<Vec<String>, Vec<()>> = walker.process(|m| Ok(m.name.0.clone()));
+        let name = crate::compiler::PackageName::new("author", "project");
+        let mut ifaces = HashMap::new();
+        let res: Result<Vec<canonical::Module>, Vec<()>> =
+            walker.check_in_order(&name, &mut ifaces, dummy_check);
 
         assert_eq!(
-            res,
+            res.map(|v| v
+                .into_iter()
+                .map(|m| m.name.name().0.clone())
+                .collect::<Vec<_>>()),
             Ok(expected.into_iter().map(|s| s.to_string()).collect())
         );
     }

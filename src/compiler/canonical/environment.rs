@@ -180,9 +180,6 @@ mod tests {
     }
 
     fn maybe_interface() -> (Name, Interface) {
-        let package = PackageName::new("zelkova", "core");
-        let module = ModuleName::new(package.clone(), "Maybe".into());
-
         let type_var = |name: &str| Type::Variable(name.into());
 
         let type_hk = |name: &str, params| Type::Type(name.into(), params);
@@ -240,7 +237,6 @@ mod tests {
         );
 
         let interface = Interface {
-            package,
             values,
             unions,
             infixes: HashMap::new(),

@@ -34,14 +34,26 @@ pub use parser::Associativity;
 pub struct Module {
     pub name: ModuleName,
     pub exports: Exports,
+    /// Operator name to infix details
     pub infixes: HashMap<Name, Infix>,
     pub types: HashMap<Name, UnionType>,
     pub values: HashMap<Name, Value>,
 }
 
+impl Module {
+    pub fn to_interface(&self) -> super::Interface {
+        super::Interface {
+            values: HashMap::new(), // TODO
+            unions: self.types.clone(),
+            infixes: self.infixes.clone()
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Exports {
     Everything,
+    /// Non qualified name to its export type
     Specifics(HashMap<Name, ExportType>),
 }
 
