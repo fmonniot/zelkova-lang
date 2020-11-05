@@ -24,7 +24,11 @@ pub use error::Error;
 
 use std::collections::HashMap;
 
-lalrpop_mod!(grammar, "/compiler/parser/grammar.rs");
+lalrpop_mod!(
+    #[allow(clippy::all)]
+    grammar,
+    "/compiler/parser/grammar.rs"
+);
 
 pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> {
     let source = source_file.source();
