@@ -3,6 +3,6 @@ use super::canonical::Module;
 
 pub enum Error {}
 
-pub fn check(module: &Module) -> Result<(), Error> {
+pub fn check(_module: &Module) -> Result<(), Error> {
     Ok(())
 }

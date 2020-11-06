@@ -39,6 +39,6 @@ use super::canonical::Module;
 
 pub enum Error {}
 
-pub fn type_check(module: &Module) -> Result<(), Error> {
+pub fn type_check(_module: &Module) -> Result<(), Error> {
     Ok(())
 }
