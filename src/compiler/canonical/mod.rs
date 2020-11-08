@@ -23,7 +23,7 @@ mod environment;
 use environment::EnvError;
 
 // Some elements which are common to both AST
-use crate::compiler::name::Name;
+use crate::compiler::name::{QualName, Name};
 pub use environment::Environment;
 pub use parser::Associativity;
 
@@ -45,7 +45,7 @@ impl Module {
         super::Interface {
             values: HashMap::new(), // TODO
             unions: self.types.clone(),
-            infixes: self.infixes.clone()
+            infixes: self.infixes.clone(),
         }
     }
 }
@@ -137,7 +137,74 @@ impl Type {
 }
 
 #[derive(Debug)]
-pub struct Value; // TODO
+pub enum Value {
+    Value {
+        name: Name,
+        patterns: Vec<Pattern>,
+        body: Expression, // Expression
+    },
+    TypedValue {
+        name: Name,
+        patterns: Vec<(Pattern, Type)>,
+        body: Expression, // Expression
+        tpe: Type,
+    }
+}
+
+#[derive(Debug)]
+pub enum Pattern {
+    Anything,
+    Variable(Name), // TODO Name or QualName ?
+    Int(i64),
+    Float(f64),
+    Char(char),
+    Bool(bool),
+    /// Tuple in elm have size 2 or 3, so the third argument is optional.
+    /// Should we keep the same restriction in zelkova ?
+    Tuple(Box<Pattern>, Box<Pattern>, Option<Box<Pattern>>),
+
+    Constructor {
+        tpe: QualName, // Type name
+        name: Name, // Constructor name
+        union: UnionType,
+        args: Vec<PatternConstructorArg>
+    }
+}
+
+impl Pattern {
+    fn from_parser(p: &parser::Pattern) -> Pattern {
+        match p {
+            parser::Pattern::Anything => Pattern::Anything,
+            parser::Pattern::Variable(name) => Pattern::Variable(name.clone()),
+            parser::Pattern::Literal(parser::Literal::Int(i)) => Pattern::Int(*i),
+            parser::Pattern::Literal(parser::Literal::Float(f)) => Pattern::Float(*f),
+            parser::Pattern::Literal(parser::Literal::Char(c)) => Pattern::Char(*c),
+            parser::Pattern::Literal(parser::Literal::Bool(b)) => Pattern::Bool(*b),
+            parser::Pattern::Tuple(a, b, c) => 
+                Pattern::Tuple(
+                    Box::new(Pattern::from_parser(a)),
+                    Box::new(Pattern::from_parser(b)),
+                    c.get(0).map(Pattern::from_parser).map(Box::new)
+                )
+            ,
+            parser::Pattern::Constructor(name, args) => {
+                todo!()
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct PatternConstructorArg {
+    tpe: Option<Type>, // Option until we have a type for representing non-infered types
+
+    /// More often than not, this will be a variable. But for nested structure
+    /// this can be any supported pattern.
+    arg: Box<Pattern>,
+}
+
+#[derive(Debug)]
+pub struct Expression;
 
 // end AST
 
