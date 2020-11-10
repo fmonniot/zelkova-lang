@@ -39,6 +39,15 @@ impl Error {
                     )
                     .to_owned()])
             }
+            Error::Tokenizer(err) => {
+                // TODO pattern match on TokenizerError to produce good error messages
+                Diagnostic::error()
+                    .with_message(format!("error type: {:?}", err.error))
+                    .with_labels(vec![
+                        Label::primary(name, err.position.absolute.to_range())
+                            .with_message("unexpected token")
+                    ])
+            }
 
             e => todo!("{:?}", e),
         }

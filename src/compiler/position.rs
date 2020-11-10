@@ -103,6 +103,14 @@ pub struct Span<I> {
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct BytePos(pub u32);
 
+impl BytePos {
+    pub fn to_range(self) -> std::ops::Range<usize> {
+        let u = self.0 as usize;
+
+        u..u
+    }
+}
+
 impl Span<BytePos> {
     /// This method will panic when used on 16 bits platform or less.
     /// We assume zelkova won't support such platform.
