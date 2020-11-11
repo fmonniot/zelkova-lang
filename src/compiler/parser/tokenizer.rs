@@ -3,8 +3,8 @@
 //! Directly inspired by the great work on the RustPython team
 //! https://github.com/RustPython/RustPython/blob/master/parser/src/lexer.rs
 
-use crate::compiler::position::{spanned, Position, Spanned};
-use log::{trace, warn}; // Location in RustPython
+use crate::compiler::position::{spanned, BytePos, Position, Spanned};
+use log::trace; // Location in RustPython
 use std::collections::HashMap;
 use std::str::FromStr;
 use unic_ucd_category::GeneralCategory;
@@ -105,19 +105,28 @@ fn is_operator_char(c: char) -> bool {
 /// Represents an error during tokenization.
 #[derive(Debug, PartialEq, Clone)]
 pub struct TokenizerError {
-    pub error: TokenizerErrorType,
-    pub position: Position,
+    pub error: Spanned<BytePos, TokenizerErrorType>,
+}
+
+impl TokenizerError {
+    fn new(start: BytePos, end: BytePos, tpe: TokenizerErrorType) -> TokenizerError {
+        TokenizerError {
+            error: spanned(start, end, tpe),
+        }
+    }
 }
 
 /// The type of error refered in `TokenizerError`
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenizerErrorType {
-    CharError,
+    CharNotClosedError(Option<char>),
+    // TODO If can be implemented, lookahead and try to find a closing single quote
+    // This will require to implement backtracking in the tokenizer though
+    //CharTooBigError,
     StringError,  // TODO String literal
     UnicodeError, // TODO String literal
     IndentationError,
     TabError,
-    CommentError, // A comment call was issued on a non-comment character
     UnrecognizedToken { tok: char },
 }
 
@@ -383,6 +392,7 @@ where
     /// point at it.
     fn handle_indentation(&mut self) -> Result<usize> {
         let mut spaces = 0;
+        let start_position = self.position;
 
         trace!("consume_indentation()");
 
@@ -394,10 +404,11 @@ where
                 }
                 Some('\t') => {
                     // Zelkova forbid the use of tabs for indentation
-                    return Err(TokenizerError {
-                        error: TokenizerErrorType::TabError,
-                        position: self.position,
-                    });
+                    return Err(TokenizerError::new(
+                        self.position.absolute,
+                        self.position.absolute + '\t'.len_utf8() as u32,
+                        TokenizerErrorType::TabError,
+                    ));
                 }
                 Some('-') => {
                     // Possible comment
@@ -438,10 +449,11 @@ where
 
         // Indentation must be by 2 spaces, anything else is an error
         if spaces % 2 != 0 {
-            return Err(TokenizerError {
-                error: TokenizerErrorType::IndentationError,
-                position: self.position,
-            });
+            return Err(TokenizerError::new(
+                start_position.absolute,
+                self.position.absolute,
+                TokenizerErrorType::IndentationError,
+            ));
         }
 
         Ok(spaces)
@@ -475,14 +487,10 @@ where
             }
         } else {
             // We aren't looking at the symbols -- or {-, this isn't a comment
-            warn!(
+            panic!(
                 "Called Tokenizer.consume_comment on non-comment symbol ({:?})",
                 self.position
             );
-            return Err(TokenizerError {
-                error: TokenizerErrorType::CommentError,
-                position: self.position,
-            });
         }
 
         trace!(
@@ -551,8 +559,8 @@ where
                     }
                 }
                 '\'' => {
-                    if let Some(value) = self.lookahead.1 {
-                        if let Some('\'') = self.lookahead.2 {
+                    match (self.lookahead.1, self.lookahead.2) {
+                        (Some(value), Some('\'')) => {
                             let start_pos = self.position;
                             // skip over the opening quote, char and closing quote
                             self.next_char().unwrap();
@@ -565,33 +573,43 @@ where
                                 end_pos,
                                 Token::Char { value },
                             ));
-                        } else {
-                            // error: opened quote with char but no closing quote
-                            // We haven't moved the cursor yet, but we know the error
-                            // is on the next character, so we build the position manually
-                            let mut position = self.position.clone();
-                            position.increment();
-                            return Err(TokenizerError {
-                                error: TokenizerErrorType::CharError,
-                                position: position,
-                            });
                         }
-                    } else {
-                        // error: opened single quote without character following
-                        return Err(TokenizerError {
-                            error: TokenizerErrorType::CharError,
-                            position: self.position,
-                        });
+
+                        (Some(v), Some(closing)) => {
+                            // error: opened quote with char but no closing quote
+                            // We haven't moved the cursor yet, but we know where
+                            // the error is, so we build the position manually
+                            let end = self.position.absolute
+                                + (v.len_utf8() as u32)
+                                + (closing.len_utf8() as u32);
+                            return Err(TokenizerError::new(
+                                self.position.absolute,
+                                end,
+                                TokenizerErrorType::CharNotClosedError(Some(closing)),
+                            ));
+                        }
+
+                        (v, _) => {
+                            // error: opened single quote without character following
+
+                            let char_width = v.map_or_else(|| 0, |v| v.len_utf8()) as u32;
+                            return Err(TokenizerError::new(
+                                self.position.absolute,
+                                self.position.absolute + char_width + 1, // +1 for the opening quote
+                                TokenizerErrorType::CharNotClosedError(None),
+                            ));
+                        }
                     }
                 }
                 ' ' | '\n' => {
                     self.next_char().unwrap(); // let's skip over whitespace and new lines
                 }
                 '\t' => {
-                    return Err(TokenizerError {
-                        error: TokenizerErrorType::TabError,
-                        position: self.position,
-                    })
+                    return Err(TokenizerError::new(
+                        self.position.absolute,
+                        self.position.absolute + '\t'.len_utf8() as u32,
+                        TokenizerErrorType::TabError,
+                    ))
                 }
                 c if self.is_identifier_start(c) => {
                     let identifier = self.consume_identifier()?;
@@ -602,11 +620,13 @@ where
                     self.processed_tokens.push(operator);
                 }
                 _ => {
-                    let c = self.next_char().expect("lookahead.0 should be present");
-                    return Err(TokenizerError {
-                        error: TokenizerErrorType::UnrecognizedToken { tok: c },
-                        position: self.position,
-                    });
+                    let start_position = self.position.absolute;
+                    let tok = self.next_char().expect("lookahead.0 should be present");
+                    return Err(TokenizerError::new(
+                        start_position,
+                        self.position.absolute,
+                        TokenizerErrorType::UnrecognizedToken { tok },
+                    ));
                 }
             }
 
@@ -781,6 +801,7 @@ mod tests {
         make_tokenizer, spanned, NewlineCollapser, Position, Token, TokenizerError,
         TokenizerErrorType,
     };
+    use crate::compiler::position::BytePos;
     use indoc::indoc;
 
     // utilities
@@ -859,20 +880,33 @@ mod tests {
 
     #[test]
     fn literal_char() {
+        enable_logs();
+
         assert_eq!(
             make_tokenizer("'").collect::<Result<Vec<_>, _>>(),
-            Err(TokenizerError {
-                error: TokenizerErrorType::CharError,
-                position: Position::new(0, 1, 1)
-            })
+            Err(TokenizerError::new(
+                BytePos(0),
+                BytePos(1),
+                TokenizerErrorType::CharNotClosedError(None)
+            ))
         );
 
         assert_eq!(
             make_tokenizer("'a").collect::<Result<Vec<_>, _>>(),
-            Err(TokenizerError {
-                error: TokenizerErrorType::CharError,
-                position: Position::new(1, 2, 1)
-            })
+            Err(TokenizerError::new(
+                BytePos(0),
+                BytePos(2),
+                TokenizerErrorType::CharNotClosedError(None)
+            ))
+        );
+
+        assert_eq!(
+            make_tokenizer("'aa").collect::<Result<Vec<_>, _>>(),
+            Err(TokenizerError::new(
+                BytePos(0),
+                BytePos(2),
+                TokenizerErrorType::CharNotClosedError(Some('a'))
+            ))
         );
 
         assert_eq!(tokenize("'a'"), vec![char_token('a')]);
@@ -917,18 +951,20 @@ mod tests {
     fn invalid_indentation() {
         assert_eq!(
             make_tokenizer(" a").collect::<Result<Vec<_>, _>>(),
-            Err(TokenizerError {
-                error: TokenizerErrorType::IndentationError,
-                position: Position::new(1, 2, 1)
-            })
+            Err(TokenizerError::new(
+                BytePos(0),
+                BytePos(1),
+                TokenizerErrorType::IndentationError
+            ))
         );
 
         assert_eq!(
             make_tokenizer("  \ta").collect::<Result<Vec<_>, _>>(),
-            Err(TokenizerError {
-                error: TokenizerErrorType::TabError,
-                position: Position::new(2, 3, 1)
-            })
+            Err(TokenizerError::new(
+                BytePos(2),
+                BytePos(3),
+                TokenizerErrorType::TabError
+            ))
         );
     }
 
@@ -985,10 +1021,11 @@ mod tests {
     fn refuse_tab_in_expression() {
         assert_eq!(
             make_tokenizer("map \ta").collect::<Result<Vec<_>, _>>(),
-            Err(TokenizerError {
-                error: TokenizerErrorType::TabError,
-                position: Position::new(4, 5, 1)
-            })
+            Err(TokenizerError::new(
+                BytePos(4),
+                BytePos(5),
+                TokenizerErrorType::TabError
+            ))
         );
     }
 

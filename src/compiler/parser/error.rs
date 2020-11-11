@@ -1,5 +1,5 @@
 use super::layout::LayoutError;
-use super::tokenizer::{Token, TokenizerError};
+use super::tokenizer::{Token, TokenizerError, TokenizerErrorType};
 use crate::compiler::position::{BytePos, Spanned};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use lalrpop_util::ParseError;
@@ -26,7 +26,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn diagnostic<Id>(&self, name: Id) -> Diagnostic<Id> {
+    pub fn diagnostic<Id: Copy>(&self, name: Id) -> Diagnostic<Id> {
         match self {
             Error::UnexpectedToken { token, expected } => {
                 Diagnostic::error()
@@ -40,13 +40,61 @@ impl Error {
                     .to_owned()])
             }
             Error::Tokenizer(err) => {
-                // TODO pattern match on TokenizerError to produce good error messages
-                Diagnostic::error()
-                    .with_message(format!("error type: {:?}", err.error))
+                /*
+                CharNotClosedError:
+                let err = Diagnostic::error()
+                    .with_message("my message")
                     .with_labels(vec![
-                        Label::primary(name, err.position.absolute.to_range())
-                            .with_message("unexpected token")
-                    ])
+                        Label::primary((), 2..2).with_message("expected quote here"),
+                        Label::secondary((), 0..0).with_message("for char started here")
+                    ]);
+                */
+                let diag = Diagnostic::error();
+                match err.error.value {
+                    TokenizerErrorType::CharNotClosedError(None) => {
+                        diag.with_message("char sequence opened but never closed")
+                            .with_labels(vec![
+                                Label::primary(name, err.error.span.to_range())
+                                    .with_message("The char is declared here but not closed")
+                            ])
+                    }
+                    TokenizerErrorType::CharNotClosedError(Some(_)) => {
+                        let open = err.error.span.start;
+                        let close = err.error.span.end;
+                        diag.with_message("char sequence opened but never closed")
+                            .with_labels(vec![
+                                Label::primary(name, open.to_range())
+                                    .with_message("We were expecting a single quote here"),
+                                Label::secondary(name, close.to_range())
+                                    .with_message("For the opening quote here")
+
+                            ])
+                    }
+                    TokenizerErrorType::StringError => todo!(),
+                    TokenizerErrorType::UnicodeError => todo!(),
+                    TokenizerErrorType::IndentationError => {
+                        diag.with_message("Invalid indentation level")
+                            .with_labels(vec![
+                                Label::primary(name, err.error.span.to_range())
+                            ])
+                            .with_notes(vec![
+                                "Zelkova use exclusively two spaces to denote indentation but an odd number of spaces was found".to_owned()
+                            ])
+                    }
+                    TokenizerErrorType::TabError => {
+                        diag.with_message("Tab found")
+                        .with_labels(vec![
+                            Label::primary(name, err.error.span.to_range())
+                        ])
+                        .with_notes(vec!["Zelkova use exclusively two spaces to denote indentation and forbid the usage of tabs".to_owned()])
+                    }
+                    TokenizerErrorType::UnrecognizedToken { tok } => {
+                        Diagnostic::error()
+                        .with_message("Unexpected token found")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message(format!("Unrecognized token {} found", tok))])
+                    }
+                }
             }
 
             e => todo!("{:?}", e),

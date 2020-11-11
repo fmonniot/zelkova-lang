@@ -23,7 +23,7 @@ mod environment;
 use environment::EnvError;
 
 // Some elements which are common to both AST
-use crate::compiler::name::{QualName, Name};
+use crate::compiler::name::{Name, QualName};
 pub use environment::Environment;
 pub use parser::Associativity;
 
@@ -148,7 +148,7 @@ pub enum Value {
         patterns: Vec<(Pattern, Type)>,
         body: Expression, // Expression
         tpe: Type,
-    }
+    },
 }
 
 #[derive(Debug)]
@@ -165,10 +165,10 @@ pub enum Pattern {
 
     Constructor {
         tpe: QualName, // Type name
-        name: Name, // Constructor name
+        name: Name,    // Constructor name
         union: UnionType,
-        args: Vec<PatternConstructorArg>
-    }
+        args: Vec<PatternConstructorArg>,
+    },
 }
 
 impl Pattern {
@@ -180,16 +180,12 @@ impl Pattern {
             parser::Pattern::Literal(parser::Literal::Float(f)) => Pattern::Float(*f),
             parser::Pattern::Literal(parser::Literal::Char(c)) => Pattern::Char(*c),
             parser::Pattern::Literal(parser::Literal::Bool(b)) => Pattern::Bool(*b),
-            parser::Pattern::Tuple(a, b, c) => 
-                Pattern::Tuple(
-                    Box::new(Pattern::from_parser(a)),
-                    Box::new(Pattern::from_parser(b)),
-                    c.get(0).map(Pattern::from_parser).map(Box::new)
-                )
-            ,
-            parser::Pattern::Constructor(name, args) => {
-                todo!()
-            }
+            parser::Pattern::Tuple(a, b, c) => Pattern::Tuple(
+                Box::new(Pattern::from_parser(a)),
+                Box::new(Pattern::from_parser(b)),
+                c.get(0).map(Pattern::from_parser).map(Box::new),
+            ),
+            parser::Pattern::Constructor(name, args) => todo!(),
         }
     }
 }
