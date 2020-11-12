@@ -258,6 +258,14 @@ pub enum Expression {
     Tuple(Box<Expression>, Box<Expression>, Option<Box<Expression>>),
 }
 
+impl Expression {
+
+    fn from_parser(e: &parser::Expression) -> Expression {
+
+        todo!()
+    }
+}
+
 #[derive(Debug)]
 pub struct CaseBranch {
     pattern: Pattern,
@@ -272,6 +280,7 @@ pub enum Error {
     EnvironmentErrors(Vec<EnvError>),
     InfixReferenceInvalidValue(Name, Name), // (infix, function)
     BindingPatternsInvalidLen,
+    NoBindings,
 }
 
 impl From<Vec<EnvError>> for Error {
@@ -347,13 +356,35 @@ fn do_values(env: &Environment, functions: &Vec<parser::Function>) -> Result<Has
             Err(Error::BindingPatternsInvalidLen)?
         }
 
-        let name = function.name.clone();
-        let patterns = vec![];
-        let body = Expression::Bool(true);
+        let (patterns, body): (Vec<Pattern>, Expression) = match function.bindings.len() {
+            0 => Err(Error::NoBindings),
+            1 => {
+                // if one binding, we can convert directly to cano format
+                let binding = &function.bindings[0];
 
+                let patterns = binding.patterns.iter().map(|p| Pattern::from_parser(p)).collect();
+                let body = Expression::from_parser(&binding.body);
+
+
+                Ok((patterns, body))
+            }
+            _ => {
+                // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
+
+                todo!("multiple bindings not implemented")
+            }
+        }?;
+
+        let name = function.name.clone();
+        
         let value = match &function.tpe {
-            Some(t) => Value::TypedValue { name, patterns, body, tpe: Type::from_parser_type(env, &t) },
-            None => Value::Value { name, patterns: patterns.into_iter().map(|t| t.0).collect(), body }
+            Some(t) => {
+                let patterns = patterns.into_iter().map(|p| (p, Type::Variable(Name("TODO".to_owned())))).collect();
+                let tpe = Type::from_parser_type(env, &t);
+
+                Value::TypedValue { name, patterns, body, tpe }
+            },
+            None => Value::Value { name, patterns, body }
         };
 
         Ok((function.name.clone(), value))
