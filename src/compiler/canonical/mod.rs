@@ -141,12 +141,12 @@ pub enum Value {
     Value {
         name: Name,
         patterns: Vec<Pattern>,
-        body: Expression, // Expression
+        body: Expression,
     },
     TypedValue {
         name: Name,
         patterns: Vec<(Pattern, Type)>,
-        body: Expression, // Expression
+        body: Expression,
         tpe: Type,
     },
 }
@@ -199,8 +199,70 @@ pub struct PatternConstructorArg {
     arg: Box<Pattern>,
 }
 
+// TODO Find a way to detect recursive functions (even indirect recursivity,
+// eg. `a` calls `b` calls `a`)
+/// Expression is an optimized version for checks and caches.
+/// 
+/// Elm declare those expressions:
+/// ```haskell
+/// data Expr_
+///   = VarLocal Name
+///   | VarTopLevel ModuleName.Canonical Name
+///   | VarKernel Name Name
+///   | VarForeign ModuleName.Canonical Name Annotation
+///   | VarCtor CtorOpts ModuleName.Canonical Name Index.ZeroBased Annotation
+///   | VarDebug ModuleName.Canonical Name Annotation
+///   | VarOperator Name ModuleName.Canonical Name Annotation -- CACHE real name for optimization
+///   | Chr ES.String
+///   | Str ES.String
+///   | Int Int
+///   | Float EF.Float
+///   | List [Expr]
+///   | Negate Expr
+///   | Binop Name ModuleName.Canonical Name Annotation Expr Expr -- CACHE real name for optimization
+///   | Lambda [Pattern] Expr
+///   | Call Expr [Expr]
+///   | If [(Expr, Expr)] Expr
+///   | Let Def Expr
+///   | LetRec [Def] Expr
+///   | LetDestruct Pattern Expr Expr
+///   | Case Expr [CaseBranch]
+///   | Accessor Name
+///   | Access Expr (A.Located Name)
+///   | Update Name Expr (Map.Map Name FieldUpdate)
+///   | Record (Map.Map Name Expr)
+///   | Unit
+///   | Tuple Expr Expr (Maybe Expr)
+/// ```
 #[derive(Debug)]
-pub struct Expression;
+pub enum Expression {
+    VarLocal(Name),
+    VarTopLevel(QualName),
+    VarKernel(QualName),
+    VarForeign(QualName, Type),
+    VarConstructor(QualName, Type),
+    Char(char),
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    // List
+    If(Box<Expression>, Box<Expression>, Box<Expression>),
+    // Let
+    // LetRec
+    // LetDestruct (eg. `(a,b) = someTuple`)
+    Case(Box<Expression>, Vec<CaseBranch>),
+    // Accessor
+    // Access
+    // Update (record)
+    // Unit
+    Tuple(Box<Expression>, Box<Expression>, Option<Box<Expression>>),
+}
+
+#[derive(Debug)]
+pub struct CaseBranch {
+    pattern: Pattern,
+    expression: Expression,
+}
 
 // end AST
 
@@ -209,6 +271,7 @@ pub enum Error {
     ExportNotFound(Name, ExportType),
     EnvironmentErrors(Vec<EnvError>),
     InfixReferenceInvalidValue(Name, Name), // (infix, function)
+    BindingPatternsInvalidLen,
 }
 
 impl From<Vec<EnvError>> for Error {
@@ -238,14 +301,14 @@ pub fn canonicalize(
         HashMap::new()
     });
 
-    // TODO Should I manage infixes rewrite here too ?
-    // Yes I should do it here
-    let values = do_values().unwrap_or_else(|err| {
+    let types = do_types(&env, &source.types).unwrap_or_else(|err| {
         errors.extend(err);
         HashMap::new()
     });
 
-    let types = do_types(&mut env, &source.types).unwrap_or_else(|err| {
+    // TODO Should I manage infixes rewrite here too ?
+    // Yes I should do it here
+    let values = do_values(&env, &source.functions).unwrap_or_else(|err| {
         errors.extend(err);
         HashMap::new()
     });
@@ -270,12 +333,37 @@ pub fn canonicalize(
     }
 }
 
-fn do_values() -> Result<HashMap<Name, Value>, Vec<Error>> {
-    Ok(HashMap::new())
+fn do_values(env: &Environment, functions: &Vec<parser::Function>) -> Result<HashMap<Name, Value>, Vec<Error>> {
+    let iter = functions.iter().map(|function| {
+
+        // Bindings to expression
+
+        // TODO Better error message with position of mismatch
+        // TODO Error when bindings is empty
+        let bindings_size = function.bindings.iter()
+            .all(|v| v.patterns.len() == function.bindings[0].patterns.len());
+
+        if !bindings_size {
+            Err(Error::BindingPatternsInvalidLen)?
+        }
+
+        let name = function.name.clone();
+        let patterns = vec![];
+        let body = Expression::Bool(true);
+
+        let value = match &function.tpe {
+            Some(t) => Value::TypedValue { name, patterns, body, tpe: Type::from_parser_type(env, &t) },
+            None => Value::Value { name, patterns: patterns.into_iter().map(|t| t.0).collect(), body }
+        };
+
+        Ok((function.name.clone(), value))
+    });
+
+    collect_accumulate(iter).map(|vec| vec.into_iter().collect())
 }
 
 fn do_types(
-    env: &mut Environment,
+    env: &Environment,
     types: &Vec<parser::UnionType>,
 ) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
     let iter = types.iter().map(|tpe| {
