@@ -134,6 +134,23 @@ impl Type {
             }
         }
     }
+
+    // TODO Write some tests
+    fn to_linear_types(tpe: &Type) -> Vec<Type> {
+        match tpe {
+            Type::Arrow(a, b) => {
+                let mut next = Type::to_linear_types(b);
+
+                next.insert(0, *a.clone());
+
+                next
+            }
+            _ => {
+                vec![tpe.clone()]
+            }
+        }
+    }
+
 }
 
 #[derive(Debug)]
@@ -377,17 +394,22 @@ fn do_values(env: &Environment, functions: &Vec<parser::Function>) -> Result<Has
 
         let name = function.name.clone();
         
-        let value = match &function.tpe {
+        match &function.tpe {
             Some(t) => {
-                let patterns = patterns.into_iter().map(|p| (p, Type::Variable(Name("TODO".to_owned())))).collect();
                 let tpe = Type::from_parser_type(env, &t);
+                let linear = Type::to_linear_types(&tpe);
 
-                Value::TypedValue { name, patterns, body, tpe }
+                if linear.len() != patterns.len() {
+                    // TODO Better error message
+                    Err(Error::BindingPatternsInvalidLen)?
+                }
+
+                let patterns = patterns.into_iter().zip(linear).collect();
+                
+                Ok((function.name.clone(), Value::TypedValue { name, patterns, body, tpe }))
             },
-            None => Value::Value { name, patterns, body }
-        };
-
-        Ok((function.name.clone(), value))
+            None => Ok((function.name.clone(), Value::Value { name, patterns, body }))
+        }
     });
 
     collect_accumulate(iter).map(|vec| vec.into_iter().collect())
