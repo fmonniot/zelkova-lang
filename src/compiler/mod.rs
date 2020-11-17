@@ -87,6 +87,7 @@ impl ModuleName {
 ///
 /// TODO Decide if the Name in the maps are fully qualified or not
 pub struct Interface {
+    module_name: ModuleName,
     values: HashMap<Name, canonical::Type>,
     unions: HashMap<Name, canonical::UnionType>,
     // TODO type aliases

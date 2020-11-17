@@ -237,6 +237,7 @@ mod tests {
         );
 
         let interface = Interface {
+            module_name: ModuleName::new(PackageName::new("zelkova", "core"), "Maybe".into()),
             values,
             unions,
             infixes: HashMap::new(),

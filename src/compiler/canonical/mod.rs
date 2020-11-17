@@ -43,6 +43,7 @@ pub struct Module {
 impl Module {
     pub fn to_interface(&self) -> super::Interface {
         super::Interface {
+            module_name: self.name.clone(),
             values: HashMap::new(), // TODO
             unions: self.types.clone(),
             infixes: self.infixes.clone(),
