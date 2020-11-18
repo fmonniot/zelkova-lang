@@ -77,6 +77,15 @@ impl QualName {
             },
         }
     }
+
+    // TODO Write tests
+    pub fn to_name(&self) -> Name {
+        if self.module.len() > 0 {
+            Name(format!("{}.{}", self.module.join("."), self.name))
+        } else {
+            Name(self.name.clone())
+        }
+    }
 }
 
 #[cfg(test)]

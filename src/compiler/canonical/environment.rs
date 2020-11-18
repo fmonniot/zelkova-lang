@@ -1,14 +1,22 @@
 use super::parser;
-use super::{Infix, Interface, Name, Type, TypeConstructor, UnionType};
+use super::{Infix, Interface, ModuleName, Name, QualName, Type, TypeConstructor, UnionType};
 use crate::utils::collect_accumulate;
 use std::collections::HashMap;
+
+#[derive(Debug)]
+enum ValueType {
+    Local,
+    TopLevel,
+    Foreign(ModuleName, Type),
+    Foreigns(Vec<ModuleName>),
+}
 
 #[derive(Default)]
 pub struct Environment {
     infixes: HashMap<Name, Infix>,
     types: HashMap<Name, Type>,
     constructors: HashMap<Name, TypeConstructor>,
-    variables: HashMap<Name, ()>, // Store real Type for type check
+    variables: HashMap<Name, ValueType>, // Store real Type for type check
     aliases: HashMap<Name, Name>,
 }
 
@@ -17,6 +25,7 @@ pub enum EnvError {
     InterfaceNotFound(Name),
     UnionNotFound(Name),
     InfixNotFound(Name),
+    ValueNotFound(Name),
     Multiple(Vec<EnvError>),
 }
 
@@ -67,9 +76,12 @@ impl Environment {
                     import_union_type(self, name, union_name, union);
                 }
 
-                for (value_name, _) in &interface.values {
-                    self.variables
-                        .insert(value_name.qualify_with_name(name), ());
+                for (value_name, tpe) in &interface.values {
+                    self.insert_foreign_value(
+                        value_name.qualify_with_name(name).to_qual(),
+                        tpe.clone(),
+                        &interface.module_name,
+                    );
                 }
 
                 for (op_name, infix) in &interface.infixes {
@@ -80,8 +92,16 @@ impl Environment {
                 let iter = exposeds.iter().map(|exposed| {
                     match exposed {
                         parser::Exposed::Lower(variable_name) => {
-                            self.variables
-                                .insert(variable_name.qualify_with_name(name), ());
+                            let tpe = interface
+                                .values
+                                .get(&variable_name)
+                                .ok_or_else(|| EnvError::ValueNotFound(variable_name.clone()))?;
+
+                            self.insert_foreign_value(
+                                variable_name.qualify_with_name(name).to_qual(),
+                                tpe.clone(),
+                                &interface.module_name,
+                            );
                         }
                         parser::Exposed::Upper(type_name, parser::Privacy::Private) => {
                             let tpe = Type::Type(type_name.clone(), vec![]);
@@ -120,6 +140,27 @@ impl Environment {
         }
 
         Ok(())
+    }
+
+    pub fn insert_foreign_value(&mut self, name: QualName, tpe: Type, module_name: &ModuleName) {
+        let name = name.to_name(); // Until we use QualName as key in self.variables
+        let vt = ValueType::Foreign(module_name.clone(), tpe.clone());
+
+        // Can it be done more efficiently by using get_mut ?
+        match self.variables.remove(&name) {
+            Some(ValueType::Foreign(module, _)) => {
+                self.variables
+                    .insert(name, ValueType::Foreigns(vec![module_name.clone(), module]));
+            }
+            Some(ValueType::Foreigns(mut vec)) => {
+                vec.push(module_name.clone());
+                self.variables.insert(name, ValueType::Foreigns(vec));
+            }
+            None => {
+                self.variables.insert(name, vt);
+            }
+            _ => todo!("find out what to do in those cases"),
+        }
     }
 
     // TODO Do we need a local/foreign distinction for infixes ? (or in general ?)
