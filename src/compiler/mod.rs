@@ -42,7 +42,7 @@ pub mod position;
 pub mod source;
 pub mod typer;
 
-use name::Name;
+use name::{Name, QualName};
 use source::files::{SourceFileError, SourceFileId};
 
 /// A package name is composed of an author and project name and is written as `author/project`.
@@ -75,6 +75,15 @@ impl ModuleName {
 
     pub fn name(&self) -> &Name {
         &self.name
+    }
+
+    // TODO tests
+    pub fn qualify_name(&self, name: &Name) -> QualName {
+        if name.starts_with(&self.name) {
+            name.to_qual()
+        } else {
+            name.qualify_with_name(&self.name).to_qual()
+        }
     }
 }
 

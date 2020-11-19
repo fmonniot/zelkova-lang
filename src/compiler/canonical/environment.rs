@@ -4,7 +4,7 @@ use crate::utils::collect_accumulate;
 use std::collections::HashMap;
 
 #[derive(Debug)]
-enum ValueType {
+pub enum ValueType {
     Local,
     TopLevel,
     Foreign(ModuleName, Type),
@@ -174,6 +174,10 @@ impl Environment {
 
     pub fn find_type(&self, name: &Name) -> Option<&Type> {
         self.types.get(name)
+    }
+
+    pub fn find_value(&self, name: &Name) -> Option<&ValueType> {
+        self.variables.get(name)
     }
 }
 

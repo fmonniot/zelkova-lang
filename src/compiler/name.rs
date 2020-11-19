@@ -25,6 +25,7 @@ pub struct Name(pub String);
 impl Name {
     /// Qualify the existing name with a module
     // TODO Return QualName ?
+    // TODO Rename to qualify_with_str (+ use Into<String> generic)
     pub fn qualify_with(self, s: String) -> Name {
         // TODO We want a check on s to make sure it's upper case
         Name(format!("{}.{}", s, self.0))
@@ -33,6 +34,11 @@ impl Name {
     // TODO Return QualName ?
     pub fn qualify_with_name(&self, qual: &Name) -> Name {
         Name(format!("{}.{}", qual.0, self.0))
+    }
+
+    // TODO tests
+    pub fn starts_with(&self, other: &Name) -> bool {
+        self.0.starts_with(&other.0)
     }
 
     pub fn to_qual(&self) -> QualName {

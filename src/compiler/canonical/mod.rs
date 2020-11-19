@@ -24,7 +24,7 @@ use environment::EnvError;
 
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
-pub use environment::Environment;
+pub use environment::{Environment, ValueType};
 pub use parser::Associativity;
 
 // begin AST
@@ -146,12 +146,9 @@ impl Type {
 
                 next
             }
-            _ => {
-                vec![tpe.clone()]
-            }
+            _ => vec![tpe.clone()],
         }
     }
-
 }
 
 #[derive(Debug)]
@@ -220,7 +217,7 @@ pub struct PatternConstructorArg {
 // TODO Find a way to detect recursive functions (even indirect recursivity,
 // eg. `a` calls `b` calls `a`)
 /// Expression is an optimized version for checks and caches.
-/// 
+///
 /// Elm declare those expressions:
 /// ```haskell
 /// data Expr_
@@ -277,10 +274,33 @@ pub enum Expression {
 }
 
 impl Expression {
+    fn from_parser(e: &parser::Expression, env: &Environment) -> Result<Expression, Error> {
+        match e {
+            parser::Expression::Lit(parser::Literal::Int(i)) => Ok(Expression::Int(*i)),
+            parser::Expression::Lit(parser::Literal::Float(f)) => Ok(Expression::Float(*f)),
+            parser::Expression::Lit(parser::Literal::Char(c)) => Ok(Expression::Char(*c)),
+            parser::Expression::Lit(parser::Literal::Bool(b)) => Ok(Expression::Bool(*b)),
+            parser::Expression::Variable(name) => {
+                match env
+                    .find_value(&name)
+                    .ok_or_else(|| Error::VariableNotFound(name.to_qual()))?
+                {
+                    ValueType::Local => Ok(Expression::VarLocal(name.clone())),
+                    ValueType::TopLevel => Ok(Expression::VarTopLevel(name.to_qual())), // TODO Does it work ?
+                    ValueType::Foreign(m, tpe) => {
+                        Ok(Expression::VarForeign(m.qualify_name(name), tpe.clone()))
+                    }
+                    ValueType::Foreigns(modules) => {
+                        Err(Error::AmbiguousVariables(name.to_qual(), modules.clone()))
+                    }
+                }
+            }
+            parser::Expression::TypeConstructor(name) => {
+                todo!("createTypeConstructor && env.findTypeConstructor")
+            }
 
-    fn from_parser(e: &parser::Expression) -> Expression {
-
-        todo!()
+            _ => todo!("expression from parser not complete yet"),
+        }
     }
 }
 
@@ -299,6 +319,8 @@ pub enum Error {
     InfixReferenceInvalidValue(Name, Name), // (infix, function)
     BindingPatternsInvalidLen,
     NoBindings,
+    VariableNotFound(QualName), // add name suggestion ?
+    AmbiguousVariables(QualName, Vec<ModuleName>),
 }
 
 impl From<Vec<EnvError>> for Error {
@@ -360,14 +382,18 @@ pub fn canonicalize(
     }
 }
 
-fn do_values(env: &Environment, functions: &Vec<parser::Function>) -> Result<HashMap<Name, Value>, Vec<Error>> {
+fn do_values(
+    env: &Environment,
+    functions: &Vec<parser::Function>,
+) -> Result<HashMap<Name, Value>, Vec<Error>> {
     let iter = functions.iter().map(|function| {
-
         // Bindings to expression
 
         // TODO Better error message with position of mismatch
         // TODO Error when bindings is empty
-        let bindings_size = function.bindings.iter()
+        let bindings_size = function
+            .bindings
+            .iter()
             .all(|v| v.patterns.len() == function.bindings[0].patterns.len());
 
         if !bindings_size {
@@ -380,9 +406,12 @@ fn do_values(env: &Environment, functions: &Vec<parser::Function>) -> Result<Has
                 // if one binding, we can convert directly to cano format
                 let binding = &function.bindings[0];
 
-                let patterns = binding.patterns.iter().map(|p| Pattern::from_parser(p)).collect();
-                let body = Expression::from_parser(&binding.body);
-
+                let patterns = binding
+                    .patterns
+                    .iter()
+                    .map(|p| Pattern::from_parser(p))
+                    .collect();
+                let body = Expression::from_parser(&binding.body, &env)?;
 
                 Ok((patterns, body))
             }
@@ -394,7 +423,7 @@ fn do_values(env: &Environment, functions: &Vec<parser::Function>) -> Result<Has
         }?;
 
         let name = function.name.clone();
-        
+
         match &function.tpe {
             Some(t) => {
                 let tpe = Type::from_parser_type(env, &t);
@@ -406,10 +435,25 @@ fn do_values(env: &Environment, functions: &Vec<parser::Function>) -> Result<Has
                 }
 
                 let patterns = patterns.into_iter().zip(linear).collect();
-                
-                Ok((function.name.clone(), Value::TypedValue { name, patterns, body, tpe }))
-            },
-            None => Ok((function.name.clone(), Value::Value { name, patterns, body }))
+
+                Ok((
+                    function.name.clone(),
+                    Value::TypedValue {
+                        name,
+                        patterns,
+                        body,
+                        tpe,
+                    },
+                ))
+            }
+            None => Ok((
+                function.name.clone(),
+                Value::Value {
+                    name,
+                    patterns,
+                    body,
+                },
+            )),
         }
     });
 
