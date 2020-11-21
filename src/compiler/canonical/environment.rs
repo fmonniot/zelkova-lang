@@ -11,12 +11,24 @@ pub enum ValueType {
     Foreigns(Vec<ModuleName>),
 }
 
+/// Environment represent the set of values/types available to a compilation unit.
+/// It is derived from previous successful units and is provisioned through a
+/// module imports.
+///
+/// As a whole, the aim of the canonical AST is to not have to worry about the
+/// Environment in later phases. We still need one to translate the parser AST.
+/// The good news being, it can be local to the canonicalization function.
+// TODO Only use QualName in the global Environment
+// TODO It should expose two APIs: one for qualified names and one for unqualified.
+//      Or it should only ever index by unqualified but store the module name in the
+//      value and use it to build qualified values when necessary ?
+//      It's kind of a strange place, maybe we should <todo>
 #[derive(Default)]
 pub struct Environment {
     infixes: HashMap<Name, Infix>,
     types: HashMap<Name, Type>,
-    constructors: HashMap<Name, TypeConstructor>,
-    variables: HashMap<Name, ValueType>, // Store real Type for type check
+    constructors: HashMap<Name, TypeConstructor>, // TODO Might have multiple in scope
+    variables: HashMap<Name, ValueType>,          // Store real Type for type check
     aliases: HashMap<Name, Name>,
 }
 
@@ -176,8 +188,15 @@ impl Environment {
         self.types.get(name)
     }
 
+    // TODO Here we have the issue that name might be qualified or not, and we need
+    // to be able to find it in both cases. So double indices ?
     pub fn find_value(&self, name: &Name) -> Option<&ValueType> {
         self.variables.get(name)
+    }
+
+    // TODO Same issue qual/non-qual as above
+    pub fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor> {
+        self.constructors.get(name)
     }
 }
 
@@ -193,7 +212,7 @@ fn import_union_type(
 
     for variant in &union.variants {
         env.constructors
-            .insert(variant.name.qualify_with_name(module_name), variant.clone());
+            .insert(variant.name.to_name(), variant.clone());
     }
 }
 
@@ -201,12 +220,6 @@ fn import_union_type(
 mod tests {
     use super::*;
     use crate::compiler::canonical::*;
-
-    impl From<&str> for Name {
-        fn from(n: &str) -> Self {
-            Name(n.to_string())
-        }
-    }
 
     fn import(name: Name, alias: Option<Name>, exposing: parser::Exposing) -> parser::Import {
         parser::Import {

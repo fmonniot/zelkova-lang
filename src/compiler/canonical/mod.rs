@@ -81,7 +81,7 @@ pub struct UnionType {
 
 #[derive(Debug, Clone)]
 pub struct TypeConstructor {
-    name: Name,
+    name: QualName,
     types: Vec<Type>,
 }
 
@@ -296,7 +296,26 @@ impl Expression {
                 }
             }
             parser::Expression::TypeConstructor(name) => {
-                todo!("createTypeConstructor && env.findTypeConstructor")
+                let ctor = env
+                    .find_type_constructor(&name)
+                    .ok_or_else(|| Error::VariantNotFound(name.to_qual()))?;
+
+                let tpe = match ctor.types.len() {
+                    0 => panic!("Should not happen (or those types only include the parameters and not the type itself)"),
+                    1 => ctor.types[0].clone(),
+                    _ => {
+                        let mut iter = ctor.types.iter().rev();
+                        let first = iter.next().unwrap().clone();
+
+                        // TODO tests this, 99.999% I'm wrong about it (like everytime I try to implement arrows, plus
+                        // the foldr in this particular case)
+                        iter.fold(first, |acc, t| {
+                            Type::Arrow(Box::new(t.clone()), Box::new(acc))
+                        })
+                    }
+                };
+
+                Ok(Expression::VarConstructor(name.to_qual(), tpe)) // TODO QualName is wrong
             }
 
             _ => todo!("expression from parser not complete yet"),
@@ -321,6 +340,8 @@ pub enum Error {
     NoBindings,
     VariableNotFound(QualName), // add name suggestion ?
     AmbiguousVariables(QualName, Vec<ModuleName>),
+    VariantNotFound(QualName),
+    AmbiguousVariants(QualName, Vec<ModuleName>),
 }
 
 impl From<Vec<EnvError>> for Error {
@@ -350,7 +371,7 @@ pub fn canonicalize(
         HashMap::new()
     });
 
-    let types = do_types(&env, &source.types).unwrap_or_else(|err| {
+    let types = do_types(&env, &source.types, &name).unwrap_or_else(|err| {
         errors.extend(err);
         HashMap::new()
     });
@@ -463,6 +484,7 @@ fn do_values(
 fn do_types(
     env: &Environment,
     types: &Vec<parser::UnionType>,
+    module_name: &ModuleName,
 ) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
     let iter = types.iter().map(|tpe| {
         let name = tpe.name.clone();
@@ -482,7 +504,7 @@ fn do_types(
                         // TODO It might actually make more sense to put Type::from_parser_type
                         // on `Environment`.
                         Some(TypeConstructor {
-                            name: name.clone(), // TODO Qualify with current module name
+                            name: module_name.qualify_name(&name),
                             types: vars
                                 .iter()
                                 .map(|t| Type::from_parser_type(&env, t))

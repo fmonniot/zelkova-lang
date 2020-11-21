@@ -46,6 +46,12 @@ impl Name {
     }
 }
 
+impl From<&str> for Name {
+    fn from(n: &str) -> Self {
+        Name(n.to_string())
+    }
+}
+
 /// Qualified name
 ///
 /// This can though as a non empty vector, where the non empty part is at the end.
@@ -61,7 +67,7 @@ impl Name {
 ///
 /// - TODO: Change `QualName::from_str` to return an `Option`
 /// - TODO: Change `Name.to_qual` to return an `Option`
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct QualName {
     module: Vec<String>,
     name: String,
@@ -94,13 +100,19 @@ impl QualName {
     }
 }
 
+impl From<&str> for QualName {
+    fn from(n: &str) -> Self {
+        QualName::from_str(n)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn unqual_to_qual() {
-        let name = Name("My.function".into());
+        let name: Name = "My.function".into();
 
         assert_eq!(
             name.to_qual(),
