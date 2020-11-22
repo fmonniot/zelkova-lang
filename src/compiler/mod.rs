@@ -45,6 +45,7 @@ pub mod typer;
 use name::{Name, QualName};
 use source::files::{SourceFileError, SourceFileId};
 
+// TODO Move PackageName and ModuleName into the name module
 /// A package name is composed of an author and project name and is written as `author/project`.
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub struct PackageName {
@@ -80,9 +81,9 @@ impl ModuleName {
     // TODO tests
     pub fn qualify_name(&self, name: &Name) -> QualName {
         if name.starts_with(&self.name) {
-            name.to_qual()
+            name.to_qual().unwrap()
         } else {
-            name.qualify_with_name(&self.name).to_qual()
+            name.qualify_with_name(&self.name).unwrap()
         }
     }
 }

@@ -283,22 +283,22 @@ impl Expression {
             parser::Expression::Variable(name) => {
                 match env
                     .find_value(&name)
-                    .ok_or_else(|| Error::VariableNotFound(name.to_qual()))?
+                    .ok_or_else(|| Error::VariableNotFound(env.module_name().qualify_name(&name)))?
                 {
                     ValueType::Local => Ok(Expression::VarLocal(name.clone())),
-                    ValueType::TopLevel => Ok(Expression::VarTopLevel(name.to_qual())), // TODO Does it work ?
+                    ValueType::TopLevel => Ok(Expression::VarTopLevel(env.module_name().qualify_name(&name))),
                     ValueType::Foreign(m, tpe) => {
                         Ok(Expression::VarForeign(m.qualify_name(name), tpe.clone()))
                     }
                     ValueType::Foreigns(modules) => {
-                        Err(Error::AmbiguousVariables(name.to_qual(), modules.clone()))
+                        Err(Error::AmbiguousVariables(name.clone(), modules.clone()))
                     }
                 }
             }
             parser::Expression::TypeConstructor(name) => {
                 let ctor = env
                     .find_type_constructor(&name)
-                    .ok_or_else(|| Error::VariantNotFound(name.to_qual()))?;
+                    .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(&name)))?;
 
                 let tpe = match ctor.types.len() {
                     0 => panic!("Should not happen (or those types only include the parameters and not the type itself)"),
@@ -315,7 +315,11 @@ impl Expression {
                     }
                 };
 
-                Ok(Expression::VarConstructor(name.to_qual(), tpe)) // TODO QualName is wrong
+                let name = name
+                    .to_qual()
+                    .unwrap_or_else(|| env.module_name().qualify_name(&name));
+
+                Ok(Expression::VarConstructor(name, tpe))
             }
 
             _ => todo!("expression from parser not complete yet"),
@@ -339,9 +343,9 @@ pub enum Error {
     BindingPatternsInvalidLen,
     NoBindings,
     VariableNotFound(QualName), // add name suggestion ?
-    AmbiguousVariables(QualName, Vec<ModuleName>),
+    AmbiguousVariables(Name, Vec<ModuleName>),
     VariantNotFound(QualName),
-    AmbiguousVariants(QualName, Vec<ModuleName>),
+    AmbiguousVariants(Name, Vec<ModuleName>),
 }
 
 impl From<Vec<EnvError>> for Error {
@@ -356,13 +360,14 @@ pub fn canonicalize(
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
 ) -> Result<Module, Vec<Error>> {
-    let mut errors: Vec<Error> = vec![];
-    let mut env = Environment::new(&interfaces, &source.imports).map_err(|e| vec![e.into()])?;
-
     let name = ModuleName {
         package: package.clone(),
         name: source.name.clone(),
     };
+
+    let mut errors: Vec<Error> = vec![];
+    let mut env =
+        Environment::new(&name, &interfaces, &source.imports).map_err(|e| vec![e.into()])?;
 
     // Because we are rewriting infixes in this phase, we must do this check before
     // resolving values.

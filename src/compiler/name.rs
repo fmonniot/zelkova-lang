@@ -32,8 +32,8 @@ impl Name {
     }
 
     // TODO Return QualName ?
-    pub fn qualify_with_name(&self, qual: &Name) -> Name {
-        Name(format!("{}.{}", qual.0, self.0))
+    pub fn qualify_with_name(&self, qual: &Name) -> Option<QualName> {
+        QualName::from_strs(&self.0, qual.0.split("."))
     }
 
     // TODO tests
@@ -41,7 +41,7 @@ impl Name {
         self.0.starts_with(&other.0)
     }
 
-    pub fn to_qual(&self) -> QualName {
+    pub fn to_qual(&self) -> Option<QualName> {
         QualName::from_str(&self.0)
     }
 }
@@ -74,19 +74,28 @@ pub struct QualName {
 }
 
 impl QualName {
-    pub fn from_str<S: Into<String>>(s: S) -> QualName {
+    pub fn from_str<S: Into<String>>(s: S) -> Option<QualName> {
         let name = s.into();
         let mut segments: Vec<_> = name.split(".").map(String::from).collect();
 
         match segments.len() {
-            1 => QualName {
-                module: vec![],
-                name,
-            },
-            _ => QualName {
+            1 => None,
+            _ => Some(QualName {
                 name: segments.pop().unwrap(),
                 module: segments,
-            },
+            }),
+        }
+    }
+
+    // TODO Write tests
+    pub fn from_strs<S1, S2, I>(name: S1, prefix: I) -> Option<QualName>
+        where S1: Into<String>, S2: Into<String>, I: Iterator<Item = S2> {
+        let name = name.into();
+        let module: Vec<String> = prefix.map(|s| s.into()).collect();
+
+        match module.len() {
+            0 => None,
+            _ => Some(QualName { name, module }),
         }
     }
 
@@ -100,9 +109,9 @@ impl QualName {
     }
 }
 
-impl From<&str> for QualName {
+impl From<&'static str> for QualName {
     fn from(n: &str) -> Self {
-        QualName::from_str(n)
+        QualName::from_str(n).expect(&format!("From conversion should only be used with qualified name ('{}' used)", &n))
     }
 }
 
@@ -116,37 +125,31 @@ mod tests {
 
         assert_eq!(
             name.to_qual(),
-            QualName {
+            Some(QualName {
                 module: vec!["My".into()],
                 name: "function".into()
-            }
+            })
         );
     }
 
     #[test]
     fn qual_name_from_str() {
-        assert_eq!(
-            QualName::from_str("Int"),
-            QualName {
-                module: vec![],
-                name: "Int".into()
-            }
-        );
+        assert_eq!(QualName::from_str("Int"), None);
 
         assert_eq!(
             QualName::from_str("Basics.Int"),
-            QualName {
+            Some(QualName {
                 module: vec!["Basics".into()],
                 name: "Int".into()
-            }
+            })
         );
 
         assert_eq!(
             QualName::from_str("My.App.Module.function"),
-            QualName {
+            Some(QualName {
                 module: vec!["My".into(), "App".into(), "Module".into(),],
                 name: "function".into()
-            }
+            })
         );
     }
 }

@@ -23,8 +23,8 @@ pub enum ValueType {
 //      Or it should only ever index by unqualified but store the module name in the
 //      value and use it to build qualified values when necessary ?
 //      It's kind of a strange place, maybe we should <todo>
-#[derive(Default)]
 pub struct Environment {
+    module_name: ModuleName,
     infixes: HashMap<Name, Infix>,
     types: HashMap<Name, Type>,
     constructors: HashMap<Name, TypeConstructor>, // TODO Might have multiple in scope
@@ -43,10 +43,18 @@ pub enum EnvError {
 
 impl Environment {
     pub fn new(
+        module_name: &ModuleName,
         interfaces: &HashMap<Name, Interface>,
         imports: &Vec<parser::Import>,
     ) -> Result<Environment, Vec<EnvError>> {
-        let mut env = Environment::default();
+        let mut env = Environment {
+            module_name: module_name.clone(),
+            infixes: HashMap::new(),
+            types: HashMap::new(),
+            constructors: HashMap::new(),
+            variables: HashMap::new(),
+            aliases: HashMap::new(),
+        };
         let mut errors = vec![];
 
         for parser::Import {
@@ -73,24 +81,24 @@ impl Environment {
     pub fn process_import(
         &mut self,
         interfaces: &HashMap<Name, Interface>,
-        name: &Name,
+        imported_module_name: &Name,
         alias: &Option<Name>,
         exposing: &parser::Exposing,
     ) -> Result<(), EnvError> {
         let interface = interfaces
-            .get(&name)
-            .ok_or_else(|| EnvError::InterfaceNotFound(name.clone()))?;
+            .get(&imported_module_name)
+            .ok_or_else(|| EnvError::InterfaceNotFound(imported_module_name.clone()))?;
 
         match exposing {
             parser::Exposing::Open => {
                 // We add everything to the current environment
                 for (union_name, union) in &interface.unions {
-                    import_union_type(self, name, union_name, union);
+                    import_union_type(self, imported_module_name, union_name, union);
                 }
 
                 for (value_name, tpe) in &interface.values {
                     self.insert_foreign_value(
-                        value_name.qualify_with_name(name).to_qual(),
+                        value_name.qualify_with_name(imported_module_name).unwrap(),
                         tpe.clone(),
                         &interface.module_name,
                     );
@@ -110,7 +118,7 @@ impl Environment {
                                 .ok_or_else(|| EnvError::ValueNotFound(variable_name.clone()))?;
 
                             self.insert_foreign_value(
-                                variable_name.qualify_with_name(name).to_qual(),
+                                variable_name.qualify_with_name(imported_module_name).expect(""),
                                 tpe.clone(),
                                 &interface.module_name,
                             );
@@ -118,7 +126,7 @@ impl Environment {
                         parser::Exposed::Upper(type_name, parser::Privacy::Private) => {
                             let tpe = Type::Type(type_name.clone(), vec![]);
 
-                            self.types.insert(type_name.qualify_with_name(name), tpe);
+                            self.types.insert(type_name.qualify_with_name(imported_module_name).unwrap().to_name(), tpe);
                         }
                         parser::Exposed::Upper(type_name, parser::Privacy::Public) => {
                             let union = interface
@@ -126,7 +134,7 @@ impl Environment {
                                 .get(&type_name)
                                 .ok_or_else(|| EnvError::UnionNotFound(type_name.clone()))?;
 
-                            import_union_type(self, name, type_name, union);
+                            import_union_type(self, imported_module_name, type_name, union);
                         }
                         parser::Exposed::Operator(variable_name) => {
                             let infix = interface
@@ -148,7 +156,7 @@ impl Environment {
         };
 
         if let Some(alias) = alias {
-            self.aliases.insert(alias.clone(), name.clone());
+            self.aliases.insert(alias.clone(), imported_module_name.clone());
         }
 
         Ok(())
@@ -188,6 +196,10 @@ impl Environment {
         self.types.get(name)
     }
 
+    pub fn module_name(&self) -> &ModuleName {
+        &self.module_name
+    }
+
     // TODO Here we have the issue that name might be qualified or not, and we need
     // to be able to find it in both cases. So double indices ?
     pub fn find_value(&self, name: &Name) -> Option<&ValueType> {
@@ -208,7 +220,7 @@ fn import_union_type(
 ) {
     let tpe = Type::Type(union_name.clone(), vec![]);
     env.types
-        .insert(union_name.qualify_with_name(module_name), tpe);
+        .insert(union_name.qualify_with_name(module_name).unwrap().to_name(), tpe);
 
     for variant in &union.variants {
         env.constructors
@@ -220,6 +232,8 @@ fn import_union_type(
 mod tests {
     use super::*;
     use crate::compiler::canonical::*;
+
+    fn module_name() -> ModuleName { ModuleName::new(PackageName::new("author", "project"), "module".into()) }
 
     fn import(name: Name, alias: Option<Name>, exposing: parser::Exposing) -> parser::Import {
         parser::Import {
@@ -283,11 +297,11 @@ mod tests {
                 variables: vec![],
                 variants: vec![
                     TypeConstructor {
-                        name: "Just".into(),
+                        name: "Maybe.Just".into(),
                         types: vec![Type::Variable("a".into())],
                     },
                     TypeConstructor {
-                        name: "Nothing".into(),
+                        name: "Maybe.Nothing".into(),
                         types: vec![],
                     },
                 ],
@@ -311,7 +325,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        Environment::new(&interfaces, &vec![]).map(drop)
+        Environment::new(&module_name(), &interfaces, &vec![]).map(drop)
     }
 
     #[test]
@@ -322,7 +336,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = Environment::new(&interfaces, &imports)?;
+        let env = Environment::new(&module_name(), &interfaces, &imports)?;
 
         assert_eq!(env.infixes.len(), 0, "infixes");
         assert_eq!(env.types.len(), 1, "types");
@@ -348,7 +362,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = Environment::new(&interfaces, &imports)?;
+        let env = Environment::new(&module_name(), &interfaces, &imports)?;
 
         assert_eq!(env.infixes.len(), 0);
         assert_eq!(env.types.len(), 1);
