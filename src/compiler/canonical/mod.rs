@@ -24,7 +24,7 @@ use environment::EnvError;
 
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
-pub use environment::{Environment, ValueType};
+pub use environment::{Environment, ValueType, new_environment};
 pub use parser::Associativity;
 
 // begin AST
@@ -99,7 +99,7 @@ pub enum Type {
 }
 
 impl Type {
-    fn from_parser_type(env: &Environment, tpe: &parser::Type) -> Type {
+    fn from_parser_type(env: &dyn Environment, tpe: &parser::Type) -> Type {
         match tpe {
             parser::Type::Unqualified(name, vars) => {
                 match env.find_type(&name) {
@@ -274,7 +274,7 @@ pub enum Expression {
 }
 
 impl Expression {
-    fn from_parser(e: &parser::Expression, env: &Environment) -> Result<Expression, Error> {
+    fn from_parser(e: &parser::Expression, env: &dyn Environment) -> Result<Expression, Error> {
         match e {
             parser::Expression::Lit(parser::Literal::Int(i)) => Ok(Expression::Int(*i)),
             parser::Expression::Lit(parser::Literal::Float(f)) => Ok(Expression::Float(*f)),
@@ -286,7 +286,9 @@ impl Expression {
                     .ok_or_else(|| Error::VariableNotFound(env.module_name().qualify_name(&name)))?
                 {
                     ValueType::Local => Ok(Expression::VarLocal(name.clone())),
-                    ValueType::TopLevel => Ok(Expression::VarTopLevel(env.module_name().qualify_name(&name))),
+                    ValueType::TopLevel => Ok(Expression::VarTopLevel(
+                        env.module_name().qualify_name(&name),
+                    )),
                     ValueType::Foreign(m, tpe) => {
                         Ok(Expression::VarForeign(m.qualify_name(name), tpe.clone()))
                     }
@@ -367,7 +369,7 @@ pub fn canonicalize(
 
     let mut errors: Vec<Error> = vec![];
     let mut env =
-        Environment::new(&name, &interfaces, &source.imports).map_err(|e| vec![e.into()])?;
+        new_environment(&name, &interfaces, &source.imports).map_err(|e| vec![e.into()])?;
 
     // Because we are rewriting infixes in this phase, we must do this check before
     // resolving values.
@@ -409,7 +411,7 @@ pub fn canonicalize(
 }
 
 fn do_values(
-    env: &Environment,
+    env: &dyn Environment,
     functions: &Vec<parser::Function>,
 ) -> Result<HashMap<Name, Value>, Vec<Error>> {
     let iter = functions.iter().map(|function| {
@@ -437,7 +439,7 @@ fn do_values(
                     .iter()
                     .map(|p| Pattern::from_parser(p))
                     .collect();
-                let body = Expression::from_parser(&binding.body, &env)?;
+                let body = Expression::from_parser(&binding.body, env)?;
 
                 Ok((patterns, body))
             }
@@ -487,7 +489,7 @@ fn do_values(
 }
 
 fn do_types(
-    env: &Environment,
+    env: &dyn Environment,
     types: &Vec<parser::UnionType>,
     module_name: &ModuleName,
 ) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
@@ -512,7 +514,7 @@ fn do_types(
                             name: module_name.qualify_name(&name),
                             types: vars
                                 .iter()
-                                .map(|t| Type::from_parser_type(&env, t))
+                                .map(|t| Type::from_parser_type(env, t))
                                 .collect(),
                         })
                     }
@@ -535,7 +537,7 @@ fn do_types(
 
 fn do_infixes(
     infixes: &Vec<parser::Infix>,
-    env: &mut Environment,
+    env: &mut dyn Environment,
     functions: &Vec<parser::Function>,
 ) -> Result<HashMap<Name, Infix>, Vec<Error>> {
     let iter = infixes.iter().map(|infix| {
@@ -568,7 +570,7 @@ fn do_infixes(
 // TODO Add existence checks for values and types
 fn do_exports(
     source_exposing: &parser::Exposing,
-    env: &Environment,
+    env: &dyn Environment,
 ) -> Result<Exports, Vec<Error>> {
     match source_exposing {
         parser::Exposing::Open => Ok(Exports::Everything),

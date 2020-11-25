@@ -18,12 +18,37 @@ pub enum ValueType {
 /// As a whole, the aim of the canonical AST is to not have to worry about the
 /// Environment in later phases. We still need one to translate the parser AST.
 /// The good news being, it can be local to the canonicalization function.
+pub trait Environment {
+    fn find_type(&self, name: &Name) -> Option<&Type>;
+
+    fn module_name(&self) -> &ModuleName;
+
+    // TODO Here we have the issue that name might be qualified or not, and we need
+    // to be able to find it in both cases. So double indices ?
+    fn find_value(&self, name: &Name) -> Option<&ValueType>;
+
+    // TODO Same issue qual/non-qual as above
+    fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor>;
+
+    fn insert_local_infix(&mut self, name: Name, infix: Infix);
+
+    fn local_infix_exists(&self, name: &Name) -> bool;
+}
+
+pub fn new_environment(
+    module_name: &ModuleName,
+    interfaces: &HashMap<Name, Interface>,
+    imports: &Vec<parser::Import>,
+) -> Result<RootEnvironment, Vec<EnvError>> {
+    RootEnvironment::new(module_name, interfaces, imports)
+}
+
 // TODO Only use QualName in the global Environment
 // TODO It should expose two APIs: one for qualified names and one for unqualified.
 //      Or it should only ever index by unqualified but store the module name in the
 //      value and use it to build qualified values when necessary ?
 //      It's kind of a strange place, maybe we should <todo>
-pub struct Environment {
+pub struct RootEnvironment {
     module_name: ModuleName,
     infixes: HashMap<Name, Infix>,
     types: HashMap<Name, Type>,
@@ -41,13 +66,13 @@ pub enum EnvError {
     Multiple(Vec<EnvError>),
 }
 
-impl Environment {
+impl RootEnvironment {
     pub fn new(
         module_name: &ModuleName,
         interfaces: &HashMap<Name, Interface>,
         imports: &Vec<parser::Import>,
-    ) -> Result<Environment, Vec<EnvError>> {
-        let mut env = Environment {
+    ) -> Result<RootEnvironment, Vec<EnvError>> {
+        let mut env = RootEnvironment {
             module_name: module_name.clone(),
             infixes: HashMap::new(),
             types: HashMap::new(),
@@ -78,6 +103,7 @@ impl Environment {
         }
     }
 
+    // TODO Can it be a straight function instead of a method ?
     pub fn process_import(
         &mut self,
         interfaces: &HashMap<Name, Interface>,
@@ -118,7 +144,9 @@ impl Environment {
                                 .ok_or_else(|| EnvError::ValueNotFound(variable_name.clone()))?;
 
                             self.insert_foreign_value(
-                                variable_name.qualify_with_name(imported_module_name).expect(""),
+                                variable_name
+                                    .qualify_with_name(imported_module_name)
+                                    .expect(""),
                                 tpe.clone(),
                                 &interface.module_name,
                             );
@@ -126,7 +154,13 @@ impl Environment {
                         parser::Exposed::Upper(type_name, parser::Privacy::Private) => {
                             let tpe = Type::Type(type_name.clone(), vec![]);
 
-                            self.types.insert(type_name.qualify_with_name(imported_module_name).unwrap().to_name(), tpe);
+                            self.types.insert(
+                                type_name
+                                    .qualify_with_name(imported_module_name)
+                                    .unwrap()
+                                    .to_name(),
+                                tpe,
+                            );
                         }
                         parser::Exposed::Upper(type_name, parser::Privacy::Public) => {
                             let union = interface
@@ -156,12 +190,14 @@ impl Environment {
         };
 
         if let Some(alias) = alias {
-            self.aliases.insert(alias.clone(), imported_module_name.clone());
+            self.aliases
+                .insert(alias.clone(), imported_module_name.clone());
         }
 
         Ok(())
     }
 
+    // TODO Same as above. It's part of the init, so straight function should work + reduced visibility
     pub fn insert_foreign_value(&mut self, name: QualName, tpe: Type, module_name: &ModuleName) {
         let name = name.to_name(); // Until we use QualName as key in self.variables
         let vt = ValueType::Foreign(module_name.clone(), tpe.clone());
@@ -183,44 +219,49 @@ impl Environment {
         }
     }
 
-    // TODO Do we need a local/foreign distinction for infixes ? (or in general ?)
-    pub fn insert_local_infix(&mut self, name: Name, infix: Infix) {
-        self.infixes.insert(name, infix);
-    }
+}
 
-    pub fn local_infix_exists(&self, name: &Name) -> bool {
-        self.infixes.contains_key(&name)
-    }
-
-    pub fn find_type(&self, name: &Name) -> Option<&Type> {
+impl Environment for RootEnvironment {
+    fn find_type(&self, name: &Name) -> Option<&Type> {
         self.types.get(name)
     }
 
-    pub fn module_name(&self) -> &ModuleName {
+    fn module_name(&self) -> &ModuleName {
         &self.module_name
     }
 
     // TODO Here we have the issue that name might be qualified or not, and we need
     // to be able to find it in both cases. So double indices ?
-    pub fn find_value(&self, name: &Name) -> Option<&ValueType> {
+    fn find_value(&self, name: &Name) -> Option<&ValueType> {
         self.variables.get(name)
     }
 
     // TODO Same issue qual/non-qual as above
-    pub fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor> {
+    fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor> {
         self.constructors.get(name)
+    }
+
+    // TODO Do we need a local/foreign distinction for infixes ? (or in general ?)
+    fn insert_local_infix(&mut self, name: Name, infix: Infix) {
+        self.infixes.insert(name, infix);
+    }
+
+    fn local_infix_exists(&self, name: &Name) -> bool {
+        self.infixes.contains_key(&name)
     }
 }
 
 fn import_union_type(
-    env: &mut Environment,
+    env: &mut RootEnvironment,
     module_name: &Name,
     union_name: &Name,
     union: &UnionType,
 ) {
     let tpe = Type::Type(union_name.clone(), vec![]);
-    env.types
-        .insert(union_name.qualify_with_name(module_name).unwrap().to_name(), tpe);
+    env.types.insert(
+        union_name.qualify_with_name(module_name).unwrap().to_name(),
+        tpe,
+    );
 
     for variant in &union.variants {
         env.constructors
@@ -233,7 +274,9 @@ mod tests {
     use super::*;
     use crate::compiler::canonical::*;
 
-    fn module_name() -> ModuleName { ModuleName::new(PackageName::new("author", "project"), "module".into()) }
+    fn module_name() -> ModuleName {
+        ModuleName::new(PackageName::new("author", "project"), "module".into())
+    }
 
     fn import(name: Name, alias: Option<Name>, exposing: parser::Exposing) -> parser::Import {
         parser::Import {
@@ -325,7 +368,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        Environment::new(&module_name(), &interfaces, &vec![]).map(drop)
+        RootEnvironment::new(&module_name(), &interfaces, &vec![]).map(drop)
     }
 
     #[test]
@@ -336,7 +379,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = Environment::new(&module_name(), &interfaces, &imports)?;
+        let env = RootEnvironment::new(&module_name(), &interfaces, &imports)?;
 
         assert_eq!(env.infixes.len(), 0, "infixes");
         assert_eq!(env.types.len(), 1, "types");
@@ -362,7 +405,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = Environment::new(&module_name(), &interfaces, &imports)?;
+        let env = RootEnvironment::new(&module_name(), &interfaces, &imports)?;
 
         assert_eq!(env.infixes.len(), 0);
         assert_eq!(env.types.len(), 1);
