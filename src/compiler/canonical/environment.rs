@@ -218,7 +218,6 @@ impl RootEnvironment {
             _ => todo!("find out what to do in those cases"),
         }
     }
-
 }
 
 impl Environment for RootEnvironment {

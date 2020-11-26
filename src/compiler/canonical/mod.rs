@@ -24,7 +24,7 @@ use environment::EnvError;
 
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
-pub use environment::{Environment, ValueType, new_environment};
+pub use environment::{new_environment, Environment, ValueType};
 pub use parser::Associativity;
 
 // begin AST

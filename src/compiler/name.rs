@@ -89,7 +89,11 @@ impl QualName {
 
     // TODO Write tests
     pub fn from_strs<S1, S2, I>(name: S1, prefix: I) -> Option<QualName>
-        where S1: Into<String>, S2: Into<String>, I: Iterator<Item = S2> {
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+        I: Iterator<Item = S2>,
+    {
         let name = name.into();
         let module: Vec<String> = prefix.map(|s| s.into()).collect();
 
@@ -111,7 +115,10 @@ impl QualName {
 
 impl From<&'static str> for QualName {
     fn from(n: &str) -> Self {
-        QualName::from_str(n).expect(&format!("From conversion should only be used with qualified name ('{}' used)", &n))
+        QualName::from_str(n).expect(&format!(
+            "From conversion should only be used with qualified name ('{}' used)",
+            &n
+        ))
     }
 }
 
