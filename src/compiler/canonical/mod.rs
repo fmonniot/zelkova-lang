@@ -20,11 +20,10 @@ use crate::utils::collect_accumulate;
 use std::collections::HashMap;
 
 mod environment;
-use environment::EnvError;
+use environment::{new_environment, EnvError, Environment, RootEnvironment, ValueType};
 
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
-pub use environment::{new_environment, Environment, ValueType};
 pub use parser::Associativity;
 
 // begin AST
@@ -537,7 +536,7 @@ fn do_types(
 
 fn do_infixes(
     infixes: &Vec<parser::Infix>,
-    env: &mut dyn Environment,
+    env: &mut RootEnvironment,
     functions: &Vec<parser::Function>,
 ) -> Result<HashMap<Name, Infix>, Vec<Error>> {
     let iter = infixes.iter().map(|infix| {

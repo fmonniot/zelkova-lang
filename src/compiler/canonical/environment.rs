@@ -1,3 +1,5 @@
+//! env module
+
 use super::parser;
 use super::{Infix, Interface, ModuleName, Name, QualName, Type, TypeConstructor, UnionType};
 use crate::utils::collect_accumulate;
@@ -18,7 +20,9 @@ pub enum ValueType {
 /// As a whole, the aim of the canonical AST is to not have to worry about the
 /// Environment in later phases. We still need one to translate the parser AST.
 /// The good news being, it can be local to the canonicalization function.
-pub trait Environment {
+///
+/// TODO It should expose two APIs: one for qualified names and one for unqualified.
+pub trait Environment<'a> {
     fn find_type(&self, name: &Name) -> Option<&Type>;
 
     fn module_name(&self) -> &ModuleName;
@@ -30,9 +34,9 @@ pub trait Environment {
     // TODO Same issue qual/non-qual as above
     fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor>;
 
-    fn insert_local_infix(&mut self, name: Name, infix: Infix);
-
     fn local_infix_exists(&self, name: &Name) -> bool;
+
+    fn new_scope(&'a self) -> Box<dyn Environment<'a> + 'a>;
 }
 
 pub fn new_environment(
@@ -43,20 +47,6 @@ pub fn new_environment(
     RootEnvironment::new(module_name, interfaces, imports)
 }
 
-// TODO Only use QualName in the global Environment
-// TODO It should expose two APIs: one for qualified names and one for unqualified.
-//      Or it should only ever index by unqualified but store the module name in the
-//      value and use it to build qualified values when necessary ?
-//      It's kind of a strange place, maybe we should <todo>
-pub struct RootEnvironment {
-    module_name: ModuleName,
-    infixes: HashMap<Name, Infix>,
-    types: HashMap<Name, Type>,
-    constructors: HashMap<Name, TypeConstructor>, // TODO Might have multiple in scope
-    variables: HashMap<Name, ValueType>,          // Store real Type for type check
-    aliases: HashMap<Name, Name>,
-}
-
 #[derive(Debug)]
 pub enum EnvError {
     InterfaceNotFound(Name),
@@ -64,6 +54,23 @@ pub enum EnvError {
     InfixNotFound(Name),
     ValueNotFound(Name),
     Multiple(Vec<EnvError>),
+}
+
+/// RootEnvironment represents the top level module and contains information accessible
+/// from the entire module.
+///
+/// This is opposed to a ScopedEnvironment which contains
+/// additional information available only to a scoped expression (eg. local variable)
+///
+/// TODO Only use QualName in the global Environment (investigate that claim from past me,
+/// don't think it holds as top-level values can be referenced without their qualifier)
+pub struct RootEnvironment {
+    module_name: ModuleName,
+    infixes: HashMap<Name, Infix>,
+    types: HashMap<Name, Type>,
+    constructors: HashMap<Name, TypeConstructor>, // TODO Might have multiple in scope
+    variables: HashMap<Name, ValueType>,          // Store real Type for type check
+    aliases: HashMap<Name, Name>,
 }
 
 impl RootEnvironment {
@@ -218,9 +225,14 @@ impl RootEnvironment {
             _ => todo!("find out what to do in those cases"),
         }
     }
+
+    // TODO Do we need a local/foreign distinction for infixes ? (or in general ?)
+    pub fn insert_local_infix(&mut self, name: Name, infix: Infix) {
+        self.infixes.insert(name, infix);
+    }
 }
 
-impl Environment for RootEnvironment {
+impl<'a> Environment<'a> for RootEnvironment {
     fn find_type(&self, name: &Name) -> Option<&Type> {
         self.types.get(name)
     }
@@ -240,13 +252,12 @@ impl Environment for RootEnvironment {
         self.constructors.get(name)
     }
 
-    // TODO Do we need a local/foreign distinction for infixes ? (or in general ?)
-    fn insert_local_infix(&mut self, name: Name, infix: Infix) {
-        self.infixes.insert(name, infix);
-    }
-
     fn local_infix_exists(&self, name: &Name) -> bool {
         self.infixes.contains_key(&name)
+    }
+
+    fn new_scope(&'a self) -> Box<dyn Environment<'a> + 'a> {
+        Box::new(ScopedEnvironment { parent: self })
     }
 }
 
@@ -265,6 +276,40 @@ fn import_union_type(
     for variant in &union.variants {
         env.constructors
             .insert(variant.name.to_name(), variant.clone());
+    }
+}
+
+/// An Environment scoped to a module's sub expression (`let`, function, etc…)
+struct ScopedEnvironment<'a> {
+    parent: &'a dyn Environment<'a>,
+}
+
+impl<'a> Environment<'a> for ScopedEnvironment<'a> {
+    fn find_type(&self, name: &Name) -> Option<&Type> {
+        self.parent.find_type(name)
+    }
+
+    fn module_name(&self) -> &ModuleName {
+        &self.parent.module_name()
+    }
+
+    // TODO Here we have the issue that name might be qualified or not, and we need
+    // to be able to find it in both cases. So double indices ?
+    fn find_value(&self, name: &Name) -> Option<&ValueType> {
+        self.parent.find_value(name)
+    }
+
+    // TODO Same issue qual/non-qual as above
+    fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor> {
+        self.parent.find_type_constructor(name)
+    }
+
+    fn local_infix_exists(&self, name: &Name) -> bool {
+        self.parent.local_infix_exists(&name)
+    }
+
+    fn new_scope(&'a self) -> Box<dyn Environment<'a> + 'a> {
+        Box::new(ScopedEnvironment { parent: self })
     }
 }
 
