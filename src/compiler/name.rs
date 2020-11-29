@@ -10,9 +10,9 @@
 //!
 //! Having a dedicated type let us enforce such distinction at compile time (as well
 //! as having a potential performance boost by not having to parse the underlying
-//! `String` on each access).
+//! `String` on each access, although at the cost of more memory usage).
 //!
-//! In the future, and if performance requires it, this module will probably also host
+//! In the future, if performance requires it, this module will probably also host
 //! the interner for qualified and unqualified names.
 
 /// new type over identifier names
@@ -64,10 +64,7 @@ impl From<&str> for Name {
 ///
 /// It actually make sense to require it, that way we know for sure that, once we are
 /// given a `QualName`, no further resolution is necessary.
-///
-/// - TODO: Change `QualName::from_str` to return an `Option`
-/// - TODO: Change `Name.to_qual` to return an `Option`
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct QualName {
     module: Vec<String>,
     name: String,
@@ -78,12 +75,13 @@ impl QualName {
         let name = s.into();
         let mut segments: Vec<_> = name.split(".").map(String::from).collect();
 
-        match segments.len() {
-            1 => None,
-            _ => Some(QualName {
+        if segments.len() < 2 {
+            None
+        } else {
+            Some(QualName {
                 name: segments.pop().unwrap(),
                 module: segments,
-            }),
+            })
         }
     }
 

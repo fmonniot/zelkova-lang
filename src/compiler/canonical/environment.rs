@@ -48,8 +48,11 @@ pub fn new_environment(
         module_name: module_name.clone(),
         infixes: HashMap::new(),
         types: HashMap::new(),
+        qual_types: HashMap::new(),
         constructors: HashMap::new(),
+        qual_constructors: HashMap::new(),
         variables: HashMap::new(),
+        qual_variables: HashMap::new(),
         aliases: HashMap::new(),
     };
     let mut errors = vec![];
@@ -75,6 +78,9 @@ pub fn new_environment(
     }
 }
 
+// TODO Correctly process import with regard to qualified naming
+// eg. explicit import are not qualified, every module is imported
+// as qualified when imported ().
 fn process_import(
     env: &mut RootEnvironment,
     interfaces: &HashMap<Name, Interface>,
@@ -187,15 +193,16 @@ pub enum EnvError {
 ///
 /// QualName are only used in the RootEnvironment, as they only come from imports.
 /// Non-qualified values are declared both in root and scoped environment (top-level values,
-/// type declaration and local variables)
-///
-/// TODO Separate qualified and non-qualified names indices
+/// type declaration and local variables).
 pub struct RootEnvironment {
     module_name: ModuleName,
     infixes: HashMap<Name, Infix>,
     types: HashMap<Name, Type>,
-    constructors: HashMap<Name, TypeConstructor>, // TODO Might have multiple in scope
-    variables: HashMap<Name, ValueType>,          // Store real Type for type check
+    qual_types: HashMap<QualName, Type>,
+    constructors: HashMap<Name, TypeConstructor>,
+    qual_constructors: HashMap<QualName, TypeConstructor>,
+    variables: HashMap<Name, ValueType>,
+    qual_variables: HashMap<QualName, ValueType>,
     aliases: HashMap<Name, Name>,
 }
 
@@ -207,23 +214,33 @@ impl RootEnvironment {
 }
 
 impl<'a> Environment<'a> for RootEnvironment {
-    fn find_type(&self, name: &Name) -> Option<&Type> {
-        self.types.get(name)
-    }
-
     fn module_name(&self) -> &ModuleName {
         &self.module_name
     }
 
-    // TODO Here we have the issue that name might be qualified or not, and we need
-    // to be able to find it in both cases. So double indices ?
-    fn find_value(&self, name: &Name) -> Option<&ValueType> {
-        self.variables.get(name)
+    // TODO Correctly manage module aliases
+    fn find_type(&self, name: &Name) -> Option<&Type> {
+        if let Some(qual) = name.to_qual() {
+            self.qual_types.get(&qual)
+        } else {
+            self.types.get(name)
+        }
     }
 
-    // TODO Same issue qual/non-qual as above
+    fn find_value(&self, name: &Name) -> Option<&ValueType> {
+        if let Some(qual) = name.to_qual() {
+            self.qual_variables.get(&qual)
+        } else {
+            self.variables.get(name)
+        }
+    }
+
     fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor> {
-        self.constructors.get(name)
+        if let Some(qual) = name.to_qual() {
+            self.qual_constructors.get(&qual)
+        } else {
+            self.constructors.get(name)
+        }
     }
 
     fn local_infix_exists(&self, name: &Name) -> bool {
