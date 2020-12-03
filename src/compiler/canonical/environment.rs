@@ -96,11 +96,11 @@ fn process_import(
         parser::Exposing::Open => {
             // We add everything to the current environment
             for (union_name, union) in &interface.unions {
-                insert_foreign_union_type(env, imported_module_name, union_name, union);
+                insert_foreign_union_type_qual(env, &interface.module_name, union_name, union);
             }
 
             for (value_name, tpe) in &interface.values {
-                insert_foreign_value(
+                insert_foreign_value_qual(
                     env,
                     value_name.qualify_with_name(imported_module_name).unwrap(),
                     tpe.clone(),
@@ -115,17 +115,15 @@ fn process_import(
         parser::Exposing::Explicit(exposeds) => {
             let iter = exposeds.iter().map(|exposed| {
                 match exposed {
-                    parser::Exposed::Lower(variable_name) => {
+                    parser::Exposed::Lower(value_name) => {
                         let tpe = interface
                             .values
-                            .get(&variable_name)
-                            .ok_or_else(|| EnvError::ValueNotFound(variable_name.clone()))?;
+                            .get(&value_name)
+                            .ok_or_else(|| EnvError::ValueNotFound(value_name.clone()))?;
 
-                        insert_foreign_value(
+                        insert_foreign_value_unqual(
                             env,
-                            variable_name
-                                .qualify_with_name(imported_module_name)
-                                .expect(""),
+                            value_name.clone(),
                             tpe.clone(),
                             &interface.module_name,
                         );
@@ -147,7 +145,7 @@ fn process_import(
                             .get(&type_name)
                             .ok_or_else(|| EnvError::UnionNotFound(type_name.clone()))?;
 
-                        insert_foreign_union_type(env, imported_module_name, type_name, union);
+                        insert_foreign_union_type_unqual(env, type_name, union);
                     }
                     parser::Exposed::Operator(variable_name) => {
                         let infix = interface
@@ -252,17 +250,13 @@ impl<'a> Environment<'a> for RootEnvironment {
     }
 }
 
-fn insert_foreign_union_type(
+fn insert_foreign_union_type_unqual(
     env: &mut RootEnvironment,
-    module_name: &Name,
     union_name: &Name,
     union: &UnionType,
 ) {
     let tpe = Type::Type(union_name.clone(), vec![]);
-    env.types.insert(
-        union_name.qualify_with_name(module_name).unwrap().to_name(),
-        tpe,
-    );
+    env.types.insert(union_name.clone(), tpe);
 
     for variant in &union.variants {
         env.constructors
@@ -270,13 +264,28 @@ fn insert_foreign_union_type(
     }
 }
 
-fn insert_foreign_value(
+fn insert_foreign_union_type_qual(
     env: &mut RootEnvironment,
-    name: QualName,
+    module_name: &ModuleName,
+    union_name: &Name,
+    union: &UnionType,
+) {
+    let tpe = Type::Type(union_name.clone(), vec![]);
+    env.qual_types
+        .insert(module_name.qualify_name(union_name), tpe);
+
+    for variant in &union.variants {
+        env.qual_constructors
+            .insert(variant.name.clone(), variant.clone());
+    }
+}
+
+fn insert_foreign_value_unqual(
+    env: &mut RootEnvironment,
+    name: Name,
     tpe: Type,
     module_name: &ModuleName,
 ) {
-    let name = name.to_name(); // Until we use QualName as key in env.variables
     let vt = ValueType::Foreign(module_name.clone(), tpe.clone());
 
     // Can it be done more efficiently by using get_mut ?
@@ -291,6 +300,31 @@ fn insert_foreign_value(
         }
         None => {
             env.variables.insert(name, vt);
+        }
+        _ => todo!("find out what to do in those cases"),
+    }
+}
+
+fn insert_foreign_value_qual(
+    env: &mut RootEnvironment,
+    name: QualName,
+    tpe: Type,
+    module_name: &ModuleName,
+) {
+    let vt = ValueType::Foreign(module_name.clone(), tpe.clone());
+
+    // Can it be done more efficiently by using get_mut ?
+    match env.qual_variables.remove(&name) {
+        Some(ValueType::Foreign(module, _)) => {
+            env.qual_variables
+                .insert(name, ValueType::Foreigns(vec![module_name.clone(), module]));
+        }
+        Some(ValueType::Foreigns(mut vec)) => {
+            vec.push(module_name.clone());
+            env.qual_variables.insert(name, ValueType::Foreigns(vec));
+        }
+        None => {
+            env.qual_variables.insert(name, vt);
         }
         _ => todo!("find out what to do in those cases"),
     }
@@ -347,7 +381,7 @@ mod tests {
         }
     }
 
-    fn exposing_all() -> parser::Exposing {
+    fn exposing_open() -> parser::Exposing {
         parser::Exposing::Open
     }
 
@@ -433,8 +467,8 @@ mod tests {
     }
 
     #[test]
-    fn new_import_all_type_ctor() -> Result<(), Vec<EnvError>> {
-        let imports = vec![import("Maybe".into(), None, exposing_all())];
+    fn new_qualified_import() -> Result<(), Vec<EnvError>> {
+        let imports = vec![import("Maybe".into(), None, exposing_open())];
         let mut interfaces = HashMap::new();
         {
             let (name, iface) = maybe_interface();
@@ -443,9 +477,19 @@ mod tests {
         let env = new_environment(&module_name(), &interfaces, &imports)?;
 
         assert_eq!(env.infixes.len(), 0, "infixes");
-        assert_eq!(env.types.len(), 1, "types");
-        assert_eq!(env.constructors.len(), 2, "constructors");
-        assert_eq!(env.variables.len(), 3, "variables={:?}", env.variables);
+        assert_eq!(env.types.len(), 0, "types");
+        assert_eq!(env.constructors.len(), 0, "constructors");
+        assert_eq!(env.variables.len(), 0, "variables={:?}", env.variables);
+
+        assert_eq!(env.qual_types.len(), 1, "qual_types");
+        assert_eq!(env.qual_constructors.len(), 2, "qual_constructors");
+        assert_eq!(
+            env.qual_variables.len(),
+            3,
+            "qual_variables={:?}",
+            env.variables
+        );
+
         assert_eq!(env.aliases.len(), 0, "aliases");
 
         Ok(())

@@ -78,13 +78,9 @@ impl ModuleName {
         &self.name
     }
 
-    // TODO tests
+    /// Simple shortcut to qualify a given name with this module's name
     pub fn qualify_name(&self, name: &Name) -> QualName {
-        if name.starts_with(&self.name) {
-            name.to_qual().unwrap()
-        } else {
-            name.qualify_with_name(&self.name).unwrap()
-        }
+        name.qualify_with_name(&self.name).unwrap()
     }
 }
 
@@ -95,7 +91,8 @@ impl ModuleName {
 /// file compilation, we save the publicly exposed information of a successfully
 /// parsed module and only load this information on module depending on it.
 ///
-/// TODO Decide if the Name in the maps are fully qualified or not
+/// All `Interface` indices are using non-qualified names. To get the qualified
+/// version, simply use `I.module_name.qualify_name(&name)`.
 pub struct Interface {
     module_name: ModuleName,
     values: HashMap<Name, canonical::Type>,
