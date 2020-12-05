@@ -37,6 +37,8 @@ pub trait Environment<'a> {
     fn local_infix_exists(&self, name: &Name) -> bool;
 
     fn new_scope(&'a self) -> Box<dyn Environment<'a> + 'a>;
+
+    fn insert_local_value(&'a mut self, name: &Name);
 }
 
 pub fn new_environment(
@@ -209,6 +211,11 @@ impl RootEnvironment {
     pub fn insert_local_infix(&mut self, name: Name, infix: Infix) {
         self.infixes.insert(name, infix);
     }
+
+    // TODO Return an error if declaration already exists
+    pub fn insert_top_level_value(&mut self, name: Name) {
+        self.variables.insert(name, ValueType::TopLevel);
+    }
 }
 
 impl<'a> Environment<'a> for RootEnvironment {
@@ -246,7 +253,12 @@ impl<'a> Environment<'a> for RootEnvironment {
     }
 
     fn new_scope(&'a self) -> Box<dyn Environment<'a> + 'a> {
-        Box::new(ScopedEnvironment { parent: self })
+        Box::new(ScopedEnvironment { parent: self, variables: HashMap::new() })
+    }
+
+    // TODO Return error if name already exists
+    fn insert_local_value(&'a mut self, name: &Name) {
+        self.variables.insert(name.clone(), ValueType::Local);
     }
 }
 
@@ -333,6 +345,7 @@ fn insert_foreign_value_qual(
 /// An Environment scoped to a module's sub expression (`let`, function, etc…)
 struct ScopedEnvironment<'a> {
     parent: &'a dyn Environment<'a>,
+    variables: HashMap<Name, ()>, // TODO Use the content of ValueType::Local once I know what it is
 }
 
 impl<'a> Environment<'a> for ScopedEnvironment<'a> {
@@ -360,7 +373,12 @@ impl<'a> Environment<'a> for ScopedEnvironment<'a> {
     }
 
     fn new_scope(&'a self) -> Box<dyn Environment<'a> + 'a> {
-        Box::new(ScopedEnvironment { parent: self })
+        Box::new(ScopedEnvironment { parent: self, variables: HashMap::new() })
+    }
+
+    // TODO Return error if name already exists
+    fn insert_local_value(&'a mut self, name: &Name) {
+        self.variables.insert(name.clone(), ());
     }
 }
 

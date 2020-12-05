@@ -384,7 +384,7 @@ pub fn canonicalize(
 
     // TODO Should I manage infixes rewrite here too ?
     // Yes I should do it here
-    let values = do_values(&env, &source.functions).unwrap_or_else(|err| {
+    let values = do_values(&mut env, &source.functions).unwrap_or_else(|err| {
         errors.extend(err);
         HashMap::new()
     });
@@ -410,9 +410,17 @@ pub fn canonicalize(
 }
 
 fn do_values(
-    env: &dyn Environment,
+    env: &mut RootEnvironment,
     functions: &Vec<parser::Function>,
 ) -> Result<HashMap<Name, Value>, Vec<Error>> {
+
+    // Before resolving expressions, we store the top-level values in the environment.
+    // We do so first because their expression below could refer to them.
+    for f in functions.iter() {
+        env.insert_top_level_value(f.name.clone());
+    }
+
+
     let iter = functions.iter().map(|function| {
         // Bindings to expression
 
