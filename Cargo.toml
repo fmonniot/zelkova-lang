@@ -15,7 +15,7 @@ codespan = "0.9"
 codespan-reporting = "0.9"
 env_logger = "0.8"
 unic-ucd-category = "0.9"
-lalrpop-util = "0.19.1"
+lalrpop-util = "0.19.2"
 walkdir = "2.3"
 petgraph = "0.5"
 
