@@ -22,7 +22,7 @@ pub enum ValueType {
 /// The good news being, it can be local to the canonicalization function.
 ///
 /// TODO It should expose two APIs: one for qualified names and one for unqualified.
-pub trait Environment<'a> {
+pub trait Environment<'parent> {
     fn find_type(&self, name: &Name) -> Option<&Type>;
 
     fn module_name(&self) -> &ModuleName;
@@ -36,9 +36,10 @@ pub trait Environment<'a> {
 
     fn local_infix_exists(&self, name: &Name) -> bool;
 
-    fn new_scope(&'a self) -> Box<dyn Environment<'a> + 'a>;
+    fn insert_local_value(&mut self, name: &Name);
 
-    fn insert_local_value(&'a mut self, name: &Name);
+    // 'parent must lives at least as long as 'a
+    fn new_scope<'a>(&'a self) -> ScopedEnvironment<'parent, 'a> where 'parent: 'a;
 }
 
 pub fn new_environment(
@@ -218,7 +219,7 @@ impl RootEnvironment {
     }
 }
 
-impl<'a> Environment<'a> for RootEnvironment {
+impl<'p> Environment<'p> for RootEnvironment {
     fn module_name(&self) -> &ModuleName {
         &self.module_name
     }
@@ -252,13 +253,13 @@ impl<'a> Environment<'a> for RootEnvironment {
         self.infixes.contains_key(&name)
     }
 
-    fn new_scope(&'a self) -> Box<dyn Environment<'a> + 'a> {
-        Box::new(ScopedEnvironment { parent: self, variables: HashMap::new() })
+    // TODO Return error if name already exists
+    fn insert_local_value(&mut self, name: &Name) {
+        self.variables.insert(name.clone(), ValueType::Local);
     }
 
-    // TODO Return error if name already exists
-    fn insert_local_value(&'a mut self, name: &Name) {
-        self.variables.insert(name.clone(), ValueType::Local);
+    fn new_scope<'a>(&'a self) -> ScopedEnvironment<'p, 'a> where 'p: 'a {
+        ScopedEnvironment { parent: self, variables: HashMap::new() }
     }
 }
 
@@ -343,12 +344,12 @@ fn insert_foreign_value_qual(
 }
 
 /// An Environment scoped to a module's sub expression (`let`, function, etc…)
-struct ScopedEnvironment<'a> {
-    parent: &'a dyn Environment<'a>,
+pub struct ScopedEnvironment<'root, 'parent> {
+    parent: &'parent dyn Environment<'root>,
     variables: HashMap<Name, ()>, // TODO Use the content of ValueType::Local once I know what it is
 }
 
-impl<'a> Environment<'a> for ScopedEnvironment<'a> {
+impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> {
     fn find_type(&self, name: &Name) -> Option<&Type> {
         self.parent.find_type(name)
     }
@@ -372,13 +373,15 @@ impl<'a> Environment<'a> for ScopedEnvironment<'a> {
         self.parent.local_infix_exists(&name)
     }
 
-    fn new_scope(&'a self) -> Box<dyn Environment<'a> + 'a> {
-        Box::new(ScopedEnvironment { parent: self, variables: HashMap::new() })
+    // TODO Return error if name already exists
+    fn insert_local_value(&mut self, name: &Name) {
+        self.variables.insert(name.clone(), ());
     }
 
-    // TODO Return error if name already exists
-    fn insert_local_value(&'a mut self, name: &Name) {
-        self.variables.insert(name.clone(), ());
+    fn new_scope<'a>(&'a self) -> ScopedEnvironment<'parent, 'a> where 'parent: 'a{
+        let parent: &'a dyn Environment<'parent> = self;
+
+        ScopedEnvironment { parent, variables: HashMap::new() }
     }
 }
 
