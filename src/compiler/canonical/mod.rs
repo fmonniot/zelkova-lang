@@ -323,6 +323,24 @@ impl Expression {
                 Ok(Expression::VarConstructor(name, tpe))
             }
 
+            parser::Expression::Case(expr, branches) => {
+                let expr = Expression::from_parser(expr, env)?;
+
+                let b = branches.iter()
+                    .map::<Result<CaseBranch, Error>, _>(|cb| {
+                        let pattern = Pattern::from_parser(&cb.pattern);
+                        let scoped = env.new_scope();
+
+                        let expression = Expression::from_parser(&cb.expression, &scoped)?;
+
+                        Ok(CaseBranch { pattern, expression })
+                    });
+
+                let branches = collect_accumulate(b)?;
+
+                Ok(Expression::Case(Box::new(expr), branches))
+            }
+
             _ => todo!("expression from parser not complete yet"),
         }
     }
@@ -347,11 +365,20 @@ pub enum Error {
     AmbiguousVariables(Name, Vec<ModuleName>),
     VariantNotFound(QualName),
     AmbiguousVariants(Name, Vec<ModuleName>),
+
+    // Utility error
+    Many(Vec<Error>),
 }
 
 impl From<Vec<EnvError>> for Error {
     fn from(errors: Vec<EnvError>) -> Self {
         Error::EnvironmentErrors(errors)
+    }
+}
+
+impl From<Vec<Error>> for Error {
+    fn from(errors: Vec<Error>) -> Self {
+        Error::Many(errors)
     }
 }
 
