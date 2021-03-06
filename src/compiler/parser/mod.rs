@@ -359,8 +359,8 @@ pub enum Expression {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CaseBranch {
-    pattern: Pattern,
-    expression: Expression,
+    pub pattern: Pattern,
+    pub expression: Expression,
 }
 
 /// A literal
