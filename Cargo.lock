@@ -98,15 +98,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "codespan"
-version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ebaf6bb6a863ad6aa3a18729e9710c53d75df03306714d9cc1f7357a00cd789"
-dependencies = [
- "codespan-reporting",
-]
-
-[[package]]
 name = "codespan-reporting"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -586,7 +577,6 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 name = "zelkova-lang"
 version = "0.1.0"
 dependencies = [
- "codespan",
  "codespan-reporting",
  "env_logger",
  "indoc",
