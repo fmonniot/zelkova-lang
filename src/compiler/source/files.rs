@@ -1,4 +1,4 @@
-use codespan_reporting::files::{Files, SimpleFile};
+use codespan_reporting::files::{Error as FilesError, Files, SimpleFile};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
@@ -129,8 +129,11 @@ impl<'a> SourceFiles {
     }
 
     /// Get the file corresponding to the given id.
-    pub fn get(&self, file_id: SourceFileId) -> Option<&SimpleFile<String, String>> {
-        self.files.get(file_id.0).map(|f| &f.file)
+    pub fn get(&self, file_id: SourceFileId) -> Result<&SimpleFile<String, String>, FilesError> {
+        self.files
+            .get(file_id.0)
+            .map(|f| &f.file)
+            .ok_or(FilesError::FileMissing)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (SourceFileId, &'_ SourceFile)> + '_ {
@@ -148,19 +151,23 @@ impl<'a> Files<'a> for SourceFiles {
     type Name = String;
     type Source = &'a String;
 
-    fn name(&self, file_id: Self::FileId) -> Option<String> {
-        Some(self.get(file_id)?.name().clone())
+    fn name(&self, file_id: Self::FileId) -> Result<String, FilesError> {
+        Ok(self.get(file_id)?.name().clone())
     }
 
-    fn source(&self, file_id: Self::FileId) -> Option<&String> {
-        Some(self.get(file_id)?.source())
+    fn source(&self, file_id: Self::FileId) -> Result<&String, FilesError> {
+        Ok(self.get(file_id)?.source())
     }
 
-    fn line_index(&self, file_id: Self::FileId, byte_index: usize) -> Option<usize> {
+    fn line_index(&self, file_id: Self::FileId, byte_index: usize) -> Result<usize, FilesError> {
         self.get(file_id)?.line_index((), byte_index)
     }
 
-    fn line_range(&self, file_id: Self::FileId, line_index: usize) -> Option<Range<usize>> {
+    fn line_range(
+        &self,
+        file_id: Self::FileId,
+        line_index: usize,
+    ) -> Result<Range<usize>, FilesError> {
         self.get(file_id)?.line_range((), line_index)
     }
 }
