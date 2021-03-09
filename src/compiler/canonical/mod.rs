@@ -326,15 +326,17 @@ impl Expression {
             parser::Expression::Case(expr, branches) => {
                 let expr = Expression::from_parser(expr, env)?;
 
-                let b = branches.iter()
-                    .map::<Result<CaseBranch, Error>, _>(|cb| {
-                        let pattern = Pattern::from_parser(&cb.pattern);
-                        let scoped = env.new_scope();
+                let b = branches.iter().map::<Result<CaseBranch, Error>, _>(|cb| {
+                    let pattern = Pattern::from_parser(&cb.pattern);
+                    let scoped = env.new_scope();
 
-                        let expression = Expression::from_parser(&cb.expression, &scoped)?;
+                    let expression = Expression::from_parser(&cb.expression, &scoped)?;
 
-                        Ok(CaseBranch { pattern, expression })
-                    });
+                    Ok(CaseBranch {
+                        pattern,
+                        expression,
+                    })
+                });
 
                 let branches = collect_accumulate(b)?;
 
@@ -440,13 +442,11 @@ fn do_values(
     env: &mut RootEnvironment,
     functions: &Vec<parser::Function>,
 ) -> Result<HashMap<Name, Value>, Vec<Error>> {
-
     // Before resolving expressions, we store the top-level values in the environment.
     // We do so first because their expression below could refer to them.
     for f in functions.iter() {
         env.insert_top_level_value(f.name.clone());
     }
-
 
     let iter = functions.iter().map(|function| {
         // Bindings to expression

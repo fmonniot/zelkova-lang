@@ -39,7 +39,9 @@ pub trait Environment<'parent> {
     fn insert_local_value(&mut self, name: &Name);
 
     // 'parent must lives at least as long as 'a
-    fn new_scope<'a>(&'a self) -> ScopedEnvironment<'parent, 'a> where 'parent: 'a;
+    fn new_scope<'a>(&'a self) -> ScopedEnvironment<'parent, 'a>
+    where
+        'parent: 'a;
 }
 
 pub fn new_environment(
@@ -258,8 +260,14 @@ impl<'p> Environment<'p> for RootEnvironment {
         self.variables.insert(name.clone(), ValueType::Local);
     }
 
-    fn new_scope<'a>(&'a self) -> ScopedEnvironment<'p, 'a> where 'p: 'a {
-        ScopedEnvironment { parent: self, variables: HashMap::new() }
+    fn new_scope<'a>(&'a self) -> ScopedEnvironment<'p, 'a>
+    where
+        'p: 'a,
+    {
+        ScopedEnvironment {
+            parent: self,
+            variables: HashMap::new(),
+        }
     }
 }
 
@@ -378,10 +386,16 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
         self.variables.insert(name.clone(), ());
     }
 
-    fn new_scope<'a>(&'a self) -> ScopedEnvironment<'parent, 'a> where 'parent: 'a{
+    fn new_scope<'a>(&'a self) -> ScopedEnvironment<'parent, 'a>
+    where
+        'parent: 'a,
+    {
         let parent: &'a dyn Environment<'parent> = self;
 
-        ScopedEnvironment { parent, variables: HashMap::new() }
+        ScopedEnvironment {
+            parent,
+            variables: HashMap::new(),
+        }
     }
 }
 
