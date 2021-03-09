@@ -224,12 +224,10 @@ where
             _ => (),
         }
 
-        drop(offside);
-
         // Now that we have checked explicit context poping, let's check the implicit one.
         // These apply to contexts which are terminated by simply having a token on a column
         // less than the one required by the context.
-        let offside = loop {
+        let offside: Offside = {
             // We repeat the contexts checking here, because we are going to remove contexts
             // and
             let offside = match self.contexts.last() {
@@ -280,7 +278,7 @@ where
 
             // we release the reference on self.contexts because we need to
             // mutate it down the line.
-            break offside.clone();
+            offside.clone()
         };
 
         // Second, we enforce the indentation rule we have on record
