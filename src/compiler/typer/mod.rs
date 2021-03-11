@@ -47,7 +47,9 @@ pub fn type_check(_module: &Module) -> Result<(), Error> {
 
 // First try of an implementation. Not linked to the rest of the code base for simplicity's sake.
 
-type Identifier = String;
+mod annotate;
+mod constraint;
+mod unifier;
 
 #[derive(Debug, Clone)] // TODO Remove clone when not needed anymore
 /// untyped term. In zelkova that would be the parsed source (or canonical, not sure yet)
@@ -55,9 +57,9 @@ pub enum Term {
     // literals
     Bool(bool),
     Int(u32),
-    Identifier(Identifier), // VAR
+    Identifier(String), // VAR
     Fun {
-        param: Identifier,
+        param: String,
         body: Box<Term>,
     },
     Apply {
@@ -70,7 +72,7 @@ pub enum Term {
         false_branch: Box<Term>,
     },
     Let {
-        binding: Identifier,
+        binding: String,
         value: Box<Term>,
         body: Box<Term>,
     },
@@ -131,6 +133,9 @@ impl TypeBinder {
     }
 }
 
+
+/// Like a [Term] but with an associated [Type].
+/// Any term introducing a name will have a TypeBinder instead.
 #[derive(Debug)]
 enum TypedTerm {
     Int {
@@ -144,7 +149,7 @@ enum TypedTerm {
     // TODO Do I want to keep this name ? Or named Variable ? Something else ?
     Identifier {
         tpe: Type,
-        name: Identifier,
+        name: String,
     }, // This is basically a TypeBinder
     Fun {
         tpe: Type,
@@ -292,7 +297,7 @@ impl Types {
 
 /// infer the type of the given term given known function defined in the outer scopes.
 /// This is a translation of the algorithm demonstrated by
-/// Ionut Gan at I T.A.K.E Unconference 2015 (https://www.youtube.com/watch?v=oPVTNxiMcSU)
+/// [Ionut Gan at I T.A.K.E Unconference 2015](https://www.youtube.com/watch?v=oPVTNxiMcSU)
 pub fn infer(term: Term, global: HashMap<String, Type>) -> Type {
     let mut env = Types::new();
     env.extends_with(global);
@@ -307,274 +312,3 @@ pub fn infer(term: Term, global: HashMap<String, Type>) -> Type {
 
     substitution.apply_type(typed_term.tpe())
 }
-
-// TODO Exports annotate/constraint/unifier into their own files
-// TODO Add unit-tests for each modules
-mod annotate {
-    use super::{Term, TypeBinder, TypedTerm, Types};
-
-    pub(super) fn annotate(term: Term, types: &mut Types) -> TypedTerm {
-        match term {
-            Term::Int(value) => TypedTerm::Int {
-                tpe: types.fresh_var(),
-                value,
-            },
-            Term::Bool(value) => TypedTerm::Bool {
-                tpe: types.fresh_var(),
-                value,
-            },
-            Term::Fun { param, body } => {
-                let param = TypeBinder::new(param, types.fresh_var());
-                types.add_binder(param.clone());
-
-                let body = annotate(*body, types);
-
-                TypedTerm::Fun {
-                    tpe: types.fresh_var(),
-                    param,
-                    body: Box::new(body),
-                }
-            }
-            Term::Identifier(name) => match types.by_name(&name) {
-                None => panic!("unbound identifier: {}", name),
-                Some(tpe) => TypedTerm::Identifier { tpe, name },
-            },
-            Term::Apply { fun, arg } => {
-                let fun = Box::new(annotate(*fun, types));
-                let arg = Box::new(annotate(*arg, types));
-
-                TypedTerm::Apply {
-                    tpe: types.fresh_var(),
-                    fun,
-                    arg,
-                }
-            }
-            Term::If {
-                cond,
-                true_branch,
-                false_branch,
-            } => {
-                let cond = Box::new(annotate(*cond, types));
-                let true_branch = Box::new(annotate(*true_branch, types));
-                let false_branch = Box::new(annotate(*false_branch, types));
-
-                TypedTerm::If {
-                    tpe: types.fresh_var(),
-                    cond,
-                    true_branch,
-                    false_branch,
-                }
-            }
-            Term::Let {
-                binding,
-                value,
-                body,
-            } => {
-                let binding_tpe = types.fresh_var();
-                let binding = TypeBinder::new(binding, binding_tpe);
-                let value = Box::new(annotate(*value, types));
-
-                // scoping: We need to add the binding before evaluating the body but after the value
-                types.add_binder(binding.clone());
-                let body = Box::new(annotate(*body, types));
-
-                TypedTerm::Let {
-                    tpe: types.fresh_var(),
-                    binding,
-                    value,
-                    body,
-                }
-            }
-        }
-    }
-}
-
-mod constraint {
-    use std::collections::HashSet;
-
-    use super::{Constraint, Type, TypeLiteral, TypedTerm};
-
-    pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
-        let mut constraints = HashSet::new();
-
-        match term {
-            TypedTerm::Bool { tpe, .. } => {
-                constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Bool)));
-            }
-            TypedTerm::Int { tpe, .. } => {
-                constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Int)));
-            }
-            TypedTerm::Fun { tpe, param, body } => {
-                constraints.extend(collect(&body));
-
-                let param_tpe = Box::new(param.tpe.clone());
-                let return_tpe = Box::new(body.tpe().clone());
-                constraints.insert(Constraint(
-                    tpe.clone(),
-                    Type::Fun {
-                        param_tpe,
-                        return_tpe,
-                    },
-                ));
-            }
-            TypedTerm::Identifier { .. } => (),
-            TypedTerm::Apply { tpe, fun, arg } => {
-                constraints.extend(collect(fun));
-                constraints.extend(collect(arg));
-
-                /*
-                        collect(fn) ++ collect(arg) ++ Set(
-                  Constraint(fn.ty, Type.FUN(arg.ty, ty))
-                )
-                        */
-
-                let param_tpe = Box::new(arg.tpe().clone());
-                let return_tpe = Box::new(tpe.clone());
-                constraints.insert(Constraint(
-                    fun.tpe().clone(),
-                    Type::Fun {
-                        param_tpe,
-                        return_tpe,
-                    },
-                ));
-            }
-            TypedTerm::If {
-                tpe,
-                cond,
-                true_branch,
-                false_branch,
-            } => {
-                constraints.extend(collect(cond));
-                constraints.extend(collect(true_branch));
-                constraints.extend(collect(false_branch));
-
-                // If put a constraint on the condition and the branches should resolve to the same type
-                constraints.insert(Constraint(
-                    cond.tpe().clone(),
-                    Type::Literal(TypeLiteral::Bool),
-                ));
-                constraints.insert(Constraint(true_branch.tpe().clone(), tpe.clone()));
-                constraints.insert(Constraint(false_branch.tpe().clone(), tpe.clone()));
-            }
-            TypedTerm::Let {
-                tpe,
-                binding,
-                value,
-                body,
-            } => {
-                constraints.extend(collect(value));
-                constraints.extend(collect(body));
-
-                // TODO take some time to really think about the 2 following constraints
-
-                // The let expression has the body type.
-                constraints.insert(Constraint(tpe.clone(), body.tpe().clone()));
-                // The binding type is the one of the value.
-                constraints.insert(Constraint(binding.tpe.clone(), value.tpe().clone()));
-            }
-        };
-
-        constraints
-    }
-}
-
-mod unifier {
-    use log::debug;
-    use std::collections::HashSet;
-
-    use super::{Constraint, Substitution, Type, TypeLiteral, TypeVariable};
-
-    pub(super) fn unify(constraints: HashSet<Constraint>) -> Substitution {
-        debug!("unify: {:?}", constraints);
-        let mut iter = constraints.iter();
-
-        match iter.next() {
-            None => Substitution::empty(),
-            Some(first) => {
-                // TODO Understand what the scala code is actually doing.
-                // There might be a simpler way in Rust with mutability
-                /*
-                val subst: Substitution = unifyOne(constraints.head)
-                val substitutedTail = subst.apply(constraints.tail)
-                val substTail: Substitution = unify(substitutedTail)
-                subst.compose(substTail)
-                       */
-
-                let sub_head = unify_one_constraint(first);
-
-                // Apply this substitution to the remaining constraints
-                let constraints_tail: HashSet<_> = iter.map(|c| sub_head.apply(c)).collect();
-
-                // Then recursively unify the substituted constraints
-                let sub_tail = unify(constraints_tail);
-
-                // And finally merged the unified substitution with the first one
-                sub_head.merge(sub_tail)
-            }
-        }
-    }
-
-    fn unify_one_constraint(Constraint(a, b): &Constraint) -> Substitution {
-        debug!("unify_one_constraint: {:?} to {:?}", a, b);
-        match (a, b) {
-            (Type::Literal(TypeLiteral::Bool), Type::Literal(TypeLiteral::Bool)) => {
-                Substitution::empty()
-            }
-            (Type::Literal(TypeLiteral::Int), Type::Literal(TypeLiteral::Int)) => {
-                Substitution::empty()
-            }
-            (
-                Type::Fun {
-                    param_tpe: p1,
-                    return_tpe: r1,
-                },
-                Type::Fun {
-                    param_tpe: p2,
-                    return_tpe: r2,
-                },
-            ) => {
-                let mut constraints = HashSet::new();
-
-                constraints.insert(Constraint(*p1.clone(), *p2.clone()));
-                constraints.insert(Constraint(*r1.clone(), *r2.clone()));
-
-                unify(constraints)
-            }
-            (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe),
-            (tpe, Type::Variable(tvar)) => unify_variable(tvar, tpe),
-            (a, b) => panic!("Cannot unify {:?} with {:?}", a, b),
-        }
-    }
-
-    fn unify_variable(tvar: &TypeVariable, tpe: &Type) -> Substitution {
-        // TODO Use pattern guard instead of inlined if
-        match tpe {
-            Type::Variable(tvar2) => {
-                if tvar == tvar2 {
-                    Substitution::empty()
-                } else {
-                    Substitution::one(tvar.clone(), tpe.clone())
-                }
-            }
-            _ => {
-                if occurs(tvar, tpe) {
-                    panic!("circular use: {:?} occurs in {:?}", tvar, tpe)
-                } else {
-                    Substitution::one(tvar.clone(), tpe.clone())
-                }
-            }
-        }
-    }
-
-    fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
-        match tpe {
-            Type::Fun {
-                param_tpe,
-                return_tpe,
-            } => occurs(tvar, param_tpe) || occurs(tvar, return_tpe),
-            Type::Variable(tvar2) => tvar == tvar2,
-            _ => false,
-        }
-    }
-}
-
