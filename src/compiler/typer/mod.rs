@@ -133,7 +133,6 @@ impl TypeBinder {
     }
 }
 
-
 /// Like a [Term] but with an associated [Type].
 /// Any term introducing a name will have a TypeBinder instead.
 #[derive(Debug)]
@@ -192,6 +191,7 @@ impl TypedTerm {
 #[derive(Debug, Hash, Eq, PartialEq)]
 struct Constraint(Type, Type);
 
+#[derive(Debug, Eq, PartialEq)]
 struct Substitution {
     solutions: HashMap<TypeVariable, Type>,
 }
@@ -311,4 +311,236 @@ pub fn infer(term: Term, global: HashMap<String, Type>) -> Type {
     let substitution = unifier::unify(constraints);
 
     substitution.apply_type(typed_term.tpe())
+}
+
+// TODO Once we have changed the Term to the zelkova primitives, rewrite the tests
+// to use actual source code instead of AST. It's a pain to write them but it's even
+// more of a pain to read them :)
+// TODO Also write some assertions on the type instead of just printing XD
+// TODO Import remaining tests. Plus the one for the modules above.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bool(b: bool) -> Term {
+        Term::Bool(b)
+    }
+    fn int(i: u32) -> Term {
+        Term::Int(i)
+    }
+    fn var(n: &str) -> Term {
+        Term::Identifier(n.to_string())
+    }
+    fn fun(arg: &str, body: Term) -> Term {
+        Term::Fun {
+            param: arg.to_owned(),
+            body: Box::new(body),
+        }
+    }
+    fn if_(cond: Term, true_branch: Term, false_branch: Term) -> Term {
+        Term::If {
+            cond: Box::new(cond),
+            true_branch: Box::new(true_branch),
+            false_branch: Box::new(false_branch),
+        }
+    }
+    fn apply(fun: Term, arg: Term) -> Term {
+        Term::Apply {
+            fun: Box::new(fun),
+            arg: Box::new(arg),
+        }
+    }
+    fn let_(binding: &str, value: Term, body: Term) -> Term {
+        Term::Let {
+            binding: binding.to_owned(),
+            value: Box::new(value),
+            body: Box::new(body),
+        }
+    }
+
+    #[derive(Default)]
+    struct Signature {
+        counter: u8, // max 255 letters
+        known: HashMap<u32, String>,
+    }
+
+    impl Signature {
+        // Helper function to reduce boilerplate
+        fn of_type(tpe: Type) -> String {
+            let mut sig: Signature = Default::default();
+            sig.from_type(tpe)
+        }
+
+        fn from_type(&mut self, tpe: Type) -> String {
+            match tpe {
+                Type::Literal(TypeLiteral::Bool) => "Bool".to_owned(),
+                Type::Literal(TypeLiteral::Int) => "Int".to_owned(),
+                Type::Variable(TypeVariable { id }) => {
+                    if let Some(name) = self.known.get(&id) {
+                        name.clone()
+                    } else {
+                        let name = self.counter_as_letter();
+                        self.counter += 1;
+
+                        self.known.insert(id, name.clone());
+
+                        name
+                    }
+                }
+                Type::Fun {
+                    param_tpe,
+                    return_tpe,
+                } => {
+                    let is_param_fun = matches!(param_tpe.as_ref(), Type::Fun {..});
+                    let param = self.from_type(*param_tpe);
+                    let retur = self.from_type(*return_tpe);
+
+                    if is_param_fun {
+                        format!("({}) -> {}", param, retur)
+                    } else {
+                        format!("{} -> {}", param, retur)
+                    }
+                }
+            }
+        }
+
+        fn counter_as_letter(&self) -> String {
+            let m = self.counter % 26;
+            let d = self.counter / 26;
+
+            let m_char = (97 + m) as char; // 97 is 'a'
+            let d_char = (96 + d) as char; // -1 because we start at 1
+
+            if d > 0 {
+                format!("{}{}", d_char, m_char)
+            } else {
+                format!("{}", m_char)
+            }
+        }
+    }
+
+    #[test]
+    fn infer_identity_function() {
+        let global = HashMap::new();
+        let term = fun("a", var("a"));
+        let infered = infer(term, global);
+
+        assert_eq!(Signature::of_type(infered), "a -> a".to_owned());
+    }
+
+    #[test]
+    fn infer_const_function() {
+        let global = HashMap::new();
+        let term = fun("a", fun("b", var("a")));
+        let infered = infer(term, global);
+
+        assert_eq!(Signature::of_type(infered), "a -> b -> a".to_owned());
+    }
+
+    #[test]
+    fn infer_compose_function() {
+        let global = HashMap::new();
+        // \f -> \g -> \x -> f ( g x )
+        let term = fun(
+            "f",
+            fun("g", fun("x", apply(var("f"), apply(var("g"), var("x"))))),
+        );
+        let infered = infer(term, global);
+
+        assert_eq!(
+            Signature::of_type(infered),
+            "(a -> b) -> (c -> a) -> c -> b".to_owned()
+        );
+    }
+
+    #[test]
+    fn infer_pred_function() {
+        let global = HashMap::new();
+        let term = fun("pred", if_(apply(var("pred"), int(1)), int(2), int(3)));
+        let infered = infer(term, global);
+
+        assert_eq!(
+            Signature::of_type(infered),
+            "(Int -> Bool) -> Int".to_owned()
+        );
+    }
+
+    #[test]
+    fn infer_increment_function() {
+        let mut global = HashMap::new();
+        // "+" -> Type.FUN(Type.INT, Type.FUN(Type.INT, Type.INT)),
+        global.insert(
+            "+".to_owned(),
+            Type::Fun {
+                param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                return_tpe: Box::new(Type::Fun {
+                    param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                    return_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                }),
+            },
+        );
+        let term = let_(
+            "inc",
+            fun("a", apply(apply(var("+"), var("a")), int(1))),
+            apply(var("inc"), int(42)),
+        );
+        let infered = infer(term, global);
+
+        assert_eq!(Signature::of_type(infered), "Int".to_owned());
+    }
+
+    #[test]
+    fn infer_incdec_function() {
+        let mut global = HashMap::new();
+        global.insert(
+            "+".to_owned(),
+            Type::Fun {
+                param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                return_tpe: Box::new(Type::Fun {
+                    param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                    return_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                }),
+            },
+        );
+        global.insert(
+            "-".to_owned(),
+            Type::Fun {
+                param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                return_tpe: Box::new(Type::Fun {
+                    param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                    return_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                }),
+            },
+        );
+        let term = let_(
+            "inc",
+            fun("a", apply(apply(var("+"), var("a")), int(1))),
+            let_(
+                "dec",
+                fun("a", apply(apply(var("-"), var("a")), int(1))),
+                apply(var("dec"), apply(var("inc"), int(42))),
+            ),
+        );
+        let infered = infer(term, global);
+
+        assert_eq!(Signature::of_type(infered), "Int".to_owned());
+    }
+
+    #[test]
+    #[should_panic]
+    fn infer_cannot_possible() {
+        let mut global = HashMap::new();
+        global.insert(
+            "+".to_owned(),
+            Type::Fun {
+                param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                return_tpe: Box::new(Type::Fun {
+                    param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                    return_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
+                }),
+            },
+        );
+        let term = apply(apply(var("+"), bool(true)), int(1));
+        infer(term, global);
+    }
 }
