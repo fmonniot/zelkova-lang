@@ -391,7 +391,7 @@ mod tests {
                     param_tpe,
                     return_tpe,
                 } => {
-                    let is_param_fun = matches!(param_tpe.as_ref(), Type::Fun {..});
+                    let is_param_fun = matches!(param_tpe.as_ref(), Type::Fun { .. });
                     let param = self.from_type(*param_tpe);
                     let retur = self.from_type(*return_tpe);
 

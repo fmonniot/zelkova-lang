@@ -101,10 +101,10 @@ test_parse_ok!(
 
     main = (2, 3)
     "#,
-    module(Expression::Tuple(Box::new(vec![
+    module(Expression::Tuple(vec![
         Expression::Lit(Literal::Int(2)),
         Expression::Lit(Literal::Int(3)),
-    ])))
+    ]))
 );
 
 test_parse_ok!(

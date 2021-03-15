@@ -151,7 +151,7 @@ AtomicExpr: Expression = {
         match elems.len() {
             // This isn't a tuple by a parenthesis around an expression
             1 => elems.first().unwrap().clone(),
-            _ => Expression::Tuple(Box::new(elems))
+            _ => Expression::Tuple(elems)
         }
     },
     

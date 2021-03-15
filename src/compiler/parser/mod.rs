@@ -61,7 +61,7 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
 pub enum Type {
     /// Type constructor
     Unqualified(Name, Box<Vec<Type>>),
-    // Qualified type eg Maybe.Maybe
+    // TODO Qualified type eg Maybe.Maybe (or is it already merged in Unqualified ?)
     /// Type constructor →
     ///
     /// Applications of the type constructor → are written infix and
@@ -241,6 +241,7 @@ pub enum Declaration {
 /// A representation of the `import` declaration
 #[derive(Debug, PartialEq)]
 pub struct Import {
+    /// The name of the module being imported
     pub name: Name,
     pub alias: Option<Name>,
     pub exposing: Exposing,
@@ -338,6 +339,7 @@ pub struct Match {
 pub enum Pattern {
     Variable(Name),
     Literal(Literal),
+    /// TODO Use (p, p, maybe) or (vec) but not (p, p, vec)
     Tuple(Box<Pattern>, Box<Pattern>, Vec<Pattern>),
     Constructor(Name, Vec<Pattern>),
     Anything,
@@ -349,10 +351,10 @@ pub enum Pattern {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Lit(Literal), // Literal, as other are fully named
-    Application(Box<Expression>, Box<Expression>),
+    Application(Box<Expression>, Box<Expression>), // TODO Rename Apply ?
     Variable(Name), // TODO Qualified variable
     TypeConstructor(Name),
-    Tuple(Box<Vec<Expression>>),
+    Tuple(Vec<Expression>),
     Case(Box<Expression>, Vec<CaseBranch>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
 }

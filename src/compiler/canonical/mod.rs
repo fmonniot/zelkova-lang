@@ -260,6 +260,8 @@ pub enum Expression {
     Float(f64),
     Bool(bool),
     // List
+    // Lambda
+    Apply(Box<Expression>, Box<Expression>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
     // Let
     // LetRec
@@ -322,7 +324,32 @@ impl Expression {
 
                 Ok(Expression::VarConstructor(name, tpe))
             }
+            parser::Expression::Application(a, b) => {
+                let a = Expression::from_parser(a, env)?;
+                let b = Expression::from_parser(b, env)?;
 
+                Ok(Expression::Apply(Box::new(a), Box::new(b)))
+            }
+            parser::Expression::Tuple(vec) => {
+                match vec.as_slice() {
+                    [one, two] => {
+                        let one = Expression::from_parser(one, env)?;
+                        let two = Expression::from_parser(two, env)?;
+
+                        Ok(Expression::Tuple(Box::new(one), Box::new(two), None))
+                    }
+                    [one, two ,three] => {
+                        let one = Expression::from_parser(one, env)?;
+                        let two = Expression::from_parser(two, env)?;
+                        let three = Expression::from_parser(three, env)?;
+
+                        Ok(Expression::Tuple(Box::new(one), Box::new(two), Some(Box::new(three))))
+                    }
+                    _ => {
+                        panic!("Tuple of size {} found. Should be forbidden at parsing.", vec.len())
+                    }
+                }
+            }
             parser::Expression::Case(expr, branches) => {
                 let expr = Expression::from_parser(expr, env)?;
 
@@ -343,7 +370,7 @@ impl Expression {
                 Ok(Expression::Case(Box::new(expr), branches))
             }
 
-            _ => todo!("expression from parser not complete yet"),
+            e => todo!("expression from parser not complete yet for {:?}", e),
         }
     }
 }
