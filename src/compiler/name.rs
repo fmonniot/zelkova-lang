@@ -52,6 +52,12 @@ impl From<&str> for Name {
     }
 }
 
+impl std::fmt::Display for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Qualified name
 ///
 /// This can though as a non empty vector, where the non empty part is at the end.

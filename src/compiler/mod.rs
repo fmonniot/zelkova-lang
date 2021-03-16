@@ -93,6 +93,7 @@ impl ModuleName {
 ///
 /// All `Interface` indices are using non-qualified names. To get the qualified
 /// version, simply use `I.module_name.qualify_name(&name)`.
+#[derive(Debug)]
 pub struct Interface {
     module_name: ModuleName,
     values: HashMap<Name, canonical::Type>,
@@ -109,7 +110,7 @@ pub struct Interface {
 pub enum CompilationError {
     LoadingFiles(Vec<SourceFileError>),
     Source(parser::Error, SourceFileId),
-    Canonical(Vec<canonical::Error>),
+    Canonical(Vec<canonical::Error>, Name),
     DependenciesError(dependencies::Error),
 
     /// Not an error, but something I use until I get to implement the actual error.
@@ -138,8 +139,11 @@ impl<'a> CompilationError {
                     .with_message("Error while loading the package files")
                     .with_notes(notes)
             }
-            CompilationError::Canonical(errors) => Diagnostic::warning()
-                .with_message("Canonical error messages are not implemented yet")
+            CompilationError::Canonical(errors, module_name) => Diagnostic::warning()
+                .with_message(format!(
+                    "[{}] Canonical error messages are not implemented yet",
+                    module_name
+                ))
                 .with_notes(errors.iter().map(|e| format!("{:?}", e)).collect()),
             CompilationError::PlaceHolder => {
                 Diagnostic::bug().with_message("A non implemented error message have been emitted")
@@ -153,11 +157,9 @@ impl<'a> CompilationError {
     fn from(err: parser::Error, source_id: SourceFileId) -> Self {
         CompilationError::Source(err, source_id)
     }
-}
 
-impl From<Vec<canonical::Error>> for CompilationError {
-    fn from(errors: Vec<canonical::Error>) -> Self {
-        CompilationError::Canonical(errors)
+    fn canonical(errors: Vec<canonical::Error>, module: Name) -> Self {
+        CompilationError::Canonical(errors, module)
     }
 }
 
@@ -286,7 +288,8 @@ pub fn check_module(
     // the type checker. It would also be something that can be used
     // as an information dump for dependencies (keep types solved as
     // a result and don't type checks those modules more than once).
-    let canonical = canonical::canonicalize(package, interfaces, source)?;
+    let canonical = canonical::canonicalize(package, interfaces, source)
+        .map_err(|errors| CompilationError::canonical(errors, source.name.clone()))?;
 
     // - type checking and inference
     // TODO Here either type checks return the new types, or it take a mutable canonical
