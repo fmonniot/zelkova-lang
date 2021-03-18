@@ -150,6 +150,7 @@ mod tests {
 
         Module {
             name: Name(name.into()),
+            binding_javascript: false,
             exposing: Exposing::Open,
             imports,
             infixes: vec![],

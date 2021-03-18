@@ -178,15 +178,13 @@ pub enum Pattern {
     Tuple(Box<Pattern>, Box<Pattern>, Option<Box<Pattern>>),
 
     Constructor {
-        tpe: QualName, // Type name
-        name: Name,    // Constructor name
-        union: UnionType,
-        args: Vec<PatternConstructorArg>,
+        ctor: TypeConstructor,
+        args: Vec<Pattern>,
     },
 }
 
 impl Pattern {
-    fn from_parser(p: &parser::Pattern) -> Pattern {
+    fn from_parser(p: &parser::Pattern, env: &dyn Environment) -> Pattern {
         match p {
             parser::Pattern::Anything => Pattern::Anything,
             parser::Pattern::Variable(name) => Pattern::Variable(name.clone()),
@@ -195,22 +193,24 @@ impl Pattern {
             parser::Pattern::Literal(parser::Literal::Char(c)) => Pattern::Char(*c),
             parser::Pattern::Literal(parser::Literal::Bool(b)) => Pattern::Bool(*b),
             parser::Pattern::Tuple(a, b, c) => Pattern::Tuple(
-                Box::new(Pattern::from_parser(a)),
-                Box::new(Pattern::from_parser(b)),
-                c.get(0).map(Pattern::from_parser).map(Box::new),
+                Box::new(Pattern::from_parser(a, env)),
+                Box::new(Pattern::from_parser(b, env)),
+                c.get(0).map(|p| Pattern::from_parser(p, env)).map(Box::new),
             ),
-            parser::Pattern::Constructor(name, args) => todo!(),
+            parser::Pattern::Constructor(name, args) => {
+                // TODO Return Result instead
+                let ctor = env
+                    .find_type_constructor(&name)
+                    .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(&name)))
+                    .unwrap()
+                    .clone();
+
+                let args = args.iter().map(|p| Pattern::from_parser(p, env)).collect();
+
+                Pattern::Constructor { ctor, args }
+            }
         }
     }
-}
-
-#[derive(Debug)]
-pub struct PatternConstructorArg {
-    tpe: Option<Type>, // Option until we have a type for representing non-infered types
-
-    /// More often than not, this will be a variable. But for nested structure
-    /// this can be any supported pattern.
-    arg: Box<Pattern>,
 }
 
 // TODO Find a way to detect recursive functions (even indirect recursivity,
@@ -330,31 +330,36 @@ impl Expression {
 
                 Ok(Expression::Apply(Box::new(a), Box::new(b)))
             }
-            parser::Expression::Tuple(vec) => {
-                match vec.as_slice() {
-                    [one, two] => {
-                        let one = Expression::from_parser(one, env)?;
-                        let two = Expression::from_parser(two, env)?;
+            parser::Expression::Tuple(vec) => match vec.as_slice() {
+                [one, two] => {
+                    let one = Expression::from_parser(one, env)?;
+                    let two = Expression::from_parser(two, env)?;
 
-                        Ok(Expression::Tuple(Box::new(one), Box::new(two), None))
-                    }
-                    [one, two ,three] => {
-                        let one = Expression::from_parser(one, env)?;
-                        let two = Expression::from_parser(two, env)?;
-                        let three = Expression::from_parser(three, env)?;
-
-                        Ok(Expression::Tuple(Box::new(one), Box::new(two), Some(Box::new(three))))
-                    }
-                    _ => {
-                        panic!("Tuple of size {} found. Should be forbidden at parsing.", vec.len())
-                    }
+                    Ok(Expression::Tuple(Box::new(one), Box::new(two), None))
                 }
-            }
+                [one, two, three] => {
+                    let one = Expression::from_parser(one, env)?;
+                    let two = Expression::from_parser(two, env)?;
+                    let three = Expression::from_parser(three, env)?;
+
+                    Ok(Expression::Tuple(
+                        Box::new(one),
+                        Box::new(two),
+                        Some(Box::new(three)),
+                    ))
+                }
+                _ => {
+                    panic!(
+                        "Tuple of size {} found. Should be forbidden at parsing.",
+                        vec.len()
+                    )
+                }
+            },
             parser::Expression::Case(expr, branches) => {
                 let expr = Expression::from_parser(expr, env)?;
 
                 let b = branches.iter().map::<Result<CaseBranch, Error>, _>(|cb| {
-                    let pattern = Pattern::from_parser(&cb.pattern);
+                    let pattern = Pattern::from_parser(&cb.pattern, env);
                     let scoped = env.new_scope();
 
                     let expression = Expression::from_parser(&cb.expression, &scoped)?;
@@ -369,8 +374,17 @@ impl Expression {
 
                 Ok(Expression::Case(Box::new(expr), branches))
             }
+            parser::Expression::If(cond, then, els) => {
+                let cond = Expression::from_parser(cond, env)?;
+                let then = Expression::from_parser(then, env)?;
+                let els = Expression::from_parser(els, env)?;
 
-            e => todo!("expression from parser not complete yet for {:?}", e),
+                Ok(Expression::If(
+                    Box::new(cond),
+                    Box::new(then),
+                    Box::new(els),
+                ))
+            }
         }
     }
 }
@@ -498,7 +512,7 @@ fn do_values(
                 let patterns = binding
                     .patterns
                     .iter()
-                    .map(|p| Pattern::from_parser(p))
+                    .map(|p| Pattern::from_parser(p, env))
                     .collect();
                 let body = Expression::from_parser(&binding.body, env)?;
 
