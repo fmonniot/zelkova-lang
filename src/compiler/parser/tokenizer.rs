@@ -59,6 +59,7 @@ pub enum Token {
     Left,
     Right,
     Non,
+    Javascript,
 
     // Layout
     OpenBlock,
@@ -90,6 +91,7 @@ fn get_keywords() -> HashMap<String, Token> {
     m.insert("left".to_string(), Token::Left);
     m.insert("right".to_string(), Token::Right);
     m.insert("non".to_string(), Token::Non);
+    m.insert("javascript".to_string(), Token::Javascript);
 
     m
 }

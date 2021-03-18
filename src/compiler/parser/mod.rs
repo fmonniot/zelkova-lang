@@ -104,6 +104,7 @@ impl Type {
 #[derive(Debug, PartialEq)]
 pub struct Module {
     pub name: Name,
+    pub binding_javascript: bool,
     pub exposing: Exposing,
     pub imports: Vec<Import>,
     pub infixes: Vec<Infix>,
@@ -112,7 +113,17 @@ pub struct Module {
 }
 
 impl Module {
-    fn from_declarations(name: Name, exposing: Exposing, declarations: Vec<Declaration>) -> Module {
+    fn from_declarations(
+        modifier: Option<tokenizer::Token>,
+        name: Name,
+        exposing: Exposing,
+        declarations: Vec<Declaration>,
+    ) -> Module {
+        let binding_javascript = match modifier {
+            Some(tokenizer::Token::Javascript) => true,
+            _ => false,
+        };
+
         let mut imports = vec![];
         let mut types = vec![];
         let mut infixes = vec![];
@@ -154,6 +165,7 @@ impl Module {
 
         Module {
             name,
+            binding_javascript,
             exposing,
             imports,
             infixes,
@@ -350,9 +362,9 @@ pub enum Pattern {
 /// An Expression
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
-    Lit(Literal), // Literal, as other are fully named
+    Lit(Literal),                                  // Literal, as other are fully named
     Application(Box<Expression>, Box<Expression>), // TODO Rename Apply ?
-    Variable(Name), // TODO Qualified variable
+    Variable(Name),                                // TODO Qualified variable
     TypeConstructor(Name),
     Tuple(Vec<Expression>),
     Case(Box<Expression>, Vec<CaseBranch>),

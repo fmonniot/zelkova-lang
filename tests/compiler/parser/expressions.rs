@@ -5,6 +5,7 @@ use zelkova_lang::compiler::parser::*;
 fn module(body: Expression) -> Module {
     Module {
         name: name("Main"),
+        binding_javascript: false,
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![],

@@ -1,6 +1,24 @@
 use super::support::*;
 use zelkova_lang::compiler::parser::*;
 
+// module
+
+test_parse_ok!(
+    module_js,
+    r#"
+    module javascript Maybe exposing ( map )
+    "#,
+    Module {
+        name: name("Maybe"),
+        binding_javascript: true,
+        exposing: Exposing::Explicit(vec![Exposed::Lower(name("map"))]),
+        imports: vec![],
+        infixes: vec![],
+        types: vec![],
+        functions: vec![],
+    }
+);
+
 // exposing
 
 test_parse_ok!(
@@ -15,6 +33,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
+        binding_javascript: false,
         exposing: Exposing::Explicit(vec![
             Exposed::Upper(name("Maybe"), Privacy::Public),
             Exposed::Upper(name("Option"), Privacy::Private),
@@ -43,6 +62,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
+        binding_javascript: false,
         exposing: Exposing::Open,
         imports: vec![
             Import {
@@ -72,6 +92,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
+        binding_javascript: false,
         exposing: Exposing::Open,
         imports: vec![
             Import {
@@ -102,6 +123,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
+        binding_javascript: false,
         exposing: Exposing::Open,
         imports: vec![
             Import {
@@ -142,6 +164,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
+        binding_javascript: false,
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![Infix {
@@ -164,6 +187,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
+        binding_javascript: false,
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![Infix {
@@ -186,6 +210,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
+        binding_javascript: false,
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![Infix {
