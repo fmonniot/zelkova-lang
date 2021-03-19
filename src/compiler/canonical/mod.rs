@@ -452,6 +452,12 @@ pub fn canonicalize(
         HashMap::new()
     });
 
+    for (n, t) in types.iter() {
+        env.insert_union_type(n.clone(), t.clone());
+    }
+
+    debug!("Environment after do_types: {:#?}", env);
+
     // TODO Should I manage infixes rewrite here too ?
     // Yes I should do it here
     let values = do_values(&mut env, &source.functions).unwrap_or_else(|err| {

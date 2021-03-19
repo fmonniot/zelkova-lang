@@ -115,6 +115,10 @@ impl QualName {
             Name(self.name.clone())
         }
     }
+
+    pub fn unqualified_name(&self) -> Name {
+        Name(self.name.clone())
+    }
 }
 
 impl From<&'static str> for QualName {

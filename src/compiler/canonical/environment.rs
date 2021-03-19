@@ -197,6 +197,7 @@ pub enum EnvError {
 /// QualName are only used in the RootEnvironment, as they only come from imports.
 /// Non-qualified values are declared both in root and scoped environment (top-level values,
 /// type declaration and local variables).
+#[derive(Debug)]
 pub struct RootEnvironment {
     module_name: ModuleName,
     infixes: HashMap<Name, Infix>,
@@ -218,6 +219,21 @@ impl RootEnvironment {
     // TODO Return an error if declaration already exists
     pub fn insert_top_level_value(&mut self, name: Name) {
         self.variables.insert(name, ValueType::TopLevel);
+    }
+
+    pub fn insert_union_type(&mut self, name: Name, union: UnionType) {
+        let args = union
+            .variables
+            .iter()
+            .map(|t| Type::Variable(t.clone()))
+            .collect();
+        let tpe = Type::Type(name.clone(), args);
+        self.types.insert(name.clone(), tpe);
+
+        for tctor in union.variants {
+            self.constructors
+                .insert(tctor.name.unqualified_name(), tctor.clone());
+        }
     }
 }
 

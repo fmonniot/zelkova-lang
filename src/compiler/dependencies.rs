@@ -19,6 +19,7 @@
 use super::name::Name;
 use super::parser::Module;
 use crate::utils::collect_accumulate;
+use log::debug;
 use std::collections::HashMap;
 
 use petgraph::graph::DiGraph;
@@ -121,7 +122,15 @@ impl<'a> ModuleWalker<'a> {
                     // TODO We might want to have a less strict approach if we want to make some progress
                     // in dependent modules even if the current one doesn't pass all checks (accumulate
                     // more errors to show at once to the programmer).
-                    interfaces.insert(m.name.name().clone(), m.to_interface());
+                    // In term of types, it means having check return something like Result<(Module, Errors), Errors>.
+                    // The overall Result is for the errors stopping us from building the minimum required to make
+                    // a Module. This might not be required if we decide how to default the Exports (the rest is vec based,
+                    // so can be default to ignore). This also means the whole canonicalization process will have to be
+                    // rewritten to have scoped-fail semantics.
+                    let iface_name = m.name.name().clone();
+                    let iface = m.to_interface();
+                    debug!("Inserting {} with value {:#?}", iface_name, iface);
+                    interfaces.insert(iface_name, iface);
 
                     Ok(m)
                 }
