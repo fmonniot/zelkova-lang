@@ -1,3 +1,5 @@
+use std::iter::FromIterator;
+
 /// This let use collect an iterator of result into a result of vectors.
 ///
 /// The generic signature, assuming `I: FromIterator` would look like `Iterator<Result<T, E>> -> Result<I<T>, I<E>>`.
@@ -22,4 +24,14 @@ where
     } else {
         Err(errors)
     }
+}
+
+// TODO Make this function the default (replace collect_accumulate by this one)
+// and possibly try to remove the intermediate Vec for results
+pub fn collect_acc<T, E, I, R>(iterator: I) -> Result<R, Vec<E>>
+where
+    I: Iterator<Item = Result<T, E>>,
+    R: FromIterator<T>,
+{
+    collect_accumulate(iterator).map(|vec| vec.into_iter().collect())
 }

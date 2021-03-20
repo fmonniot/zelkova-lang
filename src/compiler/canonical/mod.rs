@@ -17,6 +17,7 @@ use super::parser;
 use super::Interface;
 use super::{ModuleName, PackageName};
 use crate::utils::collect_accumulate;
+use log::debug;
 use std::collections::HashMap;
 
 mod environment;
@@ -409,6 +410,11 @@ pub enum Error {
     VariantNotFound(QualName),
     AmbiguousVariants(Name, Vec<ModuleName>),
 
+    // Binding module
+    InfixDeclared(Name),
+    TypeDeclared(Name),
+    NoTypeInBinding(Name),
+
     // Utility error
     Many(Vec<Error>),
 }
@@ -440,30 +446,94 @@ pub fn canonicalize(
     let mut env =
         new_environment(&name, &interfaces, &source.imports).map_err(|e| vec![e.into()])?;
 
-    // Because we are rewriting infixes in this phase, we must do this check before
-    // resolving values.
-    let infixes = do_infixes(&source.infixes, &mut env, &source.functions).unwrap_or_else(|err| {
-        errors.extend(err);
-        HashMap::new()
-    });
+    let (infixes, types, values) = if source.binding_javascript {
+        // Javascript modules run a parallel canonicalization process as the constraints are a bit different:
+        // - Only functions without bindings are authorized.
+        // - Infixes and types are forbidden.
+        // The idea being to have the js module be a facade for the actual Javascript module.
+        // Assuming Json types are part of the prelude, this should goes well with the restriction on what types are available for bindings.
 
-    let types = do_types(&env, &source.types, &name).unwrap_or_else(|err| {
-        errors.extend(err);
-        HashMap::new()
-    });
+        // Verify no infix present
+        if !source.infixes.is_empty() {
+            let e = source
+                .infixes
+                .iter()
+                .map(|i| Error::InfixDeclared(i.operator.clone()));
+            errors.extend(e);
+        }
+        // Verify no types present
+        if !source.types.is_empty() {
+            let e = source
+                .types
+                .iter()
+                .map(|t| Error::TypeDeclared(t.name.clone()));
+            errors.extend(e);
+        }
 
-    for (n, t) in types.iter() {
-        env.insert_union_type(n.clone(), t.clone());
-    }
+        // Iterate on values
+        let iter = source.functions.iter().map(|function| {
+            // Make sure there is no binding
+            if !function.bindings.is_empty() {
+                Err(Error::BindingPatternsInvalidLen)? // TODO More specific error
+            }
 
-    debug!("Environment after do_types: {:#?}", env);
+            // Make sure there is a type
+            let tpe = function
+                .tpe
+                .as_ref()
+                .ok_or_else(|| Error::NoTypeInBinding(function.name.clone()))?;
+            let tpe = Type::from_parser_type(&env, tpe);
 
-    // TODO Should I manage infixes rewrite here too ?
-    // Yes I should do it here
-    let values = do_values(&mut env, &source.functions).unwrap_or_else(|err| {
-        errors.extend(err);
-        HashMap::new()
-    });
+            let name = function.name.clone();
+            // TODO Think how it's going to be represented. Currently canonical values assume an expression is present
+            //      I'd like to not introduce a trait or new struct for binding. Should we fake an expression or create
+            //      a new type of value ? New type of value will be annoying for regular modules as they aren't present
+            //      there. Fake expression might be ok as MVP. We have to make sure that binding module are removed from
+            //      some phase of the compilation pipeline.
+            let value = Value::TypedValue {
+                name: name.clone(),
+                patterns: vec![],
+                body: Expression::Bool(true),
+                tpe,
+            };
+
+            Ok((name, value))
+        });
+        let values = crate::utils::collect_acc(iter).unwrap_or_else(|err| {
+            errors.extend(err);
+            HashMap::new()
+        });
+
+        (HashMap::new(), HashMap::new(), values)
+    } else {
+        // Because we are rewriting infixes in this phase, we must do this check before
+        // resolving values.
+        let infixes =
+            do_infixes(&source.infixes, &mut env, &source.functions).unwrap_or_else(|err| {
+                errors.extend(err);
+                HashMap::new()
+            });
+
+        let types = do_types(&env, &source.types, &name).unwrap_or_else(|err| {
+            errors.extend(err);
+            HashMap::new()
+        });
+
+        for (n, t) in types.iter() {
+            env.insert_union_type(n.clone(), t.clone());
+        }
+
+        debug!("Environment after do_types: {:#?}", env);
+
+        // TODO Should I manage infixes rewrite here too ?
+        // Yes I should do it here
+        let values = do_values(&mut env, &source.functions).unwrap_or_else(|err| {
+            errors.extend(err);
+            HashMap::new()
+        });
+
+        (infixes, types, values)
+    };
 
     // We do exports at the end, and verify that all exported value do
     // have a reference within the current module
