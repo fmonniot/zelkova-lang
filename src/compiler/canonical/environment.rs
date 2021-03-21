@@ -487,11 +487,13 @@ mod tests {
                 variants: vec![
                     TypeConstructor {
                         name: "Maybe.Just".into(),
-                        types: vec![Type::Variable("a".into())],
+                        type_parameters: vec![Type::Variable("a".into())],
+                        tpe: "Maybe".into(),
                     },
                     TypeConstructor {
                         name: "Maybe.Nothing".into(),
-                        types: vec![],
+                        type_parameters: vec![],
+                        tpe: "Maybe".into(),
                     },
                 ],
             },

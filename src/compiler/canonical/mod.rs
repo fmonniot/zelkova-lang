@@ -79,10 +79,20 @@ pub struct UnionType {
     variants: Vec<TypeConstructor>,
 }
 
+// TODO Once we have most of the pipeline built, revisit the decision of
+// having Vec<Type> + Type instead of Type::Arrow(Box<Type>, Box<Type>)
+// as it's essentially what a constructor is, a function from parameter
+// to the resulting type.
+// Later me: well, that's only true at the type level. The value also need
+// to tag what variant it represent.
 #[derive(Debug, Clone)]
 pub struct TypeConstructor {
+    /// Constructor name. eg. in `type A = B`, the name is `B`
     name: QualName,
-    types: Vec<Type>,
+    /// The types of the parameters
+    type_parameters: Vec<Type>, // Rename to parameter_types ?
+    /// The type's name once constructed
+    tpe: QualName,
 }
 
 #[derive(Debug, Clone)]
@@ -304,19 +314,23 @@ impl Expression {
                     .find_type_constructor(&name)
                     .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(&name)))?;
 
-                let tpe = match ctor.types.len() {
-                    0 => panic!("Should not happen (or those types only include the parameters and not the type itself)"),
-                    1 => ctor.types[0].clone(),
-                    _ => {
-                        let mut iter = ctor.types.iter().rev();
-                        let first = iter.next().unwrap().clone();
+                let tpe = if ctor.type_parameters.is_empty() {
+                    Type::Type(ctor.tpe.unqualified_name(), vec![])
+                } else {
+                    // TODO Rework that part. ctor.types is only for the type parameters of the constructor, not for the overall type.
+                    let mut iter = ctor.type_parameters.iter().rev();
+                    let first = iter.next().unwrap().clone();
 
-                        // TODO tests this, 99.999% I'm wrong about it (like everytime I try to implement arrows, plus
-                        // the foldr in this particular case)
-                        iter.fold(first, |acc, t| {
-                            Type::Arrow(Box::new(t.clone()), Box::new(acc))
-                        })
-                    }
+                    // TODO tests this, 99.999% I'm wrong about it (like everytime I try to implement arrows, plus
+                    // the foldr in this particular case)
+                    let tpe = iter.fold(first, |acc, t| {
+                        Type::Arrow(Box::new(t.clone()), Box::new(acc))
+                    });
+
+                    Type::Arrow(
+                        Box::new(Type::Type(ctor.tpe.unqualified_name(), vec![])),
+                        Box::new(tpe),
+                    )
                 };
 
                 let name = name
@@ -634,6 +648,10 @@ fn do_values(
                 },
             )),
         }
+    }).map(|r| {
+        println!("intermediate value check: {:?}", r);
+
+        r
     });
 
     collect_accumulate(iter).map(|vec| vec.into_iter().collect())
@@ -645,7 +663,7 @@ fn do_types(
     module_name: &ModuleName,
 ) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
     let iter = types.iter().map(|tpe| {
-        let name = tpe.name.clone();
+        let tpe_name = tpe.name.clone();
         let variables = tpe.type_arguments.clone();
 
         println!("do_types(in:{:?})", tpe);
@@ -663,10 +681,11 @@ fn do_types(
                         // on `Environment`.
                         Some(TypeConstructor {
                             name: module_name.qualify_name(&name),
-                            types: vars
+                            type_parameters: vars
                                 .iter()
                                 .map(|t| Type::from_parser_type(env, t))
                                 .collect(),
+                            tpe: module_name.qualify_name(&tpe_name),
                         })
                     }
                     _ => None,
@@ -675,7 +694,7 @@ fn do_types(
             .collect();
 
         Ok((
-            name,
+            tpe_name,
             UnionType {
                 variables,
                 variants,
