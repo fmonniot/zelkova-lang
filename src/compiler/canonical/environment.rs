@@ -1,6 +1,6 @@
 //! env module
 
-use super::parser;
+use super::{parser, Pattern};
 use super::{Infix, Interface, ModuleName, Name, QualName, Type, TypeConstructor, UnionType};
 use crate::utils::collect_accumulate;
 use std::collections::HashMap;
@@ -411,6 +411,34 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
         ScopedEnvironment {
             parent,
             variables: HashMap::new(),
+        }
+    }
+}
+
+impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
+    pub fn expose_pattern(&mut self, pattern: &Pattern) {
+        match pattern {
+            Pattern::Anything => (),
+            Pattern::Int(_) => (),
+            Pattern::Float(_) => (),
+            Pattern::Char(_) => (),
+            Pattern::Bool(_) => (),
+
+            Pattern::Variable(n) => {
+                self.variables.insert(n.clone(), ());
+            }
+            Pattern::Tuple(a, b, c) => {
+                self.expose_pattern(a);
+                self.expose_pattern(b);
+                if let Some(c) = c {
+                    self.expose_pattern(c);
+                }
+            }
+            Pattern::Constructor { args, .. } => {
+                for arg in args {
+                    self.expose_pattern(arg);
+                }
+            }
         }
     }
 }

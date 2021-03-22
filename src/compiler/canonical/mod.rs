@@ -17,7 +17,7 @@ use super::parser;
 use super::Interface;
 use super::{ModuleName, PackageName};
 use crate::utils::collect_accumulate;
-use log::debug;
+use log::trace;
 use std::collections::HashMap;
 
 mod environment;
@@ -42,9 +42,18 @@ pub struct Module {
 
 impl Module {
     pub fn to_interface(&self) -> super::Interface {
+        let values = self
+            .values
+            .iter()
+            .filter_map(|(name, value)| match value {
+                Value::Value { .. } => None,
+                Value::TypedValue { tpe, .. } => Some((name.clone(), tpe.clone())),
+            })
+            .collect();
+
         super::Interface {
             module_name: self.name.clone(),
-            values: HashMap::new(), // TODO
+            values,
             unions: self.types.clone(),
             infixes: self.infixes.clone(),
         }
@@ -377,6 +386,7 @@ impl Expression {
                     let pattern = Pattern::from_parser(&cb.pattern, env);
                     let scoped = env.new_scope();
 
+                    // TODO From pattern result, insert required variables into scoped
                     let expression = Expression::from_parser(&cb.expression, &scoped)?;
 
                     Ok(CaseBranch {
@@ -537,7 +547,7 @@ pub fn canonicalize(
             env.insert_union_type(n.clone(), t.clone());
         }
 
-        debug!("Environment after do_types: {:#?}", env);
+        trace!("Environment after do_types: {:#?}", env);
 
         // TODO Should I manage infixes rewrite here too ?
         // Yes I should do it here
@@ -579,80 +589,92 @@ fn do_values(
         env.insert_top_level_value(f.name.clone());
     }
 
-    let iter = functions.iter().map(|function| {
-        // Bindings to expression
+    let iter = functions
+        .iter()
+        .map(|function| {
+            // Bindings to expression
 
-        // TODO Better error message with position of mismatch
-        // TODO Error when bindings is empty
-        let bindings_size = function
-            .bindings
-            .iter()
-            .all(|v| v.patterns.len() == function.bindings[0].patterns.len());
+            // TODO Better error message with position of mismatch
+            // TODO Error when bindings is empty
+            let bindings_size = function
+                .bindings
+                .iter()
+                .all(|v| v.patterns.len() == function.bindings[0].patterns.len());
 
-        if !bindings_size {
-            Err(Error::BindingPatternsInvalidLen)?
-        }
-
-        let (patterns, body): (Vec<Pattern>, Expression) = match function.bindings.len() {
-            0 => Err(Error::NoBindings),
-            1 => {
-                // if one binding, we can convert directly to cano format
-                let binding = &function.bindings[0];
-
-                let patterns = binding
-                    .patterns
-                    .iter()
-                    .map(|p| Pattern::from_parser(p, env))
-                    .collect();
-                let body = Expression::from_parser(&binding.body, env)?;
-
-                Ok((patterns, body))
+            if !bindings_size {
+                Err(Error::BindingPatternsInvalidLen)?
             }
-            _ => {
-                // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
 
-                todo!("multiple bindings not implemented")
-            }
-        }?;
+            let (patterns, body): (Vec<Pattern>, Expression) = match function.bindings.len() {
+                0 => Err(Error::NoBindings),
+                1 => {
+                    // if one binding, we can convert directly to canonical format
+                    let binding = &function.bindings[0];
 
-        let name = function.name.clone();
+                    let mut scoped = env.new_scope();
 
-        match &function.tpe {
-            Some(t) => {
-                let tpe = Type::from_parser_type(env, &t);
-                let linear = Type::to_linear_types(&tpe);
+                    let patterns = binding
+                        .patterns
+                        .iter()
+                        .map(|p| Pattern::from_parser(p, env))
+                        .map(|p| {
+                            scoped.expose_pattern(&p);
 
-                if linear.len() != patterns.len() {
-                    // TODO Better error message
-                    Err(Error::BindingPatternsInvalidLen)?
+                            p
+                        })
+                        .collect();
+
+                    // Maybe create a case_branch function and make it common with Expression::Case ?
+                    // Or maybe not at the case_branch level, as here we can have multiple patterns
+                    // whereas cases cannot.
+                    // eg. a: Int -> Int -> Int  ==>  a b c = b + c
+                    let body = Expression::from_parser(&binding.body, &scoped)?;
+
+                    Ok((patterns, body))
                 }
+                _ => {
+                    // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
 
-                let patterns = patterns.into_iter().zip(linear).collect();
+                    todo!("multiple bindings not implemented")
+                }
+            }?;
 
-                Ok((
+            let name = function.name.clone();
+
+            match &function.tpe {
+                Some(t) => {
+                    let tpe = Type::from_parser_type(env, &t);
+                    let linear = Type::to_linear_types(&tpe);
+
+                    // Linear is a list of types making the function. Because it includes the return type,
+                    // it will always be bigger than the number of patterns by one.
+                    if linear.len() - 1 != patterns.len() {
+                        // TODO Better error message
+                        Err(Error::BindingPatternsInvalidLen)?
+                    }
+
+                    let patterns = patterns.into_iter().zip(linear).collect();
+
+                    Ok((
+                        function.name.clone(),
+                        Value::TypedValue {
+                            name,
+                            patterns,
+                            body,
+                            tpe,
+                        },
+                    ))
+                }
+                None => Ok((
                     function.name.clone(),
-                    Value::TypedValue {
+                    Value::Value {
                         name,
                         patterns,
                         body,
-                        tpe,
                     },
-                ))
+                )),
             }
-            None => Ok((
-                function.name.clone(),
-                Value::Value {
-                    name,
-                    patterns,
-                    body,
-                },
-            )),
-        }
-    }).map(|r| {
-        println!("intermediate value check: {:?}", r);
-
-        r
-    });
+        });
 
     collect_accumulate(iter).map(|vec| vec.into_iter().collect())
 }
@@ -666,7 +688,7 @@ fn do_types(
         let tpe_name = tpe.name.clone();
         let variables = tpe.type_arguments.clone();
 
-        println!("do_types(in:{:?})", tpe);
+        trace!("do_types(in:{:?})", tpe);
 
         // variants are represented as parser::Type::Unqualified. Other types
         // can be safely ignored in this context.
