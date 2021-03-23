@@ -1,7 +1,7 @@
 //! env module
 
 use super::{parser, Pattern};
-use super::{Infix, Interface, ModuleName, Name, QualName, Type, TypeConstructor, UnionType};
+use super::{Infix, Interface, ModuleName, Name, Type, TypeConstructor, UnionType};
 use crate::utils::collect_accumulate;
 use std::collections::HashMap;
 
@@ -20,18 +20,13 @@ pub enum ValueType {
 /// As a whole, the aim of the canonical AST is to not have to worry about the
 /// Environment in later phases. We still need one to translate the parser AST.
 /// The good news being, it can be local to the canonicalization function.
-///
-/// TODO It should expose two APIs: one for qualified names and one for unqualified.
-pub trait Environment<'parent> {
+pub trait Environment<'parent>: std::fmt::Debug {
     fn find_type(&self, name: &Name) -> Option<&Type>;
 
     fn module_name(&self) -> &ModuleName;
 
-    // TODO Here we have the issue that name might be qualified or not, and we need
-    // to be able to find it in both cases. So double indices ?
     fn find_value(&self, name: &Name) -> Option<&ValueType>;
 
-    // TODO Same issue qual/non-qual as above
     fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor>;
 
     fn local_infix_exists(&self, name: &Name) -> bool;
@@ -53,11 +48,8 @@ pub fn new_environment(
         module_name: module_name.clone(),
         infixes: HashMap::new(),
         types: HashMap::new(),
-        qual_types: HashMap::new(),
         constructors: HashMap::new(),
-        qual_constructors: HashMap::new(),
         variables: HashMap::new(),
-        qual_variables: HashMap::new(),
         aliases: HashMap::new(),
     };
     let mut errors = vec![];
@@ -83,9 +75,6 @@ pub fn new_environment(
     }
 }
 
-// TODO Correctly process import with regard to qualified naming
-// eg. explicit import are not qualified, every module is imported
-// as qualified when imported ().
 fn process_import(
     env: &mut RootEnvironment,
     interfaces: &HashMap<Name, Interface>,
@@ -97,20 +86,56 @@ fn process_import(
         .get(&imported_module_name)
         .ok_or_else(|| EnvError::InterfaceNotFound(imported_module_name.clone()))?;
 
+    println!(
+        "process_import(imported_module_name={:?}, alias={:?}, exposing: {:?})",
+        imported_module_name, alias, exposing
+    );
+
+    // First we insert all values/types from the module, prefixed with the module name or its alias
+    let prefix = alias.as_ref().unwrap_or(imported_module_name);
+
+    for (value_name, tpe) in &interface.values {
+        insert_foreign_value(
+            env,
+            value_name.qualify_with_name(prefix).unwrap().to_name(),
+            tpe.clone(),
+            &interface.module_name,
+        );
+    }
+
+    for (union_name, union) in &interface.unions {
+        /*
+        let variants = if let Some(a) = alias {
+            union.variants.iter().map(|tctor| tcor.)
+        }
+        */
+        // TODO Manage aliases. It means replacing the qualified part of the type constructors
+        println!("import_union = {:?} -> {:?}", union_name, union);
+        insert_foreign_union_type(env, union_name, union.variants.iter());
+    }
+
+    // TODO Infix ?
+
+    // Then we insert unqualified values/types
     match exposing {
         parser::Exposing::Open => {
             // We add everything to the current environment
             for (union_name, union) in &interface.unions {
-                insert_foreign_union_type_qual(env, &interface.module_name, union_name, union);
+                let tpe = Type::Type(union_name.clone(), vec![]);
+                env.types.insert(
+                    interface.module_name.qualify_name(union_name).to_name(),
+                    tpe,
+                );
+
+                for variant in &union.variants {
+                    // TODO Does that work ? What does variant.name really contains ?
+                    env.constructors
+                        .insert(variant.name.to_name(), variant.clone());
+                }
             }
 
             for (value_name, tpe) in &interface.values {
-                insert_foreign_value_qual(
-                    env,
-                    value_name.qualify_with_name(imported_module_name).unwrap(),
-                    tpe.clone(),
-                    &interface.module_name,
-                );
+                insert_foreign_value(env, value_name.clone(), tpe.clone(), &interface.module_name);
             }
 
             for (op_name, infix) in &interface.infixes {
@@ -118,6 +143,7 @@ fn process_import(
             }
         }
         parser::Exposing::Explicit(exposeds) => {
+            // We only add the explicitly named types/values/infixes
             let iter = exposeds.iter().map(|exposed| {
                 match exposed {
                     parser::Exposed::Lower(value_name) => {
@@ -126,7 +152,7 @@ fn process_import(
                             .get(&value_name)
                             .ok_or_else(|| EnvError::ValueNotFound(value_name.clone()))?;
 
-                        insert_foreign_value_unqual(
+                        insert_foreign_value(
                             env,
                             value_name.clone(),
                             tpe.clone(),
@@ -150,7 +176,7 @@ fn process_import(
                             .get(&type_name)
                             .ok_or_else(|| EnvError::UnionNotFound(type_name.clone()))?;
 
-                        insert_foreign_union_type_unqual(env, type_name, union);
+                        insert_foreign_union_type(env, type_name, union.variants.iter());
                     }
                     parser::Exposed::Operator(variable_name) => {
                         let infix = interface
@@ -171,12 +197,50 @@ fn process_import(
         }
     };
 
-    if let Some(alias) = alias {
-        env.aliases
-            .insert(alias.clone(), imported_module_name.clone());
-    }
-
     Ok(())
+}
+
+fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
+    env: &mut RootEnvironment,
+    union_name: &Name,
+    variants: I,
+) {
+    let tpe = Type::Type(union_name.clone(), vec![]);
+    env.types.insert(union_name.clone(), tpe);
+
+    for variant in variants {
+        // Variant are really qualified, which means we have to alias them if needed
+        // TODO Also in case of import with public visibility, the type constructor must be exposed without
+        // its qualifier
+        println!("variant.name = {:?}", variant.name);
+        env.constructors
+            .insert(variant.name.to_name(), variant.clone());
+    }
+}
+
+fn insert_foreign_value(
+    env: &mut RootEnvironment,
+    name: Name,
+    tpe: Type,
+    module_name: &ModuleName,
+) {
+    let vt = ValueType::Foreign(module_name.clone(), tpe.clone());
+
+    // Can it be done more efficiently by using get_mut ?
+    match env.variables.remove(&name) {
+        Some(ValueType::Foreign(module, _)) => {
+            env.variables
+                .insert(name, ValueType::Foreigns(vec![module_name.clone(), module]));
+        }
+        Some(ValueType::Foreigns(mut vec)) => {
+            vec.push(module_name.clone());
+            env.variables.insert(name, ValueType::Foreigns(vec));
+        }
+        None => {
+            env.variables.insert(name, vt);
+        }
+        _ => todo!("find out what to do in those cases"),
+    }
 }
 
 #[derive(Debug)]
@@ -193,21 +257,14 @@ pub enum EnvError {
 ///
 /// This is opposed to a ScopedEnvironment which contains
 /// additional information available only to a scoped expression (eg. local variable)
-///
-/// QualName are only used in the RootEnvironment, as they only come from imports.
-/// Non-qualified values are declared both in root and scoped environment (top-level values,
-/// type declaration and local variables).
 #[derive(Debug)]
 pub struct RootEnvironment {
     module_name: ModuleName,
     infixes: HashMap<Name, Infix>,
     types: HashMap<Name, Type>,
-    qual_types: HashMap<QualName, Type>,
     constructors: HashMap<Name, TypeConstructor>,
-    qual_constructors: HashMap<QualName, TypeConstructor>,
     variables: HashMap<Name, ValueType>,
-    qual_variables: HashMap<QualName, ValueType>,
-    aliases: HashMap<Name, Name>,
+    aliases: HashMap<Name, Name>, // TODO Remove if unused
 }
 
 impl RootEnvironment {
@@ -242,29 +299,22 @@ impl<'p> Environment<'p> for RootEnvironment {
         &self.module_name
     }
 
-    // TODO Correctly manage module aliases
     fn find_type(&self, name: &Name) -> Option<&Type> {
-        if let Some(qual) = name.to_qual() {
-            self.qual_types.get(&qual)
-        } else {
-            self.types.get(name)
-        }
+        self.types.get(name)
     }
 
     fn find_value(&self, name: &Name) -> Option<&ValueType> {
-        if let Some(qual) = name.to_qual() {
-            self.qual_variables.get(&qual)
+        // TODO Not a principled change. Will require a bit more thought :)
+        let name = if let Some(infix) = self.infixes.get(name) {
+            &infix.function_name
         } else {
-            self.variables.get(name)
-        }
+            name
+        };
+        self.variables.get(name)
     }
 
     fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor> {
-        if let Some(qual) = name.to_qual() {
-            self.qual_constructors.get(&qual)
-        } else {
-            self.constructors.get(name)
-        }
+        self.constructors.get(name)
     }
 
     fn local_infix_exists(&self, name: &Name) -> bool {
@@ -287,90 +337,11 @@ impl<'p> Environment<'p> for RootEnvironment {
     }
 }
 
-fn insert_foreign_union_type_unqual(
-    env: &mut RootEnvironment,
-    union_name: &Name,
-    union: &UnionType,
-) {
-    let tpe = Type::Type(union_name.clone(), vec![]);
-    env.types.insert(union_name.clone(), tpe);
-
-    for variant in &union.variants {
-        env.constructors
-            .insert(variant.name.to_name(), variant.clone());
-    }
-}
-
-fn insert_foreign_union_type_qual(
-    env: &mut RootEnvironment,
-    module_name: &ModuleName,
-    union_name: &Name,
-    union: &UnionType,
-) {
-    let tpe = Type::Type(union_name.clone(), vec![]);
-    env.qual_types
-        .insert(module_name.qualify_name(union_name), tpe);
-
-    for variant in &union.variants {
-        env.qual_constructors
-            .insert(variant.name.clone(), variant.clone());
-    }
-}
-
-fn insert_foreign_value_unqual(
-    env: &mut RootEnvironment,
-    name: Name,
-    tpe: Type,
-    module_name: &ModuleName,
-) {
-    let vt = ValueType::Foreign(module_name.clone(), tpe.clone());
-
-    // Can it be done more efficiently by using get_mut ?
-    match env.variables.remove(&name) {
-        Some(ValueType::Foreign(module, _)) => {
-            env.variables
-                .insert(name, ValueType::Foreigns(vec![module_name.clone(), module]));
-        }
-        Some(ValueType::Foreigns(mut vec)) => {
-            vec.push(module_name.clone());
-            env.variables.insert(name, ValueType::Foreigns(vec));
-        }
-        None => {
-            env.variables.insert(name, vt);
-        }
-        _ => todo!("find out what to do in those cases"),
-    }
-}
-
-fn insert_foreign_value_qual(
-    env: &mut RootEnvironment,
-    name: QualName,
-    tpe: Type,
-    module_name: &ModuleName,
-) {
-    let vt = ValueType::Foreign(module_name.clone(), tpe.clone());
-
-    // Can it be done more efficiently by using get_mut ?
-    match env.qual_variables.remove(&name) {
-        Some(ValueType::Foreign(module, _)) => {
-            env.qual_variables
-                .insert(name, ValueType::Foreigns(vec![module_name.clone(), module]));
-        }
-        Some(ValueType::Foreigns(mut vec)) => {
-            vec.push(module_name.clone());
-            env.qual_variables.insert(name, ValueType::Foreigns(vec));
-        }
-        None => {
-            env.qual_variables.insert(name, vt);
-        }
-        _ => todo!("find out what to do in those cases"),
-    }
-}
-
 /// An Environment scoped to a module's sub expression (`let`, function, etc…)
+#[derive(Debug)]
 pub struct ScopedEnvironment<'root, 'parent> {
     parent: &'parent dyn Environment<'root>,
-    variables: HashMap<Name, ()>, // TODO Use the content of ValueType::Local once I know what it is
+    variables: HashMap<Name, ValueType>,
 }
 
 impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> {
@@ -382,13 +353,10 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
         &self.parent.module_name()
     }
 
-    // TODO Here we have the issue that name might be qualified or not, and we need
-    // to be able to find it in both cases. So double indices ?
     fn find_value(&self, name: &Name) -> Option<&ValueType> {
-        self.parent.find_value(name)
+        self.variables.get(name).or(self.parent.find_value(name))
     }
 
-    // TODO Same issue qual/non-qual as above
     fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor> {
         self.parent.find_type_constructor(name)
     }
@@ -399,7 +367,7 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
 
     // TODO Return error if name already exists
     fn insert_local_value(&mut self, name: &Name) {
-        self.variables.insert(name.clone(), ());
+        self.variables.insert(name.clone(), ValueType::Local);
     }
 
     fn new_scope<'a>(&'a self) -> ScopedEnvironment<'parent, 'a>
@@ -425,7 +393,7 @@ impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
             Pattern::Bool(_) => (),
 
             Pattern::Variable(n) => {
-                self.variables.insert(n.clone(), ());
+                self.variables.insert(n.clone(), ValueType::Local);
             }
             Pattern::Tuple(a, b, c) => {
                 self.expose_pattern(a);
@@ -516,12 +484,12 @@ mod tests {
                     TypeConstructor {
                         name: "Maybe.Just".into(),
                         type_parameters: vec![Type::Variable("a".into())],
-                        tpe: "Maybe".into(),
+                        tpe: "Maybe.Maybe".into(),
                     },
                     TypeConstructor {
                         name: "Maybe.Nothing".into(),
                         type_parameters: vec![],
-                        tpe: "Maybe".into(),
+                        tpe: "Maybe.Maybe".into(),
                     },
                 ],
             },
@@ -548,7 +516,7 @@ mod tests {
     }
 
     #[test]
-    fn new_qualified_import() -> Result<(), Vec<EnvError>> {
+    fn new_import_open() -> Result<(), Vec<EnvError>> {
         let imports = vec![import("Maybe".into(), None, exposing_open())];
         let mut interfaces = HashMap::new();
         {
@@ -557,21 +525,16 @@ mod tests {
         }
         let env = new_environment(&module_name(), &interfaces, &imports)?;
 
-        assert_eq!(env.infixes.len(), 0, "infixes");
-        assert_eq!(env.types.len(), 0, "types");
-        assert_eq!(env.constructors.len(), 0, "constructors");
-        assert_eq!(env.variables.len(), 0, "variables={:?}", env.variables);
-
-        assert_eq!(env.qual_types.len(), 1, "qual_types");
-        assert_eq!(env.qual_constructors.len(), 2, "qual_constructors");
+        assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
+        assert_eq!(env.types.len(), 1 + 1, "types={:?}", env.types); // qual + explicit
         assert_eq!(
-            env.qual_variables.len(),
-            3,
-            "qual_variables={:?}",
-            env.variables
+            env.constructors.len(),
+            2,
+            "constructors:{:?}",
+            env.constructors
         );
-
-        assert_eq!(env.aliases.len(), 0, "aliases");
+        assert_eq!(env.variables.len(), 3 + 3, "variables={:?}", env.variables); // qual + explicit
+        assert_eq!(env.aliases.len(), 0, "aliases={:?}", env.aliases);
 
         Ok(())
     }
@@ -593,11 +556,21 @@ mod tests {
         }
         let env = new_environment(&module_name(), &interfaces, &imports)?;
 
-        assert_eq!(env.infixes.len(), 0);
-        assert_eq!(env.types.len(), 1);
-        assert_eq!(env.constructors.len(), 0);
-        assert_eq!(env.variables.len(), 1);
-        assert_eq!(env.aliases.len(), 0);
+        assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
+        assert_eq!(env.types.len(), 1 + 1, "types={:?}", env.types); // qual + explicit
+        assert_eq!(
+            env.constructors.len(),
+            2,
+            "constructors:{:?}",
+            env.constructors
+        );
+        assert_eq!(
+            env.variables.len(),
+            3 + 1,
+            "variables={:?}",
+            env.variables.keys()
+        ); // qual + explicit
+        assert_eq!(env.aliases.len(), 0, "aliases={:?}", env.aliases);
 
         Ok(())
     }

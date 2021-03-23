@@ -31,7 +31,7 @@ impl Name {
         Name(format!("{}.{}", s, self.0))
     }
 
-    // TODO Return QualName ?
+    // TODO Remove the Option. qual is non-empty so prefix will have at least len 1
     pub fn qualify_with_name(&self, qual: &Name) -> Option<QualName> {
         QualName::from_strs(&self.0, qual.0.split("."))
     }
@@ -117,6 +117,10 @@ impl QualName {
     }
 
     pub fn unqualified_name(&self) -> Name {
+        Name(self.name.clone())
+    }
+
+    pub fn name(&self) -> Name {
         Name(self.name.clone())
     }
 }

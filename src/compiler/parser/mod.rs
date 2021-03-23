@@ -40,7 +40,6 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
     let indented = layout::layout(tokenizer);
 
     // Parse the tokens into an AST
-    // TODO Should works on reference and not consume the original iterator
     let module = grammar::ModuleParser::new().parse(indented)?;
 
     // And do some early nitpicking
