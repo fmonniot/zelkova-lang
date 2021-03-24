@@ -94,12 +94,13 @@ pub struct UnionType {
 // to the resulting type.
 // Later me: well, that's only true at the type level. The value also need
 // to tag what variant it represent.
+// TODO Do we need QualName here ? Would Name be enough ? 
 #[derive(Debug, Clone)]
 pub struct TypeConstructor {
     /// Constructor name. eg. in `type A = B`, the name is `B`
     name: QualName,
     /// The types of the parameters
-    type_parameters: Vec<Type>, // Rename to parameter_types ?
+    type_parameters: Vec<Type>,
     /// The type's name once constructed
     tpe: QualName,
 }
@@ -498,6 +499,7 @@ pub fn canonicalize(
         let iter = source.functions.iter().map(|function| {
             // Make sure there is no binding
             if !function.bindings.is_empty() {
+                //println!("bindings = {:?} (js module)", function.bindings);
                 Err(Error::BindingPatternsInvalidLen)? // TODO More specific error
             }
 
@@ -589,92 +591,99 @@ fn do_values(
         env.insert_top_level_value(f.name.clone());
     }
 
-    let iter = functions
-        .iter()
-        .map(|function| {
-            // Bindings to expression
+    let iter = functions.iter().map(|function| {
+        // Bindings to expression
 
-            // TODO Better error message with position of mismatch
-            // TODO Error when bindings is empty
-            let bindings_size = function
-                .bindings
-                .iter()
-                .all(|v| v.patterns.len() == function.bindings[0].patterns.len());
+        // TODO Better error message with position of mismatch
+        // TODO Error when bindings is empty
+        let bindings_size = function
+            .bindings
+            .iter()
+            .all(|v| v.patterns.len() == function.bindings[0].patterns.len());
 
-            if !bindings_size {
-                Err(Error::BindingPatternsInvalidLen)?
+        if !bindings_size {
+            //println!("bindings = {:?} (bindings_size)", function.bindings);
+            Err(Error::BindingPatternsInvalidLen)?
+        }
+
+        let (patterns, body): (Vec<Pattern>, Expression) = match function.bindings.len() {
+            0 => Err(Error::NoBindings),
+            1 => {
+                // if one binding, we can convert directly to canonical format
+                let binding = &function.bindings[0];
+
+                let mut scoped = env.new_scope();
+
+                let patterns = binding
+                    .patterns
+                    .iter()
+                    .map(|p| Pattern::from_parser(p, env))
+                    .map(|p| {
+                        scoped.expose_pattern(&p);
+
+                        p
+                    })
+                    .collect();
+
+                // Maybe create a case_branch function and make it common with Expression::Case ?
+                // Or maybe not at the case_branch level, as here we can have multiple patterns
+                // whereas cases cannot.
+                // eg. a: Int -> Int -> Int  ==>  a b c = b + c
+                //println!("Env before transforming expression: {:?}", scoped);
+                let body = Expression::from_parser(&binding.body, &scoped)?;
+
+                Ok((patterns, body))
             }
+            _ => {
+                // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
 
-            let (patterns, body): (Vec<Pattern>, Expression) = match function.bindings.len() {
-                0 => Err(Error::NoBindings),
-                1 => {
-                    // if one binding, we can convert directly to canonical format
-                    let binding = &function.bindings[0];
+                todo!("multiple bindings not implemented")
+            }
+        }?;
 
-                    let mut scoped = env.new_scope();
+        let name = function.name.clone();
 
-                    let patterns = binding
-                        .patterns
-                        .iter()
-                        .map(|p| Pattern::from_parser(p, env))
-                        .map(|p| {
-                            scoped.expose_pattern(&p);
+        match &function.tpe {
+            Some(t) => {
+                let tpe = Type::from_parser_type(env, &t);
+                let linear = Type::to_linear_types(&tpe);
 
-                            p
-                        })
-                        .collect();
-
-                    // Maybe create a case_branch function and make it common with Expression::Case ?
-                    // Or maybe not at the case_branch level, as here we can have multiple patterns
-                    // whereas cases cannot.
-                    // eg. a: Int -> Int -> Int  ==>  a b c = b + c
-                    let body = Expression::from_parser(&binding.body, &scoped)?;
-
-                    Ok((patterns, body))
+                // Linear is a list of types making the function. Because it includes the return type,
+                // it will always be bigger than the number of patterns by one.
+                if !patterns.is_empty() && (linear.len() - 1 != patterns.len()) {
+                    // TODO Better error message
+                    println!(
+                        "linear = {:#?}\nbindings = {:#?} (linear.len ({}) != patterns.len ({}))",
+                        linear,
+                        function.bindings,
+                        linear.len(),
+                        patterns.len()
+                    );
+                    Err(Error::BindingPatternsInvalidLen)?
                 }
-                _ => {
-                    // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
 
-                    todo!("multiple bindings not implemented")
-                }
-            }?;
+                let patterns = patterns.into_iter().zip(linear).collect();
 
-            let name = function.name.clone();
-
-            match &function.tpe {
-                Some(t) => {
-                    let tpe = Type::from_parser_type(env, &t);
-                    let linear = Type::to_linear_types(&tpe);
-
-                    // Linear is a list of types making the function. Because it includes the return type,
-                    // it will always be bigger than the number of patterns by one.
-                    if linear.len() - 1 != patterns.len() {
-                        // TODO Better error message
-                        Err(Error::BindingPatternsInvalidLen)?
-                    }
-
-                    let patterns = patterns.into_iter().zip(linear).collect();
-
-                    Ok((
-                        function.name.clone(),
-                        Value::TypedValue {
-                            name,
-                            patterns,
-                            body,
-                            tpe,
-                        },
-                    ))
-                }
-                None => Ok((
+                Ok((
                     function.name.clone(),
-                    Value::Value {
+                    Value::TypedValue {
                         name,
                         patterns,
                         body,
+                        tpe,
                     },
-                )),
+                ))
             }
-        });
+            None => Ok((
+                function.name.clone(),
+                Value::Value {
+                    name,
+                    patterns,
+                    body,
+                },
+            )),
+        }
+    });
 
     collect_accumulate(iter).map(|vec| vec.into_iter().collect())
 }
