@@ -525,7 +525,7 @@ pub fn canonicalize(
 
             Ok((name, value))
         });
-        let values = crate::utils::collect_acc(iter).unwrap_or_else(|err| {
+        let values = crate::utils::collect_accumulate(iter).unwrap_or_else(|err| {
             errors.extend(err);
             HashMap::new()
         });
@@ -685,7 +685,7 @@ fn do_values(
         }
     });
 
-    collect_accumulate(iter).map(|vec| vec.into_iter().collect())
+    collect_accumulate(iter)
 }
 
 fn do_types(
@@ -733,7 +733,7 @@ fn do_types(
         ))
     });
 
-    collect_accumulate(iter).map(|vec| vec.into_iter().collect())
+    collect_accumulate(iter)
 }
 
 fn do_infixes(
@@ -765,7 +765,7 @@ fn do_infixes(
         }
     });
 
-    collect_accumulate(iter).map(|vec| vec.into_iter().collect())
+    collect_accumulate(iter)
 }
 
 // TODO Add existence checks for values and types
@@ -795,7 +795,7 @@ fn do_exports(
 
             let specifics = collect_accumulate(specifics)?;
 
-            Ok(Exports::Specifics(specifics.into_iter().collect()))
+            Ok(Exports::Specifics(specifics))
         }
     }
 }
