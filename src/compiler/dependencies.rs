@@ -129,7 +129,7 @@ impl<'a> ModuleWalker<'a> {
                     // rewritten to have scoped-fail semantics.
                     let iface_name = m.name.name().clone();
                     let iface = m.to_interface();
-                    debug!("Inserting {} with value {:#?}", iface_name, iface);
+                    debug!("Inserting {} with value {:?}", iface_name, iface);
                     interfaces.insert(iface_name, iface);
 
                     Ok(m)

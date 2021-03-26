@@ -3,6 +3,7 @@
 use super::{parser, Pattern};
 use super::{Infix, Interface, ModuleName, Name, Type, TypeConstructor, UnionType};
 use crate::utils::collect_accumulate;
+use log::trace;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -50,7 +51,6 @@ pub fn new_environment(
         types: HashMap::new(),
         constructors: HashMap::new(),
         variables: HashMap::new(),
-        aliases: HashMap::new(),
     };
     let mut errors = vec![];
 
@@ -86,9 +86,11 @@ fn process_import(
         .get(&imported_module_name)
         .ok_or_else(|| EnvError::InterfaceNotFound(imported_module_name.clone()))?;
 
-    println!(
+    trace!(
         "process_import(imported_module_name={:?}, alias={:?}, exposing: {:?})",
-        imported_module_name, alias, exposing
+        imported_module_name,
+        alias,
+        exposing
     );
 
     // First we insert all values/types from the module, prefixed with the module name or its alias
@@ -104,14 +106,7 @@ fn process_import(
     }
 
     for (union_name, union) in &interface.unions {
-        /*
-        let variants = if let Some(a) = alias {
-            union.variants.iter().map(|tctor| tcor.)
-        }
-        */
-        // TODO Manage aliases. It means replacing the qualified part of the type constructors
-        println!("import_union = {:?} -> {:?}", union_name, union);
-        insert_foreign_union_type(env, union_name, union.variants.iter());
+        insert_foreign_union_type(env, Some(prefix), union_name, union.variants.iter());
     }
 
     // TODO Infix ?
@@ -120,19 +115,6 @@ fn process_import(
     match exposing {
         parser::Exposing::Open => {
             // We add everything to the current environment
-            for (union_name, union) in &interface.unions {
-                let tpe = Type::Type(union_name.clone(), vec![]);
-                env.types.insert(
-                    interface.module_name.qualify_name(union_name).to_name(),
-                    tpe,
-                );
-
-                for variant in &union.variants {
-                    // TODO Does that work ? What does variant.name really contains ?
-                    env.constructors
-                        .insert(variant.name.to_name(), variant.clone());
-                }
-            }
 
             for (value_name, tpe) in &interface.values {
                 insert_foreign_value(env, value_name.clone(), tpe.clone(), &interface.module_name);
@@ -141,7 +123,13 @@ fn process_import(
             for (op_name, infix) in &interface.infixes {
                 env.infixes.insert(op_name.clone(), infix.clone());
             }
+
+            // We need to insert the type without any qualifier, including variants
+            for (union_name, union) in &interface.unions {
+                insert_foreign_union_type(env, None, union_name, union.variants.iter());
+            }
         }
+
         parser::Exposing::Explicit(exposeds) => {
             // We only add the explicitly named types/values/infixes
             let iter = exposeds.iter().map(|exposed| {
@@ -162,13 +150,8 @@ fn process_import(
                     parser::Exposed::Upper(type_name, parser::Privacy::Private) => {
                         let tpe = Type::Type(type_name.clone(), vec![]);
 
-                        env.types.insert(
-                            type_name
-                                .qualify_with_name(imported_module_name)
-                                .unwrap()
-                                .to_name(),
-                            tpe,
-                        );
+                        // Add the type without qualifier and without constructors (they are private)
+                        env.types.insert(type_name.clone(), tpe);
                     }
                     parser::Exposed::Upper(type_name, parser::Privacy::Public) => {
                         let union = interface
@@ -176,7 +159,7 @@ fn process_import(
                             .get(&type_name)
                             .ok_or_else(|| EnvError::UnionNotFound(type_name.clone()))?;
 
-                        insert_foreign_union_type(env, type_name, union.variants.iter());
+                        insert_foreign_union_type(env, None, type_name, union.variants.iter());
                     }
                     parser::Exposed::Operator(variable_name) => {
                         let infix = interface
@@ -202,19 +185,25 @@ fn process_import(
 
 fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
     env: &mut RootEnvironment,
+    qualifier: Option<&Name>,
     union_name: &Name,
     variants: I,
 ) {
-    let tpe = Type::Type(union_name.clone(), vec![]);
-    env.types.insert(union_name.clone(), tpe);
+    // If there is a given qualifier use it, otherwise use the name as is
+    let qualify = |n: &Name| {
+        qualifier
+            .and_then(|q| n.qualify_with_name(q))
+            .map(|q| q.to_name())
+            .unwrap_or(n.clone())
+    };
+
+    env.types
+        .insert(qualify(union_name), Type::Type(union_name.clone(), vec![]));
 
     for variant in variants {
-        // Variant are really qualified, which means we have to alias them if needed
-        // TODO Also in case of import with public visibility, the type constructor must be exposed without
-        // its qualifier
-        println!("variant.name = {:?}", variant.name);
+        // Variant are not qualified, which means we have to alias/qualify them as needed
         env.constructors
-            .insert(variant.name.to_name(), variant.clone());
+            .insert(qualify(&variant.name), variant.clone());
     }
 }
 
@@ -264,7 +253,6 @@ pub struct RootEnvironment {
     types: HashMap<Name, Type>,
     constructors: HashMap<Name, TypeConstructor>,
     variables: HashMap<Name, ValueType>,
-    aliases: HashMap<Name, Name>, // TODO Remove if unused
 }
 
 impl RootEnvironment {
@@ -273,11 +261,13 @@ impl RootEnvironment {
         self.infixes.insert(name, infix);
     }
 
+    // TODO Use insert_foreign_value (and rename to remove the foreign part)
     // TODO Return an error if declaration already exists
     pub fn insert_top_level_value(&mut self, name: Name) {
         self.variables.insert(name, ValueType::TopLevel);
     }
 
+    // TODO Use insert_foreign_union_type (and rename to remove the foreign part)
     pub fn insert_union_type(&mut self, name: Name, union: UnionType) {
         let args = union
             .variables
@@ -288,8 +278,7 @@ impl RootEnvironment {
         self.types.insert(name.clone(), tpe);
 
         for tctor in union.variants {
-            self.constructors
-                .insert(tctor.name.unqualified_name(), tctor.clone());
+            self.constructors.insert(tctor.name.clone(), tctor.clone());
         }
     }
 }
@@ -322,6 +311,7 @@ impl<'p> Environment<'p> for RootEnvironment {
     }
 
     // TODO Return error if name already exists
+    // Use import_foreign_value ?
     fn insert_local_value(&mut self, name: &Name) {
         self.variables.insert(name.clone(), ValueType::Local);
     }
@@ -366,6 +356,7 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
     }
 
     // TODO Return error if name already exists
+    // Needs to reuse the logic in import_foreign_value
     fn insert_local_value(&mut self, name: &Name) {
         self.variables.insert(name.clone(), ValueType::Local);
     }
@@ -411,6 +402,8 @@ impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
     }
 }
 
+// TODO Tests needs some love to make them easier to read. Currently the assert_eq are making it
+// hard to grok what is being verified.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -436,6 +429,7 @@ mod tests {
         parser::Exposing::Explicit(exposeds)
     }
 
+    // module Maybe exposing (andThen, map, withDefault, Maybe(..))
     fn maybe_interface() -> (Name, Interface) {
         let type_var = |name: &str| Type::Variable(name.into());
 
@@ -482,14 +476,14 @@ mod tests {
                 variables: vec![],
                 variants: vec![
                     TypeConstructor {
-                        name: "Maybe.Just".into(),
+                        name: "Just".into(),
                         type_parameters: vec![Type::Variable("a".into())],
-                        tpe: "Maybe.Maybe".into(),
+                        tpe: "Maybe".into(),
                     },
                     TypeConstructor {
-                        name: "Maybe.Nothing".into(),
+                        name: "Nothing".into(),
                         type_parameters: vec![],
-                        tpe: "Maybe.Maybe".into(),
+                        tpe: "Maybe".into(),
                     },
                 ],
             },
@@ -512,7 +506,19 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        new_environment(&module_name(), &interfaces, &vec![]).map(drop)
+        let env = new_environment(&module_name(), &interfaces, &vec![])?;
+
+        assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
+        assert_eq!(env.types.len(), 0, "types={:?}", env.types); // qual + explicit
+        assert_eq!(
+            env.constructors.len(),
+            0,
+            "constructors:{:?}",
+            env.constructors
+        );
+        assert_eq!(env.variables.len(), 0, "variables={:?}", env.variables); // qual + explicit
+
+        Ok(())
     }
 
     #[test]
@@ -525,16 +531,76 @@ mod tests {
         }
         let env = new_environment(&module_name(), &interfaces, &imports)?;
 
+        // Assert we have the expected
+        assert_eq!(
+            env.find_value(&"andThen".into()).is_some(),
+            true,
+            "value andThen not found"
+        );
+        assert_eq!(
+            env.find_value(&"map".into()).is_some(),
+            true,
+            "value map not found"
+        );
+        assert_eq!(
+            env.find_value(&"withDefault".into()).is_some(),
+            true,
+            "value withDefault not found"
+        );
+
+        assert_eq!(
+            env.find_value(&"Maybe.andThen".into()).is_some(),
+            true,
+            "value Maybe.andThen not found"
+        );
+        assert_eq!(
+            env.find_value(&"Maybe.map".into()).is_some(),
+            true,
+            "value Maybe.map not found"
+        );
+        assert_eq!(
+            env.find_value(&"Maybe.withDefault".into()).is_some(),
+            true,
+            "value Maybe.withDefault not found"
+        );
+
+        assert_eq!(
+            env.find_type(&"Maybe".into()).is_some(),
+            true,
+            "type Maybe not found"
+        );
+
+        assert_eq!(
+            env.find_type_constructor(&"Maybe.Just".into()).is_some(),
+            true,
+            "type constructor Maybe.Just not found"
+        );
+        assert_eq!(
+            env.find_type_constructor(&"Maybe.Nothing".into()).is_some(),
+            true,
+            "type constructor Maybe.Nothing not found"
+        );
+        assert_eq!(
+            env.find_type_constructor(&"Just".into()).is_some(),
+            true,
+            "type constructor Just not found"
+        );
+        assert_eq!(
+            env.find_type_constructor(&"Nothing".into()).is_some(),
+            true,
+            "type constructor Nothing not found"
+        );
+
+        // Make sure we don't have more than what is expected
         assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
         assert_eq!(env.types.len(), 1 + 1, "types={:?}", env.types); // qual + explicit
         assert_eq!(
             env.constructors.len(),
-            2,
-            "constructors:{:?}",
+            4,
+            "constructors:{:#?}",
             env.constructors
         );
         assert_eq!(env.variables.len(), 3 + 3, "variables={:?}", env.variables); // qual + explicit
-        assert_eq!(env.aliases.len(), 0, "aliases={:?}", env.aliases);
 
         Ok(())
     }
@@ -556,6 +622,41 @@ mod tests {
         }
         let env = new_environment(&module_name(), &interfaces, &imports)?;
 
+        // Lookup the expected values
+        assert_eq!(
+            env.find_value(&"andThen".into()).is_some(),
+            true,
+            "value andThen not found"
+        );
+
+        assert_eq!(
+            env.find_value(&"Maybe.andThen".into()).is_some(),
+            true,
+            "value Maybe.andThen not found"
+        );
+        assert_eq!(
+            env.find_value(&"Maybe.map".into()).is_some(),
+            true,
+            "value Maybe.map not found"
+        );
+        assert_eq!(
+            env.find_value(&"Maybe.withDefault".into()).is_some(),
+            true,
+            "value Maybe.withDefault not found"
+        );
+
+        assert_eq!(
+            env.find_type(&"Maybe.Maybe".into()).is_some(),
+            true,
+            "type Maybe.Maybe not found"
+        );
+        assert_eq!(
+            env.find_type(&"Maybe".into()).is_some(),
+            true,
+            "type Maybe not found"
+        );
+
+        // Make sure we don't have more than what is expected
         assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
         assert_eq!(env.types.len(), 1 + 1, "types={:?}", env.types); // qual + explicit
         assert_eq!(
@@ -566,11 +667,181 @@ mod tests {
         );
         assert_eq!(
             env.variables.len(),
-            3 + 1,
+            3 + 1, // qual + explicit
+            "variables={:?}",
+            env.variables.keys()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn new_import_type_with_constructors() -> Result<(), Vec<EnvError>> {
+        let imports = vec![import(
+            "Maybe".into(),
+            None,
+            exposing_explicit(vec![parser::Exposed::Upper(
+                "Maybe".into(),
+                parser::Privacy::Public,
+            )]),
+        )];
+        let mut interfaces = HashMap::new();
+        {
+            let (name, iface) = maybe_interface();
+            interfaces.insert(name, iface);
+        }
+        let env = new_environment(&module_name(), &interfaces, &imports)?;
+
+        // Lookup the expected
+        assert_eq!(
+            env.find_value(&"Maybe.andThen".into()).is_some(),
+            true,
+            "value Maybe.andThen not found"
+        );
+        assert_eq!(
+            env.find_value(&"Maybe.map".into()).is_some(),
+            true,
+            "value Maybe.map not found"
+        );
+        assert_eq!(
+            env.find_value(&"Maybe.withDefault".into()).is_some(),
+            true,
+            "value Maybe.withDefault not found"
+        );
+
+        assert_eq!(
+            env.find_type(&"Maybe".into()).is_some(),
+            true,
+            "type Maybe not found"
+        );
+        assert_eq!(
+            env.find_type(&"Maybe.Maybe".into()).is_some(),
+            true,
+            "type Maybe.Maybe not found"
+        );
+
+        assert_eq!(
+            env.find_type_constructor(&"Maybe.Just".into()).is_some(),
+            true,
+            "type constructor Maybe.Just not found"
+        );
+        assert_eq!(
+            env.find_type_constructor(&"Maybe.Nothing".into()).is_some(),
+            true,
+            "type constructor Maybe.Nothing not found"
+        );
+        assert_eq!(
+            env.find_type_constructor(&"Just".into()).is_some(),
+            true,
+            "type constructor Just not found"
+        );
+        assert_eq!(
+            env.find_type_constructor(&"Nothing".into()).is_some(),
+            true,
+            "type constructor Nothing not found"
+        );
+
+        // Make sure we don't have more than what is expected
+        assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
+        assert_eq!(env.types.len(), 2, "types={:?}", env.types); // qual + explicit
+        assert_eq!(
+            env.constructors.len(),
+            4,
+            "constructors:{:?}",
+            env.constructors
+        );
+        assert_eq!(
+            env.variables.len(),
+            3,
             "variables={:?}",
             env.variables.keys()
         ); // qual + explicit
-        assert_eq!(env.aliases.len(), 0, "aliases={:?}", env.aliases);
+
+        Ok(())
+    }
+
+    #[test]
+    fn new_import_type_with_constructors_and_aliases() -> Result<(), Vec<EnvError>> {
+        let imports = vec![import(
+            "Maybe".into(),
+            Some("M".into()),
+            exposing_explicit(vec![parser::Exposed::Upper(
+                "Maybe".into(),
+                parser::Privacy::Public,
+            )]),
+        )];
+        let mut interfaces = HashMap::new();
+        {
+            let (name, iface) = maybe_interface();
+            interfaces.insert(name, iface);
+        }
+        let env = new_environment(&module_name(), &interfaces, &imports)?;
+
+        // Lookup the expected
+        assert_eq!(
+            env.find_value(&"M.andThen".into()).is_some(),
+            true,
+            "value M.andThen not found"
+        );
+        assert_eq!(
+            env.find_value(&"M.map".into()).is_some(),
+            true,
+            "value M.map not found"
+        );
+        assert_eq!(
+            env.find_value(&"M.withDefault".into()).is_some(),
+            true,
+            "value M.withDefault not found"
+        );
+
+        assert_eq!(
+            env.find_type(&"Maybe".into()).is_some(),
+            true,
+            "type Maybe not found"
+        );
+        assert_eq!(
+            env.find_type(&"M.Maybe".into()).is_some(),
+            true,
+            "type M.Maybe not found"
+        );
+
+        assert_eq!(
+            env.find_type_constructor(&"M.Just".into()).is_some(),
+            true,
+            "type constructor M.Just not found"
+        );
+        assert_eq!(
+            env.find_type_constructor(&"M.Nothing".into()).is_some(),
+            true,
+            "type constructor M.Nothing not found"
+        );
+
+        assert_eq!(
+            env.find_type_constructor(&"Just".into()).is_some(),
+            true,
+            "type constructor Just not found"
+        );
+        assert_eq!(
+            env.find_type_constructor(&"Nothing".into()).is_some(),
+            true,
+            "type constructor Nothing not found"
+        );
+
+        // Make sure we don't have more than what is expected
+        assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
+        assert_eq!(env.types.len(), 2, "types={:?}", env.types);
+        assert_eq!(
+            env.constructors.len(),
+            4,
+            "constructors:{:?}",
+            env.constructors
+        );
+        assert_eq!(
+            env.variables.len(),
+            3,
+            "variables={:?}",
+            env.variables.keys()
+        );
 
         Ok(())
     }

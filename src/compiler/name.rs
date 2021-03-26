@@ -119,10 +119,6 @@ impl QualName {
     pub fn unqualified_name(&self) -> Name {
         Name(self.name.clone())
     }
-
-    pub fn name(&self) -> Name {
-        Name(self.name.clone())
-    }
 }
 
 impl From<&'static str> for QualName {
@@ -149,6 +145,19 @@ mod tests {
                 name: "function".into()
             })
         );
+
+        let another_name = name.qualify_with_name(&"Qual".into());
+
+        // TODO Think if that's how we want things to work ?
+        assert_eq!(
+            another_name,
+            Some(QualName {
+                module: vec!["Qual".into()],
+                name: "My.function".into()
+            })
+        );
+
+        assert_eq!(another_name.unwrap().to_name(), "Qual.My.function".into())
     }
 
     #[test]

@@ -250,7 +250,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     let package_name = PackageName::new("zelkova", "core");
     let mut interfaces = std::collections::HashMap::new();
 
-    debug!("phase: Checks modules");
+    debug!("phase: Check modules");
 
     // Step 5: Follow graph and call check_module on each
     let can_mods = walker

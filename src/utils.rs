@@ -12,15 +12,15 @@ where
 {
     let mut errors = vec![];
 
-    let r = iterator.filter_map(|i| {
-        match i {
+    let r = iterator
+        .filter_map(|i| match i {
             Ok(t) => Some(t),
             Err(e) => {
                 errors.push(e);
                 None
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     if errors.is_empty() {
         Ok(r)

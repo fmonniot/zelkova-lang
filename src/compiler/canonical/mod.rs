@@ -94,15 +94,14 @@ pub struct UnionType {
 // to the resulting type.
 // Later me: well, that's only true at the type level. The value also need
 // to tag what variant it represent.
-// TODO Do we need QualName here ? Would Name be enough ? 
 #[derive(Debug, Clone)]
 pub struct TypeConstructor {
     /// Constructor name. eg. in `type A = B`, the name is `B`
-    name: QualName,
+    name: Name,
     /// The types of the parameters
     type_parameters: Vec<Type>,
     /// The type's name once constructed
-    tpe: QualName,
+    tpe: Name,
 }
 
 #[derive(Debug, Clone)]
@@ -325,7 +324,7 @@ impl Expression {
                     .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(&name)))?;
 
                 let tpe = if ctor.type_parameters.is_empty() {
-                    Type::Type(ctor.tpe.unqualified_name(), vec![])
+                    Type::Type(ctor.tpe.clone(), vec![])
                 } else {
                     // TODO Rework that part. ctor.types is only for the type parameters of the constructor, not for the overall type.
                     let mut iter = ctor.type_parameters.iter().rev();
@@ -338,7 +337,7 @@ impl Expression {
                     });
 
                     Type::Arrow(
-                        Box::new(Type::Type(ctor.tpe.unqualified_name(), vec![])),
+                        Box::new(Type::Type(ctor.tpe.clone(), vec![])),
                         Box::new(tpe),
                     )
                 };
@@ -540,7 +539,7 @@ pub fn canonicalize(
                 HashMap::new()
             });
 
-        let types = do_types(&env, &source.types, &name).unwrap_or_else(|err| {
+        let types = do_types(&env, &source.types).unwrap_or_else(|err| {
             errors.extend(err);
             HashMap::new()
         });
@@ -691,7 +690,6 @@ fn do_values(
 fn do_types(
     env: &dyn Environment,
     types: &Vec<parser::UnionType>,
-    module_name: &ModuleName,
 ) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
     let iter = types.iter().map(|tpe| {
         let tpe_name = tpe.name.clone();
@@ -711,12 +709,12 @@ fn do_types(
                         // TODO It might actually make more sense to put Type::from_parser_type
                         // on `Environment`.
                         Some(TypeConstructor {
-                            name: module_name.qualify_name(&name),
+                            name: name.clone(),
                             type_parameters: vars
                                 .iter()
                                 .map(|t| Type::from_parser_type(env, t))
                                 .collect(),
-                            tpe: module_name.qualify_name(&tpe_name),
+                            tpe: tpe_name.clone(),
                         })
                     }
                     _ => None,
