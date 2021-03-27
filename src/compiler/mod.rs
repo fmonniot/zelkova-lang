@@ -82,6 +82,10 @@ impl ModuleName {
     pub fn qualify_name(&self, name: &Name) -> QualName {
         name.qualify_with_name(&self.name).unwrap()
     }
+
+    fn as_human_string(&self) -> String {
+        format!("{}/{}:{}", self.package.author, self.package.project, self.name)
+    }
 }
 
 /// An interface is trim down version of a module.
@@ -260,8 +264,10 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 
             vec![]
         });
-    print_success(format!("checked modules: {:#?}", can_mods));
+    print_success(format!("checked modules: {:#?}", can_mods.iter().map(|m| m.name.as_human_string()).collect::<Vec<_>>()));
 
+    // Step 6
+    // emit interfaces and generate code
     debug!("phase: codegen");
 
     // Step 7

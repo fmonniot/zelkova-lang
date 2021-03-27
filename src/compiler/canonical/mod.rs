@@ -17,7 +17,7 @@ use super::parser;
 use super::Interface;
 use super::{ModuleName, PackageName};
 use crate::utils::collect_accumulate;
-use log::trace;
+use log::{trace, debug};
 use std::collections::HashMap;
 
 mod environment;
@@ -384,9 +384,10 @@ impl Expression {
 
                 let b = branches.iter().map::<Result<CaseBranch, Error>, _>(|cb| {
                     let pattern = Pattern::from_parser(&cb.pattern, env);
-                    let scoped = env.new_scope();
+                    let mut scoped = env.new_scope();
+                    
+                    scoped.expose_pattern(&pattern);
 
-                    // TODO From pattern result, insert required variables into scoped
                     let expression = Expression::from_parser(&cb.expression, &scoped)?;
 
                     Ok(CaseBranch {
@@ -651,7 +652,7 @@ fn do_values(
                 // it will always be bigger than the number of patterns by one.
                 if !patterns.is_empty() && (linear.len() - 1 != patterns.len()) {
                     // TODO Better error message
-                    println!(
+                    debug!(
                         "linear = {:#?}\nbindings = {:#?} (linear.len ({}) != patterns.len ({}))",
                         linear,
                         function.bindings,
