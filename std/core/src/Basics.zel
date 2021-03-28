@@ -60,8 +60,8 @@ things.
 -}
 
 
-import Elm.Kernel.Basics
 import Elm.Kernel.Utils
+import Js.Basics
 
 
 
@@ -167,7 +167,7 @@ design that makes all conversions explicit.
 -}
 add : number -> number -> number
 add =
-  Elm.Kernel.Basics.add
+  Js.Basics.add
 
 
 {-| Subtract numbers like `4 - 3 == 1`.
@@ -176,7 +176,7 @@ See [`(+)`](#+) for docs on the `number` type variable.
 -}
 sub : number -> number -> number
 sub =
-  Elm.Kernel.Basics.sub
+  Js.Basics.sub
 
 
 {-| Multiply numbers like `2 * 3 == 6`.
@@ -185,7 +185,7 @@ See [`(+)`](#+) for docs on the `number` type variable.
 -}
 mul : number -> number -> number
 mul =
-  Elm.Kernel.Basics.mul
+  Js.Basics.mul
 
 
 {-| Floating-point division:
@@ -202,7 +202,7 @@ mul =
 -}
 fdiv : Float -> Float -> Float
 fdiv =
-  Elm.Kernel.Basics.fdiv
+  Js.Basics.fdiv
 
 
 {-| Integer division:
@@ -224,7 +224,7 @@ function.
 -}
 idiv : Int -> Int -> Int
 idiv =
-  Elm.Kernel.Basics.idiv
+  Js.Basics.idiv
 
 
 {-| Exponentiation
@@ -234,7 +234,7 @@ idiv =
 -}
 pow : number -> number -> number
 pow =
-  Elm.Kernel.Basics.pow
+  Js.Basics.pow
 
 
 
@@ -251,7 +251,7 @@ values like this:
 -}
 toFloat : Int -> Float
 toFloat =
-  Elm.Kernel.Basics.toFloat
+  Js.Basics.toFloat
 
 
 {-| Round a number to the nearest integer.
@@ -267,7 +267,7 @@ toFloat =
 -}
 round : Float -> Int
 round =
-  Elm.Kernel.Basics.round
+  Js.Basics.round
 
 
 {-| Floor function, rounding down.
@@ -283,7 +283,7 @@ round =
 -}
 floor : Float -> Int
 floor =
-  Elm.Kernel.Basics.floor
+  Js.Basics.floor
 
 
 {-| Ceiling function, rounding up.
@@ -299,7 +299,7 @@ floor =
 -}
 ceiling : Float -> Int
 ceiling =
-  Elm.Kernel.Basics.ceiling
+  Js.Basics.ceiling
 
 
 {-| Truncate a number, rounding towards zero.
@@ -315,7 +315,7 @@ ceiling =
 -}
 truncate : Float -> Int
 truncate =
-  Elm.Kernel.Basics.truncate
+  Js.Basics.truncate
 
 
 
@@ -451,7 +451,7 @@ type Bool = True | False
 -}
 not : Bool -> Bool
 not =
-  Elm.Kernel.Basics.not
+  Js.Basics.not
 
 
 {-| The logical AND operator. `True` if both inputs are `True`.
@@ -467,7 +467,7 @@ and just return `False` overall.
 -}
 and : Bool -> Bool -> Bool
 and =
-  Elm.Kernel.Basics.and
+  Js.Basics.and
 
 
 {-| The logical OR operator. `True` if one or both inputs are `True`.
@@ -483,7 +483,7 @@ and just return `True` overall.
 -}
 or : Bool -> Bool -> Bool
 or =
-  Elm.Kernel.Basics.or
+  Js.Basics.or
 
 
 {-| The exclusive-or operator. `True` if exactly one input is `True`.
@@ -495,7 +495,7 @@ or =
 -}
 xor : Bool -> Bool -> Bool
 xor =
-  Elm.Kernel.Basics.xor
+  Js.Basics.xor
 
 
 
@@ -538,7 +538,7 @@ information.
 -}
 modBy : Int -> Int -> Int
 modBy =
-  Elm.Kernel.Basics.modBy
+  Js.Basics.modBy
 
 
 {-| Get the remainder after division. Here are bunch of examples of dividing by four:
@@ -554,7 +554,7 @@ information.
 -}
 remainderBy : Int -> Int -> Int
 remainderBy =
-  Elm.Kernel.Basics.remainderBy
+  Js.Basics.remainderBy
 
 
 {-| Negate a number.
@@ -608,7 +608,7 @@ clamp low high number =
 -}
 sqrt : Float -> Float
 sqrt =
-  Elm.Kernel.Basics.sqrt
+  Js.Basics.sqrt
 
 
 {-| Calculate the logarithm of a number with a given base.
@@ -619,15 +619,15 @@ sqrt =
 logBase : Float -> Float -> Float
 logBase base number =
   fdiv
-    (Elm.Kernel.Basics.log number)
-    (Elm.Kernel.Basics.log base)
+    (Js.Basics.log number)
+    (Js.Basics.log base)
 
 
 {-| An approximation of e.
 -}
 e : Float
 e =
-  Elm.Kernel.Basics.e
+  Js.Basics.e
 
 
 
@@ -669,7 +669,7 @@ turns angleInTurns =
 -}
 pi : Float
 pi =
-  Elm.Kernel.Basics.pi
+  Js.Basics.pi
 
 
 {-| Figure out the cosine given an angle in radians.
@@ -682,7 +682,7 @@ pi =
 -}
 cos : Float -> Float
 cos =
-  Elm.Kernel.Basics.cos
+  Js.Basics.cos
 
 
 {-| Figure out the sine given an angle in radians.
@@ -695,7 +695,7 @@ cos =
 -}
 sin : Float -> Float
 sin =
-  Elm.Kernel.Basics.sin
+  Js.Basics.sin
 
 
 {-| Figure out the tangent given an angle in radians.
@@ -707,7 +707,7 @@ sin =
 -}
 tan : Float -> Float
 tan =
-  Elm.Kernel.Basics.tan
+  Js.Basics.tan
 
 
 {-| Figure out the arccosine for `adjacent / hypotenuse` in radians:
@@ -717,7 +717,7 @@ tan =
 -}
 acos : Float -> Float
 acos =
-  Elm.Kernel.Basics.acos
+  Js.Basics.acos
 
 
 {-| Figure out the arcsine for `opposite / hypotenuse` in radians:
@@ -727,7 +727,7 @@ acos =
 -}
 asin : Float -> Float
 asin =
-  Elm.Kernel.Basics.asin
+  Js.Basics.asin
 
 
 {-| This helps you find the angle (in radians) to an `(x,y)` coordinate, but
@@ -750,7 +750,7 @@ for figuring out angles in any sort of visualization, so again, check out
 -}
 atan : Float -> Float
 atan =
-  Elm.Kernel.Basics.atan
+  Js.Basics.atan
 
 
 {-| This helps you find the angle (in radians) to an `(x,y)` coordinate.
@@ -765,7 +765,7 @@ range of angles:
 -}
 atan2 : Float -> Float -> Float
 atan2 =
-  Elm.Kernel.Basics.atan2
+  Js.Basics.atan2
 
 
 
@@ -810,7 +810,7 @@ numbers](https://en.wikipedia.org/wiki/NaN).
 -}
 isNaN : Float -> Bool
 isNaN =
-  Elm.Kernel.Basics.isNaN
+  Js.Basics.isNotANumber
 
 
 {-| Determine whether a float is positive or negative infinity.
@@ -825,7 +825,7 @@ Notice that NaN is not infinite! For float `n` to be finite implies that
 -}
 isInfinite : Float -> Bool
 isInfinite =
-  Elm.Kernel.Basics.isInfinite
+  Js.Basics.isInfinite
 
 
 

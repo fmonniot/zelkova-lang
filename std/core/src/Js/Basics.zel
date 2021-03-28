@@ -1,0 +1,52 @@
+module javascript Js.Basics exposing
+  ( add, sub, mul, fdiv, idiv, pow
+  , toFloat, round, floor, ceiling, truncate
+  , not, and, or, xor
+  , modBy, remainderBy, sqrt, log, e
+  , pi, cos, sin, tan, acos, asin, atan, atan2
+  , isNotANumber, isInfinite
+  )
+
+{-| Interop module between Zelkova and Javascript.
+
+A `Basics.mjs` file should be defined next to this file. It
+will contains the actual implementation of this module.
+
+-}
+
+
+add : number -> number -> number
+sub : number -> number -> number
+mul : number -> number -> number
+fdiv : Float -> Float -> Float
+idiv : Int -> Int -> Int
+pow : number -> number -> number
+
+toFloat : Int -> Float
+round : Float -> Int
+floor : Float -> Int
+ceiling : Float -> Int
+truncate : Float -> Int
+
+not : Bool -> Bool
+and : Bool -> Bool -> Bool
+or : Bool -> Bool -> Bool
+xor : Bool -> Bool -> Bool
+
+modBy : Int -> Int -> Int
+remainderBy : Int -> Int -> Int
+sqrt : Float -> Float
+log : Float -> Float
+e : Float
+
+pi : Float
+cos : Float -> Float
+sin : Float -> Float
+tan : Float -> Float
+acos : Float -> Float
+asin : Float -> Float
+atan : Float -> Float
+atan2 : Float -> Float -> Float
+
+isNotANumber : Float -> Bool
+isInfinite : Float -> Bool
