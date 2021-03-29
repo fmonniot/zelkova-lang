@@ -17,7 +17,7 @@ use super::parser;
 use super::Interface;
 use super::{ModuleName, PackageName};
 use crate::utils::collect_accumulate;
-use log::{trace, debug};
+use log::{debug, trace};
 use std::collections::HashMap;
 
 mod environment;
@@ -385,7 +385,7 @@ impl Expression {
                 let b = branches.iter().map::<Result<CaseBranch, Error>, _>(|cb| {
                     let pattern = Pattern::from_parser(&cb.pattern, env);
                     let mut scoped = env.new_scope();
-                    
+
                     scoped.expose_pattern(&pattern);
 
                     let expression = Expression::from_parser(&cb.expression, &scoped)?;

@@ -84,7 +84,10 @@ impl ModuleName {
     }
 
     fn as_human_string(&self) -> String {
-        format!("{}/{}:{}", self.package.author, self.package.project, self.name)
+        format!(
+            "{}/{}:{}",
+            self.package.author, self.package.project, self.name
+        )
     }
 }
 
@@ -97,6 +100,7 @@ impl ModuleName {
 ///
 /// All `Interface` indices are using non-qualified names. To get the qualified
 /// version, simply use `I.module_name.qualify_name(&name)`.
+// TODO Union types will need a way to reflect that some type constructor are private
 #[derive(Debug)]
 pub struct Interface {
     module_name: ModuleName,
@@ -264,7 +268,13 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 
             vec![]
         });
-    print_success(format!("checked modules: {:#?}", can_mods.iter().map(|m| m.name.as_human_string()).collect::<Vec<_>>()));
+    print_success(format!(
+        "checked modules: {:#?}",
+        can_mods
+            .iter()
+            .map(|m| m.name.as_human_string())
+            .collect::<Vec<_>>()
+    ));
 
     // Step 6
     // emit interfaces and generate code
