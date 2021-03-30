@@ -60,8 +60,8 @@ things.
 -}
 
 
-import Elm.Kernel.Utils
 import Js.Basics
+import Js.Utils
 
 
 
@@ -347,7 +347,7 @@ possible.
 -}
 eq : a -> a -> Bool
 eq =
-  Elm.Kernel.Utils.equal
+  Js.Utils.equal
 
 
 {-| Check if values are not &ldquo;the same&rdquo;.
@@ -356,7 +356,7 @@ So `(a /= b)` is the same as `(not (a == b))`.
 -}
 neq : a -> a -> Bool
 neq =
-  Elm.Kernel.Utils.notEqual
+  Js.Utils.notEqual
 
 
 
@@ -366,25 +366,25 @@ neq =
 {-|-}
 lt : comparable -> comparable -> Bool
 lt =
-  Elm.Kernel.Utils.lt
+  Js.Utils.lt
 
 
 {-|-}
 gt : comparable -> comparable -> Bool
 gt =
-  Elm.Kernel.Utils.gt
+  Js.Utils.gt
 
 
 {-|-}
 le : comparable -> comparable -> Bool
 le =
-  Elm.Kernel.Utils.le
+  Js.Utils.le
 
 
 {-|-}
 ge : comparable -> comparable -> Bool
 ge =
-  Elm.Kernel.Utils.ge
+  Js.Utils.ge
 
 
 {-| Find the smaller of two comparables.
@@ -416,8 +416,13 @@ are also the only values that work as `Dict` keys or `Set` members.
     compare 5 4 == GT
 -}
 compare : comparable -> comparable -> Order
-compare =
-  Elm.Kernel.Utils.compare
+compare a b =
+  EQ
+-- TODO Uncomment that one as soon as we have let expression in the parser
+--  let
+--    n = Js.Utils.compare a b
+--  in
+--  if n < 0 then LT else (if n == 0 then EQ else GT)
 
 
 {-| Represents the relative ordering of two things.
@@ -509,7 +514,7 @@ xor =
 -}
 append : appendable -> appendable -> appendable
 append =
-  Elm.Kernel.Utils.append
+  Js.Utils.append
 
 
 

@@ -1,0 +1,23 @@
+module javascript Js.Utils exposing
+  ( equal, notEqual
+  , lt, le, gt, ge, compare, append
+  )
+
+{-| Interop module between Zelkova and Javascript.
+
+A `Utils.mjs` file should be defined next to this file. It
+will contains the actual implementation of this module.
+
+-}
+
+
+equal : a -> a -> Bool
+notEqual : a -> a -> Bool
+
+lt: comparable -> comparable -> Bool
+le: comparable -> comparable -> Bool
+gt: comparable -> comparable -> Bool
+ge: comparable -> comparable -> Bool
+compare: comparable -> comparable -> Int
+
+append : appendable -> appendable -> appendable
