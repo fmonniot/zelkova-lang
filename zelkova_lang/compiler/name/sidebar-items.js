@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Name","new type over identifier names"],["QualName","Qualified name"]]});

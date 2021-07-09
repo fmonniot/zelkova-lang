@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["spanned",""]],"struct":[["BytePos","The raw byte index."],["Position",""],["Span","A `Span` represents a section of the original source code"],["Spanned","A value `T` enriched with its starting and ending position in the source code"]]});

@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["SourceFileErrorType",""]],"struct":[["SourceFile",""],["SourceFileError",""],["SourceFileId",""],["SourceFiles","A file database that can store multiple source files."]]});

@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["zelkova_lang"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/ops/arith/trait.Add.html\" title=\"trait core::ops::arith::Add\">Add</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/nightly/std/primitive.u32.html\">u32</a>&gt; for <a class=\"struct\" href=\"zelkova_lang/compiler/position/struct.BytePos.html\" title=\"struct zelkova_lang::compiler::position::BytePos\">BytePos</a>","synthetic":false,"types":["zelkova_lang::compiler::position::BytePos"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

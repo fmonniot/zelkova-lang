@@ -1,0 +1,52 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="This module contains the type checker pass of the language"><meta name="keywords" content="rust, rustlang, rust-lang, typer"><title>zelkova_lang::compiler::typer - Rust</title><link rel="stylesheet" type="text/css" href="../../../normalize.css"><link rel="stylesheet" type="text/css" href="../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../../ayu.css" disabled ><script id="default-settings"></script><script src="../../../storage.js"></script><script src="../../../crates.js"></script><noscript><link rel="stylesheet" href="../../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../../favicon.svg">
+<link rel="alternate icon" type="image/png" href="../../../favicon-16x16.png">
+<link rel="alternate icon" type="image/png" href="../../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../../down-arrow.svg");}</style></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../../zelkova_lang/index.html'><div class='logo-container rust-logo'><img src='../../../rust-logo.png' alt='logo'></div></a><p class="location">Module typer</p><div class="sidebar-elems"><div class="block items"><ul><li><a href="#structs">Structs</a></li><li><a href="#enums">Enums</a></li><li><a href="#functions">Functions</a></li></ul></div><p class="location"><a href="../../index.html">zelkova_lang</a>::<wbr><a href="../index.html">compiler</a></p><div id="sidebar-vars" data-name="typer" data-ty="mod" data-relpath="../"></div><script defer src="../sidebar-items.js"></script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../../brush.svg" width="18" height="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
+                <a id="settings-menu" href="../../../settings.html"><img src="../../../wheel.svg" width="18" height="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><h1 class="fqn"><span class="in-band">Module <a href="../../index.html">zelkova_lang</a>::<wbr><a href="../index.html">compiler</a>::<wbr><a class="mod" href="">typer</a><button id="copy-path" onclick="copy_path(this)">⎘</button></span><span class="out-of-band"><span id="render-detail"><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class="inner">&#x2212;</span>]</a></span><a class="srclink" href="../../../src/zelkova_lang/compiler/typer/mod.rs.html#1-546" title="goto source code">[src]</a></span></h1><div class="docblock"><p>This module contains the type checker pass of the language</p>
+<p>It works with the source AST and will perform two jobs:</p>
+<ul>
+<li>type checks the different declarations and expression</li>
+<li>infer the types when not declared in the source</li>
+</ul>
+<p>I have no idea how that works; so bear with me while I explore
+the space, make mistake and (hopefully) learn something :)</p>
+<p>Some papers on type inference:</p>
+<ul>
+<li>http://steshaw.org/hm/hindley-milner.pdf</li>
+<li>https://pdfs.semanticscholar.org/8983/233b3dff2c5b94efb31235f62bddc22dc899.pdf</li>
+<li>http://gallium.inria.fr/~fpottier/publis/fpottier-elaboration.pdf</li>
+<li>http://gallium.inria.fr/~fpottier/publis/emlti-final.pdf</li>
+</ul>
+<p>A type inference problem consists of a type environment Γ , an expression t, and a type T of kind ?</p>
+<p>Constraint generation rules:</p>
+<ul>
+<li>
+<p>Equation 1: ⟦x : T⟧ = x ≼ T
+“x has type T if and only if T is an instance of the type scheme associated with x”
+Important part: There is no relation to the typing environment Γ, instead x appears free (and will be bound to Γ later)</p>
+</li>
+<li>
+<p>Equation 2: ⟦λz.t : T⟧ = ∃X1X2.(let z : X1 in ⟦t : X2⟧ ∧ X1 → X2 ≤ T)
+“λz.t has type T if and only if, for some X1 and X2,
+(i) under the assumption that z has type X1, t has type X2, and
+(ii) T is a supertype of X1 → X2.”
+z and t types must be fresh (can’t generally guess them). They are <em>existentially</em> bound because we are going to
+solve their values. Note that z is <em>not</em> fresh in the condition (i).</p>
+</li>
+<li>
+<p>Equation 3: ⟦t1 t2 : T⟧ = ∃X2.(⟦t1 : X2 → T⟧ ∧ ⟦t2 : X2⟧)
+“t1 t2 has type T if and only if, for some X2, t1 has type X2 → T and t2 has type X2”</p>
+</li>
+<li>
+<p>Equation 4: ⟦let z = t1 in t2 : T⟧ = let z : ∀X[⟦t1 : X⟧].X in ⟦t2 : T⟧
+“let z = t1 in t2 has type T if and only if, under the assumption that z has every type X such that ⟦t1 : X⟧ holds, t2 has type T”</p>
+</li>
+</ul>
+</div><h2 id="structs" class="section-header"><a href="#structs">Structs</a></h2>
+<table><tr class="module-item"><td><a class="struct" href="struct.TypeVariable.html" title="zelkova_lang::compiler::typer::TypeVariable struct">TypeVariable</a></td><td class="docblock-short"></td></tr></table><h2 id="enums" class="section-header"><a href="#enums">Enums</a></h2>
+<table><tr class="module-item"><td><a class="enum" href="enum.Error.html" title="zelkova_lang::compiler::typer::Error enum">Error</a></td><td class="docblock-short"></td></tr><tr class="module-item"><td><a class="enum" href="enum.Term.html" title="zelkova_lang::compiler::typer::Term enum">Term</a></td><td class="docblock-short"><p>untyped term. In zelkova that would be the parsed source (or canonical, not sure yet)</p>
+</td></tr><tr class="module-item"><td><a class="enum" href="enum.Type.html" title="zelkova_lang::compiler::typer::Type enum">Type</a></td><td class="docblock-short"></td></tr><tr class="module-item"><td><a class="enum" href="enum.TypeLiteral.html" title="zelkova_lang::compiler::typer::TypeLiteral enum">TypeLiteral</a></td><td class="docblock-short"></td></tr></table><h2 id="functions" class="section-header"><a href="#functions">Functions</a></h2>
+<table><tr class="module-item"><td><a class="fn" href="fn.infer.html" title="zelkova_lang::compiler::typer::infer fn">infer</a></td><td class="docblock-short"><p>infer the type of the given term given known function defined in the outer scopes.
+This is a translation of the algorithm demonstrated by
+<a href="https://www.youtube.com/watch?v=oPVTNxiMcSU">Ionut Gan at I T.A.K.E Unconference 2015</a></p>
+</td></tr><tr class="module-item"><td><a class="fn" href="fn.type_check.html" title="zelkova_lang::compiler::typer::type_check fn">type_check</a></td><td class="docblock-short"></td></tr></table></section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../../../" data-current-crate="zelkova_lang" data-search-index-js="../../../search-index.js" data-search-js="../../../search.js"></div>
+    <script src="../../../main.js"></script></body></html>

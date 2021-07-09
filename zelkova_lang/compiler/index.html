@@ -1,0 +1,49 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="The Zelkova compiler"><meta name="keywords" content="rust, rustlang, rust-lang, compiler"><title>zelkova_lang::compiler - Rust</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings"></script><script src="../../storage.js"></script><script src="../../crates.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg">
+<link rel="alternate icon" type="image/png" href="../../favicon-16x16.png">
+<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../zelkova_lang/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a><p class="location">Module compiler</p><div class="sidebar-elems"><div class="block items"><ul><li><a href="#modules">Modules</a></li><li><a href="#structs">Structs</a></li><li><a href="#enums">Enums</a></li><li><a href="#functions">Functions</a></li></ul></div><p class="location"><a href="../index.html">zelkova_lang</a></p><div id="sidebar-vars" data-name="compiler" data-ty="mod" data-relpath="../"></div><script defer src="../sidebar-items.js"></script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" height="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
+                <a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" height="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><h1 class="fqn"><span class="in-band">Module <a href="../index.html">zelkova_lang</a>::<wbr><a class="mod" href="">compiler</a><button id="copy-path" onclick="copy_path(this)">⎘</button></span><span class="out-of-band"><span id="render-detail"><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class="inner">&#x2212;</span>]</a></span><a class="srclink" href="../../src/zelkova_lang/compiler/mod.rs.html#1-319" title="goto source code">[src]</a></span></h1><div class="docblock"><p>The Zelkova compiler</p>
+<h1 id="how-to-compile-a-package-" class="section-header"><a href="#how-to-compile-a-package-">How to compile a package ?</a></h1>
+<p>Note: We don’t manage interfaces and external modules. We try to keep them
+in mind, so they can be relatively easily added later on.</p>
+<ol>
+<li>Start at the src/ folder. We name it root. (later on defined in a <code>zelkova.json</code> manifest)</li>
+<li>Collect all <code>*.zelkova</code> files with their path name relatives to the root.</li>
+<li>Create a <code>SourceFiles</code> mapping from <code>ModuleName</code> to <code>parser::Module</code>.
+<ol>
+<li>module names are deduced from file name</li>
+<li>parsing is done through <code>parser::parse</code></li>
+<li>Verify that <code>parser::Module.name</code> match the one from the file system</li>
+</ol>
+</li>
+<li>Build a dependency graphs from the modules import
+<ol>
+<li>build it</li>
+<li>Verify there is no cyclic relation between modules</li>
+</ol>
+</li>
+<li>Following the deps graph,
+<ol>
+<li>canonicalize each modules</li>
+<li>check each module (type check, exhaustiveness, etc…)</li>
+<li>Bonus point to parallelize the tree branches which are not dependent on each others</li>
+</ol>
+</li>
+<li>Once we have a module with all checks passing, create its interface and emit AST/interface</li>
+<li>TODO Try a way to weave error management in each of those passes :)</li>
+</ol>
+</div><h2 id="modules" class="section-header"><a href="#modules">Modules</a></h2>
+<table><tr class="module-item"><td><a class="mod" href="canonical/index.html" title="zelkova_lang::compiler::canonical mod">canonical</a></td><td class="docblock-short"><p>The canonical representation of a zelkova programs is a translation of a local
+source into the broader world.</p>
+</td></tr><tr class="module-item"><td><a class="mod" href="name/index.html" title="zelkova_lang::compiler::name mod">name</a></td><td class="docblock-short"><p>Home to the <code>Name</code> and <code>QualName</code> primitives</p>
+</td></tr><tr class="module-item"><td><a class="mod" href="parser/index.html" title="zelkova_lang::compiler::parser mod">parser</a></td><td class="docblock-short"><p>This module contains all the data types representing the source
+of our language.</p>
+</td></tr><tr class="module-item"><td><a class="mod" href="position/index.html" title="zelkova_lang::compiler::position mod">position</a></td><td class="docblock-short"></td></tr><tr class="module-item"><td><a class="mod" href="source/index.html" title="zelkova_lang::compiler::source mod">source</a></td><td class="docblock-short"></td></tr><tr class="module-item"><td><a class="mod" href="typer/index.html" title="zelkova_lang::compiler::typer mod">typer</a></td><td class="docblock-short"><p>This module contains the type checker pass of the language</p>
+</td></tr></table><h2 id="structs" class="section-header"><a href="#structs">Structs</a></h2>
+<table><tr class="module-item"><td><a class="struct" href="struct.Interface.html" title="zelkova_lang::compiler::Interface struct">Interface</a></td><td class="docblock-short"><p>An interface is trim down version of a module.</p>
+</td></tr><tr class="module-item"><td><a class="struct" href="struct.ModuleName.html" title="zelkova_lang::compiler::ModuleName struct">ModuleName</a></td><td class="docblock-short"><p>A module name represent</p>
+</td></tr><tr class="module-item"><td><a class="struct" href="struct.PackageName.html" title="zelkova_lang::compiler::PackageName struct">PackageName</a></td><td class="docblock-short"><p>A package name is composed of an author and project name and is written as <code>author/project</code>.</p>
+</td></tr></table><h2 id="enums" class="section-header"><a href="#enums">Enums</a></h2>
+<table><tr class="module-item"><td><a class="enum" href="enum.CompilationError.html" title="zelkova_lang::compiler::CompilationError enum">CompilationError</a></td><td class="docblock-short"></td></tr></table><h2 id="functions" class="section-header"><a href="#functions">Functions</a></h2>
+<table><tr class="module-item"><td><a class="fn" href="fn.check_module.html" title="zelkova_lang::compiler::check_module fn">check_module</a></td><td class="docblock-short"><p>Take a parsed module file within the ecosystem and apply all checks to it</p>
+</td></tr><tr class="module-item"><td><a class="fn" href="fn.compile_package.html" title="zelkova_lang::compiler::compile_package fn">compile_package</a></td><td class="docblock-short"></td></tr></table></section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="zelkova_lang" data-search-index-js="../../search-index.js" data-search-js="../../search.js"></div>
+    <script src="../../main.js"></script></body></html>
