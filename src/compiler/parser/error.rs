@@ -121,7 +121,7 @@ impl From<ParseError<BytePos, Token, Error>> for Error {
     fn from(e: ParseError<BytePos, Token, Error>) -> Self {
         match e {
             ParseError::InvalidToken { location } => Error::InvalidToken(location),
-            ParseError::UnrecognizedEOF { location, expected } => Error::UnexpectedEOF {
+            ParseError::UnrecognizedEof { location, expected } => Error::UnexpectedEOF {
                 position: location,
                 expected: unquote_tokens(expected),
             },
