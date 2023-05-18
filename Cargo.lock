@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "aho-corasick"
-version = "0.7.13"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "043164d8ba5c4c3035fec9bbee8647c0261d788f3474306f93bb65901cae0e86"
+checksum = "67fc08ce920c31afb70f013dcce1bfc3a3195de6a228474e45e1f145b36f8d04"
 dependencies = [
  "memchr",
 ]
@@ -272,7 +272,7 @@ dependencies = [
  "petgraph",
  "pico-args",
  "regex",
- "regex-syntax",
+ "regex-syntax 0.6.18",
  "string_cache",
  "term",
  "tiny-keccak",
@@ -329,21 +329,15 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 
 [[package]]
 name = "memchr"
-version = "2.3.3"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3728d817d99e5ac407411fa471ff9800a778d88a24685968b36824eaf4bee400"
+checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
 name = "new_debug_unreachable"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
-
-[[package]]
-name = "once_cell"
-version = "1.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
 
 [[package]]
 name = "petgraph"
@@ -397,14 +391,13 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.3.9"
+version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c3780fcf44b193bc4d09f36d2a3c87b251da4a046c87795a0d35f4f927ad8e6"
+checksum = "af83e617f331cc6ae2da5443c602dfa5af81e517212d9d611a5b3ba1777b5370"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-syntax",
- "thread_local",
+ "regex-syntax 0.7.1",
 ]
 
 [[package]]
@@ -412,6 +405,12 @@ name = "regex-syntax"
 version = "0.6.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26412eb97c6b088a6997e05f69403a802a92d520de2f8e63c2b65f9e0f47c4e8"
+
+[[package]]
+name = "regex-syntax"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5996294f19bd3aae0453a862ad728f60e6600695733dd5df01da90c54363a3c"
 
 [[package]]
 name = "rustix"
@@ -485,15 +484,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bab24d30b911b2376f3a13cc2cd443142f0c81dda04c118693e35b3835757755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "thread_local"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5516c27b78311c50bf42c071425c560ac799b11c30b31f87e3081965fe5e0180"
-dependencies = [
- "once_cell",
 ]
 
 [[package]]
