@@ -7,28 +7,15 @@ on:
     - main
 
 name: Continuous integration
+
 jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - uses: actions/cache@v2
-        with:
-          path: |
-            target
-            /usr/share/rust/.cargo/bin/
-            /usr/share/rust/.cargo/registry/index/
-            /usr/share/rust/.cargo/registry/cache/
-            /usr/share/rust/.cargo/git/db/
-          key: ${{ runner.OS }}-test-suite-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.OS }}-test-suite-
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: actions-rs/cargo@v1
         with:
           command: test
@@ -38,42 +25,24 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@v1
+          lfs: true
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          command: fmt
-          args: --all -- --check
+          components: rustfmt
+      - run: cargo fmt --all --check
 
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add clippy
-      - uses: actions/cache@v2
-        with:
-          path: |
-            target
-            /usr/share/rust/.cargo/bin/
-            /usr/share/rust/.cargo/registry/index/
-            /usr/share/rust/.cargo/registry/cache/
-            /usr/share/rust/.cargo/git/db/
-          key: ${{ runner.OS }}-clippy-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.OS }}-clippy-
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
       - uses: actions-rs/clippy-check@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features
