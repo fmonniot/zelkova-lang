@@ -18,8 +18,8 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rust-src
+      with:
+        components: rust-src
 
     - name: Build Documentation
       run: cargo doc --all --no-deps
