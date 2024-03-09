@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-lalrpop = "0.20.1"
+lalrpop = "0.20.2"
 
 [dependencies]
 log = "0.4"
