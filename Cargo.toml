@@ -15,7 +15,7 @@ codespan-reporting = "0.11"
 env_logger = "0.11"
 unic-ucd-category = "0.9"
 lalrpop-util = "0.20.2"
-walkdir = "2.4"
+walkdir = "2.5"
 petgraph = "0.6"
 
 [dev-dependencies]
