@@ -262,7 +262,7 @@ dependencies = [
  "bit-set",
  "ena",
  "itertools",
- "lalrpop-util 0.22.0",
+ "lalrpop-util",
  "petgraph",
  "pico-args",
  "regex",
@@ -272,15 +272,6 @@ dependencies = [
  "term",
  "unicode-xid",
  "walkdir",
-]
-
-[[package]]
-name = "lalrpop-util"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "108dc8f5dabad92c65a03523055577d847f5dcc00f3e7d3a68bc4d48e01d8fe1"
-dependencies = [
- "regex-automata",
 ]
 
 [[package]]
@@ -650,7 +641,7 @@ dependencies = [
  "env_logger",
  "indoc",
  "lalrpop",
- "lalrpop-util 0.21.0",
+ "lalrpop-util",
  "log",
  "petgraph",
  "unic-ucd-category",
