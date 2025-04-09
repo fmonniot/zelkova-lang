@@ -25,13 +25,12 @@
 
 use codespan_reporting::diagnostic::Diagnostic;
 use codespan_reporting::term::termcolor::WriteColor;
-use codespan_reporting::term::termcolor::{Color, ColorSpec, StandardStream};
-use codespan_reporting::term::{self, ColorArg};
+use codespan_reporting::term::termcolor::{Color, ColorChoice, ColorSpec, StandardStream};
+use codespan_reporting::term::{self};
 use log::debug;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
-use std::str::FromStr;
 
 pub mod canonical;
 mod dependencies;
@@ -199,7 +198,7 @@ impl From<Vec<SourceFileError>> for CompilationError {
 // (eg. something akin to elm.json or package.json)
 pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     // Error reporter
-    let mut writer = StandardStream::stderr(ColorArg::from_str("auto").unwrap().into());
+    let mut writer = StandardStream::stderr(ColorChoice::Auto);
     let config = codespan_reporting::term::Config {
         tab_width: 2,
         ..codespan_reporting::term::Config::default()

@@ -12,9 +12,8 @@ macro_rules! test_parse_ok {
         #[test]
         fn $test_name() {
             use codespan_reporting::files::SimpleFile;
-            use codespan_reporting::term::termcolor::StandardStream;
-            use codespan_reporting::term::{self, ColorArg};
-            use std::str::FromStr;
+            use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+            use codespan_reporting::term::{self};
             use zelkova_lang::compiler::parser;
 
             let test_name = stringify!($test_name);
@@ -28,7 +27,7 @@ macro_rules! test_parse_ok {
             match e {
                 Ok(expr) => assert_eq!(expr, $expected),
                 Err(err) => {
-                    let writer = StandardStream::stderr(ColorArg::from_str("auto").unwrap().into());
+                    let writer = StandardStream::stderr(ColorChoice::Auto);
                     let config = codespan_reporting::term::Config {
                         tab_width: 2,
                         ..codespan_reporting::term::Config::default()
