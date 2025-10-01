@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Associativity","Declaration","Exposed","Exposing","Expression","Literal","Pattern","Privacy","Type"],"fn":["parse"],"mod":["error","layout","tokenizer"],"struct":["CaseBranch","FunBinding","FunType","Function","Import","Infix","Match","Module","UnionType"]};
