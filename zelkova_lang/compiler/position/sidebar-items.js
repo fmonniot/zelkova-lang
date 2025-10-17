@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["spanned"],"struct":["BytePos","Position","Span","Spanned"]};
