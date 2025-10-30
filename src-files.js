@@ -1,0 +1,2 @@
+createSrcSidebar('[["zelkova_lang",["",[["compiler",[["canonical",[],["environment.rs","mod.rs"]],["parser",[],["error.rs","layout.rs","mod.rs","tokenizer.rs"]],["source",[],["files.rs","mod.rs"]],["typer",[],["annotate.rs","constraint.rs","mod.rs","unifier.rs"]]],["dependencies.rs","exhaustiveness.rs","mod.rs","name.rs","position.rs"]]],["lib.rs","utils.rs"]]]]');
+//{"start":19,"fragment_lengths":[344]}
