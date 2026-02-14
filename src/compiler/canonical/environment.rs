@@ -176,7 +176,7 @@ fn process_import(
                 Ok(())
             });
 
-            collect_accumulate(iter).map_err(EnvError::Multiple)?;
+            collect_accumulate::<_, _, _, ()>(iter).map_err(EnvError::Multiple)?;
         }
     };
 
