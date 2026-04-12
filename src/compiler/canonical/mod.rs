@@ -77,15 +77,15 @@ pub enum ExportType {
 
 #[derive(Debug, Clone)]
 pub struct Infix {
-    associativity: Associativity,
-    precedence: u8,
-    function_name: Name,
+    pub associativity: Associativity,
+    pub precedence: u8,
+    pub function_name: Name,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnionType {
-    variables: Vec<Name>,
-    variants: Vec<TypeConstructor>,
+    pub variables: Vec<Name>,
+    pub variants: Vec<TypeConstructor>,
 }
 
 // TODO Once we have most of the pipeline built, revisit the decision of
@@ -97,11 +97,11 @@ pub struct UnionType {
 #[derive(Debug, Clone)]
 pub struct TypeConstructor {
     /// Constructor name. eg. in `type A = B`, the name is `B`
-    name: Name,
+    pub name: Name,
     /// The types of the parameters
-    type_parameters: Vec<Type>,
+    pub type_parameters: Vec<Type>,
     /// The type's name once constructed
-    tpe: Name,
+    pub tpe: Name,
 }
 
 #[derive(Debug, Clone)]
