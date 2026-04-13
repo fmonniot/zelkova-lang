@@ -23,8 +23,8 @@
 //!
 //! - Equation 2: ⟦λz.t : T⟧ = ∃X1X2.(let z : X1 in ⟦t : X2⟧ ∧ X1 → X2 ≤ T)
 //!   "λz.t has type T if and only if, for some X1 and X2,
-//!     (i) under the assumption that z has type X1, t has type X2, and
-//!     (ii) T is a supertype of X1 → X2."
+//!   (i) under the assumption that z has type X1, t has type X2, and
+//!   (ii) T is a supertype of X1 → X2."
 //!   z and t types must be fresh (can't generally guess them). They are _existentially_ bound because we are going to
 //!   solve their values. Note that z is _not_ fresh in the condition (i).
 //!
@@ -119,7 +119,7 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
     }
 
     // Third pass: check each value
-    for (_, value) in &module.values {
+    for value in module.values.values() {
         let Some((term, annotation)) =
             value_to_term_and_annotation(value, &module.types, &mut counter)
         else {

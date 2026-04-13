@@ -42,7 +42,7 @@ impl Name {
     }
 
     pub fn to_qual(&self) -> Option<QualName> {
-        QualName::from_str(&self.0)
+        QualName::parse(&self.0)
     }
 }
 
@@ -77,7 +77,7 @@ pub struct QualName {
 }
 
 impl QualName {
-    pub fn from_str<S: Into<String>>(s: S) -> Option<QualName> {
+    pub fn parse<S: Into<String>>(s: S) -> Option<QualName> {
         let name = s.into();
         let mut segments: Vec<_> = name.split(".").map(String::from).collect();
 
@@ -109,7 +109,7 @@ impl QualName {
 
     // TODO Write tests
     pub fn to_name(&self) -> Name {
-        if self.module.len() > 0 {
+        if !self.module.is_empty() {
             Name(format!("{}.{}", self.module.join("."), self.name))
         } else {
             Name(self.name.clone())
@@ -123,10 +123,12 @@ impl QualName {
 
 impl From<&'static str> for QualName {
     fn from(n: &str) -> Self {
-        QualName::from_str(n).expect(&format!(
-            "From conversion should only be used with qualified name ('{}' used)",
-            &n
-        ))
+        QualName::parse(n).unwrap_or_else(|| {
+            panic!(
+                "From conversion should only be used with qualified name ('{}' used)",
+                n
+            )
+        })
     }
 }
 
@@ -162,10 +164,10 @@ mod tests {
 
     #[test]
     fn qual_name_from_str() {
-        assert_eq!(QualName::from_str("Int"), None);
+        assert_eq!(QualName::parse("Int"), None);
 
         assert_eq!(
-            QualName::from_str("Basics.Int"),
+            QualName::parse("Basics.Int"),
             Some(QualName {
                 module: vec!["Basics".into()],
                 name: "Int".into()
@@ -173,7 +175,7 @@ mod tests {
         );
 
         assert_eq!(
-            QualName::from_str("My.App.Module.function"),
+            QualName::parse("My.App.Module.function"),
             Some(QualName {
                 module: vec!["My".into(), "App".into(), "Module".into(),],
                 name: "function".into()

@@ -73,7 +73,7 @@ pub enum Type {
 
 impl Type {
     pub fn unqualified(name: Name) -> Type {
-        Type::Unqualified(name, Box::new(vec![]))
+        Type::Unqualified(name, Box::default())
     }
 
     pub fn unqualified_with(name: Name, types: Vec<Type>) -> Type {
@@ -118,10 +118,7 @@ impl Module {
         exposing: Exposing,
         declarations: Vec<Declaration>,
     ) -> Module {
-        let binding_javascript = match modifier {
-            Some(tokenizer::Token::Javascript) => true,
-            _ => false,
-        };
+        let binding_javascript = matches!(modifier, Some(tokenizer::Token::Javascript));
 
         let mut imports = vec![];
         let mut types = vec![];
@@ -132,7 +129,7 @@ impl Module {
             match declaration {
                 Declaration::Function(FunBinding { ref name, .. })
                 | Declaration::FunctionType(FunType { ref name, .. }) => {
-                    match functions.get_mut(&name) {
+                    match functions.get_mut(name) {
                         Some(decls) => decls.push(declaration),
                         None => {
                             functions.insert(name.clone(), vec![declaration]);

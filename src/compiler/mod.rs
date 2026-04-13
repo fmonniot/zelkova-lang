@@ -125,7 +125,7 @@ pub enum CompilationError {
     PlaceHolder,
 }
 
-impl<'a> CompilationError {
+impl CompilationError {
     fn as_diagnostic(&self) -> Diagnostic<SourceFileId> {
         match self {
             CompilationError::Source(err, file_id) => err.diagnostic(*file_id),
@@ -217,7 +217,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 
     // Step 2 and 3.a
     debug!("phase: load package sources");
-    let sources = source::load_package_sources(&package_path)?;
+    let sources = source::load_package_sources(package_path)?;
 
     // Further steps will produces errors. We aggregates them here and will report them at
     // the end of the compilation phase.

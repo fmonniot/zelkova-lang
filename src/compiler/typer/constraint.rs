@@ -21,7 +21,7 @@ pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
             constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Float)));
         }
         TypedTerm::Fun { tpe, param, body } => {
-            constraints.extend(collect(&body));
+            constraints.extend(collect(body));
 
             let param_tpe = Box::new(param.tpe.clone());
             let return_tpe = Box::new(body.tpe().clone());

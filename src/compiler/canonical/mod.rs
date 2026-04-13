@@ -124,12 +124,12 @@ impl Type {
     fn from_parser_type(env: &dyn Environment, tpe: &parser::Type) -> Type {
         match tpe {
             parser::Type::Unqualified(name, vars) => {
-                match env.find_type(&name) {
+                match env.find_type(name) {
                     Some(t) => t.clone(),
                     None => {
                         let types = vars
                             .iter()
-                            .map(|t| Type::from_parser_type(env, &t))
+                            .map(|t| Type::from_parser_type(env, t))
                             .collect();
 
                         // TODO Insert back into Environment ?
@@ -145,7 +145,7 @@ impl Type {
             parser::Type::Tuple(t1, t_many) => {
                 let (t2, t3) = match t_many.len() {
                     0 => panic!("Tuple of length 1 is not suported by the parser"),
-                    1 | 2 => (t_many.get(0).unwrap().clone(), t_many.get(1).clone()),
+                    1 | 2 => (t_many.first().unwrap().clone(), t_many.get(1)),
                     _ => panic!("For now we restrict tuple to sizes 2 and 3"),
                 };
 
@@ -218,13 +218,13 @@ impl Pattern {
             parser::Pattern::Tuple(a, b, c) => Pattern::Tuple(
                 Box::new(Pattern::from_parser(a, env)),
                 Box::new(Pattern::from_parser(b, env)),
-                c.get(0).map(|p| Pattern::from_parser(p, env)).map(Box::new),
+                c.first().map(|p| Pattern::from_parser(p, env)).map(Box::new),
             ),
             parser::Pattern::Constructor(name, args) => {
                 // TODO Return Result instead
                 let ctor = env
-                    .find_type_constructor(&name)
-                    .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(&name)))
+                    .find_type_constructor(name)
+                    .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(name)))
                     .unwrap()
                     .clone();
 
@@ -306,12 +306,12 @@ impl Expression {
             parser::Expression::Lit(parser::Literal::Bool(b)) => Ok(Expression::Bool(*b)),
             parser::Expression::Variable(name) => {
                 match env
-                    .find_value(&name)
-                    .ok_or_else(|| Error::VariableNotFound(env.module_name().qualify_name(&name)))?
+                    .find_value(name)
+                    .ok_or_else(|| Error::VariableNotFound(env.module_name().qualify_name(name)))?
                 {
                     ValueType::Local => Ok(Expression::VarLocal(name.clone())),
                     ValueType::TopLevel => Ok(Expression::VarTopLevel(
-                        env.module_name().qualify_name(&name),
+                        env.module_name().qualify_name(name),
                     )),
                     ValueType::Foreign(m, tpe) => {
                         Ok(Expression::VarForeign(m.qualify_name(name), tpe.clone()))
@@ -323,8 +323,8 @@ impl Expression {
             }
             parser::Expression::TypeConstructor(name) => {
                 let ctor = env
-                    .find_type_constructor(&name)
-                    .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(&name)))?;
+                    .find_type_constructor(name)
+                    .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(name)))?;
 
                 let tpe = if ctor.type_parameters.is_empty() {
                     Type::Type(ctor.tpe.clone(), vec![])
@@ -347,7 +347,7 @@ impl Expression {
 
                 let name = name
                     .to_qual()
-                    .unwrap_or_else(|| env.module_name().qualify_name(&name));
+                    .unwrap_or_else(|| env.module_name().qualify_name(name));
 
                 Ok(Expression::VarConstructor(name, tpe))
             }
@@ -472,7 +472,7 @@ pub fn canonicalize(
 
     let mut errors: Vec<Error> = vec![];
     let mut env =
-        new_environment(&name, &interfaces, &source.imports).map_err(|e| vec![e.into()])?;
+        new_environment(&name, interfaces, &source.imports).map_err(|e| vec![e.into()])?;
 
     let (infixes, types, values) = if source.binding_javascript {
         // Javascript modules run a parallel canonicalization process as the constraints are a bit different:
@@ -587,7 +587,7 @@ pub fn canonicalize(
 
 fn do_values(
     env: &mut RootEnvironment,
-    functions: &Vec<parser::Function>,
+    functions: &[parser::Function],
 ) -> Result<HashMap<Name, Value>, Vec<Error>> {
     // Before resolving expressions, we store the top-level values in the environment.
     // We do so first because their expression below could refer to them.
@@ -622,10 +622,8 @@ fn do_values(
                     .patterns
                     .iter()
                     .map(|p| Pattern::from_parser(p, env))
-                    .map(|p| {
-                        scoped.expose_pattern(&p);
-
-                        p
+                    .inspect(|p| {
+                        scoped.expose_pattern(p);
                     })
                     .collect();
 
@@ -649,7 +647,7 @@ fn do_values(
 
         match &function.tpe {
             Some(t) => {
-                let tpe = Type::from_parser_type(env, &t);
+                let tpe = Type::from_parser_type(env, t);
                 let linear = Type::to_linear_types(&tpe);
 
                 // Linear is a list of types making the function. Because it includes the return type,
@@ -694,7 +692,7 @@ fn do_values(
 
 fn do_types(
     env: &dyn Environment,
-    types: &Vec<parser::UnionType>,
+    types: &[parser::UnionType],
 ) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
     let iter = types.iter().map(|tpe| {
         let tpe_name = tpe.name.clone();
@@ -740,9 +738,9 @@ fn do_types(
 }
 
 fn do_infixes(
-    infixes: &Vec<parser::Infix>,
+    infixes: &[parser::Infix],
     env: &mut RootEnvironment,
-    functions: &Vec<parser::Function>,
+    functions: &[parser::Function],
 ) -> Result<HashMap<Name, Infix>, Vec<Error>> {
     let iter = infixes.iter().map(|infix| {
         let op_name = infix.operator.clone();
@@ -779,7 +777,7 @@ fn do_exports(
     match source_exposing {
         parser::Exposing::Open => Ok(Exports::Everything),
         parser::Exposing::Explicit(exposed) => {
-            let specifics = exposed.into_iter().map(|exposed| match exposed {
+            let specifics = exposed.iter().map(|exposed| match exposed {
                 parser::Exposed::Lower(name) => Ok((name.clone(), ExportType::Value)),
                 parser::Exposed::Upper(name, parser::Privacy::Public) => {
                     Ok((name.clone(), ExportType::UnionPublic))
@@ -788,7 +786,7 @@ fn do_exports(
                     Ok((name.clone(), ExportType::UnionPrivate))
                 }
                 parser::Exposed::Operator(name) => {
-                    if env.local_infix_exists(&name) {
+                    if env.local_infix_exists(name) {
                         Ok((name.clone(), ExportType::Infix))
                     } else {
                         Err(Error::ExportNotFound(name.clone(), ExportType::Infix))

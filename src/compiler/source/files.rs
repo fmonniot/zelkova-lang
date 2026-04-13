@@ -116,7 +116,13 @@ pub struct SourceFiles {
     files: Vec<SourceFile>,
 }
 
-impl<'a> SourceFiles {
+impl Default for SourceFiles {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SourceFiles {
     /// Create a new files database.
     pub fn new() -> SourceFiles {
         SourceFiles { files: Vec::new() }
