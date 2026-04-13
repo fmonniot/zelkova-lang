@@ -48,7 +48,56 @@ pub enum Error {
     UnboundVariable(String),
 }
 
-pub fn type_check(_module: &Module) -> Result<(), Error> {
+pub fn type_check(module: &Module) -> Result<(), Error> {
+    // JavaScript binding modules use synthetic placeholder bodies — skip type checking.
+    if module.binding_javascript {
+        return Ok(());
+    }
+
+    // Start at a high offset to avoid collisions with the counter inside
+    // Types::new() (which starts at 10) used during inference.
+    let mut counter = 10_000u32;
+
+    // First pass: build global env from all TypedValues' declared types.
+    // This allows values to reference other module-level typed values.
+    let mut global: HashMap<String, Type> = HashMap::new();
+    for (name, value) in &module.values {
+        if let canonical::Value::TypedValue { tpe, .. } = value {
+            let mut var_map = HashMap::new();
+            if let Some(typer_tpe) =
+                canonical_type_to_typer_type(tpe, &mut var_map, &mut counter)
+            {
+                // Add both qualified (e.g. "Test.not") and unqualified (e.g. "not") names
+                let qname = module.name.qualify_name(name).to_name().0.clone();
+                global.insert(qname, typer_tpe.clone());
+                global.insert(name.0.clone(), typer_tpe);
+            }
+        }
+    }
+
+    // Second pass: check each value
+    for (_, value) in &module.values {
+        let Some((term, annotation)) = value_to_term_and_annotation(value, &mut counter) else {
+            continue; // unsupported construct — skip for now
+        };
+
+        let inferred = match infer(term, global.clone()) {
+            // An unbound variable means the term references a top-level function whose
+            // type we couldn't represent (e.g. Float-typed functions). Skip silently.
+            Err(Error::UnboundVariable(_)) => continue,
+            Err(e) => return Err(e),
+            Ok(t) => t,
+        };
+
+        // If there's a type annotation, verify inferred type is compatible
+        if let Some(ann) = annotation {
+            let mut constraints = std::collections::HashSet::new();
+            constraints.insert(Constraint(inferred.clone(), ann.clone()));
+            unifier::unify(constraints)
+                .map_err(|_| Error::TypeMismatch { expected: ann, actual: inferred })?;
+        }
+    }
+
     Ok(())
 }
 

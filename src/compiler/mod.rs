@@ -172,7 +172,7 @@ impl<'a> CompilationError {
 
 impl From<typer::Error> for CompilationError {
     fn from(_err: typer::Error) -> Self {
-        todo!()
+        CompilationError::PlaceHolder
     }
 }
 
