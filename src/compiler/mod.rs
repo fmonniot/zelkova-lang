@@ -281,7 +281,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 
     // Step 7
     for err in diagnostics {
-        term::emit(&mut writer.lock(), &config, &sources, &err).unwrap();
+        term::emit_to_write_style(&mut writer.lock(), &config, &sources, &err).unwrap();
     }
 
     Ok(())

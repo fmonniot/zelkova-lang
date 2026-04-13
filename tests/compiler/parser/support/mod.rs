@@ -33,7 +33,7 @@ macro_rules! test_parse_ok {
                         ..codespan_reporting::term::Config::default()
                     };
 
-                    term::emit(&mut writer.lock(), &config, &file, &err.diagnostic(())).unwrap();
+                    term::emit_to_write_style(&mut writer.lock(), &config, &file, &err.diagnostic(())).unwrap();
                     assert_eq!(None, Some(err), "{} should not produce an error", test_name);
                 }
             }
