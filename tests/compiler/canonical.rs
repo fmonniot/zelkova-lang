@@ -120,11 +120,17 @@ fn union_type_definition_and_constructor() {
 
     // ── Union type structure ────────────────────────────────────────────────
     let color = module.types.get(&"Color".into()).unwrap();
-    assert_eq!(color.variables, Vec::<zelkova_lang::compiler::name::Name>::new());
+    assert_eq!(
+        color.variables,
+        Vec::<zelkova_lang::compiler::name::Name>::new()
+    );
     assert_eq!(color.variants.len(), 3);
 
     let variant_names: Vec<_> = color.variants.iter().map(|v| v.name.clone()).collect();
-    assert_eq!(variant_names, vec!["Red".into(), "Green".into(), "Blue".into()]);
+    assert_eq!(
+        variant_names,
+        vec!["Red".into(), "Green".into(), "Blue".into()]
+    );
 
     for v in &color.variants {
         assert_eq!(v.type_parameters, vec![], "Color variants take no params");
@@ -172,11 +178,17 @@ fn case_expression_local_maybe() {
     // `Maybe a` in the env after do_types:
     //   insert_union_type inserts Type::Type("Maybe", [Variable("a")])
     //   Type::from_parser_type finds it and returns it verbatim.
-    let maybe_a = canonical::Type::Type("Maybe".into(), vec![canonical::Type::Variable("a".into())]);
+    let maybe_a =
+        canonical::Type::Type("Maybe".into(), vec![canonical::Type::Variable("a".into())]);
 
     let value = module.values.get(&"isJust".into()).unwrap();
     let (patterns, body) = match value {
-        canonical::Value::TypedValue { patterns, body, tpe, .. } => {
+        canonical::Value::TypedValue {
+            patterns,
+            body,
+            tpe,
+            ..
+        } => {
             assert_eq!(
                 tpe,
                 &canonical::Type::Arrow(Box::new(maybe_a.clone()), Box::new(maybe_a.clone()))
@@ -189,7 +201,10 @@ fn case_expression_local_maybe() {
     // Single pattern `maybe` bound to the first arrow arm
     assert_eq!(
         patterns,
-        &vec![(canonical::Pattern::Variable("maybe".into()), maybe_a.clone())]
+        &vec![(
+            canonical::Pattern::Variable("maybe".into()),
+            maybe_a.clone()
+        )]
     );
 
     // Body is a case expression on VarLocal("maybe")
@@ -235,7 +250,10 @@ fn case_expression_local_maybe() {
     );
     // Expression is VarConstructor("Test.Nothing", _)
     assert!(
-        matches!(&branches[1].expression, canonical::Expression::VarConstructor(_, _)),
+        matches!(
+            &branches[1].expression,
+            canonical::Expression::VarConstructor(_, _)
+        ),
         "Nothing branch expression should be VarConstructor, got {:?}",
         branches[1].expression
     );
@@ -332,8 +350,7 @@ fn module_using_imported_maybe() {
             Just x -> Just x
             Nothing -> Nothing
     "#};
-    let module = canonicalize_with_interfaces(source, &interfaces)
-        .expect("should canonicalize");
+    let module = canonicalize_with_interfaces(source, &interfaces).expect("should canonicalize");
 
     // The imported `Maybe` interface stores the type as `Type::Type("Maybe", [])`
     // (insert_foreign_union_type uses an empty param list).  The annotation
@@ -343,7 +360,12 @@ fn module_using_imported_maybe() {
 
     let value = module.values.get(&"safeHead".into()).unwrap();
     let (patterns, body) = match value {
-        canonical::Value::TypedValue { patterns, body, tpe, .. } => {
+        canonical::Value::TypedValue {
+            patterns,
+            body,
+            tpe,
+            ..
+        } => {
             assert_eq!(
                 tpe,
                 &canonical::Type::Arrow(Box::new(maybe_t.clone()), Box::new(maybe_t.clone()))

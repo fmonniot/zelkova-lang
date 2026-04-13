@@ -127,8 +127,7 @@ fn check_module_interface_can_be_used_by_dependent() {
         wrap x = Some x
     "#};
     let parsed_a = parse_source(source_a);
-    let module_a = check_module(&pkg, &interfaces, &parsed_a)
-        .expect("Lib should compile");
+    let module_a = check_module(&pkg, &interfaces, &parsed_a).expect("Lib should compile");
     interfaces.insert(module_a.name.name().clone(), module_a.to_interface());
 
     // Second module: imports and uses Lib
@@ -204,7 +203,10 @@ fn stdlib_basics_chain_compiles() {
     let parsed_basics = parse_file(&basics_path);
     let basics_module = check_module(&pkg, &interfaces, &parsed_basics)
         .unwrap_or_else(|e| panic!("Basics.zel failed: {:?}", e));
-    interfaces.insert(basics_module.name.name().clone(), basics_module.to_interface());
+    interfaces.insert(
+        basics_module.name.name().clone(),
+        basics_module.to_interface(),
+    );
 
     // Maybe depends on Basics
     let maybe_path = src.join("Maybe.zel");
@@ -215,7 +217,10 @@ fn stdlib_basics_chain_compiles() {
     let parsed_maybe = parse_file(&maybe_path);
     let maybe_module = check_module(&pkg, &interfaces, &parsed_maybe)
         .unwrap_or_else(|e| panic!("Maybe.zel failed: {:?}", e));
-    interfaces.insert(maybe_module.name.name().clone(), maybe_module.to_interface());
+    interfaces.insert(
+        maybe_module.name.name().clone(),
+        maybe_module.to_interface(),
+    );
 
     // Result depends on Basics and Maybe
     let result_path = src.join("Result.zel");
@@ -226,7 +231,10 @@ fn stdlib_basics_chain_compiles() {
     let parsed_result = parse_file(&result_path);
     let result_module = check_module(&pkg, &interfaces, &parsed_result)
         .unwrap_or_else(|e| panic!("Result.zel failed: {:?}", e));
-    interfaces.insert(result_module.name.name().clone(), result_module.to_interface());
+    interfaces.insert(
+        result_module.name.name().clone(),
+        result_module.to_interface(),
+    );
 
     // At this point we've successfully compiled the core stdlib chain.
     // Verify Basics, Maybe, and Result are all in the interface map.

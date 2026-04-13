@@ -25,7 +25,9 @@ mod support;
 
 use support::*;
 
-fn run(source: &str) -> Result<zelkova_lang::compiler::canonical::Module, zelkova_lang::compiler::CompilationError> {
+fn run(
+    source: &str,
+) -> Result<zelkova_lang::compiler::canonical::Module, zelkova_lang::compiler::CompilationError> {
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
     check_module(&test_package(), &interfaces, &parsed)
@@ -86,7 +88,10 @@ fn type_mismatch_annotation_vs_body() {
         bad : Int -> Int
         bad x = true
     "#};
-    assert!(run(source).is_err(), "Int -> Int with Bool body should fail");
+    assert!(
+        run(source).is_err(),
+        "Int -> Int with Bool body should fail"
+    );
 }
 
 // ── Unbound variable ──────────────────────────────────────────────────────────
@@ -172,7 +177,10 @@ fn if_expression_types() {
         max : Int -> Int -> Int
         max a b = if true then a else b
     "#};
-    assert!(run(source).is_ok(), "if/then/else with matching types should type-check");
+    assert!(
+        run(source).is_ok(),
+        "if/then/else with matching types should type-check"
+    );
 }
 
 /// `if` with non-Bool condition should fail.
@@ -184,8 +192,5 @@ fn if_non_bool_condition() {
         bad : Int
         bad = if 42 then 1 else 2
     "#};
-    assert!(
-        run(source).is_err(),
-        "if condition must be Bool, not Int"
-    );
+    assert!(run(source).is_err(), "if condition must be Bool, not Int");
 }

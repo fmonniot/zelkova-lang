@@ -16,9 +16,7 @@ pub fn parse_source(source: &str) -> parser::Module {
     parser::parse(&file).expect("parse should succeed")
 }
 
-pub fn canonicalize_standalone(
-    source: &str,
-) -> Result<canonical::Module, Vec<canonical::Error>> {
+pub fn canonicalize_standalone(source: &str) -> Result<canonical::Module, Vec<canonical::Error>> {
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
     canonical::canonicalize(&test_package(), &interfaces, &parsed)
@@ -37,8 +35,7 @@ pub fn canonicalize_with_interfaces(
 pub fn maybe_interface() -> (Name, Interface) {
     let type_var = |name: &str| canonical::Type::Variable(name.into());
     let type_hk = |name: &str, params| canonical::Type::Type(name.into(), params);
-    let type_fun =
-        |t1, t2| canonical::Type::Arrow(Box::new(t1), Box::new(t2));
+    let type_fun = |t1, t2| canonical::Type::Arrow(Box::new(t1), Box::new(t2));
 
     let mut values = HashMap::new();
     // andThen : (a -> Maybe b) -> Maybe a -> Maybe b
@@ -93,10 +90,7 @@ pub fn maybe_interface() -> (Name, Interface) {
     );
 
     let interface = Interface {
-        module_name: ModuleName::new(
-            PackageName::new("zelkova", "core"),
-            "Maybe".into(),
-        ),
+        module_name: ModuleName::new(PackageName::new("zelkova", "core"), "Maybe".into()),
         values,
         unions,
         infixes: HashMap::new(),
