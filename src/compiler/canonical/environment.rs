@@ -32,6 +32,7 @@ pub trait Environment<'parent>: std::fmt::Debug {
 
     fn local_infix_exists(&self, name: &Name) -> bool;
 
+    #[allow(dead_code)]
     fn insert_local_value(&mut self, name: &Name);
 
     // 'parent must lives at least as long as 'a

@@ -25,7 +25,7 @@ pub use error::Error;
 use std::collections::HashMap;
 
 lalrpop_mod!(
-    #[allow(clippy::all)]
+    #[allow(clippy::all, non_fmt_panics)]
     grammar,
     "/compiler/parser/grammar.rs"
 );

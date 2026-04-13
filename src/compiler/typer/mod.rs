@@ -412,7 +412,7 @@ mod unifier;
 
 /// Simplified pattern used inside the typer's Term.
 #[derive(Debug, Clone)]
-pub(super) enum TermPattern {
+pub enum TermPattern {
     /// Matches anything without binding.
     Anything,
     /// Binds the scrutinee type to this name.
@@ -533,6 +533,7 @@ impl TypeBinder {
 /// Like a [Term] but with an associated [Type].
 /// Any term introducing a name will have a TypeBinder instead.
 #[derive(Debug)]
+#[allow(dead_code)]
 enum TypedTerm {
     Int {
         tpe: Type,

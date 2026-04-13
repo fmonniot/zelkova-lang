@@ -48,7 +48,7 @@ pub enum Error {
 }
 
 impl<'a> ModuleWalker<'a> {
-    pub fn new(modules: &'a Vec<Module>) -> Result<ModuleWalker, Error> {
+    pub fn new(modules: &'a Vec<Module>) -> Result<ModuleWalker<'a>, Error> {
         let mut graph = DiGraph::new();
 
         let mut names = HashMap::new();

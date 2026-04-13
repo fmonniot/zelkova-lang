@@ -8,7 +8,9 @@ pub struct SourceFileId(usize);
 // This should probably implements `Files` directly instead of relying on SimpleFile
 #[derive(Debug)] // TODO Implement Debug manually (don't want to embedded the entire source code)
 pub struct SourceFile {
+    #[allow(dead_code)]
     module_name: String,
+    #[allow(dead_code)]
     relative_path: PathBuf,
     /// `Files` implementation with the name being the relative path within the package
     file: SimpleFile<String, String>,
