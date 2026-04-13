@@ -4,7 +4,7 @@
 //! - type checks the different declarations and expression
 //! - infer the types when not declared in the source
 //!
-//! I have no idea how that works; so bear with me while I explore
+//! I have no idea how that works; so bear with me while I explore
 //! the space, make mistake and (hopefully) learn something :)
 //!
 //! Some papers on type inference:
@@ -39,7 +39,13 @@ use super::canonical::Module;
 use log::debug;
 use std::collections::HashMap;
 
-pub enum Error {}
+#[derive(Debug)]
+pub enum Error {
+    TypeMismatch { expected: Type, actual: Type },
+    UnificationFailed { left: Type, right: Type },
+    CircularType,
+    UnboundVariable(String),
+}
 
 pub fn type_check(_module: &Module) -> Result<(), Error> {
     Ok(())
@@ -145,7 +151,7 @@ enum TypedTerm {
         tpe: Type,
         value: bool,
     },
-    // TODO Do I want to keep this name ? Or named Variable ? Something else ?
+    // TODO Do I want to keep this name ? Or named Variable ? Something else ?
     Identifier {
         tpe: Type,
         name: String,
@@ -298,19 +304,19 @@ impl Types {
 /// infer the type of the given term given known function defined in the outer scopes.
 /// This is a translation of the algorithm demonstrated by
 /// [Ionut Gan at I T.A.K.E Unconference 2015](https://www.youtube.com/watch?v=oPVTNxiMcSU)
-pub fn infer(term: Term, global: HashMap<String, Type>) -> Type {
+pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, Error> {
     let mut env = Types::new();
     env.extends_with(global);
 
-    let typed_term = annotate::annotate(term, &mut env);
+    let typed_term = annotate::annotate(term, &mut env)?;
     debug!("typed term: {:#?}", typed_term);
 
     let constraints = constraint::collect(&typed_term);
     debug!("Constraints: {:#?}", constraints);
 
-    let substitution = unifier::unify(constraints);
+    let substitution = unifier::unify(constraints)?;
 
-    substitution.apply_type(typed_term.tpe())
+    Ok(substitution.apply_type(typed_term.tpe()))
 }
 
 // TODO Once we have changed the Term to the zelkova primitives, rewrite the tests
@@ -423,7 +429,7 @@ mod tests {
     fn infer_identity_function() {
         let global = HashMap::new();
         let term = fun("a", var("a"));
-        let infered = infer(term, global);
+        let infered = infer(term, global).unwrap();
 
         assert_eq!(Signature::of_type(infered), "a -> a".to_owned());
     }
@@ -432,7 +438,7 @@ mod tests {
     fn infer_const_function() {
         let global = HashMap::new();
         let term = fun("a", fun("b", var("a")));
-        let infered = infer(term, global);
+        let infered = infer(term, global).unwrap();
 
         assert_eq!(Signature::of_type(infered), "a -> b -> a".to_owned());
     }
@@ -445,7 +451,7 @@ mod tests {
             "f",
             fun("g", fun("x", apply(var("f"), apply(var("g"), var("x"))))),
         );
-        let infered = infer(term, global);
+        let infered = infer(term, global).unwrap();
 
         assert_eq!(
             Signature::of_type(infered),
@@ -457,7 +463,7 @@ mod tests {
     fn infer_pred_function() {
         let global = HashMap::new();
         let term = fun("pred", if_(apply(var("pred"), int(1)), int(2), int(3)));
-        let infered = infer(term, global);
+        let infered = infer(term, global).unwrap();
 
         assert_eq!(
             Signature::of_type(infered),
@@ -484,7 +490,7 @@ mod tests {
             fun("a", apply(apply(var("+"), var("a")), int(1))),
             apply(var("inc"), int(42)),
         );
-        let infered = infer(term, global);
+        let infered = infer(term, global).unwrap();
 
         assert_eq!(Signature::of_type(infered), "Int".to_owned());
     }
@@ -521,13 +527,12 @@ mod tests {
                 apply(var("dec"), apply(var("inc"), int(42))),
             ),
         );
-        let infered = infer(term, global);
+        let infered = infer(term, global).unwrap();
 
         assert_eq!(Signature::of_type(infered), "Int".to_owned());
     }
 
     #[test]
-    #[should_panic]
     fn infer_cannot_possible() {
         let mut global = HashMap::new();
         global.insert(
@@ -541,6 +546,6 @@ mod tests {
             },
         );
         let term = apply(apply(var("+"), bool(true)), int(1));
-        infer(term, global);
+        assert!(infer(term, global).is_err());
     }
 }
