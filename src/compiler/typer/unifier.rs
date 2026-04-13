@@ -3,6 +3,14 @@ use std::collections::HashSet;
 
 use super::{Constraint, Error, Substitution, Type, TypeLiteral, TypeVariable};
 
+/// Returns true if `tpe` is a numeric type (Int, Float, or Number).
+fn is_numeric(tpe: &Type) -> bool {
+    matches!(
+        tpe,
+        Type::Literal(TypeLiteral::Int) | Type::Literal(TypeLiteral::Float) | Type::Number
+    )
+}
+
 pub(super) fn unify(constraints: HashSet<Constraint>) -> Result<Substitution, Error> {
     debug!("unify: {:?}", constraints);
     let mut iter = constraints.iter();
@@ -33,6 +41,12 @@ fn unify_one_constraint(Constraint(a, b): &Constraint) -> Result<Substitution, E
         (Type::Literal(TypeLiteral::Int), Type::Literal(TypeLiteral::Int)) => {
             Ok(Substitution::empty())
         }
+        (Type::Literal(TypeLiteral::Char), Type::Literal(TypeLiteral::Char)) => {
+            Ok(Substitution::empty())
+        }
+        (Type::Literal(TypeLiteral::Float), Type::Literal(TypeLiteral::Float)) => {
+            Ok(Substitution::empty())
+        }
         (
             Type::Fun {
                 param_tpe: p1,
@@ -49,6 +63,10 @@ fn unify_one_constraint(Constraint(a, b): &Constraint) -> Result<Substitution, E
             constraints.insert(Constraint(*r1.clone(), *r2.clone()));
 
             unify(constraints)
+        }
+        // Number unifies with Int, Float, or another Number (but not Bool, Char, etc.)
+        (Type::Number, other) | (other, Type::Number) if is_numeric(other) => {
+            Ok(Substitution::empty())
         }
         (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe),
         (tpe, Type::Variable(tvar)) => unify_variable(tvar, tpe),

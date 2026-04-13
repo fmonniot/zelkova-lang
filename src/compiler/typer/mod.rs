@@ -64,9 +64,7 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
     for (name, value) in &module.values {
         if let canonical::Value::TypedValue { tpe, .. } = value {
             let mut var_map = HashMap::new();
-            if let Some(typer_tpe) =
-                canonical_type_to_typer_type(tpe, &mut var_map, &mut counter)
-            {
+            if let Some(typer_tpe) = canonical_type_to_typer_type(tpe, &mut var_map, &mut counter) {
                 // Add both qualified (e.g. "Test.not") and unqualified (e.g. "not") names
                 let qname = module.name.qualify_name(name).to_name().0.clone();
                 global.insert(qname, typer_tpe.clone());
@@ -93,8 +91,10 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
         if let Some(ann) = annotation {
             let mut constraints = std::collections::HashSet::new();
             constraints.insert(Constraint(inferred.clone(), ann.clone()));
-            unifier::unify(constraints)
-                .map_err(|_| Error::TypeMismatch { expected: ann, actual: inferred })?;
+            unifier::unify(constraints).map_err(|_| Error::TypeMismatch {
+                expected: ann,
+                actual: inferred,
+            })?;
         }
     }
 
@@ -120,6 +120,12 @@ fn canonical_type_to_typer_type(
         }
         canonical::Type::Type(name, args) if args.is_empty() && name.0 == "Bool" => {
             Some(Type::Literal(TypeLiteral::Bool))
+        }
+        canonical::Type::Type(name, args) if args.is_empty() && name.0 == "Char" => {
+            Some(Type::Literal(TypeLiteral::Char))
+        }
+        canonical::Type::Type(name, args) if args.is_empty() && name.0 == "Float" => {
+            Some(Type::Literal(TypeLiteral::Float))
         }
         canonical::Type::Variable(name) => {
             let tv = var_map.entry(name.0.clone()).or_insert_with(|| {
@@ -147,6 +153,8 @@ fn canonical_expr_to_term(expr: &canonical::Expression) -> Option<Term> {
     match expr {
         canonical::Expression::Int(i) => Some(Term::Int(*i as u32)),
         canonical::Expression::Bool(b) => Some(Term::Bool(*b)),
+        canonical::Expression::Char(c) => Some(Term::Char(*c)),
+        canonical::Expression::Float(f) => Some(Term::Float(*f)),
         canonical::Expression::VarLocal(name) => Some(Term::Identifier(name.0.clone())),
         canonical::Expression::VarTopLevel(qname) => {
             Some(Term::Identifier(qname.to_name().0.clone()))
@@ -189,7 +197,12 @@ fn value_to_term_and_annotation(
             let term = wrap_with_patterns(patterns.iter(), body_term)?;
             Some((term, None))
         }
-        canonical::Value::TypedValue { patterns, body, tpe, .. } => {
+        canonical::Value::TypedValue {
+            patterns,
+            body,
+            tpe,
+            ..
+        } => {
             let body_term = canonical_expr_to_term(body)?;
             let pattern_iter = patterns.iter().map(|(p, _)| p);
             let term = wrap_with_patterns(pattern_iter, body_term)?;
@@ -234,6 +247,8 @@ pub enum Term {
     // literals
     Bool(bool),
     Int(u32),
+    Char(char),
+    Float(f64),
     Identifier(String), // VAR
     Fun {
         param: String,
@@ -271,11 +286,16 @@ impl std::fmt::Debug for TypeVariable {
 pub enum TypeLiteral {
     Int,
     Bool,
+    Char,
+    Float,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum Type {
     Literal(TypeLiteral),
+    /// A numeric literal type: unifies with both `Int` and `Float` but not other types.
+    /// This models Elm's `number` constraint for integer literals used in numeric contexts.
+    Number,
     Variable(TypeVariable),
     Fun {
         param_tpe: Box<Type>,
@@ -287,6 +307,7 @@ impl std::fmt::Debug for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Literal(lit) => write!(f, "Lit({:?})", lit),
+            Type::Number => write!(f, "Number"),
             Type::Variable(TypeVariable { id }) => write!(f, "Var(#{})", id),
             Type::Fun {
                 param_tpe,
@@ -322,6 +343,14 @@ enum TypedTerm {
         tpe: Type,
         value: bool,
     },
+    Char {
+        tpe: Type,
+        value: char,
+    },
+    Float {
+        tpe: Type,
+        value: f64,
+    },
     // TODO Do I want to keep this name ? Or named Variable ? Something else ?
     Identifier {
         tpe: Type,
@@ -356,6 +385,8 @@ impl TypedTerm {
         match &self {
             TypedTerm::Int { tpe, .. } => tpe,
             TypedTerm::Bool { tpe, .. } => tpe,
+            TypedTerm::Char { tpe, .. } => tpe,
+            TypedTerm::Float { tpe, .. } => tpe,
             TypedTerm::Identifier { tpe, .. } => tpe,
             TypedTerm::Fun { tpe, .. } => tpe,
             TypedTerm::Apply { tpe, .. } => tpe,
@@ -406,8 +437,7 @@ impl Substitution {
 
     fn substitute(tpe: Type, tvar: &TypeVariable, replacement: &Type) -> Type {
         match tpe {
-            Type::Literal(TypeLiteral::Bool) => tpe,
-            Type::Literal(TypeLiteral::Int) => tpe,
+            Type::Literal(_) | Type::Number => tpe,
             Type::Fun {
                 param_tpe,
                 return_tpe,
@@ -552,6 +582,9 @@ mod tests {
             match tpe {
                 Type::Literal(TypeLiteral::Bool) => "Bool".to_owned(),
                 Type::Literal(TypeLiteral::Int) => "Int".to_owned(),
+                Type::Literal(TypeLiteral::Char) => "Char".to_owned(),
+                Type::Literal(TypeLiteral::Float) => "Float".to_owned(),
+                Type::Number => "number".to_owned(),
                 Type::Variable(TypeVariable { id }) => {
                     if let Some(name) = self.known.get(&id) {
                         name.clone()
@@ -636,9 +669,10 @@ mod tests {
         let term = fun("pred", if_(apply(var("pred"), int(1)), int(2), int(3)));
         let infered = infer(term, global).unwrap();
 
+        // Integer literals infer as `number` (polymorphic: Int or Float)
         assert_eq!(
             Signature::of_type(infered),
-            "(Int -> Bool) -> Int".to_owned()
+            "(number -> Bool) -> number".to_owned()
         );
     }
 

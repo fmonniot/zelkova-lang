@@ -187,3 +187,41 @@ fn if_non_bool_condition() {
     "#};
     assert!(run(source).is_err(), "if condition must be Bool, not Int");
 }
+
+// ── Char and Float literals ───────────────────────────────────────────────────
+
+/// A `Char` literal `'a'` should have type `Char`.
+#[test]
+fn char_literal_has_type_char() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        myChar : Char
+        myChar = 'a'
+    "#};
+    assert!(run(source).is_ok(), "myChar : Char = 'a' should type-check");
+}
+
+/// A `Float` literal `3.14` should have type `Float`.
+#[test]
+fn float_literal_has_type_float() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        myFloat : Float
+        myFloat = 3.14
+    "#};
+    assert!(
+        run(source).is_ok(),
+        "myFloat : Float = 3.14 should type-check"
+    );
+}
+
+/// A `Char` literal used where `Int` is expected should fail.
+#[test]
+fn char_type_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : Int
+        bad = 'x'
+    "#};
+    assert!(run(source).is_err(), "Char literal used as Int should fail");
+}

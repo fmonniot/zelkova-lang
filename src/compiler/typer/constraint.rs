@@ -10,7 +10,15 @@ pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
             constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Bool)));
         }
         TypedTerm::Int { tpe, .. } => {
-            constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Int)));
+            // Integer literals are polymorphic numeric values: they can unify
+            // with Int or Float (but not Bool, Char, etc.).
+            constraints.insert(Constraint(tpe.clone(), Type::Number));
+        }
+        TypedTerm::Char { tpe, .. } => {
+            constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Char)));
+        }
+        TypedTerm::Float { tpe, .. } => {
+            constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Float)));
         }
         TypedTerm::Fun { tpe, param, body } => {
             constraints.extend(collect(&body));
@@ -88,8 +96,8 @@ mod tests {
 
         let mut expected = HashSet::new();
 
-        // t1 === Int
-        expected.insert(Constraint(t1.clone(), Type::Literal(TypeLiteral::Int)));
+        // Integer literals constrain to Number (polymorphic: can be Int or Float)
+        expected.insert(Constraint(t1.clone(), Type::Number));
 
         let int = TypedTerm::Int { tpe: t1, value: 42 };
 

@@ -10,6 +10,14 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
             tpe: types.fresh_var(),
             value,
         }),
+        Term::Char(value) => Ok(TypedTerm::Char {
+            tpe: types.fresh_var(),
+            value,
+        }),
+        Term::Float(value) => Ok(TypedTerm::Float {
+            tpe: types.fresh_var(),
+            value,
+        }),
         Term::Fun { param, body } => {
             let param = TypeBinder::new(param, types.fresh_var());
             types.add_binder(param.clone());
