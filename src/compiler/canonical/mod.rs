@@ -38,6 +38,9 @@ pub struct Module {
     pub infixes: HashMap<Name, Infix>,
     pub types: HashMap<Name, UnionType>,
     pub values: HashMap<Name, Value>,
+    /// True when this module is a JavaScript binding module.
+    /// Such modules have synthetic placeholder bodies and must not be type-checked.
+    pub binding_javascript: bool,
 }
 
 impl Module {
@@ -575,6 +578,7 @@ pub fn canonicalize(
             infixes,
             types,
             values,
+            binding_javascript: source.binding_javascript,
         })
     } else {
         Err(errors)
