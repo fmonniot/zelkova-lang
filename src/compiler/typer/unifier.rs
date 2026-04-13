@@ -82,6 +82,15 @@ fn unify_one_constraint(Constraint(a, b): &Constraint) -> Result<Substitution, E
             cs.insert(Constraint(*c1.clone(), *c2.clone()));
             unify(cs)
         }
+        // ADT types: must have same name and same number of args; unify args pairwise
+        (Type::Adt(n1, args1), Type::Adt(n2, args2)) if n1 == n2 && args1.len() == args2.len() => {
+            let constraints: std::collections::HashSet<_> = args1
+                .iter()
+                .zip(args2.iter())
+                .map(|(a, b)| Constraint(a.clone(), b.clone()))
+                .collect();
+            unify(constraints)
+        }
         (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe),
         (tpe, Type::Variable(tvar)) => unify_variable(tvar, tpe),
         (a, b) => Err(Error::UnificationFailed {
@@ -121,6 +130,7 @@ fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
                 || occurs(tvar, b)
                 || c.as_ref().map_or(false, |t| occurs(tvar, t))
         }
+        Type::Adt(_, args) => args.iter().any(|a| occurs(tvar, a)),
         Type::Variable(tvar2) => tvar == tvar2,
         _ => false,
     }

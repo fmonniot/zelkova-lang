@@ -73,7 +73,51 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
         }
     }
 
-    // Second pass: check each value
+    // Second pass: add constructor types to global from module.types
+    for (type_name, union_type) in &module.types {
+        // Fresh type vars for each ADT type parameter (e.g. "a" in Maybe a)
+        let mut adt_var_map: HashMap<String, TypeVariable> = HashMap::new();
+        for tv_name in &union_type.variables {
+            counter += 1;
+            adt_var_map.insert(tv_name.0.clone(), TypeVariable { id: counter });
+        }
+
+        // Build result type: Adt(type_name, [TypeVar for each param])
+        let result_args: Vec<Type> = union_type
+            .variables
+            .iter()
+            .map(|v| Type::Variable(adt_var_map[&v.0].clone()))
+            .collect();
+        let result_type = Type::Adt(type_name.0.clone(), result_args);
+
+        for ctor in &union_type.variants {
+            let ctor_type = if ctor.type_parameters.is_empty() {
+                result_type.clone()
+            } else {
+                let mut translate_var_map = adt_var_map.clone();
+                let params: Vec<Type> = ctor
+                    .type_parameters
+                    .iter()
+                    .filter_map(|t| canonical_type_to_typer_type(t, &mut translate_var_map, &mut counter))
+                    .collect();
+                if params.len() != ctor.type_parameters.len() {
+                    continue; // untranslatable param type, skip this constructor
+                }
+                // Build Fun type: p1 -> p2 -> ... -> result_type
+                params.into_iter().rev().fold(result_type.clone(), |acc, p| Type::Fun {
+                    param_tpe: Box::new(p),
+                    return_tpe: Box::new(acc),
+                })
+            };
+
+            // Register under both unqualified ("Just") and qualified ("Test.Just") names
+            global.insert(ctor.name.0.clone(), ctor_type.clone());
+            let qname = module.name.qualify_name(&ctor.name).to_name().0.clone();
+            global.insert(qname, ctor_type);
+        }
+    }
+
+    // Third pass: check each value
     for (_, value) in &module.values {
         let Some((term, annotation)) = value_to_term_and_annotation(value, &mut counter) else {
             continue; // unsupported construct — skip for now
@@ -151,7 +195,14 @@ fn canonical_type_to_typer_type(
             };
             Some(Type::Tuple(Box::new(a), Box::new(b), c.map(Box::new)))
         }
-        _ => None, // Named types with params, etc. — not yet supported
+        canonical::Type::Type(name, args) => {
+            let converted: Option<Vec<Type>> = args
+                .iter()
+                .map(|a| canonical_type_to_typer_type(a, var_map, counter))
+                .collect();
+            Some(Type::Adt(name.0.clone(), converted?))
+        }
+        _ => None, // Record, Unit, etc. — not yet supported
     }
 }
 
@@ -195,9 +246,13 @@ fn canonical_expr_to_term(expr: &canonical::Expression) -> Option<Term> {
             };
             Some(Term::Tuple(Box::new(a), Box::new(b), c.map(Box::new)))
         }
+        // Constructors are resolved as identifiers looked up in the global env.
+        canonical::Expression::VarConstructor(qname, _) => {
+            Some(Term::Identifier(qname.to_name().0.clone()))
+        }
         // VarForeign: not in the module's global env, skip
         canonical::Expression::VarForeign(_, _) => None,
-        // Not yet supported: Case, VarConstructor, VarKernel
+        // Not yet supported: Case, VarKernel
         _ => None,
     }
 }
@@ -321,6 +376,8 @@ pub enum Type {
         return_tpe: Box<Type>,
     },
     Tuple(Box<Type>, Box<Type>, Option<Box<Type>>),
+    /// A named algebraic data type, e.g. `Maybe Int` → `Adt("Maybe", [Literal(Int)])`.
+    Adt(String, Vec<Type>),
 }
 
 impl std::fmt::Debug for Type {
@@ -335,6 +392,8 @@ impl std::fmt::Debug for Type {
             } => write!(f, "Fun({:?} -> {:?})", param_tpe, return_tpe),
             Type::Tuple(a, b, None) => write!(f, "({:?}, {:?})", a, b),
             Type::Tuple(a, b, Some(c)) => write!(f, "({:?}, {:?}, {:?})", a, b, c),
+            Type::Adt(name, args) if args.is_empty() => write!(f, "{}", name),
+            Type::Adt(name, args) => write!(f, "{}({:?})", name, args),
         }
     }
 }
@@ -478,6 +537,12 @@ impl Substitution {
                 Box::new(Substitution::substitute(*a, tvar, replacement)),
                 Box::new(Substitution::substitute(*b, tvar, replacement)),
                 c.map(|t| Box::new(Substitution::substitute(*t, tvar, replacement))),
+            ),
+            Type::Adt(name, args) => Type::Adt(
+                name,
+                args.into_iter()
+                    .map(|a| Substitution::substitute(a, tvar, replacement))
+                    .collect(),
             ),
             Type::Variable(tvar2) if tvar == &tvar2 => replacement.clone(),
             tpe @ Type::Variable(_) => tpe,
@@ -655,6 +720,12 @@ mod tests {
                         self.from_type(*b),
                         self.from_type(*c)
                     )
+                }
+                Type::Adt(name, args) if args.is_empty() => name,
+                Type::Adt(name, args) => {
+                    let arg_strs: Vec<String> =
+                        args.into_iter().map(|a| self.from_type(a)).collect();
+                    format!("{} {}", name, arg_strs.join(" "))
                 }
             }
         }

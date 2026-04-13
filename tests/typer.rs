@@ -110,7 +110,6 @@ fn unbound_variable_is_error() {
 
 /// `Just 42` should have type `Maybe Int` once the type checker is integrated.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn constructor_usage_just_42() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
