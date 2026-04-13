@@ -35,6 +35,7 @@
 //!   "let z = t1 in t2 has type T if and only if, under the assumption that z has every type X such that ⟦t1 : X⟧ holds, t2 has type T"
 //!
 //!
+use super::canonical;
 use super::canonical::Module;
 use log::debug;
 use std::collections::HashMap;
@@ -49,6 +50,127 @@ pub enum Error {
 
 pub fn type_check(_module: &Module) -> Result<(), Error> {
     Ok(())
+}
+
+// ── Translation helpers ───────────────────────────────────────────────────────
+
+/// Convert a canonical type to the typer's simplified Type representation.
+/// Returns None for types that cannot yet be represented (tuples, named types
+/// with parameters, etc.).
+///
+/// `var_map` maps named type variables (e.g. "a") to consistent TypeVariable
+/// ids, so that `a -> a` produces the same variable on both sides.
+fn canonical_type_to_typer_type(
+    tpe: &canonical::Type,
+    var_map: &mut HashMap<String, TypeVariable>,
+    counter: &mut u32,
+) -> Option<Type> {
+    match tpe {
+        canonical::Type::Type(name, args) if args.is_empty() && name.0 == "Int" => {
+            Some(Type::Literal(TypeLiteral::Int))
+        }
+        canonical::Type::Type(name, args) if args.is_empty() && name.0 == "Bool" => {
+            Some(Type::Literal(TypeLiteral::Bool))
+        }
+        canonical::Type::Variable(name) => {
+            let tv = var_map.entry(name.0.clone()).or_insert_with(|| {
+                *counter += 1;
+                TypeVariable { id: *counter }
+            });
+            Some(Type::Variable(tv.clone()))
+        }
+        canonical::Type::Arrow(a, b) => {
+            let a = canonical_type_to_typer_type(a, var_map, counter)?;
+            let b = canonical_type_to_typer_type(b, var_map, counter)?;
+            Some(Type::Fun {
+                param_tpe: Box::new(a),
+                return_tpe: Box::new(b),
+            })
+        }
+        _ => None, // Tuple, named types with params, etc. — not yet supported
+    }
+}
+
+/// Convert a canonical expression to a Term.
+/// Returns None for constructs the inference engine doesn't yet handle
+/// (Case, Tuple, VarConstructor, VarKernel, Char, Float, VarForeign).
+fn canonical_expr_to_term(expr: &canonical::Expression) -> Option<Term> {
+    match expr {
+        canonical::Expression::Int(i) => Some(Term::Int(*i as u32)),
+        canonical::Expression::Bool(b) => Some(Term::Bool(*b)),
+        canonical::Expression::VarLocal(name) => Some(Term::Identifier(name.0.clone())),
+        canonical::Expression::VarTopLevel(qname) => {
+            Some(Term::Identifier(qname.to_name().0.clone()))
+        }
+        canonical::Expression::Apply(f, a) => {
+            let fun = canonical_expr_to_term(f)?;
+            let arg = canonical_expr_to_term(a)?;
+            Some(Term::Apply {
+                fun: Box::new(fun),
+                arg: Box::new(arg),
+            })
+        }
+        canonical::Expression::If(cond, t, f) => {
+            let cond = canonical_expr_to_term(cond)?;
+            let t = canonical_expr_to_term(t)?;
+            let f = canonical_expr_to_term(f)?;
+            Some(Term::If {
+                cond: Box::new(cond),
+                true_branch: Box::new(t),
+                false_branch: Box::new(f),
+            })
+        }
+        // VarForeign: not in the module's global env, skip
+        canonical::Expression::VarForeign(_, _) => None,
+        // Not yet supported: Case, Tuple, VarConstructor, VarKernel, Char, Float
+        _ => None,
+    }
+}
+
+/// Convert a canonical Value into a (Term, optional annotation) pair.
+/// The body is wrapped in nested Fun nodes for each pattern parameter.
+/// Returns None if any part of the value cannot be translated.
+fn value_to_term_and_annotation(
+    value: &canonical::Value,
+    counter: &mut u32,
+) -> Option<(Term, Option<Type>)> {
+    match value {
+        canonical::Value::Value { patterns, body, .. } => {
+            let body_term = canonical_expr_to_term(body)?;
+            let term = wrap_with_patterns(patterns.iter(), body_term)?;
+            Some((term, None))
+        }
+        canonical::Value::TypedValue { patterns, body, tpe, .. } => {
+            let body_term = canonical_expr_to_term(body)?;
+            let pattern_iter = patterns.iter().map(|(p, _)| p);
+            let term = wrap_with_patterns(pattern_iter, body_term)?;
+            let mut var_map = HashMap::new();
+            let annotation = canonical_type_to_typer_type(tpe, &mut var_map, counter);
+            Some((term, annotation))
+        }
+    }
+}
+
+/// Wrap a body Term in nested Fun nodes for each pattern, outermost first.
+/// Returns None if any pattern is not translatable (e.g. constructor patterns).
+fn wrap_with_patterns<'a>(
+    patterns: impl Iterator<Item = &'a canonical::Pattern>,
+    body: Term,
+) -> Option<Term> {
+    let names: Vec<String> = patterns
+        .map(|p| match p {
+            canonical::Pattern::Variable(name) => Some(name.0.clone()),
+            canonical::Pattern::Anything => Some("_".to_string()),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    let term = names.iter().rev().fold(body, |acc, param| Term::Fun {
+        param: param.clone(),
+        body: Box::new(acc),
+    });
+
+    Some(term)
 }
 
 // First try of an implementation. Not linked to the rest of the code base for simplicity's sake.
