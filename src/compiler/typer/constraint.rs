@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::{Constraint, Type, TypeLiteral, TypedTerm};
+use super::{Constraint, TermPattern, Type, TypeLiteral, TypedTerm};
 
 pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
     let mut constraints = HashSet::new();
@@ -79,6 +79,35 @@ pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
             constraints.insert(Constraint(tpe.clone(), body.tpe().clone()));
             // The binding type is the one of the value.
             constraints.insert(Constraint(binding.tpe.clone(), value.tpe().clone()));
+        }
+        TypedTerm::Case {
+            tpe,
+            scrutinee,
+            branches,
+        } => {
+            constraints.extend(collect(scrutinee));
+            for (pattern, body) in branches {
+                constraints.extend(collect(body));
+                // Every branch must return the case expression's type.
+                constraints.insert(Constraint(body.tpe().clone(), tpe.clone()));
+                // Each pattern constrains the scrutinee type.
+                match pattern {
+                    TermPattern::Literal(lit) => {
+                        constraints.insert(Constraint(scrutinee.tpe().clone(), lit.clone()));
+                    }
+                    TermPattern::Constructor {
+                        adt_name, adt_args, ..
+                    } => {
+                        constraints.insert(Constraint(
+                            scrutinee.tpe().clone(),
+                            Type::Adt(adt_name.clone(), adt_args.clone()),
+                        ));
+                    }
+                    // Bind/Anything: the binding's type was already set to scrutinee.tpe()
+                    // in annotate, so no extra constraint needed here.
+                    TermPattern::Bind(_) | TermPattern::Anything => {}
+                }
+            }
         }
         TypedTerm::Tuple {
             tpe,

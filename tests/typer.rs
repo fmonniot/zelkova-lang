@@ -124,7 +124,6 @@ fn constructor_usage_just_42() {
 
 /// Both branches of a `case` must have the same type.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn case_branches_must_match() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -143,7 +142,6 @@ fn case_branches_must_match() {
 
 /// Case branches returning different types should fail.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn case_branches_type_mismatch() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)

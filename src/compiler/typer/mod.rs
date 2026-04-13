@@ -37,6 +37,7 @@
 //!
 use super::canonical;
 use super::canonical::Module;
+use crate::compiler::name::Name;
 use log::debug;
 use std::collections::HashMap;
 
@@ -119,7 +120,9 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
 
     // Third pass: check each value
     for (_, value) in &module.values {
-        let Some((term, annotation)) = value_to_term_and_annotation(value, &mut counter) else {
+        let Some((term, annotation)) =
+            value_to_term_and_annotation(value, &module.types, &mut counter)
+        else {
             continue; // unsupported construct — skip for now
         };
 
@@ -202,14 +205,17 @@ fn canonical_type_to_typer_type(
                 .collect();
             Some(Type::Adt(name.0.clone(), converted?))
         }
-        _ => None, // Record, Unit, etc. — not yet supported
     }
 }
 
 /// Convert a canonical expression to a Term.
 /// Returns None for constructs the inference engine doesn't yet handle
-/// (Case, VarConstructor, VarKernel, VarForeign).
-fn canonical_expr_to_term(expr: &canonical::Expression) -> Option<Term> {
+/// (VarKernel, VarForeign, complex patterns inside Case).
+fn canonical_expr_to_term(
+    expr: &canonical::Expression,
+    module_types: &HashMap<Name, canonical::UnionType>,
+    counter: &mut u32,
+) -> Option<Term> {
     match expr {
         canonical::Expression::Int(i) => Some(Term::Int(*i as u32)),
         canonical::Expression::Bool(b) => Some(Term::Bool(*b)),
@@ -220,17 +226,17 @@ fn canonical_expr_to_term(expr: &canonical::Expression) -> Option<Term> {
             Some(Term::Identifier(qname.to_name().0.clone()))
         }
         canonical::Expression::Apply(f, a) => {
-            let fun = canonical_expr_to_term(f)?;
-            let arg = canonical_expr_to_term(a)?;
+            let fun = canonical_expr_to_term(f, module_types, counter)?;
+            let arg = canonical_expr_to_term(a, module_types, counter)?;
             Some(Term::Apply {
                 fun: Box::new(fun),
                 arg: Box::new(arg),
             })
         }
         canonical::Expression::If(cond, t, f) => {
-            let cond = canonical_expr_to_term(cond)?;
-            let t = canonical_expr_to_term(t)?;
-            let f = canonical_expr_to_term(f)?;
+            let cond = canonical_expr_to_term(cond, module_types, counter)?;
+            let t = canonical_expr_to_term(t, module_types, counter)?;
+            let f = canonical_expr_to_term(f, module_types, counter)?;
             Some(Term::If {
                 cond: Box::new(cond),
                 true_branch: Box::new(t),
@@ -238,13 +244,29 @@ fn canonical_expr_to_term(expr: &canonical::Expression) -> Option<Term> {
             })
         }
         canonical::Expression::Tuple(a, b, c) => {
-            let a = canonical_expr_to_term(a)?;
-            let b = canonical_expr_to_term(b)?;
+            let a = canonical_expr_to_term(a, module_types, counter)?;
+            let b = canonical_expr_to_term(b, module_types, counter)?;
             let c: Option<Term> = match c.as_ref() {
                 None => None,
-                Some(e) => Some(canonical_expr_to_term(e)?),
+                Some(e) => Some(canonical_expr_to_term(e, module_types, counter)?),
             };
             Some(Term::Tuple(Box::new(a), Box::new(b), c.map(Box::new)))
+        }
+        canonical::Expression::Case(scrutinee_expr, branches) => {
+            let scrutinee = canonical_expr_to_term(scrutinee_expr, module_types, counter)?;
+            let term_branches: Vec<(TermPattern, Box<Term>)> = branches
+                .iter()
+                .map(|cb| {
+                    let (pattern, _bindings) =
+                        translate_pattern(&cb.pattern, module_types, counter)?;
+                    let body = canonical_expr_to_term(&cb.expression, module_types, counter)?;
+                    Some((pattern, Box::new(body)))
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(Term::Case {
+                scrutinee: Box::new(scrutinee),
+                branches: term_branches,
+            })
         }
         // Constructors are resolved as identifiers looked up in the global env.
         canonical::Expression::VarConstructor(qname, _) => {
@@ -252,8 +274,81 @@ fn canonical_expr_to_term(expr: &canonical::Expression) -> Option<Term> {
         }
         // VarForeign: not in the module's global env, skip
         canonical::Expression::VarForeign(_, _) => None,
-        // Not yet supported: Case, VarKernel
+        // Not yet supported: VarKernel
         _ => None,
+    }
+}
+
+/// Translate a canonical pattern into a `TermPattern` plus any variable bindings
+/// introduced by the pattern.  Returns `None` for unsupported pattern shapes.
+fn translate_pattern(
+    pattern: &canonical::Pattern,
+    module_types: &HashMap<Name, canonical::UnionType>,
+    counter: &mut u32,
+) -> Option<(TermPattern, Vec<(String, Type)>)> {
+    match pattern {
+        canonical::Pattern::Anything => Some((TermPattern::Anything, vec![])),
+        canonical::Pattern::Variable(name) => {
+            // The binding's actual type will be unified with the scrutinee type in annotate.
+            Some((TermPattern::Bind(name.0.clone()), vec![]))
+        }
+        canonical::Pattern::Bool(_) => {
+            Some((TermPattern::Literal(Type::Literal(TypeLiteral::Bool)), vec![]))
+        }
+        canonical::Pattern::Int(_) => {
+            Some((TermPattern::Literal(Type::Literal(TypeLiteral::Int)), vec![]))
+        }
+        canonical::Pattern::Char(_) => {
+            Some((TermPattern::Literal(Type::Literal(TypeLiteral::Char)), vec![]))
+        }
+        canonical::Pattern::Constructor { ctor, args } => {
+            // Look up the parent union type to get its type variables.
+            let union_type = module_types.get(&ctor.tpe)?;
+
+            // Create fresh type vars for each ADT type parameter.
+            let mut adt_var_map: HashMap<String, TypeVariable> = HashMap::new();
+            for tv_name in &union_type.variables {
+                *counter += 1;
+                adt_var_map.insert(tv_name.0.clone(), TypeVariable { id: *counter });
+            }
+
+            // Build the ADT result type args from the fresh vars.
+            let adt_args: Vec<Type> = union_type
+                .variables
+                .iter()
+                .map(|v| Type::Variable(adt_var_map[&v.0].clone()))
+                .collect();
+
+            // Translate each constructor type parameter (reuses the same fresh vars).
+            let param_types: Vec<Type> = ctor
+                .type_parameters
+                .iter()
+                .filter_map(|t| canonical_type_to_typer_type(t, &mut adt_var_map, counter))
+                .collect();
+            if param_types.len() != ctor.type_parameters.len() {
+                return None;
+            }
+
+            // Build bindings from arg patterns.
+            let mut bindings: Vec<(String, Type)> = vec![];
+            for (arg_pattern, param_type) in args.iter().zip(param_types.iter()) {
+                match arg_pattern {
+                    canonical::Pattern::Variable(name) => {
+                        bindings.push((name.0.clone(), param_type.clone()));
+                    }
+                    canonical::Pattern::Anything => {} // no binding needed
+                    _ => return None, // nested complex patterns not yet supported
+                }
+            }
+
+            let term_pattern = TermPattern::Constructor {
+                adt_name: ctor.tpe.0.clone(),
+                adt_args,
+                bindings: bindings.clone(),
+            };
+            Some((term_pattern, bindings))
+        }
+        _ => None, // Tuple, Float patterns — not yet supported
     }
 }
 
@@ -262,11 +357,12 @@ fn canonical_expr_to_term(expr: &canonical::Expression) -> Option<Term> {
 /// Returns None if any part of the value cannot be translated.
 fn value_to_term_and_annotation(
     value: &canonical::Value,
+    module_types: &HashMap<Name, canonical::UnionType>,
     counter: &mut u32,
 ) -> Option<(Term, Option<Type>)> {
     match value {
         canonical::Value::Value { patterns, body, .. } => {
-            let body_term = canonical_expr_to_term(body)?;
+            let body_term = canonical_expr_to_term(body, module_types, counter)?;
             let term = wrap_with_patterns(patterns.iter(), body_term)?;
             Some((term, None))
         }
@@ -276,7 +372,7 @@ fn value_to_term_and_annotation(
             tpe,
             ..
         } => {
-            let body_term = canonical_expr_to_term(body)?;
+            let body_term = canonical_expr_to_term(body, module_types, counter)?;
             let pattern_iter = patterns.iter().map(|(p, _)| p);
             let term = wrap_with_patterns(pattern_iter, body_term)?;
             let mut var_map = HashMap::new();
@@ -314,6 +410,24 @@ mod annotate;
 mod constraint;
 mod unifier;
 
+/// Simplified pattern used inside the typer's Term.
+#[derive(Debug, Clone)]
+pub(super) enum TermPattern {
+    /// Matches anything without binding.
+    Anything,
+    /// Binds the scrutinee type to this name.
+    Bind(String),
+    /// Matches a specific literal type; constrains the scrutinee to that type.
+    Literal(Type),
+    /// Matches an ADT constructor; carries the fresh ADT args and field bindings.
+    Constructor {
+        adt_name: String,
+        adt_args: Vec<Type>,
+        /// `(variable_name, its_type_var)` for each bound constructor argument.
+        bindings: Vec<(String, Type)>,
+    },
+}
+
 #[derive(Debug, Clone)] // TODO Remove clone when not needed anymore
 /// untyped term. In zelkova that would be the parsed source (or canonical, not sure yet)
 pub enum Term {
@@ -342,6 +456,10 @@ pub enum Term {
         body: Box<Term>,
     },
     Tuple(Box<Term>, Box<Term>, Option<Box<Term>>),
+    Case {
+        scrutinee: Box<Term>,
+        branches: Vec<(TermPattern, Box<Term>)>,
+    },
 }
 
 // TODO Copy ?
@@ -465,6 +583,11 @@ enum TypedTerm {
         second: Box<TypedTerm>,
         third: Option<Box<TypedTerm>>,
     },
+    Case {
+        tpe: Type,
+        scrutinee: Box<TypedTerm>,
+        branches: Vec<(TermPattern, Box<TypedTerm>)>,
+    },
 }
 
 impl TypedTerm {
@@ -480,6 +603,7 @@ impl TypedTerm {
             TypedTerm::If { tpe, .. } => tpe,
             TypedTerm::Let { tpe, .. } => tpe,
             TypedTerm::Tuple { tpe, .. } => tpe,
+            TypedTerm::Case { tpe, .. } => tpe,
         }
     }
 }
@@ -594,6 +718,10 @@ impl Types {
 
     fn add_binder(&mut self, binding: TypeBinder) {
         self.env.insert(binding.name, binding.tpe);
+    }
+
+    fn remove_binder(&mut self, name: &str) {
+        self.env.remove(name);
     }
 
     fn by_name(&self, name: &String) -> Option<Type> {

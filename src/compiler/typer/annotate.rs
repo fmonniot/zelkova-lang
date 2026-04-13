@@ -1,4 +1,4 @@
-use super::{Error, Term, TypeBinder, TypedTerm, Types};
+use super::{Error, Term, TermPattern, TypeBinder, TypedTerm, Types};
 
 pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error> {
     match term {
@@ -89,6 +89,35 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                 first,
                 second,
                 third,
+            })
+        }
+        Term::Case { scrutinee, branches } => {
+            let scrutinee = Box::new(annotate(*scrutinee, types)?);
+            let mut typed_branches = Vec::new();
+            for (pattern, body) in branches {
+                // Determine what bindings this pattern introduces.
+                let new_bindings: Vec<(String, super::Type)> = match &pattern {
+                    TermPattern::Bind(name) => {
+                        // Bind to the scrutinee's type variable.
+                        vec![(name.clone(), scrutinee.tpe().clone())]
+                    }
+                    TermPattern::Constructor { bindings, .. } => bindings.clone(),
+                    TermPattern::Anything | TermPattern::Literal(_) => vec![],
+                };
+                for (name, tpe) in &new_bindings {
+                    types.add_binder(TypeBinder::new(name.clone(), tpe.clone()));
+                }
+                let typed_body = Box::new(annotate(*body, types)?);
+                // Restore scope: remove bindings added for this branch.
+                for (name, _) in &new_bindings {
+                    types.remove_binder(name);
+                }
+                typed_branches.push((pattern, typed_body));
+            }
+            Ok(TypedTerm::Case {
+                tpe: types.fresh_var(),
+                scrutinee,
+                branches: typed_branches,
             })
         }
     }
