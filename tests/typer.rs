@@ -37,7 +37,6 @@ fn run(
 
 /// An identity function with annotation `a -> a` should type-check.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn identity_function_types() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -51,7 +50,6 @@ fn identity_function_types() {
 
 /// A constant `42` should have type `Int`.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn int_literal_has_type_int() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -65,7 +63,6 @@ fn int_literal_has_type_int() {
 
 /// Applying a `Bool -> Bool` function to a `Bool` should yield `Bool`.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn function_application_types() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -81,7 +78,6 @@ fn function_application_types() {
 
 /// A function annotated `Int -> Int` whose body returns a `Bool` should fail.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn type_mismatch_annotation_vs_body() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -98,7 +94,6 @@ fn type_mismatch_annotation_vs_body() {
 
 /// Referencing a name that is not in scope should produce a type error.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn unbound_variable_is_error() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -170,7 +165,6 @@ fn case_branches_type_mismatch() {
 
 /// `if` condition must be `Bool` and both branches must have matching types.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn if_expression_types() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -185,7 +179,6 @@ fn if_expression_types() {
 
 /// `if` with non-Bool condition should fail.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn if_non_bool_condition() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
