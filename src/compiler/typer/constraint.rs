@@ -80,6 +80,25 @@ pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
             // The binding type is the one of the value.
             constraints.insert(Constraint(binding.tpe.clone(), value.tpe().clone()));
         }
+        TypedTerm::Tuple {
+            tpe,
+            first,
+            second,
+            third,
+        } => {
+            constraints.extend(collect(first));
+            constraints.extend(collect(second));
+            if let Some(t) = third {
+                constraints.extend(collect(t));
+            }
+            // The tuple type must equal the tuple of its element types
+            let tuple_type = Type::Tuple(
+                Box::new(first.tpe().clone()),
+                Box::new(second.tpe().clone()),
+                third.as_ref().map(|t| Box::new(t.tpe().clone())),
+            );
+            constraints.insert(Constraint(tpe.clone(), tuple_type));
+        }
     };
 
     constraints

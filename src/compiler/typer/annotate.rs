@@ -80,5 +80,16 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                 body,
             })
         }
+        Term::Tuple(a, b, c) => {
+            let first = Box::new(annotate(*a, types)?);
+            let second = Box::new(annotate(*b, types)?);
+            let third = c.map(|t| annotate(*t, types)).transpose()?.map(Box::new);
+            Ok(TypedTerm::Tuple {
+                tpe: types.fresh_var(),
+                first,
+                second,
+                third,
+            })
+        }
     }
 }

@@ -68,6 +68,20 @@ fn unify_one_constraint(Constraint(a, b): &Constraint) -> Result<Substitution, E
         (Type::Number, other) | (other, Type::Number) if is_numeric(other) => {
             Ok(Substitution::empty())
         }
+        // Tuples: unify element-by-element (must have matching arity)
+        (Type::Tuple(a1, b1, None), Type::Tuple(a2, b2, None)) => {
+            let mut cs = HashSet::new();
+            cs.insert(Constraint(*a1.clone(), *a2.clone()));
+            cs.insert(Constraint(*b1.clone(), *b2.clone()));
+            unify(cs)
+        }
+        (Type::Tuple(a1, b1, Some(c1)), Type::Tuple(a2, b2, Some(c2))) => {
+            let mut cs = HashSet::new();
+            cs.insert(Constraint(*a1.clone(), *a2.clone()));
+            cs.insert(Constraint(*b1.clone(), *b2.clone()));
+            cs.insert(Constraint(*c1.clone(), *c2.clone()));
+            unify(cs)
+        }
         (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe),
         (tpe, Type::Variable(tvar)) => unify_variable(tvar, tpe),
         (a, b) => Err(Error::UnificationFailed {
@@ -102,6 +116,11 @@ fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
             param_tpe,
             return_tpe,
         } => occurs(tvar, param_tpe) || occurs(tvar, return_tpe),
+        Type::Tuple(a, b, c) => {
+            occurs(tvar, a)
+                || occurs(tvar, b)
+                || c.as_ref().map_or(false, |t| occurs(tvar, t))
+        }
         Type::Variable(tvar2) => tvar == tvar2,
         _ => false,
     }

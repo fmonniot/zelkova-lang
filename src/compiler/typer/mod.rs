@@ -142,13 +142,22 @@ fn canonical_type_to_typer_type(
                 return_tpe: Box::new(b),
             })
         }
-        _ => None, // Tuple, named types with params, etc. — not yet supported
+        canonical::Type::Tuple(a, b, c) => {
+            let a = canonical_type_to_typer_type(a, var_map, counter)?;
+            let b = canonical_type_to_typer_type(b, var_map, counter)?;
+            let c: Option<Type> = match c.as_ref() {
+                None => None,
+                Some(t) => Some(canonical_type_to_typer_type(t, var_map, counter)?),
+            };
+            Some(Type::Tuple(Box::new(a), Box::new(b), c.map(Box::new)))
+        }
+        _ => None, // Named types with params, etc. — not yet supported
     }
 }
 
 /// Convert a canonical expression to a Term.
 /// Returns None for constructs the inference engine doesn't yet handle
-/// (Case, Tuple, VarConstructor, VarKernel, Char, Float, VarForeign).
+/// (Case, VarConstructor, VarKernel, VarForeign).
 fn canonical_expr_to_term(expr: &canonical::Expression) -> Option<Term> {
     match expr {
         canonical::Expression::Int(i) => Some(Term::Int(*i as u32)),
@@ -177,9 +186,18 @@ fn canonical_expr_to_term(expr: &canonical::Expression) -> Option<Term> {
                 false_branch: Box::new(f),
             })
         }
+        canonical::Expression::Tuple(a, b, c) => {
+            let a = canonical_expr_to_term(a)?;
+            let b = canonical_expr_to_term(b)?;
+            let c: Option<Term> = match c.as_ref() {
+                None => None,
+                Some(e) => Some(canonical_expr_to_term(e)?),
+            };
+            Some(Term::Tuple(Box::new(a), Box::new(b), c.map(Box::new)))
+        }
         // VarForeign: not in the module's global env, skip
         canonical::Expression::VarForeign(_, _) => None,
-        // Not yet supported: Case, Tuple, VarConstructor, VarKernel, Char, Float
+        // Not yet supported: Case, VarConstructor, VarKernel
         _ => None,
     }
 }
@@ -268,6 +286,7 @@ pub enum Term {
         value: Box<Term>,
         body: Box<Term>,
     },
+    Tuple(Box<Term>, Box<Term>, Option<Box<Term>>),
 }
 
 // TODO Copy ?
@@ -301,6 +320,7 @@ pub enum Type {
         param_tpe: Box<Type>,
         return_tpe: Box<Type>,
     },
+    Tuple(Box<Type>, Box<Type>, Option<Box<Type>>),
 }
 
 impl std::fmt::Debug for Type {
@@ -313,6 +333,8 @@ impl std::fmt::Debug for Type {
                 param_tpe,
                 return_tpe,
             } => write!(f, "Fun({:?} -> {:?})", param_tpe, return_tpe),
+            Type::Tuple(a, b, None) => write!(f, "({:?}, {:?})", a, b),
+            Type::Tuple(a, b, Some(c)) => write!(f, "({:?}, {:?}, {:?})", a, b, c),
         }
     }
 }
@@ -378,6 +400,12 @@ enum TypedTerm {
         value: Box<TypedTerm>,
         body: Box<TypedTerm>,
     },
+    Tuple {
+        tpe: Type,
+        first: Box<TypedTerm>,
+        second: Box<TypedTerm>,
+        third: Option<Box<TypedTerm>>,
+    },
 }
 
 impl TypedTerm {
@@ -392,6 +420,7 @@ impl TypedTerm {
             TypedTerm::Apply { tpe, .. } => tpe,
             TypedTerm::If { tpe, .. } => tpe,
             TypedTerm::Let { tpe, .. } => tpe,
+            TypedTerm::Tuple { tpe, .. } => tpe,
         }
     }
 }
@@ -445,6 +474,11 @@ impl Substitution {
                 param_tpe: Box::new(Substitution::substitute(*param_tpe, tvar, replacement)),
                 return_tpe: Box::new(Substitution::substitute(*return_tpe, tvar, replacement)),
             },
+            Type::Tuple(a, b, c) => Type::Tuple(
+                Box::new(Substitution::substitute(*a, tvar, replacement)),
+                Box::new(Substitution::substitute(*b, tvar, replacement)),
+                c.map(|t| Box::new(Substitution::substitute(*t, tvar, replacement))),
+            ),
             Type::Variable(tvar2) if tvar == &tvar2 => replacement.clone(),
             tpe @ Type::Variable(_) => tpe,
         }
@@ -610,6 +644,17 @@ mod tests {
                     } else {
                         format!("{} -> {}", param, retur)
                     }
+                }
+                Type::Tuple(a, b, None) => {
+                    format!("({}, {})", self.from_type(*a), self.from_type(*b))
+                }
+                Type::Tuple(a, b, Some(c)) => {
+                    format!(
+                        "({}, {}, {})",
+                        self.from_type(*a),
+                        self.from_type(*b),
+                        self.from_type(*c)
+                    )
                 }
             }
         }

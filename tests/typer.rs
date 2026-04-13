@@ -225,3 +225,30 @@ fn char_type_mismatch() {
     "#};
     assert!(run(source).is_err(), "Char literal used as Int should fail");
 }
+
+// ── Tuple types and expressions ───────────────────────────────────────────────
+
+/// A pair `(Int, Bool)` should type-check.
+#[test]
+fn tuple_pair_typechecks() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        pair : (Int, Bool)
+        pair = (42, true)
+    "#};
+    assert!(run(source).is_ok(), "(Int, Bool) tuple should type-check");
+}
+
+/// Using `(Int, Int)` where `(Int, Bool)` is expected should fail.
+#[test]
+fn tuple_type_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : (Int, Int)
+        bad = (42, true)
+    "#};
+    assert!(
+        run(source).is_err(),
+        "(Int, Bool) used as (Int, Int) should fail"
+    );
+}
