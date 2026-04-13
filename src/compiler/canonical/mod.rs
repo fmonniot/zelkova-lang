@@ -60,14 +60,14 @@ impl Module {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Exports {
     Everything,
     /// Non qualified name to its export type
     Specifics(HashMap<Name, ExportType>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ExportType {
     Value,
     Infix,
@@ -75,17 +75,17 @@ pub enum ExportType {
     UnionPrivate,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Infix {
-    associativity: Associativity,
-    precedence: u8,
-    function_name: Name,
+    pub associativity: Associativity,
+    pub precedence: u8,
+    pub function_name: Name,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UnionType {
-    variables: Vec<Name>,
-    variants: Vec<TypeConstructor>,
+    pub variables: Vec<Name>,
+    pub variants: Vec<TypeConstructor>,
 }
 
 // TODO Once we have most of the pipeline built, revisit the decision of
@@ -94,17 +94,17 @@ pub struct UnionType {
 // to the resulting type.
 // Later me: well, that's only true at the type level. The value also need
 // to tag what variant it represent.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeConstructor {
     /// Constructor name. eg. in `type A = B`, the name is `B`
-    name: Name,
+    pub name: Name,
     /// The types of the parameters
-    type_parameters: Vec<Type>,
+    pub type_parameters: Vec<Type>,
     /// The type's name once constructed
-    tpe: Name,
+    pub tpe: Name,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Variable(Name),
     Type(Name, Vec<Type>),
@@ -170,7 +170,7 @@ impl Type {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Value {
     Value {
         name: Name,
@@ -185,7 +185,7 @@ pub enum Value {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Pattern {
     Anything,
     Variable(Name), // TODO Name or QualName ?
@@ -268,7 +268,7 @@ impl Pattern {
 ///   | Unit
 ///   | Tuple Expr Expr (Maybe Expr)
 /// ```
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Expression {
     VarLocal(Name),
     VarTopLevel(QualName),
@@ -415,10 +415,10 @@ impl Expression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct CaseBranch {
-    pattern: Pattern,
-    expression: Expression,
+    pub pattern: Pattern,
+    pub expression: Expression,
 }
 
 // end AST

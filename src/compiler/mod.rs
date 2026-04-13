@@ -102,13 +102,13 @@ impl ModuleName {
 // TODO Union types will need a way to reflect that some type constructor are private
 #[derive(Debug)]
 pub struct Interface {
-    module_name: ModuleName,
-    values: HashMap<Name, canonical::Type>,
-    unions: HashMap<Name, canonical::UnionType>,
+    pub module_name: ModuleName,
+    pub values: HashMap<Name, canonical::Type>,
+    pub unions: HashMap<Name, canonical::UnionType>,
     // TODO type aliases
     //aliases: HashMap<Name, >
     /// infixes is a map from the operator symbol to its information
-    infixes: HashMap<Name, canonical::Infix>,
+    pub infixes: HashMap<Name, canonical::Infix>,
 }
 
 // We may be able to not list all errors by asking a trait
