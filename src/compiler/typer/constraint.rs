@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::{Constraint, Type, TypeLiteral, TypedTerm};
+use super::{Constraint, TermPattern, Type, TypeLiteral, TypedTerm};
 
 pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
     let mut constraints = HashSet::new();
@@ -10,7 +10,15 @@ pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
             constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Bool)));
         }
         TypedTerm::Int { tpe, .. } => {
-            constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Int)));
+            // Integer literals are polymorphic numeric values: they can unify
+            // with Int or Float (but not Bool, Char, etc.).
+            constraints.insert(Constraint(tpe.clone(), Type::Number));
+        }
+        TypedTerm::Char { tpe, .. } => {
+            constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Char)));
+        }
+        TypedTerm::Float { tpe, .. } => {
+            constraints.insert(Constraint(tpe.clone(), Type::Literal(TypeLiteral::Float)));
         }
         TypedTerm::Fun { tpe, param, body } => {
             constraints.extend(collect(&body));
@@ -72,6 +80,54 @@ pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
             // The binding type is the one of the value.
             constraints.insert(Constraint(binding.tpe.clone(), value.tpe().clone()));
         }
+        TypedTerm::Case {
+            tpe,
+            scrutinee,
+            branches,
+        } => {
+            constraints.extend(collect(scrutinee));
+            for (pattern, body) in branches {
+                constraints.extend(collect(body));
+                // Every branch must return the case expression's type.
+                constraints.insert(Constraint(body.tpe().clone(), tpe.clone()));
+                // Each pattern constrains the scrutinee type.
+                match pattern {
+                    TermPattern::Literal(lit) => {
+                        constraints.insert(Constraint(scrutinee.tpe().clone(), lit.clone()));
+                    }
+                    TermPattern::Constructor {
+                        adt_name, adt_args, ..
+                    } => {
+                        constraints.insert(Constraint(
+                            scrutinee.tpe().clone(),
+                            Type::Adt(adt_name.clone(), adt_args.clone()),
+                        ));
+                    }
+                    // Bind/Anything: the binding's type was already set to scrutinee.tpe()
+                    // in annotate, so no extra constraint needed here.
+                    TermPattern::Bind(_) | TermPattern::Anything => {}
+                }
+            }
+        }
+        TypedTerm::Tuple {
+            tpe,
+            first,
+            second,
+            third,
+        } => {
+            constraints.extend(collect(first));
+            constraints.extend(collect(second));
+            if let Some(t) = third {
+                constraints.extend(collect(t));
+            }
+            // The tuple type must equal the tuple of its element types
+            let tuple_type = Type::Tuple(
+                Box::new(first.tpe().clone()),
+                Box::new(second.tpe().clone()),
+                third.as_ref().map(|t| Box::new(t.tpe().clone())),
+            );
+            constraints.insert(Constraint(tpe.clone(), tuple_type));
+        }
     };
 
     constraints
@@ -88,8 +144,8 @@ mod tests {
 
         let mut expected = HashSet::new();
 
-        // t1 === Int
-        expected.insert(Constraint(t1.clone(), Type::Literal(TypeLiteral::Int)));
+        // Integer literals constrain to Number (polymorphic: can be Int or Float)
+        expected.insert(Constraint(t1.clone(), Type::Number));
 
         let int = TypedTerm::Int { tpe: t1, value: 42 };
 

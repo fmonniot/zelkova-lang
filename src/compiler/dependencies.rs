@@ -183,6 +183,7 @@ mod tests {
             infixes: HashMap::new(),
             types: HashMap::new(),
             values: HashMap::new(),
+            binding_javascript: false,
         })
     }
 

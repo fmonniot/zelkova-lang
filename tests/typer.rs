@@ -37,7 +37,6 @@ fn run(
 
 /// An identity function with annotation `a -> a` should type-check.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn identity_function_types() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -51,7 +50,6 @@ fn identity_function_types() {
 
 /// A constant `42` should have type `Int`.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn int_literal_has_type_int() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -65,7 +63,6 @@ fn int_literal_has_type_int() {
 
 /// Applying a `Bool -> Bool` function to a `Bool` should yield `Bool`.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn function_application_types() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -81,7 +78,6 @@ fn function_application_types() {
 
 /// A function annotated `Int -> Int` whose body returns a `Bool` should fail.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn type_mismatch_annotation_vs_body() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -98,7 +94,6 @@ fn type_mismatch_annotation_vs_body() {
 
 /// Referencing a name that is not in scope should produce a type error.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn unbound_variable_is_error() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -115,7 +110,6 @@ fn unbound_variable_is_error() {
 
 /// `Just 42` should have type `Maybe Int` once the type checker is integrated.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn constructor_usage_just_42() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -130,7 +124,6 @@ fn constructor_usage_just_42() {
 
 /// Both branches of a `case` must have the same type.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn case_branches_must_match() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -149,7 +142,6 @@ fn case_branches_must_match() {
 
 /// Case branches returning different types should fail.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn case_branches_type_mismatch() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -170,7 +162,6 @@ fn case_branches_type_mismatch() {
 
 /// `if` condition must be `Bool` and both branches must have matching types.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn if_expression_types() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -185,7 +176,6 @@ fn if_expression_types() {
 
 /// `if` with non-Bool condition should fail.
 #[test]
-#[ignore = "type checker not yet integrated"]
 fn if_non_bool_condition() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -193,4 +183,69 @@ fn if_non_bool_condition() {
         bad = if 42 then 1 else 2
     "#};
     assert!(run(source).is_err(), "if condition must be Bool, not Int");
+}
+
+// ── Char and Float literals ───────────────────────────────────────────────────
+
+/// A `Char` literal `'a'` should have type `Char`.
+#[test]
+fn char_literal_has_type_char() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        myChar : Char
+        myChar = 'a'
+    "#};
+    assert!(run(source).is_ok(), "myChar : Char = 'a' should type-check");
+}
+
+/// A `Float` literal `3.14` should have type `Float`.
+#[test]
+fn float_literal_has_type_float() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        myFloat : Float
+        myFloat = 3.14
+    "#};
+    assert!(
+        run(source).is_ok(),
+        "myFloat : Float = 3.14 should type-check"
+    );
+}
+
+/// A `Char` literal used where `Int` is expected should fail.
+#[test]
+fn char_type_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : Int
+        bad = 'x'
+    "#};
+    assert!(run(source).is_err(), "Char literal used as Int should fail");
+}
+
+// ── Tuple types and expressions ───────────────────────────────────────────────
+
+/// A pair `(Int, Bool)` should type-check.
+#[test]
+fn tuple_pair_typechecks() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        pair : (Int, Bool)
+        pair = (42, true)
+    "#};
+    assert!(run(source).is_ok(), "(Int, Bool) tuple should type-check");
+}
+
+/// Using `(Int, Int)` where `(Int, Bool)` is expected should fail.
+#[test]
+fn tuple_type_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : (Int, Int)
+        bad = (42, true)
+    "#};
+    assert!(
+        run(source).is_err(),
+        "(Int, Bool) used as (Int, Int) should fail"
+    );
 }
