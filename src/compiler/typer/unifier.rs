@@ -1,36 +1,52 @@
 use log::debug;
 use std::collections::HashSet;
 
-use super::{Constraint, Substitution, Type, TypeLiteral, TypeVariable};
+use super::{Constraint, Error, Substitution, Type, TypeLiteral, TypeVariable};
 
-pub(super) fn unify(constraints: HashSet<Constraint>) -> Substitution {
+/// Returns true if `tpe` is a numeric type (Int, Float, or Number).
+fn is_numeric(tpe: &Type) -> bool {
+    matches!(
+        tpe,
+        Type::Literal(TypeLiteral::Int) | Type::Literal(TypeLiteral::Float) | Type::Number
+    )
+}
+
+pub(super) fn unify(constraints: HashSet<Constraint>) -> Result<Substitution, Error> {
     debug!("unify: {:?}", constraints);
     let mut iter = constraints.iter();
 
     match iter.next() {
-        None => Substitution::empty(),
+        None => Ok(Substitution::empty()),
         Some(first) => {
-            let sub_head = unify_one_constraint(first);
+            let sub_head = unify_one_constraint(first)?;
 
             // Apply this substitution to the remaining constraints
             let constraints_tail: HashSet<_> = iter.map(|c| sub_head.apply(c)).collect();
 
             // Then recursively unify the substituted constraints
-            let sub_tail = unify(constraints_tail);
+            let sub_tail = unify(constraints_tail)?;
 
             // And finally merged the unified substitution with the first one
-            sub_head.merge(sub_tail)
+            Ok(sub_head.merge(sub_tail))
         }
     }
 }
 
-fn unify_one_constraint(Constraint(a, b): &Constraint) -> Substitution {
+fn unify_one_constraint(Constraint(a, b): &Constraint) -> Result<Substitution, Error> {
     debug!("unify_one_constraint: {:?} to {:?}", a, b);
     match (a, b) {
         (Type::Literal(TypeLiteral::Bool), Type::Literal(TypeLiteral::Bool)) => {
-            Substitution::empty()
+            Ok(Substitution::empty())
         }
-        (Type::Literal(TypeLiteral::Int), Type::Literal(TypeLiteral::Int)) => Substitution::empty(),
+        (Type::Literal(TypeLiteral::Int), Type::Literal(TypeLiteral::Int)) => {
+            Ok(Substitution::empty())
+        }
+        (Type::Literal(TypeLiteral::Char), Type::Literal(TypeLiteral::Char)) => {
+            Ok(Substitution::empty())
+        }
+        (Type::Literal(TypeLiteral::Float), Type::Literal(TypeLiteral::Float)) => {
+            Ok(Substitution::empty())
+        }
         (
             Type::Fun {
                 param_tpe: p1,
@@ -48,27 +64,56 @@ fn unify_one_constraint(Constraint(a, b): &Constraint) -> Substitution {
 
             unify(constraints)
         }
+        // Number unifies with Int, Float, or another Number (but not Bool, Char, etc.)
+        (Type::Number, other) | (other, Type::Number) if is_numeric(other) => {
+            Ok(Substitution::empty())
+        }
+        // Tuples: unify element-by-element (must have matching arity)
+        (Type::Tuple(a1, b1, None), Type::Tuple(a2, b2, None)) => {
+            let mut cs = HashSet::new();
+            cs.insert(Constraint(*a1.clone(), *a2.clone()));
+            cs.insert(Constraint(*b1.clone(), *b2.clone()));
+            unify(cs)
+        }
+        (Type::Tuple(a1, b1, Some(c1)), Type::Tuple(a2, b2, Some(c2))) => {
+            let mut cs = HashSet::new();
+            cs.insert(Constraint(*a1.clone(), *a2.clone()));
+            cs.insert(Constraint(*b1.clone(), *b2.clone()));
+            cs.insert(Constraint(*c1.clone(), *c2.clone()));
+            unify(cs)
+        }
+        // ADT types: must have same name and same number of args; unify args pairwise
+        (Type::Adt(n1, args1), Type::Adt(n2, args2)) if n1 == n2 && args1.len() == args2.len() => {
+            let constraints: std::collections::HashSet<_> = args1
+                .iter()
+                .zip(args2.iter())
+                .map(|(a, b)| Constraint(a.clone(), b.clone()))
+                .collect();
+            unify(constraints)
+        }
         (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe),
         (tpe, Type::Variable(tvar)) => unify_variable(tvar, tpe),
-        (a, b) => panic!("Cannot unify {:?} with {:?}", a, b), // TODO Return Result instead
+        (a, b) => Err(Error::UnificationFailed {
+            left: a.clone(),
+            right: b.clone(),
+        }),
     }
 }
 
-fn unify_variable(tvar: &TypeVariable, tpe: &Type) -> Substitution {
-    // TODO Use pattern guard instead of inlined if
+fn unify_variable(tvar: &TypeVariable, tpe: &Type) -> Result<Substitution, Error> {
     match tpe {
         Type::Variable(tvar2) => {
             if tvar == tvar2 {
-                Substitution::empty()
+                Ok(Substitution::empty())
             } else {
-                Substitution::one(tvar.clone(), tpe.clone())
+                Ok(Substitution::one(tvar.clone(), tpe.clone()))
             }
         }
         _ => {
             if occurs(tvar, tpe) {
-                panic!("circular use: {:?} occurs in {:?}", tvar, tpe) // TODO Return Result instead
+                Err(Error::CircularType)
             } else {
-                Substitution::one(tvar.clone(), tpe.clone())
+                Ok(Substitution::one(tvar.clone(), tpe.clone()))
             }
         }
     }
@@ -80,6 +125,12 @@ fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
             param_tpe,
             return_tpe,
         } => occurs(tvar, param_tpe) || occurs(tvar, return_tpe),
+        Type::Tuple(a, b, c) => {
+            occurs(tvar, a)
+                || occurs(tvar, b)
+                || c.as_ref().map_or(false, |t| occurs(tvar, t))
+        }
+        Type::Adt(_, args) => args.iter().any(|a| occurs(tvar, a)),
         Type::Variable(tvar2) => tvar == tvar2,
         _ => false,
     }
@@ -98,7 +149,7 @@ mod tests {
             Type::Literal(TypeLiteral::Int),
         ));
 
-        assert_eq!(unify(constraints), Substitution::empty());
+        assert_eq!(unify(constraints).unwrap(), Substitution::empty());
     }
 
     #[test]
@@ -109,7 +160,7 @@ mod tests {
             Type::Literal(TypeLiteral::Bool),
         ));
 
-        assert_eq!(unify(constraints), Substitution::empty());
+        assert_eq!(unify(constraints).unwrap(), Substitution::empty());
     }
 
     #[test]
@@ -121,7 +172,7 @@ mod tests {
         let mut constraints = HashSet::new();
         constraints.insert(Constraint(fun.clone(), fun.clone()));
 
-        assert_eq!(unify(constraints), Substitution::empty());
+        assert_eq!(unify(constraints).unwrap(), Substitution::empty());
     }
 
     #[test]
@@ -133,7 +184,7 @@ mod tests {
         let mut constraints = HashSet::new();
         constraints.insert(Constraint(t1, t2.clone()));
 
-        assert_eq!(unify(constraints), Substitution::one(tvar1, t2));
+        assert_eq!(unify(constraints).unwrap(), Substitution::one(tvar1, t2));
     }
 
     #[test]
@@ -145,7 +196,7 @@ mod tests {
         let mut constraints = HashSet::new();
         constraints.insert(Constraint(t1, t2.clone()));
 
-        assert_eq!(unify(constraints), Substitution::one(tvar1, t2));
+        assert_eq!(unify(constraints).unwrap(), Substitution::one(tvar1, t2));
     }
 
     #[test]
@@ -170,6 +221,6 @@ mod tests {
         let sub = Substitution::one(tvar2, Type::Literal(TypeLiteral::Bool))
             .merge(Substitution::one(tvar1, Type::Literal(TypeLiteral::Int)));
 
-        assert_eq!(unify(constraints), sub);
+        assert_eq!(unify(constraints).unwrap(), sub);
     }
 }
