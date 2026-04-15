@@ -88,12 +88,7 @@ impl<'a> ModuleWalker<'a> {
         } else {
             let c = cycles
                 .into_iter()
-                .map(|cycle| {
-                    cycle
-                        .iter()
-                        .map(|&idx| graph[idx].name.clone())
-                        .collect()
-                })
+                .map(|cycle| cycle.iter().map(|&idx| graph[idx].name.clone()).collect())
                 .collect();
 
             Err(Error::CycleDetected(c))

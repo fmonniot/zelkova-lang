@@ -218,7 +218,9 @@ impl Pattern {
             parser::Pattern::Tuple(a, b, c) => Pattern::Tuple(
                 Box::new(Pattern::from_parser(a, env)),
                 Box::new(Pattern::from_parser(b, env)),
-                c.first().map(|p| Pattern::from_parser(p, env)).map(Box::new),
+                c.first()
+                    .map(|p| Pattern::from_parser(p, env))
+                    .map(Box::new),
             ),
             parser::Pattern::Constructor(name, args) => {
                 // TODO Return Result instead

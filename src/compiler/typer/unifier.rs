@@ -126,9 +126,7 @@ fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
             return_tpe,
         } => occurs(tvar, param_tpe) || occurs(tvar, return_tpe),
         Type::Tuple(a, b, c) => {
-            occurs(tvar, a)
-                || occurs(tvar, b)
-                || c.as_ref().is_some_and(|t| occurs(tvar, t))
+            occurs(tvar, a) || occurs(tvar, b) || c.as_ref().is_some_and(|t| occurs(tvar, t))
         }
         Type::Adt(_, args) => args.iter().any(|a| occurs(tvar, a)),
         Type::Variable(tvar2) => tvar == tvar2,

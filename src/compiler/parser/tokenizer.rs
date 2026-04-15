@@ -97,8 +97,28 @@ fn get_keywords() -> HashMap<String, Token> {
 }
 
 fn is_operator_char(c: char) -> bool {
-    matches!(c, '!' | '#' | '$' | '%' | '&' | '*' | '+' | '-' | '.' | '/' | '<' | '=' | '>' | '?' | '@'
-        | '\\' | '^' | '|' | '~' | ':')
+    matches!(
+        c,
+        '!' | '#'
+            | '$'
+            | '%'
+            | '&'
+            | '*'
+            | '+'
+            | '-'
+            | '.'
+            | '/'
+            | '<'
+            | '='
+            | '>'
+            | '?'
+            | '@'
+            | '\\'
+            | '^'
+            | '|'
+            | '~'
+            | ':'
+    )
 }
 
 /// Represents an error during tokenization.
