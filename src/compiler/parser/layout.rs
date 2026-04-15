@@ -30,7 +30,7 @@ pub fn layout<I: Iterator<Item = Result<Spanned<Position, Token>, Error>>>(
 /// Elm has surprisingly few indentation rules:
 /// - `case <> of` must be followed by branches on indent + 1 level, and the content of each branch must be indent + 1 if on a next line
 /// - `let <> in`: the first block must be indent + 1 compared to the let keyword, and the in expression must be on indent + 1 of the _parent_ block
-///                 Note that I'll probably change the in rule to be at the same level.
+///   Note that I'll probably change the in rule to be at the same level.
 /// - top level declaration body must either be one liner or be in an opened block at indent + 1 (this apply to function, custom types or type alias)
 /// - function application have no rules on where they should be. Meaning the let/in and case/of rules apply.
 ///
@@ -287,15 +287,12 @@ where
             _ => &offside.indent,
         };
 
-        match token.start().column.cmp(min_indent_required) {
-            Ordering::Less => {
-                let offside = offside.clone();
+        if token.start().column.cmp(min_indent_required) == Ordering::Less {
+            let offside = offside.clone();
 
-                self.reprocess_tokens.push(token.clone());
+            self.reprocess_tokens.push(token.clone());
 
-                return Err(LayoutError::LayoutError { offside, token }.into());
-            }
-            _ => (), // ok
+            return Err(LayoutError::LayoutError { offside, token }.into());
         };
 
         // Third, we create new tokens, new contexts and emit block tokens as required

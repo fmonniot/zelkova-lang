@@ -91,7 +91,10 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                 third,
             })
         }
-        Term::Case { scrutinee, branches } => {
+        Term::Case {
+            scrutinee,
+            branches,
+        } => {
             let scrutinee = Box::new(annotate(*scrutinee, types)?);
             let mut typed_branches = Vec::new();
             for (pattern, body) in branches {

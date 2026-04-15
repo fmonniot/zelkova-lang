@@ -48,7 +48,7 @@ pub enum Error {
 }
 
 impl<'a> ModuleWalker<'a> {
-    pub fn new(modules: &'a Vec<Module>) -> Result<ModuleWalker, Error> {
+    pub fn new(modules: &'a [Module]) -> Result<ModuleWalker<'a>, Error> {
         let mut graph = DiGraph::new();
 
         let mut names = HashMap::new();
@@ -88,12 +88,7 @@ impl<'a> ModuleWalker<'a> {
         } else {
             let c = cycles
                 .into_iter()
-                .map(|cycle| {
-                    cycle
-                        .into_iter()
-                        .map(|&idx| graph[idx].name.clone())
-                        .collect()
-                })
+                .map(|cycle| cycle.iter().map(|&idx| graph[idx].name.clone()).collect())
                 .collect();
 
             Err(Error::CycleDetected(c))
@@ -102,6 +97,7 @@ impl<'a> ModuleWalker<'a> {
 
     /// Given a package name, a set of existing interfaces and a checker function,
     /// Check each module in its dependencies order
+    #[allow(clippy::type_complexity)]
     pub fn check_in_order<E>(
         &self,
         package: &crate::compiler::PackageName,

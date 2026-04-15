@@ -97,11 +97,28 @@ fn get_keywords() -> HashMap<String, Token> {
 }
 
 fn is_operator_char(c: char) -> bool {
-    match c {
-        '!' | '#' | '$' | '%' | '&' | '*' | '+' | '-' | '.' | '/' | '<' | '=' | '>' | '?' | '@'
-        | '\\' | '^' | '|' | '~' | ':' => true,
-        _ => false,
-    }
+    matches!(
+        c,
+        '!' | '#'
+            | '$'
+            | '%'
+            | '&'
+            | '*'
+            | '+'
+            | '-'
+            | '.'
+            | '/'
+            | '<'
+            | '='
+            | '>'
+            | '?'
+            | '@'
+            | '\\'
+            | '^'
+            | '|'
+            | '~'
+            | ':'
+    )
 }
 
 /// Represents an error during tokenization.
@@ -197,11 +214,9 @@ where
     // (except some unsupported system which use \r only)
     // The iterator will collapse \r\n into \n
     fn next(&mut self) -> Option<Self::Item> {
-        if self.char_curr == Some('\r') {
-            if self.char_next == Some('\n') {
-                // We have a Windows-like new line, let's shift the iterator by one
-                self.shift();
-            }
+        if self.char_curr == Some('\r') && self.char_next == Some('\n') {
+            // We have a Windows-like new line, let's shift the iterator by one
+            self.shift();
         }
 
         // We aren't looking at a new line, let's advance the iterator
@@ -663,16 +678,11 @@ where
         let first = self.next_char().unwrap(); // if we ended up here, the first char should be present
         name.push(first);
 
-        loop {
-            if let Some(c) = self.lookahead.0 {
-                if self.is_identifier_continuation(c) {
-                    name.push(self.next_char().unwrap());
-                } else {
-                    // Not fit for an ident, let's stop
-                    break;
-                }
+        while let Some(c) = self.lookahead.0 {
+            if self.is_identifier_continuation(c) {
+                name.push(self.next_char().unwrap());
             } else {
-                // Nothing remaining in the iterator, so we're done
+                // Not fit for an ident, let's stop
                 break;
             }
         }
@@ -698,15 +708,11 @@ where
         let mut buf = String::new();
         let start_pos = self.position;
 
-        loop {
-            if let Some(c) = self.lookahead.0 {
-                if is_operator_char(c) {
-                    buf.push(c);
+        while let Some(c) = self.lookahead.0 {
+            if is_operator_char(c) {
+                buf.push(c);
 
-                    self.next_char().unwrap();
-                } else {
-                    break;
-                }
+                self.next_char().unwrap();
             } else {
                 break;
             }
@@ -739,24 +745,20 @@ where
         let mut buf = String::new();
         let mut is_float = false;
 
-        loop {
+        while let Some(c) = self.lookahead.0 {
             // looping over the iterator until we find a char which isn't
             // a number or a dot.
-            if let Some(c) = self.lookahead.0 {
-                if c.is_numeric() {
-                    buf.push(c);
-                } else if c == '.' {
-                    is_float = true;
-                    buf.push(c);
-                } else {
-                    break; // Not a number, we are done
-                }
-
-                // We have looked at the current char, let's move to the next
-                self.next_char().unwrap();
+            if c.is_numeric() {
+                buf.push(c);
+            } else if c == '.' {
+                is_float = true;
+                buf.push(c);
             } else {
-                break; // Stream finished, let's break the loop
+                break; // Not a number, we are done
             }
+
+            // We have looked at the current char, let's move to the next
+            self.next_char().unwrap();
         }
 
         let end_pos = self.position;

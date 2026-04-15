@@ -23,8 +23,8 @@
 //!
 //! - Equation 2: ⟦λz.t : T⟧ = ∃X1X2.(let z : X1 in ⟦t : X2⟧ ∧ X1 → X2 ≤ T)
 //!   "λz.t has type T if and only if, for some X1 and X2,
-//!     (i) under the assumption that z has type X1, t has type X2, and
-//!     (ii) T is a supertype of X1 → X2."
+//!   (i) under the assumption that z has type X1, t has type X2, and
+//!   (ii) T is a supertype of X1 → X2."
 //!   z and t types must be fresh (can't generally guess them). They are _existentially_ bound because we are going to
 //!   solve their values. Note that z is _not_ fresh in the condition (i).
 //!
@@ -99,16 +99,21 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
                 let params: Vec<Type> = ctor
                     .type_parameters
                     .iter()
-                    .filter_map(|t| canonical_type_to_typer_type(t, &mut translate_var_map, &mut counter))
+                    .filter_map(|t| {
+                        canonical_type_to_typer_type(t, &mut translate_var_map, &mut counter)
+                    })
                     .collect();
                 if params.len() != ctor.type_parameters.len() {
                     continue; // untranslatable param type, skip this constructor
                 }
                 // Build Fun type: p1 -> p2 -> ... -> result_type
-                params.into_iter().rev().fold(result_type.clone(), |acc, p| Type::Fun {
-                    param_tpe: Box::new(p),
-                    return_tpe: Box::new(acc),
-                })
+                params
+                    .into_iter()
+                    .rev()
+                    .fold(result_type.clone(), |acc, p| Type::Fun {
+                        param_tpe: Box::new(p),
+                        return_tpe: Box::new(acc),
+                    })
             };
 
             // Register under both unqualified ("Just") and qualified ("Test.Just") names
@@ -119,7 +124,7 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
     }
 
     // Third pass: check each value
-    for (_, value) in &module.values {
+    for value in module.values.values() {
         let Some((term, annotation)) =
             value_to_term_and_annotation(value, &module.types, &mut counter)
         else {
@@ -292,15 +297,18 @@ fn translate_pattern(
             // The binding's actual type will be unified with the scrutinee type in annotate.
             Some((TermPattern::Bind(name.0.clone()), vec![]))
         }
-        canonical::Pattern::Bool(_) => {
-            Some((TermPattern::Literal(Type::Literal(TypeLiteral::Bool)), vec![]))
-        }
-        canonical::Pattern::Int(_) => {
-            Some((TermPattern::Literal(Type::Literal(TypeLiteral::Int)), vec![]))
-        }
-        canonical::Pattern::Char(_) => {
-            Some((TermPattern::Literal(Type::Literal(TypeLiteral::Char)), vec![]))
-        }
+        canonical::Pattern::Bool(_) => Some((
+            TermPattern::Literal(Type::Literal(TypeLiteral::Bool)),
+            vec![],
+        )),
+        canonical::Pattern::Int(_) => Some((
+            TermPattern::Literal(Type::Literal(TypeLiteral::Int)),
+            vec![],
+        )),
+        canonical::Pattern::Char(_) => Some((
+            TermPattern::Literal(Type::Literal(TypeLiteral::Char)),
+            vec![],
+        )),
         canonical::Pattern::Constructor { ctor, args } => {
             // Look up the parent union type to get its type variables.
             let union_type = module_types.get(&ctor.tpe)?;
@@ -337,7 +345,7 @@ fn translate_pattern(
                         bindings.push((name.0.clone(), param_type.clone()));
                     }
                     canonical::Pattern::Anything => {} // no binding needed
-                    _ => return None, // nested complex patterns not yet supported
+                    _ => return None,                  // nested complex patterns not yet supported
                 }
             }
 
@@ -412,7 +420,7 @@ mod unifier;
 
 /// Simplified pattern used inside the typer's Term.
 #[derive(Debug, Clone)]
-pub(super) enum TermPattern {
+pub enum TermPattern {
     /// Matches anything without binding.
     Anything,
     /// Binds the scrutinee type to this name.
@@ -533,6 +541,7 @@ impl TypeBinder {
 /// Like a [Term] but with an associated [Type].
 /// Any term introducing a name will have a TypeBinder instead.
 #[derive(Debug)]
+#[allow(dead_code)]
 enum TypedTerm {
     Int {
         tpe: Type,

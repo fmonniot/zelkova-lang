@@ -32,6 +32,7 @@ pub trait Environment<'parent>: std::fmt::Debug {
 
     fn local_infix_exists(&self, name: &Name) -> bool;
 
+    #[allow(dead_code)]
     fn insert_local_value(&mut self, name: &Name);
 
     // 'parent must lives at least as long as 'a
@@ -60,7 +61,7 @@ pub fn new_environment(
         exposing,
     } in imports
     {
-        match process_import(&mut env, interfaces, &name, &alias, &exposing) {
+        match process_import(&mut env, interfaces, name, alias, exposing) {
             Ok(_) => (),
             Err(err) => {
                 errors.push(err);
@@ -83,7 +84,7 @@ fn process_import(
     exposing: &parser::Exposing,
 ) -> Result<(), EnvError> {
     let interface = interfaces
-        .get(&imported_module_name)
+        .get(imported_module_name)
         .ok_or_else(|| EnvError::InterfaceNotFound(imported_module_name.clone()))?;
 
     trace!(
@@ -137,7 +138,7 @@ fn process_import(
                     parser::Exposed::Lower(value_name) => {
                         let tpe = interface
                             .values
-                            .get(&value_name)
+                            .get(value_name)
                             .ok_or_else(|| EnvError::ValueNotFound(value_name.clone()))?;
 
                         insert_foreign_value(
@@ -156,7 +157,7 @@ fn process_import(
                     parser::Exposed::Upper(type_name, parser::Privacy::Public) => {
                         let union = interface
                             .unions
-                            .get(&type_name)
+                            .get(type_name)
                             .ok_or_else(|| EnvError::UnionNotFound(type_name.clone()))?;
 
                         insert_foreign_union_type(env, None, type_name, union.variants.iter());
@@ -164,7 +165,7 @@ fn process_import(
                     parser::Exposed::Operator(variable_name) => {
                         let infix = interface
                             .infixes
-                            .get(&variable_name)
+                            .get(variable_name)
                             .ok_or_else(|| EnvError::InfixNotFound(variable_name.clone()))?;
 
                         env.infixes.insert(variable_name.clone(), infix.clone());
@@ -307,7 +308,7 @@ impl<'p> Environment<'p> for RootEnvironment {
     }
 
     fn local_infix_exists(&self, name: &Name) -> bool {
-        self.infixes.contains_key(&name)
+        self.infixes.contains_key(name)
     }
 
     // TODO Return error if name already exists
@@ -340,7 +341,7 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
     }
 
     fn module_name(&self) -> &ModuleName {
-        &self.parent.module_name()
+        self.parent.module_name()
     }
 
     fn find_value(&self, name: &Name) -> Option<&ValueType> {
@@ -352,7 +353,7 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
     }
 
     fn local_infix_exists(&self, name: &Name) -> bool {
-        self.parent.local_infix_exists(&name)
+        self.parent.local_infix_exists(name)
     }
 
     // TODO Return error if name already exists
