@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Error","ExportType","Exports","Expression","Pattern","Type","Value"],"fn":["canonicalize"],"struct":["CaseBranch","Infix","Module","TypeConstructor","UnionType"]};
