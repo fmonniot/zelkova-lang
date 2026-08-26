@@ -60,5 +60,5 @@ pub fn type_arrow(tpe1: Type, tpe2: Type) -> Type {
 }
 
 pub fn type_tuple2(tpe1: Type, tpe2: Type) -> Type {
-    Type::Tuple(Box::new(tpe1), Box::new(vec![tpe2]))
+    Type::Tuple(Box::new(tpe1), vec![tpe2])
 }
