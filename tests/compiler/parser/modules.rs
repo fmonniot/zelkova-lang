@@ -169,7 +169,7 @@ test_parse_ok!(
         imports: vec![],
         infixes: vec![Infix {
             operator: name("<|"),
-            associativy: Associativity::Right,
+            associativity: Associativity::Right,
             precedence: 0,
             function_name: name("apL"),
         }],
@@ -192,7 +192,7 @@ test_parse_ok!(
         imports: vec![],
         infixes: vec![Infix {
             operator: name("//"),
-            associativy: Associativity::Left,
+            associativity: Associativity::Left,
             precedence: 7,
             function_name: name("idiv"),
         }],
@@ -215,7 +215,7 @@ test_parse_ok!(
         imports: vec![],
         infixes: vec![Infix {
             operator: name("=="),
-            associativy: Associativity::None,
+            associativity: Associativity::None,
             precedence: 4,
             function_name: name("eq"),
         }],

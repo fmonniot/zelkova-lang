@@ -74,7 +74,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [PERF-1](perf-1.md) | task | — | open | Reduce cloning in the `Layout` iterator |
 | [TIDY-1](tidy-1.md) | task | — | open | Make `Name`'s inner `String` private |
 | [TIDY-2](tidy-2.md) | task | — | open | Replace the tokenizer's keyword `HashMap` with a `match` |
-| [TIDY-3](tidy-3.md) | task | — | open | Fix the `associativy` typo |
+| TIDY-3 | task | — | closed 2026-08-25 | Fix the `associativy` typo |
 | [TIDY-4](tidy-4.md) | task | — | open | Test-module doc comments still describe the type checker as a stub |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
