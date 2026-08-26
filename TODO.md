@@ -17,8 +17,13 @@ structured errors. Most critical in the typer (current focus area):
 
 All should return `Result` so callers can accumulate diagnostics.
 
-- [ ] Convert typer panics to `Result<_, typer::Error>`
-- [ ] Convert canonical panics/unwraps to `Result<_, canonical::Error>`
+- [x] Convert typer panics to `Result<_, typer::Error>` (already done prior to this
+      pass: `unifier.rs` and `annotate.rs` return `Result` and only `.unwrap()` in
+      `#[cfg(test)]` code)
+- [x] Convert canonical panics/unwraps to `Result<_, canonical::Error>` —
+      `Type::from_parser_type` and `Pattern::from_parser` now return `Result`;
+      the tuple-size and multi-clause-function panics/`todo!()` became
+      `Error::InvalidTupleSize` / `Error::MultipleBindingsUnsupported`
 
 ### 2. Unify error handling strategy across compiler phases
 

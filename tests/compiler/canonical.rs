@@ -333,6 +333,51 @@ fn javascript_binding_module() {
     );
 }
 
+// ── Scenario 9: Unknown constructor in a pattern is a diagnostic, not a panic ─
+
+#[test]
+fn unknown_constructor_pattern_is_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Color = Red | Green | Blue
+        isRed : Color -> Bool
+        isRed c =
+          case c of
+            Purple -> true
+            _ -> false
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("unknown constructor should error");
+    // The error is nested in `Error::Many` because it originates inside a
+    // `collect_accumulate` over case branches.
+    assert!(
+        format!("{:?}", errors).contains("VariantNotFound"),
+        "expected a VariantNotFound error, got {:?}",
+        errors
+    );
+}
+
+// ── Scenario 10: Multi-clause functions are a diagnostic, not a panic ────────
+
+#[test]
+fn multiple_bindings_is_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        isZero : Int -> Bool
+        isZero 0 = true
+        isZero n = false
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("multi-clause fn should error");
+    assert!(
+        errors
+            .iter()
+            .any(|e| matches!(e, canonical::Error::MultipleBindingsUnsupported(_))),
+        "expected a MultipleBindingsUnsupported error, got {:?}",
+        errors
+    );
+}
+
 // ── Extra: Module with imported Maybe interface ───────────────────────────────
 
 #[test]
