@@ -6,6 +6,7 @@ use super::tokenizer::Token;
 use crate::compiler::position::{spanned, BytePos, Position, Span, Spanned};
 use log::trace;
 use std::cmp::Ordering;
+use std::iter::FusedIterator;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum LayoutError {
@@ -116,9 +117,10 @@ impl Contexts {
 /// `reprocess_tokens`, and the token actually emitted is rebuilt from the
 /// original's span, which is `Copy`.
 ///
-/// The iterator is fused on error: once it has yielded an `Err`, every
-/// subsequent call to `next` returns `None`. See `Iterator::next` below for
-/// why.
+/// The iterator is fused: once `next` has returned `None` — because it hit an
+/// `Err`, or because the source ran out — every subsequent call returns `None`.
+/// Both cases go through the same `finished` latch, so `Layout` implements
+/// `FusedIterator`. See `Iterator::next` below for why an `Err` is terminal.
 struct Layout<I> {
     /// The source iterator
     tokens: I,
@@ -129,9 +131,11 @@ struct Layout<I> {
     /// For example, when opening a block we return the OpenBlock token and thus
     /// we have to reprocess the original token.
     reprocess_tokens: Vec<Spanned<Position, Token>>,
-    /// Set once the iterator has yielded an `Err`; from then on it yields
-    /// `None`. See `Iterator::next`.
-    errored: bool,
+    /// Set once `next` has returned `None`, whether because of an `Err` or
+    /// because the source is exhausted; from then on it keeps returning `None`.
+    /// This is what makes the `FusedIterator` impl below sound.
+    /// See `Iterator::next`.
+    finished: bool,
 }
 
 impl<I> Layout<I>
@@ -144,7 +148,7 @@ where
             tokens: iter,
             contexts: Contexts::new(),
             reprocess_tokens: vec![],
-            errored: false,
+            finished: false,
         }
     }
 
@@ -393,6 +397,17 @@ where
     /// Yields one layout-processed token per call, and stops — returns `None`
     /// forever — at the first of two events: `Token::EndOfFile`, or an `Err`.
     ///
+    /// Both events set the same `finished` latch, which is what makes "forever"
+    /// unconditional. It is worth being precise about this, because the two
+    /// events do not arrive the same way. The `Err` is terminal by decision.
+    /// `EndOfFile` is *re-derived* on each call — `next_token` finds
+    /// `reprocess_tokens` empty, asks the source for another token, gets `None`
+    /// and synthesises a fresh `EndOfFile` — and `Iterator`'s contract permits a
+    /// source to yield `Some` again after a `None`. Every source used here is in
+    /// fact fused, so latching changes nothing in practice; it just means the
+    /// guarantee is a property of this type rather than of its callers, which is
+    /// what the `FusedIterator` impl below asserts.
+    ///
     /// The error fuse matters because layout errors are not, in general,
     /// recoverable *by this iterator*: an indentation violation is diagnosed
     /// without changing `self.contexts`, so there is no state transition that
@@ -401,8 +416,13 @@ where
     /// the same way. A consumer which drains this iterator fully therefore sees
     /// at most one error and then terminates, rather than the same error
     /// repeated without bound.
+    ///
+    /// This deliberately forecloses accumulating layout diagnostics: should the
+    /// layout phase ever need to report every error rather than stop at the
+    /// first (`ERR-2`), this fuse is what has to change, and the branch above
+    /// would need a state transition that guarantees forward progress.
     fn next(&mut self) -> Option<Self::Item> {
-        if self.errored {
+        if self.finished {
             return None;
         }
 
@@ -413,17 +433,27 @@ where
             Ok(Spanned {
                 value: Token::EndOfFile,
                 ..
-            }) => None,
+            }) => {
+                self.finished = true;
+                None
+            }
             Ok(Spanned { value, span }) => {
                 Some(Ok((span.start.absolute, value, span.end.absolute)))
             }
             Err(err) => {
-                self.errored = true;
+                self.finished = true;
                 Some(Err(err))
             }
         }
     }
 }
+
+/// `next` latches `finished` on both of its terminating events, so once it has
+/// returned `None` it cannot return `Some` again regardless of what the source
+/// iterator does. That is exactly `FusedIterator`'s contract, and stating it
+/// makes `.fuse()` a no-op for callers.
+impl<I> FusedIterator for Layout<I> where I: Iterator<Item = Result<Spanned<Position, Token>, Error>>
+{}
 
 #[cfg(test)]
 mod tests {
@@ -761,7 +791,7 @@ mod tests {
     ///
     /// Verified to fail by neutralising both halves of the fix: restoring the
     /// `self.reprocess_tokens.push(token.clone())` on `handle_next_token`'s
-    /// error branch *and* removing the `errored` guard from `Iterator::next`.
+    /// error branch *and* removing the `finished` guard from `Iterator::next`.
     /// Either one alone stops the loop, so both have to be reverted to observe
     /// the original bug — with both reverted this collects `CAP` items, the
     /// last three of which are the identical error at the identical position.
@@ -814,7 +844,7 @@ mod tests {
     /// without consuming any token from the source, so a caller polling past it
     /// would otherwise keep seeing whatever the source iterator hands out next.
     ///
-    /// Verified to fail by removing the `errored` guard from `Iterator::next`:
+    /// Verified to fail by removing the `finished` guard from `Iterator::next`:
     /// the source below then yields its second `Err` too, and the assertion on
     /// the item count goes red.
     #[test]
@@ -833,6 +863,48 @@ mod tests {
             items
         );
         assert!(matches!(items[0], Err(Error::InvalidToken(_))));
+        assert!(iter.next().is_none(), "the iterator restarted after ending");
+    }
+
+    /// The `FusedIterator` impl claims `Layout` cannot yield `Some` after a
+    /// `None`. The `Err` path is terminal by decision, but the `EndOfFile` path
+    /// is re-derived from the source on every call, so on its own it inherits
+    /// whatever the source does — and `Iterator`'s contract lets a source hand
+    /// out `Some` again after `None`. The source below does exactly that.
+    ///
+    /// Verified to fail by removing `self.finished = true;` from `next`'s
+    /// `EndOfFile` arm: `Layout` then asks the resumed source for more tokens
+    /// and yields the second identifier, so the length assertion goes red.
+    #[test]
+    fn iteration_does_not_resume_after_a_non_fused_source_ends() {
+        // Yields one token, then `None`, then another token — legal for a
+        // plain `Iterator`, and precisely what `FusedIterator` forbids.
+        let mut steps = vec![
+            Some(ident_token("a")),
+            None,
+            Some(ident_token("b")),
+            Some(ident_token("c")),
+        ]
+        .into_iter();
+        let mut pos = Position::new(0, 1, 1);
+        let source = std::iter::from_fn(move || {
+            let token = steps.next()??;
+            let start = pos;
+            pos.increment_by(1);
+            Some(Ok(spanned(start, pos, token)))
+        });
+
+        let mut iter = layout(source);
+        let items = drain_bounded(&mut iter, 8);
+
+        // `OpenBlock`, the single identifier, and the `CloseBlock` emitted for
+        // the top level context when the source first reports exhaustion.
+        assert_eq!(
+            items.len(),
+            3,
+            "iteration resumed after the source reported exhaustion: {:?}",
+            items
+        );
         assert!(iter.next().is_none(), "the iterator restarted after ending");
     }
 }
