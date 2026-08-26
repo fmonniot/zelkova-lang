@@ -85,6 +85,13 @@ These outlive any single ticket. Each is here because breaking it produced a bad
 - **Tuples are size 2 or 3 only**, matching Elm. `canonical::Error::InvalidTupleSize` is the
   rejection path. The parser and canonical ASTs disagree about how to *represent* that
   constraint — that is `AST-2`, and it is a known trap.
+- **A `Result`-yielding iterator must advance or stop — never repeat one error.** `Layout`
+  (`parser/layout.rs`) diagnoses an indentation violation without touching its context stack,
+  so replaying the offending token would reproduce that error unchanged; it therefore fuses,
+  returning `None` from `next` after any `Err`, just as it already did for `Token::EndOfFile`.
+  When you add an error path to a pipeline iterator, either consume input or stop. Fully
+  draining one that did neither once consumed ~20GB of RAM before the OS killed it (`BUG-4`).
+  `Tokenizer` has the same shape and does **not** fuse — check before draining it directly.
 - **A doc comment describes what the code at that site does** — not what you intended, and
   not what it used to do. An overstated comment is a real defect because it is what the next
   reader trusts. Prefer saying less over saying more than you verified.
