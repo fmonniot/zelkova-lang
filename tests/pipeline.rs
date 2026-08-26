@@ -1,10 +1,10 @@
 //! Layer 3: End-to-end pipeline tests.
 //!
 //! These tests exercise `check_module` — the full canonicalize → type_check →
-//! exhaustiveness pipeline — on known inputs. Currently `type_check` and
-//! `exhaustiveness::check` are stubs returning `Ok(())`, so these tests
-//! primarily validate that the canonicalization phase succeeds (or fails) as
-//! expected end-to-end.
+//! exhaustiveness pipeline — on known inputs, including real modules under
+//! `std/core/src/`. A failure here can implicate canonicalization or
+//! `typer::type_check`. `exhaustiveness::check` is still a stub returning
+//! `Ok(())`, so a pipeline test cannot fail for exhaustiveness reasons yet.
 
 use std::collections::HashMap;
 use std::path::Path;
