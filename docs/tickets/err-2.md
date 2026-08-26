@@ -56,9 +56,12 @@ real. What remains is that those variants carry no location and are thrown away 
    it), so prefer the accumulating shape everywhere and use `Error::Many` where a single value
    is required.
 
-`BUG-1` wants the typed errors kept alive to the end of `compile_package` instead of being
-flattened into diagnostics early; that is the same restructuring seen from the other side.
-Doing `BUG-1` first, or the two together, avoids writing the plumbing twice.
+`BUG-1` closed 2026-08-25 and already did the half of this that it needed: `compile_package`
+accumulates typed `CompilationError`s to the end of the pass instead of flattening them into
+`Diagnostic`s early, `CompilationError::Many` exists, and the canonical and dependency arms of
+`as_diagnostic` build `Diagnostic::error()`. So step 5's `Error::Many` shape has a precedent to
+follow at the top level, and `as_diagnostic` is genuinely the only rendering point now — every
+improvement made there reaches the user.
 
 **Acceptance:** `grep -rn PlaceHolder src/` returns nothing, and neither `From` impl in
 `src/compiler/mod.rs` contains `todo!()`. A type error in a `.zel` source reaches the user as a
