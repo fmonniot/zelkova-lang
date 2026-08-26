@@ -378,7 +378,6 @@ fn multiple_bindings_is_error() {
     );
 }
 
-
 // ── Extra: Module with imported Maybe interface ───────────────────────────────
 
 #[test]
