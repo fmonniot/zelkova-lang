@@ -16,9 +16,18 @@ pub enum LayoutError {
     },
 }
 
+/// Apply the offside rule to a token stream, injecting `OpenBlock`/`CloseBlock`
+/// so the parser does not have to track indentation itself.
+///
+/// **The returned iterator stops at the first `Err`.** A consumer which drains
+/// it fully therefore observes at most one error, ever, and then terminates —
+/// a layout error is not recoverable by the iterator, so replaying past it
+/// would repeat that error without bound (`BUG-4`). It is a `FusedIterator`,
+/// so `.fuse()` is a no-op. See `Layout` and its `Iterator::next` for the
+/// reasoning.
 pub fn layout<I: Iterator<Item = Result<Spanned<Position, Token>, Error>>>(
     iter: I,
-) -> impl Iterator<Item = Result<(BytePos, Token, BytePos), Error>> {
+) -> impl FusedIterator<Item = Result<(BytePos, Token, BytePos), Error>> {
     Layout::new(iter)
 }
 
