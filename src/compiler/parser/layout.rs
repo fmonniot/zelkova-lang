@@ -50,7 +50,12 @@ pub fn layout<I: Iterator<Item = Result<Spanned<Position, Token>, Error>>>(
 /// |
 /// |-- is a `CaseBlock`
 /// ```
-#[derive(Debug, PartialEq, Clone)]
+///
+/// `Context` and `Offside` are `Copy`: `handle_next_token` has to read the
+/// current context and then mutate the context stack, so it takes a copy of
+/// the top of the stack to release the borrow. Keep any future variant small
+/// enough that this stays true.
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Context {
     /// Context for the expression a pattern matching will match on
     CaseExpression,
@@ -70,7 +75,7 @@ pub enum Context {
     TopLevelDeclaration,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Offside {
     context: Context,
     indent: usize, // TODO rename to min_indent
@@ -106,9 +111,11 @@ impl Contexts {
 /// represent what kind of terms we are looking at and what indentation
 /// rules we should apply.
 ///
-/// > **TODO**: I really need to use references with this structure. There are too many
-/// > `clone()` call on something which is part of the core loop. Let's do so
-/// > once I have a somewhat working algorithm.
+/// The core loop does not clone tokens. A token which has to be emitted as
+/// something else (a block token) *and* reprocessed afterwards is moved into
+/// `reprocess_tokens`, and the token actually emitted is rebuilt from the
+/// original's span, which is `Copy`. The single remaining `clone()` is on the
+/// indentation error path, where the token is also carried by the error value.
 struct Layout<I> {
     /// The source iterator
     tokens: I,
@@ -159,15 +166,13 @@ where
 
         // Short circuit handling of EOF, and verify we don't have any
         // remaining contexts to clean.
-        if let Spanned {
-            value: Token::EndOfFile,
-            span: Span { start, end },
-        } = &token
-        {
+        if let Token::EndOfFile = token.value {
+            let Span { start, end } = token.span;
+
             return match self.contexts.pop() {
                 Some(_) => {
-                    self.reprocess_tokens.push(token.clone());
-                    Ok(spanned(*start, *end, Token::CloseBlock))
+                    self.reprocess_tokens.push(token);
+                    Ok(spanned(start, end, Token::CloseBlock))
                 }
                 None => Ok(token),
             };
@@ -180,7 +185,7 @@ where
         let offside = match self.contexts.stack.last_mut() {
             Some(offside) => offside,
             None => {
-                let start = token.start();
+                let start = token.span.start;
                 let off = Offside {
                     context: Context::TopLevelDeclaration,
                     indent: start.column,
@@ -188,8 +193,8 @@ where
                 };
                 self.contexts.push(off);
 
-                self.reprocess_tokens.push(token.clone());
-                return Ok(spanned(*start, *start, Token::OpenBlock));
+                self.reprocess_tokens.push(token);
+                return Ok(spanned(start, start, Token::OpenBlock));
             }
         };
 
@@ -199,9 +204,11 @@ where
         // If we do, let's remove the context and return the token
         match (&token.value, &mut offside.context) {
             (Token::Of, Context::CaseExpression) => {
+                let Span { start, end } = token.span;
+
                 self.contexts.pop();
-                self.reprocess_tokens.push(token.clone());
-                return Ok(token.map(|_| Token::CloseBlock));
+                self.reprocess_tokens.push(token);
+                return Ok(spanned(start, end, Token::CloseBlock));
             }
             (Token::OpenBlock, Context::CaseBlock(None)) => (),
             (_, Context::CaseBlock(c @ None)) => {
@@ -233,7 +240,7 @@ where
             let offside = match self.contexts.last() {
                 Some(offside) => offside,
                 None => {
-                    let start = *token.start();
+                    let start = token.span.start;
                     let off = Offside {
                         context: Context::TopLevelDeclaration,
                         indent: start.column,
@@ -241,12 +248,12 @@ where
                     };
                     self.contexts.push(off);
 
-                    self.reprocess_tokens.push(token.clone());
+                    self.reprocess_tokens.push(token);
                     return Ok(spanned(start, start, Token::OpenBlock));
                 }
             };
 
-            let token_column = token.start().column;
+            let token_column = token.span.start.column;
             let context_column = offside.indent;
 
             trace!(
@@ -264,9 +271,11 @@ where
                     // i i
                     // Here we have a token on an indentation level lower than the case
                     // context, so we close that context.
+                    let Span { start, end } = token.span;
+
                     self.contexts.pop();
-                    self.reprocess_tokens.push(token.clone());
-                    return Ok(token.map(|_| Token::CloseBlock));
+                    self.reprocess_tokens.push(token);
+                    return Ok(spanned(start, end, Token::CloseBlock));
                 }
 
                 // let and top level declaration aren't managed here
@@ -275,19 +284,20 @@ where
             };
 
             // we release the reference on self.contexts because we need to
-            // mutate it down the line.
-            offside.clone()
+            // mutate it down the line. `Offside` is `Copy`, so this is a few
+            // words on the stack and not an allocation.
+            *offside
         };
 
         // Second, we enforce the indentation rule we have on record
-        let min_indent_required = match &offside.context {
+        let min_indent_required = match offside.context {
             Context::CaseBlock(Some(min)) => min,
-            _ => &offside.indent,
+            _ => offside.indent,
         };
 
-        if token.start().column.cmp(min_indent_required) == Ordering::Less {
-            let offside = offside.clone();
-
+        if token.span.start.column.cmp(&min_indent_required) == Ordering::Less {
+            // The only place we still duplicate a token: the error carries it
+            // and we also have to leave it in the buffer for reprocessing.
             self.reprocess_tokens.push(token.clone());
 
             return Err(LayoutError::LayoutError { offside, token }.into());
@@ -337,13 +347,14 @@ where
             }
             (Token::OpenBlock, _) => (),
             _ => {
-                if token.start().column == 1 && token.start().line > offside.line {
+                if token.span.start.column == 1 && token.span.start.line > offside.line {
                     // Here we have a token which isn't OpenBlock (special case above)
                     // but which is at the beginning of a new line. This most probably
                     // mean we have reached the end of the previous block and are
                     // starting a new one.
 
-                    self.reprocess_tokens.push(token.clone());
+                    let start = token.span.start;
+                    self.reprocess_tokens.push(token);
 
                     // Furthermore in case of implicitely terminated block,
                     // pop the context from the stack and let the parser complain
@@ -354,7 +365,7 @@ where
                         self.contexts.pop();
                     }
 
-                    return Ok(spanned(*token.start(), *token.start(), Token::CloseBlock));
+                    return Ok(spanned(start, start, Token::CloseBlock));
                 }
             }
         }

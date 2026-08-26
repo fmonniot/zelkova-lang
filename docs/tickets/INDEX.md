@@ -71,7 +71,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-2](err-2.md) | task | — | open | Unify the error-handling strategy across compiler phases |
 | [AST-1](ast-1.md) | task | — | open | Remove `Box<Vec<_>>` from the parser AST |
 | [AST-2](ast-2.md) | task | — | open | Unify the tuple representation across the parser and canonical ASTs |
-| [PERF-1](perf-1.md) | task | — | open | Reduce cloning in the `Layout` iterator |
+| PERF-1 | task | — | closed 2026-08-25 | Reduce cloning in the `Layout` iterator |
 | TIDY-1 | task | — | closed 2026-08-25 | Make `Name`'s inner `String` private |
 | TIDY-2 | task | — | closed 2026-08-25 | Replace the tokenizer's keyword `HashMap` with a `match` |
 | TIDY-3 | task | — | closed 2026-08-25 | Fix the `associativy` typo |
