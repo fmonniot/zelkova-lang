@@ -258,17 +258,15 @@ where
 
             match &offside.context {
                 // case branch terminates when we have a token at a level
-                Context::CaseBranch | Context::CaseBlock(_) => {
-                    if token_column <= context_column {
-                        //   value // token
-                        // Nothing // context
-                        // i i
-                        // Here we have a token on an indentation level lower than the case
-                        // context, so we close that context.
-                        self.contexts.pop();
-                        self.reprocess_tokens.push(token.clone());
-                        return Ok(token.map(|_| Token::CloseBlock));
-                    }
+                Context::CaseBranch | Context::CaseBlock(_) if token_column <= context_column => {
+                    //   value // token
+                    // Nothing // context
+                    // i i
+                    // Here we have a token on an indentation level lower than the case
+                    // context, so we close that context.
+                    self.contexts.pop();
+                    self.reprocess_tokens.push(token.clone());
+                    return Ok(token.map(|_| Token::CloseBlock));
                 }
 
                 // let and top level declaration aren't managed here
@@ -398,14 +396,14 @@ mod tests {
     // Create an approximation for the token position in the stream.
     // We don't count the spaces between tokens, but it gives us enough
     // to understand where a failure happened.
-    fn tokens_to_spanned(tokens: &Vec<Token>) -> Vec<Result<Spanned<Position, Token>, Error>> {
+    fn tokens_to_spanned(tokens: &[Token]) -> Vec<Result<Spanned<Position, Token>, Error>> {
         let mut pos = Position::new(0, 1, 1);
 
         tokens
-            .into_iter()
+            .iter()
             .cloned()
             .filter_map(|token| {
-                let start = pos.clone();
+                let start = pos;
                 let inc = match &token {
                     Token::Module => 6,
                     Token::UpperIdentifier(name) => name.len(),
@@ -440,7 +438,7 @@ mod tests {
                     true
                 };
 
-                let end = pos.clone();
+                let end = pos;
 
                 if emit {
                     Some(Ok(spanned(start, end, token)))

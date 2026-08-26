@@ -22,11 +22,6 @@ fn int_t() -> canonical::Type {
     canonical::Type::Type("Int".into(), vec![])
 }
 
-/// `Type::Type("Bool", [])` — same for Bool.
-fn bool_t() -> canonical::Type {
-    canonical::Type::Type("Bool".into(), vec![])
-}
-
 // ── Scenario 1: Simple constant, no type annotation ─────────────────────────
 
 #[test]

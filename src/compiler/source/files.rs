@@ -192,7 +192,7 @@ mod tests {
         );
         let abs_path = Path::new("/Users/francoismonniot/Projects/github.com/fmonniot/zelkova-lang/std/core/src/Platform/Cmd.zel");
 
-        let res = SourceFile::load(abs_path.to_path_buf(), &root_path);
+        let res = SourceFile::load(abs_path.to_path_buf(), root_path);
         println!("{:?}", res);
     }
 }

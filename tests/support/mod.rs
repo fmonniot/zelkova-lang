@@ -1,4 +1,12 @@
 //! Shared helpers for integration tests
+//!
+//! This file is compiled once per top-level integration test binary that includes
+//! it (`tests/typer.rs` and `tests/pipeline.rs` directly via `mod support;`;
+//! `tests/compiler_tests.rs` indirectly, through `tests/compiler/canonical.rs`'s
+//! `#[path = "../support/mod.rs"] mod support;`). Each binary only calls the subset
+//! of helpers it needs, so `dead_code` would fire in whichever binary doesn't happen
+//! to use a given one — allow it here instead of per binary.
+#![allow(dead_code)]
 
 use codespan_reporting::files::SimpleFile;
 use std::collections::HashMap;

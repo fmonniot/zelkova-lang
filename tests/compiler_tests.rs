@@ -1,5 +1,3 @@
-mod support;
-
 mod compiler {
     mod parser {
         #[macro_use]

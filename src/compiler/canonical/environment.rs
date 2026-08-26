@@ -533,62 +533,51 @@ mod tests {
         let env = new_environment(&module_name(), &interfaces, &imports)?;
 
         // Assert we have the expected
-        assert_eq!(
+        assert!(
             env.find_value(&"andThen".into()).is_some(),
-            true,
             "value andThen not found"
         );
-        assert_eq!(
+        assert!(
             env.find_value(&"map".into()).is_some(),
-            true,
             "value map not found"
         );
-        assert_eq!(
+        assert!(
             env.find_value(&"withDefault".into()).is_some(),
-            true,
             "value withDefault not found"
         );
 
-        assert_eq!(
+        assert!(
             env.find_value(&"Maybe.andThen".into()).is_some(),
-            true,
             "value Maybe.andThen not found"
         );
-        assert_eq!(
+        assert!(
             env.find_value(&"Maybe.map".into()).is_some(),
-            true,
             "value Maybe.map not found"
         );
-        assert_eq!(
+        assert!(
             env.find_value(&"Maybe.withDefault".into()).is_some(),
-            true,
             "value Maybe.withDefault not found"
         );
 
-        assert_eq!(
+        assert!(
             env.find_type(&"Maybe".into()).is_some(),
-            true,
             "type Maybe not found"
         );
 
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"Maybe.Just".into()).is_some(),
-            true,
             "type constructor Maybe.Just not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"Maybe.Nothing".into()).is_some(),
-            true,
             "type constructor Maybe.Nothing not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"Just".into()).is_some(),
-            true,
             "type constructor Just not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"Nothing".into()).is_some(),
-            true,
             "type constructor Nothing not found"
         );
 
@@ -624,36 +613,30 @@ mod tests {
         let env = new_environment(&module_name(), &interfaces, &imports)?;
 
         // Lookup the expected values
-        assert_eq!(
+        assert!(
             env.find_value(&"andThen".into()).is_some(),
-            true,
             "value andThen not found"
         );
 
-        assert_eq!(
+        assert!(
             env.find_value(&"Maybe.andThen".into()).is_some(),
-            true,
             "value Maybe.andThen not found"
         );
-        assert_eq!(
+        assert!(
             env.find_value(&"Maybe.map".into()).is_some(),
-            true,
             "value Maybe.map not found"
         );
-        assert_eq!(
+        assert!(
             env.find_value(&"Maybe.withDefault".into()).is_some(),
-            true,
             "value Maybe.withDefault not found"
         );
 
-        assert_eq!(
+        assert!(
             env.find_type(&"Maybe.Maybe".into()).is_some(),
-            true,
             "type Maybe.Maybe not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type(&"Maybe".into()).is_some(),
-            true,
             "type Maybe not found"
         );
 
@@ -694,51 +677,42 @@ mod tests {
         let env = new_environment(&module_name(), &interfaces, &imports)?;
 
         // Lookup the expected
-        assert_eq!(
+        assert!(
             env.find_value(&"Maybe.andThen".into()).is_some(),
-            true,
             "value Maybe.andThen not found"
         );
-        assert_eq!(
+        assert!(
             env.find_value(&"Maybe.map".into()).is_some(),
-            true,
             "value Maybe.map not found"
         );
-        assert_eq!(
+        assert!(
             env.find_value(&"Maybe.withDefault".into()).is_some(),
-            true,
             "value Maybe.withDefault not found"
         );
 
-        assert_eq!(
+        assert!(
             env.find_type(&"Maybe".into()).is_some(),
-            true,
             "type Maybe not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type(&"Maybe.Maybe".into()).is_some(),
-            true,
             "type Maybe.Maybe not found"
         );
 
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"Maybe.Just".into()).is_some(),
-            true,
             "type constructor Maybe.Just not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"Maybe.Nothing".into()).is_some(),
-            true,
             "type constructor Maybe.Nothing not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"Just".into()).is_some(),
-            true,
             "type constructor Just not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"Nothing".into()).is_some(),
-            true,
             "type constructor Nothing not found"
         );
 
@@ -779,52 +753,43 @@ mod tests {
         let env = new_environment(&module_name(), &interfaces, &imports)?;
 
         // Lookup the expected
-        assert_eq!(
+        assert!(
             env.find_value(&"M.andThen".into()).is_some(),
-            true,
             "value M.andThen not found"
         );
-        assert_eq!(
+        assert!(
             env.find_value(&"M.map".into()).is_some(),
-            true,
             "value M.map not found"
         );
-        assert_eq!(
+        assert!(
             env.find_value(&"M.withDefault".into()).is_some(),
-            true,
             "value M.withDefault not found"
         );
 
-        assert_eq!(
+        assert!(
             env.find_type(&"Maybe".into()).is_some(),
-            true,
             "type Maybe not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type(&"M.Maybe".into()).is_some(),
-            true,
             "type M.Maybe not found"
         );
 
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"M.Just".into()).is_some(),
-            true,
             "type constructor M.Just not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"M.Nothing".into()).is_some(),
-            true,
             "type constructor M.Nothing not found"
         );
 
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"Just".into()).is_some(),
-            true,
             "type constructor Just not found"
         );
-        assert_eq!(
+        assert!(
             env.find_type_constructor(&"Nothing".into()).is_some(),
-            true,
             "type constructor Nothing not found"
         );
 
