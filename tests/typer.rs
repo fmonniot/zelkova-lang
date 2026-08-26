@@ -1,25 +1,16 @@
 //! Layer 2: Type checker expectation tests.
 //!
-//! These tests describe the expected behaviour once the type checker is
-//! integrated into the main pipeline.  They are all marked `#[ignore]` and
-//! will be un-ignored (or replaced) when `type_check` is no longer a stub.
-//!
-//! The tests go through the full `check_module` pipeline (parse →
+//! These tests go through the full `check_module` pipeline (parse →
 //! canonicalize → type_check → exhaustiveness), which is the same path that
-//! Layer 3 pipeline tests use.  The difference is that these tests assert on
+//! Layer 3 pipeline tests use. The difference is that these tests assert on
 //! *type-level* properties — a type mismatch should become an error, an
-//! identity function should produce a polymorphic type, etc.
-//!
-//! ## How to activate
-//!
-//! Once the type checker is connected, remove the `#[ignore]` attributes one
-//! by one as you confirm each scenario works.  You may also want to expose a
-//! richer return type from `check_module` (or a new function) so you can
-//! inspect inferred types directly rather than just `is_ok` / `is_err`.
+//! identity function should produce a polymorphic type, etc. A failure here
+//! can implicate canonicalization or `typer::type_check`, since both run on
+//! the way to the assertion.
 
 use std::collections::HashMap;
 
-use zelkova_lang::compiler::{check_module, parser};
+use zelkova_lang::compiler::check_module;
 
 mod support;
 
