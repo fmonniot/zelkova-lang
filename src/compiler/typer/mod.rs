@@ -821,10 +821,10 @@ mod tests {
         // Helper function to reduce boilerplate
         fn of_type(tpe: Type) -> String {
             let mut sig: Signature = Default::default();
-            sig.from_type(tpe)
+            sig.type_signature(tpe)
         }
 
-        fn from_type(&mut self, tpe: Type) -> String {
+        fn type_signature(&mut self, tpe: Type) -> String {
             match tpe {
                 Type::Literal(TypeLiteral::Bool) => "Bool".to_owned(),
                 Type::Literal(TypeLiteral::Int) => "Int".to_owned(),
@@ -848,8 +848,8 @@ mod tests {
                     return_tpe,
                 } => {
                     let is_param_fun = matches!(param_tpe.as_ref(), Type::Fun { .. });
-                    let param = self.from_type(*param_tpe);
-                    let retur = self.from_type(*return_tpe);
+                    let param = self.type_signature(*param_tpe);
+                    let retur = self.type_signature(*return_tpe);
 
                     if is_param_fun {
                         format!("({}) -> {}", param, retur)
@@ -858,20 +858,20 @@ mod tests {
                     }
                 }
                 Type::Tuple(a, b, None) => {
-                    format!("({}, {})", self.from_type(*a), self.from_type(*b))
+                    format!("({}, {})", self.type_signature(*a), self.type_signature(*b))
                 }
                 Type::Tuple(a, b, Some(c)) => {
                     format!(
                         "({}, {}, {})",
-                        self.from_type(*a),
-                        self.from_type(*b),
-                        self.from_type(*c)
+                        self.type_signature(*a),
+                        self.type_signature(*b),
+                        self.type_signature(*c)
                     )
                 }
                 Type::Adt(name, args) if args.is_empty() => name,
                 Type::Adt(name, args) => {
                     let arg_strs: Vec<String> =
-                        args.into_iter().map(|a| self.from_type(a)).collect();
+                        args.into_iter().map(|a| self.type_signature(a)).collect();
                     format!("{} {}", name, arg_strs.join(" "))
                 }
             }
