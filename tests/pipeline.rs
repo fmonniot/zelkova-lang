@@ -238,7 +238,7 @@ fn stdlib_basics_chain_compiles() {
 
     // At this point we've successfully compiled the core stdlib chain.
     // Verify Basics, Maybe, and Result are all in the interface map.
-    assert!(interfaces.contains_key(&Name("Basics".to_string())));
-    assert!(interfaces.contains_key(&Name("Maybe".to_string())));
-    assert!(interfaces.contains_key(&Name("Result".to_string())));
+    assert!(interfaces.contains_key(&"Basics".into()));
+    assert!(interfaces.contains_key(&"Maybe".into()));
+    assert!(interfaces.contains_key(&"Result".into()));
 }

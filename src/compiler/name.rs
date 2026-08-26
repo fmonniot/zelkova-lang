@@ -18,11 +18,23 @@
 /// new type over identifier names
 ///
 /// This is a simple `String` representing an identifier name. In the future, we
-/// might want to introduce interning (either on `Name` or `QualName`).
+/// might want to introduce interning (either on `Name` or `QualName`). The inner
+/// `String` is private so that such a change stays local to this module; reach
+/// for `Name::new`, `as_str`, `From<&str>`, or `Display` instead of the field.
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
-pub struct Name(pub String);
+pub struct Name(String);
 
 impl Name {
+    /// Build a `Name` from any owned-or-borrowed string source.
+    pub fn new<S: Into<String>>(s: S) -> Name {
+        Name(s.into())
+    }
+
+    /// Borrow the underlying identifier text.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
     /// Qualify the existing name with a module
     // TODO Return QualName ?
     // TODO Rename to qualify_with_str (+ use Into<String> generic)
@@ -135,6 +147,15 @@ impl From<&'static str> for QualName {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_and_as_str_roundtrip() {
+        let name = Name::new("hello");
+        assert_eq!(name.as_str(), "hello");
+
+        let owned = Name::new(String::from("world"));
+        assert_eq!(owned.as_str(), "world");
+    }
 
     #[test]
     fn unqual_to_qual() {
