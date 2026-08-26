@@ -73,7 +73,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [AST-2](ast-2.md) | task | — | open | Unify the tuple representation across the parser and canonical ASTs |
 | [PERF-1](perf-1.md) | task | — | open | Reduce cloning in the `Layout` iterator |
 | TIDY-1 | task | — | closed 2026-08-25 | Make `Name`'s inner `String` private |
-| [TIDY-2](tidy-2.md) | task | — | open | Replace the tokenizer's keyword `HashMap` with a `match` |
+| TIDY-2 | task | — | closed 2026-08-25 | Replace the tokenizer's keyword `HashMap` with a `match` |
 | [TIDY-3](tidy-3.md) | task | — | open | Fix the `associativy` typo |
 | [TIDY-4](tidy-4.md) | task | — | open | Test-module doc comments still describe the type checker as a stub |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
