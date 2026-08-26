@@ -67,9 +67,14 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
             let mut var_map = HashMap::new();
             if let Some(typer_tpe) = canonical_type_to_typer_type(tpe, &mut var_map, &mut counter) {
                 // Add both qualified (e.g. "Test.not") and unqualified (e.g. "not") names
-                let qname = module.name.qualify_name(name).to_name().0.clone();
+                let qname = module
+                    .name
+                    .qualify_name(name)
+                    .to_name()
+                    .as_str()
+                    .to_string();
                 global.insert(qname, typer_tpe.clone());
-                global.insert(name.0.clone(), typer_tpe);
+                global.insert(name.as_str().to_string(), typer_tpe);
             }
         }
     }
@@ -80,16 +85,16 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
         let mut adt_var_map: HashMap<String, TypeVariable> = HashMap::new();
         for tv_name in &union_type.variables {
             counter += 1;
-            adt_var_map.insert(tv_name.0.clone(), TypeVariable { id: counter });
+            adt_var_map.insert(tv_name.as_str().to_string(), TypeVariable { id: counter });
         }
 
         // Build result type: Adt(type_name, [TypeVar for each param])
         let result_args: Vec<Type> = union_type
             .variables
             .iter()
-            .map(|v| Type::Variable(adt_var_map[&v.0].clone()))
+            .map(|v| Type::Variable(adt_var_map[v.as_str()].clone()))
             .collect();
-        let result_type = Type::Adt(type_name.0.clone(), result_args);
+        let result_type = Type::Adt(type_name.as_str().to_string(), result_args);
 
         for ctor in &union_type.variants {
             let ctor_type = if ctor.type_parameters.is_empty() {
@@ -117,8 +122,13 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
             };
 
             // Register under both unqualified ("Just") and qualified ("Test.Just") names
-            global.insert(ctor.name.0.clone(), ctor_type.clone());
-            let qname = module.name.qualify_name(&ctor.name).to_name().0.clone();
+            global.insert(ctor.name.as_str().to_string(), ctor_type.clone());
+            let qname = module
+                .name
+                .qualify_name(&ctor.name)
+                .to_name()
+                .as_str()
+                .to_string();
             global.insert(qname, ctor_type);
         }
     }
@@ -167,20 +177,20 @@ fn canonical_type_to_typer_type(
     counter: &mut u32,
 ) -> Option<Type> {
     match tpe {
-        canonical::Type::Type(name, args) if args.is_empty() && name.0 == "Int" => {
+        canonical::Type::Type(name, args) if args.is_empty() && name.as_str() == "Int" => {
             Some(Type::Literal(TypeLiteral::Int))
         }
-        canonical::Type::Type(name, args) if args.is_empty() && name.0 == "Bool" => {
+        canonical::Type::Type(name, args) if args.is_empty() && name.as_str() == "Bool" => {
             Some(Type::Literal(TypeLiteral::Bool))
         }
-        canonical::Type::Type(name, args) if args.is_empty() && name.0 == "Char" => {
+        canonical::Type::Type(name, args) if args.is_empty() && name.as_str() == "Char" => {
             Some(Type::Literal(TypeLiteral::Char))
         }
-        canonical::Type::Type(name, args) if args.is_empty() && name.0 == "Float" => {
+        canonical::Type::Type(name, args) if args.is_empty() && name.as_str() == "Float" => {
             Some(Type::Literal(TypeLiteral::Float))
         }
         canonical::Type::Variable(name) => {
-            let tv = var_map.entry(name.0.clone()).or_insert_with(|| {
+            let tv = var_map.entry(name.as_str().to_string()).or_insert_with(|| {
                 *counter += 1;
                 TypeVariable { id: *counter }
             });
@@ -208,7 +218,7 @@ fn canonical_type_to_typer_type(
                 .iter()
                 .map(|a| canonical_type_to_typer_type(a, var_map, counter))
                 .collect();
-            Some(Type::Adt(name.0.clone(), converted?))
+            Some(Type::Adt(name.as_str().to_string(), converted?))
         }
     }
 }
@@ -226,9 +236,9 @@ fn canonical_expr_to_term(
         canonical::Expression::Bool(b) => Some(Term::Bool(*b)),
         canonical::Expression::Char(c) => Some(Term::Char(*c)),
         canonical::Expression::Float(f) => Some(Term::Float(*f)),
-        canonical::Expression::VarLocal(name) => Some(Term::Identifier(name.0.clone())),
+        canonical::Expression::VarLocal(name) => Some(Term::Identifier(name.as_str().to_string())),
         canonical::Expression::VarTopLevel(qname) => {
-            Some(Term::Identifier(qname.to_name().0.clone()))
+            Some(Term::Identifier(qname.to_name().as_str().to_string()))
         }
         canonical::Expression::Apply(f, a) => {
             let fun = canonical_expr_to_term(f, module_types, counter)?;
@@ -275,7 +285,7 @@ fn canonical_expr_to_term(
         }
         // Constructors are resolved as identifiers looked up in the global env.
         canonical::Expression::VarConstructor(qname, _) => {
-            Some(Term::Identifier(qname.to_name().0.clone()))
+            Some(Term::Identifier(qname.to_name().as_str().to_string()))
         }
         // VarForeign: not in the module's global env, skip
         canonical::Expression::VarForeign(_, _) => None,
@@ -295,7 +305,7 @@ fn translate_pattern(
         canonical::Pattern::Anything => Some((TermPattern::Anything, vec![])),
         canonical::Pattern::Variable(name) => {
             // The binding's actual type will be unified with the scrutinee type in annotate.
-            Some((TermPattern::Bind(name.0.clone()), vec![]))
+            Some((TermPattern::Bind(name.as_str().to_string()), vec![]))
         }
         canonical::Pattern::Bool(_) => Some((
             TermPattern::Literal(Type::Literal(TypeLiteral::Bool)),
@@ -317,14 +327,14 @@ fn translate_pattern(
             let mut adt_var_map: HashMap<String, TypeVariable> = HashMap::new();
             for tv_name in &union_type.variables {
                 *counter += 1;
-                adt_var_map.insert(tv_name.0.clone(), TypeVariable { id: *counter });
+                adt_var_map.insert(tv_name.as_str().to_string(), TypeVariable { id: *counter });
             }
 
             // Build the ADT result type args from the fresh vars.
             let adt_args: Vec<Type> = union_type
                 .variables
                 .iter()
-                .map(|v| Type::Variable(adt_var_map[&v.0].clone()))
+                .map(|v| Type::Variable(adt_var_map[v.as_str()].clone()))
                 .collect();
 
             // Translate each constructor type parameter (reuses the same fresh vars).
@@ -342,7 +352,7 @@ fn translate_pattern(
             for (arg_pattern, param_type) in args.iter().zip(param_types.iter()) {
                 match arg_pattern {
                     canonical::Pattern::Variable(name) => {
-                        bindings.push((name.0.clone(), param_type.clone()));
+                        bindings.push((name.as_str().to_string(), param_type.clone()));
                     }
                     canonical::Pattern::Anything => {} // no binding needed
                     _ => return None,                  // nested complex patterns not yet supported
@@ -350,7 +360,7 @@ fn translate_pattern(
             }
 
             let term_pattern = TermPattern::Constructor {
-                adt_name: ctor.tpe.0.clone(),
+                adt_name: ctor.tpe.as_str().to_string(),
                 adt_args,
                 bindings: bindings.clone(),
             };
@@ -398,7 +408,7 @@ fn wrap_with_patterns<'a>(
 ) -> Option<Term> {
     let names: Vec<String> = patterns
         .map(|p| match p {
-            canonical::Pattern::Variable(name) => Some(name.0.clone()),
+            canonical::Pattern::Variable(name) => Some(name.as_str().to_string()),
             canonical::Pattern::Anything => Some("_".to_string()),
             _ => None,
         })
