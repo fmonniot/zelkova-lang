@@ -121,39 +121,39 @@ pub enum Type {
 }
 
 impl Type {
-    fn from_parser_type(env: &dyn Environment, tpe: &parser::Type) -> Type {
+    fn from_parser_type(env: &dyn Environment, tpe: &parser::Type) -> Result<Type, Error> {
         match tpe {
-            parser::Type::Unqualified(name, vars) => {
-                match env.find_type(name) {
-                    Some(t) => t.clone(),
-                    None => {
-                        let types = vars
-                            .iter()
-                            .map(|t| Type::from_parser_type(env, t))
-                            .collect();
+            parser::Type::Unqualified(name, vars) => match env.find_type(name) {
+                Some(t) => Ok(t.clone()),
+                None => {
+                    let types = vars
+                        .iter()
+                        .map(|t| Type::from_parser_type(env, t))
+                        .collect::<Result<Vec<_>, Error>>()?;
 
-                        // TODO Insert back into Environment ?
-                        Type::Type(name.clone(), types)
-                    }
+                    // TODO Insert back into Environment ?
+                    Ok(Type::Type(name.clone(), types))
                 }
-            }
-            parser::Type::Arrow(t1, t2) => Type::Arrow(
-                Box::new(Type::from_parser_type(env, t1)),
-                Box::new(Type::from_parser_type(env, t2)),
-            ),
-            parser::Type::Variable(n) => Type::Variable(n.clone()),
+            },
+            parser::Type::Arrow(t1, t2) => Ok(Type::Arrow(
+                Box::new(Type::from_parser_type(env, t1)?),
+                Box::new(Type::from_parser_type(env, t2)?),
+            )),
+            parser::Type::Variable(n) => Ok(Type::Variable(n.clone())),
             parser::Type::Tuple(t1, t_many) => {
                 let (t2, t3) = match t_many.len() {
-                    0 => panic!("Tuple of length 1 is not suported by the parser"),
+                    0 => return Err(Error::InvalidTupleSize(1)),
                     1 | 2 => (t_many.first().unwrap().clone(), t_many.get(1)),
-                    _ => panic!("For now we restrict tuple to sizes 2 and 3"),
+                    n => return Err(Error::InvalidTupleSize(n + 1)),
                 };
 
-                Type::Tuple(
-                    Box::new(Type::from_parser_type(env, t1)),
-                    Box::new(Type::from_parser_type(env, &t2)),
-                    t3.map(|t| Box::new(Type::from_parser_type(env, t))),
-                )
+                Ok(Type::Tuple(
+                    Box::new(Type::from_parser_type(env, t1)?),
+                    Box::new(Type::from_parser_type(env, &t2)?),
+                    t3.map(|t| Type::from_parser_type(env, t))
+                        .transpose()?
+                        .map(Box::new),
+                ))
             }
         }
     }
@@ -207,32 +207,34 @@ pub enum Pattern {
 }
 
 impl Pattern {
-    fn from_parser(p: &parser::Pattern, env: &dyn Environment) -> Pattern {
+    fn from_parser(p: &parser::Pattern, env: &dyn Environment) -> Result<Pattern, Error> {
         match p {
-            parser::Pattern::Anything => Pattern::Anything,
-            parser::Pattern::Variable(name) => Pattern::Variable(name.clone()),
-            parser::Pattern::Literal(parser::Literal::Int(i)) => Pattern::Int(*i),
-            parser::Pattern::Literal(parser::Literal::Float(f)) => Pattern::Float(*f),
-            parser::Pattern::Literal(parser::Literal::Char(c)) => Pattern::Char(*c),
-            parser::Pattern::Literal(parser::Literal::Bool(b)) => Pattern::Bool(*b),
-            parser::Pattern::Tuple(a, b, c) => Pattern::Tuple(
-                Box::new(Pattern::from_parser(a, env)),
-                Box::new(Pattern::from_parser(b, env)),
+            parser::Pattern::Anything => Ok(Pattern::Anything),
+            parser::Pattern::Variable(name) => Ok(Pattern::Variable(name.clone())),
+            parser::Pattern::Literal(parser::Literal::Int(i)) => Ok(Pattern::Int(*i)),
+            parser::Pattern::Literal(parser::Literal::Float(f)) => Ok(Pattern::Float(*f)),
+            parser::Pattern::Literal(parser::Literal::Char(c)) => Ok(Pattern::Char(*c)),
+            parser::Pattern::Literal(parser::Literal::Bool(b)) => Ok(Pattern::Bool(*b)),
+            parser::Pattern::Tuple(a, b, c) => Ok(Pattern::Tuple(
+                Box::new(Pattern::from_parser(a, env)?),
+                Box::new(Pattern::from_parser(b, env)?),
                 c.first()
                     .map(|p| Pattern::from_parser(p, env))
+                    .transpose()?
                     .map(Box::new),
-            ),
+            )),
             parser::Pattern::Constructor(name, args) => {
-                // TODO Return Result instead
                 let ctor = env
                     .find_type_constructor(name)
-                    .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(name)))
-                    .unwrap()
+                    .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(name)))?
                     .clone();
 
-                let args = args.iter().map(|p| Pattern::from_parser(p, env)).collect();
+                let args = args
+                    .iter()
+                    .map(|p| Pattern::from_parser(p, env))
+                    .collect::<Result<Vec<_>, Error>>()?;
 
-                Pattern::Constructor { ctor, args }
+                Ok(Pattern::Constructor { ctor, args })
             }
         }
     }
@@ -377,18 +379,13 @@ impl Expression {
                         Some(Box::new(three)),
                     ))
                 }
-                _ => {
-                    panic!(
-                        "Tuple of size {} found. Should be forbidden at parsing.",
-                        vec.len()
-                    )
-                }
+                _ => Err(Error::InvalidTupleSize(vec.len())),
             },
             parser::Expression::Case(expr, branches) => {
                 let expr = Expression::from_parser(expr, env)?;
 
                 let b = branches.iter().map::<Result<CaseBranch, Error>, _>(|cb| {
-                    let pattern = Pattern::from_parser(&cb.pattern, env);
+                    let pattern = Pattern::from_parser(&cb.pattern, env)?;
                     let mut scoped = env.new_scope();
 
                     scoped.expose_pattern(&pattern);
@@ -439,6 +436,12 @@ pub enum Error {
     AmbiguousVariables(Name, Vec<ModuleName>),
     VariantNotFound(QualName),
     AmbiguousVariants(Name, Vec<ModuleName>),
+    /// A tuple type or expression had a size other than 2 or 3 (the only sizes
+    /// the language currently supports).
+    InvalidTupleSize(usize),
+    /// A function was declared with multiple bindings (multi-clause definitions),
+    /// which the compiler does not support yet.
+    MultipleBindingsUnsupported(Name),
 
     // Binding module
     InfixDeclared(Name),
@@ -513,7 +516,7 @@ pub fn canonicalize(
                 .tpe
                 .as_ref()
                 .ok_or_else(|| Error::NoTypeInBinding(function.name.clone()))?;
-            let tpe = Type::from_parser_type(&env, tpe);
+            let tpe = Type::from_parser_type(&env, tpe)?;
 
             let name = function.name.clone();
             // TODO Think how it's going to be represented. Currently canonical values assume an expression is present
@@ -620,14 +623,15 @@ fn do_values(
 
                 let mut scoped = env.new_scope();
 
-                let patterns = binding
+                let patterns: Vec<Pattern> = binding
                     .patterns
                     .iter()
                     .map(|p| Pattern::from_parser(p, env))
-                    .inspect(|p| {
-                        scoped.expose_pattern(p);
-                    })
-                    .collect();
+                    .collect::<Result<Vec<_>, Error>>()?;
+
+                for p in &patterns {
+                    scoped.expose_pattern(p);
+                }
 
                 // Maybe create a case_branch function and make it common with Expression::Case ?
                 // Or maybe not at the case_branch level, as here we can have multiple patterns
@@ -640,8 +644,7 @@ fn do_values(
             }
             _ => {
                 // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
-
-                todo!("multiple bindings not implemented")
+                Err(Error::MultipleBindingsUnsupported(function.name.clone()))
             }
         }?;
 
@@ -649,7 +652,7 @@ fn do_values(
 
         match &function.tpe {
             Some(t) => {
-                let tpe = Type::from_parser_type(env, t);
+                let tpe = Type::from_parser_type(env, t)?;
                 let linear = Type::to_linear_types(&tpe);
 
                 // Linear is a list of types making the function. Because it includes the return type,
@@ -708,24 +711,25 @@ fn do_types(
         let variants = tpe
             .variants
             .iter()
-            .filter_map(|t| {
-                match t {
-                    parser::Type::Unqualified(name, vars) => {
-                        // TODO It might actually make more sense to put Type::from_parser_type
-                        // on `Environment`.
-                        Some(TypeConstructor {
-                            name: name.clone(),
-                            type_parameters: vars
-                                .iter()
-                                .map(|t| Type::from_parser_type(env, t))
-                                .collect(),
-                            tpe: tpe_name.clone(),
-                        })
-                    }
-                    _ => None,
-                }
+            .filter_map(|t| match t {
+                // TODO It might actually make more sense to put Type::from_parser_type
+                // on `Environment`.
+                parser::Type::Unqualified(name, vars) => Some((name, vars)),
+                _ => None,
             })
-            .collect();
+            .map(|(name, vars)| {
+                let type_parameters = vars
+                    .iter()
+                    .map(|t| Type::from_parser_type(env, t))
+                    .collect::<Result<Vec<_>, Error>>()?;
+
+                Ok(TypeConstructor {
+                    name: name.clone(),
+                    type_parameters,
+                    tpe: tpe_name.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
 
         Ok((
             tpe_name,
