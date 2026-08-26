@@ -76,5 +76,6 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TIDY-2 | task | — | closed 2026-08-25 | Replace the tokenizer's keyword `HashMap` with a `match` |
 | TIDY-3 | task | — | closed 2026-08-25 | Fix the `associativy` typo |
 | [TIDY-4](tidy-4.md) | task | — | open | Test-module doc comments still describe the type checker as a stub |
+| [TIDY-5](tidy-5.md) | task | — | open | Fix all outstanding `cargo clippy` warnings |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
