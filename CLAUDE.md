@@ -91,7 +91,8 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   returning `None` from `next` after any `Err`, just as it already did for `Token::EndOfFile`.
   When you add an error path to a pipeline iterator, either consume input or stop. Fully
   draining one that did neither once consumed ~20GB of RAM before the OS killed it (`BUG-4`).
-  `Tokenizer` has the same shape and does **not** fuse — check before draining it directly.
+  `Tokenizer` has the same class of defect and does not advance either: `handle_indentation`
+  returns `TabError` without consuming the tab, so it repeats forever. Tracked as `BUG-5`.
 - **A doc comment describes what the code at that site does** — not what you intended, and
   not what it used to do. An overstated comment is a real defect because it is what the next
   reader trusts. Prefer saying less over saying more than you verified.
