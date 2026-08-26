@@ -120,6 +120,14 @@ pub enum CompilationError {
     Canonical(Vec<canonical::Error>, Name),
     DependenciesError(dependencies::Error),
 
+    /// Every error accumulated over one compilation pass.
+    ///
+    /// `compile_package` does not stop on the first failure: it keeps going so that
+    /// one broken module cannot hide the diagnostics of the others. This variant is
+    /// how that accumulation becomes a failure again at the end of the pass, with the
+    /// typed errors still intact for the caller to inspect.
+    Many(Vec<CompilationError>),
+
     /// Not an error, but something I use until I get to implement the actual error.
     /// Ultimately, this error should be removed from the code base
     PlaceHolder,
@@ -146,7 +154,7 @@ impl CompilationError {
                     .with_message("Error while loading the package files")
                     .with_notes(notes)
             }
-            CompilationError::Canonical(errors, module_name) => Diagnostic::warning()
+            CompilationError::Canonical(errors, module_name) => Diagnostic::error()
                 .with_message(format!(
                     "[{}] Canonical error messages are not implemented yet",
                     module_name
@@ -155,9 +163,19 @@ impl CompilationError {
             CompilationError::PlaceHolder => {
                 Diagnostic::bug().with_message("A non implemented error message have been emitted")
             }
-            CompilationError::DependenciesError(err) => Diagnostic::warning()
+            CompilationError::DependenciesError(err) => Diagnostic::error()
                 .with_message("Dependencies error messages are not implemented yet")
                 .with_notes(vec![format!("{:?}", err)]),
+            // `compile_package` renders each accumulated error individually rather than
+            // wrapping first, so this arm only fires when a `Many` is rendered as a
+            // whole. It summarises rather than repeating what those diagnostics said.
+            CompilationError::Many(errors) => Diagnostic::error()
+                .with_message(format!(
+                    "compilation failed with {} error{}",
+                    errors.len(),
+                    if errors.len() == 1 { "" } else { "s" }
+                ))
+                .with_notes(errors.iter().map(|e| e.as_diagnostic().message).collect()),
         }
     }
 
@@ -204,46 +222,66 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
         ..codespan_reporting::term::Config::default()
     };
 
-    let mut print_success = |text: String| {
-        writer
-            .set_color(ColorSpec::new().set_bold(true).set_fg(Some(Color::Green)))
-            .unwrap();
-        write!(&mut writer, "success").unwrap();
-        writer.reset().unwrap();
-        writeln!(&mut writer, " {}", text).unwrap();
+    // Reports the outcome of one phase on stderr. Failing to write a status line is
+    // not itself a compilation failure, so the write results are deliberately
+    // discarded rather than unwrapped.
+    let mut print_status = |success: bool, text: String| {
+        let (color, label) = if success {
+            (Color::Green, "success")
+        } else {
+            (Color::Red, "failure")
+        };
+        let _ = writer.set_color(ColorSpec::new().set_bold(true).set_fg(Some(color)));
+        let _ = write!(&mut writer, "{}", label);
+        let _ = writer.reset();
+        let _ = writeln!(&mut writer, " {}", text);
     };
 
     // Step 1: package_path parameter
 
     // Step 2 and 3.a
     debug!("phase: load package sources");
+    // Loading is the one phase whose errors cannot be deferred: without the loaded
+    // files there is no `Files` database to render any diagnostic against, this one
+    // included. It is returned unrendered and the caller reports it.
     let sources = source::load_package_sources(package_path)?;
 
-    // Further steps will produces errors. We aggregates them here and will report them at
-    // the end of the compilation phase.
-    let mut diagnostics: Vec<codespan_reporting::diagnostic::Diagnostic<SourceFileId>> = vec![];
+    // Further steps will produce errors. We aggregate them here and report them at the
+    // end of the compilation phase, rather than stopping on the first one, so that a
+    // single broken module doesn't hide the diagnostics of every other module.
+    //
+    // They are kept as typed `CompilationError`s and not as already-rendered
+    // `Diagnostic`s for two reasons: `as_diagnostic` stays the single rendering point,
+    // and the accumulation is still meaningful as a return value — an empty vector is
+    // what makes this function return `Ok`.
+    let mut errors: Vec<CompilationError> = vec![];
 
     // Step 3.b
     debug!("phase: parse package sources");
-    let modules: Vec<_> = {
-        let (oks, fails): (Vec<_>, Vec<Result<_, CompilationError>>) = sources
-            .iter()
-            .map(|(id, file)| {
-                parser::parse(file.file()).map_err(|err| CompilationError::from(err, id))
-            })
-            .partition(Result::is_ok);
+    let mut modules: Vec<parser::Module> = vec![];
+    let mut parse_failures = 0;
+    for (id, file) in sources.iter() {
+        match parser::parse(file.file()) {
+            Ok(module) => modules.push(module),
+            Err(err) => {
+                parse_failures += 1;
+                errors.push(CompilationError::from(err, id));
+            }
+        }
+    }
 
-        diagnostics.extend(
-            fails
-                .into_iter()
-                .map(Result::unwrap_err)
-                .map(|e| e.as_diagnostic()),
+    if parse_failures == 0 {
+        print_status(true, format!("parsed {} modules", modules.len()));
+    } else {
+        print_status(
+            false,
+            format!(
+                "parsed {} modules, {} failed to parse",
+                modules.len(),
+                parse_failures
+            ),
         );
-
-        oks.into_iter().map(Result::unwrap).collect()
-    };
-
-    print_success(format!("parsed {} modules", modules.len()));
+    }
 
     // Step 3.c
     // TODO Verify modules name match file system.
@@ -251,7 +289,16 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 
     debug!("phase: Build module dependency graph");
     // Step 4
-    let walker = dependencies::ModuleWalker::new(&modules)?;
+    // A cycle leaves us with no order to check the modules in, so the check phase is
+    // skipped — but the error goes through the same reporting path as the others
+    // instead of returning early unrendered.
+    let walker = match dependencies::ModuleWalker::new(&modules) {
+        Ok(walker) => Some(walker),
+        Err(err) => {
+            errors.push(err.into());
+            None
+        }
+    };
 
     // TODO Load those information from somewhere
     let package_name = PackageName::new("zelkova", "core");
@@ -260,31 +307,53 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     debug!("phase: Check modules");
 
     // Step 5: Follow graph and call check_module on each
-    let can_mods = walker
-        .check_in_order(&package_name, &mut interfaces, check_module)
-        .unwrap_or_else(|errors| {
-            diagnostics.extend(errors.into_iter().map(|e| e.as_diagnostic()));
-
-            vec![]
-        });
-    print_success(format!(
-        "checked modules: {:#?}",
-        can_mods
-            .iter()
-            .map(|m| m.name.as_human_string())
-            .collect::<Vec<_>>()
-    ));
+    if let Some(walker) = walker {
+        match walker.check_in_order(&package_name, &mut interfaces, check_module) {
+            Ok(can_mods) => print_status(
+                true,
+                format!(
+                    "checked modules: {:#?}",
+                    can_mods
+                        .iter()
+                        .map(|m| m.name.as_human_string())
+                        .collect::<Vec<_>>()
+                ),
+            ),
+            Err(check_errors) => {
+                // `check_in_order` hands back no module at all as soon as one of them
+                // fails (`BUG-2`, see docs/tickets/INDEX.md), so there is no list of
+                // successes to report here — only the count of failures.
+                print_status(
+                    false,
+                    format!("{} modules failed to check", check_errors.len()),
+                );
+                errors.extend(check_errors);
+            }
+        }
+    }
 
     // Step 6
     // emit interfaces and generate code
     debug!("phase: codegen");
 
-    // Step 7
-    for err in diagnostics {
-        term::emit_to_write_style(&mut writer.lock(), &config, &sources, &err).unwrap();
+    // Step 7: report everything we accumulated, then let that accumulation decide the
+    // return value. Rendering the errors and returning `Ok` regardless was `BUG-1`.
+    for error in &errors {
+        // A rendering failure must not mask the compilation failure we are about to
+        // return, and there is nowhere left to report it to, so it is dropped.
+        let _ = term::emit_to_write_style(
+            &mut writer.lock(),
+            &config,
+            &sources,
+            &error.as_diagnostic(),
+        );
     }
 
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(CompilationError::Many(errors))
+    }
 }
 
 /// Take a parsed module file within the ecosystem and apply all checks to it
@@ -315,4 +384,35 @@ pub fn check_module(
     exhaustiveness::check(&canonical)?;
 
     Ok(canonical)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codespan_reporting::diagnostic::Severity;
+
+    /// Canonicalization failures are errors, and used to be rendered as warnings.
+    ///
+    /// The severity is part of how a failure reaches the user, so it is pinned
+    /// here rather than left to the eye. Mutation-checked by putting
+    /// `Diagnostic::warning()` back in the `Canonical` arm of `as_diagnostic`.
+    #[test]
+    fn canonical_errors_render_as_errors() {
+        let error = CompilationError::Canonical(vec![canonical::Error::NoBindings], "Test".into());
+
+        assert_eq!(error.as_diagnostic().severity, Severity::Error);
+    }
+
+    /// Same as above for dependency errors — a module cycle is not a warning.
+    ///
+    /// Mutation-checked by putting `Diagnostic::warning()` back in the
+    /// `DependenciesError` arm of `as_diagnostic`.
+    #[test]
+    fn dependency_errors_render_as_errors() {
+        let error = CompilationError::DependenciesError(dependencies::Error::CycleDetected(vec![
+            vec!["A".into(), "B".into()],
+        ]));
+
+        assert_eq!(error.as_diagnostic().severity, Severity::Error);
+    }
 }

@@ -11,14 +11,14 @@ including its dependency on `Elm.Kernel.Bitwise`. Elm's kernel modules are its p
 FFI; Zelkova has no such thing and no such module. Canonicalization fails on every run:
 
 ```
-warning: [Bitwise] Canonical error messages are not implemented yet
+error: [Bitwise] Canonical error messages are not implemented yet
  = EnvironmentErrors([InterfaceNotFound(Name("Elm.Kernel.Bitwise"))])
 ```
 
 It is the only module of the seven that fails, which makes it the permanent noise floor of
 `cargo run` — the one thing that has to be mentally filtered out before the smoke test tells
-you anything. It is also what makes `cargo run` unusable as a plain pass/fail check, and so it
-blocks the clean half of `BUG-1`'s acceptance.
+you anything. Since `BUG-1` closed it is also why `cargo run` exits 1 on a tree with nothing
+wrong with it, so the smoke test is a pass/fail check that always says fail.
 
 Zelkova's equivalent of a kernel module already exists and is the shape to copy: a
 `module javascript` facade declaring types with no bodies, plus a companion `.mjs` carrying

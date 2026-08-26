@@ -1,0 +1,6 @@
+module Broken exposing (..)
+
+import NonExistent exposing (..)
+
+
+x = 42

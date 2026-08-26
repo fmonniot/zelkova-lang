@@ -5,13 +5,18 @@
 //! `std/core/src/`. A failure here can implicate canonicalization or
 //! `typer::type_check`. `exhaustiveness::check` is still a stub returning
 //! `Ok(())`, so a pipeline test cannot fail for exhaustiveness reasons yet.
+//!
+//! The last section goes one level up and drives `compile_package`, the
+//! whole-package entry point, over the fixture packages in `tests/fixtures/`.
 
 use std::collections::HashMap;
 use std::path::Path;
 
 use codespan_reporting::files::SimpleFile;
 use zelkova_lang::compiler::name::Name;
-use zelkova_lang::compiler::{check_module, parser, Interface, PackageName};
+use zelkova_lang::compiler::{
+    check_module, compile_package, parser, CompilationError, Interface, PackageName,
+};
 
 mod support;
 
@@ -37,6 +42,17 @@ fn std_src() -> std::path::PathBuf {
     // The workspace root is `CARGO_MANIFEST_DIR` at build time.
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     Path::new(&manifest).join("std/core/src")
+}
+
+/// Root of one of the small package fixtures under `tests/fixtures/`.
+///
+/// `compile_package` takes a package directory, so the whole-package tests need
+/// real directories on disk rather than the source strings the other layers use.
+/// `std/core/src` cannot play that role for the passing case: `Bitwise.zel` does
+/// not canonicalize (`BUG-3`), so the standard library is a failing package.
+fn fixture_package(name: &str) -> std::path::PathBuf {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    Path::new(&manifest).join("tests/fixtures").join(name)
 }
 
 // ── Test 1: Minimal passing module ───────────────────────────────────────────
@@ -241,4 +257,60 @@ fn stdlib_basics_chain_compiles() {
     assert!(interfaces.contains_key(&"Basics".into()));
     assert!(interfaces.contains_key(&"Maybe".into()));
     assert!(interfaces.contains_key(&"Result".into()));
+}
+
+// ── Test 9: compile_package reports success only when it compiled ────────────
+
+/// A package whose every module checks must be reported as a success.
+///
+/// This is the half of `BUG-1` that keeps the fix from over-reaching: it is easy
+/// to make a compiler fail, and this pins that `compile_package` still returns
+/// `Ok(())` when nothing went wrong. Mutation-checked by making the tail of
+/// `compile_package` return `Err(CompilationError::Many(errors))`
+/// unconditionally, which turns this test red.
+#[test]
+fn compile_package_succeeds_when_every_module_checks() {
+    let result = compile_package(&fixture_package("package_checks"));
+
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+// ── Test 10: compile_package reports failure when a module fails ─────────────
+
+/// `BUG-1`: a package with a module that fails to canonicalize must fail.
+///
+/// Before the fix `compile_package` rendered the diagnostics to stderr and then
+/// returned `Ok(())` regardless of how many there were, so a package that did
+/// not compile was indistinguishable from one that did. Mutation-checked by
+/// restoring the unconditional `Ok(())` at the end of `compile_package`, which
+/// turns this test red.
+///
+/// The assertion goes down to the variant on purpose: the point of the change is
+/// that the accumulated, still-typed errors survive to the return value, so
+/// `is_err()` alone would pass against an `Err` carrying nothing useful.
+#[test]
+fn compile_package_fails_when_a_module_fails_to_canonicalize() {
+    let result = compile_package(&fixture_package("package_canonicalize_fails"));
+
+    match result {
+        Err(CompilationError::Many(errors)) => {
+            assert_eq!(
+                errors.len(),
+                1,
+                "expected exactly one error for the one broken module, got {:?}",
+                errors
+            );
+            match &errors[0] {
+                CompilationError::Canonical(canonical_errors, module) => {
+                    assert_eq!(module, &Name::from("Broken"));
+                    assert!(
+                        !canonical_errors.is_empty(),
+                        "expected the canonical errors to be carried through"
+                    );
+                }
+                other => panic!("expected a Canonical error, got {:?}", other),
+            }
+        }
+        other => panic!("expected Err(CompilationError::Many(..)), got {:?}", other),
+    }
 }

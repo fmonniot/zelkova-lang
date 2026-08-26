@@ -36,14 +36,18 @@ doesn't pass all checks". This ticket is the narrower half of it: not partial pr
 
 **Fix:** change `check_in_order` to return both halves — `(Vec<canonical::Module>, Vec<E>)`,
 or `Result<Vec<Module>, (Vec<Module>, Vec<E>)>` if the caller should still be forced to
-acknowledge failure. `compile_package` then extends `diagnostics` with the errors *and* keeps
-the modules. Do not silence the failure in the process: `BUG-1` is what makes a non-empty
-error list actually fail the compilation, and this fix must not make it easier to forget.
+acknowledge failure. `compile_package` then extends its accumulated `errors` with the errors
+*and* keeps the modules. Do not silence the failure in the process: since `BUG-1` closed, a
+non-empty accumulation is exactly what makes `compile_package` return `Err`, and this fix must
+not make it easier to lose one.
 
 Leave the wider TODO in place, rephrased so it no longer describes this part as unfixed.
 
 **Acceptance:** with one module in the package failing to check, `check_in_order` still hands
 back every module that succeeded, and `cargo run` on `std/core/src` lists the six modules that
-check rather than `[]`. A unit test in `dependencies.rs` — where `dummy_check` already exists
+check. (It currently lists nothing at all on that path: `compile_package` reports only the
+failure count, because with this bug open there is no list of successes left to print. It must
+still exit non-zero — that half is `BUG-1`, closed.) A unit test in `dependencies.rs` — where
+`dummy_check` already exists
 — should pin it directly: one failing module among several, assert both the successes and the
 error are returned.

@@ -17,9 +17,10 @@ cargo fmt --all
 cargo clippy --all-features
 ```
 
-`cargo run` currently prints `parsed 7 modules` and one canonicalization warning for
-`Bitwise`. Anything worse than that is a regression you introduced — see `BUG-1`/`BUG-3` in
-`docs/tickets/` for why that state is itself wrong.
+`cargo run` currently prints `parsed 7 modules`, then `1 modules failed to check` and one
+canonicalization **error** for `Bitwise`, and **exits 1**. That failure is real and expected:
+one standard-library module does not canonicalize (`BUG-3` in `docs/tickets/`). Anything worse
+than that — another module failing, a parse failure, a panic — is a regression you introduced.
 
 Note that `.github/workflows/rust.yml` marks the `fmt` and `clippy` jobs `continue-on-error:
 true`, so **CI does not actually gate on them**. Run both locally; a red clippy will not be
@@ -65,6 +66,13 @@ These outlive any single ticket. Each is here because breaking it produced a bad
 - **No `panic!`, `unwrap()`, `expect()` or `todo!()` on a non-test path.** Return a phase
   `Error` and let the caller accumulate diagnostics. This was the whole subject of `ERR-1`;
   do not reintroduce it. `unwrap()` inside `#[cfg(test)]` is fine.
+- **A pass that emitted an error must not report success.** `compile_package` accumulates
+  `CompilationError`s rather than stopping at the first one, and that accumulation *is* the
+  return value: empty is `Ok(())`, non-empty is `Err(CompilationError::Many(..))`, and
+  `src/main.rs` exits non-zero on `Err`. Errors are kept typed until the end so
+  `as_diagnostic` stays the single rendering point. A new failure path in `compile_package`
+  pushes onto that vector; nothing is rendered and then dropped. Rendering diagnostics and
+  returning `Ok` regardless was `BUG-1`.
 - **An error has to be renderable.** Every phase error is eventually turned into a
   `codespan_reporting::Diagnostic` by `CompilationError::as_diagnostic`. Today only
   `parser::Error` carries spans and the other phases degrade to `format!("{:?}", e)` in a
