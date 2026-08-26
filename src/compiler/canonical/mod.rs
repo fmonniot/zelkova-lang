@@ -759,7 +759,7 @@ fn do_infixes(
 
         if function_exist {
             let infix = Infix {
-                associativity: infix.associativy,
+                associativity: infix.associativity,
                 precedence: infix.precedence,
                 function_name,
             };
