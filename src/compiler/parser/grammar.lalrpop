@@ -294,7 +294,7 @@ Type: Type = {
             _ => {
                 let head = elems.swap_remove(0);
 
-                Type::Tuple(Box::new(head), Box::new(elems))
+                Type::Tuple(Box::new(head), elems)
             },
         };
 

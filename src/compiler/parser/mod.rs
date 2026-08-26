@@ -48,8 +48,6 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
     Ok(module)
 }
 
-// TODO Simplify all Box<Vec<_>> into Vec<_> (vec is already on the heap, no need to box it)
-
 /// A part of a declared type. This is also used in type annotations.
 ///
 /// Types with no arguments will be composed of exactly one `Type`.
@@ -59,7 +57,7 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Type {
     /// Type constructor
-    Unqualified(Name, Box<Vec<Type>>),
+    Unqualified(Name, Vec<Type>),
     // TODO Qualified type eg Maybe.Maybe (or is it already merged in Unqualified ?)
     /// Type constructor →
     ///
@@ -68,16 +66,16 @@ pub enum Type {
     Arrow(Box<Type>, Box<Type>),
     /// Type variable
     Variable(Name),
-    Tuple(Box<Type>, Box<Vec<Type>>),
+    Tuple(Box<Type>, Vec<Type>),
 }
 
 impl Type {
     pub fn unqualified(name: Name) -> Type {
-        Type::Unqualified(name, Box::default())
+        Type::Unqualified(name, Vec::default())
     }
 
     pub fn unqualified_with(name: Name, types: Vec<Type>) -> Type {
-        Type::Unqualified(name, Box::new(types))
+        Type::Unqualified(name, types)
     }
 }
 
@@ -353,8 +351,6 @@ pub enum Pattern {
     Anything,
 }
 
-// TODO Inline all Box<Vec into Vec
-// which make sense, as vectors are already on the heap
 /// An Expression
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
