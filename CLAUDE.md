@@ -89,7 +89,8 @@ These outlive any single ticket. Each is here because breaking it produced a bad
 - **A `Result`-yielding iterator must advance or stop — never repeat one error.** `Layout`
   (`parser/layout.rs`) diagnoses an indentation violation without touching its context stack,
   so replaying the offending token would reproduce that error unchanged; it therefore fuses,
-  returning `None` from `next` after any `Err`, just as it already did for `Token::EndOfFile`.
+  returning `None` from `next` after any `Err`. That and its `Token::EndOfFile` termination go
+  through one latch, so it is a `FusedIterator` and `layout()` says so in its signature.
   When you add an error path to a pipeline iterator, either consume input or stop. Fully
   draining one that did neither once consumed ~20GB of RAM before the OS killed it (`BUG-4`).
   `Tokenizer` has the same class of defect and does not advance either: `handle_indentation`
