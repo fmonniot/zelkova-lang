@@ -69,7 +69,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-2](bug-2.md) | bug | medium | open | One failing module discards every module that checked successfully |
 | [BUG-3](bug-3.md) | bug | low | open | `Bitwise.zel` imports the non-existent `Elm.Kernel.Bitwise` |
 | [ERR-2](err-2.md) | task | — | open | Unify the error-handling strategy across compiler phases |
-| [AST-1](ast-1.md) | task | — | open | Remove `Box<Vec<_>>` from the parser AST |
+| AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | [AST-2](ast-2.md) | task | — | open | Unify the tuple representation across the parser and canonical ASTs |
 | PERF-1 | task | — | closed 2026-08-25 | Reduce cloning in the `Layout` iterator |
 | TIDY-1 | task | — | closed 2026-08-25 | Make `Name`'s inner `String` private |

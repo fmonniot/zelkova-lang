@@ -3,9 +3,9 @@
 **Sizing:** medium — the representations disagree in four places and the fix is a design
 choice, not a rename.
 
-**Depends on:** [AST-1](ast-1.md) — it simplifies `parser::Type::Tuple`'s payload, and landing
-this on top of the simpler form avoids reworking the same productions twice. Not a hard block:
-if `AST-1` is not being worked, take its `Type::Tuple` change into this ticket instead.
+**Depends on:** `AST-1` (see [INDEX.md](INDEX.md), closed) — it simplified `parser::Type::Tuple`'s
+payload from `(Box<Type>, Box<Vec<Type>>)` to `(Box<Type>, Vec<Type>)`; the table below reflects
+that already-landed shape.
 
 **Location:** `src/compiler/parser/mod.rs` — `Type::Tuple` and `Pattern::Tuple`;
 `src/compiler/canonical/mod.rs` — `Type::Tuple`, `Pattern::Tuple`, `Expression::Tuple`, and the
@@ -16,7 +16,7 @@ productions.
 
 | | shape | what it can express |
 |---|---|---|
-| `parser::Type::Tuple` | `(Box<Type>, Box<Vec<Type>>)` | head + rest — any size ≥ 1 |
+| `parser::Type::Tuple` | `(Box<Type>, Vec<Type>)` | head + rest — any size ≥ 1 |
 | `parser::Pattern::Tuple` | `(Box<Pattern>, Box<Pattern>, Vec<Pattern>)` | two mandatory + rest — any size ≥ 2 |
 | `canonical::Type::Tuple` | `(Box<Type>, Box<Type>, Option<Box<Type>>)` | exactly 2 or 3 |
 | `canonical::Pattern::Tuple` | `(Box<Pattern>, Box<Pattern>, Option<Box<Pattern>>)` | exactly 2 or 3 |
