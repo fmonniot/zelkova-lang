@@ -17,10 +17,11 @@ cargo fmt --all
 cargo clippy --all-features
 ```
 
-`cargo run` currently prints `parsed 7 modules`, then `1 modules failed to check` and one
-canonicalization **error** for `Bitwise`, and **exits 1**. That failure is real and expected:
-one standard-library module does not canonicalize (`BUG-3` in `docs/tickets/`). Anything worse
-than that — another module failing, a parse failure, a panic — is a regression you introduced.
+`cargo run` prints `parsed 8 modules`, then lists all eight as checked, and **exits 0**. It is
+a genuine pass/fail smoke test: any error, any module missing from the checked list, a parse
+failure or a panic is a regression you introduced. (The `.ignored` files under `std/core/src`
+are invisible to the source loader, which only collects `.zel` — they are not part of the
+eight.) `tests/pipeline.rs::stdlib_package_compiles` pins the same thing as a test.
 
 Note that `.github/workflows/rust.yml` marks the `fmt` and `clippy` jobs `continue-on-error:
 true`, so **CI does not actually gate on them**. Run both locally; a red clippy will not be
@@ -85,6 +86,12 @@ These outlive any single ticket. Each is here because breaking it produced a bad
 - **Tuples are size 2 or 3 only**, matching Elm. `canonical::Error::InvalidTupleSize` is the
   rejection path. The parser and canonical ASTs disagree about how to *represent* that
   constraint — that is `AST-2`, and it is a known trap.
+- **Zelkova has no `Elm.Kernel.*`.** A std module that needs a JS primitive gets a
+  `module javascript Js.<Name>` facade — type annotations with no bodies, no infixes, no type
+  declarations — plus a companion `Js/<Name>.mjs` whose exports take a plain parameter list
+  rather than Elm's curried `F2`/`F3` wrappers. `Js/Basics`, `Js/Utils` and `Js/Bitwise` are
+  the worked examples. Most of the `.ignored` modules under `std/core/src` still carry Elm's
+  kernel imports verbatim; porting one means writing its facade, not resurrecting the kernel.
 - **A doc comment describes what the code at that site does** — not what you intended, and
   not what it used to do. An overstated comment is a real defect because it is what the next
   reader trusts. Prefer saying less over saying more than you verified.

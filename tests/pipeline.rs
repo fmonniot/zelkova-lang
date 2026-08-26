@@ -48,8 +48,8 @@ fn std_src() -> std::path::PathBuf {
 ///
 /// `compile_package` takes a package directory, so the whole-package tests need
 /// real directories on disk rather than the source strings the other layers use.
-/// `std/core/src` cannot play that role for the passing case: `Bitwise.zel` does
-/// not canonicalize (`BUG-3`), so the standard library is a failing package.
+/// These fixtures stay small and single-purpose; `std/core/src` is exercised
+/// separately by `stdlib_package_compiles`.
 fn fixture_package(name: &str) -> std::path::PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     Path::new(&manifest).join("tests/fixtures").join(name)
@@ -313,4 +313,65 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
         }
         other => panic!("expected Err(CompilationError::Many(..)), got {:?}", other),
     }
+}
+
+// ── Test 11: Bitwise checks against the Js.Bitwise facade ────────────────────
+
+/// `Bitwise.zel` resolves its primitives through `Js.Bitwise`, not Elm's kernel.
+///
+/// `Bitwise` was carried over from Elm's `core` unchanged, so it imported
+/// `Elm.Kernel.Bitwise` — a module Zelkova has no equivalent of — and failed
+/// canonicalization with `InterfaceNotFound` on every run. Mutation-checked by
+/// pointing the import in `std/core/src/Bitwise.zel` back at
+/// `Elm.Kernel.Bitwise`, which turns this test red on the `Bitwise` step.
+///
+/// Like the other stdlib tests here it skips rather than fails when a file is
+/// missing, so deleting `Js/Bitwise.zel` outright would not be caught here —
+/// `stdlib_package_compiles` is what covers that.
+#[test]
+fn stdlib_bitwise_compiles() {
+    let src = std_src();
+    let pkg = std_package();
+    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
+
+    // Bitwise needs the facade it binds to, and `Basics` for `Int`. `Basics` in
+    // turn needs its own two Js modules.
+    for module in &[
+        "Js/Basics.zel",
+        "Js/Utils.zel",
+        "Js/Bitwise.zel",
+        "Basics.zel",
+        "Bitwise.zel",
+    ] {
+        let path = src.join(module);
+        if !path.exists() {
+            eprintln!("Skipping stdlib Bitwise chain: {:?} not found", path);
+            return;
+        }
+        let parsed = parse_file(&path);
+        let checked = check_module(&pkg, &interfaces, &parsed)
+            .unwrap_or_else(|e| panic!("{} failed: {:?}", module, e));
+        interfaces.insert(checked.name.name().clone(), checked.to_interface());
+    }
+
+    assert!(interfaces.contains_key(&"Js.Bitwise".into()));
+    assert!(interfaces.contains_key(&"Bitwise".into()));
+}
+
+// ── Test 12: the standard library is a package that compiles ─────────────────
+
+/// `std/core/src` — what `cargo run` compiles — must compile cleanly.
+///
+/// This is the smoke test as an assertion. Until `Bitwise.zel` stopped importing
+/// `Elm.Kernel.Bitwise` the standard library was a package that always failed, so
+/// `cargo run` said "fail" on a healthy tree and told you nothing. Mutation-checked
+/// the same way as `stdlib_bitwise_compiles`.
+///
+/// The `.ignored` modules under `std/core/src` are invisible to the source loader,
+/// which only collects `.zel`, so this covers exactly the modules `cargo run` does.
+#[test]
+fn stdlib_package_compiles() {
+    let result = compile_package(&std_src());
+
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }

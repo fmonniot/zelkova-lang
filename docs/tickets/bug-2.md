@@ -14,8 +14,8 @@ there are no errors at all. One failure anywhere in the package therefore yields
 `Err(Vec<E>)`, and `compile_package`'s `unwrap_or_else` substitutes an empty vector for the
 modules that did check.
 
-Visible in `cargo run` today, where only `Bitwise` fails (`BUG-3`) and nothing else imports
-it:
+This used to be visible in `cargo run`, where `Bitwise` was the one module that failed
+(`BUG-3`, closed) and nothing else imported it:
 
 ```
 success parsed 7 modules
@@ -23,7 +23,12 @@ success checked modules: []
 ```
 
 Six modules — `Basics`, `Maybe`, `Result`, `Tuple`, `Js.Basics`, `Js.Utils` — canonicalized
-successfully and are reported as nothing. The work is not entirely lost: `check_in_order`
+successfully and were reported as nothing. Since `BUG-3` closed, every module under
+`std/core/src` checks, so `cargo run` no longer reproduces it; use a package fixture with one
+deliberately broken module (`tests/fixtures/package_canonicalize_fails` is one) or the
+`dependencies.rs` unit test described below. The bug itself is unchanged.
+
+The work is not entirely lost: `check_in_order`
 inserts each successful module's `Interface` into the `&mut interfaces` map as it goes, so
 later modules still resolve against earlier ones. It is only the returned vector, the one
 codegen will eventually consume, that is emptied. That makes this a bug that will get much
@@ -44,10 +49,7 @@ not make it easier to lose one.
 Leave the wider TODO in place, rephrased so it no longer describes this part as unfixed.
 
 **Acceptance:** with one module in the package failing to check, `check_in_order` still hands
-back every module that succeeded, and `cargo run` on `std/core/src` lists the six modules that
-check. (It currently lists nothing at all on that path: `compile_package` reports only the
-failure count, because with this bug open there is no list of successes left to print. It must
-still exit non-zero — that half is `BUG-1`, closed.) A unit test in `dependencies.rs` — where
-`dummy_check` already exists
-— should pin it directly: one failing module among several, assert both the successes and the
-error are returned.
+back every module that succeeded, and `compile_package` reports them rather than an empty
+list. It must still exit non-zero — that half is `BUG-1`, closed. A unit test in
+`dependencies.rs` — where `dummy_check` already exists — should pin it directly: one failing
+module among several, assert both the successes and the error are returned.
