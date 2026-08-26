@@ -24,9 +24,14 @@ success checked modules: []
 
 Six modules — `Basics`, `Maybe`, `Result`, `Tuple`, `Js.Basics`, `Js.Utils` — canonicalized
 successfully and were reported as nothing. Since `BUG-3` closed, every module under
-`std/core/src` checks, so `cargo run` no longer reproduces it; use a package fixture with one
-deliberately broken module (`tests/fixtures/package_canonicalize_fails` is one) or the
-`dependencies.rs` unit test described below. The bug itself is unchanged.
+`std/core/src` checks, so `cargo run` no longer reproduces it. Reproduce it instead on
+`tests/fixtures/package_canonicalize_fails`, which holds one deliberately broken module
+(`Broken.zel`) *and* one that checks cleanly (`Fine.zel`) — the passing module is what gets
+discarded, so a fixture with only the broken one would show nothing either way. On that
+fixture `compile_package` reports only `1 modules failed to check` and never mentions `Fine`,
+because `check_in_order` returned `Err` and there is no list of successes to print; after this
+is fixed it should report `Fine` as checked *and* still fail. The `dependencies.rs` unit test
+described below pins the same thing at the unit level. The bug itself is unchanged.
 
 The work is not entirely lost: `check_in_order`
 inserts each successful module's `Interface` into the `&mut interfaces` map as it goes, so
