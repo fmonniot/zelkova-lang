@@ -272,7 +272,7 @@ pub struct UnionType {
 #[derive(Debug, PartialEq)]
 pub struct Infix {
     pub operator: Name,
-    pub associativy: Associativity, // TODO Fix typo
+    pub associativity: Associativity,
     /// Precedence rules the order in which part of the expression are parsed
     /// (in absence of parenthesis). The higher precedence will be parsed first.
     pub precedence: u8,

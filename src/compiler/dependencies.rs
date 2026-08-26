@@ -147,14 +147,14 @@ mod tests {
         let imports = deps
             .into_iter()
             .map(|n| Import {
-                name: Name(n.into()),
+                name: Name::new(n),
                 alias: None,
                 exposing: Exposing::Open,
             })
             .collect();
 
         Module {
-            name: Name(name.into()),
+            name: Name::new(name),
             binding_javascript: false,
             exposing: Exposing::Open,
             imports,
@@ -165,7 +165,7 @@ mod tests {
     }
 
     fn name<S: Into<String>>(s: S) -> Name {
-        Name(s.into())
+        Name::new(s)
     }
 
     fn dummy_check(
@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(
             res.map(|v| v
                 .into_iter()
-                .map(|m| m.name.name().0.clone())
+                .map(|m| m.name.name().as_str().to_string())
                 .collect::<Vec<_>>()),
             Ok(expected.into_iter().map(|s| s.to_string()).collect())
         );

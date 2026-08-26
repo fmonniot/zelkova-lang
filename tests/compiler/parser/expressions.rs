@@ -1,5 +1,4 @@
 use super::support::*;
-use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser::*;
 
 fn module(body: Expression) -> Module {
@@ -50,8 +49,8 @@ test_parse_ok!(
     "#,
     module(Expression::Application(
         Box::new(Expression::Application(
-            Box::new(Expression::Variable(Name("map".to_string()))),
-            Box::new(Expression::Variable(Name("myfunction".to_string()))),
+            Box::new(Expression::Variable("map".into())),
+            Box::new(Expression::Variable("myfunction".into())),
         )),
         Box::new(Expression::Lit(Literal::Int(2))),
     ))
@@ -65,9 +64,9 @@ test_parse_ok!(
     main = map (myfunction 2)
     "#,
     module(Expression::Application(
-        Box::new(Expression::Variable(Name("map".to_string()))),
+        Box::new(Expression::Variable("map".into())),
         Box::new(Expression::Application(
-            Box::new(Expression::Variable(Name("myfunction".to_string()))),
+            Box::new(Expression::Variable("myfunction".into())),
             Box::new(Expression::Lit(Literal::Int(2))),
         )),
     ))
@@ -88,7 +87,7 @@ test_parse_ok!(
         // first application result in: a -> b
         // second application result in: b
         Box::new(Expression::Application(
-            Box::new(Expression::Variable(Name("+".to_string()))),
+            Box::new(Expression::Variable("+".into())),
             Box::new(Expression::Lit(Literal::Int(2))),
         )),
         Box::new(Expression::Lit(Literal::Int(3))),

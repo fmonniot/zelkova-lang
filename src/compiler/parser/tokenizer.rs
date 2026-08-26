@@ -5,7 +5,6 @@
 
 use crate::compiler::position::{spanned, BytePos, Position, Spanned};
 use log::trace; // Location in RustPython
-use std::collections::HashMap;
 use std::str::FromStr;
 use unic_ucd_category::GeneralCategory;
 
@@ -66,34 +65,36 @@ pub enum Token {
     CloseBlock,
 }
 
-/// An utility function to build a map of reserved
-/// keywords with their associated tokens.
-fn get_keywords() -> HashMap<String, Token> {
-    let mut m = HashMap::new();
+/// Look up a reserved keyword by its textual representation.
+///
+/// Returns `None` when `s` isn't one of the fixed set of reserved words, in
+/// which case the caller should treat it as an ordinary identifier.
+fn keyword(s: &str) -> Option<Token> {
+    match s {
+        "module" => Some(Token::Module),
+        "exposing" => Some(Token::Exposing),
+        "import" => Some(Token::Import),
+        "as" => Some(Token::As),
+        "infix" => Some(Token::Infix),
+        "type" => Some(Token::Type),
+        "case" => Some(Token::Case),
+        "of" => Some(Token::Of),
+        "if" => Some(Token::If),
+        "then" => Some(Token::Then),
+        "else" => Some(Token::Else),
+        "let" => Some(Token::Let),
+        "in" => Some(Token::In),
+        "true" => Some(Token::True),
+        "false" => Some(Token::False),
 
-    m.insert("module".to_string(), Token::Module);
-    m.insert("exposing".to_string(), Token::Exposing);
-    m.insert("import".to_string(), Token::Import);
-    m.insert("as".to_string(), Token::As);
-    m.insert("infix".to_string(), Token::Infix);
-    m.insert("type".to_string(), Token::Type);
-    m.insert("case".to_string(), Token::Case);
-    m.insert("of".to_string(), Token::Of);
-    m.insert("if".to_string(), Token::If);
-    m.insert("then".to_string(), Token::Then);
-    m.insert("else".to_string(), Token::Else);
-    m.insert("let".to_string(), Token::Let);
-    m.insert("in".to_string(), Token::In);
-    m.insert("true".to_string(), Token::True);
-    m.insert("false".to_string(), Token::False);
+        // soft keywords
+        "left" => Some(Token::Left),
+        "right" => Some(Token::Right),
+        "non" => Some(Token::Non),
+        "javascript" => Some(Token::Javascript),
 
-    // soft keywords
-    m.insert("left".to_string(), Token::Left);
-    m.insert("right".to_string(), Token::Right);
-    m.insert("non".to_string(), Token::Non);
-    m.insert("javascript".to_string(), Token::Javascript);
-
-    m
+        _ => None,
+    }
 }
 
 fn is_operator_char(c: char) -> bool {
@@ -245,8 +246,6 @@ struct Tokenizer<I: Iterator<Item = char>> {
     /// This is especially helpful to let us find symbols containing
     /// more than one character.
     lookahead: (Option<char>, Option<char>, Option<char>),
-    /// A dictionary of all keywords with their tokens representation.
-    keywords: HashMap<String, Token>,
 }
 
 impl<I> Tokenizer<I>
@@ -261,7 +260,6 @@ where
             processed_tokens: vec![],
             position: Position::new(0, 1, 1),
             lookahead: (None, None, None),
-            keywords: get_keywords(),
         };
 
         // Fill out the lookahead structure
@@ -661,7 +659,7 @@ where
     ///
     /// This can return two types of tokens:
     /// - a keyword token (e.g. `Token::Module`) if the consumed identifier is part of
-    ///   the reserved list of keywords. See [`get_keywords()`](#function.get_keywords)
+    ///   the reserved list of keywords. See [`keyword()`](#function.keyword)
     ///   for a list of keywords.
     /// - a `Token::*Identifier` if the identifier isn't a keyword, this encompass basically
     ///   everything which isn't a symbol, literal or keyword in the language.
@@ -690,8 +688,8 @@ where
         let end_pos = self.position;
 
         // Check if the identifier is a reserved keyword
-        let token = if let Some(keyword) = self.keywords.get(&name) {
-            keyword.clone()
+        let token = if let Some(tok) = keyword(&name) {
+            tok
         } else {
             let first = name.chars().next().unwrap();
             if first.is_uppercase() {
