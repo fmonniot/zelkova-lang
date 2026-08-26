@@ -90,11 +90,11 @@ Pipe<T>: Vec<T> = {
 
 VarIdent: Name = {
     // soft keywords are authorized identifier
-    "left" => Name("left".to_string()),
-    "right" => Name("right".to_string()),
-    "non" => Name("non".to_string()),
+    "left" => Name::new("left"),
+    "right" => Name::new("right"),
+    "non" => Name::new("non"),
 
-    <"lo_ident"> => Name(<>),
+    <"lo_ident"> => Name::new(<>),
 };
 
 QualVarIdent: Name = {
@@ -105,7 +105,7 @@ QualVarIdent: Name = {
 }
 
 TypeIdent: Name = {
-    <"up_ident"> => Name(<>),
+    <"up_ident"> => Name::new(<>),
 }
 
 QualTypeIdent: Name = {
@@ -116,8 +116,8 @@ QualTypeIdent: Name = {
 }
 
 Op: Name = {
-    <"op"> => Name(<>),
-    "-" => Name("-".to_string()),
+    <"op"> => Name::new(<>),
+    "-" => Name::new("-"),
 }
 
 
@@ -244,7 +244,7 @@ Expr = {
     "-" <e: Expr> => {
         Expression::Application(
             Box::new(Expression::Application(
-                Box::new(Expression::Variable(Name("-".to_string()))),
+                Box::new(Expression::Variable(Name::new("-"))),
                 Box::new(Expression::Lit(Literal::Int(0))),
             )),
             Box::new(e),

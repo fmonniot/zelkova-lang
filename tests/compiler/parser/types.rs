@@ -1,5 +1,4 @@
 use super::support::*;
-use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser::*;
 
 // Let's simplify how we build module for our type tests
@@ -24,7 +23,7 @@ fn module_function_type(tpe: Type) -> Module {
         infixes: vec![],
         types: vec![],
         functions: vec![Function {
-            name: Name("main".to_string()),
+            name: "main".into(),
             tpe: Some(tpe),
             bindings: vec![],
         }],
@@ -129,7 +128,7 @@ test_parse_ok!(
 
     main : Int
     "#,
-    module_function_type(Type::unqualified(Name("Int".to_string())))
+    module_function_type(Type::unqualified("Int".into()))
 );
 
 test_parse_ok!(
@@ -140,8 +139,8 @@ test_parse_ok!(
     main : String -> Int
     "#,
     module_function_type(type_arrow(
-        Type::unqualified(Name("String".to_string())),
-        Type::unqualified(Name("Int".to_string())),
+        Type::unqualified("String".into()),
+        Type::unqualified("Int".into()),
     ))
 );
 
@@ -154,16 +153,10 @@ test_parse_ok!(
     "#,
     module_function_type(type_arrow(
         type_tuple2(
-            type_arrow(
-                Type::Variable(Name("a".to_string())),
-                Type::Variable(Name("b".to_string())),
-            ),
-            type_arrow(
-                Type::Variable(Name("b".to_string())),
-                Type::Variable(Name("c".to_string())),
-            ),
+            type_arrow(Type::Variable("a".into()), Type::Variable("b".into()),),
+            type_arrow(Type::Variable("b".into()), Type::Variable("c".into()),),
         ),
-        Type::Variable(Name("a".to_string())),
+        Type::Variable("a".into()),
     ))
 );
 
@@ -176,12 +169,12 @@ test_parse_ok!(
     "#,
     module_function_type(type_arrow(
         type_arrow(
-            Type::unqualified(Name("String".to_string())),
-            Type::unqualified(Name("Int".to_string())),
+            Type::unqualified("String".into()),
+            Type::unqualified("Int".into()),
         ),
         type_arrow(
-            Type::unqualified(Name("String".to_string())),
-            Type::unqualified(Name("Int".to_string())),
+            Type::unqualified("String".into()),
+            Type::unqualified("Int".into()),
         ),
     ))
 );
@@ -195,15 +188,15 @@ test_parse_ok!(
     "#,
     module_function_type(type_arrow(
         type_arrow(
-            Type::unqualified(Name("String".to_string())),
-            Type::unqualified(Name("Int".to_string())),
+            Type::unqualified("String".into()),
+            Type::unqualified("Int".into()),
         ),
         type_arrow(
             type_arrow(
-                Type::unqualified(Name("Int".to_string())),
-                Type::unqualified(Name("String".to_string())),
+                Type::unqualified("Int".into()),
+                Type::unqualified("String".into()),
             ),
-            Type::unqualified(Name("Int".to_string())),
+            Type::unqualified("Int".into()),
         ),
     ))
 );

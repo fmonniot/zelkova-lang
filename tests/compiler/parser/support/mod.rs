@@ -52,7 +52,7 @@ macro_rules! test_parse_ok {
 // AST constructor as simple functions
 
 pub fn name(name: &str) -> Name {
-    Name(name.to_string())
+    name.into()
 }
 
 pub fn type_arrow(tpe1: Type, tpe2: Type) -> Type {
