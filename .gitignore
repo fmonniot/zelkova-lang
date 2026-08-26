@@ -1,2 +1,6 @@
 /target
-.claude
+
+# Keep .claude/skills/ tracked so they're versioned and shared; ignore everything else
+# (worktrees, memory, local settings, session state).
+.claude/*
+!.claude/skills
