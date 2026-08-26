@@ -1,0 +1,21 @@
+module javascript Js.Bitwise exposing
+  ( and, or, xor, complement
+  , shiftLeftBy, shiftRightBy, shiftRightZfBy
+  )
+
+{-| Interop module between Zelkova and Javascript.
+
+A `Bitwise.mjs` file should be defined next to this file. It
+will contains the actual implementation of this module.
+
+-}
+
+
+and : Int -> Int -> Int
+or : Int -> Int -> Int
+xor : Int -> Int -> Int
+complement : Int -> Int
+
+shiftLeftBy : Int -> Int -> Int
+shiftRightBy : Int -> Int -> Int
+shiftRightZfBy : Int -> Int -> Int
