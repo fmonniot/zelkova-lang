@@ -896,3 +896,70 @@ fn grouped_canonical_error_keeps_every_label() {
         "the group must carry a caret for each constructor it swallowed"
     );
 }
+
+// ── Test 21: the caret under a case-bodied declaration stops at the case ─────
+
+/// `ERR-3`: a `case` body must not push the declaration's span past its own end.
+///
+/// Every other span test here has a one-line body, which is exactly the shape that
+/// hides this: `Expr`'s `case` alternative finishes by consuming a layout
+/// `CloseBlock`, and the layout pass positions an implicitly-closed block *at the
+/// token that closed it* — the first token of the next declaration, or `EndOfFile`
+/// (whose `BytePos` is 0) at end of file. An `@R` taken after such a nonterminal
+/// therefore produced `26..66` here — a caret running into `other` — and inverted
+/// spans like `26..0` for a case at the end of the file. `NodeSpan::to_end_of`
+/// reads the end off the node instead, and that is what this pins.
+///
+/// The fixture deliberately puts a second declaration *after* the case-bodied one,
+/// so an end taken one token too far is visible as a range that overruns rather than
+/// as a range that merely ends late.
+///
+/// Mutation-checked by restoring the old shape — `<r:@R>` after `<expr:Expr>` in
+/// `FunBinding`, with `NodeSpan::new(l, r)`: the label range becomes
+/// `start..(start of "other" + 5)`, and the assertion below fails.
+#[test]
+fn case_bodied_declaration_label_stops_at_the_case() {
+    let root = fixture_package("package_case_type_error");
+    assert_eq!(module_names(&root), vec!["CaseBody.zel"]);
+
+    let source = std::fs::read_to_string(root.join("CaseBody.zel")).expect("fixture is readable");
+    let start = source
+        .find("classify : Color -> Color")
+        .expect("fixture declares `classify`");
+    let last = "Blue -> 2";
+    let end = source.find(last).expect("fixture has a second branch") + last.len();
+
+    let error = compile_package(&root)
+        .expect_err("`classify : Color -> Color` returning an `Int` must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    match unwrap_in_file(&errors[0]) {
+        CompilationError::Type(type_errors, module) => {
+            assert_eq!(module, &Name::from("CaseBody"));
+            assert_eq!(type_errors.len(), 1, "got {:?}", type_errors);
+        }
+        other => panic!("expected a Type error, got {:?}", other),
+    }
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    assert_eq!(
+        diagnostic.labels.len(),
+        1,
+        "expected one label, got {:?}",
+        diagnostic.labels
+    );
+    assert_eq!(
+        diagnostic.labels[0].range,
+        start..end,
+        "the caret must stop at the last branch, not run into the declaration after it"
+    );
+    assert!(
+        !source[diagnostic.labels[0].range.clone()].contains("other"),
+        "the caret must not reach the following declaration"
+    );
+}

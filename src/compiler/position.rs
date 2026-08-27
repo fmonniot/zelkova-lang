@@ -186,6 +186,26 @@ impl NodeSpan {
         }
     }
 
+    /// A span from `start` to wherever `inner` ends.
+    ///
+    /// The end of a production is not always the `@R` after its last symbol. In
+    /// `grammar.lalrpop`, `Expr`'s `case` alternative finishes by consuming a layout
+    /// `CloseBlock`, and the layout pass positions an implicitly-closed block at the
+    /// token that closed it — the first token of the *next* declaration, or, at end
+    /// of file, `EndOfFile`, whose `BytePos` is 0. An `@R` taken past such a
+    /// nonterminal therefore runs into the following declaration or inverts the span
+    /// outright. Reading the end off the node the production just built sidesteps
+    /// that: a node's own span already stops at the user's last character.
+    ///
+    /// A span-less `inner` — a hand-built node, never one the grammar produced —
+    /// degrades to the empty span at `start` rather than to a wrong one.
+    pub fn to_end_of(start: BytePos, inner: NodeSpan) -> NodeSpan {
+        match inner.0 {
+            Some(s) => NodeSpan::new(start, s.end),
+            None => NodeSpan::new(start, start),
+        }
+    }
+
     /// The byte range a `codespan_reporting::Label` wants, when there is one.
     pub fn to_range(self) -> Option<std::ops::Range<usize>> {
         self.0.map(|s| s.to_range())

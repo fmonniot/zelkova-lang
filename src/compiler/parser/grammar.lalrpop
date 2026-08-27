@@ -262,25 +262,32 @@ DeclPattern: Pattern = {
         Pattern::new(NodeSpan::new(l, r), PatternKind::Constructor(n, p)),
 }
 
-// `@R` is taken *before* the trailing "close block": the layout pass emits that
-// token zero-width at the point the block ends, which is on the following line, so
-// a span taken after it would run past the branch's last character.
+// The branch ends where its expression ends. That is read off `expression` rather
+// than from an `@R`, for two reasons at once: the trailing "close block" is emitted
+// by the layout pass at the point the block ends, which is on the following line,
+// and a nested `case` as the branch body would itself have consumed one already.
+// See `NodeSpan::to_end_of`.
 CaseBranch: CaseBranch = {
-    <l:@L> <pattern: CasePattern> "->" "open block" <expression: Expr> <r:@R> "close block" =>
-        CaseBranch { pattern, expression, span: NodeSpan::new(l, r) }
+    <l:@L> <pattern: CasePattern> "->" "open block" <expression: Expr> "close block" => {
+        let span = NodeSpan::to_end_of(l, expression.span);
+
+        CaseBranch { pattern, expression, span }
+    }
 }
 
 
 Expr = {
     InfixExpr,
 
-    <l:@L> "-" <m:@R> <e: Expr> <r:@R> => {
+    <l:@L> "-" <m:@R> <e: Expr> => {
         // Prefix negation desugars to `0 - e`: neither the `-` variable nor the `0`
         // is in the user's text. Rather than leaving them span-less, both take the
         // span of the `-` token — the one piece of source the desugaring is about —
         // while the two applications, which stand for the whole expression, take it.
         let minus = NodeSpan::new(l, m);
-        let whole = NodeSpan::new(l, r);
+        // The end comes from `e`, not from an `@R` after it: `e` may be a `case`,
+        // whose production ends by consuming a layout token. See `NodeSpan::to_end_of`.
+        let whole = NodeSpan::to_end_of(l, e.span);
 
         Expression::new(
             whole,
@@ -297,21 +304,33 @@ Expr = {
         )
     },
 
-    <l:@L> "if" <pred: Expr> "then" <if_true: Expr> "else" <if_false: Expr> <r:@R> =>
+    // The end comes from `if_false` rather than an `@R` after it — see
+    // `NodeSpan::to_end_of`, and the `case` production below for the token that
+    // makes an `@R` there wrong.
+    <l:@L> "if" <pred: Expr> "then" <if_true: Expr> "else" <if_false: Expr> =>
         Expression::new(
-            NodeSpan::new(l, r),
+            NodeSpan::to_end_of(l, if_false.span),
             ExpressionKind::If(Box::new(pred), Box::new(if_true), Box::new(if_false)),
         ),
 
     // TODO let binding: type  (FunType)
     // TODO let binding: value (FunBinding)
 
-    // As in `CaseBranch`, `@R` comes before the trailing "close block".
-    <l:@L> "case" "open block" <exp: Expr> "close block" "of" "open block" <branches: CaseBranch+> <r:@R> "close block" => {
-        Expression::new(
-            NodeSpan::new(l, r),
-            ExpressionKind::Case(Box::new(exp), branches),
-        )
+    // The end comes from the branches, not from an `@R` after them. Each
+    // `CaseBranch` consumes its own trailing "close block", so an `@R` taken past
+    // `CaseBranch+` would be the end of *that* layout token: the layout pass gives
+    // an implicitly-closed block the span of the token that closed it, which is the
+    // first token of the next declaration, or — at end of file — `EndOfFile`, whose
+    // `BytePos` is 0 and which therefore inverted the span. Each branch already
+    // stops before its own close block, so folding their spans in gives the end of
+    // the last branch's expression. `m` (the end of the "of" block opener) is only
+    // the seed: `CaseBranch+` is non-empty, so a branch always widens it.
+    <l:@L> "case" "open block" <exp: Expr> "close block" "of" "open block" <m:@R> <branches: CaseBranch+> "close block" => {
+        let span = branches
+            .iter()
+            .fold(NodeSpan::new(l, m), |acc, branch| acc.merge(branch.span));
+
+        Expression::new(span, ExpressionKind::Case(Box::new(exp), branches))
     }
 };
 
@@ -380,17 +399,24 @@ FunType: FunType = <l:@L> <name:VarIdent> ":" <tpe:Type> <r:@R> => {
 };
 
 // The inner `@L` starts the `Match`: the patterns and the body, without the name
-// the `FunBinding` around it already covers. With no patterns it lands on the `=`,
-// which is where the match does begin.
-FunBinding: FunBinding = <l:@L> <name:VarIdent> <ml:@L> <patterns: DeclPattern*> "=" <expr:Expr> <r:@R> => {
+// the `FunBinding` around it already covers. With no patterns LALRPOP resolves an
+// `@L` before an empty repetition to the end of the previous token, so it lands
+// just after the name rather than on the `=`.
+// Both ends come from `expr` rather than from an `@R` after it: a `case` body ends
+// by consuming a layout token, so an `@R` there is not the end of the declaration.
+// See `NodeSpan::to_end_of`.
+FunBinding: FunBinding = <l:@L> <name:VarIdent> <ml:@L> <patterns: DeclPattern*> "=" <expr:Expr> => {
+    let span = NodeSpan::to_end_of(l, expr.span);
+    let match_span = NodeSpan::to_end_of(ml, expr.span);
+
     FunBinding {
         name,
         pattern: Match {
             patterns,
             body: expr,
-            span: NodeSpan::new(ml, r)
+            span: match_span
         },
-        span: NodeSpan::new(l, r)
+        span
     }
 };
 
