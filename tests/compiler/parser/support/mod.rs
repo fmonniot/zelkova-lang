@@ -3,6 +3,7 @@
 //!
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser::*;
+use zelkova_lang::compiler::tuple::Tuple;
 
 // macros to simplify tests
 
@@ -60,5 +61,5 @@ pub fn type_arrow(tpe1: Type, tpe2: Type) -> Type {
 }
 
 pub fn type_tuple2(tpe1: Type, tpe2: Type) -> Type {
-    Type::Tuple(Box::new(tpe1), vec![tpe2])
+    Type::Tuple(Tuple::two(tpe1, tpe2))
 }

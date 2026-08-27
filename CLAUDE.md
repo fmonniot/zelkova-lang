@@ -83,9 +83,14 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   `parser/mod.rs`, and the `from_parser*` conversions in `canonical/mod.rs` move together, in
   the same commit. Splitting them leaves the tree uncompilable or, worse, silently dropping a
   construct during canonicalization.
-- **Tuples are size 2 or 3 only**, matching Elm. `canonical::Error::InvalidTupleSize` is the
-  rejection path. The parser and canonical ASTs disagree about how to *represent* that
-  constraint — that is `AST-2`, and it is a known trap.
+- **Tuples are size 2 or 3 only**, matching Elm, and that rule is written down exactly once:
+  `Tuple<T>` (`src/compiler/tuple.rs`) has a `Two` and a `Three` variant and nothing else. Both
+  the parser and canonical ASTs hold every tuple — type, pattern and expression — in it, so no
+  other arity is representable, and `grammar.lalrpop` has one production per arity, so a
+  four-element tuple is a parse error that never reaches canonicalization. Don't reintroduce a
+  `Vec` or an `Option`-shaped third element on either side: three separate arity checks that
+  disagreed was `AST-2`. `canonical::Error::InvalidTupleSize` is kept but unconstructed today;
+  it is there for a future tuple source that builds one from a list.
 - **A `Result`-yielding iterator must advance or stop — never repeat one error.** `Layout`
   (`parser/layout.rs`) diagnoses an indentation violation without touching its context stack,
   so replaying the offending token would reproduce that error unchanged; it therefore fuses,

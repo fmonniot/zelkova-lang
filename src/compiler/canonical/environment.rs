@@ -387,11 +387,9 @@ impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
             Pattern::Variable(n) => {
                 self.variables.insert(n.clone(), ValueType::Local);
             }
-            Pattern::Tuple(a, b, c) => {
-                self.expose_pattern(a);
-                self.expose_pattern(b);
-                if let Some(c) = c {
-                    self.expose_pattern(c);
+            Pattern::Tuple(tuple) => {
+                for pattern in tuple.iter() {
+                    self.expose_pattern(pattern);
                 }
             }
             Pattern::Constructor { args, .. } => {

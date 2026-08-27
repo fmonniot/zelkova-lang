@@ -20,6 +20,7 @@ pub mod layout;
 pub mod tokenizer;
 
 use crate::compiler::name::Name;
+use crate::compiler::tuple::Tuple;
 pub use error::Error;
 
 use std::collections::HashMap;
@@ -66,7 +67,8 @@ pub enum Type {
     Arrow(Box<Type>, Box<Type>),
     /// Type variable
     Variable(Name),
-    Tuple(Box<Type>, Vec<Type>),
+    /// A tuple type, of two or three elements — see [`Tuple`].
+    Tuple(Tuple<Type>),
 }
 
 impl Type {
@@ -76,6 +78,16 @@ impl Type {
 
     pub fn unqualified_with(name: Name, types: Vec<Type>) -> Type {
         Type::Unqualified(name, types)
+    }
+
+    /// A parenthesised type together with the `-> T` the grammar may have found
+    /// after the closing parenthesis, which turns it into an arrow: `(a, b)` on
+    /// its own, but `(a, b) -> c` when the arrow is there.
+    pub fn parenthesized(tpe: Type, result: Option<Type>) -> Type {
+        match result {
+            Some(result) => Type::Arrow(Box::new(tpe), Box::new(result)),
+            None => tpe,
+        }
     }
 }
 
@@ -345,8 +357,8 @@ pub struct Match {
 pub enum Pattern {
     Variable(Name),
     Literal(Literal),
-    /// TODO Use (p, p, maybe) or (vec) but not (p, p, vec)
-    Tuple(Box<Pattern>, Box<Pattern>, Vec<Pattern>),
+    /// A tuple pattern, of two or three elements — see [`Tuple`].
+    Tuple(Tuple<Pattern>),
     Constructor(Name, Vec<Pattern>),
     Anything,
 }
@@ -358,7 +370,8 @@ pub enum Expression {
     Application(Box<Expression>, Box<Expression>), // TODO Rename Apply ?
     Variable(Name),                                // TODO Qualified variable
     TypeConstructor(Name),
-    Tuple(Vec<Expression>),
+    /// A tuple expression, of two or three elements — see [`Tuple`].
+    Tuple(Tuple<Expression>),
     Case(Box<Expression>, Vec<CaseBranch>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
 }

@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::name::QualName;
+use zelkova_lang::compiler::tuple::Tuple;
 
 #[path = "../support/mod.rs"]
 mod support;
@@ -371,6 +372,143 @@ fn multiple_bindings_is_error() {
         "expected a MultipleBindingsUnsupported error, got {:?}",
         errors
     );
+}
+
+// ── Scenario 11: Tuples ──────────────────────────────────────────────────────
+//
+// `Tuple` is the single representation of a tuple in both ASTs and the grammar
+// has one production per arity, so these four tests cover the whole rule: the
+// two legal sizes survive canonicalization through all three sites (type,
+// expression, pattern), and any other size is rejected by the parser.
+
+/// Verified by mutating the two-element `AtomicExpr` production in
+/// `grammar.lalrpop` to `Tuple::two(b, a)` and the two-element `Type`
+/// production to `Tuple::two(b, a)` — each turns this test red.
+#[test]
+fn tuple_of_two_canonicalizes() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        pair : (Int, Char)
+        pair = (1, 'a')
+    "#};
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    assert_eq!(
+        module.values.get(&"pair".into()).unwrap(),
+        &canonical::Value::TypedValue {
+            name: "pair".into(),
+            patterns: vec![],
+            body: canonical::Expression::Tuple(Tuple::two(
+                canonical::Expression::Int(1),
+                canonical::Expression::Char('a'),
+            )),
+            tpe: canonical::Type::Tuple(Tuple::two(
+                int_t(),
+                canonical::Type::Type("Char".into(), vec![]),
+            )),
+        }
+    );
+}
+
+/// Verified by mutating the three-element `AtomicExpr` production in
+/// `grammar.lalrpop` to `Tuple::three(a, b, b)` — the test goes red on the
+/// third element.
+#[test]
+fn tuple_of_three_canonicalizes() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        triple : (Int, Char, Int)
+        triple = (1, 'a', 3)
+    "#};
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    assert_eq!(
+        module.values.get(&"triple".into()).unwrap(),
+        &canonical::Value::TypedValue {
+            name: "triple".into(),
+            patterns: vec![],
+            body: canonical::Expression::Tuple(Tuple::three(
+                canonical::Expression::Int(1),
+                canonical::Expression::Char('a'),
+                canonical::Expression::Int(3),
+            )),
+            tpe: canonical::Type::Tuple(Tuple::three(
+                int_t(),
+                canonical::Type::Type("Char".into(), vec![]),
+                int_t(),
+            )),
+        }
+    );
+}
+
+/// The pattern conversion used to read the third element with `c.first()` on a
+/// rest-vector, silently dropping anything past it; `Tuple` removes the vector.
+///
+/// Verified by mutating the two-element `Pattern` production in
+/// `grammar.lalrpop` to `Tuple::two(b, a)` — the test goes red.
+#[test]
+fn tuple_pattern_canonicalizes() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        first : (Int, Char) -> Int
+        first (a, b) = a
+    "#};
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    let value = module.values.get(&"first".into()).unwrap();
+    let patterns = match value {
+        canonical::Value::TypedValue { patterns, .. } => patterns,
+        other => panic!("expected TypedValue, got {:?}", other),
+    };
+
+    assert_eq!(
+        patterns,
+        &vec![(
+            canonical::Pattern::Tuple(Tuple::two(
+                canonical::Pattern::Variable("a".into()),
+                canonical::Pattern::Variable("b".into()),
+            )),
+            canonical::Type::Tuple(Tuple::two(
+                int_t(),
+                canonical::Type::Type("Char".into(), vec![]),
+            )),
+        )]
+    );
+}
+
+/// A four-element tuple is rejected by the grammar, not by
+/// `canonical::Error::InvalidTupleSize` — the arity rule lives in exactly one
+/// place now, and that place is upstream of canonicalization.
+///
+/// This one goes through `parser::parse` directly because
+/// `canonicalize_standalone` expects the parse to succeed.
+///
+/// Verified by adding a four-element production to `AtomicExpr` in
+/// `grammar.lalrpop`, which makes the parse succeed and the test go red.
+#[test]
+fn tuple_of_four_is_a_parse_error() {
+    use codespan_reporting::files::SimpleFile;
+    use zelkova_lang::compiler::parser;
+    use zelkova_lang::compiler::parser::tokenizer::Token;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        quad = (1, 2, 3, 4)
+    "#};
+    let file = SimpleFile::new("Test.zel".to_string(), source.to_string());
+
+    let error = parser::parse(&file).expect_err("a four-element tuple should not parse");
+
+    match error {
+        parser::Error::UnexpectedToken { token, .. } => {
+            assert_eq!(
+                token.value,
+                Token::Comma,
+                "the comma introducing the fourth element is what the parser rejects",
+            );
+        }
+        other => panic!("expected an UnexpectedToken error, got {:?}", other),
+    }
 }
 
 // ── Extra: Module with imported Maybe interface ───────────────────────────────
