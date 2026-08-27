@@ -114,8 +114,10 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   through one latch, so it is a `FusedIterator` and `layout()` says so in its signature.
   When you add an error path to a pipeline iterator, either consume input or stop. Fully
   draining one that did neither once consumed ~20GB of RAM before the OS killed it (`BUG-4`).
-  `Tokenizer` has the same class of defect and does not advance either: `handle_indentation`
-  returns `TabError` without consuming the tab, so it repeats forever. Tracked as `BUG-5`.
+  `Tokenizer` had the same class of defect: `handle_indentation`'s `Some('\t')` arm returned
+  `TabError` without consuming the tab or clearing `at_line_start`, so it repeated the same
+  error forever. Fixed by advancing past the tab and clearing the flag before returning,
+  mirroring how the sibling `IndentationError` already recovers (`BUG-5`).
 - **Zelkova has no `Elm.Kernel.*`.** A std module that needs a JS primitive gets a
   `module javascript Js.<Name>` facade — type annotations with no bodies, no infixes, no type
   declarations — plus a companion `Js/<Name>.mjs` whose exports take a plain parameter list
