@@ -731,3 +731,168 @@ fn missing_import_labels_the_import_line() {
     );
     assert_eq!(diagnostic.labels[0].range, start..(start + line.len()));
 }
+
+// ── Test 18: a caret under the identifier, not the declaration ───────────────
+
+/// `ERR-3`, commit 2: an unknown *variable* is underlined where the name was
+/// written, not across the whole declaration it sits in.
+///
+/// Commit 1 gave the five declaration productions a span, so a diagnostic could
+/// already point at `answer = mystery` in its entirety. This asserts the narrower
+/// thing that expression spans buy: the range is `mystery` alone. Asserting the
+/// range rather than `!labels.is_empty()` is the whole difference — the declaration
+/// span would satisfy a non-emptiness check just as well.
+///
+/// Mutation-checked two ways, each red on its own: making the `AtomicExpr`
+/// `QualVarIdent` production emit `NodeSpan::none()` (the label disappears, since
+/// `Expression::from_parser` has nothing to attach), and dropping the span from
+/// `canonical::Error::VariableNotFound`'s `labels` arm.
+#[test]
+fn unknown_variable_labels_the_identifier() {
+    let root = fixture_package("package_unknown_variable");
+    assert_eq!(module_names(&root), vec!["Unknown.zel"]);
+
+    let source = std::fs::read_to_string(root.join("Unknown.zel")).expect("fixture is readable");
+    let identifier = "mystery";
+    let start = source
+        .find(identifier)
+        .expect("fixture uses an undefined `mystery`");
+
+    let error = compile_package(&root).expect_err("an undefined name must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    match unwrap_in_file(&errors[0]) {
+        CompilationError::Canonical(canonical_errors, module) => {
+            assert_eq!(module, &Name::from("Unknown"));
+            assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
+        }
+        other => panic!("expected a Canonical error, got {:?}", other),
+    }
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    assert_eq!(
+        diagnostic.labels.len(),
+        1,
+        "expected one label, got {:?}",
+        diagnostic.labels
+    );
+    assert_eq!(
+        diagnostic.labels[0].range,
+        start..(start + identifier.len()),
+        "the caret must sit under `{}` alone, not the declaration around it",
+        identifier
+    );
+}
+
+// ── Test 19: the same, for a constructor in a pattern ────────────────────────
+
+/// `ERR-3`, commit 2: an unknown *constructor* in a pattern is underlined where the
+/// name was written.
+///
+/// The variable case above goes through `Expression::from_parser`; this is the other
+/// conversion, `Pattern::from_parser`, and the other grammar site — `DeclPattern`,
+/// which spans a bare constructor used as a function argument. Taking it from a
+/// binding pattern rather than a `case` branch keeps this error out of
+/// `Error::Many`, so it pins the pattern span on its own; the grouping is
+/// `grouped_canonical_error_keeps_every_label` below.
+///
+/// Mutation-checked two ways, each red on its own: making the `DeclPattern`
+/// `QualTypeIdent` production emit `NodeSpan::none()`, and dropping the span from
+/// `canonical::Error::VariantNotFound`'s `labels` arm.
+#[test]
+fn unknown_constructor_labels_the_pattern() {
+    let root = fixture_package("package_unknown_constructor");
+    assert_eq!(module_names(&root), vec!["Ctor.zel"]);
+
+    let source = std::fs::read_to_string(root.join("Ctor.zel")).expect("fixture is readable");
+    let constructor = "Purple";
+    let start = source
+        .find(constructor)
+        .expect("fixture matches on an undeclared `Purple`");
+
+    let error = compile_package(&root).expect_err("an undeclared constructor must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    assert_eq!(
+        diagnostic.labels.len(),
+        1,
+        "expected one label, got {:?}",
+        diagnostic.labels
+    );
+    assert_eq!(
+        diagnostic.labels[0].range,
+        start..(start + constructor.len()),
+        "the caret must sit under `{}` alone",
+        constructor
+    );
+}
+
+// ── Test 20: a grouped error keeps the labels of everything it swallowed ─────
+
+/// `ERR-3`, commit 2: `canonical::Error::Many` flattens its members' labels.
+///
+/// The two case branches in the fixture each name an undeclared constructor, and
+/// `Expression::from_parser` collects both through `collect_accumulate`, so what
+/// reaches the reporter is a *single* `Error::Many` holding two `VariantNotFound`s.
+/// `Many` has no position of its own, so if it did not flatten it would render as a
+/// summary with no caret at all and both carets would vanish silently — the failure
+/// mode is invisible, which is why this is asserted rather than assumed.
+///
+/// Mutation-checked by replacing the `Error::Many` arm of `canonical::Error::labels`
+/// with `Vec::new()`: the diagnostic keeps its message and its notes and loses both
+/// labels.
+#[test]
+fn grouped_canonical_error_keeps_every_label() {
+    let root = fixture_package("package_two_unknown_constructors");
+    assert_eq!(module_names(&root), vec!["Grouped.zel"]);
+
+    let source = std::fs::read_to_string(root.join("Grouped.zel")).expect("fixture is readable");
+    let ranges: Vec<_> = ["Purple", "Crimson"]
+        .iter()
+        .map(|ctor| {
+            let start = source.find(ctor).unwrap_or_else(|| {
+                panic!("fixture matches on an undeclared `{}`", ctor);
+            });
+            start..(start + ctor.len())
+        })
+        .collect();
+
+    let error = compile_package(&root).expect_err("two undeclared constructors must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    // One phase error — the group — carrying two members.
+    match unwrap_in_file(&errors[0]) {
+        CompilationError::Canonical(canonical_errors, _) => {
+            assert_eq!(
+                canonical_errors.len(),
+                1,
+                "the two failures should arrive as one group, got {:?}",
+                canonical_errors
+            );
+        }
+        other => panic!("expected a Canonical error, got {:?}", other),
+    }
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    let rendered: Vec<_> = diagnostic.labels.iter().map(|l| l.range.clone()).collect();
+    assert_eq!(
+        rendered, ranges,
+        "the group must carry a caret for each constructor it swallowed"
+    );
+}

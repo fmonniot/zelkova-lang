@@ -288,3 +288,55 @@ fn function_span_covers_annotation_and_body() {
         })
     );
 }
+
+/// `ERR-3`, commit 2: the parser test that pins where a *sub-expression* parsed.
+///
+/// `function_span_covers_annotation_and_body` above pins a declaration's span; this
+/// is the same job one level down, and it exists for the same reason: every
+/// `test_parse_ok!` in this directory compares a whole `Module`, `NodeSpan`'s
+/// `PartialEq` always returns `true`, and so none of them can tell a correct span
+/// from a missing one. Only a direct `.span` assertion can.
+///
+/// Three nested nodes are checked at once, because a single one would not catch a
+/// span that is merely *present*: the application covers `negate 42`, its function
+/// covers `negate`, and its argument covers `42`. The three ranges are distinct and
+/// computed from the source text.
+///
+/// Mutation-checked three ways, each red on its own: making the `AtomicExpr`
+/// `QualVarIdent` production emit `NodeSpan::none()`; making its `Lit` production do
+/// the same; and replacing the `AppExpr` application's `NodeSpan::new(l, r)` with
+/// `NodeSpan::none()`.
+#[test]
+fn expression_spans_cover_each_sub_expression() {
+    use codespan_reporting::files::SimpleFile;
+    use zelkova_lang::compiler::position::{BytePos, Span};
+
+    let source = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        main = negate 42
+    "#};
+
+    let file = SimpleFile::new("Main.zel".to_string(), source.to_string());
+    let module = parser::parse(&file).expect("should parse");
+
+    // Computed from the text, so editing the source above cannot silently turn
+    // these into assertions about the wrong bytes.
+    let at = |needle: &str| {
+        let start = source.find(needle).expect("source contains the fragment");
+        Some(Span {
+            start: BytePos(start as u32),
+            end: BytePos((start + needle.len()) as u32),
+        })
+    };
+
+    let body = &module.functions[0].bindings[0].body;
+    assert_eq!(body.span.span(), at("negate 42"));
+
+    let ExpressionKind::Application(function, argument) = &body.kind else {
+        panic!("expected an application, got {:?}", body.kind);
+    };
+
+    assert_eq!(function.span.span(), at("negate"));
+    assert_eq!(argument.span.span(), at("42"));
+}

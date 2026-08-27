@@ -56,8 +56,23 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
 /// As their name indicates, a type with arguments will requires more
 /// `Type` as arguments. For example the optional type will require
 /// one no-arg type: `Maybe Int` (this is another name for higher-kinded types)
+///
+/// # Why the span is a field rather than a wrapper
+///
+/// The three recursive nodes of this AST — `Type`, [`Pattern`] and [`Expression`] —
+/// are each a struct pairing a [`NodeSpan`] with a `…Kind` enum, rather than the
+/// enum wrapped in a `Spanned<BytePos, _>`. The difference shows up in the children:
+/// here they stay `Box<Type>` and `Vec<Type>`, each carrying its own span, so a
+/// reader matches `&t.kind` once per function instead of unwrapping a `.value` at
+/// every child. `canonical/mod.rs` is that reader.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Type {
+pub struct Type {
+    pub span: NodeSpan,
+    pub kind: TypeKind,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TypeKind {
     /// Type constructor
     Unqualified(Name, Vec<Type>),
     // TODO Qualified type eg Maybe.Maybe (or is it already merged in Unqualified ?)
@@ -73,20 +88,38 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn unqualified(name: Name) -> Type {
-        Type::Unqualified(name, Vec::default())
+    /// A type the parser built, at the position its production captured.
+    pub fn new(span: NodeSpan, kind: TypeKind) -> Type {
+        Type { span, kind }
     }
 
-    pub fn unqualified_with(name: Name, types: Vec<Type>) -> Type {
-        Type::Unqualified(name, types)
+    /// A type with no position — hand-built by a test. See [`NodeSpan`].
+    pub fn bare(kind: TypeKind) -> Type {
+        Type {
+            span: NodeSpan::none(),
+            kind,
+        }
+    }
+
+    pub fn unqualified(span: NodeSpan, name: Name) -> Type {
+        Type::new(span, TypeKind::Unqualified(name, Vec::default()))
+    }
+
+    pub fn unqualified_with(span: NodeSpan, name: Name, types: Vec<Type>) -> Type {
+        Type::new(span, TypeKind::Unqualified(name, types))
     }
 
     /// A parenthesised type together with the `-> T` the grammar may have found
     /// after the closing parenthesis, which turns it into an arrow: `(a, b)` on
     /// its own, but `(a, b) -> c` when the arrow is there.
-    pub fn parenthesized(tpe: Type, result: Option<Type>) -> Type {
+    ///
+    /// `span` covers the parenthesised type *and* the arrow, so it is the span of
+    /// the `Arrow` this builds. With no arrow there is no new node and nothing to
+    /// span: the parenthesised type is returned as it was, keeping the position of
+    /// the text inside the parentheses.
+    pub fn parenthesized(span: NodeSpan, tpe: Type, result: Option<Type>) -> Type {
         match result {
-            Some(result) => Type::Arrow(Box::new(tpe), Box::new(result)),
+            Some(result) => Type::new(span, TypeKind::Arrow(Box::new(tpe), Box::new(result))),
             None => tpe,
         }
     }
@@ -367,6 +400,10 @@ pub struct FunBinding {
 pub struct Match {
     pub patterns: Vec<Pattern>,
     pub body: Expression,
+    /// The patterns and the body, from the first pattern to the last byte of the
+    /// expression. It excludes the function's name, which the enclosing
+    /// [`FunBinding`] span covers.
+    pub span: NodeSpan,
 }
 
 /// A pattern is the left handside of a pattern-match expression
@@ -383,7 +420,13 @@ pub struct Match {
 /// - `List [Pattern]`
 /// - `Cons Pattern Pattern`
 #[derive(Debug, PartialEq, Clone)]
-pub enum Pattern {
+pub struct Pattern {
+    pub span: NodeSpan,
+    pub kind: PatternKind,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum PatternKind {
     Variable(Name),
     Literal(Literal),
     /// A tuple pattern, of two or three elements — see [`Tuple`].
@@ -392,9 +435,33 @@ pub enum Pattern {
     Anything,
 }
 
+impl Pattern {
+    /// A pattern the parser built, at the position its production captured.
+    pub fn new(span: NodeSpan, kind: PatternKind) -> Pattern {
+        Pattern { span, kind }
+    }
+
+    /// A pattern with no position — hand-built by a test. See [`NodeSpan`].
+    pub fn bare(kind: PatternKind) -> Pattern {
+        Pattern {
+            span: NodeSpan::none(),
+            kind,
+        }
+    }
+}
+
 /// An Expression
+///
+/// Like [`Type`] and [`Pattern`], this is a span plus a kind rather than a spanned
+/// enum; see [`Type`] for why.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Expression {
+pub struct Expression {
+    pub span: NodeSpan,
+    pub kind: ExpressionKind,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ExpressionKind {
     Lit(Literal),                                  // Literal, as other are fully named
     Application(Box<Expression>, Box<Expression>), // TODO Rename Apply ?
     Variable(Name),                                // TODO Qualified variable
@@ -405,10 +472,27 @@ pub enum Expression {
     If(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
+impl Expression {
+    /// An expression the parser built, at the position its production captured.
+    pub fn new(span: NodeSpan, kind: ExpressionKind) -> Expression {
+        Expression { span, kind }
+    }
+
+    /// An expression with no position — hand-built by a test. See [`NodeSpan`].
+    pub fn bare(kind: ExpressionKind) -> Expression {
+        Expression {
+            span: NodeSpan::none(),
+            kind,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct CaseBranch {
     pub pattern: Pattern,
     pub expression: Expression,
+    /// The whole branch, from the pattern to the last byte of its expression.
+    pub span: NodeSpan,
 }
 
 /// A literal

@@ -1,0 +1,7 @@
+module Grouped exposing (..)
+
+
+classify c =
+  case c of
+    Purple -> 1
+    Crimson -> 2

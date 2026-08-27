@@ -90,14 +90,27 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   note is not an option: a `Debug` dump names Rust types, not source constructs. A new error
   variant gets a message written for the person reading it.
   An error also says *where*, when it can: `PhaseError::labels` returns `SpanLabel`s, and
-  `grammar.lalrpop` captures `@L`/`@R` on the five declaration productions, so a declaration
-  carries a `NodeSpan` through the parser AST into `canonical::Value`/`Infix`/`UnionType`.
-  `labels` defaults to empty and that is a real answer, not a stub — an error raised while
-  walking a node the grammar does not span has nowhere to point and renders with no caret.
-  Sub-expression granularity is `ERR-4`; pointing into *another* module is `ERR-5`. The
+  `grammar.lalrpop` captures `@L`/`@R` in every production that builds a node, so every
+  declaration, expression, pattern and type carries a `NodeSpan`. Both ASTs hold it the same
+  way: `Expression`, `Pattern` and `Type` are a `span` field beside a `…Kind` enum, so
+  children stay `Box<Expression>` and a reader matches `&e.kind`. A canonicalization error
+  that names an identifier — `VariableNotFound`, `VariantNotFound` — therefore puts the caret
+  under that name and not under the declaration around it.
+  Two things deliberately carry no span, and each says so at its definition:
+  `canonical::Type`/`TypeConstructor`, because they are cloned out of an `Environment` and may
+  have been written in another file (`ERR-5`); and any error raised while walking a node the
+  grammar does not span, such as an `exposing` list. `labels` defaults to empty and that is a
+  real answer, not a stub — such an error renders with no caret. A group (`Error::Many`,
+  `EnvironmentErrors`) flattens its members' labels, the way it already flattens their
+  messages; forgetting that silently drops every caret it swallowed.
+  Type errors still point at the declaration rather than the sub-expression, because the typer
+  drops positions when it translates canonical into `Term`/`Constraint`: that is `ERR-4`. The
   `SourceFileId` is never a phase's business — `compile_package` attaches it via
   `CompilationError::InFile`, being the only place that knows which file a module was read
   from.
+  `NodeSpan`'s `PartialEq` always returns `true`, so a whole-value `assert_eq!` in the parser
+  tests proves nothing about position; a test that cares about a position asserts on `.span`
+  or on `diagnostic.labels[..].range` directly.
 - **A grammar change is never a one-file change.** `grammar.lalrpop`, the `parser` AST in
   `parser/mod.rs`, and the `from_parser*` conversions in `canonical/mod.rs` move together, in
   the same commit. Splitting them leaves the tree uncompilable or, worse, silently dropping a

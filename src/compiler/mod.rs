@@ -164,23 +164,28 @@ pub struct SpanLabel {
 ///
 /// # How much a span can say, and where that stops
 ///
-/// The five declaration productions in `grammar.lalrpop` capture `@L`/`@R`, so a
-/// `parser::Import`, `FunType`, `FunBinding`, `UnionType` and `Infix` know where they
-/// were written, and canonicalization carries that through to `canonical::Value`,
-/// `Infix` and `UnionType`. An error raised from one of those construction sites can
-/// therefore return a [`SpanLabel`] from [`labels`](PhaseError::labels) and get a
-/// caret under the declaration that failed.
+/// Every production in `grammar.lalrpop` that builds a node captures `@L`/`@R`, so
+/// declarations, expressions, patterns and types all know where they were written,
+/// and canonicalization copies that onto the node it builds. An error raised from one
+/// of those construction sites returns a [`SpanLabel`] from
+/// [`labels`](PhaseError::labels) and gets a caret under the text it is about — an
+/// unresolvable name is underlined at the identifier, not across the declaration
+/// containing it.
 ///
 /// Not every error can. `labels` defaults to empty and that is a real answer, not a
 /// stub: an error raised while walking a node the grammar does not span — an
 /// `exposing` list, say — has nowhere to point, and renders as message-plus-notes
-/// with no caret, exactly as every phase after parsing used to.
+/// with no caret, exactly as every phase after parsing used to. An error that groups
+/// others (`canonical::Error::Many`, `EnvironmentErrors`) has no position of its own
+/// and flattens its members' labels instead, the way it already flattens their
+/// messages.
 ///
-/// Two limits remain and each has a ticket. Expressions, patterns and types carry no
-/// span yet, so a type error underlines the whole declaration rather than the
-/// sub-expression that disagrees: `ERR-4`. And a [`SpanLabel`] has no
-/// [`SourceFileId`], so no diagnostic can point into another module: `ERR-5`. See
-/// `docs/tickets/INDEX.md`.
+/// Two limits remain and each has a ticket. `typer::Error` still points at the
+/// declaration rather than the sub-expression that disagrees, because the typer
+/// translates canonical into its own `Term`/`Constraint` language and drops positions
+/// on the way: `ERR-4`. And a [`SpanLabel`] has no [`SourceFileId`], so no diagnostic
+/// can point into another module — which is also why `canonical::Type` carries no
+/// span: `ERR-5`. See `docs/tickets/INDEX.md`.
 ///
 /// `parser::Error` is still the one phase error that does not go through this trait
 /// at all — it builds its own labelled `Diagnostic` through `parser::Error::diagnostic`.

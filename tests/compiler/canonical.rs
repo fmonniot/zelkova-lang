@@ -24,6 +24,61 @@ fn int_t() -> canonical::Type {
     canonical::Type::Type("Int".into(), vec![])
 }
 
+// `canonical::Expression` and `canonical::Pattern` are each a `NodeSpan` beside a
+// `…Kind`, so a hand-built literal would otherwise read
+// `Expression::bare(ExpressionKind::Int(42))` at every node. One function per
+// variant keeps the whole-value comparisons below readable. They all use
+// `NodeSpan::none()`, which compares equal to the span the canonicalizer computed —
+// see `NodeSpan`'s documentation for that trade and its cost.
+
+fn c_int(i: i64) -> canonical::Expression {
+    canonical::Expression::bare(canonical::ExpressionKind::Int(i))
+}
+
+fn c_char(c: char) -> canonical::Expression {
+    canonical::Expression::bare(canonical::ExpressionKind::Char(c))
+}
+
+fn c_bool(b: bool) -> canonical::Expression {
+    canonical::Expression::bare(canonical::ExpressionKind::Bool(b))
+}
+
+fn c_var_local(name: &str) -> canonical::Expression {
+    canonical::Expression::bare(canonical::ExpressionKind::VarLocal(name.into()))
+}
+
+fn c_var_ctor(name: QualName, tpe: canonical::Type) -> canonical::Expression {
+    canonical::Expression::bare(canonical::ExpressionKind::VarConstructor(name, tpe))
+}
+
+fn c_if(
+    cond: canonical::Expression,
+    then: canonical::Expression,
+    els: canonical::Expression,
+) -> canonical::Expression {
+    canonical::Expression::bare(canonical::ExpressionKind::If(
+        Box::new(cond),
+        Box::new(then),
+        Box::new(els),
+    ))
+}
+
+fn c_tuple(tuple: Tuple<canonical::Expression>) -> canonical::Expression {
+    canonical::Expression::bare(canonical::ExpressionKind::Tuple(tuple))
+}
+
+fn p_var(name: &str) -> canonical::Pattern {
+    canonical::Pattern::bare(canonical::PatternKind::Variable(name.into()))
+}
+
+fn p_tuple(tuple: Tuple<canonical::Pattern>) -> canonical::Pattern {
+    canonical::Pattern::bare(canonical::PatternKind::Tuple(tuple))
+}
+
+fn p_ctor(ctor: canonical::TypeConstructor, args: Vec<canonical::Pattern>) -> canonical::Pattern {
+    canonical::Pattern::bare(canonical::PatternKind::Constructor { ctor, args })
+}
+
 // ── Scenario 1: Simple constant, no type annotation ─────────────────────────
 
 #[test]
@@ -40,7 +95,7 @@ fn simple_constant_no_annotation() {
             span: NodeSpan::none(),
             name: "answer".into(),
             patterns: vec![],
-            body: canonical::Expression::Int(42),
+            body: c_int(42),
         }
     );
 }
@@ -62,12 +117,9 @@ fn typed_identity_function() {
             span: NodeSpan::none(),
             name: "identity".into(),
             // Pattern `x` is paired with the first arrow-arm type `a`
-            patterns: vec![(
-                canonical::Pattern::Variable("x".into()),
-                canonical::Type::Variable("a".into()),
-            )],
+            patterns: vec![(p_var("x"), canonical::Type::Variable("a".into()),)],
             // The body `x` is a reference to the local binding
-            body: canonical::Expression::VarLocal("x".into()),
+            body: c_var_local("x"),
             tpe: canonical::Type::Arrow(
                 Box::new(canonical::Type::Variable("a".into())),
                 Box::new(canonical::Type::Variable("a".into())),
@@ -92,12 +144,9 @@ fn function_multiple_parameters() {
         &canonical::Value::TypedValue {
             span: NodeSpan::none(),
             name: "add".into(),
-            patterns: vec![
-                (canonical::Pattern::Variable("a".into()), int_t()),
-                (canonical::Pattern::Variable("b".into()), int_t()),
-            ],
+            patterns: vec![(p_var("a"), int_t()), (p_var("b"), int_t()),],
             // Body refers to the first pattern binding `a`
-            body: canonical::Expression::VarLocal("a".into()),
+            body: c_var_local("a"),
             tpe: canonical::Type::Arrow(
                 Box::new(int_t()),
                 Box::new(canonical::Type::Arrow(Box::new(int_t()), Box::new(int_t()))),
@@ -152,10 +201,7 @@ fn union_type_definition_and_constructor() {
             span: NodeSpan::none(),
             name: "favorite".into(),
             patterns: vec![],
-            body: canonical::Expression::VarConstructor(
-                QualName::from("Test.Red"),
-                color_t.clone(),
-            ),
+            body: c_var_ctor(QualName::from("Test.Red"), color_t.clone()),
             tpe: color_t,
         }
     );
@@ -200,20 +246,14 @@ fn case_expression_local_maybe() {
     };
 
     // Single pattern `maybe` bound to the first arrow arm
-    assert_eq!(
-        patterns,
-        &vec![(
-            canonical::Pattern::Variable("maybe".into()),
-            maybe_a.clone()
-        )]
-    );
+    assert_eq!(patterns, &vec![(p_var("maybe"), maybe_a.clone())]);
 
     // Body is a case expression on VarLocal("maybe")
-    let (scrutinee, branches) = match body {
-        canonical::Expression::Case(s, b) => (s.as_ref(), b),
+    let (scrutinee, branches) = match &body.kind {
+        canonical::ExpressionKind::Case(s, b) => (s.as_ref(), b),
         other => panic!("expected Case, got {:?}", other),
     };
-    assert_eq!(scrutinee, &canonical::Expression::VarLocal("maybe".into()));
+    assert_eq!(scrutinee, &c_var_local("maybe"));
     assert_eq!(branches.len(), 2);
 
     // Branch 0: `Just x` pattern — Constructor with one Variable arg
@@ -222,16 +262,13 @@ fn case_expression_local_maybe() {
         type_parameters: vec![canonical::Type::Variable("a".into())],
         tpe: "Maybe".into(),
     };
-    assert_eq!(
-        branches[0].pattern,
-        canonical::Pattern::Constructor {
-            ctor: just_ctor,
-            args: vec![canonical::Pattern::Variable("x".into())],
-        }
-    );
+    assert_eq!(branches[0].pattern, p_ctor(just_ctor, vec![p_var("x")]));
     // Expression is Apply(VarConstructor("Test.Just", _), VarLocal("x"))
     assert!(
-        matches!(&branches[0].expression, canonical::Expression::Apply(_, _)),
+        matches!(
+            &branches[0].expression.kind,
+            canonical::ExpressionKind::Apply(_, _)
+        ),
         "Just x branch expression should be Apply, got {:?}",
         branches[0].expression
     );
@@ -242,18 +279,12 @@ fn case_expression_local_maybe() {
         type_parameters: vec![],
         tpe: "Maybe".into(),
     };
-    assert_eq!(
-        branches[1].pattern,
-        canonical::Pattern::Constructor {
-            ctor: nothing_ctor,
-            args: vec![],
-        }
-    );
+    assert_eq!(branches[1].pattern, p_ctor(nothing_ctor, vec![]));
     // Expression is VarConstructor("Test.Nothing", _)
     assert!(
         matches!(
-            &branches[1].expression,
-            canonical::Expression::VarConstructor(_, _)
+            &branches[1].expression.kind,
+            canonical::ExpressionKind::VarConstructor(_, _)
         ),
         "Nothing branch expression should be VarConstructor, got {:?}",
         branches[1].expression
@@ -276,15 +307,8 @@ fn if_then_else_expression() {
         &canonical::Value::TypedValue {
             span: NodeSpan::none(),
             name: "max".into(),
-            patterns: vec![
-                (canonical::Pattern::Variable("a".into()), int_t()),
-                (canonical::Pattern::Variable("b".into()), int_t()),
-            ],
-            body: canonical::Expression::If(
-                Box::new(canonical::Expression::Bool(true)),
-                Box::new(canonical::Expression::VarLocal("a".into())),
-                Box::new(canonical::Expression::VarLocal("b".into())),
-            ),
+            patterns: vec![(p_var("a"), int_t()), (p_var("b"), int_t()),],
+            body: c_if(c_bool(true), c_var_local("a"), c_var_local("b")),
             tpe: canonical::Type::Arrow(
                 Box::new(int_t()),
                 Box::new(canonical::Type::Arrow(Box::new(int_t()), Box::new(int_t()))),
@@ -327,7 +351,7 @@ fn javascript_binding_module() {
             span: NodeSpan::none(),
             name: "add".into(),
             patterns: vec![],
-            body: canonical::Expression::Bool(true),
+            body: c_bool(true),
             tpe: canonical::Type::Arrow(
                 Box::new(int_t()),
                 Box::new(canonical::Type::Arrow(Box::new(int_t()), Box::new(int_t()))),
@@ -407,10 +431,7 @@ fn tuple_of_two_canonicalizes() {
             span: NodeSpan::none(),
             name: "pair".into(),
             patterns: vec![],
-            body: canonical::Expression::Tuple(Tuple::two(
-                canonical::Expression::Int(1),
-                canonical::Expression::Char('a'),
-            )),
+            body: c_tuple(Tuple::two(c_int(1), c_char('a'),)),
             tpe: canonical::Type::Tuple(Tuple::two(
                 int_t(),
                 canonical::Type::Type("Char".into(), vec![]),
@@ -440,11 +461,7 @@ fn tuple_of_three_canonicalizes() {
             span: NodeSpan::none(),
             name: "triple".into(),
             patterns: vec![],
-            body: canonical::Expression::Tuple(Tuple::three(
-                canonical::Expression::Int(1),
-                canonical::Expression::Char('a'),
-                canonical::Expression::Int(3),
-            )),
+            body: c_tuple(Tuple::three(c_int(1), c_char('a'), c_int(3),)),
             tpe: canonical::Type::Tuple(Tuple::three(
                 int_t(),
                 canonical::Type::Type("Char".into(), vec![]),
@@ -477,10 +494,7 @@ fn tuple_pattern_canonicalizes() {
     assert_eq!(
         patterns,
         &vec![(
-            canonical::Pattern::Tuple(Tuple::two(
-                canonical::Pattern::Variable("a".into()),
-                canonical::Pattern::Variable("b".into()),
-            )),
+            p_tuple(Tuple::two(p_var("a"), p_var("b"),)),
             canonical::Type::Tuple(Tuple::two(
                 int_t(),
                 canonical::Type::Type("Char".into(), vec![]),
@@ -517,11 +531,7 @@ fn tuple_pattern_of_three_canonicalizes() {
     assert_eq!(
         patterns,
         &vec![(
-            canonical::Pattern::Tuple(Tuple::three(
-                canonical::Pattern::Variable("a".into()),
-                canonical::Pattern::Variable("b".into()),
-                canonical::Pattern::Variable("c".into()),
-            )),
+            p_tuple(Tuple::three(p_var("a"), p_var("b"), p_var("c"),)),
             canonical::Type::Tuple(Tuple::three(
                 int_t(),
                 canonical::Type::Type("Char".into(), vec![]),
@@ -697,17 +707,14 @@ fn module_using_imported_maybe() {
     };
 
     // Single parameter `m` bound to the first arrow-arm type
-    assert_eq!(
-        patterns,
-        &vec![(canonical::Pattern::Variable("m".into()), maybe_t)]
-    );
+    assert_eq!(patterns, &vec![(p_var("m"), maybe_t)]);
 
     // Body is `case m of ...`
-    let (scrutinee, branches) = match body {
-        canonical::Expression::Case(s, b) => (s.as_ref(), b),
+    let (scrutinee, branches) = match &body.kind {
+        canonical::ExpressionKind::Case(s, b) => (s.as_ref(), b),
         other => panic!("expected Case, got {:?}", other),
     };
-    assert_eq!(scrutinee, &canonical::Expression::VarLocal("m".into()));
+    assert_eq!(scrutinee, &c_var_local("m"));
     assert_eq!(branches.len(), 2);
 
     // Patterns come from the imported interface's TypeConstructor records
@@ -716,24 +723,12 @@ fn module_using_imported_maybe() {
         type_parameters: vec![canonical::Type::Variable("a".into())],
         tpe: "Maybe".into(),
     };
-    assert_eq!(
-        branches[0].pattern,
-        canonical::Pattern::Constructor {
-            ctor: just_ctor,
-            args: vec![canonical::Pattern::Variable("x".into())],
-        }
-    );
+    assert_eq!(branches[0].pattern, p_ctor(just_ctor, vec![p_var("x")]));
 
     let nothing_ctor = canonical::TypeConstructor {
         name: "Nothing".into(),
         type_parameters: vec![],
         tpe: "Maybe".into(),
     };
-    assert_eq!(
-        branches[1].pattern,
-        canonical::Pattern::Constructor {
-            ctor: nothing_ctor,
-            args: vec![],
-        }
-    );
+    assert_eq!(branches[1].pattern, p_ctor(nothing_ctor, vec![]));
 }

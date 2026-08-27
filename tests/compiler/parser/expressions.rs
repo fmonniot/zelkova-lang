@@ -16,6 +16,7 @@ fn module(body: Expression) -> Module {
             bindings: vec![Match {
                 patterns: vec![],
                 body,
+                span: no_span(),
             }],
             span: no_span(),
         }],
@@ -29,7 +30,7 @@ test_parse_ok!(
 
     main = 42
     "#,
-    module(Expression::Lit(Literal::Int(42)))
+    module(expr_lit(Literal::Int(42)))
 );
 
 test_parse_ok!(
@@ -39,7 +40,7 @@ test_parse_ok!(
 
     main = myvar
     "#,
-    module(Expression::Variable(name("myvar")))
+    module(expr_var(name("myvar")))
 );
 
 test_parse_ok!(
@@ -49,12 +50,12 @@ test_parse_ok!(
 
     main = map myfunction 2
     "#,
-    module(Expression::Application(
-        Box::new(Expression::Application(
-            Box::new(Expression::Variable("map".into())),
-            Box::new(Expression::Variable("myfunction".into())),
+    module(expr_app(
+        Box::new(expr_app(
+            Box::new(expr_var("map".into())),
+            Box::new(expr_var("myfunction".into())),
         )),
-        Box::new(Expression::Lit(Literal::Int(2))),
+        Box::new(expr_lit(Literal::Int(2))),
     ))
 );
 
@@ -65,11 +66,11 @@ test_parse_ok!(
 
     main = map (myfunction 2)
     "#,
-    module(Expression::Application(
-        Box::new(Expression::Variable("map".into())),
-        Box::new(Expression::Application(
-            Box::new(Expression::Variable("myfunction".into())),
-            Box::new(Expression::Lit(Literal::Int(2))),
+    module(expr_app(
+        Box::new(expr_var("map".into())),
+        Box::new(expr_app(
+            Box::new(expr_var("myfunction".into())),
+            Box::new(expr_lit(Literal::Int(2))),
         )),
     ))
 );
@@ -84,15 +85,15 @@ test_parse_ok!(
 
     main = 2 + 3
     "#,
-    module(Expression::Application(
+    module(expr_app(
         // map: (a -> b) -> a -> b
         // first application result in: a -> b
         // second application result in: b
-        Box::new(Expression::Application(
-            Box::new(Expression::Variable("+".into())),
-            Box::new(Expression::Lit(Literal::Int(2))),
+        Box::new(expr_app(
+            Box::new(expr_var("+".into())),
+            Box::new(expr_lit(Literal::Int(2))),
         )),
-        Box::new(Expression::Lit(Literal::Int(3))),
+        Box::new(expr_lit(Literal::Int(3))),
     ))
 );
 
@@ -103,9 +104,9 @@ test_parse_ok!(
 
     main = (2, 3)
     "#,
-    module(Expression::Tuple(Tuple::two(
-        Expression::Lit(Literal::Int(2)),
-        Expression::Lit(Literal::Int(3)),
+    module(expr_tuple(Tuple::two(
+        expr_lit(Literal::Int(2)),
+        expr_lit(Literal::Int(3)),
     )))
 );
 
@@ -116,10 +117,10 @@ test_parse_ok!(
 
     main = if true then 2 else 3
     "#,
-    module(Expression::If(
-        Box::new(Expression::Lit(Literal::Bool(true))),
-        Box::new(Expression::Lit(Literal::Int(2))),
-        Box::new(Expression::Lit(Literal::Int(3))),
+    module(expr_if(
+        Box::new(expr_lit(Literal::Bool(true))),
+        Box::new(expr_lit(Literal::Int(2))),
+        Box::new(expr_lit(Literal::Int(3))),
     ))
 );
 
@@ -130,13 +131,13 @@ test_parse_ok!(
 
     main = if false then 2 else if true then 3 else 4
     "#,
-    module(Expression::If(
-        Box::new(Expression::Lit(Literal::Bool(false))),
-        Box::new(Expression::Lit(Literal::Int(2))),
-        Box::new(Expression::If(
-            Box::new(Expression::Lit(Literal::Bool(true))),
-            Box::new(Expression::Lit(Literal::Int(3))),
-            Box::new(Expression::Lit(Literal::Int(4))),
+    module(expr_if(
+        Box::new(expr_lit(Literal::Bool(false))),
+        Box::new(expr_lit(Literal::Int(2))),
+        Box::new(expr_if(
+            Box::new(expr_lit(Literal::Bool(true))),
+            Box::new(expr_lit(Literal::Int(3))),
+            Box::new(expr_lit(Literal::Int(4))),
         )),
     ))
 );

@@ -1,6 +1,6 @@
 //! env module
 
-use super::{parser, Pattern};
+use super::{parser, Pattern, PatternKind};
 use super::{Infix, Interface, ModuleName, Name, Type, TypeConstructor, UnionType};
 use crate::compiler::position::NodeSpan;
 use crate::compiler::{PhaseError, SpanLabel};
@@ -441,22 +441,22 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
 
 impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
     pub fn expose_pattern(&mut self, pattern: &Pattern) {
-        match pattern {
-            Pattern::Anything => (),
-            Pattern::Int(_) => (),
-            Pattern::Float(_) => (),
-            Pattern::Char(_) => (),
-            Pattern::Bool(_) => (),
+        match &pattern.kind {
+            PatternKind::Anything => (),
+            PatternKind::Int(_) => (),
+            PatternKind::Float(_) => (),
+            PatternKind::Char(_) => (),
+            PatternKind::Bool(_) => (),
 
-            Pattern::Variable(n) => {
+            PatternKind::Variable(n) => {
                 self.variables.insert(n.clone(), ValueType::Local);
             }
-            Pattern::Tuple(tuple) => {
+            PatternKind::Tuple(tuple) => {
                 for pattern in tuple.iter() {
                     self.expose_pattern(pattern);
                 }
             }
-            Pattern::Constructor { args, .. } => {
+            PatternKind::Constructor { args, .. } => {
                 for arg in args {
                     self.expose_pattern(arg);
                 }

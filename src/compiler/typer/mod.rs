@@ -355,16 +355,18 @@ fn canonical_expr_to_term(
     module_types: &HashMap<Name, canonical::UnionType>,
     counter: &mut u32,
 ) -> Option<Term> {
-    match expr {
-        canonical::Expression::Int(i) => Some(Term::Int(*i as u32)),
-        canonical::Expression::Bool(b) => Some(Term::Bool(*b)),
-        canonical::Expression::Char(c) => Some(Term::Char(*c)),
-        canonical::Expression::Float(f) => Some(Term::Float(*f)),
-        canonical::Expression::VarLocal(name) => Some(Term::Identifier(name.as_str().to_string())),
-        canonical::Expression::VarTopLevel(qname) => {
+    match &expr.kind {
+        canonical::ExpressionKind::Int(i) => Some(Term::Int(*i as u32)),
+        canonical::ExpressionKind::Bool(b) => Some(Term::Bool(*b)),
+        canonical::ExpressionKind::Char(c) => Some(Term::Char(*c)),
+        canonical::ExpressionKind::Float(f) => Some(Term::Float(*f)),
+        canonical::ExpressionKind::VarLocal(name) => {
+            Some(Term::Identifier(name.as_str().to_string()))
+        }
+        canonical::ExpressionKind::VarTopLevel(qname) => {
             Some(Term::Identifier(qname.to_name().as_str().to_string()))
         }
-        canonical::Expression::Apply(f, a) => {
+        canonical::ExpressionKind::Apply(f, a) => {
             let fun = canonical_expr_to_term(f, module_types, counter)?;
             let arg = canonical_expr_to_term(a, module_types, counter)?;
             Some(Term::Apply {
@@ -372,7 +374,7 @@ fn canonical_expr_to_term(
                 arg: Box::new(arg),
             })
         }
-        canonical::Expression::If(cond, t, f) => {
+        canonical::ExpressionKind::If(cond, t, f) => {
             let cond = canonical_expr_to_term(cond, module_types, counter)?;
             let t = canonical_expr_to_term(t, module_types, counter)?;
             let f = canonical_expr_to_term(f, module_types, counter)?;
@@ -382,13 +384,13 @@ fn canonical_expr_to_term(
                 false_branch: Box::new(f),
             })
         }
-        canonical::Expression::Tuple(tuple) => {
+        canonical::ExpressionKind::Tuple(tuple) => {
             let elements = tuple
                 .try_map(|elem| canonical_expr_to_term(elem, module_types, counter).ok_or(()))
                 .ok()?;
             Some(Term::Tuple(elements))
         }
-        canonical::Expression::Case(scrutinee_expr, branches) => {
+        canonical::ExpressionKind::Case(scrutinee_expr, branches) => {
             let scrutinee = canonical_expr_to_term(scrutinee_expr, module_types, counter)?;
             let term_branches: Vec<(TermPattern, Box<Term>)> = branches
                 .iter()
@@ -405,11 +407,11 @@ fn canonical_expr_to_term(
             })
         }
         // Constructors are resolved as identifiers looked up in the global env.
-        canonical::Expression::VarConstructor(qname, _) => {
+        canonical::ExpressionKind::VarConstructor(qname, _) => {
             Some(Term::Identifier(qname.to_name().as_str().to_string()))
         }
         // VarForeign: not in the module's global env, skip
-        canonical::Expression::VarForeign(_, _) => None,
+        canonical::ExpressionKind::VarForeign(_, _) => None,
         // Not yet supported: VarKernel
         _ => None,
     }
@@ -422,25 +424,25 @@ fn translate_pattern(
     module_types: &HashMap<Name, canonical::UnionType>,
     counter: &mut u32,
 ) -> Option<(TermPattern, Vec<(String, Type)>)> {
-    match pattern {
-        canonical::Pattern::Anything => Some((TermPattern::Anything, vec![])),
-        canonical::Pattern::Variable(name) => {
+    match &pattern.kind {
+        canonical::PatternKind::Anything => Some((TermPattern::Anything, vec![])),
+        canonical::PatternKind::Variable(name) => {
             // The binding's actual type will be unified with the scrutinee type in annotate.
             Some((TermPattern::Bind(name.as_str().to_string()), vec![]))
         }
-        canonical::Pattern::Bool(_) => Some((
+        canonical::PatternKind::Bool(_) => Some((
             TermPattern::Literal(Type::Literal(TypeLiteral::Bool)),
             vec![],
         )),
-        canonical::Pattern::Int(_) => Some((
+        canonical::PatternKind::Int(_) => Some((
             TermPattern::Literal(Type::Literal(TypeLiteral::Int)),
             vec![],
         )),
-        canonical::Pattern::Char(_) => Some((
+        canonical::PatternKind::Char(_) => Some((
             TermPattern::Literal(Type::Literal(TypeLiteral::Char)),
             vec![],
         )),
-        canonical::Pattern::Constructor { ctor, args } => {
+        canonical::PatternKind::Constructor { ctor, args } => {
             // Look up the parent union type to get its type variables.
             let union_type = module_types.get(&ctor.tpe)?;
 
@@ -471,12 +473,12 @@ fn translate_pattern(
             // Build bindings from arg patterns.
             let mut bindings: Vec<(String, Type)> = vec![];
             for (arg_pattern, param_type) in args.iter().zip(param_types.iter()) {
-                match arg_pattern {
-                    canonical::Pattern::Variable(name) => {
+                match &arg_pattern.kind {
+                    canonical::PatternKind::Variable(name) => {
                         bindings.push((name.as_str().to_string(), param_type.clone()));
                     }
-                    canonical::Pattern::Anything => {} // no binding needed
-                    _ => return None,                  // nested complex patterns not yet supported
+                    canonical::PatternKind::Anything => {} // no binding needed
+                    _ => return None, // nested complex patterns not yet supported
                 }
             }
 
@@ -528,9 +530,9 @@ fn wrap_with_patterns<'a>(
     body: Term,
 ) -> Option<Term> {
     let names: Vec<String> = patterns
-        .map(|p| match p {
-            canonical::Pattern::Variable(name) => Some(name.as_str().to_string()),
-            canonical::Pattern::Anything => Some("_".to_string()),
+        .map(|p| match &p.kind {
+            canonical::PatternKind::Variable(name) => Some(name.as_str().to_string()),
+            canonical::PatternKind::Anything => Some("_".to_string()),
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
