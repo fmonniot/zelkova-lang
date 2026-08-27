@@ -26,6 +26,7 @@ fn module_function_type(tpe: Type) -> Module {
             name: "main".into(),
             tpe: Some(tpe),
             bindings: vec![],
+            span: no_span(),
         }],
     }
 }
@@ -42,6 +43,7 @@ test_parse_ok!(
     type UserStatus = Regular | Visitor
     "#,
     module_custom_type(UnionType {
+        span: no_span(),
         name: name("UserStatus"),
         type_arguments: vec![],
         variants: vec![
@@ -62,6 +64,7 @@ test_parse_ok!(
         | Anonymous
     "#,
     module_custom_type(UnionType {
+        span: no_span(),
         name: name("User"),
         type_arguments: vec![],
         variants: vec![
@@ -88,6 +91,7 @@ test_parse_ok!(
         | Nothing
     "#,
     module_custom_type(UnionType {
+        span: no_span(),
         name: name("Maybe"),
         type_arguments: vec![name("a")],
         variants: vec![
@@ -109,6 +113,7 @@ test_parse_ok!(
     type Product = Product Int String
     "#,
     module_custom_type(UnionType {
+        span: no_span(),
         name: name("Product"),
         type_arguments: vec![],
         variants: vec![Type::unqualified_with(

@@ -38,48 +38,102 @@
 use super::canonical;
 use super::canonical::Module;
 use crate::compiler::name::Name;
+use crate::compiler::position::NodeSpan;
 use crate::compiler::tuple::Tuple;
-use crate::compiler::PhaseError;
+use crate::compiler::{PhaseError, SpanLabel};
 use log::debug;
 use std::collections::HashMap;
 
+/// What went wrong, with no claim about where.
+///
+/// Inference works on the typer's own `Term`/`Constraint` language, which is built
+/// from the canonical AST and keeps no positions, so none of the three places that
+/// raise one of these — `annotate`, `unifier`, `infer` — has a span to attach. The
+/// position is put on by [`Error`], one level up. See its documentation.
 #[derive(Debug)]
-pub enum Error {
+pub enum ErrorKind {
     TypeMismatch { expected: Type, actual: Type },
     UnificationFailed { left: Type, right: Type },
     CircularType,
     UnboundVariable(String),
 }
 
-/// Type errors are about types, and [`Type`]'s `Display` writes them the way the
-/// source does — so the message can name both sides of a mismatch instead of
-/// dumping the typer's internal representation.
-///
-/// Like every phase after parsing, these carry no span: see
-/// [`PhaseError`](crate::compiler::PhaseError).
-impl PhaseError for Error {
+impl ErrorKind {
     fn message(&self) -> String {
         match self {
-            Error::TypeMismatch { expected, actual } => {
+            ErrorKind::TypeMismatch { expected, actual } => {
                 format!("type mismatch: expected `{}`, found `{}`", expected, actual)
             }
-            Error::UnificationFailed { left, right } => {
+            ErrorKind::UnificationFailed { left, right } => {
                 format!("cannot match `{}` with `{}`", left, right)
             }
-            Error::CircularType => {
+            ErrorKind::CircularType => {
                 "circular type: a type variable would have to contain itself".to_owned()
             }
-            Error::UnboundVariable(name) => format!("cannot find a value named `{}`", name),
+            ErrorKind::UnboundVariable(name) => format!("cannot find a value named `{}`", name),
         }
     }
 
     fn notes(&self) -> Vec<String> {
         match self {
-            Error::TypeMismatch { expected, .. } => vec![format!(
+            ErrorKind::TypeMismatch { expected, .. } => vec![format!(
                 "the type annotation says `{}`; the body infers to something else",
                 expected
             )],
             _ => Vec::new(),
+        }
+    }
+}
+
+/// A type error, together with the declaration it was found in.
+///
+/// # Why the span lives here and not on the variants
+///
+/// The four places that raise an [`ErrorKind`] all sit below the last point that
+/// knows a position. `annotate` and `unifier` work on `Term`s and `Constraint`s —
+/// a translation of the canonical AST that drops positions on the way in — so a
+/// `span` field on the variants would only move the problem to a construction site
+/// with nothing to put in it. [`type_check`]'s third pass is the one frame that
+/// still has the `canonical::Value` in hand, so it is the only place this struct is
+/// built, and it is where the span comes from.
+///
+/// # Declaration granularity is the ceiling
+///
+/// That span is the whole declaration — its annotation and its body — because that
+/// is the finest thing the typer can still name. Pointing at the *sub-expression*
+/// that disagrees means carrying positions through the `Term` translation, which is
+/// `ERR-4` (see `docs/tickets/INDEX.md`).
+#[derive(Debug)]
+pub struct Error {
+    pub kind: ErrorKind,
+    /// Where the declaration the error was found in was written.
+    pub span: NodeSpan,
+    /// That declaration's name. The struct's two other fields say what went wrong
+    /// and where; this is what lets the label say *which* declaration, which is the
+    /// one thing a reader of a hundred-declaration module still needs.
+    pub declaration: Name,
+}
+
+/// Type errors are about types, and [`Type`]'s `Display` writes them the way the
+/// source does — so the message can name both sides of a mismatch instead of
+/// dumping the typer's internal representation.
+impl PhaseError for Error {
+    fn message(&self) -> String {
+        self.kind.message()
+    }
+
+    fn notes(&self) -> Vec<String> {
+        self.kind.notes()
+    }
+
+    fn labels(&self) -> Vec<SpanLabel> {
+        match self.span.span() {
+            Some(span) => vec![SpanLabel {
+                span,
+                message: format!("in `{}`", self.declaration),
+                primary: true,
+            }],
+            None => Vec::new(),
         }
     }
 }
@@ -90,8 +144,12 @@ impl PhaseError for Error {
 ///
 /// Two classes of failure are deliberately *not* reported today, both in the third pass
 /// below: a value whose term cannot be built at all (an unsupported construct) is skipped,
-/// and an `Error::UnboundVariable` is discarded. A module whose only problems are of those
-/// two kinds returns `Ok(())`.
+/// and an `ErrorKind::UnboundVariable` is discarded. A module whose only problems are of
+/// those two kinds returns `Ok(())`.
+///
+/// The third pass is also the only place an [`Error`] is built, because it is the last
+/// frame that still holds the `canonical::Value` — and therefore the declaration's span.
+/// See [`Error`] for why the span is attached here rather than carried by the variants.
 pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
     // JavaScript binding modules use synthetic placeholder bodies — skip type checking.
     if module.binding_javascript {
@@ -179,7 +237,15 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
     // Third pass: check each value. A value that fails is recorded and the pass
     // moves on, so one broken declaration cannot hide the others.
     let mut errors: Vec<Error> = vec![];
-    for value in module.values.values() {
+    for (name, value) in &module.values {
+        // The declaration this error would be about, ready for whichever of the two
+        // failure paths below fires.
+        let at = |kind: ErrorKind| Error {
+            kind,
+            span: value.span(),
+            declaration: name.clone(),
+        };
+
         let Some((term, annotation)) =
             value_to_term_and_annotation(value, &module.types, &mut counter)
         else {
@@ -189,9 +255,9 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
         let inferred = match infer(term, global.clone()) {
             // An unbound variable means the term references a top-level function whose
             // type we couldn't represent (e.g. Float-typed functions). Skip silently.
-            Err(Error::UnboundVariable(_)) => continue,
+            Err(ErrorKind::UnboundVariable(_)) => continue,
             Err(e) => {
-                errors.push(e);
+                errors.push(at(e));
                 continue;
             }
             Ok(t) => t,
@@ -202,10 +268,10 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
             let mut constraints = std::collections::HashSet::new();
             constraints.insert(Constraint(inferred.clone(), ann.clone()));
             if unifier::unify(constraints).is_err() {
-                errors.push(Error::TypeMismatch {
+                errors.push(at(ErrorKind::TypeMismatch {
                     expected: ann,
                     actual: inferred,
-                });
+                }));
             }
         }
     }
@@ -853,7 +919,7 @@ impl Types {
 /// infer the type of the given term given known function defined in the outer scopes.
 /// This is a translation of the algorithm demonstrated by
 /// [Ionut Gan at I T.A.K.E Unconference 2015](https://www.youtube.com/watch?v=oPVTNxiMcSU)
-pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, Error> {
+pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, ErrorKind> {
     let mut env = Types::new();
     env.extends_with(global);
 

@@ -65,6 +65,19 @@ fn fixture_package(name: &str) -> std::path::PathBuf {
 /// zero sources, zero errors, and `compile_package` returns `Ok(())` having
 /// compiled nothing. Any test that reads a green `compile_package` as evidence
 /// the modules were fine has to establish first that there were modules.
+/// The phase error inside a `compile_package` result, past the file it was tagged with.
+///
+/// Errors that come back from `check_in_order` are wrapped in
+/// `CompilationError::InFile` by `compile_package`, which is what pairs the spans a
+/// phase produced with the file to underline. A test that asserts on the phase
+/// variant looks through that wrapper rather than at it.
+fn unwrap_in_file(error: &CompilationError) -> &CompilationError {
+    match error {
+        CompilationError::InFile(inner, _) => unwrap_in_file(inner),
+        other => other,
+    }
+}
+
 fn module_names(root: &Path) -> Vec<String> {
     let sources = load_package_sources(root)
         .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
@@ -309,6 +322,10 @@ fn compile_package_succeeds_when_every_module_checks() {
 /// The assertion goes down to the variant on purpose: the point of the change is
 /// that the accumulated, still-typed errors survive to the return value, so
 /// `is_err()` alone would pass against an `Err` carrying nothing useful.
+///
+/// The `InFile` unwrapping is `ERR-3`: `compile_package` pairs each check error with
+/// the `SourceFileId` of the file its module was read from, so the labels the phase
+/// produced have a file to point into. The phase error underneath is unchanged.
 #[test]
 fn compile_package_fails_when_a_module_fails_to_canonicalize() {
     let root = fixture_package("package_canonicalize_fails");
@@ -332,7 +349,7 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
                 "expected exactly one error for the one broken module, got {:?}",
                 errors
             );
-            match &errors[0] {
+            match unwrap_in_file(&errors[0]) {
                 CompilationError::Canonical(canonical_errors, module) => {
                     assert_eq!(module, &Name::from("Broken"));
                     assert!(
@@ -607,4 +624,110 @@ fn canonical_error_renders_as_prose_naming_the_missing_module() {
         "the message should describe the failure, got {:?}",
         message
     );
+}
+
+// ── Test 16: a type error underlines the declaration that failed ─────────────
+
+/// `ERR-3`: a type error must render with a `Label` under the failing declaration.
+///
+/// This is the ticket's acceptance criterion, and it asserts the label's **range**
+/// rather than just `!labels.is_empty()`: a zero-width span, or one taken around the
+/// layout pass's `OpenBlock`/`CloseBlock` (which are emitted zero-width, at the wrong
+/// offset), would satisfy a mere non-emptiness check while pointing at nothing.
+///
+/// The expected range is computed from the source text so it stays honest if the
+/// fixture is edited: from the first byte of the annotation to the last byte of the
+/// body, because `parser::Module::from_declarations` merges the `FunType` span with
+/// every `FunBinding` span. A mismatch between the two is what the error is *about*,
+/// so underlining only one half would be underlining half the problem.
+///
+/// Mutation-checked three ways, each red on its own: making the `FunBinding`
+/// production emit `NodeSpan::none()` (the range drops to the annotation alone);
+/// dropping the `merge` in `from_declarations` so the function keeps only the last
+/// declaration's span; and making `typer::Error::labels` return `Vec::new()`.
+#[test]
+fn type_error_labels_the_failing_declaration() {
+    let root = fixture_package("package_type_error");
+    assert_eq!(module_names(&root), vec!["Mismatch.zel"]);
+
+    let source = std::fs::read_to_string(root.join("Mismatch.zel")).expect("fixture is readable");
+    let start = source
+        .find("answer : Int")
+        .expect("fixture declares `answer : Int`");
+    let body = "answer = true";
+    let end = source.find(body).expect("fixture has a body") + body.len();
+
+    let error =
+        compile_package(&root).expect_err("`answer : Int` with a `Bool` body must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    // The phase is part of the contract: this must be the type error, not a
+    // canonicalization failure that happened to land on the same line.
+    match unwrap_in_file(&errors[0]) {
+        CompilationError::Type(type_errors, module) => {
+            assert_eq!(module, &Name::from("Mismatch"));
+            assert_eq!(type_errors.len(), 1, "got {:?}", type_errors);
+        }
+        other => panic!("expected a Type error, got {:?}", other),
+    }
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    assert_eq!(
+        diagnostic.labels.len(),
+        1,
+        "expected one label, got {:?}",
+        diagnostic.labels
+    );
+    assert_eq!(
+        diagnostic.labels[0].range,
+        start..end,
+        "the label must cover the whole declaration, `{}`",
+        &source[start..end]
+    );
+}
+
+// ── Test 17: a canonicalization error underlines the import that failed ──────
+
+/// `ERR-3`: an unresolvable `import` renders with a caret under the `import` line.
+///
+/// The type error above only exercises the path through `typer::Error`, where the
+/// span is attached one level up in `type_check`. This is the other shape: a
+/// `canonical::Error` whose span was carried on the AST node itself, from
+/// `parser::Import` through `new_environment` to `EnvError::InterfaceNotFound`.
+///
+/// `package_canonicalize_fails` is the existing fixture — `Broken.zel` imports a
+/// module that does not exist — so this asserts on a failure two other tests here
+/// already produce, only on where it points.
+///
+/// Mutation-checked two ways: making the `Import` production emit `NodeSpan::none()`,
+/// and making `EnvError::labels` return `Vec::new()`. Either empties `labels`.
+#[test]
+fn missing_import_labels_the_import_line() {
+    let root = fixture_package("package_canonicalize_fails");
+
+    let source = std::fs::read_to_string(root.join("Broken.zel")).expect("fixture is readable");
+    let line = "import NonExistent exposing (..)";
+    let start = source.find(line).expect("fixture imports NonExistent");
+
+    let error = compile_package(&root).expect_err("the fixture must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    assert_eq!(
+        diagnostic.labels.len(),
+        1,
+        "expected one label, got {:?}",
+        diagnostic.labels
+    );
+    assert_eq!(diagnostic.labels[0].range, start..(start + line.len()));
 }

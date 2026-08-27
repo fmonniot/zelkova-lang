@@ -1,4 +1,5 @@
 use super::support::*;
+use zelkova_lang::compiler::parser;
 use zelkova_lang::compiler::parser::*;
 
 // module
@@ -66,11 +67,13 @@ test_parse_ok!(
         exposing: Exposing::Open,
         imports: vec![
             Import {
+                span: no_span(),
                 name: name("List"),
                 alias: None,
                 exposing: Exposing::Explicit(vec![]),
             },
             Import {
+                span: no_span(),
                 name: name("List"),
                 alias: Some(name("L")),
                 exposing: Exposing::Explicit(vec![]),
@@ -96,11 +99,13 @@ test_parse_ok!(
         exposing: Exposing::Open,
         imports: vec![
             Import {
+                span: no_span(),
                 name: name("List"),
                 alias: None,
                 exposing: Exposing::Open,
             },
             Import {
+                span: no_span(),
                 name: name("List"),
                 alias: Some(name("L")),
                 exposing: Exposing::Open,
@@ -127,6 +132,7 @@ test_parse_ok!(
         exposing: Exposing::Open,
         imports: vec![
             Import {
+                span: no_span(),
                 name: name("List"),
                 alias: None,
                 exposing: Exposing::Explicit(vec![
@@ -135,6 +141,7 @@ test_parse_ok!(
                 ]),
             },
             Import {
+                span: no_span(),
                 name: name("Maybe"),
                 alias: None,
                 exposing: Exposing::Explicit(vec![
@@ -142,6 +149,7 @@ test_parse_ok!(
                 ]),
             },
             Import {
+                span: no_span(),
                 name: name("Maybe"),
                 alias: None,
                 exposing: Exposing::Explicit(vec![Exposed::Upper(name("Maybe"), Privacy::Public,)]),
@@ -168,6 +176,7 @@ test_parse_ok!(
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![Infix {
+            span: no_span(),
             operator: name("<|"),
             associativity: Associativity::Right,
             precedence: 0,
@@ -191,6 +200,7 @@ test_parse_ok!(
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![Infix {
+            span: no_span(),
             operator: name("//"),
             associativity: Associativity::Left,
             precedence: 7,
@@ -214,6 +224,7 @@ test_parse_ok!(
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![Infix {
+            span: no_span(),
             operator: name("=="),
             associativity: Associativity::None,
             precedence: 4,
@@ -223,3 +234,57 @@ test_parse_ok!(
         functions: vec![],
     }
 );
+
+// spans
+
+/// `ERR-3`: the one parser test that pins a position rather than a shape.
+///
+/// Every `test_parse_ok!` above compares a whole `Module` against a hand-built
+/// literal, and `NodeSpan`'s `PartialEq` always returns `true` — so those assertions
+/// verify nothing at all about where anything parsed: they pass whether the spans are
+/// right, wrong or absent. That blindness is a deliberate trade (see `NodeSpan`'s
+/// documentation), and this test is the other half of it. Without it the whole span
+/// plumbing would be green and unverified.
+///
+/// It checks the merge in particular: a `Function` is assembled from a `FunType` and
+/// a `FunBinding` the grammar saw as separate declarations, and its span has to cover
+/// both. It also checks the span was captured *inside* the declaration productions
+/// rather than around the `Decl` wrapper — the layout pass emits `OpenBlock` and
+/// `CloseBlock` zero-width at the start of the block, so a span taken there would
+/// begin before the annotation's first character.
+///
+/// Mutation-checked three ways, each red on its own: making `FunBinding` emit
+/// `NodeSpan::none()` (the end collapses onto the annotation); making `FunType` emit
+/// `NodeSpan::none()` (the start jumps to the body); and replacing the `merge` in
+/// `Module::from_declarations` with a plain assignment.
+#[test]
+fn function_span_covers_annotation_and_body() {
+    use codespan_reporting::files::SimpleFile;
+    use zelkova_lang::compiler::position::{BytePos, Span};
+
+    let source = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        answer : Int
+        answer = 42
+    "#};
+
+    let file = SimpleFile::new("Main.zel".to_string(), source.to_string());
+    let module = parser::parse(&file).expect("should parse");
+
+    assert_eq!(module.functions.len(), 1);
+
+    // Computed from the text rather than written as literals, so editing the source
+    // above cannot silently turn this into an assertion about the wrong bytes.
+    let start = source.find("answer : Int").unwrap() as u32;
+    let body = "answer = 42";
+    let end = (source.find(body).unwrap() + body.len()) as u32;
+
+    assert_eq!(
+        module.functions[0].span.span(),
+        Some(Span {
+            start: BytePos(start),
+            end: BytePos(end),
+        })
+    );
+}

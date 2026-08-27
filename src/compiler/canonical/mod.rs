@@ -16,6 +16,7 @@
 use super::parser;
 use super::Interface;
 use super::PhaseError;
+use super::SpanLabel;
 use super::{ModuleName, PackageName};
 use crate::utils::collect_accumulate;
 use log::{debug, trace};
@@ -26,6 +27,7 @@ use environment::{new_environment, EnvError, Environment, RootEnvironment, Value
 
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
+use crate::compiler::position::NodeSpan;
 use crate::compiler::tuple::Tuple;
 pub use parser::Associativity;
 
@@ -85,12 +87,16 @@ pub struct Infix {
     pub associativity: Associativity,
     pub precedence: u8,
     pub function_name: Name,
+    /// Where the `infix` declaration this came from was written.
+    pub span: NodeSpan,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnionType {
     pub variables: Vec<Name>,
     pub variants: Vec<TypeConstructor>,
+    /// Where the `type` declaration this came from was written.
+    pub span: NodeSpan,
 }
 
 // TODO Once we have most of the pipeline built, revisit the decision of
@@ -109,6 +115,30 @@ pub struct TypeConstructor {
     pub tpe: Name,
 }
 
+/// A canonical type.
+///
+/// # Why there is no span on this type, or on [`TypeConstructor`]
+///
+/// Every other canonical node this module builds carries a [`NodeSpan`] taken from
+/// the parser node it came from. A `Type` deliberately does not, and the omission is
+/// not an oversight to be tidied up later.
+///
+/// A `Type` does not always come from the module being canonicalized.
+/// `Type::from_parser_type` resolves a name through the [`Environment`], which clones
+/// types straight out of the [`Interface`]s of the modules this one imports — so the
+/// `Type` handed back may well have been *written in a different file*. A
+/// [`NodeSpan`] is a byte range and nothing else; the [`SourceFileId`] is attached
+/// later, by `compile_package`, from the file the failing module was read from.
+/// Putting a span here would therefore let a diagnostic underline a byte range of one
+/// file using offsets taken from another — a caret pointing confidently at the wrong
+/// source, which is worse than no caret at all.
+///
+/// Fixing it means carrying a `(SourceFileId, Span)` pair through the interface, so
+/// an imported type keeps the file it was written in. That is `ERR-5` (see
+/// `docs/tickets/INDEX.md`). Until it lands, a type error points at the declaration
+/// that failed, which does live in the module being checked.
+///
+/// [`SourceFileId`]: crate::compiler::source::files::SourceFileId
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Variable(Name),
@@ -169,13 +199,29 @@ pub enum Value {
         name: Name,
         patterns: Vec<Pattern>,
         body: Expression,
+        /// Where the declaration was written, annotation and body together.
+        span: NodeSpan,
     },
     TypedValue {
         name: Name,
         patterns: Vec<(Pattern, Type)>,
         body: Expression,
         tpe: Type,
+        /// Where the declaration was written, annotation and body together.
+        span: NodeSpan,
     },
+}
+
+impl Value {
+    /// Where this declaration was written, whichever variant it is.
+    ///
+    /// The typer reads this to label the declaration that failed to check; it is the
+    /// only span a type error has today (see `typer::Error`).
+    pub fn span(&self) -> NodeSpan {
+        match self {
+            Value::Value { span, .. } | Value::TypedValue { span, .. } => *span,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -395,12 +441,31 @@ pub struct CaseBranch {
 
 // end AST
 
+/// Everything canonicalization can reject.
+///
+/// # Why only some variants carry a span
+///
+/// A variant carries a [`NodeSpan`] when its construction site has one in hand — it
+/// is looking at a `parser::Import`, `parser::Infix`, `parser::UnionType` or
+/// `parser::Function`, all of which the grammar gives a span. Those are the variants
+/// a diagnostic can put a caret under.
+///
+/// The rest keep none, and that is a fact about the construction site rather than a
+/// gap to fill in. `ExportNotFound` is raised while walking `parser::Exposing` /
+/// `parser::Exposed`, neither of which the grammar spans — the exposing list is part
+/// of the `module` header production, not a declaration of its own. `NoBindings` is
+/// raised from a `Function` whose bindings vector is empty, where what the user
+/// should be pointed at is the missing body. Writing `NodeSpan::none()` into those
+/// variants would say "this error has a position we happen not to know", which is a
+/// lie; leaving the field off says "this error has nowhere to point", which is true,
+/// and the reporter renders it as message-plus-notes with no caret.
 #[derive(Debug)]
 pub enum Error {
     ExportNotFound(Name, ExportType),
     EnvironmentErrors(Vec<EnvError>),
-    InfixReferenceInvalidValue(Name, Name), // (infix, function)
-    BindingPatternsInvalidLen,
+    /// (infix, function), and where the `infix` declaration was written
+    InfixReferenceInvalidValue(Name, Name, NodeSpan),
+    BindingPatternsInvalidLen(NodeSpan),
     NoBindings,
     VariableNotFound(QualName), // add name suggestion ?
     AmbiguousVariables(Name, Vec<ModuleName>),
@@ -418,12 +483,12 @@ pub enum Error {
     InvalidTupleSize(usize),
     /// A function was declared with multiple bindings (multi-clause definitions),
     /// which the compiler does not support yet.
-    MultipleBindingsUnsupported(Name),
+    MultipleBindingsUnsupported(Name, NodeSpan),
 
     // Binding module
-    InfixDeclared(Name),
-    TypeDeclared(Name),
-    NoTypeInBinding(Name),
+    InfixDeclared(Name, NodeSpan),
+    TypeDeclared(Name, NodeSpan),
+    NoTypeInBinding(Name, NodeSpan),
 
     // Utility error
     Many(Vec<Error>),
@@ -432,9 +497,8 @@ pub enum Error {
 /// Canonicalization errors name source constructs — a value, a type, an operator —
 /// so their messages can be written in the same words the user wrote.
 ///
-/// None of them points at a span: nothing in `parser::Module` carries one, so there
-/// is nothing to point *with*. See [`PhaseError`] for that decision and the ticket
-/// that reverses it.
+/// The variants whose construction site had a declaration in hand also point at it;
+/// see the enum's own documentation for why the others do not.
 impl PhaseError for Error {
     fn message(&self) -> String {
         match self {
@@ -447,11 +511,11 @@ impl PhaseError for Error {
                 [only] => only.message(),
                 many => format!("{} of this module's imports could not be resolved", many.len()),
             },
-            Error::InfixReferenceInvalidValue(infix, function) => format!(
+            Error::InfixReferenceInvalidValue(infix, function, _) => format!(
                 "the infix operator `{}` is declared as `{}`, which is not a value declared in this module",
                 infix, function
             ),
-            Error::BindingPatternsInvalidLen => {
+            Error::BindingPatternsInvalidLen(_) => {
                 "the arguments of this declaration do not line up with its type annotation"
                     .to_owned()
             }
@@ -473,19 +537,19 @@ impl PhaseError for Error {
                 "a tuple has two or three elements, this one has {}",
                 size
             ),
-            Error::MultipleBindingsUnsupported(name) => format!(
+            Error::MultipleBindingsUnsupported(name, _) => format!(
                 "`{}` is declared over several bindings, which is not supported yet",
                 name
             ),
-            Error::InfixDeclared(name) => format!(
+            Error::InfixDeclared(name, _) => format!(
                 "a `module javascript` facade cannot declare an infix operator, but declares `{}`",
                 name
             ),
-            Error::TypeDeclared(name) => format!(
+            Error::TypeDeclared(name, _) => format!(
                 "a `module javascript` facade cannot declare a type, but declares `{}`",
                 name
             ),
-            Error::NoTypeInBinding(name) => format!(
+            Error::NoTypeInBinding(name, _) => format!(
                 "`{}` has no type annotation, and a `module javascript` facade is annotations only",
                 name
             ),
@@ -493,6 +557,32 @@ impl PhaseError for Error {
                 [only] => only.message(),
                 many => format!("{} errors while canonicalizing this module", many.len()),
             },
+        }
+    }
+
+    fn labels(&self) -> Vec<SpanLabel> {
+        // One helper per shape: a variant either has a span and one thing to say
+        // about it, or it delegates to the errors it wraps.
+        let primary = |span: &NodeSpan, message: &str| match span.span() {
+            Some(span) => vec![SpanLabel {
+                span,
+                message: message.to_owned(),
+                primary: true,
+            }],
+            None => Vec::new(),
+        };
+
+        match self {
+            Error::InfixReferenceInvalidValue(_, _, span) => primary(span, "declared here"),
+            Error::BindingPatternsInvalidLen(span) => primary(span, "declared here"),
+            Error::MultipleBindingsUnsupported(_, span) => primary(span, "declared here"),
+            Error::InfixDeclared(_, span) => primary(span, "declared here"),
+            Error::TypeDeclared(_, span) => primary(span, "declared here"),
+            Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
+            // A group has no position of its own; the errors it swallowed do.
+            Error::EnvironmentErrors(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
+            Error::Many(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
+            _ => Vec::new(),
         }
     }
 
@@ -571,7 +661,7 @@ pub fn canonicalize(
             let e = source
                 .infixes
                 .iter()
-                .map(|i| Error::InfixDeclared(i.operator.clone()));
+                .map(|i| Error::InfixDeclared(i.operator.clone(), i.span));
             errors.extend(e);
         }
         // Verify no types present
@@ -579,7 +669,7 @@ pub fn canonicalize(
             let e = source
                 .types
                 .iter()
-                .map(|t| Error::TypeDeclared(t.name.clone()));
+                .map(|t| Error::TypeDeclared(t.name.clone(), t.span));
             errors.extend(e);
         }
 
@@ -588,14 +678,14 @@ pub fn canonicalize(
             // Make sure there is no binding
             if !function.bindings.is_empty() {
                 //println!("bindings = {:?} (js module)", function.bindings);
-                Err(Error::BindingPatternsInvalidLen)? // TODO More specific error
+                Err(Error::BindingPatternsInvalidLen(function.span))? // TODO More specific error
             }
 
             // Make sure there is a type
             let tpe = function
                 .tpe
                 .as_ref()
-                .ok_or_else(|| Error::NoTypeInBinding(function.name.clone()))?;
+                .ok_or_else(|| Error::NoTypeInBinding(function.name.clone(), function.span))?;
             let tpe = Type::from_parser_type(&env, tpe)?;
 
             let name = function.name.clone();
@@ -609,6 +699,7 @@ pub fn canonicalize(
                 patterns: vec![],
                 body: Expression::Bool(true),
                 tpe,
+                span: function.span,
             };
 
             Ok((name, value))
@@ -692,7 +783,7 @@ fn do_values(
 
         if !bindings_size {
             //println!("bindings = {:?} (bindings_size)", function.bindings);
-            Err(Error::BindingPatternsInvalidLen)?
+            Err(Error::BindingPatternsInvalidLen(function.span))?
         }
 
         let (patterns, body): (Vec<Pattern>, Expression) = match function.bindings.len() {
@@ -724,7 +815,10 @@ fn do_values(
             }
             _ => {
                 // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
-                Err(Error::MultipleBindingsUnsupported(function.name.clone()))
+                Err(Error::MultipleBindingsUnsupported(
+                    function.name.clone(),
+                    function.span,
+                ))
             }
         }?;
 
@@ -746,7 +840,7 @@ fn do_values(
                         linear.len(),
                         patterns.len()
                     );
-                    Err(Error::BindingPatternsInvalidLen)?
+                    Err(Error::BindingPatternsInvalidLen(function.span))?
                 }
 
                 let patterns = patterns.into_iter().zip(linear).collect();
@@ -758,6 +852,7 @@ fn do_values(
                         patterns,
                         body,
                         tpe,
+                        span: function.span,
                     },
                 ))
             }
@@ -767,6 +862,7 @@ fn do_values(
                     name,
                     patterns,
                     body,
+                    span: function.span,
                 },
             )),
         }
@@ -816,6 +912,7 @@ fn do_types(
             UnionType {
                 variables,
                 variants,
+                span: tpe.span,
             },
         ))
     });
@@ -842,13 +939,18 @@ fn do_infixes(
                 associativity: infix.associativity,
                 precedence: infix.precedence,
                 function_name,
+                span: infix.span,
             };
 
             env.insert_local_infix(op_name.clone(), infix.clone());
 
             Ok((op_name, infix))
         } else {
-            Err(Error::InfixReferenceInvalidValue(op_name, function_name))
+            Err(Error::InfixReferenceInvalidValue(
+                op_name,
+                function_name,
+                infix.span,
+            ))
         }
     });
 

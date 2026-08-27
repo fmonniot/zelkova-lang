@@ -26,7 +26,7 @@
 //!    `Diagnostic` is built. See the `PhaseError` trait for what a phase error owes it.
 //!
 
-use codespan_reporting::diagnostic::Diagnostic;
+use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::term::termcolor::WriteColor;
 use codespan_reporting::term::termcolor::{Color, ColorChoice, ColorSpec, StandardStream};
 use codespan_reporting::term::{self};
@@ -56,6 +56,7 @@ pub mod tuple;
 pub mod typer;
 
 use name::{Name, QualName};
+use position::{BytePos, Span};
 use source::files::{SourceFileError, SourceFileId};
 
 // TODO Move PackageName and ModuleName into the name module
@@ -125,6 +126,32 @@ pub struct Interface {
     pub infixes: HashMap<Name, canonical::Infix>,
 }
 
+/// One underlined region of the user's source, and what to say about it.
+///
+/// # Why there is no `SourceFileId` here
+///
+/// A `codespan_reporting::Label` needs a file id as well as a byte range, and this
+/// carries only the range. That is not an omission: a phase only ever sees one
+/// module, so every span it produces belongs to the file that module was read from,
+/// and [`compile_package`] — the only place that knows which file that is — pairs
+/// them up when it renders. Putting the id in here would ask each phase to carry
+/// something it has no way to know.
+///
+/// The limit that falls out of it: a diagnostic cannot point into a *different*
+/// module — "the annotation you are contradicting is over there, in `Basics`". Doing
+/// that needs a file id per label, and an interface that remembers which file each
+/// of its types was written in. That is `ERR-5` (see `docs/tickets/INDEX.md`).
+///
+/// `primary` is the rustc distinction, and it is needed *within* one file rather
+/// than only across files: the caret under the thing that is wrong is primary, and
+/// "expected because of this annotation" is secondary.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpanLabel {
+    pub span: Span<BytePos>,
+    pub message: String,
+    pub primary: bool,
+}
+
 /// What a compiler phase owes the diagnostic reporter.
 ///
 /// Each phase keeps its own error type — one enum for the whole compiler would make
@@ -135,22 +162,28 @@ pub struct Interface {
 /// `format!("{:?}", e)` into a note is exactly what this trait replaces: a `Debug`
 /// dump names Rust types, not source constructs.
 ///
-/// # Why there is no span here
+/// # How much a span can say, and where that stops
 ///
-/// The reporter would rather have a `Span<BytePos>` and the [`SourceFileId`] it
-/// belongs to, so it could point at the offending source. Only `parser::Error` can
-/// supply one, and it does — it builds its own labelled `Diagnostic` through
-/// `parser::Error::diagnostic` and deliberately does *not* go through this trait.
+/// The five declaration productions in `grammar.lalrpop` capture `@L`/`@R`, so a
+/// `parser::Import`, `FunType`, `FunBinding`, `UnionType` and `Infix` know where they
+/// were written, and canonicalization carries that through to `canonical::Value`,
+/// `Infix` and `UnionType`. An error raised from one of those construction sites can
+/// therefore return a [`SpanLabel`] from [`labels`](PhaseError::labels) and get a
+/// caret under the declaration that failed.
 ///
-/// Every phase after parsing reads an AST with no positions in it at all:
-/// `grammar.lalrpop` never captures `@L`/`@R`, so no `parser::Module` node carries a
-/// span, and nothing canonicalization derives from it does either. A canonical or
-/// typer error therefore has nothing to point at, whatever shape its error type is
-/// given — adding a `span` field would only move the problem to the construction
-/// site, which has no span to hand it. Making that possible means giving both ASTs
-/// spans, which is a grammar-wide change; it is tracked separately as `ERR-3` (see
-/// `docs/tickets/INDEX.md`). Until it lands, phases after parsing render as a
-/// message plus notes, with no label.
+/// Not every error can. `labels` defaults to empty and that is a real answer, not a
+/// stub: an error raised while walking a node the grammar does not span — an
+/// `exposing` list, say — has nowhere to point, and renders as message-plus-notes
+/// with no caret, exactly as every phase after parsing used to.
+///
+/// Two limits remain and each has a ticket. Expressions, patterns and types carry no
+/// span yet, so a type error underlines the whole declaration rather than the
+/// sub-expression that disagrees: `ERR-4`. And a [`SpanLabel`] has no
+/// [`SourceFileId`], so no diagnostic can point into another module: `ERR-5`. See
+/// `docs/tickets/INDEX.md`.
+///
+/// `parser::Error` is still the one phase error that does not go through this trait
+/// at all — it builds its own labelled `Diagnostic` through `parser::Error::diagnostic`.
 ///
 /// The `SourceFileId` half is settled and stays settled: a phase never knows it. It
 /// is attached by `compile_package`, the only place that knows which file a module
@@ -164,6 +197,14 @@ pub trait PhaseError {
 
     /// Supporting detail, one string per rendered note. Empty by default.
     fn notes(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// The regions of the user's source this error is about, if it knows any.
+    ///
+    /// Empty — the default — means this error has no position to point at, and it
+    /// renders as message-plus-notes with no caret. See the trait's documentation.
+    fn labels(&self) -> Vec<SpanLabel> {
         Vec::new()
     }
 
@@ -186,14 +227,43 @@ pub trait PhaseError {
 /// A `Diagnostic` has room for exactly one headline, so a lone error gets to be that
 /// headline and a group is summarised instead, with every message demoted to a note.
 /// `phase` names the phase in that summary line ("canonical", "type", …).
+///
+/// `file` is the module's source file when the caller knows it. Labels need one — a
+/// byte range on its own does not say which file to underline — so when it is `None`
+/// the errors' [`PhaseError::labels`] are not rendered and the diagnostic is message
+/// and notes only. That is the case for a `CompilationError` built by hand, as the
+/// tests in this module do; `compile_package` always wraps in
+/// [`CompilationError::InFile`] and so always has one.
+///
+/// Both branches attach labels: only the headline demotion differs between one error
+/// and a group, and an error that got swallowed into a note still knows where it was.
 fn phase_diagnostic<E: PhaseError>(
     module: &Name,
     phase: &str,
     errors: &[E],
+    file: Option<SourceFileId>,
 ) -> Diagnostic<SourceFileId> {
+    let labels = |errors: &[E]| match file {
+        Some(id) => errors
+            .iter()
+            .flat_map(|e| e.labels())
+            .map(|l| {
+                let range = l.span.to_range();
+                let label = if l.primary {
+                    Label::primary(id, range)
+                } else {
+                    Label::secondary(id, range)
+                };
+                label.with_message(l.message)
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+
     match errors {
         [only] => Diagnostic::error()
             .with_message(format!("[{}] {}", module, only.message()))
+            .with_labels(labels(errors))
             .with_notes(only.notes()),
         many => Diagnostic::error()
             .with_message(format!(
@@ -203,6 +273,7 @@ fn phase_diagnostic<E: PhaseError>(
                 phase,
                 if many.len() == 1 { "" } else { "s" }
             ))
+            .with_labels(labels(many))
             .with_notes(many.iter().flat_map(|e| e.message_and_notes()).collect()),
     }
 }
@@ -225,6 +296,15 @@ pub enum CompilationError {
     Exhaustiveness(Vec<exhaustiveness::Error>, Name),
     DependenciesError(dependencies::Error),
 
+    /// An error together with the file the module it belongs to was read from.
+    ///
+    /// A phase never knows its [`SourceFileId`], so the labels its errors produce are
+    /// byte ranges with no file attached. This is where the two halves are put
+    /// together, and it has exactly one constructor: [`compile_package`], which is
+    /// the only place that knows which file a module was parsed from. Nothing else
+    /// should build it — an id guessed anywhere else would underline the wrong file.
+    InFile(Box<CompilationError>, SourceFileId),
+
     /// Every error accumulated over one compilation pass.
     ///
     /// `compile_package` does not stop on the first failure: it keeps going so that
@@ -242,7 +322,35 @@ impl CompilationError {
     /// that a test can assert on what the user is actually shown, rather than on
     /// `is_err()`: what a failure *says* is the behaviour this method exists for.
     pub fn as_diagnostic(&self) -> Diagnostic<SourceFileId> {
+        self.as_diagnostic_in(None)
+    }
+
+    /// The name of the module this error belongs to, when it has one.
+    ///
+    /// `compile_package` uses it to look up the file the module was read from, which
+    /// is how an [`InFile`](CompilationError::InFile) wrapper gets its id.
+    pub fn module(&self) -> Option<&Name> {
         match self {
+            CompilationError::Canonical(_, module)
+            | CompilationError::Type(_, module)
+            | CompilationError::Exhaustiveness(_, module) => Some(module),
+            CompilationError::InFile(inner, _) => inner.module(),
+            _ => None,
+        }
+    }
+
+    /// `as_diagnostic`, carrying the file the error's module was read from.
+    ///
+    /// `file` is `None` until an [`InFile`](CompilationError::InFile) wrapper supplies
+    /// one, which only `compile_package` builds. Everything downstream of that
+    /// distinction is in `phase_diagnostic`: with a file, the phase errors' labels are
+    /// rendered; without one, the diagnostic is message and notes, as it was before
+    /// spans existed.
+    fn as_diagnostic_in(&self, file: Option<SourceFileId>) -> Diagnostic<SourceFileId> {
+        match self {
+            // The one arm that changes `file`, and the only one that can: it is the
+            // only variant that carries an id.
+            CompilationError::InFile(inner, id) => inner.as_diagnostic_in(Some(*id)),
             // The one phase that carries spans renders its own labelled diagnostic.
             CompilationError::Source(err, file_id) => err.diagnostic(*file_id),
             // Loading failures are not attached to a module — there is no module yet,
@@ -251,11 +359,13 @@ impl CompilationError {
                 .with_message("Error while loading the package files")
                 .with_notes(errors.iter().flat_map(|e| e.message_and_notes()).collect()),
             CompilationError::Canonical(errors, module) => {
-                phase_diagnostic(module, "canonical", errors)
+                phase_diagnostic(module, "canonical", errors, file)
             }
-            CompilationError::Type(errors, module) => phase_diagnostic(module, "type", errors),
+            CompilationError::Type(errors, module) => {
+                phase_diagnostic(module, "type", errors, file)
+            }
             CompilationError::Exhaustiveness(errors, module) => {
-                phase_diagnostic(module, "exhaustiveness", errors)
+                phase_diagnostic(module, "exhaustiveness", errors, file)
             }
             // A dependency cycle belongs to the package, not to any one module, so it
             // does not go through `phase_diagnostic`.
@@ -271,7 +381,12 @@ impl CompilationError {
                     errors.len(),
                     if errors.len() == 1 { "" } else { "s" }
                 ))
-                .with_notes(errors.iter().map(|e| e.as_diagnostic().message).collect()),
+                .with_notes(
+                    errors
+                        .iter()
+                        .map(|e| e.as_diagnostic_in(file).message)
+                        .collect(),
+                ),
         }
     }
 
@@ -347,10 +462,18 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     // Step 3.b
     debug!("phase: parse package sources");
     let mut modules: Vec<parser::Module> = vec![];
+    // Which file each module was parsed from. This is the only point in the compiler
+    // where both halves are in scope at once — a phase is handed a module and never
+    // learns where it came from — so the mapping is recorded here and used below to
+    // wrap the check errors in `InFile`, which is what lets their labels render.
+    let mut module_files: HashMap<Name, SourceFileId> = HashMap::new();
     let mut parse_failures = 0;
     for (id, file) in sources.iter() {
         match parser::parse(file.file()) {
-            Ok(module) => modules.push(module),
+            Ok(module) => {
+                module_files.insert(module.name.clone(), id);
+                modules.push(module);
+            }
             Err(err) => {
                 parse_failures += 1;
                 errors.push(CompilationError::from(err, id));
@@ -428,7 +551,16 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
                     check_errors.len()
                 ),
             );
-            errors.extend(check_errors);
+            // Tag each error with the file its module was read from, so the spans its
+            // phase produced have something to point into. A module with no entry —
+            // there is none today, since only a module that parsed can be checked —
+            // stays unwrapped and renders exactly as it did before spans existed.
+            errors.extend(check_errors.into_iter().map(|error| {
+                match error.module().and_then(|name| module_files.get(name)) {
+                    Some(id) => CompilationError::InFile(Box::new(error), *id),
+                    None => error,
+                }
+            }));
         }
     }
 
@@ -584,7 +716,7 @@ mod tests {
         let error = CompilationError::Canonical(
             vec![
                 canonical::Error::NoBindings,
-                canonical::Error::TypeDeclared("Shape".into()),
+                canonical::Error::TypeDeclared("Shape".into(), position::NodeSpan::none()),
             ],
             "Test".into(),
         );

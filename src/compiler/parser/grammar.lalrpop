@@ -1,4 +1,4 @@
-use crate::compiler::position::BytePos;
+use crate::compiler::position::{BytePos, NodeSpan};
 use crate::compiler::parser::tokenizer::Token;
 use crate::compiler::parser::error::Error;
 use crate::compiler::parser::*;
@@ -301,17 +301,22 @@ Type: Type = {
     <tpe1:ArgType> "->" <tpe2:Type> => Type::Arrow(Box::new(tpe1), Box::new(tpe2)),
 }
 
-FunType: FunType = <name:VarIdent> ":" <tpe:Type> => {
-    FunType { name, tpe }
+// `@L`/`@R` are captured *inside* each declaration production, never around the
+// `Decl` wrapper. `Decl`'s alternatives are `"open block" <X> "close block"` and the
+// layout pass emits those block tokens zero-width, so a span taken at that level
+// would start wherever the block opened rather than at the user's first character.
+FunType: FunType = <l:@L> <name:VarIdent> ":" <tpe:Type> <r:@R> => {
+    FunType { name, tpe, span: NodeSpan::new(l, r) }
 };
 
-FunBinding: FunBinding = <name:VarIdent> <patterns: DeclPattern*> "=" <expr:Expr> => {
+FunBinding: FunBinding = <l:@L> <name:VarIdent> <patterns: DeclPattern*> "=" <expr:Expr> <r:@R> => {
     FunBinding {
         name,
         pattern: Match {
             patterns,
             body: expr
-        }
+        },
+        span: NodeSpan::new(l, r)
     }
 };
 
@@ -334,24 +339,26 @@ Exposing: Exposing = {
 };
 
 Import:Import = {
-    "import" <name: QualTypeIdent> <alias: ("as" <TypeIdent>)?> <exposing: ("exposing" <Exposing>)?> => {
+    <l:@L> "import" <name: QualTypeIdent> <alias: ("as" <TypeIdent>)?> <exposing: ("exposing" <Exposing>)?> <r:@R> => {
         let exposing = exposing.unwrap_or_else(|| Exposing::Explicit(vec![]));
 
         Import {
             name,
             alias,
             exposing,
+            span: NodeSpan::new(l, r),
         }
     }
 }
 
 // TODO Restrict variants: they aren't full fledge types (only the constructor part)
 Union: UnionType = {
-    "type" <name: TypeIdent> <type_arguments: VarIdent*> "=" <variants: Pipe<Type>> => {
+    <l:@L> "type" <name: TypeIdent> <type_arguments: VarIdent*> "=" <variants: Pipe<Type>> <r:@R> => {
         UnionType {
             name,
             type_arguments,
-            variants
+            variants,
+            span: NodeSpan::new(l, r)
         }
     },
 }
@@ -363,7 +370,7 @@ Associativity: Associativity = {
 }
 
 Infix: Infix = {
-    "infix" <a:Associativity> <p:"integer"> "(" <o:Op> ")" "=" <n:VarIdent> => {
+    <l:@L> "infix" <a:Associativity> <p:"integer"> "(" <o:Op> ")" "=" <n:VarIdent> <r:@R> => {
         // TODO don't panic once we have a way to collect errors
         let precedence = u8::try_from(p).unwrap();
 
@@ -371,7 +378,8 @@ Infix: Infix = {
             operator: o,
             associativity: a,
             precedence,
-            function_name: n
+            function_name: n,
+            span: NodeSpan::new(l, r)
         }
     }
 }

@@ -1,7 +1,7 @@
-use super::{Error, Term, TermPattern, TypeBinder, TypedTerm, Types};
+use super::{ErrorKind, Term, TermPattern, TypeBinder, TypedTerm, Types};
 use crate::compiler::tuple::Tuple;
 
-pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error> {
+pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, ErrorKind> {
     match term {
         Term::Int(value) => Ok(TypedTerm::Int {
             tpe: types.fresh_var(),
@@ -32,7 +32,7 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
             })
         }
         Term::Identifier(name) => match types.by_name(&name) {
-            None => Err(Error::UnboundVariable(name)),
+            None => Err(ErrorKind::UnboundVariable(name)),
             Some(tpe) => Ok(TypedTerm::Identifier { tpe, name }),
         },
         Term::Apply { fun, arg } => {

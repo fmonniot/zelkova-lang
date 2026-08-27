@@ -1,7 +1,7 @@
 use log::debug;
 use std::collections::HashSet;
 
-use super::{Constraint, Error, Substitution, Type, TypeLiteral, TypeVariable};
+use super::{Constraint, ErrorKind, Substitution, Type, TypeLiteral, TypeVariable};
 use crate::compiler::tuple::Tuple;
 
 /// Returns true if `tpe` is a numeric type (Int, Float, or Number).
@@ -12,7 +12,7 @@ fn is_numeric(tpe: &Type) -> bool {
     )
 }
 
-pub(super) fn unify(constraints: HashSet<Constraint>) -> Result<Substitution, Error> {
+pub(super) fn unify(constraints: HashSet<Constraint>) -> Result<Substitution, ErrorKind> {
     debug!("unify: {:?}", constraints);
     let mut iter = constraints.iter();
 
@@ -33,7 +33,7 @@ pub(super) fn unify(constraints: HashSet<Constraint>) -> Result<Substitution, Er
     }
 }
 
-fn unify_one_constraint(Constraint(a, b): &Constraint) -> Result<Substitution, Error> {
+fn unify_one_constraint(Constraint(a, b): &Constraint) -> Result<Substitution, ErrorKind> {
     debug!("unify_one_constraint: {:?} to {:?}", a, b);
     match (a, b) {
         (Type::Literal(TypeLiteral::Bool), Type::Literal(TypeLiteral::Bool)) => {
@@ -96,14 +96,14 @@ fn unify_one_constraint(Constraint(a, b): &Constraint) -> Result<Substitution, E
         }
         (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe),
         (tpe, Type::Variable(tvar)) => unify_variable(tvar, tpe),
-        (a, b) => Err(Error::UnificationFailed {
+        (a, b) => Err(ErrorKind::UnificationFailed {
             left: a.clone(),
             right: b.clone(),
         }),
     }
 }
 
-fn unify_variable(tvar: &TypeVariable, tpe: &Type) -> Result<Substitution, Error> {
+fn unify_variable(tvar: &TypeVariable, tpe: &Type) -> Result<Substitution, ErrorKind> {
     match tpe {
         Type::Variable(tvar2) => {
             if tvar == tvar2 {
@@ -114,7 +114,7 @@ fn unify_variable(tvar: &TypeVariable, tpe: &Type) -> Result<Substitution, Error
         }
         _ => {
             if occurs(tvar, tpe) {
-                Err(Error::CircularType)
+                Err(ErrorKind::CircularType)
             } else {
                 Ok(Substitution::one(tvar.clone(), tpe.clone()))
             }

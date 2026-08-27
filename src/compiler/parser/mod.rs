@@ -20,6 +20,7 @@ pub mod layout;
 pub mod tokenizer;
 
 use crate::compiler::name::Name;
+use crate::compiler::position::NodeSpan;
 use crate::compiler::tuple::Tuple;
 pub use error::Error;
 
@@ -155,18 +156,29 @@ impl Module {
         let functions = functions.into_iter().map(|(name, decls)| {
             let mut tpe = None;
             let mut bindings = vec![];
+            // The declarations that make one function were parsed independently, so
+            // the function's span is the union of theirs: the annotation merged with
+            // every binding. `merge` tolerates a missing half, which is what an
+            // annotation with no body (a `module javascript` facade) needs.
+            let mut span = NodeSpan::none();
 
             // TODO Error if more than function type is defined
 
             for d in decls {
                 match d {
-                    Declaration::Function(b) => bindings.push(b.pattern),
-                    Declaration::FunctionType(t) => {tpe.replace(t.tpe);}
+                    Declaration::Function(b) => {
+                        span = span.merge(b.span);
+                        bindings.push(b.pattern);
+                    }
+                    Declaration::FunctionType(t) => {
+                        span = span.merge(t.span);
+                        tpe.replace(t.tpe);
+                    }
                     _ => panic!("Invalid kind of declaration used in functions, report this error ({:?})", d),
                 }
             }
 
-            Function { name, tpe, bindings }
+            Function { name, tpe, bindings, span }
         }).collect::<Vec<_>>();
 
         Module {
@@ -201,6 +213,13 @@ pub struct Function {
     pub name: Name,
     pub tpe: Option<Type>,
     pub bindings: Vec<Match>,
+    /// The annotation and every binding, merged into one span.
+    ///
+    /// A `Function` is assembled in [`Module::from_declarations`] out of
+    /// declarations the grammar saw separately, so this covers the annotation
+    /// *and* the body rather than either alone — which is what a type mismatch
+    /// between the two is actually about.
+    pub span: NodeSpan,
 }
 
 /// Exposing represent whether an import (or export) expose terms.
@@ -263,6 +282,8 @@ pub struct Import {
     pub name: Name,
     pub alias: Option<Name>,
     pub exposing: Exposing,
+    /// Where the whole `import …` line was written.
+    pub span: NodeSpan,
 }
 
 /// Represents the type signature of a particular function
@@ -270,6 +291,8 @@ pub struct Import {
 pub struct FunType {
     pub name: Name,
     pub tpe: Type,
+    /// Where the annotation — `name : Type` — was written.
+    pub span: NodeSpan,
 }
 
 #[derive(Debug, PartialEq)]
@@ -277,6 +300,8 @@ pub struct UnionType {
     pub name: Name,
     pub type_arguments: Vec<Name>,
     pub variants: Vec<Type>, // TODO Restrict to Type::Unqualified
+    /// Where the whole `type … = …` declaration was written.
+    pub span: NodeSpan,
 }
 
 #[derive(Debug, PartialEq)]
@@ -287,6 +312,8 @@ pub struct Infix {
     /// (in absence of parenthesis). The higher precedence will be parsed first.
     pub precedence: u8,
     pub function_name: Name,
+    /// Where the whole `infix … = …` declaration was written.
+    pub span: NodeSpan,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -331,6 +358,8 @@ pub enum Associativity {
 pub struct FunBinding {
     pub name: Name,
     pub pattern: Match,
+    /// Where this one binding — patterns and body — was written.
+    pub span: NodeSpan,
 }
 
 /// The match structure is composed of a serie of patterns and an associated expression

@@ -3,6 +3,7 @@
 //!
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser::*;
+use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::tuple::Tuple;
 
 // macros to simplify tests
@@ -62,4 +63,16 @@ pub fn type_arrow(tpe1: Type, tpe2: Type) -> Type {
 
 pub fn type_tuple2(tpe1: Type, tpe2: Type) -> Type {
     Type::Tuple(Tuple::two(tpe1, tpe2))
+}
+
+/// The span a hand-built AST literal gets: none.
+///
+/// A literal written in a test cannot know the byte offsets the tokenizer computed,
+/// and does not have to — `NodeSpan`'s `PartialEq` always returns `true`, so any span
+/// compares equal to the parsed one (see the type's documentation for that trade and
+/// its cost). Naming it here makes `span: no_span()` in the literals below read as
+/// "deliberately absent" rather than "not filled in yet", and keeps the whole-value
+/// `assert_eq!`s about structure, which is what they are for.
+pub fn no_span() -> NodeSpan {
+    NodeSpan::none()
 }

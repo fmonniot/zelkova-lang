@@ -17,6 +17,7 @@ fn module(body: Expression) -> Module {
                 patterns: vec![],
                 body,
             }],
+            span: no_span(),
         }],
     }
 }

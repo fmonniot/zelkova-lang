@@ -89,12 +89,15 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   phase-specific knowledge to fall back on, which is exactly why `format!("{:?}", e)` in a
   note is not an option: a `Debug` dump names Rust types, not source constructs. A new error
   variant gets a message written for the person reading it.
-  Spans are settled the other way, deliberately: only `parser::Error` carries one, because
-  `grammar.lalrpop` never captures `@L`/`@R` and so every phase after parsing reads an AST
-  with no positions in it. Giving both ASTs spans is `ERR-3`; until it lands, adding a `span`
-  field to a canonical or typer error would only move the problem to a construction site that
-  has no span either. The `SourceFileId` is never a phase's business — `compile_package`
-  attaches it, being the only place that knows which file a module was read from.
+  An error also says *where*, when it can: `PhaseError::labels` returns `SpanLabel`s, and
+  `grammar.lalrpop` captures `@L`/`@R` on the five declaration productions, so a declaration
+  carries a `NodeSpan` through the parser AST into `canonical::Value`/`Infix`/`UnionType`.
+  `labels` defaults to empty and that is a real answer, not a stub — an error raised while
+  walking a node the grammar does not span has nowhere to point and renders with no caret.
+  Sub-expression granularity is `ERR-4`; pointing into *another* module is `ERR-5`. The
+  `SourceFileId` is never a phase's business — `compile_package` attaches it via
+  `CompilationError::InFile`, being the only place that knows which file a module was read
+  from.
 - **A grammar change is never a one-file change.** `grammar.lalrpop`, the `parser` AST in
   `parser/mod.rs`, and the `from_parser*` conversions in `canonical/mod.rs` move together, in
   the same commit. Splitting them leaves the tree uncompilable or, worse, silently dropping a

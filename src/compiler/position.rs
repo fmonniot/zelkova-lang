@@ -122,6 +122,83 @@ impl Span<BytePos> {
     }
 }
 
+/// The position of an AST node in the source it was parsed from, if it had one.
+///
+/// # Why `PartialEq` is blind
+///
+/// `PartialEq` here always returns `true`, so two nodes that differ only in where
+/// they were written compare equal. That is deliberate, not an oversight: the
+/// parser tests compare a whole `Module` value against a literal built by hand,
+/// and a hand-written literal cannot know the byte offsets the tokenizer computed.
+/// The alternative — a hand-written traversal that strips spans before comparing —
+/// silently stops covering whatever node the next person forgets to add to it.
+///
+/// The cost is real and worth naming: a whole-value `assert_eq!` can no longer pin
+/// *where* something parsed, because every span in it compares equal to every other.
+/// A test that cares about a position therefore has to assert on `.span` directly.
+///
+/// Keeping the blindness inside this one newtype is what leaves [`Span`] and
+/// [`Spanned`] with their real, derived equality, so the tokenizer, layout and
+/// parser-error tests are unaffected.
+///
+/// # What `None` means
+///
+/// `None` means "not built from source": a node a test constructed by hand, or one
+/// a future desugaring pass synthesised with nothing in the user's text to point at.
+/// Such a node contributes no label to a diagnostic — it is skipped, not rendered as
+/// a zero-width caret at the top of the file.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NodeSpan(Option<Span<BytePos>>);
+
+impl NodeSpan {
+    /// The span of a node the parser built, from the `@L`/`@R` its production captured.
+    pub fn new(start: BytePos, end: BytePos) -> NodeSpan {
+        NodeSpan(Some(Span { start, end }))
+    }
+
+    /// A node with no position: built by a test, or synthesised by the compiler.
+    pub const fn none() -> NodeSpan {
+        NodeSpan(None)
+    }
+
+    pub fn span(self) -> Option<Span<BytePos>> {
+        self.0
+    }
+
+    /// The smallest span covering both, tolerating a missing one on either side.
+    ///
+    /// A declaration's span is its annotation merged with each of its bindings, and
+    /// either half may be absent — an annotation with no body, a body with no
+    /// annotation — so a missing operand yields the other rather than nothing.
+    pub fn merge(self, other: NodeSpan) -> NodeSpan {
+        match (self.0, other.0) {
+            (Some(a), Some(b)) => NodeSpan(Some(Span {
+                start: if a.start.0 <= b.start.0 {
+                    a.start
+                } else {
+                    b.start
+                },
+                end: if a.end.0 >= b.end.0 { a.end } else { b.end },
+            })),
+            (Some(a), None) => NodeSpan(Some(a)),
+            (None, Some(b)) => NodeSpan(Some(b)),
+            (None, None) => NodeSpan(None),
+        }
+    }
+
+    /// The byte range a `codespan_reporting::Label` wants, when there is one.
+    pub fn to_range(self) -> Option<std::ops::Range<usize>> {
+        self.0.map(|s| s.to_range())
+    }
+}
+
+impl PartialEq for NodeSpan {
+    /// Always `true` — see the type's documentation for why.
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
 impl std::ops::Add<u32> for BytePos {
     type Output = BytePos;
 

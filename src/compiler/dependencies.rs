@@ -178,6 +178,7 @@ impl<'a> ModuleWalker<'a> {
 mod tests {
     use super::*;
     use crate::compiler::parser::{Exposing, Import};
+    use crate::compiler::position::NodeSpan;
     use crate::compiler::{canonical, parser, Interface, ModuleName, Name, PackageName};
 
     fn module<S: Into<String>>(name: S, deps: Vec<S>) -> Module {
@@ -187,6 +188,8 @@ mod tests {
                 name: Name::new(n),
                 alias: None,
                 exposing: Exposing::Open,
+                // Hand-built, not parsed: there is no source text behind it.
+                span: NodeSpan::none(),
             })
             .collect();
 

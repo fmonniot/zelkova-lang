@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::name::QualName;
+use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::tuple::Tuple;
 
 #[path = "../support/mod.rs"]
@@ -36,6 +37,7 @@ fn simple_constant_no_annotation() {
     assert_eq!(
         module.values.get(&"answer".into()).unwrap(),
         &canonical::Value::Value {
+            span: NodeSpan::none(),
             name: "answer".into(),
             patterns: vec![],
             body: canonical::Expression::Int(42),
@@ -57,6 +59,7 @@ fn typed_identity_function() {
     assert_eq!(
         module.values.get(&"identity".into()).unwrap(),
         &canonical::Value::TypedValue {
+            span: NodeSpan::none(),
             name: "identity".into(),
             // Pattern `x` is paired with the first arrow-arm type `a`
             patterns: vec![(
@@ -87,6 +90,7 @@ fn function_multiple_parameters() {
     assert_eq!(
         module.values.get(&"add".into()).unwrap(),
         &canonical::Value::TypedValue {
+            span: NodeSpan::none(),
             name: "add".into(),
             patterns: vec![
                 (canonical::Pattern::Variable("a".into()), int_t()),
@@ -145,6 +149,7 @@ fn union_type_definition_and_constructor() {
     assert_eq!(
         module.values.get(&"favorite".into()).unwrap(),
         &canonical::Value::TypedValue {
+            span: NodeSpan::none(),
             name: "favorite".into(),
             patterns: vec![],
             body: canonical::Expression::VarConstructor(
@@ -269,6 +274,7 @@ fn if_then_else_expression() {
     assert_eq!(
         module.values.get(&"max".into()).unwrap(),
         &canonical::Value::TypedValue {
+            span: NodeSpan::none(),
             name: "max".into(),
             patterns: vec![
                 (canonical::Pattern::Variable("a".into()), int_t()),
@@ -318,6 +324,7 @@ fn javascript_binding_module() {
     assert_eq!(
         module.values.get(&"add".into()).unwrap(),
         &canonical::Value::TypedValue {
+            span: NodeSpan::none(),
             name: "add".into(),
             patterns: vec![],
             body: canonical::Expression::Bool(true),
@@ -368,7 +375,7 @@ fn multiple_bindings_is_error() {
     assert!(
         errors
             .iter()
-            .any(|e| matches!(e, canonical::Error::MultipleBindingsUnsupported(_))),
+            .any(|e| matches!(e, canonical::Error::MultipleBindingsUnsupported(..))),
         "expected a MultipleBindingsUnsupported error, got {:?}",
         errors
     );
@@ -397,6 +404,7 @@ fn tuple_of_two_canonicalizes() {
     assert_eq!(
         module.values.get(&"pair".into()).unwrap(),
         &canonical::Value::TypedValue {
+            span: NodeSpan::none(),
             name: "pair".into(),
             patterns: vec![],
             body: canonical::Expression::Tuple(Tuple::two(
@@ -429,6 +437,7 @@ fn tuple_of_three_canonicalizes() {
     assert_eq!(
         module.values.get(&"triple".into()).unwrap(),
         &canonical::Value::TypedValue {
+            span: NodeSpan::none(),
             name: "triple".into(),
             patterns: vec![],
             body: canonical::Expression::Tuple(Tuple::three(
