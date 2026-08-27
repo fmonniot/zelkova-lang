@@ -174,33 +174,44 @@ mod tests {
         Name::new(s)
     }
 
-    fn dummy_check(
-        package: &PackageName,
-        _interfaces: &HashMap<Name, Interface>,
-        source: &parser::Module,
-    ) -> Result<canonical::Module, ()> {
-        Ok(canonical::Module {
+    /// An empty canonical module standing in for whatever the real checker would
+    /// have produced. Shared by the checkers below, which differ only in which
+    /// modules they refuse.
+    fn dummy_module(package: &PackageName, source: &parser::Module) -> canonical::Module {
+        canonical::Module {
             name: ModuleName::new(package.clone(), source.name.clone()),
             exports: canonical::Exports::Everything,
             infixes: HashMap::new(),
             types: HashMap::new(),
             values: HashMap::new(),
             binding_javascript: false,
-        })
+        }
+    }
+
+    fn dummy_check(
+        package: &PackageName,
+        _interfaces: &HashMap<Name, Interface>,
+        source: &parser::Module,
+    ) -> Result<canonical::Module, ()> {
+        Ok(dummy_module(package, source))
     }
 
     /// Like `dummy_check`, except module `b` always fails. Used to pin `BUG-2`:
     /// `check_in_order` must keep checking (and reporting) every other module
     /// rather than discarding them because one sibling failed.
+    ///
+    /// The error carries the failing module's name rather than being `()` so the
+    /// test can assert *which* module failed; with `E = ()` the type system already
+    /// guarantees the contents and only the arity would be under test.
     fn dummy_check_fails_for_b(
         package: &PackageName,
-        interfaces: &HashMap<Name, Interface>,
+        _interfaces: &HashMap<Name, Interface>,
         source: &parser::Module,
-    ) -> Result<canonical::Module, ()> {
+    ) -> Result<canonical::Module, Name> {
         if source.name.as_str() == "b" {
-            Err(())
+            Err(source.name.clone())
         } else {
-            dummy_check(package, interfaces, source)
+            Ok(dummy_module(package, source))
         }
     }
 
@@ -300,10 +311,13 @@ mod tests {
     /// recover the successes. It must now hand back both: the modules that
     /// checked, and the errors from the ones that didn't.
     ///
-    /// Mutation-checked: reverting `check_in_order` to `collect_accumulate` (so it
-    /// returns `Err(Vec<E>)` with the successes dropped whenever `errors` is
-    /// non-empty) turns this red, since `successes` would come back empty instead
-    /// of `["a", "c"]`.
+    /// Mutation-checked with `modules.clear()` before the `(modules, errors)` return
+    /// below, guarded on `!errors.is_empty()` — the old discard behaviour, expressed
+    /// in a way that still compiles against the tuple return type. It turns this test
+    /// red, since `successes` then comes back empty instead of `["a", "c"]`.
+    /// (Literally restoring `collect_accumulate` would not be rerunnable: it changes
+    /// the return type back to `Result<Vec<Module>, Vec<E>>`, so the destructuring
+    /// below stops typechecking and the test fails to build rather than to assert.)
     #[test]
     fn check_in_order_keeps_successful_modules_when_one_fails() {
         let a = module("a", vec![]);
@@ -318,7 +332,11 @@ mod tests {
         let (successes, errors) =
             walker.check_in_order(&name, &mut ifaces, dummy_check_fails_for_b);
 
-        assert_eq!(errors, vec![()], "expected exactly the one error from `b`");
+        assert_eq!(
+            errors,
+            vec![Name::new("b")],
+            "expected exactly the one error, and for `b`"
+        );
         assert_eq!(
             successes
                 .into_iter()
