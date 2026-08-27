@@ -73,11 +73,13 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-2](err-2.md) | task | — | open | Unify the error-handling strategy across compiler phases |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
+| [AST-3](ast-3.md) | task | — | open | Unify the typer's tuple representation with `Tuple<T>` |
 | PERF-1 | task | — | closed 2026-08-25 | Reduce cloning in the `Layout` iterator |
 | TIDY-1 | task | — | closed 2026-08-25 | Make `Name`'s inner `String` private |
 | TIDY-2 | task | — | closed 2026-08-25 | Replace the tokenizer's keyword `HashMap` with a `match` |
 | TIDY-3 | task | — | closed 2026-08-25 | Fix the `associativy` typo |
 | TIDY-4 | task | — | closed 2026-08-25 | Test-module doc comments still describe the type checker as a stub |
 | TIDY-5 | task | — | closed 2026-08-25 | Fix all outstanding `cargo clippy` warnings |
+| [TIDY-6](tidy-6.md) | task | — | open | Stale doc comment on `canonical_type_to_typer_type` |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
