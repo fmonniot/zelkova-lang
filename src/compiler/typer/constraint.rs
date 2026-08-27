@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use super::{Constraint, TermPattern, Type, TypeLiteral, TypedTerm};
+use crate::compiler::tuple::Tuple;
 
 pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
     let mut constraints = HashSet::new();
@@ -109,24 +110,18 @@ pub(super) fn collect(term: &TypedTerm) -> HashSet<Constraint> {
                 }
             }
         }
-        TypedTerm::Tuple {
-            tpe,
-            first,
-            second,
-            third,
-        } => {
-            constraints.extend(collect(first));
-            constraints.extend(collect(second));
-            if let Some(t) = third {
-                constraints.extend(collect(t));
+        TypedTerm::Tuple { tpe, elements } => {
+            for elem in elements.iter() {
+                constraints.extend(collect(elem));
             }
-            // The tuple type must equal the tuple of its element types
-            let tuple_type = Type::Tuple(
-                Box::new(first.tpe().clone()),
-                Box::new(second.tpe().clone()),
-                third.as_ref().map(|t| Box::new(t.tpe().clone())),
-            );
-            constraints.insert(Constraint(tpe.clone(), tuple_type));
+            // The tuple type must equal the tuple of its element types.
+            let element_types = match elements {
+                Tuple::Two(a, b) => Tuple::two(a.tpe().clone(), b.tpe().clone()),
+                Tuple::Three(a, b, c) => {
+                    Tuple::three(a.tpe().clone(), b.tpe().clone(), c.tpe().clone())
+                }
+            };
+            constraints.insert(Constraint(tpe.clone(), Type::Tuple(element_types)));
         }
     };
 

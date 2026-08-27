@@ -2,6 +2,7 @@ use log::debug;
 use std::collections::HashSet;
 
 use super::{Constraint, Error, Substitution, Type, TypeLiteral, TypeVariable};
+use crate::compiler::tuple::Tuple;
 
 /// Returns true if `tpe` is a numeric type (Int, Float, or Number).
 fn is_numeric(tpe: &Type) -> bool {
@@ -68,14 +69,16 @@ fn unify_one_constraint(Constraint(a, b): &Constraint) -> Result<Substitution, E
         (Type::Number, other) | (other, Type::Number) if is_numeric(other) => {
             Ok(Substitution::empty())
         }
-        // Tuples: unify element-by-element (must have matching arity)
-        (Type::Tuple(a1, b1, None), Type::Tuple(a2, b2, None)) => {
+        // Tuples: unify element-by-element. A `Two` against a `Three` matches
+        // neither arm below and falls through to the mismatch arm at the
+        // bottom, same as any other `Type` mismatch.
+        (Type::Tuple(Tuple::Two(a1, b1)), Type::Tuple(Tuple::Two(a2, b2))) => {
             let mut cs = HashSet::new();
             cs.insert(Constraint(*a1.clone(), *a2.clone()));
             cs.insert(Constraint(*b1.clone(), *b2.clone()));
             unify(cs)
         }
-        (Type::Tuple(a1, b1, Some(c1)), Type::Tuple(a2, b2, Some(c2))) => {
+        (Type::Tuple(Tuple::Three(a1, b1, c1)), Type::Tuple(Tuple::Three(a2, b2, c2))) => {
             let mut cs = HashSet::new();
             cs.insert(Constraint(*a1.clone(), *a2.clone()));
             cs.insert(Constraint(*b1.clone(), *b2.clone()));
@@ -125,9 +128,7 @@ fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
             param_tpe,
             return_tpe,
         } => occurs(tvar, param_tpe) || occurs(tvar, return_tpe),
-        Type::Tuple(a, b, c) => {
-            occurs(tvar, a) || occurs(tvar, b) || c.as_ref().is_some_and(|t| occurs(tvar, t))
-        }
+        Type::Tuple(tuple) => tuple.iter().any(|t| occurs(tvar, t)),
         Type::Adt(_, args) => args.iter().any(|a| occurs(tvar, a)),
         Type::Variable(tvar2) => tvar == tvar2,
         _ => false,

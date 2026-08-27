@@ -240,3 +240,37 @@ fn tuple_type_mismatch() {
         "(Int, Bool) used as (Int, Int) should fail"
     );
 }
+
+/// A triple `(Int, Bool, Char)` should type-check. AST-3 replaced the typer's
+/// `Type::Tuple`/`Term::Tuple`/`TypedTerm::Tuple` `(a, b, Option<c>)` shape
+/// with `Tuple<T>`, and `tuple_pair_typechecks` above only exercises the
+/// `Tuple::Two` arm on every changed site (annotate, constraint generation,
+/// unification, substitution, the `canonical_*_to_typer_*` conversions) — this
+/// pins the `Tuple::Three` arm on the same sites.
+#[test]
+fn tuple_triple_typechecks() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        triple : (Int, Bool, Char)
+        triple = (42, true, 'a')
+    "#};
+    assert!(
+        run(source).is_ok(),
+        "(Int, Bool, Char) tuple should type-check"
+    );
+}
+
+/// Using `(Int, Bool, Int)` where `(Int, Bool, Char)` is expected should fail:
+/// the third element's type must be unified too, not ignored.
+#[test]
+fn tuple_triple_type_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : (Int, Bool, Char)
+        bad = (42, true, 7)
+    "#};
+    assert!(
+        run(source).is_err(),
+        "(Int, Bool, Int) used as (Int, Bool, Char) should fail"
+    );
+}

@@ -15,8 +15,10 @@
 /// A tuple of exactly two or three elements.
 ///
 /// The element type is a parameter so types, patterns and expressions — in both
-/// the parser and the canonical AST — all reuse this one enum.
-#[derive(Debug, PartialEq, Clone)]
+/// the parser and the canonical AST — all reuse this one enum. `Hash`/`Eq` are
+/// derived alongside `PartialEq` because the typer's `Type::Tuple(Tuple<Type>)`
+/// needs both: `Type` sits in a `HashSet<Constraint>` during unification.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Tuple<T> {
     Two(Box<T>, Box<T>),
     Three(Box<T>, Box<T>, Box<T>),
