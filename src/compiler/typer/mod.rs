@@ -1114,4 +1114,78 @@ mod tests {
         let term = apply(apply(var("+"), bool(true)), int(1));
         assert!(infer(term, global).is_err());
     }
+
+    // --- Display for Type ---------------------------------------------------
+
+    fn int_t() -> Type {
+        Type::Literal(TypeLiteral::Int)
+    }
+    fn bool_t() -> Type {
+        Type::Literal(TypeLiteral::Bool)
+    }
+    fn char_t() -> Type {
+        Type::Literal(TypeLiteral::Char)
+    }
+    fn fun_t(param: Type, ret: Type) -> Type {
+        Type::Fun {
+            param_tpe: Box::new(param),
+            return_tpe: Box::new(ret),
+        }
+    }
+    fn adt(name: &str, args: Vec<Type>) -> Type {
+        Type::Adt(name.to_string(), args)
+    }
+
+    /// `Display for Type` is the text diagnostics quote back to the user, so its two
+    /// parenthesisation rules and its inference-variable spelling are user-visible
+    /// output. Nothing else pins them: the pipeline test that renders a type mismatch
+    /// only ever reaches the `Literal` arms. Dropping a parenthesis here would print
+    /// `Maybe Maybe Int`, which reads as a different type, with the suite still green.
+    #[test]
+    fn display_writes_types_the_way_the_source_spells_them() {
+        let cases: Vec<(Type, &str)> = vec![
+            // A function in *parameter* position is parenthesised, because `->` is
+            // right-associative: `(a -> b) -> c` and `a -> b -> c` are different types.
+            (
+                fun_t(fun_t(int_t(), bool_t()), int_t()),
+                "(Int -> Bool) -> Int",
+            ),
+            // In *return* position it is not, for the same reason: the chain already
+            // re-reads as itself.
+            (
+                fun_t(int_t(), fun_t(bool_t(), char_t())),
+                "Int -> Bool -> Char",
+            ),
+            // An applied `Adt` nested inside another needs parens to survive a re-read.
+            (
+                adt("Maybe", vec![adt("Maybe", vec![int_t()])]),
+                "Maybe (Maybe Int)",
+            ),
+            // So does a function used as an `Adt` argument.
+            (
+                adt("Maybe", vec![fun_t(int_t(), bool_t())]),
+                "Maybe (Int -> Bool)",
+            ),
+            // A *nullary* `Adt` argument does not: there is nothing to mis-group.
+            (adt("List", vec![adt("Never", vec![])]), "List Never"),
+            // And an applied `Adt` in parameter position does not either — application
+            // binds tighter than `->`.
+            (
+                fun_t(adt("Maybe", vec![int_t()]), bool_t()),
+                "Maybe Int -> Bool",
+            ),
+            (Type::Tuple(Tuple::two(int_t(), bool_t())), "( Int, Bool )"),
+            (
+                Type::Tuple(Tuple::three(int_t(), bool_t(), char_t())),
+                "( Int, Bool, Char )",
+            ),
+            // Inference variables have no source syntax; Elm spells them `t{n}`.
+            (Type::Variable(TypeVariable { id: 7 }), "t7"),
+            (Type::Number, "number"),
+        ];
+
+        for (tpe, expected) in cases {
+            assert_eq!(format!("{}", tpe), expected, "rendering {:?}", tpe);
+        }
+    }
 }
