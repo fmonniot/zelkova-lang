@@ -1,4 +1,5 @@
 use super::{Error, Term, TermPattern, TypeBinder, TypedTerm, Types};
+use crate::compiler::tuple::Tuple;
 
 pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error> {
     match term {
@@ -80,15 +81,22 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                 body,
             })
         }
-        Term::Tuple(a, b, c) => {
-            let first = Box::new(annotate(*a, types)?);
-            let second = Box::new(annotate(*b, types)?);
-            let third = c.map(|t| annotate(*t, types)).transpose()?.map(Box::new);
+        Term::Tuple(Tuple::Two(a, b)) => {
+            let elements = Tuple::two(annotate(*a, types)?, annotate(*b, types)?);
             Ok(TypedTerm::Tuple {
                 tpe: types.fresh_var(),
-                first,
-                second,
-                third,
+                elements,
+            })
+        }
+        Term::Tuple(Tuple::Three(a, b, c)) => {
+            let elements = Tuple::three(
+                annotate(*a, types)?,
+                annotate(*b, types)?,
+                annotate(*c, types)?,
+            );
+            Ok(TypedTerm::Tuple {
+                tpe: types.fresh_var(),
+                elements,
             })
         }
         Term::Case {

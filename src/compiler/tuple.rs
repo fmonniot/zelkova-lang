@@ -1,4 +1,5 @@
-//! The tuple representation shared by the parser and canonical ASTs.
+//! The tuple representation shared by the parser AST, the canonical AST and the
+//! typer.
 //!
 //! Zelkova follows Elm here: a tuple holds two or three elements — never one,
 //! never four. `Tuple` is where that rule is written down, and it is written in
@@ -14,9 +15,13 @@
 
 /// A tuple of exactly two or three elements.
 ///
-/// The element type is a parameter so types, patterns and expressions — in both
-/// the parser and the canonical AST — all reuse this one enum.
-#[derive(Debug, PartialEq, Clone)]
+/// The element type is a parameter so types, patterns and expressions — in the
+/// parser AST, the canonical AST and the typer alike — all reuse this one enum.
+/// The typer's `Type::Tuple`, `Term::Tuple` and `TypedTerm::Tuple` each hold a
+/// `Tuple<_>` of their own element type. `Hash`/`Eq` are
+/// derived alongside `PartialEq` because the typer's `Type::Tuple(Tuple<Type>)`
+/// needs both: `Type` sits in a `HashSet<Constraint>` during unification.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Tuple<T> {
     Two(Box<T>, Box<T>),
     Three(Box<T>, Box<T>, Box<T>),
@@ -46,8 +51,10 @@ impl<T> Tuple<T> {
     /// Convert every element with `f`, keeping the arity, and stop at the first
     /// error.
     ///
-    /// This is what the parser → canonical conversions use: the arity travels
-    /// with the value, so they never count elements.
+    /// This is what the parser → canonical conversions use, and what the
+    /// canonical → typer conversions (`canonical_type_to_typer_type`,
+    /// `canonical_expr_to_term`) use: the arity travels with the value, so
+    /// none of them count elements.
     pub fn try_map<U, E, F>(&self, mut f: F) -> Result<Tuple<U>, E>
     where
         F: FnMut(&T) -> Result<U, E>,

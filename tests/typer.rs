@@ -240,3 +240,73 @@ fn tuple_type_mismatch() {
         "(Int, Bool) used as (Int, Int) should fail"
     );
 }
+
+/// A triple `(Int, Bool, Char)` should type-check. AST-3 replaced the typer's
+/// `Type::Tuple`/`Term::Tuple`/`TypedTerm::Tuple` `(a, b, Option<c>)` shape
+/// with `Tuple<T>`, and `tuple_pair_typechecks` above only exercises the
+/// `Tuple::Two` arm on every changed site (annotate, constraint generation,
+/// unification, substitution, the `canonical_*_to_typer_*` conversions) — this
+/// pins the `Tuple::Three` arm on the same sites.
+#[test]
+fn tuple_triple_typechecks() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        triple : (Int, Bool, Char)
+        triple = (42, true, 'a')
+    "#};
+    assert!(
+        run(source).is_ok(),
+        "(Int, Bool, Char) tuple should type-check"
+    );
+}
+
+/// Using `(Int, Bool, Int)` where `(Int, Bool, Char)` is expected should fail:
+/// the third element's type must be unified too, not ignored.
+#[test]
+fn tuple_triple_type_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : (Int, Bool, Char)
+        bad = (42, true, 7)
+    "#};
+    assert!(
+        run(source).is_err(),
+        "(Int, Bool, Int) used as (Int, Bool, Char) should fail"
+    );
+}
+
+/// A pair used where a triple is expected should fail. Unification has one arm
+/// per arity (`Two` against `Two`, `Three` against `Three`), so a mixed pair
+/// matches neither and has to reach the generic `Type`-mismatch arm at the
+/// bottom of `unify_one_constraint`. Nothing else in the suite exercises that
+/// fallthrough: every other tuple test agrees on arity and differs only in
+/// element types.
+#[test]
+fn tuple_pair_against_triple_annotation_is_a_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : (Int, Bool, Char)
+        bad = (42, true)
+    "#};
+    assert!(
+        run(source).is_err(),
+        "a 2-tuple body under a 3-tuple annotation should fail"
+    );
+}
+
+/// The other direction of `tuple_pair_against_triple_annotation_is_a_mismatch`:
+/// the fallthrough must be reached whichever side of the constraint carries the
+/// larger arity, since `unify_one_constraint` matches on the pair `(a, b)` and
+/// the two arity arms are not symmetric on their own.
+#[test]
+fn tuple_triple_against_pair_annotation_is_a_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : (Int, Bool)
+        bad = (42, true, 'a')
+    "#};
+    assert!(
+        run(source).is_err(),
+        "a 3-tuple body under a 2-tuple annotation should fail"
+    );
+}

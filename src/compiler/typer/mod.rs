@@ -205,19 +205,14 @@ fn canonical_type_to_typer_type(
                 return_tpe: Box::new(b),
             })
         }
-        // The typer keeps its own tuple encoding, so the arity is re-stated here
-        // rather than shared: `Tuple::Two` has no third element, `Tuple::Three`
-        // always has one.
-        canonical::Type::Tuple(Tuple::Two(a, b)) => {
-            let a = canonical_type_to_typer_type(a, var_map, counter)?;
-            let b = canonical_type_to_typer_type(b, var_map, counter)?;
-            Some(Type::Tuple(Box::new(a), Box::new(b), None))
-        }
-        canonical::Type::Tuple(Tuple::Three(a, b, c)) => {
-            let a = canonical_type_to_typer_type(a, var_map, counter)?;
-            let b = canonical_type_to_typer_type(b, var_map, counter)?;
-            let c = canonical_type_to_typer_type(c, var_map, counter)?;
-            Some(Type::Tuple(Box::new(a), Box::new(b), Some(Box::new(c))))
+        // `Tuple::try_map` keeps the arity attached to the value instead of
+        // re-deriving it here, the same way the parser → canonical conversions
+        // in `canonical/mod.rs` do.
+        canonical::Type::Tuple(tuple) => {
+            let elements = tuple
+                .try_map(|elem| canonical_type_to_typer_type(elem, var_map, counter).ok_or(()))
+                .ok()?;
+            Some(Type::Tuple(elements))
         }
         canonical::Type::Type(name, args) => {
             let converted: Option<Vec<Type>> = args
@@ -264,16 +259,11 @@ fn canonical_expr_to_term(
                 false_branch: Box::new(f),
             })
         }
-        canonical::Expression::Tuple(Tuple::Two(a, b)) => {
-            let a = canonical_expr_to_term(a, module_types, counter)?;
-            let b = canonical_expr_to_term(b, module_types, counter)?;
-            Some(Term::Tuple(Box::new(a), Box::new(b), None))
-        }
-        canonical::Expression::Tuple(Tuple::Three(a, b, c)) => {
-            let a = canonical_expr_to_term(a, module_types, counter)?;
-            let b = canonical_expr_to_term(b, module_types, counter)?;
-            let c = canonical_expr_to_term(c, module_types, counter)?;
-            Some(Term::Tuple(Box::new(a), Box::new(b), Some(Box::new(c))))
+        canonical::Expression::Tuple(tuple) => {
+            let elements = tuple
+                .try_map(|elem| canonical_expr_to_term(elem, module_types, counter).ok_or(()))
+                .ok()?;
+            Some(Term::Tuple(elements))
         }
         canonical::Expression::Case(scrutinee_expr, branches) => {
             let scrutinee = canonical_expr_to_term(scrutinee_expr, module_types, counter)?;
@@ -481,7 +471,7 @@ pub enum Term {
         value: Box<Term>,
         body: Box<Term>,
     },
-    Tuple(Box<Term>, Box<Term>, Option<Box<Term>>),
+    Tuple(Tuple<Term>),
     Case {
         scrutinee: Box<Term>,
         branches: Vec<(TermPattern, Box<Term>)>,
@@ -519,7 +509,7 @@ pub enum Type {
         param_tpe: Box<Type>,
         return_tpe: Box<Type>,
     },
-    Tuple(Box<Type>, Box<Type>, Option<Box<Type>>),
+    Tuple(Tuple<Type>),
     /// A named algebraic data type, e.g. `Maybe Int` → `Adt("Maybe", [Literal(Int)])`.
     Adt(String, Vec<Type>),
 }
@@ -534,8 +524,8 @@ impl std::fmt::Debug for Type {
                 param_tpe,
                 return_tpe,
             } => write!(f, "Fun({:?} -> {:?})", param_tpe, return_tpe),
-            Type::Tuple(a, b, None) => write!(f, "({:?}, {:?})", a, b),
-            Type::Tuple(a, b, Some(c)) => write!(f, "({:?}, {:?}, {:?})", a, b, c),
+            Type::Tuple(Tuple::Two(a, b)) => write!(f, "({:?}, {:?})", a, b),
+            Type::Tuple(Tuple::Three(a, b, c)) => write!(f, "({:?}, {:?}, {:?})", a, b, c),
             Type::Adt(name, args) if args.is_empty() => write!(f, "{}", name),
             Type::Adt(name, args) => write!(f, "{}({:?})", name, args),
         }
@@ -606,9 +596,7 @@ enum TypedTerm {
     },
     Tuple {
         tpe: Type,
-        first: Box<TypedTerm>,
-        second: Box<TypedTerm>,
-        third: Option<Box<TypedTerm>>,
+        elements: Tuple<TypedTerm>,
     },
     Case {
         tpe: Type,
@@ -684,11 +672,15 @@ impl Substitution {
                 param_tpe: Box::new(Substitution::substitute(*param_tpe, tvar, replacement)),
                 return_tpe: Box::new(Substitution::substitute(*return_tpe, tvar, replacement)),
             },
-            Type::Tuple(a, b, c) => Type::Tuple(
-                Box::new(Substitution::substitute(*a, tvar, replacement)),
-                Box::new(Substitution::substitute(*b, tvar, replacement)),
-                c.map(|t| Box::new(Substitution::substitute(*t, tvar, replacement))),
-            ),
+            Type::Tuple(Tuple::Two(a, b)) => Type::Tuple(Tuple::two(
+                Substitution::substitute(*a, tvar, replacement),
+                Substitution::substitute(*b, tvar, replacement),
+            )),
+            Type::Tuple(Tuple::Three(a, b, c)) => Type::Tuple(Tuple::three(
+                Substitution::substitute(*a, tvar, replacement),
+                Substitution::substitute(*b, tvar, replacement),
+                Substitution::substitute(*c, tvar, replacement),
+            )),
             Type::Adt(name, args) => Type::Adt(
                 name,
                 args.into_iter()
@@ -865,10 +857,10 @@ mod tests {
                         format!("{} -> {}", param, retur)
                     }
                 }
-                Type::Tuple(a, b, None) => {
+                Type::Tuple(Tuple::Two(a, b)) => {
                     format!("({}, {})", self.type_signature(*a), self.type_signature(*b))
                 }
-                Type::Tuple(a, b, Some(c)) => {
+                Type::Tuple(Tuple::Three(a, b, c)) => {
                     format!(
                         "({}, {}, {})",
                         self.type_signature(*a),
