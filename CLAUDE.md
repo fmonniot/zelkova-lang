@@ -86,6 +86,15 @@ These outlive any single ticket. Each is here because breaking it produced a bad
 - **Tuples are size 2 or 3 only**, matching Elm. `canonical::Error::InvalidTupleSize` is the
   rejection path. The parser and canonical ASTs disagree about how to *represent* that
   constraint — that is `AST-2`, and it is a known trap.
+- **A `Result`-yielding iterator must advance or stop — never repeat one error.** `Layout`
+  (`parser/layout.rs`) diagnoses an indentation violation without touching its context stack,
+  so replaying the offending token would reproduce that error unchanged; it therefore fuses,
+  returning `None` from `next` after any `Err`. That and its `Token::EndOfFile` termination go
+  through one latch, so it is a `FusedIterator` and `layout()` says so in its signature.
+  When you add an error path to a pipeline iterator, either consume input or stop. Fully
+  draining one that did neither once consumed ~20GB of RAM before the OS killed it (`BUG-4`).
+  `Tokenizer` has the same class of defect and does not advance either: `handle_indentation`
+  returns `TabError` without consuming the tab, so it repeats forever. Tracked as `BUG-5`.
 - **Zelkova has no `Elm.Kernel.*`.** A std module that needs a JS primitive gets a
   `module javascript Js.<Name>` facade — type annotations with no bodies, no infixes, no type
   declarations — plus a companion `Js/<Name>.mjs` whose exports take a plain parameter list
