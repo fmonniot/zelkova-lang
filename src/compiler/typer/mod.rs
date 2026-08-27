@@ -220,8 +220,12 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
 // ── Translation helpers ───────────────────────────────────────────────────────
 
 /// Convert a canonical type to the typer's simplified Type representation.
-/// Returns None for types that cannot yet be represented (tuples, named types
-/// with parameters, etc.).
+/// The match covers all four `canonical::Type` variants — `Variable`, `Arrow`, `Tuple`
+/// (either arity), and `Type` including named types with parameters — and every arm's
+/// own base case returns `Some`; a `None` only ever arises by propagating up from a
+/// nested recursive call. As of today no `canonical::Type` shape actually reaches such
+/// a case, so the function always returns `Some`. The `Option` return stays in place for
+/// when a genuinely unrepresentable variant (e.g. records, aliases) is added.
 ///
 /// `var_map` maps named type variables (e.g. "a") to consistent TypeVariable
 /// ids, so that `a -> a` produces the same variable on both sides.
