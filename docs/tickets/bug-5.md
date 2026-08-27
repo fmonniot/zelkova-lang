@@ -64,8 +64,9 @@ invariants* now carries the rule ("an iterator that yields an `Err` must either 
 stop") and points here.
 
 **Fix:** there is a real choice and this ticket does not make it. Both options are local to
-`tokenizer.rs`; do not widen this into `parser::parse` or the general accumulation question,
-which is `ERR-2`.
+`tokenizer.rs`; do not widen this into `parser::parse` or into the general accumulation
+question, which `ERR-2` settled for the phases after parsing (closed 2026-08-26, see
+[`INDEX.md`](INDEX.md)) and deliberately left alone for the tokenizer and layout.
 
 - **Advance past the tab.** Call `self.next_char()` before returning the error, and clear
   `self.at_line_start` (or let the loop continue and report the error once the line's
@@ -81,7 +82,8 @@ which is `ERR-2`.
   point and is the smaller diff, but it also fuses `IndentationError`, which currently recovers
   and keeps producing tokens — so it removes working behaviour to fix a broken sibling. If this
   option is taken, `Layout` sits downstream and already fuses, so the two would agree; weigh
-  that against losing the multi-error tokenizer output that `ERR-2` is heading toward.
+  that against losing the multi-error tokenizer output that a future accumulating front end
+  would want.
 
 **Acceptance:** a new unit test in `tokenizer.rs`'s existing `#[cfg(test)] mod tests` tokenizes
 `"a\n\tb\n"` and polls past the first error with an explicit iteration cap that fails the test

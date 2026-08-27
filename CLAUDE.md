@@ -54,7 +54,7 @@ package directory; `check_module` runs the per-module phases.
 | Dependency resolution | `src/compiler/dependencies.rs` | petgraph; Tarjan SCC for cycles; yields a topological order |
 | Canonicalization | `src/compiler/canonical/` | resolves imports against `Interface`s, qualifies names, validates exports → `canonical::Module` |
 | Type checking | `src/compiler/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`. **Wired into `check_module`** |
-| Exhaustiveness | `src/compiler/exhaustiveness.rs` | **stub** — `pub enum Error {}`, `check` returns `Ok(())` |
+| Exhaustiveness | `src/compiler/exhaustiveness.rs` | **stub** — `check` inspects nothing and accepts every module. `Error::NonExhaustiveMatch` exists and renders, but nothing constructs it yet |
 | Code generation | — | not started |
 
 `Name` (`src/compiler/name.rs`) is an unqualified identifier; `QualName` is one that carries
@@ -74,11 +74,27 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   `as_diagnostic` stays the single rendering point. A new failure path in `compile_package`
   pushes onto that vector; nothing is rendered and then dropped. Rendering diagnostics and
   returning `Ok` regardless was `BUG-1`.
-- **An error has to be renderable.** Every phase error is eventually turned into a
-  `codespan_reporting::Diagnostic` by `CompilationError::as_diagnostic`. Today only
-  `parser::Error` carries spans and the other phases degrade to `format!("{:?}", e)` in a
-  note — that gap is `ERR-2`. When you add an error variant, carry enough location
-  information that it can be pointed at source, even if the diagnostic isn't written yet.
+  The per-module phases have the same *shape* one level down: `canonicalize`, `type_check`
+  and `exhaustiveness::check` each return `Result<_, Vec<Error>>`, a vector rather than a
+  single error, so one broken declaration cannot hide the next. That is a claim about the
+  shape only — how much each phase actually puts in the vector differs, and the architecture
+  table above is the accurate account (`type_check` skips unsupported constructs and unbound
+  variables silently; `exhaustiveness::check` is a stub that finds nothing). `check_module`
+  tags each vector with the module's `Name` — a phase never carries it, because a phase only
+  ever sees one module.
+- **An error has to describe itself.** Every phase error implements `PhaseError`
+  (`src/compiler/mod.rs`): a `message()` written in the vocabulary of the user's source, plus
+  optional `notes()`. `CompilationError::as_diagnostic` is the only place a
+  `codespan_reporting::Diagnostic` is ever built and it composes those two — it has no
+  phase-specific knowledge to fall back on, which is exactly why `format!("{:?}", e)` in a
+  note is not an option: a `Debug` dump names Rust types, not source constructs. A new error
+  variant gets a message written for the person reading it.
+  Spans are settled the other way, deliberately: only `parser::Error` carries one, because
+  `grammar.lalrpop` never captures `@L`/`@R` and so every phase after parsing reads an AST
+  with no positions in it. Giving both ASTs spans is `ERR-3`; until it lands, adding a `span`
+  field to a canonical or typer error would only move the problem to a construction site that
+  has no span either. The `SourceFileId` is never a phase's business — `compile_package`
+  attaches it, being the only place that knows which file a module was read from.
 - **A grammar change is never a one-file change.** `grammar.lalrpop`, the `parser` AST in
   `parser/mod.rs`, and the `from_parser*` conversions in `canonical/mod.rs` move together, in
   the same commit. Splitting them leaves the tree uncompilable or, worse, silently dropping a

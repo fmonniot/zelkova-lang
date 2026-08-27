@@ -2,6 +2,7 @@
 
 use super::{parser, Pattern};
 use super::{Infix, Interface, ModuleName, Name, Type, TypeConstructor, UnionType};
+use crate::compiler::PhaseError;
 use crate::utils::collect_accumulate;
 use log::trace;
 use std::collections::HashMap;
@@ -240,6 +241,46 @@ pub enum EnvError {
     InfixNotFound(Name),
     ValueNotFound(Name),
     Multiple(Vec<EnvError>),
+}
+
+/// An import that could not be resolved always names the thing it could not find,
+/// so the message can quote it back.
+impl PhaseError for EnvError {
+    fn message(&self) -> String {
+        match self {
+            EnvError::InterfaceNotFound(name) => {
+                format!("cannot find a module named `{}` to import", name)
+            }
+            EnvError::UnionNotFound(name) => {
+                format!(
+                    "the imported module does not expose a type named `{}`",
+                    name
+                )
+            }
+            EnvError::InfixNotFound(name) => format!(
+                "the imported module does not expose an infix operator named `{}`",
+                name
+            ),
+            EnvError::ValueNotFound(name) => format!(
+                "the imported module does not expose a value named `{}`",
+                name
+            ),
+            EnvError::Multiple(errors) => match errors.as_slice() {
+                [only] => only.message(),
+                many => format!("{} imports could not be resolved", many.len()),
+            },
+        }
+    }
+
+    fn notes(&self) -> Vec<String> {
+        match self {
+            EnvError::Multiple(errors) => match errors.as_slice() {
+                [only] => only.notes(),
+                many => many.iter().flat_map(|e| e.message_and_notes()).collect(),
+            },
+            _ => Vec::new(),
+        }
+    }
 }
 
 /// RootEnvironment represents the top level module and contains information accessible
