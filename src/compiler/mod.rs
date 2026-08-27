@@ -33,7 +33,13 @@ use std::io::Write;
 use std::path::Path;
 
 pub mod canonical;
-mod dependencies;
+// Public so that `tests/pipeline.rs` can drive `ModuleWalker::check_in_order` with the
+// real `check_module`, which is the only seam that observes the modules that checked
+// successfully alongside the ones that failed (`BUG-2`) — `compile_package` only reports
+// them to stderr. `dependencies::Error` was already reachable from the public
+// `CompilationError::DependenciesError`, so this names an existing part of the API
+// rather than widening it.
+pub mod dependencies;
 mod exhaustiveness;
 pub mod name;
 pub mod parser;
@@ -309,8 +315,17 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 
     // Step 5: Follow graph and call check_module on each
     if let Some(walker) = walker {
-        match walker.check_in_order(&package_name, &mut interfaces, check_module) {
-            Ok(can_mods) => print_status(
+        // `check_in_order` checks every module regardless of earlier failures and
+        // hands back both halves: the modules that checked, and the errors from the
+        // ones that didn't (see `docs/tickets/INDEX.md`, `BUG-2`). Both are reported
+        // here, and the errors still flow into `errors` below so a failing module
+        // keeps making this function return `Err` — only the previously-discarded
+        // successes are new.
+        let (can_mods, check_errors) =
+            walker.check_in_order(&package_name, &mut interfaces, check_module);
+
+        if check_errors.is_empty() {
+            print_status(
                 true,
                 format!(
                     "checked modules: {:#?}",
@@ -319,17 +334,20 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
                         .map(|m| m.name.as_human_string())
                         .collect::<Vec<_>>()
                 ),
-            ),
-            Err(check_errors) => {
-                // `check_in_order` hands back no module at all as soon as one of them
-                // fails (`BUG-2`, see docs/tickets/INDEX.md), so there is no list of
-                // successes to report here — only the count of failures.
-                print_status(
-                    false,
-                    format!("{} modules failed to check", check_errors.len()),
-                );
-                errors.extend(check_errors);
-            }
+            );
+        } else {
+            print_status(
+                false,
+                format!(
+                    "checked modules: {:#?} ({} failed to check)",
+                    can_mods
+                        .iter()
+                        .map(|m| m.name.as_human_string())
+                        .collect::<Vec<_>>(),
+                    check_errors.len()
+                ),
+            );
+            errors.extend(check_errors);
         }
     }
 

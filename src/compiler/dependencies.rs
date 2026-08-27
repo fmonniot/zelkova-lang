@@ -18,7 +18,6 @@
 
 use super::name::Name;
 use super::parser::Module;
-use crate::utils::collect_accumulate;
 use log::debug;
 use std::collections::HashMap;
 
@@ -96,7 +95,20 @@ impl<'a> ModuleWalker<'a> {
     }
 
     /// Given a package name, a set of existing interfaces and a checker function,
-    /// Check each module in its dependencies order
+    /// check each module in its dependencies order.
+    ///
+    /// Every module is checked regardless of whether an earlier one failed: the
+    /// successes are returned alongside the errors rather than being discarded as
+    /// soon as one module fails (`BUG-2`). A successfully checked module still has
+    /// its `Interface` inserted into `interfaces` as it goes, so later modules keep
+    /// resolving against earlier ones even when some sibling failed.
+    ///
+    /// This is the narrower half of a wider idea, still open: making partial
+    /// progress *within* one failing module (accumulating more errors from it
+    /// rather than stopping at its first) instead of only across modules as this
+    /// does. That would need `check` itself to return something like
+    /// `Result<(Module, Errors), Errors>`, and scoped-fail semantics through
+    /// canonicalization to produce it.
     #[allow(clippy::type_complexity)]
     pub fn check_in_order<E>(
         &self,
@@ -107,33 +119,27 @@ impl<'a> ModuleWalker<'a> {
             interfaces: &HashMap<Name, crate::compiler::Interface>,
             source: &crate::compiler::parser::Module,
         ) -> Result<super::canonical::Module, E>,
-    ) -> Result<Vec<crate::compiler::canonical::Module>, Vec<E>> {
-        let iter = self
-            .modules
-            .iter()
-            .map(|module| match check(package, interfaces, module) {
+    ) -> (Vec<crate::compiler::canonical::Module>, Vec<E>) {
+        let mut modules = Vec::new();
+        let mut errors = Vec::new();
+
+        for module in self.modules.iter() {
+            match check(package, interfaces, module) {
                 Ok(m) => {
                     // Once we have successfuly checked a module, we can add it to the available interfaces
                     // for the following modules.
-                    // TODO We might want to have a less strict approach if we want to make some progress
-                    // in dependent modules even if the current one doesn't pass all checks (accumulate
-                    // more errors to show at once to the programmer).
-                    // In term of types, it means having check return something like Result<(Module, Errors), Errors>.
-                    // The overall Result is for the errors stopping us from building the minimum required to make
-                    // a Module. This might not be required if we decide how to default the Exports (the rest is vec based,
-                    // so can be default to ignore). This also means the whole canonicalization process will have to be
-                    // rewritten to have scoped-fail semantics.
                     let iface_name = m.name.name().clone();
                     let iface = m.to_interface();
                     debug!("Inserting {} with value {:?}", iface_name, iface);
                     interfaces.insert(iface_name, iface);
 
-                    Ok(m)
+                    modules.push(m);
                 }
-                Err(err) => Err(err),
-            });
+                Err(err) => errors.push(err),
+            }
+        }
 
-        collect_accumulate(iter)
+        (modules, errors)
     }
 }
 
@@ -168,33 +174,63 @@ mod tests {
         Name::new(s)
     }
 
-    fn dummy_check(
-        package: &PackageName,
-        _interfaces: &HashMap<Name, Interface>,
-        source: &parser::Module,
-    ) -> Result<canonical::Module, ()> {
-        Ok(canonical::Module {
+    /// An empty canonical module standing in for whatever the real checker would
+    /// have produced. Shared by the checkers below, which differ only in which
+    /// modules they refuse.
+    fn dummy_module(package: &PackageName, source: &parser::Module) -> canonical::Module {
+        canonical::Module {
             name: ModuleName::new(package.clone(), source.name.clone()),
             exports: canonical::Exports::Everything,
             infixes: HashMap::new(),
             types: HashMap::new(),
             values: HashMap::new(),
             binding_javascript: false,
-        })
+        }
+    }
+
+    fn dummy_check(
+        package: &PackageName,
+        _interfaces: &HashMap<Name, Interface>,
+        source: &parser::Module,
+    ) -> Result<canonical::Module, ()> {
+        Ok(dummy_module(package, source))
+    }
+
+    /// Like `dummy_check`, except module `b` always fails. Used to pin `BUG-2`:
+    /// `check_in_order` must keep checking (and reporting) every other module
+    /// rather than discarding them because one sibling failed.
+    ///
+    /// The error carries the failing module's name rather than being `()` so the
+    /// test can assert *which* module failed; with `E = ()` the type system already
+    /// guarantees the contents and only the arity would be under test.
+    fn dummy_check_fails_for_b(
+        package: &PackageName,
+        _interfaces: &HashMap<Name, Interface>,
+        source: &parser::Module,
+    ) -> Result<canonical::Module, Name> {
+        if source.name.as_str() == "b" {
+            Err(source.name.clone())
+        } else {
+            Ok(dummy_module(package, source))
+        }
     }
 
     fn assert_walker_processed_order(walker: ModuleWalker, expected: Vec<&str>) {
         let name = crate::compiler::PackageName::new("author", "project");
         let mut ifaces = HashMap::new();
-        let res: Result<Vec<canonical::Module>, Vec<()>> =
+        let (modules, errors): (Vec<canonical::Module>, Vec<()>) =
             walker.check_in_order(&name, &mut ifaces, dummy_check);
 
+        assert_eq!(errors, Vec::new());
         assert_eq!(
-            res.map(|v| v
+            modules
                 .into_iter()
                 .map(|m| m.name.name().as_str().to_string())
-                .collect::<Vec<_>>()),
-            Ok(expected.into_iter().map(|s| s.to_string()).collect())
+                .collect::<Vec<_>>(),
+            expected
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
         );
     }
 
@@ -268,5 +304,46 @@ mod tests {
             walker.expect("no errors here"),
             vec!["a", "c", "b", "d", "e", "f", "g", "i", "h"],
         )
+    }
+
+    /// `BUG-2`: one failing module used to make `check_in_order` discard every
+    /// module that checked successfully, returning `Err(errors)` with no way to
+    /// recover the successes. It must now hand back both: the modules that
+    /// checked, and the errors from the ones that didn't.
+    ///
+    /// Mutation-checked with `modules.clear()` before the `(modules, errors)` return
+    /// below, guarded on `!errors.is_empty()` — the old discard behaviour, expressed
+    /// in a way that still compiles against the tuple return type. It turns this test
+    /// red, since `successes` then comes back empty instead of `["a", "c"]`.
+    /// (Literally restoring `collect_accumulate` would not be rerunnable: it changes
+    /// the return type back to `Result<Vec<Module>, Vec<E>>`, so the destructuring
+    /// below stops typechecking and the test fails to build rather than to assert.)
+    #[test]
+    fn check_in_order_keeps_successful_modules_when_one_fails() {
+        let a = module("a", vec![]);
+        let b = module("b", vec!["a"]);
+        let c = module("c", vec!["b"]);
+
+        let modules = vec![a, b, c];
+        let walker = ModuleWalker::new(&modules).expect("no errors here");
+
+        let name = crate::compiler::PackageName::new("author", "project");
+        let mut ifaces = HashMap::new();
+        let (successes, errors) =
+            walker.check_in_order(&name, &mut ifaces, dummy_check_fails_for_b);
+
+        assert_eq!(
+            errors,
+            vec![Name::new("b")],
+            "expected exactly the one error, and for `b`"
+        );
+        assert_eq!(
+            successes
+                .into_iter()
+                .map(|m| m.name.name().as_str().to_string())
+                .collect::<Vec<_>>(),
+            vec!["a".to_string(), "c".to_string()],
+            "expected the non-failing modules to still be returned"
+        );
     }
 }
