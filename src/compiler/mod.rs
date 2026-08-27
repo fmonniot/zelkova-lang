@@ -33,7 +33,13 @@ use std::io::Write;
 use std::path::Path;
 
 pub mod canonical;
-mod dependencies;
+// Public so that `tests/pipeline.rs` can drive `ModuleWalker::check_in_order` with the
+// real `check_module`, which is the only seam that observes the modules that checked
+// successfully alongside the ones that failed (`BUG-2`) — `compile_package` only reports
+// them to stderr. `dependencies::Error` was already reachable from the public
+// `CompilationError::DependenciesError`, so this names an existing part of the API
+// rather than widening it.
+pub mod dependencies;
 mod exhaustiveness;
 pub mod name;
 pub mod parser;

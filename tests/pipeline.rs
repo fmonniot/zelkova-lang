@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use codespan_reporting::files::SimpleFile;
+use zelkova_lang::compiler::dependencies::ModuleWalker;
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::source::load_package_sources;
 use zelkova_lang::compiler::{
@@ -345,7 +346,79 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
     }
 }
 
-// ── Test 11: Bitwise checks against the Js.Bitwise facade ────────────────────
+// ── Test 11: a failing module does not discard its passing siblings ──────────
+
+/// `BUG-2`: `check_in_order` must hand back the modules that checked *and* the
+/// errors from the ones that didn't.
+///
+/// `tests/fixtures/package_canonicalize_fails` is the ticket's scenario: `Broken.zel`
+/// imports a module that does not exist, `Fine.zel` checks cleanly. Before the fix
+/// every success was discarded as soon as one module failed, which is why
+/// `compile_package` had no list of checked modules to report — the user-visible half
+/// of the ticket's Acceptance.
+///
+/// This drives the *real* `check_module`, which is what the `dummy_check` unit test in
+/// `src/compiler/dependencies.rs` cannot do. Mutation-checked by clearing `modules` at
+/// the end of `check_in_order` whenever `errors` is non-empty: that turns the `Fine`
+/// assertion below red.
+#[test]
+fn check_in_order_keeps_passing_siblings_with_the_real_checker() {
+    let root = fixture_package("package_canonicalize_fails");
+    let sources = load_package_sources(&root)
+        .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
+
+    let modules: Vec<parser::Module> = sources
+        .iter()
+        .map(|(_, file)| {
+            parser::parse(file.file())
+                .unwrap_or_else(|e| panic!("parse error in {:?}: {:?}", file.file().name(), e))
+        })
+        .collect();
+    // Same reasoning as `module_names`: an empty fixture would make every assertion
+    // below vacuous, so establish there are two modules before checking them.
+    assert_eq!(
+        modules.len(),
+        2,
+        "fixture should hold Broken.zel and Fine.zel"
+    );
+
+    let walker = ModuleWalker::new(&modules).expect("no dependency cycle in the fixture");
+    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
+    let (checked, errors) = walker.check_in_order(&std_package(), &mut interfaces, check_module);
+
+    let checked_names: Vec<String> = checked
+        .iter()
+        .map(|m| m.name.name().as_str().to_string())
+        .collect();
+    assert_eq!(
+        checked_names,
+        vec!["Fine".to_string()],
+        "the module that checks must survive its broken sibling"
+    );
+
+    // The error half, asserted down to the variant so that "an error was reported"
+    // cannot be satisfied by an error about the wrong module.
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+    match &errors[0] {
+        CompilationError::Canonical(canonical_errors, module) => {
+            assert_eq!(module, &Name::from("Broken"));
+            assert!(
+                !canonical_errors.is_empty(),
+                "expected the canonical errors to be carried through"
+            );
+        }
+        other => panic!("expected a Canonical error for Broken, got {:?}", other),
+    }
+
+    // Reporting the survivors must not turn the package green: the errors still flow
+    // into `compile_package`'s accumulator, so the package as a whole still fails.
+    assert!(
+        compile_package(&root).is_err(),
+        "a package with a broken module must still fail overall"
+    );
+}
+
+// ── Test 12: Bitwise checks against the Js.Bitwise facade ────────────────────
 
 /// `Bitwise.zel` resolves its primitives through `Js.Bitwise`, not Elm's kernel.
 ///
@@ -388,7 +461,7 @@ fn stdlib_bitwise_compiles() {
     assert!(interfaces.contains_key(&"Bitwise".into()));
 }
 
-// ── Test 12: the standard library is a package that compiles ─────────────────
+// ── Test 13: the standard library is a package that compiles ─────────────────
 
 /// `std/core/src` — what `cargo run` compiles — must compile cleanly.
 ///
