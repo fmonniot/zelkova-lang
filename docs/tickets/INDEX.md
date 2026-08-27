@@ -25,7 +25,7 @@ secondary labels for context, a suggestion where one exists. They have a depende
 picking one up out of order mostly does not work:
 
 ```
-BUG-6  rendering panics on 4 parse errors + 2 tokenizer errors   ← independent, small
+BUG-6  rendering panics on 4 parse errors + 2 tokenizer errors   ← done 2026-08-27
   │
 ERR-3  spans in the parser + canonical ASTs; PhaseError::labels() ← foundation
   │
@@ -93,7 +93,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-3 | bug | low | closed 2026-08-25 | `Bitwise.zel` imports the non-existent `Elm.Kernel.Bitwise` |
 | BUG-4 | bug | medium | closed 2026-08-25 | The `Layout` iterator never terminates after a `LayoutError` |
 | BUG-5 | bug | medium | closed 2026-08-26 | The `Tokenizer` never terminates on a tab used for indentation |
-| [BUG-6](bug-6.md) | bug | medium | open | Rendering a parse error panics for four of `parser::Error`'s five variants |
+| BUG-6 | bug | medium | closed 2026-08-27 | Rendering a parse error panics for four of `parser::Error`'s five variants |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | [ERR-3](err-3.md) | task | — | open | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | [ERR-4](err-4.md) | task | — | open | Type errors point at the sub-expression, not at the whole declaration |
