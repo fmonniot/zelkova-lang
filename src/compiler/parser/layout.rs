@@ -426,10 +426,12 @@ where
     /// at most one error and then terminates, rather than the same error
     /// repeated without bound.
     ///
-    /// This deliberately forecloses accumulating layout diagnostics: should the
-    /// layout phase ever need to report every error rather than stop at the
-    /// first (`ERR-2`), this fuse is what has to change, and the branch above
-    /// would need a state transition that guarantees forward progress.
+    /// This deliberately forecloses accumulating layout diagnostics. The phases
+    /// after parsing do accumulate — canonicalization, type checking and
+    /// exhaustiveness all return `Result<_, Vec<Error>>` so one bad declaration
+    /// cannot hide the next — and should layout ever want the same, this fuse is
+    /// what has to change: the branch above would need a state transition that
+    /// guarantees forward progress before the error could be resumed from.
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;

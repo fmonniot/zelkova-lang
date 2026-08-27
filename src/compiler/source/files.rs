@@ -1,3 +1,4 @@
+use crate::compiler::PhaseError;
 use codespan_reporting::files::{Error as FilesError, Files, SimpleFile};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -55,31 +56,33 @@ pub struct SourceFileError {
     abs_path: PathBuf,
 }
 
-impl SourceFileError {
-    pub fn file_name(&self) -> String {
-        format!("{}", self.abs_path.display())
-    }
-
-    pub fn message(&self) -> &'static str {
-        match &self.error {
+/// Loading is the one phase that has no module and no source text to point into —
+/// it failed before either existed — so its errors name the path instead. It goes
+/// through [`PhaseError`] anyway, so that `as_diagnostic` has exactly one way to
+/// turn a phase error into text.
+impl PhaseError for SourceFileError {
+    fn message(&self) -> String {
+        let detail = match &self.error {
             SourceFileErrorType::InvalidPathPrefix => {
-                "The module path doesn't start with the package path."
+                "the module path doesn't start with the package path"
             }
-            SourceFileErrorType::Io(_) => "An I/O error occured while reading the module",
+            SourceFileErrorType::Io(_) => "an I/O error occured while reading the module",
             SourceFileErrorType::NonUtf8Module(_) => {
                 // Maybe we should add some details as to where the incorrect characters are ?
-                "Module name must be utf-8 encoded"
+                "module names must be utf-8 encoded"
             }
-        }
+        };
+
+        format!("{}: {}", self.abs_path.display(), detail)
     }
 
-    pub fn note(&self) -> Option<String> {
+    fn notes(&self) -> Vec<String> {
         match &self.error {
-            SourceFileErrorType::InvalidPathPrefix => None,
-            SourceFileErrorType::Io(err) => Some(format!("detailled error: {:?}", err)),
+            SourceFileErrorType::InvalidPathPrefix => vec![],
+            SourceFileErrorType::Io(err) => vec![format!("detailled error: {:?}", err)],
             SourceFileErrorType::NonUtf8Module(rel_path) => {
                 // Maybe we should add some details as to where the incorrect characters are ?
-                Some(format!("relative path: {}", rel_path.display()))
+                vec![format!("relative path: {}", rel_path.display())]
             }
         }
     }

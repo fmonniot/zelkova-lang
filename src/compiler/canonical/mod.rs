@@ -15,6 +15,7 @@
 //! TODO Rename this to core ? I feel it's going to be te main internal representation of the language.
 use super::parser;
 use super::Interface;
+use super::PhaseError;
 use super::{ModuleName, PackageName};
 use crate::utils::collect_accumulate;
 use log::{debug, trace};
@@ -426,6 +427,109 @@ pub enum Error {
 
     // Utility error
     Many(Vec<Error>),
+}
+
+/// Canonicalization errors name source constructs — a value, a type, an operator —
+/// so their messages can be written in the same words the user wrote.
+///
+/// None of them points at a span: nothing in `parser::Module` carries one, so there
+/// is nothing to point *with*. See [`PhaseError`] for that decision and the ticket
+/// that reverses it.
+impl PhaseError for Error {
+    fn message(&self) -> String {
+        match self {
+            Error::ExportNotFound(name, tpe) => format!(
+                "`{}` is exposed by this module but no {} of that name is declared in it",
+                name,
+                export_type_noun(tpe)
+            ),
+            Error::EnvironmentErrors(errors) => match errors.as_slice() {
+                [only] => only.message(),
+                many => format!("{} of this module's imports could not be resolved", many.len()),
+            },
+            Error::InfixReferenceInvalidValue(infix, function) => format!(
+                "the infix operator `{}` is declared as `{}`, which is not a value declared in this module",
+                infix, function
+            ),
+            Error::BindingPatternsInvalidLen => {
+                "the arguments of this declaration do not line up with its type annotation"
+                    .to_owned()
+            }
+            Error::NoBindings => "this declaration has a type annotation but no body".to_owned(),
+            Error::VariableNotFound(name) => {
+                format!("cannot find a value named `{}`", name.to_name())
+            }
+            Error::AmbiguousVariables(name, _) => {
+                format!("`{}` is exposed by several imported modules", name)
+            }
+            Error::VariantNotFound(name) => {
+                format!("cannot find a type constructor named `{}`", name.to_name())
+            }
+            Error::AmbiguousVariants(name, _) => format!(
+                "the type constructor `{}` is exposed by several imported modules",
+                name
+            ),
+            Error::InvalidTupleSize(size) => format!(
+                "a tuple has two or three elements, this one has {}",
+                size
+            ),
+            Error::MultipleBindingsUnsupported(name) => format!(
+                "`{}` is declared over several bindings, which is not supported yet",
+                name
+            ),
+            Error::InfixDeclared(name) => format!(
+                "a `module javascript` facade cannot declare an infix operator, but declares `{}`",
+                name
+            ),
+            Error::TypeDeclared(name) => format!(
+                "a `module javascript` facade cannot declare a type, but declares `{}`",
+                name
+            ),
+            Error::NoTypeInBinding(name) => format!(
+                "`{}` has no type annotation, and a `module javascript` facade is annotations only",
+                name
+            ),
+            Error::Many(errors) => match errors.as_slice() {
+                [only] => only.message(),
+                many => format!("{} errors while canonicalizing this module", many.len()),
+            },
+        }
+    }
+
+    fn notes(&self) -> Vec<String> {
+        match self {
+            Error::AmbiguousVariables(_, modules) | Error::AmbiguousVariants(_, modules) => {
+                vec![format!(
+                    "it is exposed by: {}",
+                    modules
+                        .iter()
+                        .map(|m| m.name().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )]
+            }
+            // A group renders as a summary, so every message it swallowed becomes a
+            // note. A group of one is rendered by its own message and adds nothing.
+            Error::EnvironmentErrors(errors) => match errors.as_slice() {
+                [only] => only.notes(),
+                many => many.iter().flat_map(|e| e.message_and_notes()).collect(),
+            },
+            Error::Many(errors) => match errors.as_slice() {
+                [only] => only.notes(),
+                many => many.iter().flat_map(|e| e.message_and_notes()).collect(),
+            },
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// How a name is exposed, said in the words the source uses for it.
+fn export_type_noun(tpe: &ExportType) -> &'static str {
+    match tpe {
+        ExportType::Value => "value",
+        ExportType::Infix => "infix operator",
+        ExportType::UnionPublic | ExportType::UnionPrivate => "type",
+    }
 }
 
 impl From<Vec<EnvError>> for Error {

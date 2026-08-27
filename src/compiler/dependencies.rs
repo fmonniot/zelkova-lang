@@ -46,6 +46,37 @@ pub enum Error {
     CycleDetected(Vec<Vec<Name>>),
 }
 
+/// A dependency cycle belongs to the package, not to any one module, so its message
+/// names the modules involved rather than being prefixed with one of them.
+impl crate::compiler::PhaseError for Error {
+    fn message(&self) -> String {
+        match self {
+            Error::CycleDetected(cycles) => format!(
+                "{} circular dependenc{} between modules",
+                cycles.len(),
+                if cycles.len() == 1 { "y" } else { "ies" }
+            ),
+        }
+    }
+
+    fn notes(&self) -> Vec<String> {
+        match self {
+            // Each cycle is written back to its start, so it reads as the loop it is:
+            // `A -> B -> A`.
+            Error::CycleDetected(cycles) => cycles
+                .iter()
+                .map(|cycle| {
+                    let mut path: Vec<String> = cycle.iter().map(|name| name.to_string()).collect();
+                    if let Some(first) = path.first().cloned() {
+                        path.push(first);
+                    }
+                    format!("cycle: {}", path.join(" -> "))
+                })
+                .collect(),
+        }
+    }
+}
+
 impl<'a> ModuleWalker<'a> {
     pub fn new(modules: &'a [Module]) -> Result<ModuleWalker<'a>, Error> {
         let mut graph = DiGraph::new();

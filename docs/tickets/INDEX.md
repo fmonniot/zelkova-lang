@@ -70,7 +70,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-3 | bug | low | closed 2026-08-25 | `Bitwise.zel` imports the non-existent `Elm.Kernel.Bitwise` |
 | BUG-4 | bug | medium | closed 2026-08-25 | The `Layout` iterator never terminates after a `LayoutError` |
 | [BUG-5](bug-5.md) | bug | medium | open | The `Tokenizer` never terminates on a tab used for indentation |
-| [ERR-2](err-2.md) | task | — | open | Unify the error-handling strategy across compiler phases |
+| ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
+| [ERR-3](err-3.md) | task | — | open | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

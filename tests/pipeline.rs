@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use codespan_reporting::diagnostic::Severity;
 use codespan_reporting::files::SimpleFile;
 use zelkova_lang::compiler::dependencies::ModuleWalker;
 use zelkova_lang::compiler::name::Name;
@@ -499,4 +500,111 @@ fn stdlib_package_compiles() {
     let result = compile_package(&src);
 
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+// ── Test 14: a type error reaches the user as a real diagnostic ──────────────
+
+/// `ERR-2`: a type error must render as an `error` naming both types.
+///
+/// This is the whole point of the ticket. `From<typer::Error> for CompilationError`
+/// used to return `CompilationError::PlaceHolder`, which discarded the typer error
+/// and rendered as `Diagnostic::bug()` with the message "A non implemented error
+/// message have been emitted" — so every type error in the language reached the user
+/// as the same sentence, naming nothing. The assertions below are therefore on the
+/// *rendered* diagnostic, not on `is_err()`: which error is raised, and what it says,
+/// is the behaviour that changed.
+///
+/// `!message.contains("TypeMismatch")` is not redundant with the two `contains`
+/// above it: `format!("{:?}", e)` on the same error also contains "Int" and "Bool".
+/// It is what tells a real message from the `Debug` dump the other phases used to
+/// emit.
+///
+/// Mutation-checked three ways, each of which turns it red on its own: replacing the
+/// `Type` arm of `as_diagnostic` with the old `Debug`-dump-in-a-note rendering; making
+/// `phase_diagnostic` build `Diagnostic::warning()`; and dropping the `expected`/
+/// `actual` types out of `typer::Error::message`.
+#[test]
+fn type_error_renders_as_an_error_naming_both_types() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        answer : Int
+        answer = true
+    "#};
+    let parsed = parse_source(source);
+    let interfaces = HashMap::new();
+
+    let error = check_module(&test_package(), &interfaces, &parsed)
+        .expect_err("`answer : Int` with a `Bool` body must not type-check");
+
+    // The phase is part of the contract: a type error must not be reported as, say,
+    // a canonicalization failure that happened to mention the same names.
+    match &error {
+        CompilationError::Type(errors, module) => {
+            assert_eq!(module, &Name::from("Test"));
+            assert_eq!(errors.len(), 1, "expected one type error, got {:?}", errors);
+        }
+        other => panic!("expected a Type error, got {:?}", other),
+    }
+
+    let diagnostic = error.as_diagnostic();
+
+    assert_eq!(diagnostic.severity, Severity::Error);
+
+    let message = &diagnostic.message;
+    assert!(
+        message.contains("Int"),
+        "the annotated type should be named, got {:?}",
+        message
+    );
+    assert!(
+        message.contains("Bool"),
+        "the inferred type should be named, got {:?}",
+        message
+    );
+    assert!(
+        !message.contains("TypeMismatch"),
+        "the message should be prose, not a Debug dump, got {:?}",
+        message
+    );
+}
+
+// ── Test 15: every phase error renders as prose, not a Debug dump ────────────
+
+/// `ERR-2`: the canonical arm of `as_diagnostic` used to say "Canonical error
+/// messages are not implemented yet" and put `format!("{:?}", e)` in a note.
+///
+/// `package_canonicalize_fails` is the existing fixture for a module that fails to
+/// canonicalize (`Broken.zel` imports a module that does not exist), so this asserts
+/// on the same failure the two tests above already produce — only on what it *says*.
+///
+/// Mutation-checked by restoring that message and the `{:?}` note in the `Canonical`
+/// arm: `NonExistent` then appears only inside the `Debug` dump in a note, so the
+/// message assertion goes red.
+#[test]
+fn canonical_error_renders_as_prose_naming_the_missing_module() {
+    let root = fixture_package("package_canonicalize_fails");
+
+    let error = compile_package(&root).expect_err("the fixture must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    let message = &errors[0].as_diagnostic().message;
+    assert!(
+        message.contains("Broken"),
+        "the failing module should be named, got {:?}",
+        message
+    );
+    assert!(
+        message.contains("NonExistent"),
+        "the module that could not be found should be named, got {:?}",
+        message
+    );
+    assert!(
+        !message.contains("not implemented yet"),
+        "the message should describe the failure, got {:?}",
+        message
+    );
 }

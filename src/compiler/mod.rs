@@ -20,7 +20,10 @@
 //!     1. check each module (type check, exhaustiveness, etc…)
 //!     1. Bonus point to parallelize the tree branches which are not dependent on each others
 //! 6. Once we have a module with all checks passing, create its interface and emit AST/interface
-//! 7. TODO Try a way to weave error management in each of those passes :)
+//! 7. Report. Each phase returns every error it found, `check_module` tags those with
+//!    the module they came from, and `compile_package` accumulates them across modules
+//!    and renders them all through `CompilationError::as_diagnostic` — the one place a
+//!    `Diagnostic` is built. See the `PhaseError` trait for what a phase error owes it.
 //!
 
 use codespan_reporting::diagnostic::Diagnostic;
@@ -40,7 +43,11 @@ pub mod canonical;
 // `CompilationError::DependenciesError`, so this names an existing part of the API
 // rather than widening it.
 pub mod dependencies;
-mod exhaustiveness;
+// Public for the same reason as `dependencies`: `exhaustiveness::Error` is
+// reachable from the public `CompilationError::Exhaustiveness`, so the module
+// that defines it has to be nameable. It also puts the last phase module on the
+// same footing as `canonical`, `typer` and `parser`.
+pub mod exhaustiveness;
 pub mod name;
 pub mod parser;
 pub mod position;
@@ -118,13 +125,104 @@ pub struct Interface {
     pub infixes: HashMap<Name, canonical::Infix>,
 }
 
-// We may be able to not list all errors by asking a trait
-// AsDiagnostic instead. Maybe. Or just a Diagnostic.
+/// What a compiler phase owes the diagnostic reporter.
+///
+/// Each phase keeps its own error type — one enum for the whole compiler would make
+/// every phase depend on the vocabulary of every other. What they have to share is
+/// the ability to describe themselves in the user's terms, because
+/// [`CompilationError::as_diagnostic`] is the only place a `Diagnostic` is ever
+/// built and it has no phase-specific knowledge to fall back on. Dumping
+/// `format!("{:?}", e)` into a note is exactly what this trait replaces: a `Debug`
+/// dump names Rust types, not source constructs.
+///
+/// # Why there is no span here
+///
+/// The reporter would rather have a `Span<BytePos>` and the [`SourceFileId`] it
+/// belongs to, so it could point at the offending source. Only `parser::Error` can
+/// supply one, and it does — it builds its own labelled `Diagnostic` through
+/// `parser::Error::diagnostic` and deliberately does *not* go through this trait.
+///
+/// Every phase after parsing reads an AST with no positions in it at all:
+/// `grammar.lalrpop` never captures `@L`/`@R`, so no `parser::Module` node carries a
+/// span, and nothing canonicalization derives from it does either. A canonical or
+/// typer error therefore has nothing to point at, whatever shape its error type is
+/// given — adding a `span` field would only move the problem to the construction
+/// site, which has no span to hand it. Making that possible means giving both ASTs
+/// spans, which is a grammar-wide change; it is tracked separately as `ERR-3` (see
+/// `docs/tickets/INDEX.md`). Until it lands, phases after parsing render as a
+/// message plus notes, with no label.
+///
+/// The `SourceFileId` half is settled and stays settled: a phase never knows it. It
+/// is attached by `compile_package`, the only place that knows which file a module
+/// was read from — the way `CompilationError::Source` already works.
+pub trait PhaseError {
+    /// One line naming what went wrong, in the vocabulary of the user's source.
+    ///
+    /// This is rendered as the diagnostic's headline, so it has to read on its own:
+    /// no `{:?}`, no Rust type names.
+    fn message(&self) -> String;
+
+    /// Supporting detail, one string per rendered note. Empty by default.
+    fn notes(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// This error's message followed by its notes.
+    ///
+    /// A `Diagnostic` has one headline, so an error that ends up inside a group —
+    /// several errors from one phase, or a variant like `canonical::Error::Many`
+    /// that wraps others — has to give up its headline and become notes. This is
+    /// that demotion, in one place, so a group cannot silently drop the message of
+    /// a member it swallowed.
+    fn message_and_notes(&self) -> Vec<String> {
+        std::iter::once(self.message())
+            .chain(self.notes())
+            .collect()
+    }
+}
+
+/// Render the errors one phase produced for one module.
+///
+/// A `Diagnostic` has room for exactly one headline, so a lone error gets to be that
+/// headline and a group is summarised instead, with every message demoted to a note.
+/// `phase` names the phase in that summary line ("canonical", "type", …).
+fn phase_diagnostic<E: PhaseError>(
+    module: &Name,
+    phase: &str,
+    errors: &[E],
+) -> Diagnostic<SourceFileId> {
+    match errors {
+        [only] => Diagnostic::error()
+            .with_message(format!("[{}] {}", module, only.message()))
+            .with_notes(only.notes()),
+        many => Diagnostic::error()
+            .with_message(format!(
+                "[{}] {} {} error{}",
+                module,
+                many.len(),
+                phase,
+                if many.len() == 1 { "" } else { "s" }
+            ))
+            .with_notes(many.iter().flat_map(|e| e.message_and_notes()).collect()),
+    }
+}
+
+/// Every way compiling a package can fail, tagged with the phase that failed.
+///
+/// Each phase-carrying variant holds *all* the errors that phase produced for one
+/// module rather than only the first, plus the module's [`Name`], which is what
+/// `as_diagnostic` puts in front of the message. Rendering goes through
+/// [`PhaseError`]; see that trait for why no variant here carries a span.
 #[derive(Debug)]
 pub enum CompilationError {
     LoadingFiles(Vec<SourceFileError>),
     Source(parser::Error, SourceFileId),
     Canonical(Vec<canonical::Error>, Name),
+    /// Type checking failed for the named module.
+    Type(Vec<typer::Error>, Name),
+    /// Exhaustiveness checking failed for the named module. Unreachable while
+    /// `exhaustiveness::check` is a stub, but rendered like any other phase.
+    Exhaustiveness(Vec<exhaustiveness::Error>, Name),
     DependenciesError(dependencies::Error),
 
     /// Every error accumulated over one compilation pass.
@@ -134,45 +232,36 @@ pub enum CompilationError {
     /// how that accumulation becomes a failure again at the end of the pass, with the
     /// typed errors still intact for the caller to inspect.
     Many(Vec<CompilationError>),
-
-    /// Not an error, but something I use until I get to implement the actual error.
-    /// Ultimately, this error should be removed from the code base
-    PlaceHolder,
 }
 
 impl CompilationError {
-    fn as_diagnostic(&self) -> Diagnostic<SourceFileId> {
+    /// Turn this error into the diagnostic the user reads.
+    ///
+    /// This is the compiler's single rendering point — `compile_package` calls it
+    /// and nothing else builds a `Diagnostic` from a phase error. It is public so
+    /// that a test can assert on what the user is actually shown, rather than on
+    /// `is_err()`: what a failure *says* is the behaviour this method exists for.
+    pub fn as_diagnostic(&self) -> Diagnostic<SourceFileId> {
         match self {
+            // The one phase that carries spans renders its own labelled diagnostic.
             CompilationError::Source(err, file_id) => err.diagnostic(*file_id),
-            CompilationError::LoadingFiles(errors) => {
-                let notes = errors
-                    .iter()
-                    .map(|error| {
-                        format!(
-                            "{}\n{}\n{}",
-                            error.file_name(),
-                            error.message(),
-                            error.note().unwrap_or_else(|| "".to_owned())
-                        )
-                    })
-                    .collect();
-
-                Diagnostic::error()
-                    .with_message("Error while loading the package files")
-                    .with_notes(notes)
+            // Loading failures are not attached to a module — there is no module yet,
+            // and each error names its own file instead.
+            CompilationError::LoadingFiles(errors) => Diagnostic::error()
+                .with_message("Error while loading the package files")
+                .with_notes(errors.iter().flat_map(|e| e.message_and_notes()).collect()),
+            CompilationError::Canonical(errors, module) => {
+                phase_diagnostic(module, "canonical", errors)
             }
-            CompilationError::Canonical(errors, module_name) => Diagnostic::error()
-                .with_message(format!(
-                    "[{}] Canonical error messages are not implemented yet",
-                    module_name
-                ))
-                .with_notes(errors.iter().map(|e| format!("{:?}", e)).collect()),
-            CompilationError::PlaceHolder => {
-                Diagnostic::bug().with_message("A non implemented error message have been emitted")
+            CompilationError::Type(errors, module) => phase_diagnostic(module, "type", errors),
+            CompilationError::Exhaustiveness(errors, module) => {
+                phase_diagnostic(module, "exhaustiveness", errors)
             }
+            // A dependency cycle belongs to the package, not to any one module, so it
+            // does not go through `phase_diagnostic`.
             CompilationError::DependenciesError(err) => Diagnostic::error()
-                .with_message("Dependencies error messages are not implemented yet")
-                .with_notes(vec![format!("{:?}", err)]),
+                .with_message(err.message())
+                .with_notes(err.notes()),
             // `compile_package` renders each accumulated error individually rather than
             // wrapping first, so this arm only fires when a `Many` is rendered as a
             // whole. It summarises rather than repeating what those diagnostics said.
@@ -189,23 +278,15 @@ impl CompilationError {
     fn from(err: parser::Error, source_id: SourceFileId) -> Self {
         CompilationError::Source(err, source_id)
     }
-
-    fn canonical(errors: Vec<canonical::Error>, module: Name) -> Self {
-        CompilationError::Canonical(errors, module)
-    }
 }
 
-impl From<typer::Error> for CompilationError {
-    fn from(_err: typer::Error) -> Self {
-        CompilationError::PlaceHolder
-    }
-}
-
-impl From<exhaustiveness::Error> for CompilationError {
-    fn from(_err: exhaustiveness::Error) -> Self {
-        todo!()
-    }
-}
+// There is deliberately no `From<typer::Error>` or `From<exhaustiveness::Error>`
+// here. Both used to exist and neither could be written honestly: a `CompilationError`
+// needs the name of the module its error belongs to, and a phase error does not know
+// it. `From` has nowhere to get it from, so the two impls lost information instead —
+// one discarded the error and the other panicked. `check_module` is the one place that
+// knows both halves, so that is where the conversion happens (see `ERR-2` in
+// `docs/tickets/INDEX.md`).
 
 impl From<dependencies::Error> for CompilationError {
     fn from(err: dependencies::Error) -> Self {
@@ -391,16 +472,22 @@ pub fn check_module(
     // the type checker. It would also be something that can be used
     // as an information dump for dependencies (keep types solved as
     // a result and don't type checks those modules more than once).
+    //
+    // Each phase accumulates its own errors and hands back all of them; this is where
+    // they are tagged with the module they came from, because a phase only ever sees
+    // one module and has no reason to carry its name around.
     let canonical = canonical::canonicalize(package, interfaces, source)
-        .map_err(|errors| CompilationError::canonical(errors, source.name.clone()))?;
+        .map_err(|errors| CompilationError::Canonical(errors, source.name.clone()))?;
 
     // - type checking and inference
     // TODO Here either type checks return the new types, or it take a mutable canonical
     // representation and "fill the blank" directly on the canonical AST.
-    typer::type_check(&canonical)?;
+    typer::type_check(&canonical)
+        .map_err(|errors| CompilationError::Type(errors, source.name.clone()))?;
 
     // verify in pattern matching branches that all variants are covered
-    exhaustiveness::check(&canonical)?;
+    exhaustiveness::check(&canonical)
+        .map_err(|errors| CompilationError::Exhaustiveness(errors, source.name.clone()))?;
 
     Ok(canonical)
 }
@@ -433,5 +520,83 @@ mod tests {
         ]));
 
         assert_eq!(error.as_diagnostic().severity, Severity::Error);
+    }
+
+    /// A dependency cycle names the modules in it, and names them as a loop.
+    ///
+    /// This arm used to say "Dependencies error messages are not implemented yet"
+    /// with `format!("{:?}", err)` in a note, so the module names only ever reached
+    /// the user inside a `Debug` dump. Mutation-checked by dropping the
+    /// write-back-to-the-start in `dependencies::Error::notes`, which turns the
+    /// trailing `-> A` assertion red.
+    #[test]
+    fn dependency_cycle_notes_spell_out_the_loop() {
+        let error = CompilationError::DependenciesError(dependencies::Error::CycleDetected(vec![
+            vec!["A".into(), "B".into()],
+        ]));
+
+        let diagnostic = error.as_diagnostic();
+
+        assert_eq!(diagnostic.message, "1 circular dependency between modules");
+        assert_eq!(diagnostic.notes, vec!["cycle: A -> B -> A".to_string()]);
+    }
+
+    /// `ERR-2`: `exhaustiveness::Error` was `pub enum Error {}` — uninhabited — and
+    /// `From<exhaustiveness::Error> for CompilationError` was `todo!()`. The
+    /// conversion could not fire only because the error could not be built; the
+    /// first error the real checker reported would have panicked the compiler.
+    ///
+    /// Nothing constructs this variant on a non-test path yet, so this test is what
+    /// establishes the phase can report at all. Mutation-checked by collapsing
+    /// `exhaustiveness::Error::message` to a constant string, which drops both names
+    /// out of the headline and turns the message assertion red.
+    #[test]
+    fn exhaustiveness_errors_render_as_errors() {
+        let error = CompilationError::Exhaustiveness(
+            vec![exhaustiveness::Error::NonExhaustiveMatch {
+                value: "describe".into(),
+                tpe: "Shape".into(),
+                missing: vec!["Square".into(), "Triangle".into()],
+            }],
+            "Test".into(),
+        );
+
+        let diagnostic = error.as_diagnostic();
+
+        assert_eq!(diagnostic.severity, Severity::Error);
+        assert_eq!(
+            diagnostic.message,
+            "[Test] the `case` expression in `describe` does not cover every variant of `Shape`"
+        );
+        assert_eq!(
+            diagnostic.notes,
+            vec!["no branch matches: Square, Triangle".to_string()]
+        );
+    }
+
+    /// A phase that reported several errors renders all of them, not just the first.
+    ///
+    /// `Diagnostic` has one headline, so a group is summarised and every message
+    /// becomes a note. Mutation-checked by making `phase_diagnostic` render only
+    /// `errors[0]`, which drops the second note.
+    #[test]
+    fn several_phase_errors_all_reach_the_notes() {
+        let error = CompilationError::Canonical(
+            vec![
+                canonical::Error::NoBindings,
+                canonical::Error::TypeDeclared("Shape".into()),
+            ],
+            "Test".into(),
+        );
+
+        let diagnostic = error.as_diagnostic();
+
+        assert_eq!(diagnostic.message, "[Test] 2 canonical errors");
+        assert_eq!(diagnostic.notes.len(), 2, "notes: {:?}", diagnostic.notes);
+        assert!(
+            diagnostic.notes[1].contains("Shape"),
+            "the second error must survive, got {:?}",
+            diagnostic.notes
+        );
     }
 }

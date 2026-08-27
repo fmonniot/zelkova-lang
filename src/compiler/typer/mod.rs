@@ -39,6 +39,7 @@ use super::canonical;
 use super::canonical::Module;
 use crate::compiler::name::Name;
 use crate::compiler::tuple::Tuple;
+use crate::compiler::PhaseError;
 use log::debug;
 use std::collections::HashMap;
 
@@ -50,7 +51,42 @@ pub enum Error {
     UnboundVariable(String),
 }
 
-pub fn type_check(module: &Module) -> Result<(), Error> {
+/// Type errors are about types, and [`Type`]'s `Display` writes them the way the
+/// source does — so the message can name both sides of a mismatch instead of
+/// dumping the typer's internal representation.
+///
+/// Like every phase after parsing, these carry no span: see
+/// [`PhaseError`](crate::compiler::PhaseError).
+impl PhaseError for Error {
+    fn message(&self) -> String {
+        match self {
+            Error::TypeMismatch { expected, actual } => {
+                format!("type mismatch: expected `{}`, found `{}`", expected, actual)
+            }
+            Error::UnificationFailed { left, right } => {
+                format!("cannot match `{}` with `{}`", left, right)
+            }
+            Error::CircularType => {
+                "circular type: a type variable would have to contain itself".to_owned()
+            }
+            Error::UnboundVariable(name) => format!("cannot find a value named `{}`", name),
+        }
+    }
+
+    fn notes(&self) -> Vec<String> {
+        match self {
+            Error::TypeMismatch { expected, .. } => vec![format!(
+                "the type annotation says `{}`; the body infers to something else",
+                expected
+            )],
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// Type check one canonical module, reporting *every* value that fails rather than
+/// stopping at the first — the shape `compile_package` is built to accumulate.
+pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
     // JavaScript binding modules use synthetic placeholder bodies — skip type checking.
     if module.binding_javascript {
         return Ok(());
@@ -134,7 +170,9 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
         }
     }
 
-    // Third pass: check each value
+    // Third pass: check each value. A value that fails is recorded and the pass
+    // moves on, so one broken declaration cannot hide the others.
+    let mut errors: Vec<Error> = vec![];
     for value in module.values.values() {
         let Some((term, annotation)) =
             value_to_term_and_annotation(value, &module.types, &mut counter)
@@ -146,7 +184,10 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
             // An unbound variable means the term references a top-level function whose
             // type we couldn't represent (e.g. Float-typed functions). Skip silently.
             Err(Error::UnboundVariable(_)) => continue,
-            Err(e) => return Err(e),
+            Err(e) => {
+                errors.push(e);
+                continue;
+            }
             Ok(t) => t,
         };
 
@@ -154,14 +195,20 @@ pub fn type_check(module: &Module) -> Result<(), Error> {
         if let Some(ann) = annotation {
             let mut constraints = std::collections::HashSet::new();
             constraints.insert(Constraint(inferred.clone(), ann.clone()));
-            unifier::unify(constraints).map_err(|_| Error::TypeMismatch {
-                expected: ann,
-                actual: inferred,
-            })?;
+            if unifier::unify(constraints).is_err() {
+                errors.push(Error::TypeMismatch {
+                    expected: ann,
+                    actual: inferred,
+                });
+            }
         }
     }
 
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 // ── Translation helpers ───────────────────────────────────────────────────────
@@ -528,6 +575,51 @@ impl std::fmt::Debug for Type {
             Type::Tuple(Tuple::Three(a, b, c)) => write!(f, "({:?}, {:?}, {:?})", a, b, c),
             Type::Adt(name, args) if args.is_empty() => write!(f, "{}", name),
             Type::Adt(name, args) => write!(f, "{}({:?})", name, args),
+        }
+    }
+}
+
+/// Writes a type the way the source would spell it, so diagnostics can quote it.
+///
+/// This is deliberately not `Debug`: `Debug` prints the typer's own vocabulary
+/// (`Lit(Int)`, `Var(#3)`), which is what you want at a breakpoint and never what
+/// you want in a message the user reads. Inference variables have no source syntax
+/// at all, so they are written `t3` — Elm's convention for an unsolved variable.
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Literal(TypeLiteral::Int) => write!(f, "Int"),
+            Type::Literal(TypeLiteral::Bool) => write!(f, "Bool"),
+            Type::Literal(TypeLiteral::Char) => write!(f, "Char"),
+            Type::Literal(TypeLiteral::Float) => write!(f, "Float"),
+            Type::Number => write!(f, "number"),
+            Type::Variable(TypeVariable { id }) => write!(f, "t{}", id),
+            // The parameter of a function type is parenthesised when it is itself a
+            // function, because `->` is right-associative: `(a -> b) -> c` and
+            // `a -> b -> c` are different types.
+            Type::Fun {
+                param_tpe,
+                return_tpe,
+            } => match **param_tpe {
+                Type::Fun { .. } => write!(f, "({}) -> {}", param_tpe, return_tpe),
+                _ => write!(f, "{} -> {}", param_tpe, return_tpe),
+            },
+            Type::Tuple(Tuple::Two(a, b)) => write!(f, "( {}, {} )", a, b),
+            Type::Tuple(Tuple::Three(a, b, c)) => write!(f, "( {}, {}, {} )", a, b, c),
+            Type::Adt(name, args) if args.is_empty() => write!(f, "{}", name),
+            Type::Adt(name, args) => {
+                write!(f, "{}", name)?;
+                for arg in args {
+                    // Same reason as above: an argument that is itself applied or a
+                    // function needs parentheses to stay the same type when re-read.
+                    match arg {
+                        Type::Adt(_, inner) if !inner.is_empty() => write!(f, " ({})", arg)?,
+                        Type::Fun { .. } => write!(f, " ({})", arg)?,
+                        _ => write!(f, " {}", arg)?,
+                    }
+                }
+                Ok(())
+            }
         }
     }
 }
