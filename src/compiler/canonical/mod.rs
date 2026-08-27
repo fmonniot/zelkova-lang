@@ -518,12 +518,11 @@ pub struct CaseBranch {
 /// The rest keep none, and that is a fact about the construction site rather than a
 /// gap to fill in. `ExportNotFound` is raised while walking `parser::Exposing` /
 /// `parser::Exposed`, neither of which the grammar spans — the exposing list is part
-/// of the `module` header production, not a declaration of its own. `NoBindings` is
-/// raised from a `Function` whose bindings vector is empty, where what the user
-/// should be pointed at is the missing body. Writing `NodeSpan::none()` into those
-/// variants would say "this error has a position we happen not to know", which is a
-/// lie; leaving the field off says "this error has nowhere to point", which is true,
-/// and the reporter renders it as message-plus-notes with no caret.
+/// of the `module` header production, not a declaration of its own. Writing
+/// `NodeSpan::none()` into such a variant would say "this error has a position we
+/// happen not to know", which is a lie; leaving the field off says "this error has
+/// nowhere to point", which is true, and the reporter renders it as
+/// message-plus-notes with no caret.
 #[derive(Debug)]
 pub enum Error {
     ExportNotFound(Name, ExportType),
@@ -531,7 +530,9 @@ pub enum Error {
     /// (infix, function), and where the `infix` declaration was written
     InfixReferenceInvalidValue(Name, Name, NodeSpan),
     BindingPatternsInvalidLen(NodeSpan),
-    NoBindings,
+    /// A declaration with a type annotation and no body, and where the annotation
+    /// was written — which is the only part of it there is to point at.
+    NoBindings(NodeSpan),
     /// A name used as a value that nothing in scope declares, and where it was
     /// written — the identifier alone, not the declaration around it.
     VariableNotFound(QualName, NodeSpan), // add name suggestion ?
@@ -592,7 +593,9 @@ impl PhaseError for Error {
                 "the arguments of this declaration do not line up with its type annotation"
                     .to_owned()
             }
-            Error::NoBindings => "this declaration has a type annotation but no body".to_owned(),
+            Error::NoBindings(_) => {
+                "this declaration has a type annotation but no body".to_owned()
+            }
             Error::VariableNotFound(name, _) => {
                 format!("cannot find a value named `{}`", name.to_name())
             }
@@ -659,6 +662,7 @@ impl PhaseError for Error {
                 primary(span, "this type constructor is ambiguous")
             }
             Error::BindingPatternsInvalidLen(span) => primary(span, "declared here"),
+            Error::NoBindings(span) => primary(span, "this annotation has no body"),
             Error::MultipleBindingsUnsupported(_, span) => primary(span, "declared here"),
             Error::InfixDeclared(_, span) => primary(span, "declared here"),
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
@@ -873,7 +877,7 @@ fn do_values(
         }
 
         let (patterns, body): (Vec<Pattern>, Expression) = match function.bindings.len() {
-            0 => Err(Error::NoBindings),
+            0 => Err(Error::NoBindings(function.span)),
             1 => {
                 // if one binding, we can convert directly to canonical format
                 let binding = &function.bindings[0];

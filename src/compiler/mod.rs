@@ -380,6 +380,15 @@ impl CompilationError {
             // `compile_package` renders each accumulated error individually rather than
             // wrapping first, so this arm only fires when a `Many` is rendered as a
             // whole. It summarises rather than repeating what those diagnostics said.
+            //
+            // This is the one group that deliberately does not flatten its members'
+            // labels. The phase-error groups that do — `canonical::Error::Many`,
+            // `EnvironmentErrors` — hold errors from a single module, so their labels
+            // all belong to one file and the group is the *only* thing rendered. This
+            // one spans the whole package: its members are `InFile` wrappers naming
+            // different files, and each has already been rendered with its own carets
+            // by the time this summary is built. Flattening here would draw every
+            // caret in the package a second time under one headline.
             CompilationError::Many(errors) => Diagnostic::error()
                 .with_message(format!(
                     "compilation failed with {} error{}",
@@ -641,7 +650,10 @@ mod tests {
     /// `Diagnostic::warning()` back in the `Canonical` arm of `as_diagnostic`.
     #[test]
     fn canonical_errors_render_as_errors() {
-        let error = CompilationError::Canonical(vec![canonical::Error::NoBindings], "Test".into());
+        let error = CompilationError::Canonical(
+            vec![canonical::Error::NoBindings(position::NodeSpan::none())],
+            "Test".into(),
+        );
 
         assert_eq!(error.as_diagnostic().severity, Severity::Error);
     }
@@ -720,7 +732,7 @@ mod tests {
     fn several_phase_errors_all_reach_the_notes() {
         let error = CompilationError::Canonical(
             vec![
-                canonical::Error::NoBindings,
+                canonical::Error::NoBindings(position::NodeSpan::none()),
                 canonical::Error::TypeDeclared("Shape".into(), position::NodeSpan::none()),
             ],
             "Test".into(),

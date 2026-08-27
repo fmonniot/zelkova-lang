@@ -732,3 +732,47 @@ fn module_using_imported_maybe() {
     };
     assert_eq!(branches[1].pattern, p_ctor(nothing_ctor, vec![]));
 }
+
+// ── Extra: an annotation with no body points at the annotation ───────────────
+
+/// `ERR-3`: `NoBindings` renders a caret under the annotation it is about.
+///
+/// "This declaration has a type annotation but no body" is precisely the message
+/// where the reader needs to know *which* annotation, and the construction site in
+/// `do_values` has `function.span` in hand — it is the same span the sibling
+/// `BindingPatternsInvalidLen` uses three lines above. The range is asserted rather
+/// than mere non-emptiness, for the usual reason: a span taken around the layout
+/// pass's zero-width block tokens would satisfy `!labels.is_empty()` while pointing
+/// at nothing.
+///
+/// Mutation-checked by dropping the `NoBindings` arm from `canonical::Error::labels`
+/// so it falls through to the catch-all: `labels` comes back empty.
+#[test]
+fn annotation_without_a_body_labels_the_annotation() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        answer : Int
+    "#};
+
+    let errors =
+        canonicalize_standalone(source).expect_err("an annotation with no body is an error");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    let annotation = "answer : Int";
+    let start = source.find(annotation).expect("source declares `answer`");
+
+    match &errors[0] {
+        canonical::Error::NoBindings(_) => (),
+        other => panic!("expected NoBindings, got {:?}", other),
+    }
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + annotation.len()),
+        "the caret must sit under the annotation"
+    );
+}

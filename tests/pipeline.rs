@@ -65,6 +65,17 @@ fn fixture_package(name: &str) -> std::path::PathBuf {
 /// zero sources, zero errors, and `compile_package` returns `Ok(())` having
 /// compiled nothing. Any test that reads a green `compile_package` as evidence
 /// the modules were fine has to establish first that there were modules.
+fn module_names(root: &Path) -> Vec<String> {
+    let sources = load_package_sources(root)
+        .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
+    let mut names: Vec<String> = sources
+        .iter()
+        .map(|(_, file)| file.file().name().clone())
+        .collect();
+    names.sort();
+    names
+}
+
 /// The phase error inside a `compile_package` result, past the file it was tagged with.
 ///
 /// Errors that come back from `check_in_order` are wrapped in
@@ -76,17 +87,6 @@ fn unwrap_in_file(error: &CompilationError) -> &CompilationError {
         CompilationError::InFile(inner, _) => unwrap_in_file(inner),
         other => other,
     }
-}
-
-fn module_names(root: &Path) -> Vec<String> {
-    let sources = load_package_sources(root)
-        .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
-    let mut names: Vec<String> = sources
-        .iter()
-        .map(|(_, file)| file.file().name().clone())
-        .collect();
-    names.sort();
-    names
 }
 
 // ── Test 1: Minimal passing module ───────────────────────────────────────────
