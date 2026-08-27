@@ -3,6 +3,9 @@
 **Sizing:** large — a grammar change that reaches every AST node, every construction site and
 every parser test. It is the half of `ERR-2` that was deliberately not attempted there.
 
+**Role:** the foundation of the diagnostics program — see
+[`INDEX.md`](INDEX.md#the-diagnostics-program). `ERR-4`, `ERR-5` and `ERR-7` all wait on it.
+
 **Location:** `src/compiler/parser/grammar.lalrpop` (every production), the `parser` AST in
 `src/compiler/parser/mod.rs`, the `from_parser*` conversions and the AST in
 `src/compiler/canonical/mod.rs`, `canonical::Error`, `typer::Error`,
@@ -39,35 +42,69 @@ error: [Test] type mismatch: expected `Int`, found `Bool`
 
 with no file, no line and no caret, in a module that may have a hundred declarations.
 
-**Approach:** this is large enough that it should land in more than one commit, but each
-commit must keep `CLAUDE.md`'s standing invariant intact — `grammar.lalrpop`, the `parser` AST
-and the `from_parser*` conversions in `canonical/mod.rs` move **together**, in the same commit.
-A plausible split by *node kind* rather than by file:
+## Decisions
 
-1. **Decide how a span is stored.** Two options, and picking one is the first piece of work.
-   Either every AST node gains a `span: Span<BytePos>` field, or nodes are wrapped in the
-   existing `Spanned<BytePos, T>` (`src/compiler/position.rs`), which is already what the
-   tokenizer produces. `Spanned` is less invasive to write in the grammar but pushes `.value`
-   through every match arm in `canonical/mod.rs`; a field is the reverse trade.
-2. **Decide what spans do to `PartialEq`.** The parser tests compare whole `Module` values
-   against literals built by hand (`tests/compiler/parser/expressions.rs` and `types.rs` each
-   have one helper that builds a `Function`). Those helpers cannot know byte offsets, so either
-   the tests learn to assert on a span-stripped view, or `PartialEq` is implemented by hand to
-   ignore spans. The second is what `syn` does and it is a real trap: two nodes that differ
-   only in position compare equal, so a test can no longer pin *where* something parsed.
-   Whichever is chosen, write it down at the site.
-3. **Start with declarations, not expressions.** `FunBinding` and `FunType` are one production
-   each in the grammar and one `Declaration` each; giving those two a span, carrying it into
-   `parser::Function` and then into `canonical::Value`, is enough for `typer::Error` to point
-   at the declaration that failed to type-check. That is the single highest-value span in the
-   compiler and it does not require touching `Expression` at all.
-4. **Then expressions and patterns**, which is what turns "this declaration is wrong" into
-   "this sub-expression is wrong", and is where the bulk of the work is.
-5. **Extend `PhaseError`** — or bypass it the way `parser::Error` does — so a phase error can
-   offer `Vec<(Span<BytePos>, String)>` for `as_diagnostic` to turn into `Label`s against the
-   `SourceFileId` the driver already attaches.
+The two questions this ticket originally left open are settled. Both were real trades and both
+belong in the code as comments once this lands.
+
+1. **A `span` field, not a `Spanned<BytePos, T>` wrapper.** Struct nodes take the field
+   directly. The three recursive *enums* — `Expression`, `Pattern`, `Type` — become
+   `struct X { span: NodeSpan, kind: XKind }`, which is the same choice extended to enums. It
+   beats wrapping because children stay `Box<Expression>` rather than
+   `Box<Spanned<BytePos, Expression>>`, so `canonical/mod.rs` reads `match &e.kind` once per
+   function instead of `.value` at every child.
+2. **`PartialEq` ignores spans**, via a `NodeSpan` newtype whose `PartialEq` always returns
+   `true`. This is the `syn` trap the ticket originally warned about and it is being walked into
+   knowingly: the parser tests compare whole `Module` values against literals built by hand,
+   those literals cannot know byte offsets, and the alternative — a hand-written span-stripping
+   traversal — silently weakens every test the day someone forgets a node in it. The cost is
+   that a whole-value `assert_eq!` can no longer pin *where* something parsed, so **at least one
+   test must assert on `.span` directly**; without it the entire span plumbing is
+   green-but-unverified. Keeping the blindness inside one newtype leaves `Span` and `Spanned`
+   with real equality, so tokenizer, layout and parser-error tests are untouched.
+
+**Approach:** two commits, each keeping `CLAUDE.md`'s standing invariant intact —
+`grammar.lalrpop`, the `parser` AST and the `from_parser*` conversions in `canonical/mod.rs`
+move **together**, in the same commit.
+
+1. **Declarations first.** `FunType`, `FunBinding`, `Import`, `Union` and `Infix` are one
+   production each; carrying their spans into `parser::Function` and then `canonical::Value` is
+   enough for `typer::Error` to point at the declaration that failed to type-check. That is the
+   single highest-value span in the compiler and it does not require touching `Expression`.
+   Capture `@L`/`@R` *inside* each production rather than around the `Decl` wrapper, so the span
+   covers the user's text and not the layout-injected `OpenBlock`/`CloseBlock`, which are
+   emitted zero-width.
+   Landing with it: `PhaseError` gains a defaulted `labels()` returning a `SpanLabel`
+   (`{ span, message, primary }` — the primary/secondary distinction is needed *within* one file
+   for "expected because of this annotation", not only across files), and `compile_package`
+   pairs those spans with the `SourceFileId` it already has. The file id stays out of the
+   phases, exactly as `ERR-2` settled.
+2. **Then expressions, patterns and types**, which is what turns "this declaration is wrong"
+   into "this sub-expression is wrong", and is where the bulk of the work is. Watch the two
+   productions that synthesise nodes not present in the source — the `-` prefix desugaring and
+   the `InfixExpr` rewrite — and give them the operator's span rather than none, so a diagnostic
+   on desugared code still lands somewhere real.
+
+## What this ticket does not do
+
+Naming these keeps the scope honest and keeps a reviewer from expecting them.
+
+- **`canonical::Type` and `TypeConstructor` get no span.** They are cloned out of
+  `Environment`/`Interface`, so a type reaching this module may have been written in a
+  *different file*, and a file-less span would name the wrong source. The fix is a
+  `(SourceFileId, Span)` pair on the interface, which is `ERR-5`. Write the reasoning at the
+  type definition.
+- **Type errors still point at the declaration, not the sub-expression.** The typer translates
+  canonical into its own `Term`/`Constraint` language and drops positions on the way, so
+  declaration granularity is the ceiling regardless of how good the canonical AST gets. That is
+  `ERR-4`.
+- **Suggestions** on unresolved names are `ERR-7`; this ticket only gives them something to
+  attach to.
 
 **Acceptance:** a type error in a `.zel` source renders with a `Label` pointing at the failing
 declaration — assert on `diagnostic.labels` in `tests/pipeline.rs`, not just on
-`diagnostic.message`, which `ERR-2` already pins. `cargo run` still prints `parsed 8 modules`,
-lists all eight as checked and exits 0.
+`diagnostic.message`, which `ERR-2` already pins, and assert the label's **range**, since a
+zero-width or wrong-node span would satisfy a mere `!labels.is_empty()`. A canonicalization
+error (an unknown variable, an import of a module that does not exist) likewise renders with a
+label. At least one parser test asserts a `.span` value directly. `cargo run` still prints
+`parsed 8 modules`, lists all eight as checked and exits 0.
