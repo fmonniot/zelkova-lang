@@ -84,8 +84,14 @@ impl PhaseError for Error {
     }
 }
 
-/// Type check one canonical module, reporting *every* value that fails rather than
-/// stopping at the first — the shape `compile_package` is built to accumulate.
+/// Type check one canonical module, reporting every value whose inference produced a
+/// reportable error rather than stopping at the first — the shape `compile_package` is
+/// built to accumulate.
+///
+/// Two classes of failure are deliberately *not* reported today, both in the third pass
+/// below: a value whose term cannot be built at all (an unsupported construct) is skipped,
+/// and an `Error::UnboundVariable` is discarded. A module whose only problems are of those
+/// two kinds returns `Ok(())`.
 pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
     // JavaScript binding modules use synthetic placeholder bodies — skip type checking.
     if module.binding_javascript {

@@ -74,10 +74,14 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   `as_diagnostic` stays the single rendering point. A new failure path in `compile_package`
   pushes onto that vector; nothing is rendered and then dropped. Rendering diagnostics and
   returning `Ok` regardless was `BUG-1`.
-  The per-module phases have the same shape one level down: `canonicalize`, `type_check` and
-  `exhaustiveness::check` each return `Result<_, Vec<Error>>` and report every error they
-  found, so one broken declaration cannot hide the next. `check_module` tags each vector with
-  the module's `Name` — a phase never carries it, because a phase only ever sees one module.
+  The per-module phases have the same *shape* one level down: `canonicalize`, `type_check`
+  and `exhaustiveness::check` each return `Result<_, Vec<Error>>`, a vector rather than a
+  single error, so one broken declaration cannot hide the next. That is a claim about the
+  shape only — how much each phase actually puts in the vector differs, and the architecture
+  table above is the accurate account (`type_check` skips unsupported constructs and unbound
+  variables silently; `exhaustiveness::check` is a stub that finds nothing). `check_module`
+  tags each vector with the module's `Name` — a phase never carries it, because a phase only
+  ever sees one module.
 - **An error has to describe itself.** Every phase error implements `PhaseError`
   (`src/compiler/mod.rs`): a `message()` written in the vocabulary of the user's source, plus
   optional `notes()`. `CompilationError::as_diagnostic` is the only place a
