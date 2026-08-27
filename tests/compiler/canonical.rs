@@ -377,9 +377,10 @@ fn multiple_bindings_is_error() {
 // ── Scenario 11: Tuples ──────────────────────────────────────────────────────
 //
 // `Tuple` is the single representation of a tuple in both ASTs and the grammar
-// has one production per arity, so these four tests cover the whole rule: the
-// two legal sizes survive canonicalization through all three sites (type,
-// expression, pattern), and any other size is rejected by the parser.
+// has one production per arity, so these tests cover the whole rule: the two
+// legal sizes survive canonicalization through all three sites (type,
+// expression, pattern), and any other size is rejected by the parser at each of
+// those three sites.
 
 /// Verified by mutating the two-element `AtomicExpr` production in
 /// `grammar.lalrpop` to `Tuple::two(b, a)` and the two-element `Type`
@@ -410,14 +411,17 @@ fn tuple_of_two_canonicalizes() {
     );
 }
 
+/// The three type elements are all distinct so that the assertion pins their
+/// order: `(Int, Char, Int)` would be a palindrome and survive a reversal.
+///
 /// Verified by mutating the three-element `AtomicExpr` production in
-/// `grammar.lalrpop` to `Tuple::three(a, b, b)` — the test goes red on the
-/// third element.
+/// `grammar.lalrpop` to `Tuple::three(c, b, a)` and the three-element `Type`
+/// production to `Tuple::three(c, b, a)` — each turns this test red.
 #[test]
 fn tuple_of_three_canonicalizes() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
-        triple : (Int, Char, Int)
+        triple : (Int, Char, Bool)
         triple = (1, 'a', 3)
     "#};
     let module = canonicalize_standalone(source).expect("should canonicalize");
@@ -435,7 +439,7 @@ fn tuple_of_three_canonicalizes() {
             tpe: canonical::Type::Tuple(Tuple::three(
                 int_t(),
                 canonical::Type::Type("Char".into(), vec![]),
-                int_t(),
+                canonical::Type::Type("Bool".into(), vec![]),
             )),
         }
     );
@@ -476,39 +480,169 @@ fn tuple_pattern_canonicalizes() {
     );
 }
 
+/// The three-element `Pattern` production is the one the ticket was filed
+/// against: the old conversion read the third element off a rest-vector with
+/// `c.first()` and truncated anything past it. The three annotated types are
+/// distinct so the assertion pins element order on both the `Pattern` and the
+/// `Type` side.
+///
+/// Verified by mutating the three-element `Pattern` production in
+/// `grammar.lalrpop` to `Tuple::three(c, b, a)`, and separately by deleting
+/// that production outright — the first turns this test red, the second makes
+/// the source stop parsing.
+#[test]
+fn tuple_pattern_of_three_canonicalizes() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        first : (Int, Char, Bool) -> Int
+        first (a, b, c) = a
+    "#};
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    let value = module.values.get(&"first".into()).unwrap();
+    let patterns = match value {
+        canonical::Value::TypedValue { patterns, .. } => patterns,
+        other => panic!("expected TypedValue, got {:?}", other),
+    };
+
+    assert_eq!(
+        patterns,
+        &vec![(
+            canonical::Pattern::Tuple(Tuple::three(
+                canonical::Pattern::Variable("a".into()),
+                canonical::Pattern::Variable("b".into()),
+                canonical::Pattern::Variable("c".into()),
+            )),
+            canonical::Type::Tuple(Tuple::three(
+                int_t(),
+                canonical::Type::Type("Char".into(), vec![]),
+                canonical::Type::Type("Bool".into(), vec![]),
+            )),
+        )]
+    );
+}
+
+/// Parses `source` and returns the `parser::Error` it must fail with.
+///
+/// These cases go through `parser::parse` directly because
+/// `canonicalize_standalone` expects the parse to succeed.
+fn expect_parse_error(source: &str, why: &str) -> zelkova_lang::compiler::parser::Error {
+    use codespan_reporting::files::SimpleFile;
+    use zelkova_lang::compiler::parser;
+
+    let file = SimpleFile::new("Test.zel".to_string(), source.to_string());
+
+    parser::parse(&file).expect_err(why)
+}
+
+/// Asserts `error` is an `UnexpectedToken` on `expected_token`.
+fn assert_rejected_token(
+    error: zelkova_lang::compiler::parser::Error,
+    expected_token: zelkova_lang::compiler::parser::tokenizer::Token,
+    why: &str,
+) {
+    use zelkova_lang::compiler::parser;
+
+    match error {
+        parser::Error::UnexpectedToken { token, .. } => {
+            assert_eq!(token.value, expected_token, "{}", why);
+        }
+        other => panic!("expected an UnexpectedToken error, got {:?}", other),
+    }
+}
+
 /// A four-element tuple is rejected by the grammar, not by
 /// `canonical::Error::InvalidTupleSize` — the arity rule lives in exactly one
 /// place now, and that place is upstream of canonicalization.
-///
-/// This one goes through `parser::parse` directly because
-/// `canonicalize_standalone` expects the parse to succeed.
 ///
 /// Verified by adding a four-element production to `AtomicExpr` in
 /// `grammar.lalrpop`, which makes the parse succeed and the test go red.
 #[test]
 fn tuple_of_four_is_a_parse_error() {
-    use codespan_reporting::files::SimpleFile;
-    use zelkova_lang::compiler::parser;
     use zelkova_lang::compiler::parser::tokenizer::Token;
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         quad = (1, 2, 3, 4)
     "#};
-    let file = SimpleFile::new("Test.zel".to_string(), source.to_string());
 
-    let error = parser::parse(&file).expect_err("a four-element tuple should not parse");
+    let error = expect_parse_error(source, "a four-element tuple should not parse");
 
-    match error {
-        parser::Error::UnexpectedToken { token, .. } => {
-            assert_eq!(
-                token.value,
-                Token::Comma,
-                "the comma introducing the fourth element is what the parser rejects",
-            );
-        }
-        other => panic!("expected an UnexpectedToken error, got {:?}", other),
-    }
+    assert_rejected_token(
+        error,
+        Token::Comma,
+        "the comma introducing the fourth element is what the parser rejects",
+    );
+}
+
+/// The arity rule moved into three grammar sites; this pins the `Pattern` one.
+///
+/// Verified by adding a four-element production to `Pattern` in
+/// `grammar.lalrpop`, which makes the parse succeed and the test go red.
+#[test]
+fn tuple_pattern_of_four_is_a_parse_error() {
+    use zelkova_lang::compiler::parser::tokenizer::Token;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        f (a, b, c, d) = a
+    "#};
+
+    let error = expect_parse_error(source, "a four-element tuple pattern should not parse");
+
+    assert_rejected_token(
+        error,
+        Token::Comma,
+        "the comma introducing the fourth element is what the parser rejects",
+    );
+}
+
+/// The arity rule moved into three grammar sites; this pins the `Type` one.
+///
+/// Verified by adding a four-element production to `Type` in
+/// `grammar.lalrpop`, which makes the parse succeed and the test go red.
+#[test]
+fn tuple_type_of_four_is_a_parse_error() {
+    use zelkova_lang::compiler::parser::tokenizer::Token;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        f : (Int, Int, Int, Int)
+        f = 1
+    "#};
+
+    let error = expect_parse_error(source, "a four-element tuple type should not parse");
+
+    assert_rejected_token(
+        error,
+        Token::Comma,
+        "the comma introducing the fourth element is what the parser rejects",
+    );
+}
+
+/// Dropping `Comma<T>` from the tuple productions also dropped trailing-comma
+/// support. Elm rejects `(1, 2,)` too and nothing under `std/core/src` used it,
+/// so this pins the narrowing rather than treating it as a regression.
+///
+/// Verified by adding a `"(" <a:Expr> "," <b:Expr> "," ")"` production to
+/// `AtomicExpr` in `grammar.lalrpop`, which makes the parse succeed and the
+/// test go red.
+#[test]
+fn tuple_with_a_trailing_comma_is_a_parse_error() {
+    use zelkova_lang::compiler::parser::tokenizer::Token;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        f = (1, 2,)
+    "#};
+
+    let error = expect_parse_error(source, "a trailing comma in a tuple should not parse");
+
+    assert_rejected_token(
+        error,
+        Token::RPar,
+        "the closing parenthesis after the trailing comma is what the parser rejects",
+    );
 }
 
 // ── Extra: Module with imported Maybe interface ───────────────────────────────
