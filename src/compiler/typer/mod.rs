@@ -38,6 +38,7 @@
 use super::canonical;
 use super::canonical::Module;
 use crate::compiler::name::Name;
+use crate::compiler::tuple::Tuple;
 use log::debug;
 use std::collections::HashMap;
 
@@ -204,14 +205,19 @@ fn canonical_type_to_typer_type(
                 return_tpe: Box::new(b),
             })
         }
-        canonical::Type::Tuple(a, b, c) => {
+        // The typer keeps its own tuple encoding, so the arity is re-stated here
+        // rather than shared: `Tuple::Two` has no third element, `Tuple::Three`
+        // always has one.
+        canonical::Type::Tuple(Tuple::Two(a, b)) => {
             let a = canonical_type_to_typer_type(a, var_map, counter)?;
             let b = canonical_type_to_typer_type(b, var_map, counter)?;
-            let c: Option<Type> = match c.as_ref() {
-                None => None,
-                Some(t) => Some(canonical_type_to_typer_type(t, var_map, counter)?),
-            };
-            Some(Type::Tuple(Box::new(a), Box::new(b), c.map(Box::new)))
+            Some(Type::Tuple(Box::new(a), Box::new(b), None))
+        }
+        canonical::Type::Tuple(Tuple::Three(a, b, c)) => {
+            let a = canonical_type_to_typer_type(a, var_map, counter)?;
+            let b = canonical_type_to_typer_type(b, var_map, counter)?;
+            let c = canonical_type_to_typer_type(c, var_map, counter)?;
+            Some(Type::Tuple(Box::new(a), Box::new(b), Some(Box::new(c))))
         }
         canonical::Type::Type(name, args) => {
             let converted: Option<Vec<Type>> = args
@@ -258,14 +264,16 @@ fn canonical_expr_to_term(
                 false_branch: Box::new(f),
             })
         }
-        canonical::Expression::Tuple(a, b, c) => {
+        canonical::Expression::Tuple(Tuple::Two(a, b)) => {
             let a = canonical_expr_to_term(a, module_types, counter)?;
             let b = canonical_expr_to_term(b, module_types, counter)?;
-            let c: Option<Term> = match c.as_ref() {
-                None => None,
-                Some(e) => Some(canonical_expr_to_term(e, module_types, counter)?),
-            };
-            Some(Term::Tuple(Box::new(a), Box::new(b), c.map(Box::new)))
+            Some(Term::Tuple(Box::new(a), Box::new(b), None))
+        }
+        canonical::Expression::Tuple(Tuple::Three(a, b, c)) => {
+            let a = canonical_expr_to_term(a, module_types, counter)?;
+            let b = canonical_expr_to_term(b, module_types, counter)?;
+            let c = canonical_expr_to_term(c, module_types, counter)?;
+            Some(Term::Tuple(Box::new(a), Box::new(b), Some(Box::new(c))))
         }
         canonical::Expression::Case(scrutinee_expr, branches) => {
             let scrutinee = canonical_expr_to_term(scrutinee_expr, module_types, counter)?;

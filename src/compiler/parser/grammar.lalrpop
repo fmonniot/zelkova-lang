@@ -3,6 +3,7 @@ use crate::compiler::parser::tokenizer::Token;
 use crate::compiler::parser::error::Error;
 use crate::compiler::parser::*;
 use crate::compiler::name::Name;
+use crate::compiler::tuple::Tuple;
 use std::convert::TryFrom;
 
 grammar;
@@ -148,14 +149,17 @@ AtomicExpr: Expression = {
     //     Expression::Projection(Box::new(expr), id),
     // 
 
-    "(" <elems: Comma<Expr>> ")" => {
-        match elems.len() {
-            // This isn't a tuple by a parenthesis around an expression
-            1 => elems.first().unwrap().clone(),
-            _ => Expression::Tuple(elems)
-        }
-    },
-    
+    // A tuple has two or three elements, so it gets one production per arity:
+    // `(1, 2, 3, 4)` is a parse error rather than something a later phase has to
+    // count and reject. A lone parenthesised expression is a grouping, not a tuple.
+    "(" <e: Expr> ")" => e,
+
+    "(" <a: Expr> "," <b: Expr> ")" =>
+        Expression::Tuple(Tuple::two(a, b)),
+
+    "(" <a: Expr> "," <b: Expr> "," <c: Expr> ")" =>
+        Expression::Tuple(Tuple::three(a, b, c)),
+
     // "[" <elems: Comma<Expr>> "]" => 
     //     Expression::List { elems },
 
@@ -199,22 +203,14 @@ Pattern: Pattern = {
 
     <Lit> => Pattern::Literal(<>),
 
-    "(" <mut elems: Comma<Pattern>> ")" => {
-        match elems.len() {
-            0 => todo!("Unit type"),
-            1 => elems.swap_remove(0),
-            _ => {
-                let first = elems.swap_remove(0);
-                let second = elems.swap_remove(0);
+    // One production per tuple arity, as in `AtomicExpr` above.
+    "(" <p: Pattern> ")" => p,
 
-                Pattern::Tuple(
-                    Box::new(first),
-                    Box::new(second),
-                    elems
-                )
-            },
-        }
-    },
+    "(" <a: Pattern> "," <b: Pattern> ")" =>
+        Pattern::Tuple(Tuple::two(a, b)),
+
+    "(" <a: Pattern> "," <b: Pattern> "," <c: Pattern> ")" =>
+        Pattern::Tuple(Tuple::three(a, b, c)),
 }
 
 CasePattern: Pattern = {
@@ -284,25 +280,23 @@ ArgType: Type = {
 Type: Type = {
     ArgType,
 
-    // This support two kind of syntax:
-    // 1. when the arrow is not present, we have a tuple/parenthesis group
-    // 2. when an arrow is present, this is a call with precendence (parenthesis)
-    "(" <mut elems: Comma<Type>> ")" <tpe2:("->" <Type>)?> => {
-        let tpe1 = match elems.len() {
-            0 => todo!("Unit type"),
-            1 => elems.swap_remove(0),
-            _ => {
-                let head = elems.swap_remove(0);
+    // A parenthesised type, optionally followed by `-> T`. The parentheses
+    // only group: `(Int)` is `Int`, `(Int, Char)` is a two-element tuple. The
+    // trailing arrow is orthogonal to that choice — it does not tell a tuple
+    // from a group, it just wraps whatever was parenthesised as the left
+    // operand of an `Arrow`, so `(Int, Char) -> Int` is a `Tuple::two` *and*
+    // an `Arrow` at once. Appending that arrow when it is present is the whole
+    // of what `Type::parenthesized` does.
+    // As in `AtomicExpr`, there is one production per tuple arity so that a
+    // tuple of any other size cannot be parsed.
+    "(" <t: Type> ")" <result:("->" <Type>)?> =>
+        Type::parenthesized(t, result),
 
-                Type::Tuple(Box::new(head), elems)
-            },
-        };
+    "(" <a: Type> "," <b: Type> ")" <result:("->" <Type>)?> =>
+        Type::parenthesized(Type::Tuple(Tuple::two(a, b)), result),
 
-        match tpe2 {
-            Some(tpe2) => Type::Arrow(Box::new(tpe1), Box::new(tpe2)),
-            None => tpe1,
-        }
-    },
+    "(" <a: Type> "," <b: Type> "," <c: Type> ")" <result:("->" <Type>)?> =>
+        Type::parenthesized(Type::Tuple(Tuple::three(a, b, c)), result),
 
     <tpe1:ArgType> "->" <tpe2:Type> => Type::Arrow(Box::new(tpe1), Box::new(tpe2)),
 }

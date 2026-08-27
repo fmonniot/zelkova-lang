@@ -39,6 +39,7 @@ pub mod name;
 pub mod parser;
 pub mod position;
 pub mod source;
+pub mod tuple;
 pub mod typer;
 
 use name::{Name, QualName};

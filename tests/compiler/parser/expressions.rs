@@ -1,5 +1,6 @@
 use super::support::*;
 use zelkova_lang::compiler::parser::*;
+use zelkova_lang::compiler::tuple::Tuple;
 
 fn module(body: Expression) -> Module {
     Module {
@@ -101,10 +102,10 @@ test_parse_ok!(
 
     main = (2, 3)
     "#,
-    module(Expression::Tuple(vec![
+    module(Expression::Tuple(Tuple::two(
         Expression::Lit(Literal::Int(2)),
         Expression::Lit(Literal::Int(3)),
-    ]))
+    )))
 );
 
 test_parse_ok!(

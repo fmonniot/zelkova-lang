@@ -25,6 +25,7 @@ use environment::{new_environment, EnvError, Environment, RootEnvironment, Value
 
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
+use crate::compiler::tuple::Tuple;
 pub use parser::Associativity;
 
 // begin AST
@@ -114,9 +115,9 @@ pub enum Type {
     // Record
     // Unit
     Arrow(Box<Type>, Box<Type>),
-    /// Tuple in elm have size 2 or 3, so the third argument is optional.
-    /// Should we keep the same restriction in zelkova ?
-    Tuple(Box<Type>, Box<Type>, Option<Box<Type>>),
+    /// A tuple type. Zelkova keeps Elm's restriction of two or three elements,
+    /// which [`Tuple`] carries in its shape.
+    Tuple(Tuple<Type>),
     // Alias
 }
 
@@ -140,21 +141,9 @@ impl Type {
                 Box::new(Type::from_parser_type(env, t2)?),
             )),
             parser::Type::Variable(n) => Ok(Type::Variable(n.clone())),
-            parser::Type::Tuple(t1, t_many) => {
-                let (t2, t3) = match t_many.len() {
-                    0 => return Err(Error::InvalidTupleSize(1)),
-                    1 | 2 => (t_many.first().unwrap().clone(), t_many.get(1)),
-                    n => return Err(Error::InvalidTupleSize(n + 1)),
-                };
-
-                Ok(Type::Tuple(
-                    Box::new(Type::from_parser_type(env, t1)?),
-                    Box::new(Type::from_parser_type(env, &t2)?),
-                    t3.map(|t| Type::from_parser_type(env, t))
-                        .transpose()?
-                        .map(Box::new),
-                ))
-            }
+            parser::Type::Tuple(tuple) => Ok(Type::Tuple(
+                tuple.try_map(|t| Type::from_parser_type(env, t))?,
+            )),
         }
     }
 
@@ -196,9 +185,9 @@ pub enum Pattern {
     Float(f64),
     Char(char),
     Bool(bool),
-    /// Tuple in elm have size 2 or 3, so the third argument is optional.
-    /// Should we keep the same restriction in zelkova ?
-    Tuple(Box<Pattern>, Box<Pattern>, Option<Box<Pattern>>),
+    /// A tuple pattern. Zelkova keeps Elm's restriction of two or three
+    /// elements, which [`Tuple`] carries in its shape.
+    Tuple(Tuple<Pattern>),
 
     Constructor {
         ctor: TypeConstructor,
@@ -215,13 +204,8 @@ impl Pattern {
             parser::Pattern::Literal(parser::Literal::Float(f)) => Ok(Pattern::Float(*f)),
             parser::Pattern::Literal(parser::Literal::Char(c)) => Ok(Pattern::Char(*c)),
             parser::Pattern::Literal(parser::Literal::Bool(b)) => Ok(Pattern::Bool(*b)),
-            parser::Pattern::Tuple(a, b, c) => Ok(Pattern::Tuple(
-                Box::new(Pattern::from_parser(a, env)?),
-                Box::new(Pattern::from_parser(b, env)?),
-                c.first()
-                    .map(|p| Pattern::from_parser(p, env))
-                    .transpose()?
-                    .map(Box::new),
+            parser::Pattern::Tuple(tuple) => Ok(Pattern::Tuple(
+                tuple.try_map(|p| Pattern::from_parser(p, env))?,
             )),
             parser::Pattern::Constructor(name, args) => {
                 let ctor = env
@@ -298,7 +282,9 @@ pub enum Expression {
     // Access
     // Update (record)
     // Unit
-    Tuple(Box<Expression>, Box<Expression>, Option<Box<Expression>>),
+    /// A tuple expression. Zelkova keeps Elm's restriction of two or three
+    /// elements, which [`Tuple`] carries in its shape.
+    Tuple(Tuple<Expression>),
 }
 
 impl Expression {
@@ -361,26 +347,9 @@ impl Expression {
 
                 Ok(Expression::Apply(Box::new(a), Box::new(b)))
             }
-            parser::Expression::Tuple(vec) => match vec.as_slice() {
-                [one, two] => {
-                    let one = Expression::from_parser(one, env)?;
-                    let two = Expression::from_parser(two, env)?;
-
-                    Ok(Expression::Tuple(Box::new(one), Box::new(two), None))
-                }
-                [one, two, three] => {
-                    let one = Expression::from_parser(one, env)?;
-                    let two = Expression::from_parser(two, env)?;
-                    let three = Expression::from_parser(three, env)?;
-
-                    Ok(Expression::Tuple(
-                        Box::new(one),
-                        Box::new(two),
-                        Some(Box::new(three)),
-                    ))
-                }
-                _ => Err(Error::InvalidTupleSize(vec.len())),
-            },
+            parser::Expression::Tuple(tuple) => Ok(Expression::Tuple(
+                tuple.try_map(|e| Expression::from_parser(e, env))?,
+            )),
             parser::Expression::Case(expr, branches) => {
                 let expr = Expression::from_parser(expr, env)?;
 
@@ -436,8 +405,15 @@ pub enum Error {
     AmbiguousVariables(Name, Vec<ModuleName>),
     VariantNotFound(QualName),
     AmbiguousVariants(Name, Vec<ModuleName>),
-    /// A tuple type or expression had a size other than 2 or 3 (the only sizes
-    /// the language currently supports).
+    /// A tuple type, pattern or expression had a size other than 2 or 3 (the
+    /// only sizes the language supports).
+    ///
+    /// Nothing constructs this today, and it is kept deliberately. Both ASTs
+    /// now hold their tuples in [`Tuple`], which cannot represent another
+    /// arity, and the grammar has one production per arity — so a bad tuple is
+    /// a parse error and never reaches canonicalization. This variant is the
+    /// designated rejection path should a future source of tuples (a REPL, a
+    /// desugaring pass) build one from a list.
     InvalidTupleSize(usize),
     /// A function was declared with multiple bindings (multi-clause definitions),
     /// which the compiler does not support yet.
