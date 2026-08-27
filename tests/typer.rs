@@ -274,3 +274,39 @@ fn tuple_triple_type_mismatch() {
         "(Int, Bool, Int) used as (Int, Bool, Char) should fail"
     );
 }
+
+/// A pair used where a triple is expected should fail. Unification has one arm
+/// per arity (`Two` against `Two`, `Three` against `Three`), so a mixed pair
+/// matches neither and has to reach the generic `Type`-mismatch arm at the
+/// bottom of `unify_one_constraint`. Nothing else in the suite exercises that
+/// fallthrough: every other tuple test agrees on arity and differs only in
+/// element types.
+#[test]
+fn tuple_pair_against_triple_annotation_is_a_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : (Int, Bool, Char)
+        bad = (42, true)
+    "#};
+    assert!(
+        run(source).is_err(),
+        "a 2-tuple body under a 3-tuple annotation should fail"
+    );
+}
+
+/// The other direction of `tuple_pair_against_triple_annotation_is_a_mismatch`:
+/// the fallthrough must be reached whichever side of the constraint carries the
+/// larger arity, since `unify_one_constraint` matches on the pair `(a, b)` and
+/// the two arity arms are not symmetric on their own.
+#[test]
+fn tuple_triple_against_pair_annotation_is_a_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : (Int, Bool)
+        bad = (42, true, 'a')
+    "#};
+    assert!(
+        run(source).is_err(),
+        "a 3-tuple body under a 2-tuple annotation should fail"
+    );
+}
