@@ -312,10 +312,10 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
     let root = fixture_package("package_canonicalize_fails");
 
     // The fixture deliberately holds a second, *passing* module: it is what
-    // `BUG-2` is about (the modules that checked being discarded when a sibling
-    // fails), and `docs/tickets/bug-2.md` points at this directory as the
+    // `BUG-2` (see `docs/tickets/INDEX.md`) was about — the modules that checked
+    // being discarded when a sibling fails — and this directory is its
     // reproduction. Nothing else asserts `Fine.zel` exists, so pin it here —
-    // silently losing it would leave that ticket with a repro that proves
+    // silently losing it would leave that regression with a repro that proves
     // nothing. It does not change what this test checks: one broken module is
     // still exactly one error.
     assert_eq!(module_names(&root), vec!["Broken.zel", "Fine.zel"]);

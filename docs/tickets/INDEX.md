@@ -66,7 +66,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | ID | type | sev | status | title |
 |---|---|---|---|---|
 | BUG-1 | bug | medium | closed 2026-08-25 | `compile_package` reports success after emitting error diagnostics |
-| [BUG-2](bug-2.md) | bug | medium | open | One failing module discards every module that checked successfully |
+| BUG-2 | bug | medium | closed 2026-08-26 | One failing module discards every module that checked successfully |
 | BUG-3 | bug | low | closed 2026-08-25 | `Bitwise.zel` imports the non-existent `Elm.Kernel.Bitwise` |
 | BUG-4 | bug | medium | closed 2026-08-25 | The `Layout` iterator never terminates after a `LayoutError` |
 | [BUG-5](bug-5.md) | bug | medium | open | The `Tokenizer` never terminates on a tab used for indentation |
