@@ -280,10 +280,13 @@ ArgType: Type = {
 Type: Type = {
     ArgType,
 
-    // Parenthesis support two kind of syntax, and the optional trailing arrow
-    // tells them apart:
-    // 1. when the arrow is not present, we have a tuple/parenthesis group
-    // 2. when an arrow is present, this is a call with precendence (parenthesis)
+    // A parenthesised type, optionally followed by `-> T`. The parentheses
+    // only group: `(Int)` is `Int`, `(Int, Char)` is a two-element tuple. The
+    // trailing arrow is orthogonal to that choice — it does not tell a tuple
+    // from a group, it just wraps whatever was parenthesised as the left
+    // operand of an `Arrow`, so `(Int, Char) -> Int` is a `Tuple::two` *and*
+    // an `Arrow` at once. Appending that arrow when it is present is the whole
+    // of what `Type::parenthesized` does.
     // As in `AtomicExpr`, there is one production per tuple arity so that a
     // tuple of any other size cannot be parsed.
     "(" <t: Type> ")" <result:("->" <Type>)?> =>
