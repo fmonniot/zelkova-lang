@@ -1,8 +1,9 @@
 //! env module
 
-use super::{parser, Pattern};
+use super::{parser, Pattern, PatternKind};
 use super::{Infix, Interface, ModuleName, Name, Type, TypeConstructor, UnionType};
-use crate::compiler::PhaseError;
+use crate::compiler::position::NodeSpan;
+use crate::compiler::{PhaseError, SpanLabel};
 use crate::utils::collect_accumulate;
 use log::trace;
 use std::collections::HashMap;
@@ -60,9 +61,10 @@ pub fn new_environment(
         name,
         alias,
         exposing,
+        span,
     } in imports
     {
-        match process_import(&mut env, interfaces, name, alias, exposing) {
+        match process_import(&mut env, interfaces, name, alias, exposing, *span) {
             Ok(_) => (),
             Err(err) => {
                 errors.push(err);
@@ -83,10 +85,15 @@ fn process_import(
     imported_module_name: &Name,
     alias: &Option<Name>,
     exposing: &parser::Exposing,
+    // The `import` line this is resolving. Only `InterfaceNotFound` uses it: the
+    // errors raised further down name something the *imported* module failed to
+    // expose, and pointing at the local `import` line would underline text that is
+    // not where the problem is.
+    span: NodeSpan,
 ) -> Result<(), EnvError> {
     let interface = interfaces
         .get(imported_module_name)
-        .ok_or_else(|| EnvError::InterfaceNotFound(imported_module_name.clone()))?;
+        .ok_or_else(|| EnvError::InterfaceNotFound(imported_module_name.clone(), span))?;
 
     trace!(
         "process_import(imported_module_name={:?}, alias={:?}, exposing: {:?})",
@@ -236,7 +243,8 @@ fn insert_foreign_value(
 
 #[derive(Debug)]
 pub enum EnvError {
-    InterfaceNotFound(Name),
+    /// No module of that name was available to import, and where the `import` was written.
+    InterfaceNotFound(Name, NodeSpan),
     UnionNotFound(Name),
     InfixNotFound(Name),
     ValueNotFound(Name),
@@ -248,7 +256,7 @@ pub enum EnvError {
 impl PhaseError for EnvError {
     fn message(&self) -> String {
         match self {
-            EnvError::InterfaceNotFound(name) => {
+            EnvError::InterfaceNotFound(name, _) => {
                 format!("cannot find a module named `{}` to import", name)
             }
             EnvError::UnionNotFound(name) => {
@@ -269,6 +277,21 @@ impl PhaseError for EnvError {
                 [only] => only.message(),
                 many => format!("{} imports could not be resolved", many.len()),
             },
+        }
+    }
+
+    fn labels(&self) -> Vec<SpanLabel> {
+        match self {
+            EnvError::InterfaceNotFound(_, span) => match span.span() {
+                Some(span) => vec![SpanLabel {
+                    span,
+                    message: "no module of this name was found".to_owned(),
+                    primary: true,
+                }],
+                None => Vec::new(),
+            },
+            EnvError::Multiple(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
+            _ => Vec::new(),
         }
     }
 
@@ -418,22 +441,22 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
 
 impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
     pub fn expose_pattern(&mut self, pattern: &Pattern) {
-        match pattern {
-            Pattern::Anything => (),
-            Pattern::Int(_) => (),
-            Pattern::Float(_) => (),
-            Pattern::Char(_) => (),
-            Pattern::Bool(_) => (),
+        match &pattern.kind {
+            PatternKind::Anything => (),
+            PatternKind::Int(_) => (),
+            PatternKind::Float(_) => (),
+            PatternKind::Char(_) => (),
+            PatternKind::Bool(_) => (),
 
-            Pattern::Variable(n) => {
+            PatternKind::Variable(n) => {
                 self.variables.insert(n.clone(), ValueType::Local);
             }
-            Pattern::Tuple(tuple) => {
+            PatternKind::Tuple(tuple) => {
                 for pattern in tuple.iter() {
                     self.expose_pattern(pattern);
                 }
             }
-            Pattern::Constructor { args, .. } => {
+            PatternKind::Constructor { args, .. } => {
                 for arg in args {
                     self.expose_pattern(arg);
                 }
@@ -458,6 +481,8 @@ mod tests {
             name,
             alias,
             exposing,
+            // Hand-built, not parsed: there is no source text behind it.
+            span: NodeSpan::none(),
         }
     }
 
@@ -513,6 +538,7 @@ mod tests {
         unions.insert(
             "Maybe".into(),
             UnionType {
+                span: NodeSpan::none(),
                 variables: vec![],
                 variants: vec![
                     TypeConstructor {

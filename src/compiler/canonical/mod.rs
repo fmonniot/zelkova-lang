@@ -16,6 +16,7 @@
 use super::parser;
 use super::Interface;
 use super::PhaseError;
+use super::SpanLabel;
 use super::{ModuleName, PackageName};
 use crate::utils::collect_accumulate;
 use log::{debug, trace};
@@ -26,6 +27,7 @@ use environment::{new_environment, EnvError, Environment, RootEnvironment, Value
 
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
+use crate::compiler::position::NodeSpan;
 use crate::compiler::tuple::Tuple;
 pub use parser::Associativity;
 
@@ -85,12 +87,16 @@ pub struct Infix {
     pub associativity: Associativity,
     pub precedence: u8,
     pub function_name: Name,
+    /// Where the `infix` declaration this came from was written.
+    pub span: NodeSpan,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnionType {
     pub variables: Vec<Name>,
     pub variants: Vec<TypeConstructor>,
+    /// Where the `type` declaration this came from was written.
+    pub span: NodeSpan,
 }
 
 // TODO Once we have most of the pipeline built, revisit the decision of
@@ -109,6 +115,30 @@ pub struct TypeConstructor {
     pub tpe: Name,
 }
 
+/// A canonical type.
+///
+/// # Why there is no span on this type, or on [`TypeConstructor`]
+///
+/// Every other canonical node this module builds carries a [`NodeSpan`] taken from
+/// the parser node it came from. A `Type` deliberately does not, and the omission is
+/// not an oversight to be tidied up later.
+///
+/// A `Type` does not always come from the module being canonicalized.
+/// `Type::from_parser_type` resolves a name through the [`Environment`], which clones
+/// types straight out of the [`Interface`]s of the modules this one imports — so the
+/// `Type` handed back may well have been *written in a different file*. A
+/// [`NodeSpan`] is a byte range and nothing else; the [`SourceFileId`] is attached
+/// later, by `compile_package`, from the file the failing module was read from.
+/// Putting a span here would therefore let a diagnostic underline a byte range of one
+/// file using offsets taken from another — a caret pointing confidently at the wrong
+/// source, which is worse than no caret at all.
+///
+/// Fixing it means carrying a `(SourceFileId, Span)` pair through the interface, so
+/// an imported type keeps the file it was written in. That is `ERR-5` (see
+/// `docs/tickets/INDEX.md`). Until it lands, a type error points at the declaration
+/// that failed, which does live in the module being checked.
+///
+/// [`SourceFileId`]: crate::compiler::source::files::SourceFileId
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Variable(Name),
@@ -123,9 +153,14 @@ pub enum Type {
 }
 
 impl Type {
+    /// The one conversion in this module that reads a span and produces none.
+    ///
+    /// `parser::Type` carries a [`NodeSpan`] like every other parser node, and it is
+    /// dropped here on purpose — see this type's documentation for why a canonical
+    /// type cannot hold one until `ERR-5` lands.
     fn from_parser_type(env: &dyn Environment, tpe: &parser::Type) -> Result<Type, Error> {
-        match tpe {
-            parser::Type::Unqualified(name, vars) => match env.find_type(name) {
+        match &tpe.kind {
+            parser::TypeKind::Unqualified(name, vars) => match env.find_type(name) {
                 Some(t) => Ok(t.clone()),
                 None => {
                     let types = vars
@@ -137,12 +172,12 @@ impl Type {
                     Ok(Type::Type(name.clone(), types))
                 }
             },
-            parser::Type::Arrow(t1, t2) => Ok(Type::Arrow(
+            parser::TypeKind::Arrow(t1, t2) => Ok(Type::Arrow(
                 Box::new(Type::from_parser_type(env, t1)?),
                 Box::new(Type::from_parser_type(env, t2)?),
             )),
-            parser::Type::Variable(n) => Ok(Type::Variable(n.clone())),
-            parser::Type::Tuple(tuple) => Ok(Type::Tuple(
+            parser::TypeKind::Variable(n) => Ok(Type::Variable(n.clone())),
+            parser::TypeKind::Tuple(tuple) => Ok(Type::Tuple(
                 tuple.try_map(|t| Type::from_parser_type(env, t))?,
             )),
         }
@@ -169,17 +204,43 @@ pub enum Value {
         name: Name,
         patterns: Vec<Pattern>,
         body: Expression,
+        /// Where the declaration was written, annotation and body together.
+        span: NodeSpan,
     },
     TypedValue {
         name: Name,
         patterns: Vec<(Pattern, Type)>,
         body: Expression,
         tpe: Type,
+        /// Where the declaration was written, annotation and body together.
+        span: NodeSpan,
     },
 }
 
+impl Value {
+    /// Where this declaration was written, whichever variant it is.
+    ///
+    /// The typer reads this to label the declaration that failed to check; it is the
+    /// only span a type error has today (see `typer::Error`).
+    pub fn span(&self) -> NodeSpan {
+        match self {
+            Value::Value { span, .. } | Value::TypedValue { span, .. } => *span,
+        }
+    }
+}
+
+/// A canonical pattern, and where it was written.
+///
+/// Same shape as [`parser::Pattern`] — a [`NodeSpan`] beside a kind — and for the
+/// same reason: the children stay plain `Pattern`s, so a reader matches `&p.kind`.
 #[derive(Debug, PartialEq)]
-pub enum Pattern {
+pub struct Pattern {
+    pub span: NodeSpan,
+    pub kind: PatternKind,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum PatternKind {
     Anything,
     Variable(Name), // TODO Name or QualName ?
     Int(i64),
@@ -197,21 +258,38 @@ pub enum Pattern {
 }
 
 impl Pattern {
+    /// A pattern canonicalized from source, keeping the parser node's position.
+    pub fn new(span: NodeSpan, kind: PatternKind) -> Pattern {
+        Pattern { span, kind }
+    }
+
+    /// A pattern with no position — hand-built by a test. See [`NodeSpan`].
+    pub fn bare(kind: PatternKind) -> Pattern {
+        Pattern {
+            span: NodeSpan::none(),
+            kind,
+        }
+    }
+
     fn from_parser(p: &parser::Pattern, env: &dyn Environment) -> Result<Pattern, Error> {
-        match p {
-            parser::Pattern::Anything => Ok(Pattern::Anything),
-            parser::Pattern::Variable(name) => Ok(Pattern::Variable(name.clone())),
-            parser::Pattern::Literal(parser::Literal::Int(i)) => Ok(Pattern::Int(*i)),
-            parser::Pattern::Literal(parser::Literal::Float(f)) => Ok(Pattern::Float(*f)),
-            parser::Pattern::Literal(parser::Literal::Char(c)) => Ok(Pattern::Char(*c)),
-            parser::Pattern::Literal(parser::Literal::Bool(b)) => Ok(Pattern::Bool(*b)),
-            parser::Pattern::Tuple(tuple) => Ok(Pattern::Tuple(
-                tuple.try_map(|p| Pattern::from_parser(p, env))?,
-            )),
-            parser::Pattern::Constructor(name, args) => {
+        let kind = match &p.kind {
+            parser::PatternKind::Anything => PatternKind::Anything,
+            parser::PatternKind::Variable(name) => PatternKind::Variable(name.clone()),
+            parser::PatternKind::Literal(parser::Literal::Int(i)) => PatternKind::Int(*i),
+            parser::PatternKind::Literal(parser::Literal::Float(f)) => PatternKind::Float(*f),
+            parser::PatternKind::Literal(parser::Literal::Char(c)) => PatternKind::Char(*c),
+            parser::PatternKind::Literal(parser::Literal::Bool(b)) => PatternKind::Bool(*b),
+            parser::PatternKind::Tuple(tuple) => {
+                PatternKind::Tuple(tuple.try_map(|p| Pattern::from_parser(p, env))?)
+            }
+            parser::PatternKind::Constructor(name, args) => {
+                // `p.span` covers the constructor and its arguments, which is the
+                // text a "no such constructor" caret should sit under.
                 let ctor = env
                     .find_type_constructor(name)
-                    .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(name)))?
+                    .ok_or_else(|| {
+                        Error::VariantNotFound(env.module_name().qualify_name(name), p.span)
+                    })?
                     .clone();
 
                 let args = args
@@ -219,10 +297,22 @@ impl Pattern {
                     .map(|p| Pattern::from_parser(p, env))
                     .collect::<Result<Vec<_>, Error>>()?;
 
-                Ok(Pattern::Constructor { ctor, args })
+                PatternKind::Constructor { ctor, args }
             }
-        }
+        };
+
+        Ok(Pattern::new(p.span, kind))
     }
+}
+
+/// A canonical expression, and where it was written.
+///
+/// Same shape as [`parser::Expression`] — a [`NodeSpan`] beside a kind — and for the
+/// same reason: the children stay `Box<Expression>`, so a reader matches `&e.kind`.
+#[derive(Debug, PartialEq)]
+pub struct Expression {
+    pub span: NodeSpan,
+    pub kind: ExpressionKind,
 }
 
 // TODO Find a way to detect recursive functions (even indirect recursivity,
@@ -261,7 +351,7 @@ impl Pattern {
 ///   | Tuple Expr Expr (Maybe Expr)
 /// ```
 #[derive(Debug, PartialEq)]
-pub enum Expression {
+pub enum ExpressionKind {
     VarLocal(Name),
     VarTopLevel(QualName),
     VarKernel(QualName),
@@ -289,33 +379,53 @@ pub enum Expression {
 }
 
 impl Expression {
+    /// An expression canonicalized from source, keeping the parser node's position.
+    pub fn new(span: NodeSpan, kind: ExpressionKind) -> Expression {
+        Expression { span, kind }
+    }
+
+    /// An expression with no position: hand-built by a test, or synthesised by the
+    /// compiler with nothing in the user's text behind it. See [`NodeSpan`].
+    pub fn bare(kind: ExpressionKind) -> Expression {
+        Expression {
+            span: NodeSpan::none(),
+            kind,
+        }
+    }
+
     fn from_parser(e: &parser::Expression, env: &dyn Environment) -> Result<Expression, Error> {
-        match e {
-            parser::Expression::Lit(parser::Literal::Int(i)) => Ok(Expression::Int(*i)),
-            parser::Expression::Lit(parser::Literal::Float(f)) => Ok(Expression::Float(*f)),
-            parser::Expression::Lit(parser::Literal::Char(c)) => Ok(Expression::Char(*c)),
-            parser::Expression::Lit(parser::Literal::Bool(b)) => Ok(Expression::Bool(*b)),
-            parser::Expression::Variable(name) => {
-                match env
-                    .find_value(name)
-                    .ok_or_else(|| Error::VariableNotFound(env.module_name().qualify_name(name)))?
-                {
-                    ValueType::Local => Ok(Expression::VarLocal(name.clone())),
-                    ValueType::TopLevel => Ok(Expression::VarTopLevel(
-                        env.module_name().qualify_name(name),
-                    )),
+        // Every arm builds a kind and every kind gets `e.span`, so a name the
+        // environment cannot resolve is underlined where it was written rather than
+        // somewhere up the tree.
+        let kind = match &e.kind {
+            parser::ExpressionKind::Lit(parser::Literal::Int(i)) => ExpressionKind::Int(*i),
+            parser::ExpressionKind::Lit(parser::Literal::Float(f)) => ExpressionKind::Float(*f),
+            parser::ExpressionKind::Lit(parser::Literal::Char(c)) => ExpressionKind::Char(*c),
+            parser::ExpressionKind::Lit(parser::Literal::Bool(b)) => ExpressionKind::Bool(*b),
+            parser::ExpressionKind::Variable(name) => {
+                match env.find_value(name).ok_or_else(|| {
+                    Error::VariableNotFound(env.module_name().qualify_name(name), e.span)
+                })? {
+                    ValueType::Local => ExpressionKind::VarLocal(name.clone()),
+                    ValueType::TopLevel => {
+                        ExpressionKind::VarTopLevel(env.module_name().qualify_name(name))
+                    }
                     ValueType::Foreign(m, tpe) => {
-                        Ok(Expression::VarForeign(m.qualify_name(name), tpe.clone()))
+                        ExpressionKind::VarForeign(m.qualify_name(name), tpe.clone())
                     }
                     ValueType::Foreigns(modules) => {
-                        Err(Error::AmbiguousVariables(name.clone(), modules.clone()))
+                        return Err(Error::AmbiguousVariables(
+                            name.clone(),
+                            modules.clone(),
+                            e.span,
+                        ))
                     }
                 }
             }
-            parser::Expression::TypeConstructor(name) => {
-                let ctor = env
-                    .find_type_constructor(name)
-                    .ok_or_else(|| Error::VariantNotFound(env.module_name().qualify_name(name)))?;
+            parser::ExpressionKind::TypeConstructor(name) => {
+                let ctor = env.find_type_constructor(name).ok_or_else(|| {
+                    Error::VariantNotFound(env.module_name().qualify_name(name), e.span)
+                })?;
 
                 let tpe = if ctor.type_parameters.is_empty() {
                     Type::Type(ctor.tpe.clone(), vec![])
@@ -340,18 +450,18 @@ impl Expression {
                     .to_qual()
                     .unwrap_or_else(|| env.module_name().qualify_name(name));
 
-                Ok(Expression::VarConstructor(name, tpe))
+                ExpressionKind::VarConstructor(name, tpe)
             }
-            parser::Expression::Application(a, b) => {
+            parser::ExpressionKind::Application(a, b) => {
                 let a = Expression::from_parser(a, env)?;
                 let b = Expression::from_parser(b, env)?;
 
-                Ok(Expression::Apply(Box::new(a), Box::new(b)))
+                ExpressionKind::Apply(Box::new(a), Box::new(b))
             }
-            parser::Expression::Tuple(tuple) => Ok(Expression::Tuple(
-                tuple.try_map(|e| Expression::from_parser(e, env))?,
-            )),
-            parser::Expression::Case(expr, branches) => {
+            parser::ExpressionKind::Tuple(tuple) => {
+                ExpressionKind::Tuple(tuple.try_map(|e| Expression::from_parser(e, env))?)
+            }
+            parser::ExpressionKind::Case(expr, branches) => {
                 let expr = Expression::from_parser(expr, env)?;
 
                 let b = branches.iter().map::<Result<CaseBranch, Error>, _>(|cb| {
@@ -365,25 +475,24 @@ impl Expression {
                     Ok(CaseBranch {
                         pattern,
                         expression,
+                        span: cb.span,
                     })
                 });
 
                 let branches = collect_accumulate(b)?;
 
-                Ok(Expression::Case(Box::new(expr), branches))
+                ExpressionKind::Case(Box::new(expr), branches)
             }
-            parser::Expression::If(cond, then, els) => {
+            parser::ExpressionKind::If(cond, then, els) => {
                 let cond = Expression::from_parser(cond, env)?;
                 let then = Expression::from_parser(then, env)?;
                 let els = Expression::from_parser(els, env)?;
 
-                Ok(Expression::If(
-                    Box::new(cond),
-                    Box::new(then),
-                    Box::new(els),
-                ))
+                ExpressionKind::If(Box::new(cond), Box::new(then), Box::new(els))
             }
-        }
+        };
+
+        Ok(Expression::new(e.span, kind))
     }
 }
 
@@ -391,21 +500,51 @@ impl Expression {
 pub struct CaseBranch {
     pub pattern: Pattern,
     pub expression: Expression,
+    /// The whole branch, pattern and expression together.
+    pub span: NodeSpan,
 }
 
 // end AST
 
+/// Everything canonicalization can reject.
+///
+/// # Why only some variants carry a span
+///
+/// A variant carries a [`NodeSpan`] when its construction site has one in hand — it
+/// is looking at a `parser::Import`, `parser::Infix`, `parser::UnionType` or
+/// `parser::Function`, all of which the grammar gives a span. Those are the variants
+/// a diagnostic can put a caret under.
+///
+/// The rest keep none, and that is a fact about the construction site rather than a
+/// gap to fill in. `ExportNotFound` is raised while walking `parser::Exposing` /
+/// `parser::Exposed`, neither of which the grammar spans — the exposing list is part
+/// of the `module` header production, not a declaration of its own. Writing
+/// `NodeSpan::none()` into such a variant would say "this error has a position we
+/// happen not to know", which is a lie; leaving the field off says "this error has
+/// nowhere to point", which is true, and the reporter renders it as
+/// message-plus-notes with no caret.
 #[derive(Debug)]
 pub enum Error {
     ExportNotFound(Name, ExportType),
     EnvironmentErrors(Vec<EnvError>),
-    InfixReferenceInvalidValue(Name, Name), // (infix, function)
-    BindingPatternsInvalidLen,
-    NoBindings,
-    VariableNotFound(QualName), // add name suggestion ?
-    AmbiguousVariables(Name, Vec<ModuleName>),
-    VariantNotFound(QualName),
-    AmbiguousVariants(Name, Vec<ModuleName>),
+    /// (infix, function), and where the `infix` declaration was written
+    InfixReferenceInvalidValue(Name, Name, NodeSpan),
+    BindingPatternsInvalidLen(NodeSpan),
+    /// A declaration with a type annotation and no body, and where the annotation
+    /// was written — which is the only part of it there is to point at.
+    NoBindings(NodeSpan),
+    /// A name used as a value that nothing in scope declares, and where it was
+    /// written — the identifier alone, not the declaration around it.
+    VariableNotFound(QualName, NodeSpan), // add name suggestion ?
+    AmbiguousVariables(Name, Vec<ModuleName>, NodeSpan),
+    /// A constructor used in an expression or a pattern that nothing in scope
+    /// declares, and where it was written.
+    VariantNotFound(QualName, NodeSpan),
+    /// Nothing constructs this today — `Environment::find_type_constructor` returns
+    /// at most one constructor per name, so it has no way to report an ambiguity.
+    /// It is the designated rejection path once it can, and carries the span the
+    /// construction site would have.
+    AmbiguousVariants(Name, Vec<ModuleName>, NodeSpan),
     /// A tuple type, pattern or expression had a size other than 2 or 3 (the
     /// only sizes the language supports).
     ///
@@ -418,12 +557,12 @@ pub enum Error {
     InvalidTupleSize(usize),
     /// A function was declared with multiple bindings (multi-clause definitions),
     /// which the compiler does not support yet.
-    MultipleBindingsUnsupported(Name),
+    MultipleBindingsUnsupported(Name, NodeSpan),
 
     // Binding module
-    InfixDeclared(Name),
-    TypeDeclared(Name),
-    NoTypeInBinding(Name),
+    InfixDeclared(Name, NodeSpan),
+    TypeDeclared(Name, NodeSpan),
+    NoTypeInBinding(Name, NodeSpan),
 
     // Utility error
     Many(Vec<Error>),
@@ -432,9 +571,8 @@ pub enum Error {
 /// Canonicalization errors name source constructs — a value, a type, an operator —
 /// so their messages can be written in the same words the user wrote.
 ///
-/// None of them points at a span: nothing in `parser::Module` carries one, so there
-/// is nothing to point *with*. See [`PhaseError`] for that decision and the ticket
-/// that reverses it.
+/// The variants whose construction site had a declaration in hand also point at it;
+/// see the enum's own documentation for why the others do not.
 impl PhaseError for Error {
     fn message(&self) -> String {
         match self {
@@ -447,25 +585,27 @@ impl PhaseError for Error {
                 [only] => only.message(),
                 many => format!("{} of this module's imports could not be resolved", many.len()),
             },
-            Error::InfixReferenceInvalidValue(infix, function) => format!(
+            Error::InfixReferenceInvalidValue(infix, function, _) => format!(
                 "the infix operator `{}` is declared as `{}`, which is not a value declared in this module",
                 infix, function
             ),
-            Error::BindingPatternsInvalidLen => {
+            Error::BindingPatternsInvalidLen(_) => {
                 "the arguments of this declaration do not line up with its type annotation"
                     .to_owned()
             }
-            Error::NoBindings => "this declaration has a type annotation but no body".to_owned(),
-            Error::VariableNotFound(name) => {
+            Error::NoBindings(_) => {
+                "this declaration has a type annotation but no body".to_owned()
+            }
+            Error::VariableNotFound(name, _) => {
                 format!("cannot find a value named `{}`", name.to_name())
             }
-            Error::AmbiguousVariables(name, _) => {
+            Error::AmbiguousVariables(name, _, _) => {
                 format!("`{}` is exposed by several imported modules", name)
             }
-            Error::VariantNotFound(name) => {
+            Error::VariantNotFound(name, _) => {
                 format!("cannot find a type constructor named `{}`", name.to_name())
             }
-            Error::AmbiguousVariants(name, _) => format!(
+            Error::AmbiguousVariants(name, _, _) => format!(
                 "the type constructor `{}` is exposed by several imported modules",
                 name
             ),
@@ -473,19 +613,19 @@ impl PhaseError for Error {
                 "a tuple has two or three elements, this one has {}",
                 size
             ),
-            Error::MultipleBindingsUnsupported(name) => format!(
+            Error::MultipleBindingsUnsupported(name, _) => format!(
                 "`{}` is declared over several bindings, which is not supported yet",
                 name
             ),
-            Error::InfixDeclared(name) => format!(
+            Error::InfixDeclared(name, _) => format!(
                 "a `module javascript` facade cannot declare an infix operator, but declares `{}`",
                 name
             ),
-            Error::TypeDeclared(name) => format!(
+            Error::TypeDeclared(name, _) => format!(
                 "a `module javascript` facade cannot declare a type, but declares `{}`",
                 name
             ),
-            Error::NoTypeInBinding(name) => format!(
+            Error::NoTypeInBinding(name, _) => format!(
                 "`{}` has no type annotation, and a `module javascript` facade is annotations only",
                 name
             ),
@@ -496,9 +636,47 @@ impl PhaseError for Error {
         }
     }
 
+    fn labels(&self) -> Vec<SpanLabel> {
+        // One helper per shape: a variant either has a span and one thing to say
+        // about it, or it delegates to the errors it wraps.
+        let primary = |span: &NodeSpan, message: &str| match span.span() {
+            Some(span) => vec![SpanLabel {
+                span,
+                message: message.to_owned(),
+                primary: true,
+            }],
+            None => Vec::new(),
+        };
+
+        match self {
+            Error::InfixReferenceInvalidValue(_, _, span) => primary(span, "declared here"),
+            // The four that name an identifier: the caret sits under the name the
+            // user wrote, which is the whole point of spanning expressions and
+            // patterns rather than only declarations.
+            Error::VariableNotFound(_, span) => primary(span, "no value of this name is in scope"),
+            Error::AmbiguousVariables(_, _, span) => primary(span, "this name is ambiguous"),
+            Error::VariantNotFound(_, span) => {
+                primary(span, "no type constructor of this name is in scope")
+            }
+            Error::AmbiguousVariants(_, _, span) => {
+                primary(span, "this type constructor is ambiguous")
+            }
+            Error::BindingPatternsInvalidLen(span) => primary(span, "declared here"),
+            Error::NoBindings(span) => primary(span, "this annotation has no body"),
+            Error::MultipleBindingsUnsupported(_, span) => primary(span, "declared here"),
+            Error::InfixDeclared(_, span) => primary(span, "declared here"),
+            Error::TypeDeclared(_, span) => primary(span, "declared here"),
+            Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
+            // A group has no position of its own; the errors it swallowed do.
+            Error::EnvironmentErrors(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
+            Error::Many(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
+            _ => Vec::new(),
+        }
+    }
+
     fn notes(&self) -> Vec<String> {
         match self {
-            Error::AmbiguousVariables(_, modules) | Error::AmbiguousVariants(_, modules) => {
+            Error::AmbiguousVariables(_, modules, _) | Error::AmbiguousVariants(_, modules, _) => {
                 vec![format!(
                     "it is exposed by: {}",
                     modules
@@ -571,7 +749,7 @@ pub fn canonicalize(
             let e = source
                 .infixes
                 .iter()
-                .map(|i| Error::InfixDeclared(i.operator.clone()));
+                .map(|i| Error::InfixDeclared(i.operator.clone(), i.span));
             errors.extend(e);
         }
         // Verify no types present
@@ -579,7 +757,7 @@ pub fn canonicalize(
             let e = source
                 .types
                 .iter()
-                .map(|t| Error::TypeDeclared(t.name.clone()));
+                .map(|t| Error::TypeDeclared(t.name.clone(), t.span));
             errors.extend(e);
         }
 
@@ -588,14 +766,14 @@ pub fn canonicalize(
             // Make sure there is no binding
             if !function.bindings.is_empty() {
                 //println!("bindings = {:?} (js module)", function.bindings);
-                Err(Error::BindingPatternsInvalidLen)? // TODO More specific error
+                Err(Error::BindingPatternsInvalidLen(function.span))? // TODO More specific error
             }
 
             // Make sure there is a type
             let tpe = function
                 .tpe
                 .as_ref()
-                .ok_or_else(|| Error::NoTypeInBinding(function.name.clone()))?;
+                .ok_or_else(|| Error::NoTypeInBinding(function.name.clone(), function.span))?;
             let tpe = Type::from_parser_type(&env, tpe)?;
 
             let name = function.name.clone();
@@ -607,8 +785,11 @@ pub fn canonicalize(
             let value = Value::TypedValue {
                 name: name.clone(),
                 patterns: vec![],
-                body: Expression::Bool(true),
+                // A `module javascript` facade has no body in the source, so this
+                // stand-in has nothing to point at (see the TODO above).
+                body: Expression::bare(ExpressionKind::Bool(true)),
                 tpe,
+                span: function.span,
             };
 
             Ok((name, value))
@@ -692,11 +873,11 @@ fn do_values(
 
         if !bindings_size {
             //println!("bindings = {:?} (bindings_size)", function.bindings);
-            Err(Error::BindingPatternsInvalidLen)?
+            Err(Error::BindingPatternsInvalidLen(function.span))?
         }
 
         let (patterns, body): (Vec<Pattern>, Expression) = match function.bindings.len() {
-            0 => Err(Error::NoBindings),
+            0 => Err(Error::NoBindings(function.span)),
             1 => {
                 // if one binding, we can convert directly to canonical format
                 let binding = &function.bindings[0];
@@ -724,7 +905,10 @@ fn do_values(
             }
             _ => {
                 // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
-                Err(Error::MultipleBindingsUnsupported(function.name.clone()))
+                Err(Error::MultipleBindingsUnsupported(
+                    function.name.clone(),
+                    function.span,
+                ))
             }
         }?;
 
@@ -746,7 +930,7 @@ fn do_values(
                         linear.len(),
                         patterns.len()
                     );
-                    Err(Error::BindingPatternsInvalidLen)?
+                    Err(Error::BindingPatternsInvalidLen(function.span))?
                 }
 
                 let patterns = patterns.into_iter().zip(linear).collect();
@@ -758,6 +942,7 @@ fn do_values(
                         patterns,
                         body,
                         tpe,
+                        span: function.span,
                     },
                 ))
             }
@@ -767,6 +952,7 @@ fn do_values(
                     name,
                     patterns,
                     body,
+                    span: function.span,
                 },
             )),
         }
@@ -791,10 +977,10 @@ fn do_types(
         let variants = tpe
             .variants
             .iter()
-            .filter_map(|t| match t {
+            .filter_map(|t| match &t.kind {
                 // TODO It might actually make more sense to put Type::from_parser_type
                 // on `Environment`.
-                parser::Type::Unqualified(name, vars) => Some((name, vars)),
+                parser::TypeKind::Unqualified(name, vars) => Some((name, vars)),
                 _ => None,
             })
             .map(|(name, vars)| {
@@ -816,6 +1002,7 @@ fn do_types(
             UnionType {
                 variables,
                 variants,
+                span: tpe.span,
             },
         ))
     });
@@ -842,13 +1029,18 @@ fn do_infixes(
                 associativity: infix.associativity,
                 precedence: infix.precedence,
                 function_name,
+                span: infix.span,
             };
 
             env.insert_local_infix(op_name.clone(), infix.clone());
 
             Ok((op_name, infix))
         } else {
-            Err(Error::InfixReferenceInvalidValue(op_name, function_name))
+            Err(Error::InfixReferenceInvalidValue(
+                op_name,
+                function_name,
+                infix.span,
+            ))
         }
     });
 

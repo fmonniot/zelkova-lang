@@ -20,6 +20,7 @@ pub mod layout;
 pub mod tokenizer;
 
 use crate::compiler::name::Name;
+use crate::compiler::position::NodeSpan;
 use crate::compiler::tuple::Tuple;
 pub use error::Error;
 
@@ -55,8 +56,23 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
 /// As their name indicates, a type with arguments will requires more
 /// `Type` as arguments. For example the optional type will require
 /// one no-arg type: `Maybe Int` (this is another name for higher-kinded types)
+///
+/// # Why the span is a field rather than a wrapper
+///
+/// The three recursive nodes of this AST — `Type`, [`Pattern`] and [`Expression`] —
+/// are each a struct pairing a [`NodeSpan`] with a `…Kind` enum, rather than the
+/// enum wrapped in a `Spanned<BytePos, _>`. The difference shows up in the children:
+/// here they stay `Box<Type>` and `Vec<Type>`, each carrying its own span, so a
+/// reader matches `&t.kind` once per function instead of unwrapping a `.value` at
+/// every child. `canonical/mod.rs` is that reader.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Type {
+pub struct Type {
+    pub span: NodeSpan,
+    pub kind: TypeKind,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TypeKind {
     /// Type constructor
     Unqualified(Name, Vec<Type>),
     // TODO Qualified type eg Maybe.Maybe (or is it already merged in Unqualified ?)
@@ -72,20 +88,38 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn unqualified(name: Name) -> Type {
-        Type::Unqualified(name, Vec::default())
+    /// A type the parser built, at the position its production captured.
+    pub fn new(span: NodeSpan, kind: TypeKind) -> Type {
+        Type { span, kind }
     }
 
-    pub fn unqualified_with(name: Name, types: Vec<Type>) -> Type {
-        Type::Unqualified(name, types)
+    /// A type with no position — hand-built by a test. See [`NodeSpan`].
+    pub fn bare(kind: TypeKind) -> Type {
+        Type {
+            span: NodeSpan::none(),
+            kind,
+        }
+    }
+
+    pub fn unqualified(span: NodeSpan, name: Name) -> Type {
+        Type::new(span, TypeKind::Unqualified(name, Vec::default()))
+    }
+
+    pub fn unqualified_with(span: NodeSpan, name: Name, types: Vec<Type>) -> Type {
+        Type::new(span, TypeKind::Unqualified(name, types))
     }
 
     /// A parenthesised type together with the `-> T` the grammar may have found
     /// after the closing parenthesis, which turns it into an arrow: `(a, b)` on
     /// its own, but `(a, b) -> c` when the arrow is there.
-    pub fn parenthesized(tpe: Type, result: Option<Type>) -> Type {
+    ///
+    /// `span` covers the parenthesised type *and* the arrow, so it is the span of
+    /// the `Arrow` this builds. With no arrow there is no new node and nothing to
+    /// span: the parenthesised type is returned as it was, keeping the position of
+    /// the text inside the parentheses.
+    pub fn parenthesized(span: NodeSpan, tpe: Type, result: Option<Type>) -> Type {
         match result {
-            Some(result) => Type::Arrow(Box::new(tpe), Box::new(result)),
+            Some(result) => Type::new(span, TypeKind::Arrow(Box::new(tpe), Box::new(result))),
             None => tpe,
         }
     }
@@ -155,18 +189,29 @@ impl Module {
         let functions = functions.into_iter().map(|(name, decls)| {
             let mut tpe = None;
             let mut bindings = vec![];
+            // The declarations that make one function were parsed independently, so
+            // the function's span is the union of theirs: the annotation merged with
+            // every binding. `merge` tolerates a missing half, which is what an
+            // annotation with no body (a `module javascript` facade) needs.
+            let mut span = NodeSpan::none();
 
             // TODO Error if more than function type is defined
 
             for d in decls {
                 match d {
-                    Declaration::Function(b) => bindings.push(b.pattern),
-                    Declaration::FunctionType(t) => {tpe.replace(t.tpe);}
+                    Declaration::Function(b) => {
+                        span = span.merge(b.span);
+                        bindings.push(b.pattern);
+                    }
+                    Declaration::FunctionType(t) => {
+                        span = span.merge(t.span);
+                        tpe.replace(t.tpe);
+                    }
                     _ => panic!("Invalid kind of declaration used in functions, report this error ({:?})", d),
                 }
             }
 
-            Function { name, tpe, bindings }
+            Function { name, tpe, bindings, span }
         }).collect::<Vec<_>>();
 
         Module {
@@ -201,6 +246,13 @@ pub struct Function {
     pub name: Name,
     pub tpe: Option<Type>,
     pub bindings: Vec<Match>,
+    /// The annotation and every binding, merged into one span.
+    ///
+    /// A `Function` is assembled in [`Module::from_declarations`] out of
+    /// declarations the grammar saw separately, so this covers the annotation
+    /// *and* the body rather than either alone — which is what a type mismatch
+    /// between the two is actually about.
+    pub span: NodeSpan,
 }
 
 /// Exposing represent whether an import (or export) expose terms.
@@ -263,6 +315,8 @@ pub struct Import {
     pub name: Name,
     pub alias: Option<Name>,
     pub exposing: Exposing,
+    /// Where the whole `import …` line was written.
+    pub span: NodeSpan,
 }
 
 /// Represents the type signature of a particular function
@@ -270,6 +324,8 @@ pub struct Import {
 pub struct FunType {
     pub name: Name,
     pub tpe: Type,
+    /// Where the annotation — `name : Type` — was written.
+    pub span: NodeSpan,
 }
 
 #[derive(Debug, PartialEq)]
@@ -277,6 +333,8 @@ pub struct UnionType {
     pub name: Name,
     pub type_arguments: Vec<Name>,
     pub variants: Vec<Type>, // TODO Restrict to Type::Unqualified
+    /// Where the whole `type … = …` declaration was written.
+    pub span: NodeSpan,
 }
 
 #[derive(Debug, PartialEq)]
@@ -287,6 +345,8 @@ pub struct Infix {
     /// (in absence of parenthesis). The higher precedence will be parsed first.
     pub precedence: u8,
     pub function_name: Name,
+    /// Where the whole `infix … = …` declaration was written.
+    pub span: NodeSpan,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -331,6 +391,8 @@ pub enum Associativity {
 pub struct FunBinding {
     pub name: Name,
     pub pattern: Match,
+    /// Where this one binding — patterns and body — was written.
+    pub span: NodeSpan,
 }
 
 /// The match structure is composed of a serie of patterns and an associated expression
@@ -338,6 +400,10 @@ pub struct FunBinding {
 pub struct Match {
     pub patterns: Vec<Pattern>,
     pub body: Expression,
+    /// The patterns and the body, from the first pattern to the last byte of the
+    /// expression. It excludes the function's name, which the enclosing
+    /// [`FunBinding`] span covers.
+    pub span: NodeSpan,
 }
 
 /// A pattern is the left handside of a pattern-match expression
@@ -354,7 +420,13 @@ pub struct Match {
 /// - `List [Pattern]`
 /// - `Cons Pattern Pattern`
 #[derive(Debug, PartialEq, Clone)]
-pub enum Pattern {
+pub struct Pattern {
+    pub span: NodeSpan,
+    pub kind: PatternKind,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum PatternKind {
     Variable(Name),
     Literal(Literal),
     /// A tuple pattern, of two or three elements — see [`Tuple`].
@@ -363,9 +435,33 @@ pub enum Pattern {
     Anything,
 }
 
+impl Pattern {
+    /// A pattern the parser built, at the position its production captured.
+    pub fn new(span: NodeSpan, kind: PatternKind) -> Pattern {
+        Pattern { span, kind }
+    }
+
+    /// A pattern with no position — hand-built by a test. See [`NodeSpan`].
+    pub fn bare(kind: PatternKind) -> Pattern {
+        Pattern {
+            span: NodeSpan::none(),
+            kind,
+        }
+    }
+}
+
 /// An Expression
+///
+/// Like [`Type`] and [`Pattern`], this is a span plus a kind rather than a spanned
+/// enum; see [`Type`] for why.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Expression {
+pub struct Expression {
+    pub span: NodeSpan,
+    pub kind: ExpressionKind,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ExpressionKind {
     Lit(Literal),                                  // Literal, as other are fully named
     Application(Box<Expression>, Box<Expression>), // TODO Rename Apply ?
     Variable(Name),                                // TODO Qualified variable
@@ -376,10 +472,27 @@ pub enum Expression {
     If(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
+impl Expression {
+    /// An expression the parser built, at the position its production captured.
+    pub fn new(span: NodeSpan, kind: ExpressionKind) -> Expression {
+        Expression { span, kind }
+    }
+
+    /// An expression with no position — hand-built by a test. See [`NodeSpan`].
+    pub fn bare(kind: ExpressionKind) -> Expression {
+        Expression {
+            span: NodeSpan::none(),
+            kind,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct CaseBranch {
     pub pattern: Pattern,
     pub expression: Expression,
+    /// The whole branch, from the pattern to the last byte of its expression.
+    pub span: NodeSpan,
 }
 
 /// A literal

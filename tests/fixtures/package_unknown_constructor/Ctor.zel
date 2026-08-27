@@ -1,0 +1,4 @@
+module Ctor exposing (..)
+
+
+isRed Purple = 1

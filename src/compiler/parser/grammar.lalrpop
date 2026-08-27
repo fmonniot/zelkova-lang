@@ -1,4 +1,4 @@
-use crate::compiler::position::BytePos;
+use crate::compiler::position::{BytePos, NodeSpan};
 use crate::compiler::parser::tokenizer::Token;
 use crate::compiler::parser::error::Error;
 use crate::compiler::parser::*;
@@ -135,32 +135,39 @@ Lit: Literal = {
     "false" => Literal::Bool(false),
 };
 
+// `Lit` yields a bare `Literal`, which has no span of its own: it is only ever a
+// component of an `Expression` or a `Pattern`, and the `@L`/`@R` those productions
+// capture around it *is* the literal's extent.
+
 // Base expression
 AtomicExpr: Expression = {
-    <id: QualVarIdent> =>
-        Expression::Variable(id),
-    
-    <QualTypeIdent> => Expression::TypeConstructor(<>),
+    <l:@L> <id: QualVarIdent> <r:@R> =>
+        Expression::new(NodeSpan::new(l, r), ExpressionKind::Variable(id)),
 
-    <lit: Lit> =>
-        Expression::Lit(lit),
+    <l:@L> <n: QualTypeIdent> <r:@R> =>
+        Expression::new(NodeSpan::new(l, r), ExpressionKind::TypeConstructor(n)),
+
+    <l:@L> <lit: Lit> <r:@R> =>
+        Expression::new(NodeSpan::new(l, r), ExpressionKind::Lit(lit)),
 
     // <expr: AtomicExpr> "." <id: Ident> =>
     //     Expression::Projection(Box::new(expr), id),
-    // 
+    //
 
     // A tuple has two or three elements, so it gets one production per arity:
     // `(1, 2, 3, 4)` is a parse error rather than something a later phase has to
     // count and reject. A lone parenthesised expression is a grouping, not a tuple.
+    // Grouping builds no node, so there is nothing to give a span to: the inner
+    // expression is returned keeping the position of the text inside the parentheses.
     "(" <e: Expr> ")" => e,
 
-    "(" <a: Expr> "," <b: Expr> ")" =>
-        Expression::Tuple(Tuple::two(a, b)),
+    <l:@L> "(" <a: Expr> "," <b: Expr> ")" <r:@R> =>
+        Expression::new(NodeSpan::new(l, r), ExpressionKind::Tuple(Tuple::two(a, b))),
 
-    "(" <a: Expr> "," <b: Expr> "," <c: Expr> ")" =>
-        Expression::Tuple(Tuple::three(a, b, c)),
+    <l:@L> "(" <a: Expr> "," <b: Expr> "," <c: Expr> ")" <r:@R> =>
+        Expression::new(NodeSpan::new(l, r), ExpressionKind::Tuple(Tuple::three(a, b, c))),
 
-    // "[" <elems: Comma<Expr>> "]" => 
+    // "[" <elems: Comma<Expr>> "]" =>
     //     Expression::List { elems },
 
     // TODO record
@@ -173,50 +180,73 @@ AppExpr = {
 
     // Might be a bug here, as expr can be a lit, and, well, a literal
     // doesn't apply anything. or does it ?
-    <expr: AppExpr> <arg: AtomicExpr> =>
-        Expression::Application(Box::new(expr), Box::new(arg)),
+    <l:@L> <expr: AppExpr> <arg: AtomicExpr> <r:@R> =>
+        Expression::new(NodeSpan::new(l, r), ExpressionKind::Application(Box::new(expr), Box::new(arg))),
 };
+
+// An operator together with where it was written. The infix rewrite below invents
+// nodes that are not in the source and hands them this span, so it has to survive
+// `Op` on its own.
+SpannedOp: (Name, NodeSpan) = <l:@L> <o: Op> <r:@R> => (o, NodeSpan::new(l, r));
 
 InfixExpr = {
     AppExpr,
 
     // TODO LambdaExpr which take AppExpr as a branch and replace AppExpr in Expr
 
-    <lhs: AppExpr> <op: Op> <rhs: InfixExpr> => {
+    <l:@L> <lhs: AppExpr> <op: SpannedOp> <rhs: InfixExpr> <r:@R> => {
         // TODO Might need a custom node here, to be able to establish
         // the correct application order in a next pass (once we have all
         // infix rules).
-        Expression::Application(
-            Box::new(Expression::Application(
-                Box::new(Expression::Variable(op)),
-                Box::new(lhs),
-            )),
-            Box::new(rhs),
+        //
+        // `a + b` is rewritten here into `((+) a) b`, and neither `Application` is
+        // anything the user typed. They are still given a span rather than
+        // `NodeSpan::none()`, so a diagnostic about the rewritten expression lands
+        // somewhere real: the outer application covers the whole `a + b`, which is
+        // what the user wrote, and the invented `Variable` and the inner application
+        // — the two nodes that exist only because of the operator — take the
+        // operator's own span.
+        let (op_name, op_span) = op;
+
+        Expression::new(
+            NodeSpan::new(l, r),
+            ExpressionKind::Application(
+                Box::new(Expression::new(
+                    op_span,
+                    ExpressionKind::Application(
+                        Box::new(Expression::new(op_span, ExpressionKind::Variable(op_name))),
+                        Box::new(lhs),
+                    ),
+                )),
+                Box::new(rhs),
+            ),
         )
     }
 }
 
 Pattern: Pattern = {
-    "_" => Pattern::Anything,
+    <l:@L> "_" <r:@R> => Pattern::new(NodeSpan::new(l, r), PatternKind::Anything),
 
-    <VarIdent> => Pattern::Variable(<>),
+    <l:@L> <n: VarIdent> <r:@R> => Pattern::new(NodeSpan::new(l, r), PatternKind::Variable(n)),
 
-    <Lit> => Pattern::Literal(<>),
+    <l:@L> <lit: Lit> <r:@R> => Pattern::new(NodeSpan::new(l, r), PatternKind::Literal(lit)),
 
-    // One production per tuple arity, as in `AtomicExpr` above.
+    // One production per tuple arity, as in `AtomicExpr` above. As there, the
+    // parenthesised form builds no node and keeps the inner pattern's span.
     "(" <p: Pattern> ")" => p,
 
-    "(" <a: Pattern> "," <b: Pattern> ")" =>
-        Pattern::Tuple(Tuple::two(a, b)),
+    <l:@L> "(" <a: Pattern> "," <b: Pattern> ")" <r:@R> =>
+        Pattern::new(NodeSpan::new(l, r), PatternKind::Tuple(Tuple::two(a, b))),
 
-    "(" <a: Pattern> "," <b: Pattern> "," <c: Pattern> ")" =>
-        Pattern::Tuple(Tuple::three(a, b, c)),
+    <l:@L> "(" <a: Pattern> "," <b: Pattern> "," <c: Pattern> ")" <r:@R> =>
+        Pattern::new(NodeSpan::new(l, r), PatternKind::Tuple(Tuple::three(a, b, c))),
 }
 
 CasePattern: Pattern = {
     Pattern,
 
-    <n:QualTypeIdent> <p:Pattern*> => Pattern::Constructor(n, p),
+    <l:@L> <n:QualTypeIdent> <p:Pattern*> <r:@R> =>
+        Pattern::new(NodeSpan::new(l, r), PatternKind::Constructor(n, p)),
 }
 
 // DeclPattern is for function binding. The syntax require parenthesis when there are multiple
@@ -224,37 +254,83 @@ CasePattern: Pattern = {
 // later on.
 DeclPattern: Pattern = {
     Pattern,
-    
-    QualTypeIdent => Pattern::Constructor(<>, vec![]),
-    "(" <n:QualTypeIdent> <p:Pattern*> ")" => Pattern::Constructor(n, p),
+
+    <l:@L> <n: QualTypeIdent> <r:@R> =>
+        Pattern::new(NodeSpan::new(l, r), PatternKind::Constructor(n, vec![])),
+
+    <l:@L> "(" <n:QualTypeIdent> <p:Pattern*> ")" <r:@R> =>
+        Pattern::new(NodeSpan::new(l, r), PatternKind::Constructor(n, p)),
 }
 
+// The branch ends where its expression ends. That is read off `expression` rather
+// than from an `@R`, for two reasons at once: the trailing "close block" is emitted
+// by the layout pass at the point the block ends, which is on the following line,
+// and a nested `case` as the branch body would itself have consumed one already.
+// See `NodeSpan::to_end_of`.
 CaseBranch: CaseBranch = {
-    <pattern: CasePattern> "->" "open block" <expression: Expr> "close block" => CaseBranch {<>}
+    <l:@L> <pattern: CasePattern> "->" "open block" <expression: Expr> "close block" => {
+        let span = NodeSpan::to_end_of(l, expression.span);
+
+        CaseBranch { pattern, expression, span }
+    }
 }
 
 
 Expr = {
     InfixExpr,
 
-    "-" <e: Expr> => {
-        Expression::Application(
-            Box::new(Expression::Application(
-                Box::new(Expression::Variable(Name::new("-"))),
-                Box::new(Expression::Lit(Literal::Int(0))),
-            )),
-            Box::new(e),
+    <l:@L> "-" <m:@R> <e: Expr> => {
+        // Prefix negation desugars to `0 - e`: neither the `-` variable nor the `0`
+        // is in the user's text. Rather than leaving them span-less, both take the
+        // span of the `-` token — the one piece of source the desugaring is about —
+        // while the two applications, which stand for the whole expression, take it.
+        let minus = NodeSpan::new(l, m);
+        // The end comes from `e`, not from an `@R` after it: `e` may be a `case`,
+        // whose production ends by consuming a layout token. See `NodeSpan::to_end_of`.
+        let whole = NodeSpan::to_end_of(l, e.span);
+
+        Expression::new(
+            whole,
+            ExpressionKind::Application(
+                Box::new(Expression::new(
+                    whole,
+                    ExpressionKind::Application(
+                        Box::new(Expression::new(minus, ExpressionKind::Variable(Name::new("-")))),
+                        Box::new(Expression::new(minus, ExpressionKind::Lit(Literal::Int(0)))),
+                    ),
+                )),
+                Box::new(e),
+            ),
         )
     },
 
-    "if" <pred: Expr> "then" <if_true: Expr> "else" <if_false: Expr> =>
-        Expression::If(Box::new(pred),Box::new(if_true),Box::new(if_false)),
+    // The end comes from `if_false` rather than an `@R` after it — see
+    // `NodeSpan::to_end_of`, and the `case` production below for the token that
+    // makes an `@R` there wrong.
+    <l:@L> "if" <pred: Expr> "then" <if_true: Expr> "else" <if_false: Expr> =>
+        Expression::new(
+            NodeSpan::to_end_of(l, if_false.span),
+            ExpressionKind::If(Box::new(pred), Box::new(if_true), Box::new(if_false)),
+        ),
 
     // TODO let binding: type  (FunType)
     // TODO let binding: value (FunBinding)
 
-    "case" "open block" <exp: Expr> "close block" "of" "open block" <branches: CaseBranch+> "close block" => {
-        Expression::Case(Box::new(exp), branches)
+    // The end comes from the branches, not from an `@R` after them. Each
+    // `CaseBranch` consumes its own trailing "close block", so an `@R` taken past
+    // `CaseBranch+` would be the end of *that* layout token: the layout pass gives
+    // an implicitly-closed block the span of the token that closed it, which is the
+    // first token of the next declaration, or — at end of file — `EndOfFile`, whose
+    // `BytePos` is 0 and which therefore inverted the span. Each branch already
+    // stops before its own close block, so folding their spans in gives the end of
+    // the last branch's expression. `m` (the end of the "of" block opener) is only
+    // the seed: `CaseBranch+` is non-empty, so a branch always widens it.
+    <l:@L> "case" "open block" <exp: Expr> "close block" "of" "open block" <m:@R> <branches: CaseBranch+> "close block" => {
+        let span = branches
+            .iter()
+            .fold(NodeSpan::new(l, m), |acc, branch| acc.merge(branch.span));
+
+        Expression::new(span, ExpressionKind::Case(Box::new(exp), branches))
     }
 };
 
@@ -263,16 +339,16 @@ Expr = {
 // TODO This is actually unqualified OR qualified, depending on the underlying name
 // Let's change the function to take that into account
 AtomicType: Type = {
-    <QualTypeIdent> => Type::unqualified(<>),
-    <VarIdent> => Type::Variable(<>),
+    <l:@L> <n: QualTypeIdent> <r:@R> => Type::unqualified(NodeSpan::new(l, r), n),
+    <l:@L> <n: VarIdent> <r:@R> => Type::new(NodeSpan::new(l, r), TypeKind::Variable(n)),
 }
 
 ArgType: Type = {
     AtomicType,
 
     // Here I need to think about this some more (and need better test coverage)
-    <name: QualTypeIdent> <types: AtomicType+> => {
-        Type::unqualified_with(name, types)
+    <l:@L> <name: QualTypeIdent> <types: AtomicType+> <r:@R> => {
+        Type::unqualified_with(NodeSpan::new(l, r), name, types)
     },
 
 }
@@ -289,29 +365,58 @@ Type: Type = {
     // of what `Type::parenthesized` does.
     // As in `AtomicExpr`, there is one production per tuple arity so that a
     // tuple of any other size cannot be parsed.
-    "(" <t: Type> ")" <result:("->" <Type>)?> =>
-        Type::parenthesized(t, result),
+    //
+    // Two spans are taken, not one: `l..m` closes at the `)` and belongs to the
+    // parenthesised type itself, while `l..r` runs past the optional arrow and
+    // belongs to the `Arrow` node built around it.
+    <l:@L> "(" <t: Type> ")" <result:("->" <Type>)?> <r:@R> =>
+        Type::parenthesized(NodeSpan::new(l, r), t, result),
 
-    "(" <a: Type> "," <b: Type> ")" <result:("->" <Type>)?> =>
-        Type::parenthesized(Type::Tuple(Tuple::two(a, b)), result),
+    <l:@L> "(" <a: Type> "," <b: Type> ")" <m:@R> <result:("->" <Type>)?> <r:@R> =>
+        Type::parenthesized(
+            NodeSpan::new(l, r),
+            Type::new(NodeSpan::new(l, m), TypeKind::Tuple(Tuple::two(a, b))),
+            result,
+        ),
 
-    "(" <a: Type> "," <b: Type> "," <c: Type> ")" <result:("->" <Type>)?> =>
-        Type::parenthesized(Type::Tuple(Tuple::three(a, b, c)), result),
+    <l:@L> "(" <a: Type> "," <b: Type> "," <c: Type> ")" <m:@R> <result:("->" <Type>)?> <r:@R> =>
+        Type::parenthesized(
+            NodeSpan::new(l, r),
+            Type::new(NodeSpan::new(l, m), TypeKind::Tuple(Tuple::three(a, b, c))),
+            result,
+        ),
 
-    <tpe1:ArgType> "->" <tpe2:Type> => Type::Arrow(Box::new(tpe1), Box::new(tpe2)),
+    <l:@L> <tpe1:ArgType> "->" <tpe2:Type> <r:@R> =>
+        Type::new(NodeSpan::new(l, r), TypeKind::Arrow(Box::new(tpe1), Box::new(tpe2))),
 }
 
-FunType: FunType = <name:VarIdent> ":" <tpe:Type> => {
-    FunType { name, tpe }
+// `@L`/`@R` are captured *inside* each declaration production, never around the
+// `Decl` wrapper. `Decl`'s alternatives are `"open block" <X> "close block"` and the
+// layout pass emits those block tokens zero-width, so a span taken at that level
+// would start wherever the block opened rather than at the user's first character.
+FunType: FunType = <l:@L> <name:VarIdent> ":" <tpe:Type> <r:@R> => {
+    FunType { name, tpe, span: NodeSpan::new(l, r) }
 };
 
-FunBinding: FunBinding = <name:VarIdent> <patterns: DeclPattern*> "=" <expr:Expr> => {
+// The inner `@L` starts the `Match`: the patterns and the body, without the name
+// the `FunBinding` around it already covers. With no patterns LALRPOP resolves an
+// `@L` before an empty repetition to the end of the previous token, so it lands
+// just after the name rather than on the `=`.
+// Both ends come from `expr` rather than from an `@R` after it: a `case` body ends
+// by consuming a layout token, so an `@R` there is not the end of the declaration.
+// See `NodeSpan::to_end_of`.
+FunBinding: FunBinding = <l:@L> <name:VarIdent> <ml:@L> <patterns: DeclPattern*> "=" <expr:Expr> => {
+    let span = NodeSpan::to_end_of(l, expr.span);
+    let match_span = NodeSpan::to_end_of(ml, expr.span);
+
     FunBinding {
         name,
         pattern: Match {
             patterns,
-            body: expr
-        }
+            body: expr,
+            span: match_span
+        },
+        span
     }
 };
 
@@ -334,24 +439,26 @@ Exposing: Exposing = {
 };
 
 Import:Import = {
-    "import" <name: QualTypeIdent> <alias: ("as" <TypeIdent>)?> <exposing: ("exposing" <Exposing>)?> => {
+    <l:@L> "import" <name: QualTypeIdent> <alias: ("as" <TypeIdent>)?> <exposing: ("exposing" <Exposing>)?> <r:@R> => {
         let exposing = exposing.unwrap_or_else(|| Exposing::Explicit(vec![]));
 
         Import {
             name,
             alias,
             exposing,
+            span: NodeSpan::new(l, r),
         }
     }
 }
 
 // TODO Restrict variants: they aren't full fledge types (only the constructor part)
 Union: UnionType = {
-    "type" <name: TypeIdent> <type_arguments: VarIdent*> "=" <variants: Pipe<Type>> => {
+    <l:@L> "type" <name: TypeIdent> <type_arguments: VarIdent*> "=" <variants: Pipe<Type>> <r:@R> => {
         UnionType {
             name,
             type_arguments,
-            variants
+            variants,
+            span: NodeSpan::new(l, r)
         }
     },
 }
@@ -363,7 +470,7 @@ Associativity: Associativity = {
 }
 
 Infix: Infix = {
-    "infix" <a:Associativity> <p:"integer"> "(" <o:Op> ")" "=" <n:VarIdent> => {
+    <l:@L> "infix" <a:Associativity> <p:"integer"> "(" <o:Op> ")" "=" <n:VarIdent> <r:@R> => {
         // TODO don't panic once we have a way to collect errors
         let precedence = u8::try_from(p).unwrap();
 
@@ -371,7 +478,8 @@ Infix: Infix = {
             operator: o,
             associativity: a,
             precedence,
-            function_name: n
+            function_name: n,
+            span: NodeSpan::new(l, r)
         }
     }
 }

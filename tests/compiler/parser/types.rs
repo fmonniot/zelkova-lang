@@ -26,6 +26,7 @@ fn module_function_type(tpe: Type) -> Module {
             name: "main".into(),
             tpe: Some(tpe),
             bindings: vec![],
+            span: no_span(),
         }],
     }
 }
@@ -42,11 +43,12 @@ test_parse_ok!(
     type UserStatus = Regular | Visitor
     "#,
     module_custom_type(UnionType {
+        span: no_span(),
         name: name("UserStatus"),
         type_arguments: vec![],
         variants: vec![
-            Type::unqualified(name("Regular")),
-            Type::unqualified(name("Visitor")),
+            type_unqualified(name("Regular")),
+            type_unqualified(name("Visitor")),
         ],
     })
 );
@@ -62,18 +64,19 @@ test_parse_ok!(
         | Anonymous
     "#,
     module_custom_type(UnionType {
+        span: no_span(),
         name: name("User"),
         type_arguments: vec![],
         variants: vec![
-            Type::unqualified_with(
+            type_unqualified_with(
                 name("Regular"),
                 vec![
-                    Type::unqualified(name("String")),
-                    Type::unqualified(name("Int")),
+                    type_unqualified(name("String")),
+                    type_unqualified(name("Int")),
                 ],
             ),
-            Type::unqualified_with(name("Visitor"), vec![Type::unqualified(name("String"))],),
-            Type::unqualified(name("Anonymous")),
+            type_unqualified_with(name("Visitor"), vec![type_unqualified(name("String"))],),
+            type_unqualified(name("Anonymous")),
         ],
     })
 );
@@ -88,11 +91,12 @@ test_parse_ok!(
         | Nothing
     "#,
     module_custom_type(UnionType {
+        span: no_span(),
         name: name("Maybe"),
         type_arguments: vec![name("a")],
         variants: vec![
-            Type::unqualified_with(name("Just"), vec![Type::Variable(name("a"))]),
-            Type::unqualified(name("Nothing")),
+            type_unqualified_with(name("Just"), vec![type_variable(name("a"))]),
+            type_unqualified(name("Nothing")),
         ],
     })
 );
@@ -109,13 +113,14 @@ test_parse_ok!(
     type Product = Product Int String
     "#,
     module_custom_type(UnionType {
+        span: no_span(),
         name: name("Product"),
         type_arguments: vec![],
-        variants: vec![Type::unqualified_with(
+        variants: vec![type_unqualified_with(
             name("Product"),
             vec![
-                Type::unqualified(name("Int")),
-                Type::unqualified(name("String")),
+                type_unqualified(name("Int")),
+                type_unqualified(name("String")),
             ]
         ),],
     })
@@ -128,7 +133,7 @@ test_parse_ok!(
 
     main : Int
     "#,
-    module_function_type(Type::unqualified("Int".into()))
+    module_function_type(type_unqualified("Int".into()))
 );
 
 test_parse_ok!(
@@ -139,8 +144,8 @@ test_parse_ok!(
     main : String -> Int
     "#,
     module_function_type(type_arrow(
-        Type::unqualified("String".into()),
-        Type::unqualified("Int".into()),
+        type_unqualified("String".into()),
+        type_unqualified("Int".into()),
     ))
 );
 
@@ -153,10 +158,10 @@ test_parse_ok!(
     "#,
     module_function_type(type_arrow(
         type_tuple2(
-            type_arrow(Type::Variable("a".into()), Type::Variable("b".into()),),
-            type_arrow(Type::Variable("b".into()), Type::Variable("c".into()),),
+            type_arrow(type_variable("a".into()), type_variable("b".into()),),
+            type_arrow(type_variable("b".into()), type_variable("c".into()),),
         ),
-        Type::Variable("a".into()),
+        type_variable("a".into()),
     ))
 );
 
@@ -169,12 +174,12 @@ test_parse_ok!(
     "#,
     module_function_type(type_arrow(
         type_arrow(
-            Type::unqualified("String".into()),
-            Type::unqualified("Int".into()),
+            type_unqualified("String".into()),
+            type_unqualified("Int".into()),
         ),
         type_arrow(
-            Type::unqualified("String".into()),
-            Type::unqualified("Int".into()),
+            type_unqualified("String".into()),
+            type_unqualified("Int".into()),
         ),
     ))
 );
@@ -188,15 +193,15 @@ test_parse_ok!(
     "#,
     module_function_type(type_arrow(
         type_arrow(
-            Type::unqualified("String".into()),
-            Type::unqualified("Int".into()),
+            type_unqualified("String".into()),
+            type_unqualified("Int".into()),
         ),
         type_arrow(
             type_arrow(
-                Type::unqualified("Int".into()),
-                Type::unqualified("String".into()),
+                type_unqualified("Int".into()),
+                type_unqualified("String".into()),
             ),
-            Type::unqualified("Int".into()),
+            type_unqualified("Int".into()),
         ),
     ))
 );
@@ -209,10 +214,10 @@ test_parse_ok!(
     main : a -> Maybe a -> a
     "#,
     module_function_type(type_arrow(
-        Type::Variable(name("a")),
+        type_variable(name("a")),
         type_arrow(
-            Type::unqualified_with(name("Maybe"), vec![Type::Variable(name("a"))]),
-            Type::Variable(name("a")),
+            type_unqualified_with(name("Maybe"), vec![type_variable(name("a"))]),
+            type_variable(name("a")),
         ),
     ))
 );

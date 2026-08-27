@@ -1,0 +1,15 @@
+module CaseBody exposing (..)
+
+
+type Color = Red | Blue
+
+
+classify : Color -> Color
+classify c =
+  case c of
+    Red -> 1
+    Blue -> 2
+
+
+other : Color
+other = Red

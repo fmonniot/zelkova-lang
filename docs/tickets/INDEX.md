@@ -1,6 +1,6 @@
 # Zelkova — Ticket index
 
-_Last updated: 2026-08-25 (migrated from `TODO.md`)._
+_Last updated: 2026-08-27._
 
 One file per ticket: `docs/tickets/<id-lower>.md`. Bugs and tasks share one ID namespace, one
 closing convention and this one table — a bug is a ticket **type**, not a separate file. Each
@@ -16,6 +16,31 @@ file instead.
 Prefixes are created ad-hoc per theme. Current ones: `BUG-` (defects), `ERR-` (error handling
 and diagnostics), `AST-` (parser and canonical AST shape), `PERF-` (allocation and hot paths),
 `TIDY-` (small self-contained cleanups), `TEST-` (test infrastructure).
+
+## The diagnostics program
+
+`ERR-3` through `ERR-7`, plus `ERR-9`, are one body of work rather than loose items. The goal
+is that **every phase can point its error at the source that caused it** — a caret under the offending text,
+secondary labels for context, a suggestion where one exists. They have a dependency order, and
+picking one up out of order mostly does not work:
+
+```
+BUG-6  rendering panics on 4 parse errors + 2 tokenizer errors   ← done 2026-08-27
+  │
+ERR-3  spans in the parser + canonical ASTs; PhaseError::labels() ← done 2026-08-27
+  │
+  ├── ERR-4  type-error provenance (typer Term → Constraint → unifier)
+  ├── ERR-5  cross-module labels (Interface carries source ids)
+  │      └── ERR-6  dependency cycles point at the `import` lines
+  ├── ERR-9  span `parser::Exposed` — the one node ERR-3 left unspanned
+  └── ERR-7  "did you mean" suggestions (better after ERR-9: a suggestion on
+             `ValueNotFound` wants a caret under the name it is about)
+ERR-8  warnings as a severity                                    ← independent, and see its
+                                                                   own "open question"
+```
+
+`ERR-2` (closed) is the ancestor of all of them: it made every phase error describe itself in
+prose, which is what left spans as the only thing missing.
 
 **Closing convention: delete the ticket file, then rewrite its row below as a tombstone** —
 same table, `status` becomes the close date. A closed ticket keeps accreting implementation
@@ -70,8 +95,16 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-3 | bug | low | closed 2026-08-25 | `Bitwise.zel` imports the non-existent `Elm.Kernel.Bitwise` |
 | BUG-4 | bug | medium | closed 2026-08-25 | The `Layout` iterator never terminates after a `LayoutError` |
 | BUG-5 | bug | medium | closed 2026-08-26 | The `Tokenizer` never terminates on a tab used for indentation |
+| BUG-6 | bug | medium | closed 2026-08-27 | Rendering a parse error panics for four of `parser::Error`'s five variants |
+| [BUG-7](bug-7.md) | bug | low | open | The unclosed-char diagnostic draws two invisible carets, and swaps their messages |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
-| [ERR-3](err-3.md) | task | — | open | Give the parser and canonical ASTs spans, so diagnostics can point at source |
+| ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
+| [ERR-4](err-4.md) | task | — | open | Type errors point at the sub-expression, not at the whole declaration |
+| [ERR-5](err-5.md) | task | — | open | A diagnostic can point into another module |
+| [ERR-6](err-6.md) | task | — | open | A dependency cycle points at the `import` lines that form it |
+| [ERR-7](err-7.md) | task | — | open | "Did you mean …?" on unresolved names |
+| [ERR-8](err-8.md) | task | — | open | Let a phase report a warning |
+| [ERR-9](err-9.md) | task | — | open | Span `parser::Exposed`, so an exposing list can be underlined |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

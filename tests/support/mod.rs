@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser;
+use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::{Interface, ModuleName, PackageName};
 
 pub fn test_package() -> PackageName {
@@ -81,6 +82,8 @@ pub fn maybe_interface() -> (Name, Interface) {
     unions.insert(
         "Maybe".into(),
         canonical::UnionType {
+            // Hand-built, not canonicalized from source: no position behind it.
+            span: NodeSpan::none(),
             variables: vec!["a".into()],
             variants: vec![
                 canonical::TypeConstructor {
