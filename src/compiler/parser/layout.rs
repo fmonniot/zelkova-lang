@@ -85,11 +85,52 @@ pub enum Context {
     TopLevelDeclaration,
 }
 
+impl Context {
+    /// How to name this block when talking to the person who wrote the source.
+    /// Used by `Error::diagnostic` to say which block an indentation error
+    /// belongs to.
+    pub fn description(&self) -> &'static str {
+        match self {
+            Context::CaseExpression => "the expression of a `case … of`",
+            Context::CaseBlock(_) => "the branches of a `case … of`",
+            Context::CaseBranch => "the body of a `case … of` branch",
+            Context::Let => "a `let` block",
+            Context::TopLevelDeclaration => "a top level declaration",
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Offside {
     context: Context,
     indent: usize, // TODO rename to min_indent
     line: usize,
+}
+
+impl Offside {
+    /// The smallest column a token may start on without breaking this context's
+    /// indentation rule.
+    ///
+    /// A `case … of` block takes its minimum from the first token which followed
+    /// the block opening, recorded in `CaseBlock`; every other context uses its
+    /// own indentation. `handle_next_token` enforces this, and
+    /// `Error::diagnostic` reports it, so the rule is written here once.
+    pub fn min_indent(&self) -> usize {
+        match self.context {
+            Context::CaseBlock(Some(min)) => min,
+            _ => self.indent,
+        }
+    }
+
+    /// The 1-indexed line the context was opened on.
+    pub fn line(&self) -> usize {
+        self.line
+    }
+
+    /// The kind of block this context describes.
+    pub fn context(&self) -> Context {
+        self.context
+    }
 }
 
 struct Contexts {
@@ -310,10 +351,7 @@ where
         };
 
         // Second, we enforce the indentation rule we have on record
-        let min_indent_required = match offside.context {
-            Context::CaseBlock(Some(min)) => min,
-            _ => offside.indent,
-        };
+        let min_indent_required = offside.min_indent();
 
         if token.span.start.column.cmp(&min_indent_required) == Ordering::Less {
             // The token is moved into the error and is *not* pushed onto
