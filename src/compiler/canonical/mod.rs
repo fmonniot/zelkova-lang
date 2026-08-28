@@ -704,9 +704,10 @@ impl PhaseError for Error {
         };
 
         match self {
-            Error::ExportNotFound(_, _, span) => {
-                primary(span, "not declared anywhere in this module")
-            }
+            Error::ExportNotFound(name, _, span) => primary(
+                span,
+                &format!("`{}` is not declared anywhere in this module", name),
+            ),
             Error::InfixReferenceInvalidValue(_, _, span) => primary(span, "declared here"),
             // The four that name an identifier: the caret sits under the name the
             // user wrote, which is the whole point of spanning expressions and

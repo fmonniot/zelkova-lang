@@ -303,10 +303,10 @@ impl PhaseError for EnvError {
     }
 
     fn labels(&self) -> Vec<SpanLabel> {
-        let primary = |span: &NodeSpan, message: &str| match span.span() {
+        let primary = |span: &NodeSpan, message: String| match span.span() {
             Some(span) => vec![SpanLabel {
                 span,
-                message: message.to_owned(),
+                message,
                 primary: true,
                 file: None,
             }],
@@ -315,11 +315,20 @@ impl PhaseError for EnvError {
 
         match self {
             EnvError::InterfaceNotFound(_, span) => {
-                primary(span, "no module of this name was found")
+                primary(span, "no module of this name was found".to_owned())
             }
-            EnvError::UnionNotFound(_, span) => primary(span, "not exposed by the imported module"),
-            EnvError::InfixNotFound(_, span) => primary(span, "not exposed by the imported module"),
-            EnvError::ValueNotFound(_, span) => primary(span, "not exposed by the imported module"),
+            EnvError::UnionNotFound(name, span) => primary(
+                span,
+                format!("`{}` is not exposed by the imported module", name),
+            ),
+            EnvError::InfixNotFound(name, span) => primary(
+                span,
+                format!("`{}` is not exposed by the imported module", name),
+            ),
+            EnvError::ValueNotFound(name, span) => primary(
+                span,
+                format!("`{}` is not exposed by the imported module", name),
+            ),
             EnvError::Multiple(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
         }
     }
