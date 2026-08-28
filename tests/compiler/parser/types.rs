@@ -27,6 +27,7 @@ fn module_function_type(tpe: Type) -> Module {
             tpe: Some(tpe),
             bindings: vec![],
             span: no_span(),
+            annotation_span: no_span(),
         }],
     }
 }

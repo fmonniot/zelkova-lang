@@ -1,51 +1,51 @@
-use super::{ErrorKind, Term, TermPattern, TypeBinder, TypedTerm, Types};
+//! Give every node of a [`Term`] a type variable, keeping the position it came with.
+//!
+//! This is where spans enter the typed side of the typer: a [`TypedTerm`] is built
+//! from a [`Term`] node and takes its `span` verbatim. `constraint::collect` reads
+//! them off the typed term when it decides what each constraint is about, so nothing
+//! below this point ever has to go looking for a position again.
+
+use super::{
+    ErrorKind, Term, TermKind, TermPatternKind, TypeBinder, TypedTerm, TypedTermKind, Types,
+};
 use crate::compiler::tuple::Tuple;
 
 pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, ErrorKind> {
-    match term {
-        Term::Int(value) => Ok(TypedTerm::Int {
-            tpe: types.fresh_var(),
-            value,
-        }),
-        Term::Bool(value) => Ok(TypedTerm::Bool {
-            tpe: types.fresh_var(),
-            value,
-        }),
-        Term::Char(value) => Ok(TypedTerm::Char {
-            tpe: types.fresh_var(),
-            value,
-        }),
-        Term::Float(value) => Ok(TypedTerm::Float {
-            tpe: types.fresh_var(),
-            value,
-        }),
-        Term::Fun { param, body } => {
+    let span = term.span;
+    // Every arm below builds a kind and a type, and the span is copied over once,
+    // here — an arm that forgot to carry it would silently cost a caret.
+    let (tpe, kind) = match term.kind {
+        TermKind::Int(value) => (types.fresh_var(), TypedTermKind::Int(value)),
+        TermKind::Bool(value) => (types.fresh_var(), TypedTermKind::Bool(value)),
+        TermKind::Char(value) => (types.fresh_var(), TypedTermKind::Char(value)),
+        TermKind::Float(value) => (types.fresh_var(), TypedTermKind::Float(value)),
+        TermKind::Fun { param, body } => {
             let param = TypeBinder::new(param, types.fresh_var());
             types.add_binder(param.clone());
 
             let body = annotate(*body, types)?;
 
-            Ok(TypedTerm::Fun {
-                tpe: types.fresh_var(),
-                param,
-                body: Box::new(body),
-            })
+            (
+                types.fresh_var(),
+                TypedTermKind::Fun {
+                    param,
+                    body: Box::new(body),
+                },
+            )
         }
-        Term::Identifier(name) => match types.by_name(&name) {
-            None => Err(ErrorKind::UnboundVariable(name)),
-            Some(tpe) => Ok(TypedTerm::Identifier { tpe, name }),
+        TermKind::Identifier(name) => match types.by_name(&name) {
+            // The one error `annotate` can raise, and the span is the whole of what
+            // `ERR-4` changed about it: the name is underlined where it was written.
+            None => return Err(ErrorKind::UnboundVariable { name, span }),
+            Some(tpe) => (tpe, TypedTermKind::Identifier(name)),
         },
-        Term::Apply { fun, arg } => {
+        TermKind::Apply { fun, arg } => {
             let fun = Box::new(annotate(*fun, types)?);
             let arg = Box::new(annotate(*arg, types)?);
 
-            Ok(TypedTerm::Apply {
-                tpe: types.fresh_var(),
-                fun,
-                arg,
-            })
+            (types.fresh_var(), TypedTermKind::Apply { fun, arg })
         }
-        Term::If {
+        TermKind::If {
             cond,
             true_branch,
             false_branch,
@@ -54,14 +54,16 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
             let true_branch = Box::new(annotate(*true_branch, types)?);
             let false_branch = Box::new(annotate(*false_branch, types)?);
 
-            Ok(TypedTerm::If {
-                tpe: types.fresh_var(),
-                cond,
-                true_branch,
-                false_branch,
-            })
+            (
+                types.fresh_var(),
+                TypedTermKind::If {
+                    cond,
+                    true_branch,
+                    false_branch,
+                },
+            )
         }
-        Term::Let {
+        TermKind::Let {
             binding,
             value,
             body,
@@ -74,32 +76,28 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
             types.add_binder(binding.clone());
             let body = Box::new(annotate(*body, types)?);
 
-            Ok(TypedTerm::Let {
-                tpe: types.fresh_var(),
-                binding,
-                value,
-                body,
-            })
+            (
+                types.fresh_var(),
+                TypedTermKind::Let {
+                    binding,
+                    value,
+                    body,
+                },
+            )
         }
-        Term::Tuple(Tuple::Two(a, b)) => {
+        TermKind::Tuple(Tuple::Two(a, b)) => {
             let elements = Tuple::two(annotate(*a, types)?, annotate(*b, types)?);
-            Ok(TypedTerm::Tuple {
-                tpe: types.fresh_var(),
-                elements,
-            })
+            (types.fresh_var(), TypedTermKind::Tuple(elements))
         }
-        Term::Tuple(Tuple::Three(a, b, c)) => {
+        TermKind::Tuple(Tuple::Three(a, b, c)) => {
             let elements = Tuple::three(
                 annotate(*a, types)?,
                 annotate(*b, types)?,
                 annotate(*c, types)?,
             );
-            Ok(TypedTerm::Tuple {
-                tpe: types.fresh_var(),
-                elements,
-            })
+            (types.fresh_var(), TypedTermKind::Tuple(elements))
         }
-        Term::Case {
+        TermKind::Case {
             scrutinee,
             branches,
         } => {
@@ -107,13 +105,13 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
             let mut typed_branches = Vec::new();
             for (pattern, body) in branches {
                 // Determine what bindings this pattern introduces.
-                let new_bindings: Vec<(String, super::Type)> = match &pattern {
-                    TermPattern::Bind(name) => {
+                let new_bindings: Vec<(String, super::Type)> = match &pattern.kind {
+                    TermPatternKind::Bind(name) => {
                         // Bind to the scrutinee's type variable.
-                        vec![(name.clone(), scrutinee.tpe().clone())]
+                        vec![(name.clone(), scrutinee.tpe.clone())]
                     }
-                    TermPattern::Constructor { bindings, .. } => bindings.clone(),
-                    TermPattern::Anything | TermPattern::Literal(_) => vec![],
+                    TermPatternKind::Constructor { bindings, .. } => bindings.clone(),
+                    TermPatternKind::Anything | TermPatternKind::Literal(_) => vec![],
                 };
                 for (name, tpe) in &new_bindings {
                     types.add_binder(TypeBinder::new(name.clone(), tpe.clone()));
@@ -125,11 +123,15 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                 }
                 typed_branches.push((pattern, typed_body));
             }
-            Ok(TypedTerm::Case {
-                tpe: types.fresh_var(),
-                scrutinee,
-                branches: typed_branches,
-            })
+            (
+                types.fresh_var(),
+                TypedTermKind::Case {
+                    scrutinee,
+                    branches: typed_branches,
+                },
+            )
         }
-    }
+    };
+
+    Ok(TypedTerm { span, tpe, kind })
 }

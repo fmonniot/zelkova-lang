@@ -19,6 +19,7 @@ fn module(body: Expression) -> Module {
                 span: no_span(),
             }],
             span: no_span(),
+            annotation_span: no_span(),
         }],
     }
 }

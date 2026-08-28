@@ -232,10 +232,12 @@ pub struct SpanLabel {
 /// and flattens its members' labels instead, the way it already flattens their
 /// messages.
 ///
-/// One limit remains and has a ticket. `typer::Error` still points at the
-/// declaration rather than the sub-expression that disagrees, because the typer
-/// translates canonical into its own `Term`/`Constraint` language and drops positions
-/// on the way: `ERR-4`. See `docs/tickets/INDEX.md`.
+/// The typer is the phase that has to work for this, and it does: it does not check
+/// the canonical AST but a term language of its own, so it carries each canonical
+/// node's span into that language, each constraint records the term and the *reason*
+/// it came from, and `unify` reports the origin of the constraint it failed on. A
+/// type error therefore underlines the sub-expression that disagrees and adds a
+/// secondary label under the annotation that says what was expected (`ERR-4`).
 ///
 /// `parser::Error` is still the one phase error that does not go through this trait
 /// at all — it builds its own labelled `Diagnostic` through `parser::Error::diagnostic`.

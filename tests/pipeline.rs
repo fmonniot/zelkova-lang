@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use codespan_reporting::diagnostic::Severity;
+use codespan_reporting::diagnostic::{LabelStyle, Severity};
 use codespan_reporting::files::SimpleFile;
 use zelkova_lang::compiler::dependencies::ModuleWalker;
 use zelkova_lang::compiler::name::Name;
@@ -628,36 +628,39 @@ fn canonical_error_renders_as_prose_naming_the_missing_module() {
     );
 }
 
-// ── Test 16: a type error underlines the declaration that failed ─────────────
+// ── Test 16: a type error underlines the expression that disagrees ──────────
 
-/// `ERR-3`: a type error must render with a `Label` under the failing declaration.
+/// `ERR-4`: a type error points at the sub-expression, with the annotation behind it.
 ///
-/// This is the ticket's acceptance criterion, and it asserts the label's **range**
-/// rather than just `!labels.is_empty()`: a zero-width span, or one taken around the
-/// layout pass's `OpenBlock`/`CloseBlock` (which are emitted zero-width, at the wrong
-/// offset), would satisfy a mere non-emptiness check while pointing at nothing.
+/// `ERR-3` landed this test asserting a single label across the whole declaration —
+/// annotation and body together — because that was the finest thing the typer could
+/// name. It can do better now: the caret is under `true`, and a *secondary* label
+/// under `answer : Int` says where `Int` was expected from. Both ranges are computed
+/// from the fixture text, and both matter: a primary label that had widened back out
+/// to the declaration would still be "a label", and a missing secondary would leave
+/// the reader to guess why `Int` was expected at all.
 ///
-/// The expected range is computed from the source text so it stays honest if the
-/// fixture is edited: from the first byte of the annotation to the last byte of the
-/// body, because `parser::Module::from_declarations` merges the `FunType` span with
-/// every `FunBinding` span. A mismatch between the two is what the error is *about*,
-/// so underlining only one half would be underlining half the problem.
-///
-/// Mutation-checked three ways, each red on its own: making the `FunBinding`
-/// production emit `NodeSpan::none()` (the range drops to the annotation alone);
-/// dropping the `merge` in `from_declarations` so the function keeps only the last
-/// declaration's span; and making `typer::Error::labels` return `Vec::new()`.
+/// Mutation-checked four ways, each red on its own: making `canonical_expr_to_term`
+/// build its terms with `NodeSpan::none()` (the primary falls back to the whole
+/// declaration); dropping `annotation_span` from `Value::TypedValue` in favour of
+/// `NodeSpan::none()` (the secondary disappears); pushing the annotation constraint
+/// *after* `constraint::collect` in `infer_annotated` (the primary moves off `true`);
+/// and having `Substitution::apply` return `c.origin.clone()` unchanged, so nothing
+/// is ever explained (the secondary disappears).
 #[test]
-fn type_error_labels_the_failing_declaration() {
+fn type_error_labels_the_expression_that_disagrees() {
     let root = fixture_package("package_type_error");
     assert_eq!(module_names(&root), vec!["Mismatch.zel"]);
 
     let source = std::fs::read_to_string(root.join("Mismatch.zel")).expect("fixture is readable");
-    let start = source
-        .find("answer : Int")
+    let annotation = "answer : Int";
+    let annotation_start = source
+        .find(annotation)
         .expect("fixture declares `answer : Int`");
-    let body = "answer = true";
-    let end = source.find(body).expect("fixture has a body") + body.len();
+    let body = "true";
+    let body_start = source
+        .rfind(body)
+        .expect("fixture's body is the literal `true`");
 
     let error =
         compile_package(&root).expect_err("`answer : Int` with a `Bool` body must not compile");
@@ -681,15 +684,21 @@ fn type_error_labels_the_failing_declaration() {
 
     assert_eq!(
         diagnostic.labels.len(),
-        1,
-        "expected one label, got {:?}",
+        2,
+        "expected a primary and a secondary label, got {:?}",
         diagnostic.labels
     );
+    assert_eq!(diagnostic.labels[0].style, LabelStyle::Primary);
     assert_eq!(
         diagnostic.labels[0].range,
-        start..end,
-        "the label must cover the whole declaration, `{}`",
-        &source[start..end]
+        body_start..(body_start + body.len()),
+        "the caret must be under the body that disagrees, not across the declaration"
+    );
+    assert_eq!(diagnostic.labels[1].style, LabelStyle::Secondary);
+    assert_eq!(
+        diagnostic.labels[1].range,
+        annotation_start..(annotation_start + annotation.len()),
+        "the annotation must be underlined as the reason `Int` was expected"
     );
 }
 
@@ -899,7 +908,7 @@ fn grouped_canonical_error_keeps_every_label() {
     );
 }
 
-// ── Test 21: the caret under a case-bodied declaration stops at the case ─────
+// ── Test 21: the span of a case-bodied declaration stops at the case ────────
 
 /// `ERR-3`: a `case` body must not push the declaration's span past its own end.
 ///
@@ -916,18 +925,28 @@ fn grouped_canonical_error_keeps_every_label() {
 /// so an end taken one token too far is visible as a range that overruns rather than
 /// as a range that merely ends late.
 ///
+/// It is asserted on `typer::Error::span` — the declaration the error was found in —
+/// rather than on the rendered label, because `ERR-4` narrowed the label to the
+/// sub-expression that disagrees (`1`, in the first branch). That span is no longer
+/// what is drawn in the common case, but it is still what a type error falls back to
+/// when its constraint has no position of its own, and it is still built by merging
+/// the declaration's parts. The labels are checked here too, for the branch shape the
+/// test above does not cover.
+///
 /// Mutation-checked by restoring the old shape — `<r:@R>` after `<expr:Expr>` in
-/// `FunBinding`, with `NodeSpan::new(l, r)`: the label range becomes
-/// `start..(start of "other" + 5)`, and the assertion below fails.
+/// `FunBinding`, with `NodeSpan::new(l, r)`: the declaration span then reaches into
+/// `other` and the first assertion below fails.
 #[test]
 fn case_bodied_declaration_label_stops_at_the_case() {
     let root = fixture_package("package_case_type_error");
     assert_eq!(module_names(&root), vec!["CaseBody.zel"]);
 
     let source = std::fs::read_to_string(root.join("CaseBody.zel")).expect("fixture is readable");
-    let start = source
-        .find("classify : Color -> Color")
+    let annotation = "classify : Color -> Color";
+    let annotation_start = source
+        .find(annotation)
         .expect("fixture declares `classify`");
+    let start = annotation_start;
     let last = "Blue -> 2";
     let end = source.find(last).expect("fixture has a second branch") + last.len();
 
@@ -943,26 +962,40 @@ fn case_bodied_declaration_label_stops_at_the_case() {
         CompilationError::Type(type_errors, module) => {
             assert_eq!(module, &Name::from("CaseBody"));
             assert_eq!(type_errors.len(), 1, "got {:?}", type_errors);
+
+            let declaration = type_errors[0]
+                .span
+                .to_range()
+                .expect("the declaration was parsed from source");
+            assert_eq!(
+                declaration,
+                start..end,
+                "the declaration's span must stop at the last branch, not run into the \
+                 declaration after it"
+            );
+            assert!(
+                !source[declaration].contains("other"),
+                "the declaration's span must not reach the following declaration"
+            );
         }
         other => panic!("expected a Type error, got {:?}", other),
     }
 
     let diagnostic = errors[0].as_diagnostic();
 
+    // `Red -> 1` is the first branch to contradict the `Color` result type, and
+    // constraints are solved in source order, so it is the one reported.
+    let branch = source.find("Red -> 1").expect("fixture has a first branch") + "Red -> ".len();
     assert_eq!(
         diagnostic.labels.len(),
-        1,
-        "expected one label, got {:?}",
+        2,
+        "expected a primary and a secondary label, got {:?}",
         diagnostic.labels
     );
+    assert_eq!(diagnostic.labels[0].range, branch..(branch + 1));
     assert_eq!(
-        diagnostic.labels[0].range,
-        start..end,
-        "the caret must stop at the last branch, not run into the declaration after it"
-    );
-    assert!(
-        !source[diagnostic.labels[0].range.clone()].contains("other"),
-        "the caret must not reach the following declaration"
+        diagnostic.labels[1].range,
+        annotation_start..(annotation_start + annotation.len())
     );
 }
 

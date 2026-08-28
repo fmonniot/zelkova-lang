@@ -194,6 +194,9 @@ impl Module {
             // every binding. `merge` tolerates a missing half, which is what an
             // annotation with no body (a `module javascript` facade) needs.
             let mut span = NodeSpan::none();
+            // The annotation on its own, kept beside the merged span because a type
+            // error points at the annotation to say where the expected type came from.
+            let mut annotation_span = NodeSpan::none();
 
             // TODO Error if more than function type is defined
 
@@ -205,13 +208,14 @@ impl Module {
                     }
                     Declaration::FunctionType(t) => {
                         span = span.merge(t.span);
+                        annotation_span = t.span;
                         tpe.replace(t.tpe);
                     }
                     _ => panic!("Invalid kind of declaration used in functions, report this error ({:?})", d),
                 }
             }
 
-            Function { name, tpe, bindings, span }
+            Function { name, tpe, bindings, span, annotation_span }
         }).collect::<Vec<_>>();
 
         Module {
@@ -253,6 +257,14 @@ pub struct Function {
     /// *and* the body rather than either alone — which is what a type mismatch
     /// between the two is actually about.
     pub span: NodeSpan,
+    /// Where the `name : Type` annotation alone was written, or
+    /// [`NodeSpan::none`] when the function has no annotation.
+    ///
+    /// The merged `span` above cannot answer "where does the expected type come
+    /// from", because it also covers the body that contradicts it. A type error
+    /// draws its secondary label — *expected because of this type annotation* —
+    /// here.
+    pub annotation_span: NodeSpan,
 }
 
 /// Exposing represent whether an import (or export) expose terms.

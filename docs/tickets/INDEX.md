@@ -29,7 +29,7 @@ BUG-6  rendering panics on 4 parse errors + 2 tokenizer errors   ← done 2026-0
   │
 ERR-3  spans in the parser + canonical ASTs; PhaseError::labels() ← done 2026-08-27
   │
-  ├── ERR-4  type-error provenance (typer Term → Constraint → unifier)
+  ├── ERR-4  type-error provenance (typer Term → Constraint → unifier)  ← done 2026-08-27
   ├── ERR-5  cross-module labels (Interface carries source ids)    ← done 2026-08-27
   │      └── ERR-6  dependency cycles point at the `import` lines
   ├── ERR-9  span `parser::Exposed` — the one node ERR-3 left unspanned
@@ -99,7 +99,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-7](bug-7.md) | bug | low | open | The unclosed-char diagnostic draws two invisible carets, and swaps their messages |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
-| [ERR-4](err-4.md) | task | — | open | Type errors point at the sub-expression, not at the whole declaration |
+| ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
 | ERR-5 | task | — | closed 2026-08-27 | A diagnostic can point into another module |
 | [ERR-6](err-6.md) | task | — | open | A dependency cycle points at the `import` lines that form it |
 | [ERR-7](err-7.md) | task | — | open | "Did you mean …?" on unresolved names |
