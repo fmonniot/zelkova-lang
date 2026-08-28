@@ -1,0 +1,6 @@
+module CycleB exposing (..)
+
+import CycleA exposing (..)
+
+
+y = 42
