@@ -280,12 +280,39 @@ pub enum Exposing {
     Explicit(Vec<Exposed>),
 }
 
-/// Exposed represent the terms exposed/imported by a module.
+/// A single name in an `exposing` list — either a module's header
+/// (`module Foo exposing (bar)`) or an import's (`import Foo exposing (bar)`).
+///
+/// Like [`Type`], [`Pattern`] and [`Expression`], this is a span plus a kind rather
+/// than a spanned enum; see [`Type`] for why. `ERR-9` added the span: before it, an
+/// error naming one of these — `EnvError::ValueNotFound`, `Error::ExportNotFound` —
+/// had nowhere finer than the whole `import`/`module` line to point at.
 #[derive(Debug, PartialEq)]
-pub enum Exposed {
+pub struct Exposed {
+    pub span: NodeSpan,
+    pub kind: ExposedKind,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ExposedKind {
     Lower(Name),
     Upper(Name, Privacy),
     Operator(Name),
+}
+
+impl Exposed {
+    /// An exposed name the parser built, at the position its production captured.
+    pub fn new(span: NodeSpan, kind: ExposedKind) -> Exposed {
+        Exposed { span, kind }
+    }
+
+    /// An exposed name with no position — hand-built by a test. See [`NodeSpan`].
+    pub fn bare(kind: ExposedKind) -> Exposed {
+        Exposed {
+            span: NodeSpan::none(),
+            kind,
+        }
+    }
 }
 
 /// Privacy control how a custom type is exposed.

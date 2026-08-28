@@ -1168,3 +1168,121 @@ fn cross_module_labels_render_without_the_checked_module_file() {
         diagnostic.labels
     );
 }
+
+// ── Test 24: an exposed-but-missing import name is underlined alone ──────────
+
+/// `ERR-9`: `import Foo exposing (bar)` naming a value `Foo` does not export is
+/// underlined at `bar` alone, not across the whole `import` line.
+///
+/// Before this ticket `parser::Exposed` carried no span, so the best
+/// `EnvError::ValueNotFound` could point at was the `import` line handed to
+/// `process_import` — a whole-line caret on a many-name exposing list. `Lib`
+/// genuinely exports `value`, so this exercises the "found the module, not the
+/// name" path through `new_environment` rather than `InterfaceNotFound`.
+///
+/// Mutation-checked two ways, each red on its own: making the `Exposed`
+/// productions in `grammar.lalrpop` emit `NodeSpan::none()` (the label disappears,
+/// since `EnvError::labels` has nothing to attach), and reverting
+/// `EnvError::ValueNotFound`'s `labels` arm to `Vec::new()`.
+#[test]
+fn missing_exposed_import_name_labels_the_name_alone() {
+    let root = fixture_package("package_exposing_missing_value");
+    assert_eq!(module_names(&root), vec!["Lib.zel", "Main.zel"]);
+
+    let source = std::fs::read_to_string(root.join("Main.zel")).expect("fixture is readable");
+    let identifier = "missing";
+    let start = source
+        .find(identifier)
+        .expect("fixture imports an undeclared `missing`");
+
+    let error = compile_package(&root).expect_err("importing an unexported name must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    match unwrap_in_file(&errors[0]) {
+        CompilationError::Canonical(canonical_errors, module) => {
+            assert_eq!(module, &Name::from("Main"));
+            assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
+        }
+        other => panic!("expected a Canonical error, got {:?}", other),
+    }
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    assert_eq!(
+        diagnostic.labels.len(),
+        1,
+        "expected one label, got {:?}",
+        diagnostic.labels
+    );
+    assert_eq!(
+        diagnostic.labels[0].range,
+        start..(start + identifier.len()),
+        "the caret must sit under `{}` alone, not the `import` line around it",
+        identifier
+    );
+}
+
+// ── Test 25: a name exposed by the module header that it never declares ─────
+
+/// `ERR-9`: `module Foo exposing (bar)` naming something `Foo` never declares is
+/// underlined at `bar` alone.
+///
+/// `do_exports` (`canonical/mod.rs`) only checks existence for the `Operator`
+/// case today — the `// TODO Add existence checks for values and types` above it
+/// is a pre-existing gap this ticket does not close, so a value or type named in
+/// the header is accepted unconditionally regardless of whether it exists. An
+/// undeclared infix is therefore the one case that can exercise
+/// `Error::ExportNotFound`'s span; a `Lower`/`Upper` version of this test would
+/// pass today for the wrong reason (no check ever runs) rather than the right one.
+///
+/// Mutation-checked two ways, each red on its own: making the `Exposed`
+/// productions in `grammar.lalrpop` emit `NodeSpan::none()`, and reverting
+/// `Error::ExportNotFound`'s `labels` arm to fall through to the default `Vec::new()`.
+#[test]
+fn export_not_found_labels_the_exposed_name_alone() {
+    let root = fixture_package("package_export_not_found");
+    assert_eq!(module_names(&root), vec!["Main.zel"]);
+
+    let source = std::fs::read_to_string(root.join("Main.zel")).expect("fixture is readable");
+    // The exposed name for an operator, `(<+>)`, includes its wrapping parens —
+    // there is no way to write a bare operator in an exposing list, so the parens
+    // are as much "the name the user wrote" as the symbol between them.
+    let operator = "(<+>)";
+    let start = source
+        .find(operator)
+        .expect("fixture's header exposes an undeclared infix");
+
+    let error = compile_package(&root).expect_err("exposing an undeclared infix must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    match unwrap_in_file(&errors[0]) {
+        CompilationError::Canonical(canonical_errors, module) => {
+            assert_eq!(module, &Name::from("Main"));
+            assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
+        }
+        other => panic!("expected a Canonical error, got {:?}", other),
+    }
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    assert_eq!(
+        diagnostic.labels.len(),
+        1,
+        "expected one label, got {:?}",
+        diagnostic.labels
+    );
+    assert_eq!(
+        diagnostic.labels[0].range,
+        start..(start + operator.len()),
+        "the caret must sit under `{}` alone, not the `module` header around it",
+        operator
+    );
+}

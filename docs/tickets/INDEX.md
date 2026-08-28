@@ -1,6 +1,6 @@
 # Zelkova — Ticket index
 
-_Last updated: 2026-08-27._
+_Last updated: 2026-08-28._
 
 One file per ticket: `docs/tickets/<id-lower>.md`. Bugs and tasks share one ID namespace, one
 closing convention and this one table — a bug is a ticket **type**, not a separate file. Each
@@ -32,7 +32,7 @@ ERR-3  spans in the parser + canonical ASTs; PhaseError::labels() ← done 2026-
   ├── ERR-4  type-error provenance (typer Term → Constraint → unifier)  ← done 2026-08-27
   ├── ERR-5  cross-module labels (Interface carries source ids)    ← done 2026-08-27
   │      └── ERR-6  dependency cycles point at the `import` lines
-  ├── ERR-9  span `parser::Exposed` — the one node ERR-3 left unspanned
+  ├── ERR-9  span `parser::Exposed` — the one node ERR-3 left unspanned ← done 2026-08-28
   └── ERR-7  "did you mean" suggestions (better after ERR-9: a suggestion on
              `ValueNotFound` wants a caret under the name it is about)
 ERR-8  warnings as a severity                                    ← independent, and see its
@@ -104,7 +104,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-6](err-6.md) | task | — | open | A dependency cycle points at the `import` lines that form it |
 | [ERR-7](err-7.md) | task | — | open | "Did you mean …?" on unresolved names |
 | [ERR-8](err-8.md) | task | — | open | Let a phase report a warning |
-| [ERR-9](err-9.md) | task | — | open | Span `parser::Exposed`, so an exposing list can be underlined |
+| ERR-9 | task | — | closed 2026-08-28 | Span `parser::Exposed`, so an exposing list can be underlined |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

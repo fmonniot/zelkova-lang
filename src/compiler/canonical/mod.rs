@@ -546,16 +546,15 @@ pub struct CaseBranch {
 /// a diagnostic can put a caret under.
 ///
 /// The rest keep none, and that is a fact about the construction site rather than a
-/// gap to fill in. `ExportNotFound` is raised while walking `parser::Exposing` /
-/// `parser::Exposed`, neither of which the grammar spans — the exposing list is part
-/// of the `module` header production, not a declaration of its own. Writing
-/// `NodeSpan::none()` into such a variant would say "this error has a position we
-/// happen not to know", which is a lie; leaving the field off says "this error has
-/// nowhere to point", which is true, and the reporter renders it as
-/// message-plus-notes with no caret.
+/// gap to fill in. Writing `NodeSpan::none()` into such a variant would say "this
+/// error has a position we happen not to know", which is a lie; leaving the field
+/// off says "this error has nowhere to point", which is true, and the reporter
+/// renders it as message-plus-notes with no caret.
 #[derive(Debug)]
 pub enum Error {
-    ExportNotFound(Name, ExportType),
+    /// A name in the `module … exposing (…)` header that nothing in the module
+    /// declares, and where that name was written (`ERR-9`).
+    ExportNotFound(Name, ExportType, NodeSpan),
     EnvironmentErrors(Vec<EnvError>),
     /// (infix, function), and where the `infix` declaration was written
     InfixReferenceInvalidValue(Name, Name, NodeSpan),
@@ -612,7 +611,7 @@ pub enum Error {
 impl PhaseError for Error {
     fn message(&self) -> String {
         match self {
-            Error::ExportNotFound(name, tpe) => format!(
+            Error::ExportNotFound(name, tpe, _) => format!(
                 "`{}` is exposed by this module but no {} of that name is declared in it",
                 name,
                 export_type_noun(tpe)
@@ -705,6 +704,9 @@ impl PhaseError for Error {
         };
 
         match self {
+            Error::ExportNotFound(_, _, span) => {
+                primary(span, "not declared anywhere in this module")
+            }
             Error::InfixReferenceInvalidValue(_, _, span) => primary(span, "declared here"),
             // The four that name an identifier: the caret sits under the name the
             // user wrote, which is the whole point of spanning expressions and
@@ -1120,19 +1122,23 @@ fn do_exports(
     match source_exposing {
         parser::Exposing::Open => Ok(Exports::Everything),
         parser::Exposing::Explicit(exposed) => {
-            let specifics = exposed.iter().map(|exposed| match exposed {
-                parser::Exposed::Lower(name) => Ok((name.clone(), ExportType::Value)),
-                parser::Exposed::Upper(name, parser::Privacy::Public) => {
+            let specifics = exposed.iter().map(|exposed| match &exposed.kind {
+                parser::ExposedKind::Lower(name) => Ok((name.clone(), ExportType::Value)),
+                parser::ExposedKind::Upper(name, parser::Privacy::Public) => {
                     Ok((name.clone(), ExportType::UnionPublic))
                 }
-                parser::Exposed::Upper(name, parser::Privacy::Private) => {
+                parser::ExposedKind::Upper(name, parser::Privacy::Private) => {
                     Ok((name.clone(), ExportType::UnionPrivate))
                 }
-                parser::Exposed::Operator(name) => {
+                parser::ExposedKind::Operator(name) => {
                     if env.local_infix_exists(name) {
                         Ok((name.clone(), ExportType::Infix))
                     } else {
-                        Err(Error::ExportNotFound(name.clone(), ExportType::Infix))
+                        Err(Error::ExportNotFound(
+                            name.clone(),
+                            ExportType::Infix,
+                            exposed.span,
+                        ))
                     }
                 }
             });
