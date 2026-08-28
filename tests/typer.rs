@@ -64,6 +64,17 @@ fn range_of(source: &str, needle: &str) -> Range<usize> {
     start..(start + needle.len())
 }
 
+/// The byte range of `needle` within the unique occurrence of `context`.
+///
+/// For text that is not unique in the file on its own — the `1` in a `case`'s
+/// scrutinee, the `not` in `result = not 42` — but is unique inside a phrase that is.
+fn range_within(source: &str, context: &str, needle: &str) -> Range<usize> {
+    let outer = range_of(source, context);
+    let inner = range_of(&source[outer.clone()], needle);
+
+    (outer.start + inner.start)..(outer.start + inner.end)
+}
+
 fn ranges(labels: &[SpanLabel]) -> Vec<Range<usize>> {
     labels.iter().map(|l| l.span.to_range()).collect()
 }
@@ -196,6 +207,108 @@ fn annotation_mismatch_points_at_the_expression_and_the_annotation() {
         "the declaration should still be named for a reader with no carets, got {:?}",
         error.notes()
     );
+}
+
+/// An argument of the wrong type is explained by the *function*, not by whatever
+/// annotation happens to be in scope.
+///
+/// `42` has to be a `Bool` because `not : Bool -> Bool`. The annotation on `result`
+/// is not load-bearing for it at all: change it to `Char` and the argument still has
+/// to be a `Bool`. Pointing a reader at `result : Bool` sends them to edit a line
+/// that will not help.
+///
+/// The proof that the annotation is not the answer is the same source without one —
+/// `unannotated_application_mismatch_blames_the_function_too` below — which has
+/// nothing else it could possibly name. The two must agree, and before the side
+/// tracking in `Origin` they did not: the annotated form walked the chain of
+/// substitutions one link too far and blamed the annotation.
+///
+/// Mutation-checked by making `Origin::cause_of` ignore the side it is given and
+/// return `self.explanation()` whichever it was: the secondary label moves back onto
+/// `result : Bool`, and it is the only test in the file that notices.
+#[test]
+fn application_mismatch_blames_the_function_not_the_annotation() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        not : Bool -> Bool
+        not b = b
+        result : Bool
+        result = not 42
+    "#};
+    let error = one_type_error(source);
+
+    let labels = error.labels();
+    assert_eq!(
+        ranges(&labels),
+        vec![
+            range_of(source, "42"),
+            range_within(source, "result = not 42", "not")
+        ],
+        "expected a caret under `42` and the applied function behind it"
+    );
+    assert_eq!(
+        labels[1].message, "expected because of this application",
+        "the reason `Bool` was expected is `not`'s own type"
+    );
+}
+
+/// The same shape with no annotation to be tempted by, which is what fixes the
+/// expected answer for the test above: there is exactly one place `Bool` can have
+/// come from, and it is `not`.
+#[test]
+fn unannotated_application_mismatch_blames_the_function_too() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        not : Bool -> Bool
+        not b = b
+        result = not 42
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_of(source, "42"),
+            range_within(source, "result = not 42", "not")
+        ]
+    );
+}
+
+/// A `case` whose scrutinee is a compound expression reports the mismatch inside that
+/// expression, explained by the pattern that required the type.
+///
+/// This is what the ordering rule in `constraint::collect`'s doc buys, and the `Case`
+/// arm used to be the one site that broke it by collecting the scrutinee's
+/// constraints before its own. Solved in that order, the `if`'s inner branch and
+/// literal constraints settle the scrutinee's type first, and the failure surfaces on
+/// the `Red` pattern with a secondary caret pointing into the middle of the `if` —
+/// the compiler's working rather than the user's mistake.
+///
+/// Mutation-checked by moving `collect(scrutinee)` back above the branch loop: the
+/// two labels swap round.
+#[test]
+fn case_pattern_mismatch_points_into_the_scrutinee() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Color = Red | Blue
+        bad : Int
+        bad =
+          case if true then 1 else 2 of
+            Red -> 1
+            Blue -> 2
+    "#};
+    let error = one_type_error(source);
+
+    let labels = error.labels();
+    assert_eq!(
+        ranges(&labels),
+        vec![
+            range_within(source, "if true then 1 else 2", "1"),
+            range_within(source, "Red -> 1", "Red")
+        ],
+        "expected a caret in the scrutinee and the pattern that required its type"
+    );
+    assert_eq!(labels[1].message, "expected because of this pattern");
 }
 
 // ── Unbound variable ──────────────────────────────────────────────────────────

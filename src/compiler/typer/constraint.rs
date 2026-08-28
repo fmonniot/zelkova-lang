@@ -13,7 +13,7 @@
 //!   them is solved. The failure is then reported at the innermost thing that
 //!   disagrees, which is the sub-expression the user has to change, and the chain of
 //!   substitutions that got there leads back to the annotation (see
-//!   [`Origin::because`]). Collecting children first inverts that: the body settles
+//!   [`Origin::left_from`]). Collecting children first inverts that: the body settles
 //!   on its own type first and the mismatch surfaces at the whole function.
 //! - the sides of a constraint are ordered declared-first where the source has a
 //!   declared side, because that is the order the headline reads them out in (see
@@ -154,7 +154,12 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             scrutinee,
             branches,
         } => {
-            constraints.extend(collect(scrutinee));
+            // Every branch's own constraints, all of them, before any child is walked
+            // — including the scrutinee, which is a child like the branch bodies are.
+            // Walking it first was this arm's one departure from the rule the module
+            // doc states, and it showed: a `case` on a compound expression reported
+            // its pattern mismatch against a constraint from inside the scrutinee
+            // rather than against the pattern.
             for (pattern, body) in branches {
                 // Every branch must return the case expression's type.
                 constraints.push(Constraint::new(
@@ -188,7 +193,10 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                     // in annotate, so no extra constraint needed here.
                     TermPatternKind::Bind(_) | TermPatternKind::Anything => {}
                 }
+            }
 
+            constraints.extend(collect(scrutinee));
+            for (_, body) in branches {
                 constraints.extend(collect(body));
             }
         }

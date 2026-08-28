@@ -112,14 +112,20 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   (the span it came from plus a `Reason` naming *why* two types had to match), and `unify`
   reports the origin of the constraint it failed on. A type error therefore points at the
   sub-expression, with a secondary label under the annotation that explains what was
-  expected. Two things that follow, and that a change here must keep: constraints live in a
+  expected. Three things that follow, and that a change here must keep: constraints live in a
   `Vec` and not a `HashSet`, because deduplication drops provenance and an unordered
-  collection makes *which* error is reported vary between runs; and a term's own constraints
+  collection makes *which* error is reported vary between runs; a term's own constraints
   are collected before its children's, so an expected type is substituted inward before the
   inner constraints are solved — collect children first and the caret moves back out to the
-  whole declaration. A label names its `Reason` and never a type: by the time a constraint
-  fails, substitution and decomposition mean neither of its sides is reliably the type of the
-  text under the caret.
+  whole declaration, and `constraint::collect` has no exception to this, `Case` included; and
+  provenance is tracked *per side* of a constraint. That last one is the subtle one. When
+  `unify` solves `t := T`, `T` was read off one side, and only a substitution that rewrote
+  *that* side put it there — a constraint whose other side was rewritten is relaying a type,
+  not introducing one, and crediting it names a line the reader cannot act on. `result :
+  Bool` / `result = not 42` blaming the annotation, when `42` has to be a `Bool` because of
+  `not`'s own type, is what a side-blind version of this produces. A label names its `Reason`
+  and never a type: by the time a constraint fails, substitution and decomposition mean
+  neither of its sides is reliably the type of the text under the caret.
   A phase still never knows the `SourceFileId` of the module it is checking — that half is
   unchanged, and `compile_package` still attaches it via `CompilationError::InFile`, being the
   only place that knows which file a module was read from. What `ERR-5` added is the other

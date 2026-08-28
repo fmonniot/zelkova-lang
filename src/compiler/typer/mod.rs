@@ -109,7 +109,7 @@ impl Reason {
     }
 
     /// What goes under the caret when this reason is not the failure itself but the
-    /// explanation for one side of it — see [`Origin::because`].
+    /// explanation for one side of it — see [`Origin::explanation`].
     ///
     /// No type is interpolated here, deliberately. Provenance records which
     /// constraint brought a type into another one; it does not prove that the type
@@ -148,8 +148,36 @@ impl Reason {
     }
 }
 
+/// One piece of source text, and why it required a type: the answer to "where did
+/// this type come from".
+///
+/// Deliberately flat — no chain. A cause names the constraint that *introduced* a
+/// type, never one that relayed it, and that is arranged when the cause is built
+/// rather than by walking a chain afterwards. See `Origin::cause_of`.
+// No `Eq`: `NodeSpan`'s `PartialEq` is deliberately blind (see its documentation), so
+// equality here is a claim about the reason and not about the position.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Cause {
+    /// Why that constraint required the two types to match.
+    pub reason: Reason,
+    /// The source text it is about.
+    pub span: NodeSpan,
+}
+
+/// Which side of a constraint a type sits on.
+///
+/// Unification is symmetric and does not care; provenance does. Whether a solved
+/// type was read off the left or the right of the constraint that solved it is what
+/// decides whether that constraint is where the type came from, or merely where a
+/// substitution put it — see [`Origin::cause_of`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Left,
+    Right,
+}
+
 /// Where a constraint came from, and — once inference has moved types around — where
-/// the type it clashed with came from.
+/// each of its two types came from.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Origin {
     /// Why the two types were required to match.
@@ -157,21 +185,21 @@ pub struct Origin {
     /// The source text this constraint is about. A failure here draws its caret at
     /// this span.
     pub span: NodeSpan,
-    /// The constraint whose solution first rewrote this one, if any.
+    /// The constraint whose solution first rewrote the left type, if any.
     ///
     /// `unify` solves a constraint by substituting a type for a variable and then
     /// applying that substitution to every constraint left. Once that has happened,
-    /// a side of this constraint is a type this constraint never mentioned: it came
-    /// from wherever the substitution did. That is the fact a reader needs — "`Int`,
-    /// because of the annotation two lines up" — and it is what the secondary label
-    /// of a type error renders.
+    /// this side holds a type this constraint never mentioned: it came from wherever
+    /// the substitution did. That is the fact a reader needs — "`Int`, because of the
+    /// annotation two lines up" — and it is what the secondary label of a type error
+    /// renders.
     ///
-    /// The *first* rewrite is kept and later ones are dropped. A constraint starts
-    /// out relating its own type variables; the first substitution to reach it is
-    /// the one that brought in a type from elsewhere, while later ones usually
-    /// resolve the constraint's own side and would point the second caret back at
-    /// the text the first caret is already under.
-    pub because: Option<Box<Origin>>,
+    /// The *first* rewrite is kept and later ones are dropped: the first substitution
+    /// to reach a side is the one that brought a foreign type into it, and later ones
+    /// only rewrite what is already there.
+    left_from: Option<Cause>,
+    /// The same, for the right type.
+    right_from: Option<Cause>,
 }
 
 impl Origin {
@@ -179,33 +207,64 @@ impl Origin {
         Origin {
             reason,
             span,
-            because: None,
+            left_from: None,
+            right_from: None,
         }
     }
 
-    /// Record where the type that rewrote this constraint came from, keeping whatever
-    /// was already recorded. See [`Origin::because`].
+    /// This constraint, as the explanation for a type it introduced itself.
+    fn own_cause(&self) -> Cause {
+        Cause {
+            reason: self.reason,
+            span: self.span,
+        }
+    }
+
+    /// Where the type on `side` came from: whatever rewrote that side, or — when
+    /// nothing did — this constraint itself.
     ///
-    /// What is recorded is the *root* of `other`'s chain, not `other` itself.
-    /// Constraints are solved outside-in — a declaration's annotation fixes the
-    /// function's parameter and result types, which fix a branch's type, which fixes
-    /// a literal's — so `other` is typically one link in a chain that started at the
-    /// thing the user actually wrote down. The end of that chain is the answer to
-    /// "why was `Int` expected here"; the middle of it is the compiler's own working.
-    fn explained_by(&mut self, other: &Origin) {
-        if self.because.is_none() {
-            let root = other.root();
-            self.because = Some(Box::new(Origin::new(root.reason, root.span)));
+    /// This is the whole of the provenance rule, and it is a rule about *sides*.
+    /// When `unify` solves `t := T` from a constraint, `T` was read off one side of
+    /// it. If that side is a type the constraint was written with, the constraint is
+    /// the answer. If a previous solution had rewritten that side, the constraint is
+    /// only relaying a type, and the answer is whatever rewrote it — which is already
+    /// flat, so the credit passes straight through and no chain is ever built.
+    ///
+    /// Crediting a constraint that merely relayed a type is how `result : Bool` /
+    /// `result = not 42` came to blame the annotation: the `Bool` that `42` fails
+    /// against is `not`'s parameter type, which the application constraint carries on
+    /// its *left*, while the annotation had only rewritten its right.
+    fn cause_of(&self, side: Side) -> Cause {
+        let rewritten = match side {
+            Side::Left => self.left_from,
+            Side::Right => self.right_from,
+        };
+
+        rewritten.unwrap_or_else(|| self.own_cause())
+    }
+
+    /// Record that a solution rewrote one side of this constraint, keeping whatever
+    /// was already recorded for that side. See [`Origin::left_from`].
+    fn rewritten(&mut self, side: Side, cause: Cause) {
+        let slot = match side {
+            Side::Left => &mut self.left_from,
+            Side::Right => &mut self.right_from,
+        };
+
+        if slot.is_none() {
+            *slot = Some(cause);
         }
     }
 
-    /// The far end of this origin's `because` chain: the constraint that introduced
-    /// the type, rather than one that passed it along.
-    fn root(&self) -> &Origin {
-        match &self.because {
-            Some(because) => because.root(),
-            None => self,
-        }
+    /// Where the type this constraint clashed on came from, when the constraint is
+    /// not itself where it came from.
+    ///
+    /// This is what a diagnostic's secondary label and its rule note are both read
+    /// off. The left side is preferred because that is the declared or expected side
+    /// by convention (see `Constraint`), so "expected because of …" reads about the
+    /// right one; the right side answers when only it was rewritten.
+    pub fn explanation(&self) -> Option<Cause> {
+        self.left_from.or(self.right_from)
     }
 }
 
@@ -223,16 +282,19 @@ pub enum ErrorKind {
     /// first where the source had one. Neither is reliably "the type of the text the
     /// origin points at": by the time a constraint fails, unification has substituted
     /// into both sides and may have decomposed the pair the source actually wrote.
+    // The origins are boxed because an `ErrorKind` is the `Err` half of a `Result`
+    // threaded through the whole of `unify`, and every *successful* return pays for
+    // the size of the largest variant. `Origin` carries a `Cause` per side.
     UnificationFailed {
         left: Type,
         right: Type,
-        origin: Origin,
+        origin: Box<Origin>,
     },
     /// A type variable would have to occur inside its own solution.
     CircularType {
         /// The type the variable would have had to contain itself in.
         tpe: Type,
-        origin: Origin,
+        origin: Box<Origin>,
     },
     /// A name the typer's environment does not know. See [`type_check`] for why this
     /// one is not reported to the user today.
@@ -249,7 +311,7 @@ impl ErrorKind {
     fn origin(&self) -> Option<&Origin> {
         match self {
             ErrorKind::UnificationFailed { origin, .. }
-            | ErrorKind::CircularType { origin, .. } => Some(origin),
+            | ErrorKind::CircularType { origin, .. } => Some(origin.as_ref()),
             ErrorKind::UnboundVariable { .. } => None,
         }
     }
@@ -316,7 +378,7 @@ impl PhaseError for Error {
             let rule = origin
                 .reason
                 .note()
-                .or_else(|| origin.because.as_ref().and_then(|b| b.reason.note()));
+                .or_else(|| origin.explanation().and_then(|c| c.reason.note()));
 
             if let Some(rule) = rule {
                 notes.push(rule.to_owned());
@@ -362,7 +424,7 @@ impl PhaseError for Error {
                     // it against. And not worth drawing at all when it lands on the
                     // same text — a literal that is its own explanation renders as two
                     // carets under one word saying the same thing twice.
-                    if let (Some(primary), Some(because)) = (labels.first(), &origin.because) {
+                    if let (Some(primary), Some(because)) = (labels.first(), origin.explanation()) {
                         match because.span.span() {
                             Some(span) if span != primary.span => labels.push(SpanLabel {
                                 span,
@@ -1155,6 +1217,13 @@ impl Constraint {
     /// A constraint between two components of this one — the parameters of two
     /// function types being matched, say — which is about the same source text and
     /// was required for the same reason.
+    ///
+    /// The origin is inherited whole, side provenance included: if a substitution
+    /// rewrote the left type, it rewrote whatever the left type decomposes into. That
+    /// is an over-approximation — a substitution that reached only the return half of
+    /// an arrow is credited with the parameter half too — but it errs towards naming
+    /// a constraint that did carry a type in, which is the direction that keeps a
+    /// caret on the source rather than on the compiler's working.
     fn component(&self, left: Type, right: Type) -> Constraint {
         Constraint {
             left,
@@ -1164,19 +1233,24 @@ impl Constraint {
     }
 }
 
-/// What one type variable was solved to, and which constraint solved it.
+/// What one type variable was solved to, and where that type came from.
 ///
-/// The origin is not used by inference at all. It is carried so that when this
+/// The cause is not used by inference at all. It is carried so that when this
 /// solution is substituted into another constraint and *that* constraint then fails,
 /// the failure can say where the type it failed against came from — see
-/// [`Origin::because`].
-// No `Eq`: an `Origin` holds a `NodeSpan`, whose `PartialEq` is deliberately blind
+/// [`Origin::left_from`].
+///
+/// It is a [`Cause`] and not an `Origin` because the question it answers is already
+/// settled: [`Origin::cause_of`] resolved, at the moment the variable was solved,
+/// whether the solving constraint introduced this type or was handed it. Nothing
+/// downstream has to walk anything.
+// No `Eq`: a `Cause` holds a `NodeSpan`, whose `PartialEq` is deliberately blind
 // (see its documentation), so equality here is a claim about the types and the
 // reasons, not about the positions.
 #[derive(Debug, PartialEq, Clone)]
 struct Solution {
     tpe: Type,
-    origin: Origin,
+    cause: Cause,
 }
 
 #[derive(Debug, PartialEq)]
@@ -1193,18 +1267,24 @@ impl Substitution {
         }
     }
 
-    fn one(tvar: TypeVariable, tpe: Type, origin: Origin) -> Substitution {
+    fn one(tvar: TypeVariable, tpe: Type, cause: Cause) -> Substitution {
         let mut sub = Substitution::empty();
 
-        sub.solutions.insert(tvar, Solution { tpe, origin });
+        sub.solutions.insert(tvar, Solution { tpe, cause });
 
         sub
     }
 
     // methods
 
-    /// Rewrite a constraint with everything solved so far, recording which solution
-    /// first reached it.
+    /// Rewrite a constraint with everything solved so far, recording for each side
+    /// which solution first reached it.
+    ///
+    /// The two sides are tracked apart, because that is what tells a relayed type
+    /// from an introduced one later on — see [`Origin::cause_of`]. A solution that
+    /// rewrites only the right side has said nothing about the left, and treating it
+    /// as though it had is what made a type error blame an annotation that was not
+    /// load-bearing.
     ///
     /// The solutions are visited in type-variable order rather than in `HashMap`
     /// order: "first" has to mean the same thing on every run, or the secondary label
@@ -1218,10 +1298,13 @@ impl Substitution {
         solutions.sort_by_key(|(tvar, _)| tvar.id);
 
         for (tvar, solution) in solutions {
-            // A solution that does not mention a variable this constraint uses
-            // rewrites nothing, and explains nothing about it either.
-            if occurs(tvar, &c.left) || occurs(tvar, &c.right) {
-                origin.explained_by(&solution.origin);
+            // A solution that does not mention a variable a side uses rewrites
+            // nothing there, and explains nothing about it either.
+            if occurs(tvar, &c.left) {
+                origin.rewritten(Side::Left, solution.cause);
+            }
+            if occurs(tvar, &c.right) {
+                origin.rewritten(Side::Right, solution.cause);
             }
         }
 
@@ -1280,9 +1363,9 @@ impl Substitution {
                 k.clone(),
                 Solution {
                     tpe: other.apply_type(&v.tpe),
-                    // The origin says which constraint solved this variable, which
-                    // rewriting its solution does not change.
-                    origin: v.origin.clone(),
+                    // The cause says where this variable's type came from, which
+                    // rewriting the type does not change.
+                    cause: v.cause,
                 },
             )
         });
@@ -1364,7 +1447,7 @@ pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, ErrorKin
 /// The annotation is put *first*, before the constraints the body generates, and that
 /// ordering is the point of the function. `unify` solves constraints in order, so the
 /// annotated type is substituted into the body's constraints before any of them are
-/// solved; when one of them then fails, its [`Origin::because`] names the annotation,
+/// solved; when one of them then fails, its [`Origin::explanation`] names the annotation,
 /// and the diagnostic can say `Int` was expected *because of the annotation* rather
 /// than merely that the declaration as a whole does not check.
 fn infer_annotated(

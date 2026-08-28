@@ -4,10 +4,15 @@
 //! arrives carrying an [`Origin`], every constraint this module derives from another
 //! inherits it, and the two errors raised here hand it to the caller. That is the
 //! whole of "propagate the origin of the constraint it failed on".
+//!
+//! The one place unification's symmetry is broken is [`unify_variable`], which is
+//! told which *side* of the constraint the type it is solving to was read from. That
+//! is not inference — the solution is the same either way — it is what lets a
+//! solution record where its type actually came from.
 
 use log::debug;
 
-use super::{occurs, Constraint, ErrorKind, Substitution, Type, TypeLiteral, TypeVariable};
+use super::{occurs, Constraint, ErrorKind, Side, Substitution, Type, TypeLiteral, TypeVariable};
 use crate::compiler::tuple::Tuple;
 
 /// Returns true if `tpe` is a numeric type (Int, Float, or Number).
@@ -106,49 +111,49 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
                 .collect();
             unify(constraints)
         }
-        (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe, constraint),
-        (tpe, Type::Variable(tvar)) => unify_variable(tvar, tpe, constraint),
+        // `Side` names where `tpe` was read from, not where the variable was: it is
+        // the solved *type* whose provenance the solution carries.
+        (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe, Side::Right, constraint),
+        (tpe, Type::Variable(tvar)) => unify_variable(tvar, tpe, Side::Left, constraint),
         (left, right) => Err(ErrorKind::UnificationFailed {
             left: left.clone(),
             right: right.clone(),
-            origin: constraint.origin.clone(),
+            origin: Box::new(constraint.origin.clone()),
         }),
     }
 }
 
-/// Solve `tvar` to `tpe`, remembering on the solution which constraint solved it.
+/// Solve `tvar` to `tpe`, remembering on the solution where `tpe` came from.
 ///
-/// That origin is what a *later* constraint reports as the explanation for a type it
-/// never mentioned itself — see [`super::Origin::because`].
+/// That cause is what a *later* constraint reports as the explanation for a type it
+/// never mentioned itself — see [`super::Origin::left_from`]. It is read off the side
+/// `tpe` sits on, so a constraint that was merely handed this type by an earlier
+/// substitution passes the credit on instead of taking it — see
+/// [`super::Origin::cause_of`].
 fn unify_variable(
     tvar: &TypeVariable,
     tpe: &Type,
+    side: Side,
     constraint: &Constraint,
 ) -> Result<Substitution, ErrorKind> {
+    let cause = constraint.origin.cause_of(side);
+
     match tpe {
         Type::Variable(tvar2) => {
             if tvar == tvar2 {
                 Ok(Substitution::empty())
             } else {
-                Ok(Substitution::one(
-                    tvar.clone(),
-                    tpe.clone(),
-                    constraint.origin.clone(),
-                ))
+                Ok(Substitution::one(tvar.clone(), tpe.clone(), cause))
             }
         }
         _ => {
             if occurs(tvar, tpe) {
                 Err(ErrorKind::CircularType {
                     tpe: tpe.clone(),
-                    origin: constraint.origin.clone(),
+                    origin: Box::new(constraint.origin.clone()),
                 })
             } else {
-                Ok(Substitution::one(
-                    tvar.clone(),
-                    tpe.clone(),
-                    constraint.origin.clone(),
-                ))
+                Ok(Substitution::one(tvar.clone(), tpe.clone(), cause))
             }
         }
     }
@@ -166,8 +171,13 @@ mod tests {
         Constraint::new(left, right, Reason::Annotation, NodeSpan::none())
     }
 
-    fn origin() -> Origin {
-        Origin::new(Reason::Annotation, NodeSpan::none())
+    /// The cause every solution below carries, for the same reason: these tests are
+    /// about types, so the provenance is uniform and drops out of the comparison.
+    fn cause() -> Cause {
+        Cause {
+            reason: Reason::Annotation,
+            span: NodeSpan::none(),
+        }
     }
 
     #[test]
@@ -211,7 +221,7 @@ mod tests {
 
         assert_eq!(
             unify(constraints).unwrap(),
-            Substitution::one(tvar1, t2, origin())
+            Substitution::one(tvar1, t2, cause())
         );
     }
 
@@ -225,7 +235,7 @@ mod tests {
 
         assert_eq!(
             unify(constraints).unwrap(),
-            Substitution::one(tvar1, t2, origin())
+            Substitution::one(tvar1, t2, cause())
         );
     }
 
@@ -247,8 +257,8 @@ mod tests {
             },
         )];
 
-        let sub = Substitution::one(tvar2, Type::Literal(TypeLiteral::Bool), origin()).merge(
-            Substitution::one(tvar1, Type::Literal(TypeLiteral::Int), origin()),
+        let sub = Substitution::one(tvar2, Type::Literal(TypeLiteral::Bool), cause()).merge(
+            Substitution::one(tvar1, Type::Literal(TypeLiteral::Int), cause()),
         );
 
         assert_eq!(unify(constraints).unwrap(), sub);
@@ -296,7 +306,7 @@ mod tests {
     /// fails with the first one named as the reason `Bool` is there at all.
     ///
     /// Mutation-checked by making `Substitution::apply` return `c.origin.clone()`
-    /// unchanged: `because` is then `None` and the assertion goes red.
+    /// unchanged: the explanation is then `None` and the assertion goes red.
     #[test]
     fn a_substituted_type_is_explained_by_the_constraint_that_solved_it() {
         let t1 = Type::Variable(TypeVariable { id: 1 });
@@ -320,7 +330,7 @@ mod tests {
             Err(ErrorKind::UnificationFailed { origin, .. }) => {
                 assert_eq!(origin.reason, Reason::IfBranch);
                 assert_eq!(
-                    origin.because.map(|b| b.reason),
+                    origin.explanation().map(|c| c.reason),
                     Some(Reason::Annotation),
                     "the annotation is where `Bool` came from"
                 );
