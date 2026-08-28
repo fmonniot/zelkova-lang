@@ -132,6 +132,7 @@ impl PhaseError for Error {
                 span,
                 message: format!("in `{}`", self.declaration),
                 primary: true,
+                file: None,
             }],
             None => Vec::new(),
         }

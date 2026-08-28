@@ -402,7 +402,9 @@ fn check_in_order_keeps_passing_siblings_with_the_real_checker() {
 
     let walker = ModuleWalker::new(&modules).expect("no dependency cycle in the fixture");
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
-    let (checked, errors) = walker.check_in_order(&std_package(), &mut interfaces, check_module);
+    let module_files = HashMap::new();
+    let (checked, errors) =
+        walker.check_in_order(&std_package(), &mut interfaces, &module_files, check_module);
 
     let checked_names: Vec<String> = checked
         .iter()
@@ -961,5 +963,115 @@ fn case_bodied_declaration_label_stops_at_the_case() {
     assert!(
         !source[diagnostic.labels[0].range.clone()].contains("other"),
         "the caret must not reach the following declaration"
+    );
+}
+
+// ── Test 22: an ambiguous import points at each defining module ─────────────
+
+/// `ERR-5`: a diagnostic can carry labels in more than one file.
+///
+/// `Main.zel` imports `foo` unqualified from both `A.zel` and `B.zel`, so
+/// `canonical::Error::AmbiguousVariables` fires while checking `Main` — but the
+/// two declarations it is ambiguous *between* were written in `A` and `B`, not in
+/// `Main`. Before `ERR-5` a `SpanLabel` had no file of its own and `Interface`
+/// carried `canonical::Type` with no position at all (see that type's own
+/// documentation for why), so there was nothing to build such a label from.
+/// `Interface::file`, filled in by `ModuleWalker::check_in_order`, plus
+/// `Interface::values` now carrying each value's declaration span, are what let
+/// `AmbiguousVariables::labels` build one secondary label per candidate in that
+/// candidate's *own* file.
+///
+/// This is the ticket's acceptance check verbatim: not just that a second label
+/// exists, but that the two secondary labels' `file_id`s actually differ from
+/// each other and from the primary label's.
+///
+/// Mutation-checked by making `Interface::source_span` always return `None` —
+/// the state before `Interface::file` was threaded through `check_in_order`.
+/// `is_err()` alone would not catch it: `AmbiguousVariables` still fires and the
+/// primary label still renders, so only the `labels.len() == 3` assertion below
+/// goes red.
+#[test]
+fn ambiguous_import_labels_point_into_each_defining_module() {
+    let root = fixture_package("package_ambiguous_import");
+    assert_eq!(module_names(&root), vec!["A.zel", "B.zel", "Main.zel"]);
+
+    let a_source = std::fs::read_to_string(root.join("A.zel")).expect("fixture is readable");
+    let b_source = std::fs::read_to_string(root.join("B.zel")).expect("fixture is readable");
+    let a_start = a_source.find("foo : Int").expect("A declares foo");
+    let a_end = a_source.find("foo = 1").expect("A defines foo") + "foo = 1".len();
+    let b_start = b_source.find("foo : Int").expect("B declares foo");
+    let b_end = b_source.find("foo = 2").expect("B defines foo") + "foo = 2".len();
+
+    let error = compile_package(&root).expect_err("an ambiguous import must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    match unwrap_in_file(&errors[0]) {
+        CompilationError::Canonical(canonical_errors, module) => {
+            assert_eq!(module, &Name::from("Main"));
+            assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
+        }
+        other => panic!("expected a Canonical error, got {:?}", other),
+    }
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    assert_eq!(
+        diagnostic.labels.len(),
+        3,
+        "expected one primary label in Main plus one secondary label per candidate, got {:?}",
+        diagnostic.labels
+    );
+
+    let secondary: Vec<_> = diagnostic
+        .labels
+        .iter()
+        .filter(|l| l.style == codespan_reporting::diagnostic::LabelStyle::Secondary)
+        .collect();
+    assert_eq!(
+        secondary.len(),
+        2,
+        "expected two secondary labels, one per candidate module, got {:?}",
+        secondary
+    );
+
+    let primary_label = diagnostic
+        .labels
+        .iter()
+        .find(|l| l.style == codespan_reporting::diagnostic::LabelStyle::Primary)
+        .expect("expected a primary label at the use site");
+
+    // The ticket's acceptance check, verbatim: the two secondary labels sit in two
+    // different files, and neither is the file the primary label is in.
+    assert_ne!(
+        secondary[0].file_id, secondary[1].file_id,
+        "the two candidates must be labeled in their own, different files"
+    );
+    assert_ne!(
+        secondary[0].file_id, primary_label.file_id,
+        "a candidate's label must not be in the same file as the use site"
+    );
+    assert_ne!(
+        secondary[1].file_id, primary_label.file_id,
+        "a candidate's label must not be in the same file as the use site"
+    );
+
+    // And each secondary label underlines the candidate's actual declaration, not
+    // a zero-width guess or the other candidate's span.
+    let ranges: Vec<_> = secondary.iter().map(|l| l.range.clone()).collect();
+    assert!(
+        ranges.contains(&(a_start..a_end)),
+        "expected a label at A's declaration {:?}, got {:?}",
+        a_start..a_end,
+        ranges
+    );
+    assert!(
+        ranges.contains(&(b_start..b_end)),
+        "expected a label at B's declaration {:?}, got {:?}",
+        b_start..b_end,
+        ranges
     );
 }

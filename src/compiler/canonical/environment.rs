@@ -3,7 +3,7 @@
 use super::{parser, Pattern, PatternKind};
 use super::{Infix, Interface, ModuleName, Name, Type, TypeConstructor, UnionType};
 use crate::compiler::position::NodeSpan;
-use crate::compiler::{PhaseError, SpanLabel};
+use crate::compiler::{PhaseError, SourceSpan, SpanLabel};
 use crate::utils::collect_accumulate;
 use log::trace;
 use std::collections::HashMap;
@@ -12,8 +12,13 @@ use std::collections::HashMap;
 pub enum ValueType {
     Local,
     TopLevel,
-    Foreign(ModuleName, Type),
-    Foreigns(Vec<ModuleName>),
+    /// A value found through exactly one import, together with where it was
+    /// declared in that module — `None` when the interface it came from cannot
+    /// say (a hand-built one, or one built before its file was known).
+    Foreign(ModuleName, Option<SourceSpan>, Type),
+    /// A value exposed unqualified by more than one import — `AmbiguousVariables`
+    /// once looked up — each candidate paired the same way as `Foreign`.
+    Foreigns(Vec<(ModuleName, Option<SourceSpan>)>),
 }
 
 /// Environment represent the set of values/types available to a compilation unit.
@@ -105,11 +110,12 @@ fn process_import(
     // First we insert all values/types from the module, prefixed with the module name or its alias
     let prefix = alias.as_ref().unwrap_or(imported_module_name);
 
-    for (value_name, tpe) in &interface.values {
+    for (value_name, (node_span, tpe)) in &interface.values {
         insert_foreign_value(
             env,
             value_name.qualify_with_name(prefix).unwrap().to_name(),
             tpe.clone(),
+            interface.source_span(*node_span),
             &interface.module_name,
         );
     }
@@ -125,8 +131,14 @@ fn process_import(
         parser::Exposing::Open => {
             // We add everything to the current environment
 
-            for (value_name, tpe) in &interface.values {
-                insert_foreign_value(env, value_name.clone(), tpe.clone(), &interface.module_name);
+            for (value_name, (node_span, tpe)) in &interface.values {
+                insert_foreign_value(
+                    env,
+                    value_name.clone(),
+                    tpe.clone(),
+                    interface.source_span(*node_span),
+                    &interface.module_name,
+                );
             }
 
             for (op_name, infix) in &interface.infixes {
@@ -144,7 +156,7 @@ fn process_import(
             let iter = exposeds.iter().map(|exposed| {
                 match exposed {
                     parser::Exposed::Lower(value_name) => {
-                        let tpe = interface
+                        let (node_span, tpe) = interface
                             .values
                             .get(value_name)
                             .ok_or_else(|| EnvError::ValueNotFound(value_name.clone()))?;
@@ -153,6 +165,7 @@ fn process_import(
                             env,
                             value_name.clone(),
                             tpe.clone(),
+                            interface.source_span(*node_span),
                             &interface.module_name,
                         );
                     }
@@ -220,18 +233,21 @@ fn insert_foreign_value(
     env: &mut RootEnvironment,
     name: Name,
     tpe: Type,
+    source: Option<SourceSpan>,
     module_name: &ModuleName,
 ) {
-    let vt = ValueType::Foreign(module_name.clone(), tpe.clone());
+    let vt = ValueType::Foreign(module_name.clone(), source, tpe.clone());
 
     // Can it be done more efficiently by using get_mut ?
     match env.variables.remove(&name) {
-        Some(ValueType::Foreign(module, _)) => {
-            env.variables
-                .insert(name, ValueType::Foreigns(vec![module_name.clone(), module]));
+        Some(ValueType::Foreign(module, prev_source, _)) => {
+            env.variables.insert(
+                name,
+                ValueType::Foreigns(vec![(module_name.clone(), source), (module, prev_source)]),
+            );
         }
         Some(ValueType::Foreigns(mut vec)) => {
-            vec.push(module_name.clone());
+            vec.push((module_name.clone(), source));
             env.variables.insert(name, ValueType::Foreigns(vec));
         }
         None => {
@@ -287,6 +303,7 @@ impl PhaseError for EnvError {
                     span,
                     message: "no module of this name was found".to_owned(),
                     primary: true,
+                    file: None,
                 }],
                 None => Vec::new(),
             },
@@ -506,31 +523,41 @@ mod tests {
         // andThen : (a -> Maybe b) -> Maybe a -> Maybe b
         values.insert(
             "andThen".into(),
-            type_fun(
-                type_fun(type_var("a"), type_hk("Maybe", vec![type_var("b")])),
+            (
+                // Hand-built, not canonicalized from source: no position behind it.
+                NodeSpan::none(),
                 type_fun(
-                    type_hk("Maybe", vec![type_var("a")]),
-                    type_hk("Maybe", vec![type_var("b")]),
+                    type_fun(type_var("a"), type_hk("Maybe", vec![type_var("b")])),
+                    type_fun(
+                        type_hk("Maybe", vec![type_var("a")]),
+                        type_hk("Maybe", vec![type_var("b")]),
+                    ),
                 ),
             ),
         );
         // map : (a -> b) -> Maybe a -> Maybe b
         values.insert(
             "map".into(),
-            type_fun(
-                type_fun(type_var("a"), type_var("b")),
+            (
+                NodeSpan::none(),
                 type_fun(
-                    type_hk("Maybe", vec![type_var("a")]),
-                    type_hk("Maybe", vec![type_var("b")]),
+                    type_fun(type_var("a"), type_var("b")),
+                    type_fun(
+                        type_hk("Maybe", vec![type_var("a")]),
+                        type_hk("Maybe", vec![type_var("b")]),
+                    ),
                 ),
             ),
         );
         // withDefault : a -> Maybe a -> a
         values.insert(
             "withDefault".into(),
-            type_fun(
-                type_var("a"),
-                type_fun(type_hk("Maybe", vec![type_var("a")]), type_var("a")),
+            (
+                NodeSpan::none(),
+                type_fun(
+                    type_var("a"),
+                    type_fun(type_hk("Maybe", vec![type_var("a")]), type_var("a")),
+                ),
             ),
         );
 
@@ -560,6 +587,7 @@ mod tests {
             values,
             unions,
             infixes: HashMap::new(),
+            file: None,
         };
 
         ("Maybe".into(), interface)

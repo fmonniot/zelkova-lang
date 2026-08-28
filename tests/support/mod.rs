@@ -50,31 +50,41 @@ pub fn maybe_interface() -> (Name, Interface) {
     // andThen : (a -> Maybe b) -> Maybe a -> Maybe b
     values.insert(
         "andThen".into(),
-        type_fun(
-            type_fun(type_var("a"), type_hk("Maybe", vec![type_var("b")])),
+        (
+            // Hand-built, not canonicalized from source: no position behind it.
+            NodeSpan::none(),
             type_fun(
-                type_hk("Maybe", vec![type_var("a")]),
-                type_hk("Maybe", vec![type_var("b")]),
+                type_fun(type_var("a"), type_hk("Maybe", vec![type_var("b")])),
+                type_fun(
+                    type_hk("Maybe", vec![type_var("a")]),
+                    type_hk("Maybe", vec![type_var("b")]),
+                ),
             ),
         ),
     );
     // map : (a -> b) -> Maybe a -> Maybe b
     values.insert(
         "map".into(),
-        type_fun(
-            type_fun(type_var("a"), type_var("b")),
+        (
+            NodeSpan::none(),
             type_fun(
-                type_hk("Maybe", vec![type_var("a")]),
-                type_hk("Maybe", vec![type_var("b")]),
+                type_fun(type_var("a"), type_var("b")),
+                type_fun(
+                    type_hk("Maybe", vec![type_var("a")]),
+                    type_hk("Maybe", vec![type_var("b")]),
+                ),
             ),
         ),
     );
     // withDefault : a -> Maybe a -> a
     values.insert(
         "withDefault".into(),
-        type_fun(
-            type_var("a"),
-            type_fun(type_hk("Maybe", vec![type_var("a")]), type_var("a")),
+        (
+            NodeSpan::none(),
+            type_fun(
+                type_var("a"),
+                type_fun(type_hk("Maybe", vec![type_var("a")]), type_var("a")),
+            ),
         ),
     );
 
@@ -105,6 +115,7 @@ pub fn maybe_interface() -> (Name, Interface) {
         values,
         unions,
         infixes: HashMap::new(),
+        file: None,
     };
 
     ("Maybe".into(), interface)

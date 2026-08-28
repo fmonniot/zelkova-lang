@@ -1,0 +1,5 @@
+module A exposing (..)
+
+
+foo : Int
+foo = 1

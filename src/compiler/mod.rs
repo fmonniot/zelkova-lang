@@ -56,7 +56,7 @@ pub mod tuple;
 pub mod typer;
 
 use name::{Name, QualName};
-use position::{BytePos, Span};
+use position::{BytePos, NodeSpan, Span};
 use source::files::{SourceFileError, SourceFileId};
 
 // TODO Move PackageName and ModuleName into the name module
@@ -105,6 +105,21 @@ impl ModuleName {
     }
 }
 
+/// A byte span paired with the file it was written in.
+///
+/// [`NodeSpan`] is enough for an error about the module a phase is currently
+/// checking, because [`compile_package`] supplies that one file id for the whole
+/// diagnostic at render time (see [`PhaseError`] and [`SpanLabel`]). A span pulled
+/// out of an [`Interface`] cannot rely on that: it was written in the *exporting*
+/// module's file, which is not necessarily the file being rendered, so the id has
+/// to travel with the span instead of being attached later. This is that pair —
+/// [`Interface::source_span`] is how one gets built.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SourceSpan {
+    pub file: SourceFileId,
+    pub span: Span<BytePos>,
+}
+
 /// An interface is trim down version of a module.
 ///
 /// We use it when translating a local source AST into its canonical form as
@@ -118,38 +133,75 @@ impl ModuleName {
 #[derive(Debug)]
 pub struct Interface {
     pub module_name: ModuleName,
-    pub values: HashMap<Name, canonical::Type>,
+    /// Each value's type, paired with where its declaration (annotation and body
+    /// together) was written — [`canonical::Value::span`] — so a diagnostic about a
+    /// name found here can point at the declaration, not just name it.
+    pub values: HashMap<Name, (NodeSpan, canonical::Type)>,
     pub unions: HashMap<Name, canonical::UnionType>,
     // TODO type aliases
     //aliases: HashMap<Name, >
     /// infixes is a map from the operator symbol to its information
     pub infixes: HashMap<Name, canonical::Infix>,
+    /// The file this interface's module was read from, when the driver knows it.
+    ///
+    /// [`canonical::Module::to_interface`] cannot fill this in — building an
+    /// `Interface` is not itself a phase, but it runs from inside one module's
+    /// check, which never knows its own [`SourceFileId`] any more than a phase
+    /// does. It leaves this `None`, and [`dependencies::ModuleWalker::check_in_order`]
+    /// — which, like [`compile_package`], is driver code rather than a phase, and
+    /// already has the file each module it is checking came from — fills it in
+    /// once the module has checked, right before the interface goes into the
+    /// shared map. A hand-built interface, as every test below `check_module`
+    /// constructs, leaves it `None`; [`Interface::source_span`] then has no file to
+    /// pair a span with and returns `None`, so the diagnostic degrades to no
+    /// secondary label rather than a wrong one.
+    pub file: Option<SourceFileId>,
+}
+
+impl Interface {
+    /// Pair a [`NodeSpan`] taken from this interface's own data — a value's
+    /// declaration, a [`canonical::UnionType`]'s or [`canonical::Infix`]'s `span`
+    /// field — with the file it was written in, when both halves are known.
+    ///
+    /// Both halves are needed: a `NodeSpan` with nothing behind it (a hand-built
+    /// test value) or an interface with no attached file (same) leaves nothing
+    /// honest to build, and `None` is that answer — the caller renders no label
+    /// rather than one pointing at byte 0 of the wrong file.
+    pub fn source_span(&self, span: NodeSpan) -> Option<SourceSpan> {
+        match (self.file, span.span()) {
+            (Some(file), Some(span)) => Some(SourceSpan { file, span }),
+            _ => None,
+        }
+    }
 }
 
 /// One underlined region of the user's source, and what to say about it.
 ///
-/// # Why there is no `SourceFileId` here
+/// # `file`: when a label is not about the module under check
 ///
-/// A `codespan_reporting::Label` needs a file id as well as a byte range, and this
-/// carries only the range. That is not an omission: a phase only ever sees one
-/// module, so every span it produces belongs to the file that module was read from,
-/// and [`compile_package`] — the only place that knows which file that is — pairs
-/// them up when it renders. Putting the id in here would ask each phase to carry
-/// something it has no way to know.
+/// A [`codespan_reporting::Label`] needs a file id as well as a byte range. Most
+/// labels don't carry one themselves: a phase only ever sees one module, so its
+/// spans belong to the file that module was read from, and [`compile_package`] —
+/// the only place that knows which file that is — supplies it for the whole
+/// diagnostic at render time. `file: None` is that case, and it covers everything
+/// built before `ERR-5`.
 ///
-/// The limit that falls out of it: a diagnostic cannot point into a *different*
-/// module — "the annotation you are contradicting is over there, in `Basics`". Doing
-/// that needs a file id per label, and an interface that remembers which file each
-/// of its types was written in. That is `ERR-5` (see `docs/tickets/INDEX.md`).
+/// `Some` is the escape hatch: a label built from a [`SourceSpan`] cloned out of an
+/// [`Interface`] (via [`Interface::source_span`]) already carries its own file,
+/// generally a *different* one from the module being checked — "the annotation you
+/// are contradicting is over there, in `Basics`" — and that id is used verbatim
+/// instead of the diagnostic's.
 ///
-/// `primary` is the rustc distinction, and it is needed *within* one file rather
-/// than only across files: the caret under the thing that is wrong is primary, and
-/// "expected because of this annotation" is secondary.
+/// `primary` is the rustc distinction, and it applies independently of `file`: the
+/// caret under the thing that is wrong is primary even when it is local, and
+/// "defined here" in another file is secondary even though it is the only label
+/// pointing into that file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpanLabel {
     pub span: Span<BytePos>,
     pub message: String,
     pub primary: bool,
+    pub file: Option<SourceFileId>,
 }
 
 /// What a compiler phase owes the diagnostic reporter.
@@ -180,19 +232,32 @@ pub struct SpanLabel {
 /// and flattens its members' labels instead, the way it already flattens their
 /// messages.
 ///
-/// Two limits remain and each has a ticket. `typer::Error` still points at the
+/// One limit remains and has a ticket. `typer::Error` still points at the
 /// declaration rather than the sub-expression that disagrees, because the typer
 /// translates canonical into its own `Term`/`Constraint` language and drops positions
-/// on the way: `ERR-4`. And a [`SpanLabel`] has no [`SourceFileId`], so no diagnostic
-/// can point into another module — which is also why `canonical::Type` carries no
-/// span: `ERR-5`. See `docs/tickets/INDEX.md`.
+/// on the way: `ERR-4`. See `docs/tickets/INDEX.md`.
 ///
 /// `parser::Error` is still the one phase error that does not go through this trait
 /// at all — it builds its own labelled `Diagnostic` through `parser::Error::diagnostic`.
 ///
-/// The `SourceFileId` half is settled and stays settled: a phase never knows it. It
-/// is attached by `compile_package`, the only place that knows which file a module
-/// was read from — the way `CompilationError::Source` already works.
+/// # The two ways a label learns its `SourceFileId`
+///
+/// A phase still never knows the id of the file the module it is checking came
+/// from — that half is unchanged, and stays attached by `compile_package`, the only
+/// place that knows it, the way `CompilationError::Source` already works. A
+/// [`SpanLabel`] with `file: None` — everything built before `ERR-5` — means
+/// exactly that: "in the module under check", resolved at render time.
+///
+/// That is right for an error entirely about one module and cannot cover a
+/// diagnostic that also names something written elsewhere — "the annotation you
+/// are contradicting is over there, in `Basics`". For that, `file` carries its own
+/// [`SourceFileId`] instead, taken from a [`SourceSpan`] cloned out of an
+/// [`Interface`] via [`Interface::source_span`]. An `Interface` can offer that
+/// because it is not a phase: it is built by driver code
+/// (`dependencies::ModuleWalker::check_in_order`) that already has the file the
+/// module it just checked came from, and stamps it onto the `Interface` before
+/// handing it to whoever imports next. `canonical::Type` still carries no span of
+/// its own — seeing why is worth a look at that type's own documentation.
 pub trait PhaseError {
     /// One line naming what went wrong, in the vocabulary of the user's source.
     ///
@@ -254,10 +319,15 @@ fn phase_diagnostic<E: PhaseError>(
             .flat_map(|e| e.labels())
             .map(|l| {
                 let range = l.span.to_range();
+                // A label with its own file — a `SourceSpan` cloned out of an
+                // `Interface` — points into that file instead of the module being
+                // checked. That is the whole mechanism `ERR-5` adds: everything
+                // built before it left `file` `None` and always fell through to `id`.
+                let label_file = l.file.unwrap_or(id);
                 let label = if l.primary {
-                    Label::primary(id, range)
+                    Label::primary(label_file, range)
                 } else {
-                    Label::secondary(id, range)
+                    Label::secondary(label_file, range)
                 };
                 label.with_message(l.message)
             })
@@ -539,8 +609,13 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
         // here, and the errors still flow into `errors` below so a failing module
         // keeps making this function return `Err` — only the previously-discarded
         // successes are new.
+        //
+        // `module_files` is also how each checked module's `Interface` learns which
+        // file it came from (`Interface::file`, `ERR-5`): this is the one place that
+        // knows both the module and its file, so `check_in_order` takes the map and
+        // stamps it onto every interface it inserts as it goes.
         let (can_mods, check_errors) =
-            walker.check_in_order(&package_name, &mut interfaces, check_module);
+            walker.check_in_order(&package_name, &mut interfaces, &module_files, check_module);
 
         if check_errors.is_empty() {
             print_status(
