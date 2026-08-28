@@ -22,7 +22,7 @@ use super::position::NodeSpan;
 use super::source::files::SourceFileId;
 use super::SpanLabel;
 use log::debug;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use petgraph::graph::{DiGraph, NodeIndex};
 
@@ -63,15 +63,31 @@ pub struct CycleEdge {
     pub file: Option<SourceFileId>,
 }
 
-/// A dependency cycle: the modules involved, in cycle order, alongside the
-/// `import` that created each edge between consecutive modules (wrapping around
-/// to the first).
+/// A dependency cycle: one loop through a strongly-connected component of the
+/// import graph, alongside the `import` that created each edge between consecutive
+/// modules (wrapping around to the first), and any component member that loop does
+/// not pass through.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Cycle {
-    /// The modules in cycle order — what the summary note is built from.
+    /// *One* cycle within the strongly-connected component, in cycle order —
+    /// what the summary note is built from. Not necessarily every module in the
+    /// component: a component with several overlapping loops has more than one
+    /// cycle in it, and picking the shortest one through a single start node (see
+    /// [`cycle_walk`]) can leave others out. Finding a cycle that covers every
+    /// member is the Hamiltonian cycle problem, and no such cycle need exist, so
+    /// this does not try; the members left out are in [`Cycle::others`] instead,
+    /// and the note names them so a user does not break one loop and immediately
+    /// hit the next one hiding in the same component.
     pub path: Vec<Name>,
+    /// The other modules in the same component: genuinely part of the circular
+    /// dependency, but not on the particular cycle `path` names. Empty whenever
+    /// `path` already covers the component, which every fixture and every real
+    /// import graph seen so far is.
+    pub others: Vec<Name>,
     /// `edges[i]` is the `import` written in `path[i]` that names `path[i + 1]`
-    /// (or `path[0]`, for the last edge). Same length as `path`.
+    /// (or `path[0]`, for the last edge). Same length as `path`, and every entry
+    /// is a real `import`, because [`cycle_walk`] only ever returns a path whose
+    /// consecutive pairs are edges of the graph.
     pub edges: Vec<CycleEdge>,
 }
 
@@ -99,16 +115,30 @@ impl crate::compiler::PhaseError for Error {
     fn notes(&self) -> Vec<String> {
         match self {
             // Each cycle is written back to its start, so it reads as the loop it is:
-            // `A -> B -> A`.
+            // `A -> B -> A`. A component that holds more than the one loop gets a
+            // second note naming the members that loop leaves out, so breaking it
+            // does not just uncover the next cycle in the same component
+            // (`Cycle::others`).
             Error::CycleDetected(cycles) => cycles
                 .iter()
-                .map(|cycle| {
+                .flat_map(|cycle| {
                     let mut path: Vec<String> =
                         cycle.path.iter().map(|name| name.to_string()).collect();
                     if let Some(first) = path.first().cloned() {
                         path.push(first);
                     }
-                    format!("cycle: {}", path.join(" -> "))
+                    let mut notes = vec![format!("cycle: {}", path.join(" -> "))];
+
+                    if !cycle.others.is_empty() {
+                        let others: Vec<String> =
+                            cycle.others.iter().map(|name| name.to_string()).collect();
+                        notes.push(format!(
+                            "also part of this circular dependency, on another loop through the same modules: {}",
+                            others.join(", ")
+                        ));
+                    }
+
+                    notes
                 })
                 .collect(),
         }
@@ -129,10 +159,12 @@ impl crate::compiler::PhaseError for Error {
                         let file = edge.file?;
                         Some(SpanLabel {
                             span,
-                            message: format!(
-                                "`{}` imports `{}` here, closing the cycle",
-                                edge.from, edge.to
-                            ),
+                            // Every edge is equally the cause — breaking any one
+                            // of them breaks the loop — so a label states only its
+                            // own edge and leaves the loop to the note. Saying
+                            // "closing the cycle" here would put that claim on all
+                            // N labels when only the last edge closes it.
+                            message: format!("`{}` imports `{}` here", edge.from, edge.to),
                             primary: true,
                             file: Some(file),
                         })
@@ -144,66 +176,126 @@ impl crate::compiler::PhaseError for Error {
 }
 
 /// Walk `members` — one strongly-connected component `tarjan_scc` found, so every
-/// node in it can reach every other — into an actual directed cycle: a sequence of
-/// modules where each one really does import the next.
+/// node in it can reach every other — into an actual directed cycle through
+/// `start`: a sequence of modules where each one really does import the next, and
+/// the last one imports the first.
 ///
 /// `tarjan_scc`'s own ordering of a component does not promise this: it is
 /// membership, not a walk, so consecutive entries are not necessarily connected by
-/// an edge. This does a small greedy DFS from `members[0]`, always preferring a
-/// same-component edge that closes the loop back to the start, so `path`'s
-/// consecutive pairs (and its last pair back to `path[0]`) are real edges in the
-/// graph — which `build_cycle` then needs to look up the `import` behind each one.
+/// an edge, and the note used to print a "cycle" the user could not follow. That is
+/// what `ERR-6` set out to fix, and `build_cycle` needs it to be true a second time
+/// over, because it looks up the `import` behind each consecutive pair and an edge
+/// that does not exist has no `import` to point a label at.
 ///
-/// This only fails to close the loop for a component with a more tangled shape
-/// than a simple cycle (two overlapping loops sharing a node, say); every fixture
-/// and every real import graph seen so far is a simple cycle, and `build_cycle`
-/// degrades gracefully — a missing edge just yields a label-less `CycleEdge` for
-/// that one step — if it ever doesn't.
-fn cycle_walk(graph: &DiGraph<&Module, ()>, members: &[NodeIndex]) -> Vec<NodeIndex> {
+/// So the guarantee has to hold by construction, not by luck. This is a breadth-first
+/// search from `start` over in-component edges only, stopping at the first node found
+/// to import `start` back; the path is then reconstructed backwards along the BFS
+/// tree. Because BFS pops nodes in non-decreasing distance order, that is the
+/// *shortest* cycle through `start`, and because a BFS tree path never repeats a
+/// node, it is a simple one. A greedy walk that just takes the first unvisited
+/// neighbour cannot promise this — in a component with two loops sharing a node
+/// (`B` imports `C` and `E`; `C` imports `D`; `D` imports `B`; `E` imports `B`) it
+/// wanders into `E`, dead-ends, and hands back `[D, B, E]` even though `E` does not
+/// import `D`.
+///
+/// The cycle it finds may be a strict subset of `members` — see [`Cycle::path`] for
+/// why that is not fixable in general and what is reported instead.
+///
+/// `start` must be one of `members`. Callers get that from the `partition` in
+/// [`ModuleWalker::new`], which is also where the component is known to be
+/// non-empty; taking it as a parameter is what keeps this function off an unchecked
+/// `members[0]`.
+///
+/// The returned path is empty only if `start` lies on no cycle at all, which a
+/// component `tarjan_scc` reported with more than one member cannot produce.
+fn cycle_walk(
+    graph: &DiGraph<&Module, ()>,
+    members: &[NodeIndex],
+    start: NodeIndex,
+) -> Vec<NodeIndex> {
     let member_set: HashSet<NodeIndex> = members.iter().copied().collect();
-    let start = members[0];
-    let mut path = vec![start];
-    let mut visited: HashSet<NodeIndex> = HashSet::from([start]);
-    let mut current = start;
 
-    loop {
-        let neighbors: Vec<NodeIndex> = graph
-            .neighbors(current)
-            .filter(|n| member_set.contains(n))
-            .collect();
+    // How each node was first reached. `start` is deliberately absent: it is the
+    // target, so reaching it is what ends the search rather than something to
+    // record a predecessor for.
+    let mut predecessor: HashMap<NodeIndex, NodeIndex> = HashMap::new();
+    let mut queue: VecDeque<NodeIndex> = VecDeque::from([start]);
+    // The node that closes the loop: the first one popped that imports `start`.
+    let mut closing: Option<NodeIndex> = None;
 
-        // Once we've moved past the start, an edge back to it closes the cycle.
-        if path.len() > 1 && neighbors.contains(&start) {
-            break;
-        }
-
-        match neighbors.into_iter().find(|n| !visited.contains(n)) {
-            Some(next) => {
-                path.push(next);
-                visited.insert(next);
-                current = next;
+    'search: while let Some(current) = queue.pop_front() {
+        for next in graph.neighbors(current).filter(|n| member_set.contains(n)) {
+            if next == start {
+                closing = Some(current);
+                break 'search;
             }
-            // A dead end within the component: the greedy walk above couldn't
-            // close the loop. See this function's own documentation.
-            None => break,
+
+            // First time we reach `next` is along a shortest path to it, so a
+            // later, longer way in is ignored.
+            if predecessor.contains_key(&next) {
+                continue;
+            }
+
+            predecessor.insert(next, current);
+            queue.push_back(next);
         }
+    }
+
+    let mut path = Vec::new();
+
+    if let Some(closing) = closing {
+        let mut node = closing;
+        path.push(node);
+
+        // Back up the BFS tree to `start`. `predecessor` was built by this search,
+        // so every node on that chain has one until `start` is reached; the `None`
+        // arm cannot fire, and stopping is the right thing if it somehow did.
+        while node != start {
+            match predecessor.get(&node) {
+                Some(&previous) => {
+                    node = previous;
+                    path.push(node);
+                }
+                None => break,
+            }
+        }
+
+        path.reverse();
     }
 
     path
 }
 
 /// Turn one strongly-connected component into the [`Cycle`] a diagnostic renders:
-/// the module path `cycle_walk` finds, plus the `import` behind each edge of it.
+/// the module path `cycle_walk` finds, the `import` behind each edge of it, and the
+/// component members that path leaves out.
+///
+/// `start` is the node the cycle is found through; [`ModuleWalker::new`] takes it
+/// from the component itself, which is how this avoids indexing one.
 fn build_cycle(
     graph: &DiGraph<&Module, ()>,
     members: &[NodeIndex],
+    start: NodeIndex,
     module_files: &HashMap<Name, SourceFileId>,
 ) -> Cycle {
-    let node_path = cycle_walk(graph, members);
+    let node_path = cycle_walk(graph, members, start);
+    let on_path: HashSet<NodeIndex> = node_path.iter().copied().collect();
+
     let path: Vec<Name> = node_path
         .iter()
         .map(|&idx| graph[idx].name.clone())
         .collect();
+
+    let mut others: Vec<Name> = members
+        .iter()
+        .filter(|idx| !on_path.contains(idx))
+        .map(|&idx| graph[idx].name.clone())
+        .collect();
+    // `tarjan_scc`'s ordering within a component is an implementation detail; a
+    // note the user reads should not vary with it. Sorted on the identifier text
+    // rather than through an `Ord` on `Name`, which `name.rs` deliberately does not
+    // derive.
+    others.sort_by(|l, r| l.as_str().cmp(r.as_str()));
 
     let edges = node_path
         .iter()
@@ -215,7 +307,9 @@ fn build_cycle(
 
             // The specific `import …` line in `from_module` that names `to_name` —
             // there may be several imports in `from_module`, but at most one of
-            // them names this particular neighbour.
+            // them names this particular neighbour. `cycle_walk` guarantees this is
+            // a real edge, so the only reason to find nothing is a hand-built
+            // module in this file's own tests, which carry no source text.
             let import = from_module.imports.iter().find(|imp| imp.name == to_name);
 
             CycleEdge {
@@ -227,7 +321,11 @@ fn build_cycle(
         })
         .collect();
 
-    Cycle { path, edges }
+    Cycle {
+        path,
+        others,
+        edges,
+    }
 }
 
 impl<'a> ModuleWalker<'a> {
@@ -279,9 +377,17 @@ impl<'a> ModuleWalker<'a> {
 
             Ok(ModuleWalker { modules })
         } else {
+            // `partition` above already established every component here has more
+            // than one member, so `first()` is always `Some`; taking the start node
+            // from it here, rather than indexing inside `cycle_walk`, is what keeps
+            // that guarantee next to the check that establishes it.
             let c = cycles
                 .into_iter()
-                .map(|members| build_cycle(&graph, members, module_files))
+                .filter_map(|members| {
+                    members
+                        .first()
+                        .map(|&start| build_cycle(&graph, members, start, module_files))
+                })
                 .collect();
 
             Err(Error::CycleDetected(c))
@@ -472,6 +578,41 @@ mod tests {
         assert_walker_processed_order(walker.expect("no errors here"), vec!["a", "b", "c", "d"])
     }
 
+    /// The property `cycle_walk` is supposed to guarantee, asserted directly against
+    /// the source modules rather than against `path` restated as `edges`: every
+    /// consecutive pair in `path`, wrapping around from the last back to the first,
+    /// is an `import` actually written in the earlier module.
+    ///
+    /// Checking `Cycle::edges` instead would pin nothing — `build_cycle` derives
+    /// `from`/`to` from consecutive `path` entries unconditionally, and the two
+    /// fields that could tell a real edge from a fabricated one are both dead in
+    /// these fixtures (`file` is always `None` with an empty `module_files`, and
+    /// `NodeSpan`'s `PartialEq` always returns `true`, per CLAUDE.md).
+    fn assert_path_is_a_real_cycle(cycle: &Cycle, modules: &[Module]) {
+        assert!(
+            cycle.path.len() > 1,
+            "a cycle between modules needs at least two of them, got {:?}",
+            cycle.path
+        );
+
+        for (i, from) in cycle.path.iter().enumerate() {
+            let to = &cycle.path[(i + 1) % cycle.path.len()];
+            let from_module = modules
+                .iter()
+                .find(|m| &m.name == from)
+                .unwrap_or_else(|| panic!("`{}` is one of the fixture modules", from));
+
+            assert!(
+                from_module.imports.iter().any(|imp| &imp.name == to),
+                "`{}` does not import `{}`, so the reported cycle {:?} is not a walk \
+                 this graph's edges can produce",
+                from,
+                to,
+                cycle.path
+            );
+        }
+    }
+
     /// Pins two things together: which modules a cycle names (as before this
     /// ticket), and — new for `ERR-6` — that its `path` is a genuine walk along
     /// real `import` edges rather than `tarjan_scc`'s raw, edge-agnostic
@@ -481,15 +622,19 @@ mod tests {
     /// now `[b, a, c]`, which is: `b -> a` (b imports a), `a -> c` (a imports c),
     /// `c -> b` (c imports b, closing the loop).
     ///
-    /// `edges` is asserted alongside `path`: each `CycleEdge::from`/`to` names the
-    /// consecutive pair in `path` it corresponds to, which only holds if `path`
-    /// really is edge-consecutive.
+    /// The hardcoded `path`/`edges` comparison pins *this* graph's answer; the
+    /// `assert_path_is_a_real_cycle` calls pin the general property, and are what
+    /// would catch a walk that closed its loop on an edge that does not exist. Both
+    /// components here are simple cycles covering every member, so `others` is
+    /// empty — `cycle_reports_component_members_left_off_the_loop` covers the case
+    /// where it is not.
     ///
     /// Mutation-checked by reverting `cycle_walk` to return `members` verbatim
-    /// (`tarjan_scc`'s raw order) instead of walking it — this test's `path`
-    /// assertion goes red (`[b, c, a]` instead of `[b, a, c]`), and so does
-    /// `dependency_cycle_labels_each_import` in `tests/pipeline.rs`, whose labels
-    /// stop finding a matching `import` for the non-edge pairs and drop to zero.
+    /// (`tarjan_scc`'s raw order) instead of searching it: this test goes red
+    /// (`[b, c, a]` instead of `[b, a, c]`, and `b` does not import `c`).
+    /// `dependency_cycle_labels_each_import` in `tests/pipeline.rs` stays green
+    /// under that same mutation and says so itself — its two-module fixture has only
+    /// one possible walk, so the raw component order and a real walk coincide.
     #[test]
     fn dependencies_with_two_cycles() {
         let a = module("a", vec!["c"]);
@@ -507,19 +652,199 @@ mod tests {
 
         let res = walker.expect_err("I'm expecting an error");
 
+        let Error::CycleDetected(cycles) = &res;
+        for cycle in cycles {
+            assert_path_is_a_real_cycle(cycle, &modules);
+        }
+
         assert_eq!(
             res,
             Error::CycleDetected(vec![
                 Cycle {
                     path: vec![name("b"), name("a"), name("c")],
+                    others: vec![],
                     edges: vec![edge("b", "a"), edge("a", "c"), edge("c", "b")],
                 },
                 Cycle {
                     path: vec![name("e"), name("d"), name("f")],
+                    others: vec![],
                     edges: vec![edge("e", "d"), edge("d", "f"), edge("f", "e")],
                 },
             ])
         )
+    }
+
+    /// Every ordering of `specs` — a list of `(module name, its imports)` — handed to
+    /// `ModuleWalker::new` in turn, with `assert` run on each resulting `Cycle`.
+    ///
+    /// The declaration order is what decides `tarjan_scc`'s ordering of a component,
+    /// and therefore which member `build_cycle` starts its search from. A fixture
+    /// written in one fixed order only ever exercises one start node, and a walk that
+    /// is wrong from *some* start nodes will pass it by luck — which is exactly how
+    /// the dead-end below went unnoticed. Running every permutation removes the luck.
+    fn for_every_declaration_order(
+        specs: &[(&str, Vec<&str>)],
+        assert: impl Fn(&Cycle, &[Module], &[&str]),
+    ) {
+        // Lexicographic permutations of the indices into `specs`, so the whole set is
+        // covered without pulling in a crate for it.
+        let mut order: Vec<usize> = (0..specs.len()).collect();
+
+        loop {
+            let modules: Vec<Module> = order
+                .iter()
+                .map(|&i| module(specs[i].0, specs[i].1.clone()))
+                .collect();
+            let names: Vec<&str> = order.iter().map(|&i| specs[i].0).collect();
+            let module_files = HashMap::new();
+
+            let res = ModuleWalker::new(&modules, &module_files)
+                .expect_err("every fixture here has a cycle in it");
+
+            let Error::CycleDetected(cycles) = &res;
+            assert_eq!(
+                cycles.len(),
+                1,
+                "one component, so one cycle, in declaration order {:?}: {:?}",
+                names,
+                cycles
+            );
+
+            assert(&cycles[0], &modules, &names);
+
+            // Next permutation.
+            let Some(pivot) = (0..order.len() - 1)
+                .rev()
+                .find(|&i| order[i] < order[i + 1])
+            else {
+                break;
+            };
+            let successor = (pivot + 1..order.len())
+                .rev()
+                .find(|&i| order[i] > order[pivot])
+                .expect("`pivot` was chosen because `pivot + 1` qualifies");
+            order.swap(pivot, successor);
+            order[pivot + 1..].reverse();
+        }
+    }
+
+    /// The counterexample that sank the original greedy walk: a component holding
+    /// two loops that share a node.
+    ///
+    /// ```text
+    /// b imports c, e      b -> c -> d -> b
+    /// c imports d         b -> e -> b
+    /// d imports b
+    /// e imports b
+    /// ```
+    ///
+    /// `{b, c, d, e}` is one component. The greedy walk started at whichever member
+    /// `tarjan_scc` listed first, took the first *unvisited* in-component neighbour
+    /// at each step, and could walk itself into a corner: starting from `d` it went
+    /// to `b`, from `b` to `e`, and `e`'s only neighbour `b` was already visited — so
+    /// it stopped and returned `[d, b, e]`, whose wraparound `e -> d` is not an edge
+    /// of this graph at all. The note then claimed `cycle: d -> b -> e -> d`, stating
+    /// something false about the user's source, and `build_cycle` found no `import`
+    /// behind that step so its label was silently dropped.
+    ///
+    /// Whether the start node is `d` depends on the declaration order, hence
+    /// `for_every_declaration_order`.
+    ///
+    /// Mutation-checked against exactly that: restoring the greedy walk turns this
+    /// test red on `e` not importing `d`.
+    #[test]
+    fn cycle_closes_on_a_real_import_when_two_loops_share_a_module() {
+        let specs = [
+            ("b", vec!["c", "e"]),
+            ("c", vec!["d"]),
+            ("d", vec!["b"]),
+            ("e", vec!["b"]),
+        ];
+
+        for_every_declaration_order(&specs, |cycle, modules, order| {
+            assert_path_is_a_real_cycle(cycle, modules);
+            // Guard against the property being satisfied vacuously by a walk that
+            // stopped one step in.
+            assert!(
+                cycle.path.len() >= 2,
+                "declaration order {:?} produced {:?}",
+                order,
+                cycle.path
+            );
+        });
+    }
+
+    /// A component whose loops do not all share their members: the reported `path`
+    /// is necessarily a strict subset of it.
+    ///
+    /// ```text
+    /// a imports b         a -> b -> d -> a
+    /// b imports d, c      b -> c -> b
+    /// c imports b
+    /// d imports a
+    /// ```
+    ///
+    /// `{a, b, c, d}` is one component holding two loops that overlap only at `b`.
+    /// No cycle covers all four, so whichever one `cycle_walk` reports leaves
+    /// members out — and a user who breaks only the loop they were shown walks
+    /// straight into the other. `Cycle::others` is how the ones left out stay
+    /// visible, and `notes()` renders them.
+    ///
+    /// Mutation-checked by hardcoding `others: vec![]` in `build_cycle`: the union
+    /// assertion below goes red.
+    #[test]
+    fn cycle_reports_component_members_left_off_the_loop() {
+        use crate::compiler::PhaseError;
+
+        let specs = [
+            ("a", vec!["b"]),
+            ("b", vec!["d", "c"]),
+            ("c", vec!["b"]),
+            ("d", vec!["a"]),
+        ];
+
+        for_every_declaration_order(&specs, |cycle, modules, order| {
+            // Whichever loop was picked, it has to be a real one…
+            assert_path_is_a_real_cycle(cycle, modules);
+
+            // …and no member of the component may go unmentioned.
+            let mut named: Vec<Name> = cycle
+                .path
+                .iter()
+                .chain(cycle.others.iter())
+                .cloned()
+                .collect();
+            named.sort_by(|l, r| l.as_str().cmp(r.as_str()));
+            assert_eq!(
+                named,
+                vec![name("a"), name("b"), name("c"), name("d")],
+                "`path` plus `others` must name the whole component; declaration \
+                 order {:?} gave path {:?} and others {:?}",
+                order,
+                cycle.path,
+                cycle.others
+            );
+
+            // No cycle here covers all four, so something is always left out — and
+            // the note, not just the struct, has to say what.
+            assert!(
+                !cycle.others.is_empty(),
+                "no loop in this component covers it, so `others` cannot be empty; \
+                 declaration order {:?} gave path {:?}",
+                order,
+                cycle.path
+            );
+
+            let notes = Error::CycleDetected(vec![cycle.clone()]).notes();
+            assert!(
+                notes.iter().any(|n| {
+                    n.starts_with("also part of this circular dependency")
+                        && cycle.others.iter().all(|o| n.contains(o.as_str()))
+                }),
+                "expected a note naming the members left off the loop, got {:?}",
+                notes
+            );
+        });
     }
 
     #[test]

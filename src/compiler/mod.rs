@@ -765,6 +765,7 @@ mod tests {
         let error = CompilationError::DependenciesError(dependencies::Error::CycleDetected(vec![
             dependencies::Cycle {
                 path: vec!["A".into(), "B".into()],
+                others: vec![],
                 edges: vec![],
             },
         ]));
@@ -784,6 +785,7 @@ mod tests {
         let error = CompilationError::DependenciesError(dependencies::Error::CycleDetected(vec![
             dependencies::Cycle {
                 path: vec!["A".into(), "B".into()],
+                others: vec![],
                 edges: vec![],
             },
         ]));
