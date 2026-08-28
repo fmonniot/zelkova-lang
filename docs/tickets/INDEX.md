@@ -42,6 +42,14 @@ ERR-8  warnings as a severity                                    ← independent
 `ERR-2` (closed) is the ancestor of all of them: it made every phase error describe itself in
 prose, which is what left spans as the only thing missing.
 
+`ERR-9`'s Acceptance clause asked for a test covering an undeclared *value* in a module's own
+`exposing (...)` header; the PR that closed it (#141) covers an undeclared *infix* instead.
+That substitution was forced by the tree rather than a shortcut: `do_exports`
+(`canonical/mod.rs`) only checked existence for the `Operator` case at the time, so a `Lower`
+or `Upper` name in a header was accepted unconditionally and there was no way to reach
+`Error::ExportNotFound` through either of them. That gap is now `BUG-8`, filed the same day
+the ticket closed.
+
 **Closing convention: delete the ticket file, then rewrite its row below as a tombstone** —
 same table, `status` becomes the close date. A closed ticket keeps accreting implementation
 narrative that describes the tree as of the day it closed; the first change underneath it

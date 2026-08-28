@@ -1232,12 +1232,14 @@ fn missing_exposed_import_name_labels_the_name_alone() {
 /// underlined at `bar` alone.
 ///
 /// `do_exports` (`canonical/mod.rs`) only checks existence for the `Operator`
-/// case today — the `// TODO Add existence checks for values and types` above it
-/// is a pre-existing gap this ticket does not close, so a value or type named in
-/// the header is accepted unconditionally regardless of whether it exists. An
-/// undeclared infix is therefore the one case that can exercise
-/// `Error::ExportNotFound`'s span; a `Lower`/`Upper` version of this test would
-/// pass today for the wrong reason (no check ever runs) rather than the right one.
+/// case today — `BUG-8` is the pre-existing gap this ticket does not close, so a
+/// value or type named in the header is accepted unconditionally regardless of
+/// whether it exists. An undeclared infix is therefore the one case that can
+/// exercise `Error::ExportNotFound`'s span; a `Lower`/`Upper` version of this test
+/// would pass today for the wrong reason (no check ever runs) rather than the right
+/// one. See `BUG-9` too — `Module::exports` is computed here and never consulted by
+/// `to_interface`, which is why the sibling test's `Lib.zel` genuinely exporting
+/// `value` is not actually what makes it pass.
 ///
 /// Mutation-checked two ways, each red on its own: making the `Exposed`
 /// productions in `grammar.lalrpop` emit `NodeSpan::none()`, and reverting

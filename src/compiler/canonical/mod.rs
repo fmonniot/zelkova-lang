@@ -541,15 +541,16 @@ pub struct CaseBranch {
 /// # Why only some variants carry a span
 ///
 /// A variant carries a [`NodeSpan`] when its construction site has one in hand — it
-/// is looking at a `parser::Import`, `parser::Infix`, `parser::UnionType` or
-/// `parser::Function`, all of which the grammar gives a span. Those are the variants
-/// a diagnostic can put a caret under.
-///
-/// The rest keep none, and that is a fact about the construction site rather than a
-/// gap to fill in. Writing `NodeSpan::none()` into such a variant would say "this
-/// error has a position we happen not to know", which is a lie; leaving the field
-/// off says "this error has nowhere to point", which is true, and the reporter
-/// renders it as message-plus-notes with no caret.
+/// is looking at a `parser::Import`, `parser::Infix`, `parser::UnionType`,
+/// `parser::Function` or `parser::Exposed`, all of which the grammar gives a span.
+/// Those are the variants a diagnostic can put a caret under, and today that is every
+/// variant below except three: the two group variants, `EnvironmentErrors` and
+/// `Many`, have no position of their own and flatten their members' labels instead;
+/// and `InvalidTupleSize` carries none for an unrelated reason — see its own doc
+/// comment. Writing `NodeSpan::none()` into a variant that lacks a real position
+/// would say "this error has a position we happen not to know", which is a lie;
+/// leaving the field off says "this error has nowhere to point", which is true, and
+/// the reporter renders it as message-plus-notes with no caret.
 #[derive(Debug)]
 pub enum Error {
     /// A name in the `module … exposing (…)` header that nothing in the module
@@ -1115,7 +1116,9 @@ fn do_infixes(
     collect_accumulate(iter)
 }
 
-// TODO Add existence checks for values and types
+// `BUG-8`: only the `Operator` arm below checks that the exposed name actually
+// exists — a `Lower` or `Upper` name in a module's own `exposing (...)` header is
+// accepted unconditionally even when nothing by that name is declared.
 fn do_exports(
     source_exposing: &parser::Exposing,
     env: &dyn Environment,
