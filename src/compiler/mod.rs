@@ -294,29 +294,17 @@ pub trait PhaseError {
     }
 }
 
-/// Render the errors one phase produced for one module.
-///
-/// A `Diagnostic` has room for exactly one headline, so a lone error gets to be that
-/// headline and a group is summarised instead, with every message demoted to a note.
-/// `phase` names the phase in that summary line ("canonical", "type", …).
-///
-/// `file` is the module's source file when the caller knows it, and it is the
-/// fallback rather than a gate: a label needs *some* file — a byte range on its own
-/// does not say which file to underline — but a [`SpanLabel`] that carries its own
-/// [`SpanLabel::file`] already has one and renders whether or not `file` is `Some`.
-/// Only a label with neither is dropped. So a `CompilationError` built by hand, as
-/// the tests in this module do, still shows the cross-module labels `ERR-5` added
-/// and loses only the ones about the module under check; `compile_package` always
-/// wraps in [`CompilationError::InFile`] and so loses none.
-///
-/// Both branches attach labels: only the headline demotion differs between one error
-/// and a group, and an error that got swallowed into a note still knows where it was.
 /// Turn `SpanLabel`s into the `codespan_reporting::Label`s a `Diagnostic` renders.
 ///
 /// `fallback` is the file a label with none of its own resolves to — the module
-/// currently being checked, when the caller has one. A label with neither is a
-/// byte range nobody can place, so it is dropped rather than guessed at. This is
-/// the one place that distinction is applied; both `phase_diagnostic` (a
+/// currently being checked, when the caller has one. So `fallback` is a fallback
+/// rather than a gate: a label needs *some* file, because a byte range on its own
+/// does not say which file to underline, but a [`SpanLabel`] carrying its own
+/// [`SpanLabel::file`] already has one and renders whether or not `fallback` is
+/// `Some`. Only a label with neither is a byte range nobody can place, and that one
+/// is dropped rather than guessed at.
+///
+/// This is the one place that distinction is applied; both [`phase_diagnostic`] (a
 /// fallback file, from the module under check) and the dependency-cycle arm of
 /// `CompilationError::as_diagnostic_in` (no fallback — a cycle has no single
 /// module) go through it.
@@ -344,6 +332,21 @@ fn spans_to_labels(
         .collect()
 }
 
+/// Render the errors one phase produced for one module.
+///
+/// A `Diagnostic` has room for exactly one headline, so a lone error gets to be that
+/// headline and a group is summarised instead, with every message demoted to a note.
+/// `phase` names the phase in that summary line ("canonical", "type", …).
+///
+/// `file` is the module's source file when the caller knows it, and it is handed
+/// straight to [`spans_to_labels`] as the fallback that document describes: a label
+/// of its own — the cross-module ones `ERR-5` added — renders regardless, so a
+/// `CompilationError` built by hand, as the tests in this module do, loses only the
+/// labels about the module under check. `compile_package` always wraps in
+/// [`CompilationError::InFile`] and so loses none.
+///
+/// Both branches attach labels: only the headline demotion differs between one error
+/// and a group, and an error that got swallowed into a note still knows where it was.
 fn phase_diagnostic<E: PhaseError>(
     module: &Name,
     phase: &str,
