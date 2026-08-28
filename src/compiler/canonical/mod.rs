@@ -134,24 +134,27 @@ pub struct TypeConstructor {
 /// # Why there is no span on this type, or on [`TypeConstructor`]
 ///
 /// Every other canonical node this module builds carries a [`NodeSpan`] taken from
-/// the parser node it came from. A `Type` deliberately does not, and the omission is
-/// not an oversight to be tidied up later — it holds even after `ERR-5` gave
-/// [`Interface`] a way to carry file identity, because the problem was never only
-/// the missing file id.
+/// the parser node it came from. A `Type` deliberately does not.
 ///
-/// A `Type` does not always come from the module being canonicalized.
-/// `Type::from_parser_type` resolves a name through the [`Environment`], which clones
-/// types straight out of the [`Interface`]s of the modules this one imports — so the
-/// `Type` handed back may well have been *written in a different file*. But `Type`
-/// is recursive (`Arrow`, `Tuple`, a constructor's `Vec<Type>`), and cloning one out
-/// of an interface keeps only its shape, not the parser node each piece of that
-/// shape came from — there is no single [`NodeSpan`] a `Type::Arrow`'s two branches
-/// could share, and every leaf would need its own. Nothing here walks `parser::Type`
-/// keeping per-node positions on the way into `Type::from_parser_type`, so there is
-/// no span to pair a file with even where the file *is* known.
+/// The reason `ERR-3` recorded is that a `Type` does not always come from the module
+/// being canonicalized: `Type::from_parser_type` resolves a name through the
+/// [`Environment`], which clones types straight out of the [`Interface`]s of the
+/// modules this one imports, so the `Type` handed back may well have been *written
+/// in a different file* — and a bare span on it would be read as a position in the
+/// importing module's source. `ERR-5` settled that half: a [`SpanLabel`] can now
+/// carry a file of its own, so "written in another file" is no longer the obstacle.
 ///
-/// What `ERR-5` actually fixed is coarser and sufficient: the *declaration* a `Type`
-/// is the type of — [`canonical::Value`](Value)'s own `span`, [`UnionType`]'s,
+/// The other half is unfinished work, not an impossibility. `parser::Type` carries a
+/// [`NodeSpan`] per node like every other parser node, and `Type::from_parser_type`
+/// is the recursive walk over it — `tpe.span` is in hand at every level, and each
+/// branch of an `Arrow` arrives as its own spanned `parser::Type`. Those spans are
+/// discarded here by choice. Keeping them means a span field on every canonical
+/// `Type` node, plus a decision about what a `Type` cloned out of an `Environment`
+/// should then report — where it was written, or where it was used. Nobody has
+/// written that.
+///
+/// What exists instead is coarser and enough for the diagnostics that exist: the
+/// *declaration* a `Type` is the type of — [`Value`]'s own `span`, [`UnionType`]'s,
 /// [`Infix`]'s — is what a diagnostic wants to underline ("defined here"), not a
 /// position inside the type expression itself. [`Interface::values`] pairs each
 /// value's `Type` with that declaration's [`NodeSpan`], and
@@ -159,8 +162,6 @@ pub struct TypeConstructor {
 /// set. A type error still points at the whole declaration that failed rather than
 /// the sub-expression that disagrees, which is `ERR-4`, a separate limit in the
 /// typer's own `Term`/`Constraint` translation.
-///
-/// [`SourceFileId`]: crate::compiler::source::files::SourceFileId
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Variable(Name),
