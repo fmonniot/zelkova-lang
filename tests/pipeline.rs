@@ -14,7 +14,7 @@ use std::path::Path;
 
 use codespan_reporting::diagnostic::{LabelStyle, Severity};
 use codespan_reporting::files::SimpleFile;
-use zelkova_lang::compiler::dependencies::ModuleWalker;
+use zelkova_lang::compiler::dependencies::{self, ModuleWalker};
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::source::load_package_sources;
 use zelkova_lang::compiler::{
@@ -400,9 +400,10 @@ fn check_in_order_keeps_passing_siblings_with_the_real_checker() {
         "fixture should hold Broken.zel and Fine.zel"
     );
 
-    let walker = ModuleWalker::new(&modules).expect("no dependency cycle in the fixture");
-    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
     let module_files = HashMap::new();
+    let walker =
+        ModuleWalker::new(&modules, &module_files).expect("no dependency cycle in the fixture");
+    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
     let (checked, errors) =
         walker.check_in_order(&std_package(), &mut interfaces, &module_files, check_module);
 
@@ -1169,7 +1170,106 @@ fn cross_module_labels_render_without_the_checked_module_file() {
     );
 }
 
-// ── Test 24: an exposed-but-missing import name is underlined alone ──────────
+// ── Test 24: a dependency cycle labels each import that forms it ────────────
+
+/// `ERR-6`: a circular-dependency diagnostic underlines the specific `import`
+/// line that created each edge of the cycle, one label per edge, rather than
+/// only naming the modules in a note.
+///
+/// `CycleA.zel` imports `CycleB`, which imports `CycleA` back — the smallest
+/// possible cycle, so there is no ambiguity about which two edges it has to
+/// label. Before this ticket `dependencies::Error::CycleDetected` rendered with
+/// no labels at all: `CompilationError::DependenciesError`'s arm of
+/// `as_diagnostic_in` called `.with_notes(..)` but never `.with_labels(..)`.
+///
+/// Each edge's label is expected in its *own* module's file — `CycleA`'s import
+/// of `CycleB` is underlined in `CycleA.zel`, not in `CycleB.zel` — which is the
+/// same cross-file labeling `ERR-5` introduced, applied here to
+/// `dependencies::CycleEdge::file` instead of `Interface::source_span`.
+///
+/// Mutation-checked two ways, each independently red: (1) reverting the
+/// `.with_labels(spans_to_labels(err.labels(), None))` call in the
+/// `DependenciesError` arm back to no `.with_labels(..)` at all empties
+/// `diagnostic.labels`; (2) reverting `cycle_walk` in `dependencies.rs` to
+/// return `members` verbatim (`tarjan_scc`'s raw, edge-agnostic order) instead
+/// of walking real edges does not change anything observable for this
+/// particular two-module fixture (a two-node cycle has only one possible walk
+/// either way), which is exactly why `dependencies_with_two_cycles` in
+/// `dependencies.rs`'s own tests — a three-node cycle, where raw SCC order and
+/// a real edge walk diverge — is the test that actually pins that half.
+#[test]
+fn dependency_cycle_labels_each_import() {
+    let root = fixture_package("package_dependency_cycle");
+    assert_eq!(module_names(&root), vec!["CycleA.zel", "CycleB.zel"]);
+
+    let a_source = std::fs::read_to_string(root.join("CycleA.zel")).expect("fixture is readable");
+    let b_source = std::fs::read_to_string(root.join("CycleB.zel")).expect("fixture is readable");
+    let a_import = "import CycleB exposing (..)";
+    let b_import = "import CycleA exposing (..)";
+    let a_start = a_source.find(a_import).expect("CycleA imports CycleB");
+    let b_start = b_source.find(b_import).expect("CycleB imports CycleA");
+
+    let error = compile_package(&root).expect_err("a dependency cycle must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    // Asserted down to the variant, and that there is exactly one cycle, so this
+    // cannot be satisfied by some other kind of failure.
+    match &errors[0] {
+        CompilationError::DependenciesError(dependencies::Error::CycleDetected(cycles)) => {
+            assert_eq!(
+                cycles.len(),
+                1,
+                "expected exactly one cycle, got {:?}",
+                cycles
+            );
+        }
+        other => panic!("expected a DependenciesError, got {:?}", other),
+    }
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    assert_eq!(
+        diagnostic.labels.len(),
+        2,
+        "expected one label per edge in the two-module cycle, got {:?}",
+        diagnostic.labels
+    );
+    assert!(
+        diagnostic
+            .labels
+            .iter()
+            .all(|l| l.style == codespan_reporting::diagnostic::LabelStyle::Primary),
+        "every edge in the cycle is equally the cause, got {:?}",
+        diagnostic.labels
+    );
+
+    // Each edge is labeled in the *importing* module's own file, matching the
+    // ticket's acceptance criterion verbatim.
+    assert_ne!(
+        diagnostic.labels[0].file_id, diagnostic.labels[1].file_id,
+        "the two edges must be labeled in their own, different files"
+    );
+
+    let ranges: Vec<_> = diagnostic.labels.iter().map(|l| l.range.clone()).collect();
+    assert!(
+        ranges.contains(&(a_start..(a_start + a_import.len()))),
+        "expected a label at CycleA's import of CycleB {:?}, got {:?}",
+        a_start..(a_start + a_import.len()),
+        ranges
+    );
+    assert!(
+        ranges.contains(&(b_start..(b_start + b_import.len()))),
+        "expected a label at CycleB's import of CycleA {:?}, got {:?}",
+        b_start..(b_start + b_import.len()),
+        ranges
+    );
+}
+
+// ── Test 25: an exposed-but-missing import name is underlined alone ──────────
 
 /// `ERR-9`: `import Foo exposing (bar)` naming a value `Foo` does not export is
 /// underlined at `bar` alone, not across the whole `import` line.
@@ -1226,7 +1326,7 @@ fn missing_exposed_import_name_labels_the_name_alone() {
     );
 }
 
-// ── Test 25: a name exposed by the module header that it never declares ─────
+// ── Test 26: a name exposed by the module header that it never declares ─────
 
 /// `ERR-9`: `module Foo exposing (bar)` naming something `Foo` never declares is
 /// underlined at `bar` alone.
