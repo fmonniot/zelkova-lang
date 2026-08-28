@@ -18,10 +18,13 @@
 
 use super::name::Name;
 use super::parser::Module;
+use super::position::NodeSpan;
+use super::source::files::SourceFileId;
+use super::SpanLabel;
 use log::debug;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use petgraph::graph::DiGraph;
+use petgraph::graph::{DiGraph, NodeIndex};
 
 // TODO Improve this with barrier on each module, to be able to parallelize
 // the processing down thel line.
@@ -41,13 +44,47 @@ impl<'a> std::fmt::Debug for ModuleWalker<'a> {
     }
 }
 
+/// One `import` that forms an edge of a dependency cycle.
+///
+/// `from` imports `to` — the module the note lists right after it, wrapping
+/// around to the cycle's start for the last edge — and `span`/`file` are where
+/// that specific `import` line was written, when known.
+///
+/// `file` comes from the `module_files` map [`ModuleWalker::new`] is handed by
+/// `compile_package`, the only place that knows which file a parsed module came
+/// from — the same reasoning `ERR-5` used for [`crate::compiler::Interface::file`].
+/// It is `None` for every edge built in this module's own tests, which hand-build
+/// modules with nothing on disk behind them.
+#[derive(Debug, PartialEq, Clone)]
+pub struct CycleEdge {
+    pub from: Name,
+    pub to: Name,
+    pub span: NodeSpan,
+    pub file: Option<SourceFileId>,
+}
+
+/// A dependency cycle: the modules involved, in cycle order, alongside the
+/// `import` that created each edge between consecutive modules (wrapping around
+/// to the first).
+#[derive(Debug, PartialEq, Clone)]
+pub struct Cycle {
+    /// The modules in cycle order — what the summary note is built from.
+    pub path: Vec<Name>,
+    /// `edges[i]` is the `import` written in `path[i]` that names `path[i + 1]`
+    /// (or `path[0]`, for the last edge). Same length as `path`.
+    pub edges: Vec<CycleEdge>,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    CycleDetected(Vec<Vec<Name>>),
+    CycleDetected(Vec<Cycle>),
 }
 
 /// A dependency cycle belongs to the package, not to any one module, so its message
-/// names the modules involved rather than being prefixed with one of them.
+/// names the modules involved rather than being prefixed with one of them, and its
+/// labels — one per `import` that forms an edge — each carry their own file rather
+/// than relying on a fallback the way a single-module phase error can
+/// (`CompilationError::DependenciesError` renders this without one, see there).
 impl crate::compiler::PhaseError for Error {
     fn message(&self) -> String {
         match self {
@@ -66,7 +103,8 @@ impl crate::compiler::PhaseError for Error {
             Error::CycleDetected(cycles) => cycles
                 .iter()
                 .map(|cycle| {
-                    let mut path: Vec<String> = cycle.iter().map(|name| name.to_string()).collect();
+                    let mut path: Vec<String> =
+                        cycle.path.iter().map(|name| name.to_string()).collect();
                     if let Some(first) = path.first().cloned() {
                         path.push(first);
                     }
@@ -75,10 +113,135 @@ impl crate::compiler::PhaseError for Error {
                 .collect(),
         }
     }
+
+    fn labels(&self) -> Vec<SpanLabel> {
+        match self {
+            Error::CycleDetected(cycles) => cycles
+                .iter()
+                .flat_map(|cycle| {
+                    cycle.edges.iter().filter_map(|edge| {
+                        // An edge with no span (a hand-built test module) or no known
+                        // file (nothing in the real pipeline, since `module_files`
+                        // covers every parsed module) has nowhere honest to point;
+                        // it is dropped rather than guessed at, the same rule
+                        // `Interface::source_span` follows.
+                        let span = edge.span.span()?;
+                        let file = edge.file?;
+                        Some(SpanLabel {
+                            span,
+                            message: format!(
+                                "`{}` imports `{}` here, closing the cycle",
+                                edge.from, edge.to
+                            ),
+                            primary: true,
+                            file: Some(file),
+                        })
+                    })
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Walk `members` — one strongly-connected component `tarjan_scc` found, so every
+/// node in it can reach every other — into an actual directed cycle: a sequence of
+/// modules where each one really does import the next.
+///
+/// `tarjan_scc`'s own ordering of a component does not promise this: it is
+/// membership, not a walk, so consecutive entries are not necessarily connected by
+/// an edge. This does a small greedy DFS from `members[0]`, always preferring a
+/// same-component edge that closes the loop back to the start, so `path`'s
+/// consecutive pairs (and its last pair back to `path[0]`) are real edges in the
+/// graph — which `build_cycle` then needs to look up the `import` behind each one.
+///
+/// This only fails to close the loop for a component with a more tangled shape
+/// than a simple cycle (two overlapping loops sharing a node, say); every fixture
+/// and every real import graph seen so far is a simple cycle, and `build_cycle`
+/// degrades gracefully — a missing edge just yields a label-less `CycleEdge` for
+/// that one step — if it ever doesn't.
+fn cycle_walk(graph: &DiGraph<&Module, ()>, members: &[NodeIndex]) -> Vec<NodeIndex> {
+    let member_set: HashSet<NodeIndex> = members.iter().copied().collect();
+    let start = members[0];
+    let mut path = vec![start];
+    let mut visited: HashSet<NodeIndex> = HashSet::from([start]);
+    let mut current = start;
+
+    loop {
+        let neighbors: Vec<NodeIndex> = graph
+            .neighbors(current)
+            .filter(|n| member_set.contains(n))
+            .collect();
+
+        // Once we've moved past the start, an edge back to it closes the cycle.
+        if path.len() > 1 && neighbors.contains(&start) {
+            break;
+        }
+
+        match neighbors.into_iter().find(|n| !visited.contains(n)) {
+            Some(next) => {
+                path.push(next);
+                visited.insert(next);
+                current = next;
+            }
+            // A dead end within the component: the greedy walk above couldn't
+            // close the loop. See this function's own documentation.
+            None => break,
+        }
+    }
+
+    path
+}
+
+/// Turn one strongly-connected component into the [`Cycle`] a diagnostic renders:
+/// the module path `cycle_walk` finds, plus the `import` behind each edge of it.
+fn build_cycle(
+    graph: &DiGraph<&Module, ()>,
+    members: &[NodeIndex],
+    module_files: &HashMap<Name, SourceFileId>,
+) -> Cycle {
+    let node_path = cycle_walk(graph, members);
+    let path: Vec<Name> = node_path
+        .iter()
+        .map(|&idx| graph[idx].name.clone())
+        .collect();
+
+    let edges = node_path
+        .iter()
+        .enumerate()
+        .map(|(i, &idx)| {
+            let from_module = graph[idx];
+            let to_idx = node_path[(i + 1) % node_path.len()];
+            let to_name = graph[to_idx].name.clone();
+
+            // The specific `import …` line in `from_module` that names `to_name` —
+            // there may be several imports in `from_module`, but at most one of
+            // them names this particular neighbour.
+            let import = from_module.imports.iter().find(|imp| imp.name == to_name);
+
+            CycleEdge {
+                from: from_module.name.clone(),
+                to: to_name,
+                span: import.map(|imp| imp.span).unwrap_or_else(NodeSpan::none),
+                file: import.and_then(|_| module_files.get(&from_module.name).copied()),
+            }
+        })
+        .collect();
+
+    Cycle { path, edges }
 }
 
 impl<'a> ModuleWalker<'a> {
-    pub fn new(modules: &'a [Module]) -> Result<ModuleWalker<'a>, Error> {
+    /// `module_files` is how a cycle's edges learn which file each `import` was
+    /// written in (`CycleEdge::file`) — this is driver code, the same as
+    /// `check_in_order` below, so it is handed the map `compile_package` already
+    /// built while parsing rather than trying to discover it itself. Every test in
+    /// this module passes an empty map: their modules are hand-built, with no file
+    /// on disk to name, and `CycleEdge::file` degrades to `None` for them exactly
+    /// as documented there.
+    pub fn new(
+        modules: &'a [Module],
+        module_files: &HashMap<Name, SourceFileId>,
+    ) -> Result<ModuleWalker<'a>, Error> {
         let mut graph = DiGraph::new();
 
         let mut names = HashMap::new();
@@ -118,7 +281,7 @@ impl<'a> ModuleWalker<'a> {
         } else {
             let c = cycles
                 .into_iter()
-                .map(|cycle| cycle.iter().map(|&idx| graph[idx].name.clone()).collect())
+                .map(|members| build_cycle(&graph, members, module_files))
                 .collect();
 
             Err(Error::CycleDetected(c))
@@ -221,6 +384,18 @@ mod tests {
         Name::new(s)
     }
 
+    /// A `CycleEdge` matching what `module()` above produces: no span, since
+    /// there is no source text behind a hand-built import, and no file, since
+    /// these tests pass an empty `module_files` map to `ModuleWalker::new`.
+    fn edge<S: Into<String>>(from: S, to: S) -> CycleEdge {
+        CycleEdge {
+            from: Name::new(from),
+            to: Name::new(to),
+            span: NodeSpan::none(),
+            file: None,
+        }
+    }
+
     /// An empty canonical module standing in for whatever the real checker would
     /// have produced. Shared by the checkers below, which differ only in which
     /// modules they refuse.
@@ -290,12 +465,31 @@ mod tests {
         let d = module("d", vec!["a"]);
 
         let modules = vec![a, b, c, d];
+        let module_files = HashMap::new();
 
-        let walker = ModuleWalker::new(&modules);
+        let walker = ModuleWalker::new(&modules, &module_files);
 
         assert_walker_processed_order(walker.expect("no errors here"), vec!["a", "b", "c", "d"])
     }
 
+    /// Pins two things together: which modules a cycle names (as before this
+    /// ticket), and — new for `ERR-6` — that its `path` is a genuine walk along
+    /// real `import` edges rather than `tarjan_scc`'s raw, edge-agnostic
+    /// component order. Before this change the note for the first cycle here
+    /// printed `b -> c -> a -> b`, which is not a walk this graph's edges (`a ->
+    /// c`, `b -> a`, `c -> b`) can produce — `b -> c` is not an edge. `path` is
+    /// now `[b, a, c]`, which is: `b -> a` (b imports a), `a -> c` (a imports c),
+    /// `c -> b` (c imports b, closing the loop).
+    ///
+    /// `edges` is asserted alongside `path`: each `CycleEdge::from`/`to` names the
+    /// consecutive pair in `path` it corresponds to, which only holds if `path`
+    /// really is edge-consecutive.
+    ///
+    /// Mutation-checked by reverting `cycle_walk` to return `members` verbatim
+    /// (`tarjan_scc`'s raw order) instead of walking it — this test's `path`
+    /// assertion goes red (`[b, c, a]` instead of `[b, a, c]`), and so does
+    /// `dependency_cycle_labels_each_import` in `tests/pipeline.rs`, whose labels
+    /// stop finding a matching `import` for the non-edge pairs and drop to zero.
     #[test]
     fn dependencies_with_two_cycles() {
         let a = module("a", vec!["c"]);
@@ -307,16 +501,23 @@ mod tests {
         let f = module("f", vec!["e"]);
 
         let modules = vec![a, b, c, d, e, f];
+        let module_files = HashMap::new();
 
-        let walker = ModuleWalker::new(&modules);
+        let walker = ModuleWalker::new(&modules, &module_files);
 
         let res = walker.expect_err("I'm expecting an error");
 
         assert_eq!(
             res,
             Error::CycleDetected(vec![
-                vec![name("b"), name("c"), name("a")],
-                vec![name("e"), name("f"), name("d")]
+                Cycle {
+                    path: vec![name("b"), name("a"), name("c")],
+                    edges: vec![edge("b", "a"), edge("a", "c"), edge("c", "b")],
+                },
+                Cycle {
+                    path: vec![name("e"), name("d"), name("f")],
+                    edges: vec![edge("e", "d"), edge("d", "f"), edge("f", "e")],
+                },
             ])
         )
     }
@@ -345,8 +546,9 @@ mod tests {
         let i = module("i", vec!["b", "e"]);
 
         let modules = vec![a, c, b, d, e, f, g, h, i];
+        let module_files = HashMap::new();
 
-        let walker = ModuleWalker::new(&modules);
+        let walker = ModuleWalker::new(&modules, &module_files);
 
         assert_walker_processed_order(
             walker.expect("no errors here"),
@@ -373,11 +575,11 @@ mod tests {
         let c = module("c", vec!["b"]);
 
         let modules = vec![a, b, c];
-        let walker = ModuleWalker::new(&modules).expect("no errors here");
+        let module_files = HashMap::new();
+        let walker = ModuleWalker::new(&modules, &module_files).expect("no errors here");
 
         let name = crate::compiler::PackageName::new("author", "project");
         let mut ifaces = HashMap::new();
-        let module_files = HashMap::new();
         let (successes, errors) =
             walker.check_in_order(&name, &mut ifaces, &module_files, dummy_check_fails_for_b);
 

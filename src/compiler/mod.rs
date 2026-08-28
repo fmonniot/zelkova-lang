@@ -311,34 +311,47 @@ pub trait PhaseError {
 ///
 /// Both branches attach labels: only the headline demotion differs between one error
 /// and a group, and an error that got swallowed into a note still knows where it was.
+/// Turn `SpanLabel`s into the `codespan_reporting::Label`s a `Diagnostic` renders.
+///
+/// `fallback` is the file a label with none of its own resolves to — the module
+/// currently being checked, when the caller has one. A label with neither is a
+/// byte range nobody can place, so it is dropped rather than guessed at. This is
+/// the one place that distinction is applied; both `phase_diagnostic` (a
+/// fallback file, from the module under check) and the dependency-cycle arm of
+/// `CompilationError::as_diagnostic_in` (no fallback — a cycle has no single
+/// module) go through it.
+fn spans_to_labels(
+    labels: Vec<SpanLabel>,
+    fallback: Option<SourceFileId>,
+) -> Vec<Label<SourceFileId>> {
+    labels
+        .into_iter()
+        .filter_map(|l| {
+            // A label with its own file — a `SourceSpan` cloned out of an
+            // `Interface`, or (`ERR-6`) a `CycleEdge`'s file — points into that
+            // file instead of falling back. That is the whole mechanism `ERR-5`
+            // adds: everything built before it left `file` `None` and relied on
+            // `fallback` here.
+            let label_file = l.file.or(fallback)?;
+            let range = l.span.to_range();
+            let label = if l.primary {
+                Label::primary(label_file, range)
+            } else {
+                Label::secondary(label_file, range)
+            };
+            Some(label.with_message(l.message))
+        })
+        .collect()
+}
+
 fn phase_diagnostic<E: PhaseError>(
     module: &Name,
     phase: &str,
     errors: &[E],
     file: Option<SourceFileId>,
 ) -> Diagnostic<SourceFileId> {
-    let labels = |errors: &[E]| {
-        errors
-            .iter()
-            .flat_map(|e| e.labels())
-            .filter_map(|l| {
-                // A label with its own file — a `SourceSpan` cloned out of an
-                // `Interface` — points into that file instead of the module being
-                // checked. That is the whole mechanism `ERR-5` adds: everything built
-                // before it left `file` `None` and falls back on the diagnostic's own
-                // id here. A label with neither is a byte range nobody can place, so
-                // it is dropped rather than guessed at.
-                let label_file = l.file.or(file)?;
-                let range = l.span.to_range();
-                let label = if l.primary {
-                    Label::primary(label_file, range)
-                } else {
-                    Label::secondary(label_file, range)
-                };
-                Some(label.with_message(l.message))
-            })
-            .collect()
-    };
+    let labels =
+        |errors: &[E]| spans_to_labels(errors.iter().flat_map(|e| e.labels()).collect(), file);
 
     match errors {
         [only] => Diagnostic::error()
@@ -447,9 +460,15 @@ impl CompilationError {
                 phase_diagnostic(module, "exhaustiveness", errors, file)
             }
             // A dependency cycle belongs to the package, not to any one module, so it
-            // does not go through `phase_diagnostic`.
+            // does not go through `phase_diagnostic` — there is no module to supply
+            // the fallback file that helper takes. Its labels don't need one: each
+            // `CycleEdge` (`ERR-6`) carries the file the `import` forming it was
+            // written in, so `spans_to_labels` is called with `None` and a label
+            // with no file of its own (an edge `ModuleWalker::new` couldn't map back
+            // to a file) is dropped rather than guessed at.
             CompilationError::DependenciesError(err) => Diagnostic::error()
                 .with_message(err.message())
+                .with_labels(spans_to_labels(err.labels(), None))
                 .with_notes(err.notes()),
             // `compile_package` renders each accumulated error individually rather than
             // wrapping first, so this arm only fires when a `Many` is rendered as a
@@ -591,7 +610,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     // A cycle leaves us with no order to check the modules in, so the check phase is
     // skipped — but the error goes through the same reporting path as the others
     // instead of returning early unrendered.
-    let walker = match dependencies::ModuleWalker::new(&modules) {
+    let walker = match dependencies::ModuleWalker::new(&modules, &module_files) {
         Ok(walker) => Some(walker),
         Err(err) => {
             errors.push(err.into());
@@ -744,7 +763,10 @@ mod tests {
     #[test]
     fn dependency_errors_render_as_errors() {
         let error = CompilationError::DependenciesError(dependencies::Error::CycleDetected(vec![
-            vec!["A".into(), "B".into()],
+            dependencies::Cycle {
+                path: vec!["A".into(), "B".into()],
+                edges: vec![],
+            },
         ]));
 
         assert_eq!(error.as_diagnostic().severity, Severity::Error);
@@ -760,7 +782,10 @@ mod tests {
     #[test]
     fn dependency_cycle_notes_spell_out_the_loop() {
         let error = CompilationError::DependenciesError(dependencies::Error::CycleDetected(vec![
-            vec!["A".into(), "B".into()],
+            dependencies::Cycle {
+                path: vec!["A".into(), "B".into()],
+                edges: vec![],
+            },
         ]));
 
         let diagnostic = error.as_diagnostic();
