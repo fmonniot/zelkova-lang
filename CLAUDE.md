@@ -98,16 +98,31 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   under that name and not under the declaration around it.
   Two things deliberately carry no span, and each says so at its definition:
   `canonical::Type`/`TypeConstructor`, because they are cloned out of an `Environment` and may
-  have been written in another file (`ERR-5`); and any error raised while walking a node the
+  have been written in another file — `ERR-5` made that half solvable, but
+  `Type::from_parser_type` still discards `parser::Type`'s per-node spans by choice and nobody
+  has written the walk that would keep them; and any error raised while walking a node the
   grammar does not span, such as an `exposing` list. `labels` defaults to empty and that is a
   real answer, not a stub — such an error renders with no caret. A group (`Error::Many`,
   `EnvironmentErrors`) flattens its members' labels, the way it already flattens their
   messages; forgetting that silently drops every caret it swallowed.
   Type errors still point at the declaration rather than the sub-expression, because the typer
-  drops positions when it translates canonical into `Term`/`Constraint`: that is `ERR-4`. The
-  `SourceFileId` is never a phase's business — `compile_package` attaches it via
-  `CompilationError::InFile`, being the only place that knows which file a module was read
-  from.
+  drops positions when it translates canonical into `Term`/`Constraint`: that is `ERR-4`.
+  A phase still never knows the `SourceFileId` of the module it is checking — that half is
+  unchanged, and `compile_package` still attaches it via `CompilationError::InFile`, being the
+  only place that knows which file a module was read from. What `ERR-5` added is the other
+  half: a diagnostic that also names something written in a *different* module. `Interface`
+  (`src/compiler/mod.rs`) carries a `file: Option<SourceFileId>`, passed to
+  `canonical::Module::to_interface` by `dependencies::ModuleWalker::check_in_order` — driver
+  code, not a phase, the same as `compile_package` — once a module has checked and its
+  interface is about to go into the shared map; `Interface::values` pairs each value's `Type`
+  with the `NodeSpan` of the declaration it is the type of, and `Interface::source_span`
+  combines that span with `file` into a `SourceSpan` when both are known. A phase error offers
+  one of those to a diagnostic through `SpanLabel::file: Option<SourceFileId>` — `None`
+  (everything built before `ERR-5`) means "in the module under check" and falls back on the
+  file `compile_package` supplies at render time; `Some` renders in the label's own file and
+  needs no fallback at all. `canonical::Error::AmbiguousVariables` is the worked example: its
+  primary label sits in the module doing the ambiguous import, and it carries one secondary
+  label per candidate, each in that candidate's own file.
   `NodeSpan`'s `PartialEq` always returns `true`, so a whole-value `assert_eq!` in the parser
   tests proves nothing about position; a test that cares about a position asserts on `.span`
   or on `diagnostic.labels[..].range` directly.

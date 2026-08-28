@@ -30,7 +30,7 @@ BUG-6  rendering panics on 4 parse errors + 2 tokenizer errors   ← done 2026-0
 ERR-3  spans in the parser + canonical ASTs; PhaseError::labels() ← done 2026-08-27
   │
   ├── ERR-4  type-error provenance (typer Term → Constraint → unifier)
-  ├── ERR-5  cross-module labels (Interface carries source ids)
+  ├── ERR-5  cross-module labels (Interface carries source ids)    ← done 2026-08-27
   │      └── ERR-6  dependency cycles point at the `import` lines
   ├── ERR-9  span `parser::Exposed` — the one node ERR-3 left unspanned
   └── ERR-7  "did you mean" suggestions (better after ERR-9: a suggestion on
@@ -100,7 +100,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | [ERR-4](err-4.md) | task | — | open | Type errors point at the sub-expression, not at the whole declaration |
-| [ERR-5](err-5.md) | task | — | open | A diagnostic can point into another module |
+| ERR-5 | task | — | closed 2026-08-27 | A diagnostic can point into another module |
 | [ERR-6](err-6.md) | task | — | open | A dependency cycle points at the `import` lines that form it |
 | [ERR-7](err-7.md) | task | — | open | "Did you mean …?" on unresolved names |
 | [ERR-8](err-8.md) | task | — | open | Let a phase report a warning |

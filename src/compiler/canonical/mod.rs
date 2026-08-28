@@ -28,6 +28,7 @@ use environment::{new_environment, EnvError, Environment, RootEnvironment, Value
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
 use crate::compiler::position::NodeSpan;
+use crate::compiler::source::files::SourceFileId;
 use crate::compiler::tuple::Tuple;
 pub use parser::Associativity;
 
@@ -48,13 +49,25 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn to_interface(&self) -> super::Interface {
+    /// Build the trimmed-down view of this module other modules import against.
+    ///
+    /// `file` is the [`SourceFileId`] this module was read from, which is what lets
+    /// a later module's diagnostic point back into *this* module's source — see
+    /// [`Interface::file`](super::Interface::file). It is a parameter rather than
+    /// something this method could work out because a `canonical::Module` does not
+    /// know it: only driver code does, and the sole caller
+    /// (`dependencies::ModuleWalker::check_in_order`) is driver code that has the
+    /// map from module name to file in hand. A caller with nothing to give — every
+    /// test that hand-builds an interface — passes `None`, and
+    /// [`Interface::source_span`](super::Interface::source_span) then declines to
+    /// build a cross-module label rather than building one at the wrong place.
+    pub fn to_interface(&self, file: Option<SourceFileId>) -> super::Interface {
         let values = self
             .values
             .iter()
             .filter_map(|(name, value)| match value {
                 Value::Value { .. } => None,
-                Value::TypedValue { tpe, .. } => Some((name.clone(), tpe.clone())),
+                Value::TypedValue { tpe, span, .. } => Some((name.clone(), (*span, tpe.clone()))),
             })
             .collect();
 
@@ -63,6 +76,7 @@ impl Module {
             values,
             unions: self.types.clone(),
             infixes: self.infixes.clone(),
+            file,
         }
     }
 }
@@ -120,25 +134,34 @@ pub struct TypeConstructor {
 /// # Why there is no span on this type, or on [`TypeConstructor`]
 ///
 /// Every other canonical node this module builds carries a [`NodeSpan`] taken from
-/// the parser node it came from. A `Type` deliberately does not, and the omission is
-/// not an oversight to be tidied up later.
+/// the parser node it came from. A `Type` deliberately does not.
 ///
-/// A `Type` does not always come from the module being canonicalized.
-/// `Type::from_parser_type` resolves a name through the [`Environment`], which clones
-/// types straight out of the [`Interface`]s of the modules this one imports — so the
-/// `Type` handed back may well have been *written in a different file*. A
-/// [`NodeSpan`] is a byte range and nothing else; the [`SourceFileId`] is attached
-/// later, by `compile_package`, from the file the failing module was read from.
-/// Putting a span here would therefore let a diagnostic underline a byte range of one
-/// file using offsets taken from another — a caret pointing confidently at the wrong
-/// source, which is worse than no caret at all.
+/// The reason `ERR-3` recorded is that a `Type` does not always come from the module
+/// being canonicalized: `Type::from_parser_type` resolves a name through the
+/// [`Environment`], which clones types straight out of the [`Interface`]s of the
+/// modules this one imports, so the `Type` handed back may well have been *written
+/// in a different file* — and a bare span on it would be read as a position in the
+/// importing module's source. `ERR-5` settled that half: a [`SpanLabel`] can now
+/// carry a file of its own, so "written in another file" is no longer the obstacle.
 ///
-/// Fixing it means carrying a `(SourceFileId, Span)` pair through the interface, so
-/// an imported type keeps the file it was written in. That is `ERR-5` (see
-/// `docs/tickets/INDEX.md`). Until it lands, a type error points at the declaration
-/// that failed, which does live in the module being checked.
+/// The other half is unfinished work, not an impossibility. `parser::Type` carries a
+/// [`NodeSpan`] per node like every other parser node, and `Type::from_parser_type`
+/// is the recursive walk over it — `tpe.span` is in hand at every level, and each
+/// branch of an `Arrow` arrives as its own spanned `parser::Type`. Those spans are
+/// discarded here by choice. Keeping them means a span field on every canonical
+/// `Type` node, plus a decision about what a `Type` cloned out of an `Environment`
+/// should then report — where it was written, or where it was used. Nobody has
+/// written that.
 ///
-/// [`SourceFileId`]: crate::compiler::source::files::SourceFileId
+/// What exists instead is coarser and enough for the diagnostics that exist: the
+/// *declaration* a `Type` is the type of — [`Value`]'s own `span`, [`UnionType`]'s,
+/// [`Infix`]'s — is what a diagnostic wants to underline ("defined here"), not a
+/// position inside the type expression itself. [`Interface::values`] pairs each
+/// value's `Type` with that declaration's [`NodeSpan`], and
+/// [`Interface::source_span`] pairs it with the file, once [`Interface::file`] is
+/// set. A type error still points at the whole declaration that failed rather than
+/// the sub-expression that disagrees, which is `ERR-4`, a separate limit in the
+/// typer's own `Term`/`Constraint` translation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Variable(Name),
@@ -157,7 +180,7 @@ impl Type {
     ///
     /// `parser::Type` carries a [`NodeSpan`] like every other parser node, and it is
     /// dropped here on purpose — see this type's documentation for why a canonical
-    /// type cannot hold one until `ERR-5` lands.
+    /// `Type` holds no span at all, and what `ERR-5` built instead.
     fn from_parser_type(env: &dyn Environment, tpe: &parser::Type) -> Result<Type, Error> {
         match &tpe.kind {
             parser::TypeKind::Unqualified(name, vars) => match env.find_type(name) {
@@ -410,13 +433,13 @@ impl Expression {
                     ValueType::TopLevel => {
                         ExpressionKind::VarTopLevel(env.module_name().qualify_name(name))
                     }
-                    ValueType::Foreign(m, tpe) => {
+                    ValueType::Foreign(m, _source, tpe) => {
                         ExpressionKind::VarForeign(m.qualify_name(name), tpe.clone())
                     }
-                    ValueType::Foreigns(modules) => {
+                    ValueType::Foreigns(candidates) => {
                         return Err(Error::AmbiguousVariables(
                             name.clone(),
-                            modules.clone(),
+                            candidates.clone(),
                             e.span,
                         ))
                     }
@@ -536,15 +559,21 @@ pub enum Error {
     /// A name used as a value that nothing in scope declares, and where it was
     /// written — the identifier alone, not the declaration around it.
     VariableNotFound(QualName, NodeSpan), // add name suggestion ?
-    AmbiguousVariables(Name, Vec<ModuleName>, NodeSpan),
+    /// A name exposed unqualified by more than one imported module, and where it
+    /// was used. Each candidate module is paired with where the name is declared
+    /// there — `Some` when that module's `Interface` knows both its file and the
+    /// declaration's span, `None` for a hand-built interface (a test) or one built
+    /// before its module's file was known (`ERR-5`).
+    AmbiguousVariables(Name, Vec<(ModuleName, Option<super::SourceSpan>)>, NodeSpan),
     /// A constructor used in an expression or a pattern that nothing in scope
     /// declares, and where it was written.
     VariantNotFound(QualName, NodeSpan),
     /// Nothing constructs this today — `Environment::find_type_constructor` returns
     /// at most one constructor per name, so it has no way to report an ambiguity.
     /// It is the designated rejection path once it can, and carries the span the
-    /// construction site would have.
-    AmbiguousVariants(Name, Vec<ModuleName>, NodeSpan),
+    /// construction site would have, alongside each candidate's declaration
+    /// location — see [`Error::AmbiguousVariables`].
+    AmbiguousVariants(Name, Vec<(ModuleName, Option<super::SourceSpan>)>, NodeSpan),
     /// A tuple type, pattern or expression had a size other than 2 or 3 (the
     /// only sizes the language supports).
     ///
@@ -644,8 +673,28 @@ impl PhaseError for Error {
                 span,
                 message: message.to_owned(),
                 primary: true,
+                file: None,
             }],
             None => Vec::new(),
+        };
+
+        // A secondary label pointing at where one ambiguous candidate is declared,
+        // in *its own* module's file rather than the one being checked — the
+        // mechanism `ERR-5` adds. `None` when that candidate's `Interface` cannot
+        // say (a hand-built interface, or one built before its file was known)
+        // yields no label for that candidate rather than one at the wrong place.
+        let ambiguous_candidates = |candidates: &[(ModuleName, Option<super::SourceSpan>)]| {
+            candidates
+                .iter()
+                .filter_map(|(module, source)| {
+                    source.map(|s| SpanLabel {
+                        span: s.span,
+                        message: format!("also exposed here, by `{}`", module.name()),
+                        primary: false,
+                        file: Some(s.file),
+                    })
+                })
+                .collect::<Vec<_>>()
         };
 
         match self {
@@ -654,12 +703,18 @@ impl PhaseError for Error {
             // user wrote, which is the whole point of spanning expressions and
             // patterns rather than only declarations.
             Error::VariableNotFound(_, span) => primary(span, "no value of this name is in scope"),
-            Error::AmbiguousVariables(_, _, span) => primary(span, "this name is ambiguous"),
+            Error::AmbiguousVariables(_, candidates, span) => {
+                let mut labels = primary(span, "this name is ambiguous");
+                labels.extend(ambiguous_candidates(candidates));
+                labels
+            }
             Error::VariantNotFound(_, span) => {
                 primary(span, "no type constructor of this name is in scope")
             }
-            Error::AmbiguousVariants(_, _, span) => {
-                primary(span, "this type constructor is ambiguous")
+            Error::AmbiguousVariants(_, candidates, span) => {
+                let mut labels = primary(span, "this type constructor is ambiguous");
+                labels.extend(ambiguous_candidates(candidates));
+                labels
             }
             Error::BindingPatternsInvalidLen(span) => primary(span, "declared here"),
             Error::NoBindings(span) => primary(span, "this annotation has no body"),
@@ -676,12 +731,13 @@ impl PhaseError for Error {
 
     fn notes(&self) -> Vec<String> {
         match self {
-            Error::AmbiguousVariables(_, modules, _) | Error::AmbiguousVariants(_, modules, _) => {
+            Error::AmbiguousVariables(_, candidates, _)
+            | Error::AmbiguousVariants(_, candidates, _) => {
                 vec![format!(
                     "it is exposed by: {}",
-                    modules
+                    candidates
                         .iter()
-                        .map(|m| m.name().to_string())
+                        .map(|(m, _)| m.name().to_string())
                         .collect::<Vec<_>>()
                         .join(", ")
                 )]

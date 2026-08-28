@@ -140,11 +140,21 @@ impl<'a> ModuleWalker<'a> {
     /// does. That would need `check` itself to return something like
     /// `Result<(Module, Errors), Errors>`, and scoped-fail semantics through
     /// canonicalization to produce it.
+    ///
+    /// `module_files` is how a checked module's `Interface` learns the file it was
+    /// read from (`Interface::file`, `ERR-5`) — `check` itself is a phase-orchestrating
+    /// function and, like every phase, never knows it. This method is driver code
+    /// rather than a phase, the same as `compile_package`, so it is the one that can
+    /// look the id up and stamp it on before the interface goes into the shared map.
+    /// A module missing from `module_files` — there is none in the real pipeline,
+    /// since only a module that already parsed reaches here — simply leaves that
+    /// interface's `file` as `None`, same as a hand-built one.
     #[allow(clippy::type_complexity)]
     pub fn check_in_order<E>(
         &self,
         package: &crate::compiler::PackageName,
         interfaces: &mut HashMap<Name, crate::compiler::Interface>,
+        module_files: &HashMap<Name, crate::compiler::source::files::SourceFileId>,
         check: fn(
             package: &crate::compiler::PackageName,
             interfaces: &HashMap<Name, crate::compiler::Interface>,
@@ -160,7 +170,10 @@ impl<'a> ModuleWalker<'a> {
                     // Once we have successfuly checked a module, we can add it to the available interfaces
                     // for the following modules.
                     let iface_name = m.name.name().clone();
-                    let iface = m.to_interface();
+                    // Driver code, so this is where the module's file is known: the
+                    // interface carries it so a *later* module's diagnostic can point
+                    // back into this one's source (`ERR-5`).
+                    let iface = m.to_interface(module_files.get(&module.name).copied());
                     debug!("Inserting {} with value {:?}", iface_name, iface);
                     interfaces.insert(iface_name, iface);
 
@@ -252,8 +265,9 @@ mod tests {
     fn assert_walker_processed_order(walker: ModuleWalker, expected: Vec<&str>) {
         let name = crate::compiler::PackageName::new("author", "project");
         let mut ifaces = HashMap::new();
+        let module_files = HashMap::new();
         let (modules, errors): (Vec<canonical::Module>, Vec<()>) =
-            walker.check_in_order(&name, &mut ifaces, dummy_check);
+            walker.check_in_order(&name, &mut ifaces, &module_files, dummy_check);
 
         assert_eq!(errors, Vec::new());
         assert_eq!(
@@ -363,8 +377,9 @@ mod tests {
 
         let name = crate::compiler::PackageName::new("author", "project");
         let mut ifaces = HashMap::new();
+        let module_files = HashMap::new();
         let (successes, errors) =
-            walker.check_in_order(&name, &mut ifaces, dummy_check_fails_for_b);
+            walker.check_in_order(&name, &mut ifaces, &module_files, dummy_check_fails_for_b);
 
         assert_eq!(
             errors,
