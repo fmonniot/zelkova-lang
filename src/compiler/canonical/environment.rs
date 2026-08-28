@@ -91,9 +91,11 @@ fn process_import(
     alias: &Option<Name>,
     exposing: &parser::Exposing,
     // The `import` line this is resolving. Only `InterfaceNotFound` uses it: the
-    // errors raised further down name something the *imported* module failed to
-    // expose, and pointing at the local `import` line would underline text that is
-    // not where the problem is.
+    // module name itself is not part of any `parser::Exposed`, so the `import` line
+    // is the finest span there is for it. Every other error raised further down
+    // names one entry of the exposing list and carries that entry's own span
+    // instead (`ERR-9`) — `bar` in `import Foo exposing (bar)`, not the line it
+    // sits on.
     span: NodeSpan,
 ) -> Result<(), EnvError> {
     let interface = interfaces
@@ -154,12 +156,12 @@ fn process_import(
         parser::Exposing::Explicit(exposeds) => {
             // We only add the explicitly named types/values/infixes
             let iter = exposeds.iter().map(|exposed| {
-                match exposed {
-                    parser::Exposed::Lower(value_name) => {
-                        let (node_span, tpe) = interface
-                            .values
-                            .get(value_name)
-                            .ok_or_else(|| EnvError::ValueNotFound(value_name.clone()))?;
+                match &exposed.kind {
+                    parser::ExposedKind::Lower(value_name) => {
+                        let (node_span, tpe) =
+                            interface.values.get(value_name).ok_or_else(|| {
+                                EnvError::ValueNotFound(value_name.clone(), exposed.span)
+                            })?;
 
                         insert_foreign_value(
                             env,
@@ -169,25 +171,23 @@ fn process_import(
                             &interface.module_name,
                         );
                     }
-                    parser::Exposed::Upper(type_name, parser::Privacy::Private) => {
+                    parser::ExposedKind::Upper(type_name, parser::Privacy::Private) => {
                         let tpe = Type::Type(type_name.clone(), vec![]);
 
                         // Add the type without qualifier and without constructors (they are private)
                         env.types.insert(type_name.clone(), tpe);
                     }
-                    parser::Exposed::Upper(type_name, parser::Privacy::Public) => {
-                        let union = interface
-                            .unions
-                            .get(type_name)
-                            .ok_or_else(|| EnvError::UnionNotFound(type_name.clone()))?;
+                    parser::ExposedKind::Upper(type_name, parser::Privacy::Public) => {
+                        let union = interface.unions.get(type_name).ok_or_else(|| {
+                            EnvError::UnionNotFound(type_name.clone(), exposed.span)
+                        })?;
 
                         insert_foreign_union_type(env, None, type_name, union.variants.iter());
                     }
-                    parser::Exposed::Operator(variable_name) => {
-                        let infix = interface
-                            .infixes
-                            .get(variable_name)
-                            .ok_or_else(|| EnvError::InfixNotFound(variable_name.clone()))?;
+                    parser::ExposedKind::Operator(variable_name) => {
+                        let infix = interface.infixes.get(variable_name).ok_or_else(|| {
+                            EnvError::InfixNotFound(variable_name.clone(), exposed.span)
+                        })?;
 
                         env.infixes.insert(variable_name.clone(), infix.clone());
                         // How do we represent infixes ?
@@ -261,9 +261,15 @@ fn insert_foreign_value(
 pub enum EnvError {
     /// No module of that name was available to import, and where the `import` was written.
     InterfaceNotFound(Name, NodeSpan),
-    UnionNotFound(Name),
-    InfixNotFound(Name),
-    ValueNotFound(Name),
+    /// A `TypeIdent(..)` in an `exposing` list naming a type the imported module does
+    /// not declare, and where that name was written (`ERR-9`).
+    UnionNotFound(Name, NodeSpan),
+    /// An `(op)` in an `exposing` list naming an infix the imported module does not
+    /// declare, and where that name was written (`ERR-9`).
+    InfixNotFound(Name, NodeSpan),
+    /// A lowercase name in an `exposing` list naming a value the imported module
+    /// does not declare, and where that name was written (`ERR-9`).
+    ValueNotFound(Name, NodeSpan),
     Multiple(Vec<EnvError>),
 }
 
@@ -275,17 +281,17 @@ impl PhaseError for EnvError {
             EnvError::InterfaceNotFound(name, _) => {
                 format!("cannot find a module named `{}` to import", name)
             }
-            EnvError::UnionNotFound(name) => {
+            EnvError::UnionNotFound(name, _) => {
                 format!(
                     "the imported module does not expose a type named `{}`",
                     name
                 )
             }
-            EnvError::InfixNotFound(name) => format!(
+            EnvError::InfixNotFound(name, _) => format!(
                 "the imported module does not expose an infix operator named `{}`",
                 name
             ),
-            EnvError::ValueNotFound(name) => format!(
+            EnvError::ValueNotFound(name, _) => format!(
                 "the imported module does not expose a value named `{}`",
                 name
             ),
@@ -297,18 +303,33 @@ impl PhaseError for EnvError {
     }
 
     fn labels(&self) -> Vec<SpanLabel> {
+        let primary = |span: &NodeSpan, message: String| match span.span() {
+            Some(span) => vec![SpanLabel {
+                span,
+                message,
+                primary: true,
+                file: None,
+            }],
+            None => Vec::new(),
+        };
+
         match self {
-            EnvError::InterfaceNotFound(_, span) => match span.span() {
-                Some(span) => vec![SpanLabel {
-                    span,
-                    message: "no module of this name was found".to_owned(),
-                    primary: true,
-                    file: None,
-                }],
-                None => Vec::new(),
-            },
+            EnvError::InterfaceNotFound(_, span) => {
+                primary(span, "no module of this name was found".to_owned())
+            }
+            EnvError::UnionNotFound(name, span) => primary(
+                span,
+                format!("`{}` is not exposed by the imported module", name),
+            ),
+            EnvError::InfixNotFound(name, span) => primary(
+                span,
+                format!("`{}` is not exposed by the imported module", name),
+            ),
+            EnvError::ValueNotFound(name, span) => primary(
+                span,
+                format!("`{}` is not exposed by the imported module", name),
+            ),
             EnvError::Multiple(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
-            _ => Vec::new(),
         }
     }
 
@@ -694,8 +715,11 @@ mod tests {
             "Maybe".into(),
             None,
             exposing_explicit(vec![
-                parser::Exposed::Upper("Maybe".into(), parser::Privacy::Private),
-                parser::Exposed::Lower("andThen".into()),
+                parser::Exposed::bare(parser::ExposedKind::Upper(
+                    "Maybe".into(),
+                    parser::Privacy::Private,
+                )),
+                parser::Exposed::bare(parser::ExposedKind::Lower("andThen".into())),
             ]),
         )];
         let mut interfaces = HashMap::new();
@@ -757,10 +781,10 @@ mod tests {
         let imports = vec![import(
             "Maybe".into(),
             None,
-            exposing_explicit(vec![parser::Exposed::Upper(
+            exposing_explicit(vec![parser::Exposed::bare(parser::ExposedKind::Upper(
                 "Maybe".into(),
                 parser::Privacy::Public,
-            )]),
+            ))]),
         )];
         let mut interfaces = HashMap::new();
         {
@@ -833,10 +857,10 @@ mod tests {
         let imports = vec![import(
             "Maybe".into(),
             Some("M".into()),
-            exposing_explicit(vec![parser::Exposed::Upper(
+            exposing_explicit(vec![parser::Exposed::bare(parser::ExposedKind::Upper(
                 "Maybe".into(),
                 parser::Privacy::Public,
-            )]),
+            ))]),
         )];
         let mut interfaces = HashMap::new();
         {

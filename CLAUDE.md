@@ -97,15 +97,17 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   children stay `Box<Expression>` and a reader matches `&e.kind`. A canonicalization error
   that names an identifier — `VariableNotFound`, `VariantNotFound` — therefore puts the caret
   under that name and not under the declaration around it.
-  Two things deliberately carry no span, and each says so at its definition:
+  One thing deliberately carries no span, and says so at its definition:
   `canonical::Type`/`TypeConstructor`, because they are cloned out of an `Environment` and may
   have been written in another file — `ERR-5` made that half solvable, but
   `Type::from_parser_type` still discards `parser::Type`'s per-node spans by choice and nobody
-  has written the walk that would keep them; and any error raised while walking a node the
-  grammar does not span, such as an `exposing` list. `labels` defaults to empty and that is a
-  real answer, not a stub — such an error renders with no caret. A group (`Error::Many`,
-  `EnvironmentErrors`) flattens its members' labels, the way it already flattens their
-  messages; forgetting that silently drops every caret it swallowed.
+  has written the walk that would keep them. `labels` still defaults to empty for any error
+  raised while walking a node the grammar does not span, and that is a real answer, not a
+  stub — such an error renders with no caret; `parser::Exposed` (`ERR-9`) is no longer an
+  example of one, so a new error naming an exposing-list entry should carry its span rather
+  than reach for this fallback. A group (`Error::Many`, `EnvironmentErrors`) flattens its
+  members' labels, the way it already flattens their messages; forgetting that silently drops
+  every caret it swallowed.
   The typer is the one phase that does not check the canonical AST — it translates it into
   its own `Term`/`Constraint` language — so it carries the spans across: every `Term` and
   `TermPattern` keeps the canonical node's `NodeSpan`, every `Constraint` records an `Origin`

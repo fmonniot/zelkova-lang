@@ -423,13 +423,19 @@ FunBinding: FunBinding = <l:@L> <name:VarIdent> <ml:@L> <patterns: DeclPattern*>
 Exposed: Exposed = {
     // TODO Most operators have explicit tokens, which might
     // or might not be a good thing after all.
-    "(" <Op> ")" => Exposed::Operator(<>),
+    <l:@L> "(" <op:Op> ")" <r:@R> => {
+        Exposed::new(NodeSpan::new(l, r), ExposedKind::Operator(op))
+    },
 
-    <VarIdent> => Exposed::Lower(<>),
-    <TypeIdent> => Exposed::Upper(<>, Privacy::Private),
+    <l:@L> <v:VarIdent> <r:@R> => {
+        Exposed::new(NodeSpan::new(l, r), ExposedKind::Lower(v))
+    },
+    <l:@L> <t:TypeIdent> <r:@R> => {
+        Exposed::new(NodeSpan::new(l, r), ExposedKind::Upper(t, Privacy::Private))
+    },
 
-    <TypeIdent> "(" ".." ")" => {
-        Exposed::Upper(<>, Privacy::Public)
+    <l:@L> <t:TypeIdent> "(" ".." ")" <r:@R> => {
+        Exposed::new(NodeSpan::new(l, r), ExposedKind::Upper(t, Privacy::Public))
     },
 };
 

@@ -12,7 +12,7 @@ test_parse_ok!(
     Module {
         name: name("Maybe"),
         binding_javascript: true,
-        exposing: Exposing::Explicit(vec![Exposed::Lower(name("map"))]),
+        exposing: Exposing::Explicit(vec![Exposed::bare(ExposedKind::Lower(name("map")))]),
         imports: vec![],
         infixes: vec![],
         types: vec![],
@@ -36,13 +36,13 @@ test_parse_ok!(
         name: name("Maybe"),
         binding_javascript: false,
         exposing: Exposing::Explicit(vec![
-            Exposed::Upper(name("Maybe"), Privacy::Public),
-            Exposed::Upper(name("Option"), Privacy::Private),
-            Exposed::Lower(name("andThen")),
-            Exposed::Lower(name("map")),
-            Exposed::Lower(name("map2")),
-            Exposed::Lower(name("map3")),
-            Exposed::Lower(name("withDefault")),
+            Exposed::bare(ExposedKind::Upper(name("Maybe"), Privacy::Public)),
+            Exposed::bare(ExposedKind::Upper(name("Option"), Privacy::Private)),
+            Exposed::bare(ExposedKind::Lower(name("andThen"))),
+            Exposed::bare(ExposedKind::Lower(name("map"))),
+            Exposed::bare(ExposedKind::Lower(name("map2"))),
+            Exposed::bare(ExposedKind::Lower(name("map3"))),
+            Exposed::bare(ExposedKind::Lower(name("withDefault"))),
         ]),
         imports: vec![],
         infixes: vec![],
@@ -136,23 +136,27 @@ test_parse_ok!(
                 name: name("List"),
                 alias: None,
                 exposing: Exposing::Explicit(vec![
-                    Exposed::Lower(name("map")),
-                    Exposed::Lower(name("foldl")),
+                    Exposed::bare(ExposedKind::Lower(name("map"))),
+                    Exposed::bare(ExposedKind::Lower(name("foldl"))),
                 ]),
             },
             Import {
                 span: no_span(),
                 name: name("Maybe"),
                 alias: None,
-                exposing: Exposing::Explicit(vec![
-                    Exposed::Upper(name("Maybe"), Privacy::Private,)
-                ]),
+                exposing: Exposing::Explicit(vec![Exposed::bare(ExposedKind::Upper(
+                    name("Maybe"),
+                    Privacy::Private
+                ))]),
             },
             Import {
                 span: no_span(),
                 name: name("Maybe"),
                 alias: None,
-                exposing: Exposing::Explicit(vec![Exposed::Upper(name("Maybe"), Privacy::Public,)]),
+                exposing: Exposing::Explicit(vec![Exposed::bare(ExposedKind::Upper(
+                    name("Maybe"),
+                    Privacy::Public
+                ))]),
             }
         ],
         infixes: vec![],
