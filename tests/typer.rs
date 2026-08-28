@@ -313,18 +313,48 @@ fn case_pattern_mismatch_points_into_the_scrutinee() {
 
 // ── Unbound variable ──────────────────────────────────────────────────────────
 
-/// Referencing a name that is not in scope should produce a type error.
+/// A name that is not in scope is caught by *canonicalization*, not by the typer,
+/// and this test asserts the error the user actually gets.
+///
+/// The typer has an `UnboundVariable` of its own and never reports it: its
+/// environment is built from one module, so a perfectly valid cross-module reference
+/// is missing from it, and `type_check` skips the variant rather than blaming the
+/// source (its doc comment sets out both cases). What that leaves is
+/// `canonical::Error::VariableNotFound`, one phase earlier, with the caret under the
+/// name — so that is what there is to pin.
+///
+/// Asserting the phase and the caret rather than `is_err()` is the point. The old
+/// form of this test conceded in a comment that canonicalization was what caught
+/// this, then asserted something that could not tell the two phases apart; it stayed
+/// green with `typer::type_check` deleted outright, which is exactly what `run` being
+/// a whole-pipeline helper makes easy to do by accident.
 #[test]
-fn unbound_variable_is_error() {
+fn unbound_variable_is_a_canonicalization_error() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         oops : Int
         oops = nonExistentBinding
     "#};
-    // Note: canonicalization already catches unbound variables today, so this
-    // test may pass even before the type checker lands.  It documents the
-    // expected end-state regardless.
-    assert!(run(source).is_err(), "unbound variable should be an error");
+    let error = match run(source) {
+        Ok(_) => panic!("expected an error, but the module checked"),
+        Err(CompilationError::Canonical(mut errors, _)) => {
+            assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+            errors.remove(0)
+        }
+        Err(other) => panic!("expected a canonicalization error, got {:?}", other),
+    };
+
+    // Qualified with the module the name was written in — canonicalization has
+    // already resolved it against `Test`'s own environment by the time it fails.
+    assert_eq!(
+        error.message(),
+        "cannot find a value named `Test.nonExistentBinding`"
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_of(source, "nonExistentBinding")],
+        "the caret belongs under the name, not across the declaration"
+    );
 }
 
 // ── Constructor usage ─────────────────────────────────────────────────────────
