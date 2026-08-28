@@ -115,6 +115,7 @@ fn typed_identity_function() {
         module.values.get(&"identity".into()).unwrap(),
         &canonical::Value::TypedValue {
             span: NodeSpan::none(),
+            annotation_span: NodeSpan::none(),
             name: "identity".into(),
             // Pattern `x` is paired with the first arrow-arm type `a`
             patterns: vec![(p_var("x"), canonical::Type::Variable("a".into()),)],
@@ -143,6 +144,7 @@ fn function_multiple_parameters() {
         module.values.get(&"add".into()).unwrap(),
         &canonical::Value::TypedValue {
             span: NodeSpan::none(),
+            annotation_span: NodeSpan::none(),
             name: "add".into(),
             patterns: vec![(p_var("a"), int_t()), (p_var("b"), int_t()),],
             // Body refers to the first pattern binding `a`
@@ -199,6 +201,7 @@ fn union_type_definition_and_constructor() {
         module.values.get(&"favorite".into()).unwrap(),
         &canonical::Value::TypedValue {
             span: NodeSpan::none(),
+            annotation_span: NodeSpan::none(),
             name: "favorite".into(),
             patterns: vec![],
             body: c_var_ctor(QualName::from("Test.Red"), color_t.clone()),
@@ -306,6 +309,7 @@ fn if_then_else_expression() {
         module.values.get(&"max".into()).unwrap(),
         &canonical::Value::TypedValue {
             span: NodeSpan::none(),
+            annotation_span: NodeSpan::none(),
             name: "max".into(),
             patterns: vec![(p_var("a"), int_t()), (p_var("b"), int_t()),],
             body: c_if(c_bool(true), c_var_local("a"), c_var_local("b")),
@@ -349,6 +353,7 @@ fn javascript_binding_module() {
         module.values.get(&"add".into()).unwrap(),
         &canonical::Value::TypedValue {
             span: NodeSpan::none(),
+            annotation_span: NodeSpan::none(),
             name: "add".into(),
             patterns: vec![],
             body: c_bool(true),
@@ -429,6 +434,7 @@ fn tuple_of_two_canonicalizes() {
         module.values.get(&"pair".into()).unwrap(),
         &canonical::Value::TypedValue {
             span: NodeSpan::none(),
+            annotation_span: NodeSpan::none(),
             name: "pair".into(),
             patterns: vec![],
             body: c_tuple(Tuple::two(c_int(1), c_char('a'),)),
@@ -459,6 +465,7 @@ fn tuple_of_three_canonicalizes() {
         module.values.get(&"triple".into()).unwrap(),
         &canonical::Value::TypedValue {
             span: NodeSpan::none(),
+            annotation_span: NodeSpan::none(),
             name: "triple".into(),
             patterns: vec![],
             body: c_tuple(Tuple::three(c_int(1), c_char('a'), c_int(3),)),

@@ -79,9 +79,10 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   single error, so one broken declaration cannot hide the next. That is a claim about the
   shape only — how much each phase actually puts in the vector differs, and the architecture
   table above is the accurate account (`type_check` skips unsupported constructs and unbound
-  variables silently; `exhaustiveness::check` is a stub that finds nothing). `check_module`
-  tags each vector with the module's `Name` — a phase never carries it, because a phase only
-  ever sees one module.
+  variables, both of which are gaps in the typer rather than mistakes in the source — its doc
+  comment says which and why; `exhaustiveness::check` is a stub that finds nothing).
+  `check_module` tags each vector with the module's `Name` — a phase never carries it, because
+  a phase only ever sees one module.
 - **An error has to describe itself.** Every phase error implements `PhaseError`
   (`src/compiler/mod.rs`): a `message()` written in the vocabulary of the user's source, plus
   optional `notes()`. `CompilationError::as_diagnostic` is the only place a
@@ -105,8 +106,20 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   real answer, not a stub — such an error renders with no caret. A group (`Error::Many`,
   `EnvironmentErrors`) flattens its members' labels, the way it already flattens their
   messages; forgetting that silently drops every caret it swallowed.
-  Type errors still point at the declaration rather than the sub-expression, because the typer
-  drops positions when it translates canonical into `Term`/`Constraint`: that is `ERR-4`.
+  The typer is the one phase that does not check the canonical AST — it translates it into
+  its own `Term`/`Constraint` language — so it carries the spans across: every `Term` and
+  `TermPattern` keeps the canonical node's `NodeSpan`, every `Constraint` records an `Origin`
+  (the span it came from plus a `Reason` naming *why* two types had to match), and `unify`
+  reports the origin of the constraint it failed on. A type error therefore points at the
+  sub-expression, with a secondary label under the annotation that explains what was
+  expected. Two things that follow, and that a change here must keep: constraints live in a
+  `Vec` and not a `HashSet`, because deduplication drops provenance and an unordered
+  collection makes *which* error is reported vary between runs; and a term's own constraints
+  are collected before its children's, so an expected type is substituted inward before the
+  inner constraints are solved — collect children first and the caret moves back out to the
+  whole declaration. A label names its `Reason` and never a type: by the time a constraint
+  fails, substitution and decomposition mean neither of its sides is reliably the type of the
+  text under the caret.
   A phase still never knows the `SourceFileId` of the module it is checking — that half is
   unchanged, and `compile_package` still attaches it via `CompilationError::InFile`, being the
   only place that knows which file a module was read from. What `ERR-5` added is the other

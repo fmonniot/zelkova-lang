@@ -44,73 +44,255 @@ use crate::compiler::{PhaseError, SpanLabel};
 use log::debug;
 use std::collections::HashMap;
 
-/// What went wrong, with no claim about where.
+// ── Provenance ────────────────────────────────────────────────────────────────
+
+/// Why two types were required to match.
 ///
-/// Inference works on the typer's own `Term`/`Constraint` language, which is built
-/// from the canonical AST and keeps no positions, so none of the three places that
-/// raise one of these — `annotate`, `unifier`, `infer` — has a span to attach. The
-/// position is put on by [`Error`], one level up. See its documentation.
+/// A constraint on its own is a pair of types, which is everything inference needs
+/// and nothing a reader can act on. The reason is what turns "cannot match `Bool`
+/// with `Int`" into something located: *this branch* has type `Bool`, and `Int` is
+/// what was expected *because of this annotation*. Elm calls this a `Reason`, rustc
+/// an `ObligationCause`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reason {
+    /// A declaration's type annotation, which its body has to satisfy.
+    Annotation,
+    /// A literal's own type: `'a'` is a `Char`.
+    Literal,
+    /// A function's type is its parameter's type arrow its body's type.
+    FunctionShape,
+    /// What is applied has to be a function from the argument's type.
+    Application,
+    /// The condition of an `if` has to be a `Bool`.
+    IfCondition,
+    /// Every branch of an `if` has the type of the whole `if`.
+    IfBranch,
+    /// Every branch of a `case` has the type of the whole `case`.
+    CaseBranch,
+    /// A pattern has to match the type of the expression being matched on.
+    CasePattern,
+    /// A `let` binding has the type of the value bound to it.
+    LetBinding,
+    /// A `let` has the type of its body.
+    LetBody,
+    /// A tuple's type is the tuple of its elements' types.
+    TupleElements,
+}
+
+impl Reason {
+    /// What goes under the caret when the constraint carrying this reason is the one
+    /// that failed: what the underlined text *is*, in the vocabulary of the source.
+    ///
+    /// It names no type, and that is not terseness. By the time a constraint fails,
+    /// `unify` has substituted solutions into both of its sides and may have
+    /// decomposed it into a component of the types the source actually mentions — so
+    /// neither side is reliably "the type of the text under this caret" any more.
+    /// The headline already prints both types; a label that named the wrong one
+    /// would be worse than a label that names none. The example that forced this:
+    /// `answer : Int` with body `true` fails on the literal's own constraint *after*
+    /// `Int` was substituted into it, and reading the type off that side produced
+    /// "this literal has type `Int`".
+    fn describes(&self) -> &'static str {
+        match self {
+            Reason::Annotation => "this type annotation",
+            Reason::Literal => "this literal",
+            Reason::FunctionShape => "this function",
+            Reason::Application => "the expression being applied",
+            Reason::IfCondition => "this condition",
+            Reason::IfBranch => "this branch of the `if`",
+            Reason::CaseBranch => "this branch of the `case`",
+            Reason::CasePattern => "this pattern",
+            Reason::LetBinding => "the value bound here",
+            Reason::LetBody => "the body of this `let`",
+            Reason::TupleElements => "this tuple",
+        }
+    }
+
+    /// What goes under the caret when this reason is not the failure itself but the
+    /// explanation for one side of it — see [`Origin::because`].
+    ///
+    /// No type is interpolated here, deliberately. Provenance records which
+    /// constraint brought a type into another one; it does not prove that the type
+    /// printed in the failing constraint is still literally the one this constraint
+    /// carried, and a label is not the place to guess.
+    fn explains(&self) -> &'static str {
+        match self {
+            Reason::Annotation => "expected because of this type annotation",
+            Reason::Literal => "expected because of this literal",
+            Reason::FunctionShape => "expected because of this function",
+            Reason::Application => "expected because of this application",
+            Reason::IfCondition => "expected because this is an `if` condition",
+            Reason::IfBranch => "expected because of this branch",
+            Reason::CaseBranch => "expected because of this branch",
+            Reason::CasePattern => "expected because of this pattern",
+            Reason::LetBinding => "expected because of this value",
+            Reason::LetBody => "expected because of this `let` body",
+            Reason::TupleElements => "expected because of this tuple",
+        }
+    }
+
+    /// The rule that was broken, when naming it says something the labels do not.
+    fn note(&self) -> Option<&'static str> {
+        match self {
+            Reason::Annotation => {
+                Some("a declaration's body must have the type its annotation declares")
+            }
+            Reason::IfCondition => Some("the condition of an `if` must be a `Bool`"),
+            Reason::IfBranch => Some("every branch of an `if` must have the same type"),
+            Reason::CaseBranch => Some("every branch of a `case` must have the same type"),
+            Reason::CasePattern => Some(
+                "every pattern of a `case` must match the type of the expression it matches on",
+            ),
+            _ => None,
+        }
+    }
+}
+
+/// Where a constraint came from, and — once inference has moved types around — where
+/// the type it clashed with came from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Origin {
+    /// Why the two types were required to match.
+    pub reason: Reason,
+    /// The source text this constraint is about. A failure here draws its caret at
+    /// this span.
+    pub span: NodeSpan,
+    /// The constraint whose solution first rewrote this one, if any.
+    ///
+    /// `unify` solves a constraint by substituting a type for a variable and then
+    /// applying that substitution to every constraint left. Once that has happened,
+    /// a side of this constraint is a type this constraint never mentioned: it came
+    /// from wherever the substitution did. That is the fact a reader needs — "`Int`,
+    /// because of the annotation two lines up" — and it is what the secondary label
+    /// of a type error renders.
+    ///
+    /// The *first* rewrite is kept and later ones are dropped. A constraint starts
+    /// out relating its own type variables; the first substitution to reach it is
+    /// the one that brought in a type from elsewhere, while later ones usually
+    /// resolve the constraint's own side and would point the second caret back at
+    /// the text the first caret is already under.
+    pub because: Option<Box<Origin>>,
+}
+
+impl Origin {
+    fn new(reason: Reason, span: NodeSpan) -> Origin {
+        Origin {
+            reason,
+            span,
+            because: None,
+        }
+    }
+
+    /// Record where the type that rewrote this constraint came from, keeping whatever
+    /// was already recorded. See [`Origin::because`].
+    ///
+    /// What is recorded is the *root* of `other`'s chain, not `other` itself.
+    /// Constraints are solved outside-in — a declaration's annotation fixes the
+    /// function's parameter and result types, which fix a branch's type, which fixes
+    /// a literal's — so `other` is typically one link in a chain that started at the
+    /// thing the user actually wrote down. The end of that chain is the answer to
+    /// "why was `Int` expected here"; the middle of it is the compiler's own working.
+    fn explained_by(&mut self, other: &Origin) {
+        if self.because.is_none() {
+            let root = other.root();
+            self.because = Some(Box::new(Origin::new(root.reason, root.span)));
+        }
+    }
+
+    /// The far end of this origin's `because` chain: the constraint that introduced
+    /// the type, rather than one that passed it along.
+    fn root(&self) -> &Origin {
+        match &self.because {
+            Some(because) => because.root(),
+            None => self,
+        }
+    }
+}
+
+/// What went wrong, and — for everything unification can raise — where.
+///
+/// Each variant carries the [`Origin`] of the constraint that failed, so a type
+/// error can put its caret under the sub-expression that disagrees instead of across
+/// the declaration containing it. The declaration is still named by [`Error`], one
+/// level up, which is the frame that knows it.
 #[derive(Debug)]
 pub enum ErrorKind {
-    TypeMismatch { expected: Type, actual: Type },
-    UnificationFailed { left: Type, right: Type },
-    CircularType,
-    UnboundVariable(String),
+    /// Two types were required to match and do not.
+    ///
+    /// The two are written in the order the message reads them out — declared side
+    /// first where the source had one. Neither is reliably "the type of the text the
+    /// origin points at": by the time a constraint fails, unification has substituted
+    /// into both sides and may have decomposed the pair the source actually wrote.
+    UnificationFailed {
+        left: Type,
+        right: Type,
+        origin: Origin,
+    },
+    /// A type variable would have to occur inside its own solution.
+    CircularType {
+        /// The type the variable would have had to contain itself in.
+        tpe: Type,
+        origin: Origin,
+    },
+    /// A name the typer's environment does not know. See [`type_check`] for why this
+    /// one is not reported to the user today.
+    UnboundVariable {
+        name: String,
+        /// Where the name was written.
+        span: NodeSpan,
+    },
 }
 
 impl ErrorKind {
-    fn message(&self) -> String {
+    /// The provenance of the constraint that failed, when the failure came from
+    /// unification at all.
+    fn origin(&self) -> Option<&Origin> {
         match self {
-            ErrorKind::TypeMismatch { expected, actual } => {
-                format!("type mismatch: expected `{}`, found `{}`", expected, actual)
-            }
-            ErrorKind::UnificationFailed { left, right } => {
-                format!("cannot match `{}` with `{}`", left, right)
-            }
-            ErrorKind::CircularType => {
-                "circular type: a type variable would have to contain itself".to_owned()
-            }
-            ErrorKind::UnboundVariable(name) => format!("cannot find a value named `{}`", name),
+            ErrorKind::UnificationFailed { origin, .. }
+            | ErrorKind::CircularType { origin, .. } => Some(origin),
+            ErrorKind::UnboundVariable { .. } => None,
         }
     }
 
-    fn notes(&self) -> Vec<String> {
+    fn message(&self) -> String {
         match self {
-            ErrorKind::TypeMismatch { expected, .. } => vec![format!(
-                "the type annotation says `{}`; the body infers to something else",
-                expected
-            )],
-            _ => Vec::new(),
+            ErrorKind::UnificationFailed { left, right, .. } => {
+                format!("cannot match `{}` with `{}`", left, right)
+            }
+            ErrorKind::CircularType { tpe, .. } => format!(
+                "circular type: a type variable would have to contain itself in `{}`",
+                tpe
+            ),
+            ErrorKind::UnboundVariable { name, .. } => {
+                format!("cannot find a value named `{}`", name)
+            }
         }
     }
 }
 
-/// A type error, together with the declaration it was found in.
+/// A type error: what went wrong, where, and in which declaration.
 ///
-/// # Why the span lives here and not on the variants
+/// # Where the positions come from
 ///
-/// The four places that raise an [`ErrorKind`] all sit below the last point that
-/// knows a position. `annotate` and `unifier` work on `Term`s and `Constraint`s —
-/// a translation of the canonical AST that drops positions on the way in — so a
-/// `span` field on the variants would only move the problem to a construction site
-/// with nothing to put in it. [`type_check`]'s third pass is the one frame that
-/// still has the `canonical::Value` in hand, so it is the only place this struct is
-/// built, and it is where the span comes from.
+/// The typer does not check the canonical AST directly — it translates it into its
+/// own [`Term`] language — but that translation now carries the canonical node's
+/// [`NodeSpan`] along, and each constraint keeps the span of the term that produced
+/// it. So a unification failure knows the sub-expression it is about, and
+/// [`labels`](PhaseError::labels) draws the caret there.
 ///
-/// # Declaration granularity is the ceiling
-///
-/// That span is the whole declaration — its annotation and its body — because that
-/// is the finest thing the typer can still name. Pointing at the *sub-expression*
-/// that disagrees means carrying positions through the `Term` translation, which is
-/// `ERR-4` (see `docs/tickets/INDEX.md`).
+/// The declaration's own span is still kept as `span`, for the one case that has no
+/// finer answer: an error whose origin came from a hand-built term, or from a
+/// canonical node the parser never spanned. Then the label degrades to the whole
+/// declaration rather than disappearing.
 #[derive(Debug)]
 pub struct Error {
     pub kind: ErrorKind,
-    /// Where the declaration the error was found in was written.
+    /// Where the declaration the error was found in was written. Used only as the
+    /// fallback described above.
     pub span: NodeSpan,
-    /// That declaration's name. The struct's two other fields say what went wrong
-    /// and where; this is what lets the label say *which* declaration, which is the
-    /// one thing a reader of a hundred-declaration module still needs.
+    /// That declaration's name, which is what the note names: in a module of a
+    /// hundred declarations, a caret is not much use without it when the diagnostic
+    /// is rendered without a file (see `compile_package`).
     pub declaration: Name,
 }
 
@@ -123,19 +305,90 @@ impl PhaseError for Error {
     }
 
     fn notes(&self) -> Vec<String> {
-        self.kind.notes()
+        let mut notes = vec![format!("in the declaration of `{}`", self.declaration)];
+
+        // The rule that was broken, taken from the failing constraint and, if that
+        // one has nothing to add, from what explains it. `if`'s "every branch must
+        // have the same type" is on the branch constraint; "a body must have the
+        // type its annotation declares" is on the annotation, which is normally the
+        // explanation rather than the failure.
+        if let Some(origin) = self.kind.origin() {
+            let rule = origin
+                .reason
+                .note()
+                .or_else(|| origin.because.as_ref().and_then(|b| b.reason.note()));
+
+            if let Some(rule) = rule {
+                notes.push(rule.to_owned());
+            }
+        }
+
+        notes
     }
 
+    /// A caret under the text that disagrees, and — when inference can say where the
+    /// type it disagrees with came from — a second, secondary one under that.
+    ///
+    /// Falls back to underlining the whole declaration when the failing constraint
+    /// has no position, which is what a term built by hand, or one translated from a
+    /// canonical node with no span, produces.
     fn labels(&self) -> Vec<SpanLabel> {
-        match self.span.span() {
-            Some(span) => vec![SpanLabel {
-                span,
-                message: format!("in `{}`", self.declaration),
-                primary: true,
-                file: None,
-            }],
-            None => Vec::new(),
+        let mut labels = Vec::new();
+
+        match &self.kind {
+            ErrorKind::UnboundVariable { span, .. } => {
+                if let Some(span) = span.span() {
+                    labels.push(SpanLabel {
+                        span,
+                        message: "not found in this scope".to_owned(),
+                        primary: true,
+                        file: None,
+                    });
+                }
+            }
+            kind => {
+                if let Some(origin) = kind.origin() {
+                    if let Some(span) = origin.span.span() {
+                        labels.push(SpanLabel {
+                            span,
+                            message: origin.reason.describes().to_owned(),
+                            primary: true,
+                            file: None,
+                        });
+                    }
+
+                    // Only worth drawing once the primary one exists: on its own it
+                    // would be a caret under the annotation with nothing to contrast
+                    // it against. And not worth drawing at all when it lands on the
+                    // same text — a literal that is its own explanation renders as two
+                    // carets under one word saying the same thing twice.
+                    if let (Some(primary), Some(because)) = (labels.first(), &origin.because) {
+                        match because.span.span() {
+                            Some(span) if span != primary.span => labels.push(SpanLabel {
+                                span,
+                                message: because.reason.explains().to_owned(),
+                                primary: false,
+                                file: None,
+                            }),
+                            _ => (),
+                        }
+                    }
+                }
+            }
         }
+
+        if labels.is_empty() {
+            if let Some(span) = self.span.span() {
+                labels.push(SpanLabel {
+                    span,
+                    message: format!("in `{}`", self.declaration),
+                    primary: true,
+                    file: None,
+                });
+            }
+        }
+
+        labels
     }
 }
 
@@ -143,14 +396,39 @@ impl PhaseError for Error {
 /// reportable error rather than stopping at the first — the shape `compile_package` is
 /// built to accumulate.
 ///
-/// Two classes of failure are deliberately *not* reported today, both in the third pass
-/// below: a value whose term cannot be built at all (an unsupported construct) is skipped,
-/// and an `ErrorKind::UnboundVariable` is discarded. A module whose only problems are of
-/// those two kinds returns `Ok(())`.
+/// # The two failures this pass still swallows
 ///
-/// The third pass is also the only place an [`Error`] is built, because it is the last
-/// frame that still holds the `canonical::Value` — and therefore the declaration's span.
-/// See [`Error`] for why the span is attached here rather than carried by the variants.
+/// Both are in the third pass below, and neither is a statement about the user's
+/// source, which is why neither is reported as an error against it.
+///
+/// **An unsupported construct.** `value_to_term_and_annotation` returns `None` for
+/// anything the term language cannot express — a `VarKernel` or `VarForeign`
+/// reference, a nested pattern inside a `case`. The declaration is then not checked
+/// at all. Reporting that as an error would fail 53 of the declarations in
+/// `std/core/src` that are simply beyond today's inference; it is a gap in the
+/// typer, and what it wants is a warning, which the compiler does not have yet
+/// (`ERR-8`, see `docs/tickets/INDEX.md`).
+///
+/// **An unbound variable.** [`ErrorKind::UnboundVariable`] means the name is missing
+/// from the environment the two passes above build — and that environment is
+/// assembled from *this module alone*: its own annotated values and its own type
+/// constructors. Anything that crossed a module boundary is therefore absent even
+/// though canonicalization resolved it perfectly well: `Maybe.isJust` referring to
+/// `True`, which `Basics` declares, or `Basics.negate` referring to `-`, which the
+/// infix declaration aliases to `sub`. Five declarations in `std/core/src` hit this
+/// today and not one of them is a mistake in the source. A name that genuinely does
+/// not exist is caught earlier, by canonicalization, as
+/// `canonical::Error::VariableNotFound`, with a caret under the name — so nothing a
+/// user can write reaches the user only through this path. The error nonetheless
+/// carries its span now, so the day the typer's environment spans modules it can be
+/// reported without further plumbing.
+///
+/// # Where an [`Error`] is built
+///
+/// Here, and only here: this is the last frame that holds the `canonical::Value`, so
+/// it is the only one that knows the declaration's name and its span. What went
+/// *wrong* and *where inside the declaration* comes up from inference on the
+/// [`ErrorKind`]; see [`Error`].
 pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
     // JavaScript binding modules use synthetic placeholder bodies — skip type checking.
     if module.binding_javascript {
@@ -239,41 +517,27 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
     // moves on, so one broken declaration cannot hide the others.
     let mut errors: Vec<Error> = vec![];
     for (name, value) in &module.values {
-        // The declaration this error would be about, ready for whichever of the two
-        // failure paths below fires.
-        let at = |kind: ErrorKind| Error {
-            kind,
-            span: value.span(),
-            declaration: name.clone(),
-        };
-
         let Some((term, annotation)) =
             value_to_term_and_annotation(value, &module.types, &mut counter)
         else {
-            continue; // unsupported construct — skip for now
+            continue; // unsupported construct — see this function's documentation
         };
 
-        let inferred = match infer(term, global.clone()) {
-            // An unbound variable means the term references a top-level function whose
-            // type we couldn't represent (e.g. Float-typed functions). Skip silently.
-            Err(ErrorKind::UnboundVariable(_)) => continue,
-            Err(e) => {
-                errors.push(at(e));
-                continue;
-            }
-            Ok(t) => t,
-        };
-
-        // If there's a type annotation, verify inferred type is compatible
-        if let Some(ann) = annotation {
-            let mut constraints = std::collections::HashSet::new();
-            constraints.insert(Constraint(inferred.clone(), ann.clone()));
-            if unifier::unify(constraints).is_err() {
-                errors.push(at(ErrorKind::TypeMismatch {
-                    expected: ann,
-                    actual: inferred,
-                }));
-            }
+        // The annotation is handed to inference rather than checked against its
+        // result afterwards, which is what lets a mismatch *inside* the body know
+        // that the type it failed against came from the annotation. Checking the two
+        // whole types at the end could only ever say "this declaration is `Int` and
+        // its body is something else", with the caret across the lot.
+        match infer_annotated(term, global.clone(), annotation) {
+            // See this function's documentation: an unbound variable here is a hole
+            // in the typer's environment, not a mistake in the source.
+            Err(ErrorKind::UnboundVariable { .. }) => continue,
+            Err(kind) => errors.push(Error {
+                kind,
+                span: value.span(),
+                declaration: name.clone(),
+            }),
+            Ok(_) => (),
         }
     }
 
@@ -348,48 +612,53 @@ fn canonical_type_to_typer_type(
     }
 }
 
-/// Convert a canonical expression to a Term.
+/// Convert a canonical expression to a Term, keeping the position it was written at.
+///
 /// Returns None for constructs the inference engine doesn't yet handle
 /// (VarKernel, VarForeign, complex patterns inside Case).
+///
+/// Every arm attaches `expr.span` to the term it builds. That is the whole of what
+/// `ERR-4` needed from this function: a constraint can only point at a
+/// sub-expression if the term that produced it remembers where it came from.
 fn canonical_expr_to_term(
     expr: &canonical::Expression,
     module_types: &HashMap<Name, canonical::UnionType>,
     counter: &mut u32,
 ) -> Option<Term> {
-    match &expr.kind {
-        canonical::ExpressionKind::Int(i) => Some(Term::Int(*i as u32)),
-        canonical::ExpressionKind::Bool(b) => Some(Term::Bool(*b)),
-        canonical::ExpressionKind::Char(c) => Some(Term::Char(*c)),
-        canonical::ExpressionKind::Float(f) => Some(Term::Float(*f)),
+    let kind = match &expr.kind {
+        canonical::ExpressionKind::Int(i) => TermKind::Int(*i as u32),
+        canonical::ExpressionKind::Bool(b) => TermKind::Bool(*b),
+        canonical::ExpressionKind::Char(c) => TermKind::Char(*c),
+        canonical::ExpressionKind::Float(f) => TermKind::Float(*f),
         canonical::ExpressionKind::VarLocal(name) => {
-            Some(Term::Identifier(name.as_str().to_string()))
+            TermKind::Identifier(name.as_str().to_string())
         }
         canonical::ExpressionKind::VarTopLevel(qname) => {
-            Some(Term::Identifier(qname.to_name().as_str().to_string()))
+            TermKind::Identifier(qname.to_name().as_str().to_string())
         }
         canonical::ExpressionKind::Apply(f, a) => {
             let fun = canonical_expr_to_term(f, module_types, counter)?;
             let arg = canonical_expr_to_term(a, module_types, counter)?;
-            Some(Term::Apply {
+            TermKind::Apply {
                 fun: Box::new(fun),
                 arg: Box::new(arg),
-            })
+            }
         }
         canonical::ExpressionKind::If(cond, t, f) => {
             let cond = canonical_expr_to_term(cond, module_types, counter)?;
             let t = canonical_expr_to_term(t, module_types, counter)?;
             let f = canonical_expr_to_term(f, module_types, counter)?;
-            Some(Term::If {
+            TermKind::If {
                 cond: Box::new(cond),
                 true_branch: Box::new(t),
                 false_branch: Box::new(f),
-            })
+            }
         }
         canonical::ExpressionKind::Tuple(tuple) => {
             let elements = tuple
                 .try_map(|elem| canonical_expr_to_term(elem, module_types, counter).ok_or(()))
                 .ok()?;
-            Some(Term::Tuple(elements))
+            TermKind::Tuple(elements)
         }
         canonical::ExpressionKind::Case(scrutinee_expr, branches) => {
             let scrutinee = canonical_expr_to_term(scrutinee_expr, module_types, counter)?;
@@ -402,47 +671,56 @@ fn canonical_expr_to_term(
                     Some((pattern, Box::new(body)))
                 })
                 .collect::<Option<Vec<_>>>()?;
-            Some(Term::Case {
+            TermKind::Case {
                 scrutinee: Box::new(scrutinee),
                 branches: term_branches,
-            })
+            }
         }
         // Constructors are resolved as identifiers looked up in the global env.
         canonical::ExpressionKind::VarConstructor(qname, _) => {
-            Some(Term::Identifier(qname.to_name().as_str().to_string()))
+            TermKind::Identifier(qname.to_name().as_str().to_string())
         }
         // VarForeign: not in the module's global env, skip
-        canonical::ExpressionKind::VarForeign(_, _) => None,
+        canonical::ExpressionKind::VarForeign(_, _) => return None,
         // Not yet supported: VarKernel
-        _ => None,
-    }
+        _ => return None,
+    };
+
+    Some(Term {
+        span: expr.span,
+        kind,
+    })
 }
 
 /// Translate a canonical pattern into a `TermPattern` plus any variable bindings
 /// introduced by the pattern.  Returns `None` for unsupported pattern shapes.
+///
+/// The pattern keeps its own span, separate from the branch body's: a `case` branch
+/// whose pattern does not match what is being matched on is about the pattern, and
+/// the caret belongs there rather than under the expression in the `case … of` line.
 fn translate_pattern(
     pattern: &canonical::Pattern,
     module_types: &HashMap<Name, canonical::UnionType>,
     counter: &mut u32,
 ) -> Option<(TermPattern, Vec<(String, Type)>)> {
-    match &pattern.kind {
-        canonical::PatternKind::Anything => Some((TermPattern::Anything, vec![])),
+    let (kind, bindings) = match &pattern.kind {
+        canonical::PatternKind::Anything => (TermPatternKind::Anything, vec![]),
         canonical::PatternKind::Variable(name) => {
             // The binding's actual type will be unified with the scrutinee type in annotate.
-            Some((TermPattern::Bind(name.as_str().to_string()), vec![]))
+            (TermPatternKind::Bind(name.as_str().to_string()), vec![])
         }
-        canonical::PatternKind::Bool(_) => Some((
-            TermPattern::Literal(Type::Literal(TypeLiteral::Bool)),
+        canonical::PatternKind::Bool(_) => (
+            TermPatternKind::Literal(Type::Literal(TypeLiteral::Bool)),
             vec![],
-        )),
-        canonical::PatternKind::Int(_) => Some((
-            TermPattern::Literal(Type::Literal(TypeLiteral::Int)),
+        ),
+        canonical::PatternKind::Int(_) => (
+            TermPatternKind::Literal(Type::Literal(TypeLiteral::Int)),
             vec![],
-        )),
-        canonical::PatternKind::Char(_) => Some((
-            TermPattern::Literal(Type::Literal(TypeLiteral::Char)),
+        ),
+        canonical::PatternKind::Char(_) => (
+            TermPatternKind::Literal(Type::Literal(TypeLiteral::Char)),
             vec![],
-        )),
+        ),
         canonical::PatternKind::Constructor { ctor, args } => {
             // Look up the parent union type to get its type variables.
             let union_type = module_types.get(&ctor.tpe)?;
@@ -483,15 +761,34 @@ fn translate_pattern(
                 }
             }
 
-            let term_pattern = TermPattern::Constructor {
+            let kind = TermPatternKind::Constructor {
                 adt_name: ctor.tpe.as_str().to_string(),
                 adt_args,
                 bindings: bindings.clone(),
             };
-            Some((term_pattern, bindings))
+            (kind, bindings)
         }
-        _ => None, // Tuple, Float patterns — not yet supported
-    }
+        _ => return None, // Tuple, Float patterns — not yet supported
+    };
+
+    Some((
+        TermPattern {
+            span: pattern.span,
+            kind,
+        },
+        bindings,
+    ))
+}
+
+/// A declaration's type annotation, and where it was written.
+///
+/// The span is the annotation's alone — `answer : Int`, not the declaration it
+/// heads — because it is drawn as the secondary label of a mismatch in the body, and
+/// a span covering the body too would underline the thing it is meant to contrast
+/// with.
+struct Annotation {
+    tpe: Type,
+    span: NodeSpan,
 }
 
 /// Convert a canonical Value into a (Term, optional annotation) pair.
@@ -501,7 +798,7 @@ fn value_to_term_and_annotation(
     value: &canonical::Value,
     module_types: &HashMap<Name, canonical::UnionType>,
     counter: &mut u32,
-) -> Option<(Term, Option<Type>)> {
+) -> Option<(Term, Option<Annotation>)> {
     match value {
         canonical::Value::Value { patterns, body, .. } => {
             let body_term = canonical_expr_to_term(body, module_types, counter)?;
@@ -512,13 +809,18 @@ fn value_to_term_and_annotation(
             patterns,
             body,
             tpe,
+            annotation_span,
             ..
         } => {
             let body_term = canonical_expr_to_term(body, module_types, counter)?;
             let pattern_iter = patterns.iter().map(|(p, _)| p);
             let term = wrap_with_patterns(pattern_iter, body_term)?;
             let mut var_map = HashMap::new();
-            let annotation = canonical_type_to_typer_type(tpe, &mut var_map, counter);
+            let annotation =
+                canonical_type_to_typer_type(tpe, &mut var_map, counter).map(|tpe| Annotation {
+                    tpe,
+                    span: *annotation_span,
+                });
             Some((term, annotation))
         }
     }
@@ -526,35 +828,56 @@ fn value_to_term_and_annotation(
 
 /// Wrap a body Term in nested Fun nodes for each pattern, outermost first.
 /// Returns None if any pattern is not translatable (e.g. constructor patterns).
+///
+/// Each `Fun` spans its parameter through the body it wraps, so a function whose
+/// declared shape does not match its definition is underlined from the parameter
+/// that starts it rather than across the annotation as well.
 fn wrap_with_patterns<'a>(
     patterns: impl Iterator<Item = &'a canonical::Pattern>,
     body: Term,
 ) -> Option<Term> {
-    let names: Vec<String> = patterns
+    let names: Vec<(String, NodeSpan)> = patterns
         .map(|p| match &p.kind {
-            canonical::PatternKind::Variable(name) => Some(name.as_str().to_string()),
-            canonical::PatternKind::Anything => Some("_".to_string()),
+            canonical::PatternKind::Variable(name) => Some((name.as_str().to_string(), p.span)),
+            canonical::PatternKind::Anything => Some(("_".to_string(), p.span)),
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
 
-    let term = names.iter().rev().fold(body, |acc, param| Term::Fun {
-        param: param.clone(),
-        body: Box::new(acc),
+    let term = names.iter().rev().fold(body, |acc, (param, span)| Term {
+        span: span.merge(acc.span),
+        kind: TermKind::Fun {
+            param: param.clone(),
+            body: Box::new(acc),
+        },
     });
 
     Some(term)
 }
 
 // First try of an implementation. Not linked to the rest of the code base for simplicity's sake.
+//
+// It is no longer *quite* that: the term language is still simplified — names degrade
+// to `String`, anything inference does not need is dropped — but every node carries
+// the [`NodeSpan`] of the canonical node it was built from, because an error found
+// down here has to be able to say where in the user's source it happened (`ERR-4`).
 
 mod annotate;
 mod constraint;
 mod unifier;
 
-/// Simplified pattern used inside the typer's Term.
+/// Simplified pattern used inside the typer's Term, and where it was written.
+///
+/// Same shape as the parser and canonical ASTs — a span beside a kind — so a reader
+/// matches on `&p.kind`.
 #[derive(Debug, Clone)]
-pub enum TermPattern {
+pub struct TermPattern {
+    pub span: NodeSpan,
+    pub kind: TermPatternKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum TermPatternKind {
     /// Matches anything without binding.
     Anything,
     /// Binds the scrutinee type to this name.
@@ -570,9 +893,31 @@ pub enum TermPattern {
     },
 }
 
+/// An untyped term, and where the expression it was translated from was written.
+///
+/// In zelkova that source is the canonical AST. The span is what every constraint
+/// generated from this term inherits, and therefore what a type error draws its
+/// caret under; [`NodeSpan::none`] — a term built by hand, in a test — costs nothing
+/// but the caret.
 #[derive(Debug, Clone)] // TODO Remove clone when not needed anymore
-/// untyped term. In zelkova that would be the parsed source (or canonical, not sure yet)
-pub enum Term {
+pub struct Term {
+    pub span: NodeSpan,
+    pub kind: TermKind,
+}
+
+impl Term {
+    /// A term with no position: hand-built, never translated from source.
+    #[cfg(test)]
+    fn bare(kind: TermKind) -> Term {
+        Term {
+            span: NodeSpan::none(),
+            kind,
+        }
+    }
+}
+
+#[derive(Debug, Clone)] // TODO Remove clone when not needed anymore
+pub enum TermKind {
     // literals
     Bool(bool),
     Int(u32),
@@ -717,89 +1062,126 @@ impl TypeBinder {
     }
 }
 
-/// Like a [Term] but with an associated [Type].
+/// Like a [Term] but with an associated [Type], and still with its position.
 /// Any term introducing a name will have a TypeBinder instead.
 #[derive(Debug)]
+struct TypedTerm {
+    span: NodeSpan,
+    tpe: Type,
+    kind: TypedTermKind,
+}
+
+#[derive(Debug)]
 #[allow(dead_code)]
-enum TypedTerm {
-    Int {
-        tpe: Type,
-        value: u32,
-    },
-    Bool {
-        tpe: Type,
-        value: bool,
-    },
-    Char {
-        tpe: Type,
-        value: char,
-    },
-    Float {
-        tpe: Type,
-        value: f64,
-    },
+enum TypedTermKind {
+    Int(u32),
+    Bool(bool),
+    Char(char),
+    Float(f64),
     // TODO Do I want to keep this name ? Or named Variable ? Something else ?
-    Identifier {
-        tpe: Type,
-        name: String,
-    }, // This is basically a TypeBinder
+    Identifier(String), // This is basically a TypeBinder
     Fun {
-        tpe: Type,
         param: TypeBinder,
         body: Box<TypedTerm>,
     },
     Apply {
-        tpe: Type,
         fun: Box<TypedTerm>,
         arg: Box<TypedTerm>,
     },
     If {
-        tpe: Type,
         cond: Box<TypedTerm>,
         true_branch: Box<TypedTerm>,
         false_branch: Box<TypedTerm>,
     },
     Let {
-        tpe: Type,
         binding: TypeBinder,
         value: Box<TypedTerm>,
         body: Box<TypedTerm>,
     },
-    Tuple {
-        tpe: Type,
-        elements: Tuple<TypedTerm>,
-    },
+    Tuple(Tuple<TypedTerm>),
     Case {
-        tpe: Type,
         scrutinee: Box<TypedTerm>,
         branches: Vec<(TermPattern, Box<TypedTerm>)>,
     },
 }
 
-impl TypedTerm {
-    fn tpe(&self) -> &Type {
-        match &self {
-            TypedTerm::Int { tpe, .. } => tpe,
-            TypedTerm::Bool { tpe, .. } => tpe,
-            TypedTerm::Char { tpe, .. } => tpe,
-            TypedTerm::Float { tpe, .. } => tpe,
-            TypedTerm::Identifier { tpe, .. } => tpe,
-            TypedTerm::Fun { tpe, .. } => tpe,
-            TypedTerm::Apply { tpe, .. } => tpe,
-            TypedTerm::If { tpe, .. } => tpe,
-            TypedTerm::Let { tpe, .. } => tpe,
-            TypedTerm::Tuple { tpe, .. } => tpe,
-            TypedTerm::Case { tpe, .. } => tpe,
+/// Two types that have to match, and why.
+///
+/// # What the two sides mean
+///
+/// Unification treats them symmetrically; the order is a rendering convention, and
+/// the only thing that reads it is the headline — *cannot match `left` with `right`*.
+/// `collect` therefore writes the declared or expected side first where the source
+/// has one (an annotation's type, a pattern's type) and the inferred side second, so
+/// the sentence comes out in the order a reader expects.
+///
+/// What the sides are emphatically *not* is a way to tell which type belongs to the
+/// text at `origin.span`. By the time a constraint fails, `unify` has substituted
+/// other constraints' solutions into both sides, and may have decomposed it into a
+/// component of the types the source mentioned. That is why the labels name the
+/// [`Reason`] and leave the types to the headline — see [`Reason::describes`].
+///
+/// # Why these are held in a `Vec` and not a `HashSet`
+///
+/// They used to be a `HashSet<Constraint>`, back when a constraint was a bare pair of
+/// types. An origin makes that collection wrong twice over. Deduplication now
+/// discards *provenance*: two constraints with equal types but different origins are
+/// one entry, and which origin survives is whichever was inserted first. And the
+/// order a `HashSet` yields is unspecified, so which constraint `unify` reaches first
+/// — and therefore which one is reported when several are unsatisfiable — would vary
+/// between runs of the same compiler on the same file.
+///
+/// A `Vec` fixes both, and buys a third thing: source order. The annotation is
+/// pushed first, so its type is substituted into the body's constraints before they
+/// are solved, which is what lets a mismatch deep in the body say that `Int` came
+/// from the annotation. The cost is that duplicate constraints are no longer
+/// collapsed, which is a few more `unify` steps on terms that repeat a type.
+#[derive(Debug, Clone, PartialEq)]
+struct Constraint {
+    left: Type,
+    right: Type,
+    origin: Origin,
+}
+
+impl Constraint {
+    fn new(left: Type, right: Type, reason: Reason, span: NodeSpan) -> Constraint {
+        Constraint {
+            left,
+            right,
+            origin: Origin::new(reason, span),
+        }
+    }
+
+    /// A constraint between two components of this one — the parameters of two
+    /// function types being matched, say — which is about the same source text and
+    /// was required for the same reason.
+    fn component(&self, left: Type, right: Type) -> Constraint {
+        Constraint {
+            left,
+            right,
+            origin: self.origin.clone(),
         }
     }
 }
 
-#[derive(Debug, Hash, Eq, PartialEq)]
-struct Constraint(Type, Type);
+/// What one type variable was solved to, and which constraint solved it.
+///
+/// The origin is not used by inference at all. It is carried so that when this
+/// solution is substituted into another constraint and *that* constraint then fails,
+/// the failure can say where the type it failed against came from — see
+/// [`Origin::because`].
+// No `Eq`: an `Origin` holds a `NodeSpan`, whose `PartialEq` is deliberately blind
+// (see its documentation), so equality here is a claim about the types and the
+// reasons, not about the positions.
+#[derive(Debug, PartialEq, Clone)]
+struct Solution {
+    tpe: Type,
+    origin: Origin,
+}
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct Substitution {
-    solutions: HashMap<TypeVariable, Type>,
+    solutions: HashMap<TypeVariable, Solution>,
 }
 
 impl Substitution {
@@ -811,25 +1193,50 @@ impl Substitution {
         }
     }
 
-    fn one(tvar: TypeVariable, tpe: Type) -> Substitution {
+    fn one(tvar: TypeVariable, tpe: Type, origin: Origin) -> Substitution {
         let mut sub = Substitution::empty();
 
-        sub.solutions.insert(tvar, tpe);
+        sub.solutions.insert(tvar, Solution { tpe, origin });
 
         sub
     }
 
     // methods
 
+    /// Rewrite a constraint with everything solved so far, recording which solution
+    /// first reached it.
+    ///
+    /// The solutions are visited in type-variable order rather than in `HashMap`
+    /// order: "first" has to mean the same thing on every run, or the secondary label
+    /// of a diagnostic would move between compilations of an unchanged file. Ids are
+    /// handed out as inference walks the term, so that order is roughly the order the
+    /// user wrote things in.
     fn apply(&self, c: &Constraint) -> Constraint {
-        Constraint(self.apply_type(&c.0), self.apply_type(&c.1))
+        let mut origin = c.origin.clone();
+
+        let mut solutions: Vec<_> = self.solutions.iter().collect();
+        solutions.sort_by_key(|(tvar, _)| tvar.id);
+
+        for (tvar, solution) in solutions {
+            // A solution that does not mention a variable this constraint uses
+            // rewrites nothing, and explains nothing about it either.
+            if occurs(tvar, &c.left) || occurs(tvar, &c.right) {
+                origin.explained_by(&solution.origin);
+            }
+        }
+
+        Constraint {
+            left: self.apply_type(&c.left),
+            right: self.apply_type(&c.right),
+            origin,
+        }
     }
 
     fn apply_type(&self, tpe: &Type) -> Type {
         self.solutions
             .iter()
-            .fold(tpe.clone(), |tpe, (tvar, solution_tpe)| {
-                Substitution::substitute(tpe, tvar, solution_tpe)
+            .fold(tpe.clone(), |tpe, (tvar, solution)| {
+                Substitution::substitute(tpe, tvar, &solution.tpe)
             })
     }
 
@@ -868,10 +1275,17 @@ impl Substitution {
         // Merging other in self means we apply `other` substitution to `self` solutions
         // When merging, we want `other` solutions to take precedences over `self` solutions
 
-        let self_solutions = self
-            .solutions
-            .iter()
-            .map(|(k, v)| (k.clone(), other.apply_type(v)));
+        let self_solutions = self.solutions.iter().map(|(k, v)| {
+            (
+                k.clone(),
+                Solution {
+                    tpe: other.apply_type(&v.tpe),
+                    // The origin says which constraint solved this variable, which
+                    // rewriting its solution does not change.
+                    origin: v.origin.clone(),
+                },
+            )
+        });
 
         let mut sub = Substitution::empty();
 
@@ -879,6 +1293,25 @@ impl Substitution {
         sub.solutions.extend(other.solutions);
 
         sub
+    }
+}
+
+/// Does `tvar` appear anywhere inside `tpe`?
+///
+/// Two callers, for two different reasons: `unify_variable` uses it as the occurs
+/// check that keeps it from building an infinite type, and `Substitution::apply` uses
+/// it to tell whether a solution actually rewrites a given constraint — which is what
+/// decides whether that solution explains one of the constraint's types.
+fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
+    match tpe {
+        Type::Fun {
+            param_tpe,
+            return_tpe,
+        } => occurs(tvar, param_tpe) || occurs(tvar, return_tpe),
+        Type::Tuple(tuple) => tuple.iter().any(|t| occurs(tvar, t)),
+        Type::Adt(_, args) => args.iter().any(|a| occurs(tvar, a)),
+        Type::Variable(tvar2) => tvar == tvar2,
+        _ => false,
     }
 }
 
@@ -923,18 +1356,47 @@ impl Types {
 /// This is a translation of the algorithm demonstrated by
 /// [Ionut Gan at I T.A.K.E Unconference 2015](https://www.youtube.com/watch?v=oPVTNxiMcSU)
 pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, ErrorKind> {
+    infer_annotated(term, global, None)
+}
+
+/// [`infer`], with the declaration's type annotation as a constraint of its own.
+///
+/// The annotation is put *first*, before the constraints the body generates, and that
+/// ordering is the point of the function. `unify` solves constraints in order, so the
+/// annotated type is substituted into the body's constraints before any of them are
+/// solved; when one of them then fails, its [`Origin::because`] names the annotation,
+/// and the diagnostic can say `Int` was expected *because of the annotation* rather
+/// than merely that the declaration as a whole does not check.
+fn infer_annotated(
+    term: Term,
+    global: HashMap<String, Type>,
+    annotation: Option<Annotation>,
+) -> Result<Type, ErrorKind> {
     let mut env = Types::new();
     env.extends_with(global);
 
     let typed_term = annotate::annotate(term, &mut env)?;
     debug!("typed term: {:#?}", typed_term);
 
-    let constraints = constraint::collect(&typed_term);
+    let mut constraints = Vec::new();
+
+    if let Some(annotation) = annotation {
+        // Left is the annotation's type, because left is the type of the text the
+        // span points at — see `Constraint`.
+        constraints.push(Constraint::new(
+            annotation.tpe,
+            typed_term.tpe.clone(),
+            Reason::Annotation,
+            annotation.span,
+        ));
+    }
+
+    constraints.extend(constraint::collect(&typed_term));
     debug!("Constraints: {:#?}", constraints);
 
     let substitution = unifier::unify(constraints)?;
 
-    Ok(substitution.apply_type(typed_term.tpe()))
+    Ok(substitution.apply_type(&typed_term.tpe))
 }
 
 // TODO Once we have changed the Term to the zelkova primitives, rewrite the tests
@@ -946,40 +1408,44 @@ pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, ErrorKin
 mod tests {
     use super::*;
 
+    // These terms are written by hand rather than translated from source, so they
+    // have no position — `Term::bare`. What they pin is inference, which does not
+    // read spans; the tests that pin what a *diagnostic* points at go through real
+    // source, in `tests/typer.rs`.
     fn bool(b: bool) -> Term {
-        Term::Bool(b)
+        Term::bare(TermKind::Bool(b))
     }
     fn int(i: u32) -> Term {
-        Term::Int(i)
+        Term::bare(TermKind::Int(i))
     }
     fn var(n: &str) -> Term {
-        Term::Identifier(n.to_string())
+        Term::bare(TermKind::Identifier(n.to_string()))
     }
     fn fun(arg: &str, body: Term) -> Term {
-        Term::Fun {
+        Term::bare(TermKind::Fun {
             param: arg.to_owned(),
             body: Box::new(body),
-        }
+        })
     }
     fn if_(cond: Term, true_branch: Term, false_branch: Term) -> Term {
-        Term::If {
+        Term::bare(TermKind::If {
             cond: Box::new(cond),
             true_branch: Box::new(true_branch),
             false_branch: Box::new(false_branch),
-        }
+        })
     }
     fn apply(fun: Term, arg: Term) -> Term {
-        Term::Apply {
+        Term::bare(TermKind::Apply {
             fun: Box::new(fun),
             arg: Box::new(arg),
-        }
+        })
     }
     fn let_(binding: &str, value: Term, body: Term) -> Term {
-        Term::Let {
+        Term::bare(TermKind::Let {
             binding: binding.to_owned(),
             value: Box::new(value),
             body: Box::new(body),
-        }
+        })
     }
 
     #[derive(Default)]

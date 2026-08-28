@@ -237,14 +237,21 @@ pub enum Value {
         tpe: Type,
         /// Where the declaration was written, annotation and body together.
         span: NodeSpan,
+        /// Where the `name : Type` annotation alone was written.
+        ///
+        /// [`Type`] itself carries no span — it may have been cloned out of another
+        /// module's `Interface` — so this is the only thing that can answer "where
+        /// was the expected type declared". A type error uses it for the secondary
+        /// label that says the annotation is what the body is being held to.
+        annotation_span: NodeSpan,
     },
 }
 
 impl Value {
     /// Where this declaration was written, whichever variant it is.
     ///
-    /// The typer reads this to label the declaration that failed to check; it is the
-    /// only span a type error has today (see `typer::Error`).
+    /// The typer falls back to this when a type error has no finer position of its
+    /// own — see `typer::Error::labels`.
     pub fn span(&self) -> NodeSpan {
         match self {
             Value::Value { span, .. } | Value::TypedValue { span, .. } => *span,
@@ -846,6 +853,7 @@ pub fn canonicalize(
                 body: Expression::bare(ExpressionKind::Bool(true)),
                 tpe,
                 span: function.span,
+                annotation_span: function.annotation_span,
             };
 
             Ok((name, value))
@@ -999,6 +1007,7 @@ fn do_values(
                         body,
                         tpe,
                         span: function.span,
+                        annotation_span: function.annotation_span,
                     },
                 ))
             }

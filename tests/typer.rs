@@ -9,8 +9,9 @@
 //! the way to the assertion.
 
 use std::collections::HashMap;
+use std::ops::Range;
 
-use zelkova_lang::compiler::check_module;
+use zelkova_lang::compiler::{check_module, typer, CompilationError, PhaseError, SpanLabel};
 
 mod support;
 
@@ -22,6 +23,49 @@ fn run(
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
     check_module(&test_package(), &interfaces, &parsed)
+}
+
+/// The type errors `source` produced, insisting that they *are* type errors.
+///
+/// `is_err()` on its own cannot tell "the type checker rejected this" from "it never
+/// got that far": a source that fails to canonicalize — a misspelt constructor, an
+/// import that does not resolve — also returns `Err`, and would keep a test green
+/// while the phase it is about did nothing at all.
+fn type_errors(source: &str) -> Vec<typer::Error> {
+    match run(source) {
+        Ok(_) => panic!("expected a type error, but the module checked"),
+        Err(CompilationError::Type(errors, _)) => errors,
+        Err(other) => panic!("expected a type error, got {:?}", other),
+    }
+}
+
+/// Exactly one type error, which is what every source in this file is written to
+/// produce: several would make "the first label" an accident of iteration order.
+fn one_type_error(source: &str) -> typer::Error {
+    let mut errors = type_errors(source);
+    assert_eq!(errors.len(), 1, "expected one type error, got {:?}", errors);
+    errors.remove(0)
+}
+
+/// The byte range of `needle` in `source`, which is what a label carries.
+///
+/// Computed from the source rather than written down, so editing a test's source
+/// cannot leave a stale offset silently passing.
+fn range_of(source: &str, needle: &str) -> Range<usize> {
+    let start = source
+        .find(needle)
+        .unwrap_or_else(|| panic!("`{}` is not in the source", needle));
+    assert_eq!(
+        source[start + 1..].find(needle),
+        None,
+        "`{}` must occur once for the range to be unambiguous",
+        needle
+    );
+    start..(start + needle.len())
+}
+
+fn ranges(labels: &[SpanLabel]) -> Vec<Range<usize>> {
+    labels.iter().map(|l| l.span.to_range()).collect()
 }
 
 // ── Polymorphic identity ──────────────────────────────────────────────────────
@@ -67,7 +111,18 @@ fn function_application_types() {
 
 // ── Type mismatch: annotation vs body ────────────────────────────────────────
 
-/// A function annotated `Int -> Int` whose body returns a `Bool` should fail.
+/// A function annotated `Int -> Int` whose body returns a `Bool` should fail, with
+/// the caret under the body rather than across the declaration.
+///
+/// The parameter is what makes this different from the declaration-level example in
+/// `annotation_mismatch_points_at_the_expression_and_the_annotation`: the annotation
+/// is `Int -> Int`, so the type the body is held to is a *component* of it, reached
+/// by decomposing the constraint that gives the function its shape. If that
+/// decomposition dropped the origin, the caret would land on the whole function.
+///
+/// Mutation-checked by having the `Fun`/`Fun` arm of `unify_one_constraint` build
+/// fresh constraints instead of `constraint.component(..)`: the primary label moves
+/// off `true`.
 #[test]
 fn type_mismatch_annotation_vs_body() {
     let source = indoc::indoc! {r#"
@@ -75,9 +130,71 @@ fn type_mismatch_annotation_vs_body() {
         bad : Int -> Int
         bad x = true
     "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_of(source, "true"),
+            range_of(source, "bad : Int -> Int")
+        ],
+        "expected a caret under the body and the annotation behind it"
+    );
+}
+
+// ── Where a type error points ─────────────────────────────────────────────────
+
+/// `ERR-4`'s worked example: the caret goes under `false`, and `Int` is explained by
+/// the annotation on the line above.
+///
+/// Every part of this is a claim about a different link in the chain. The primary
+/// range says the term language carried the canonical spans down into the
+/// constraints. The secondary range says the substitution that solved the branch's
+/// type remembered which constraint solved it, and that following that chain back
+/// arrives at the annotation rather than at the `if` in between. The `primary` flags
+/// say which of the two is the error and which is the context — codespan renders them
+/// differently, and swapping them would tell the reader to go and change the
+/// annotation.
+///
+/// The `1` in the true branch is deliberately not named anywhere: it is a `number`,
+/// which unifies with `Int` happily, so only one of the two branches is wrong and only
+/// one caret is right.
+///
+/// Mutation-checked three ways, each red on its own: giving every `Term` built by
+/// `canonical_expr_to_term` a `NodeSpan::none()` (the labels fall back to the whole
+/// declaration); pushing the annotation constraint after the body's in
+/// `infer_annotated` (the primary lands on the `if` rather than on `false`); and
+/// making `Substitution::apply` keep the constraint's origin unchanged (the secondary
+/// label disappears).
+#[test]
+fn annotation_mismatch_points_at_the_expression_and_the_annotation() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        answer : Int
+        answer = if true then 1 else false
+    "#};
+    let error = one_type_error(source);
+
+    let labels = error.labels();
+    assert_eq!(
+        ranges(&labels),
+        vec![range_of(source, "false"), range_of(source, "answer : Int")],
+        "expected a caret under `false` and the annotation behind it"
+    );
+    assert!(labels[0].primary, "`false` is what has to change");
     assert!(
-        run(source).is_err(),
-        "Int -> Int with Bool body should fail"
+        !labels[1].primary,
+        "the annotation is context, not the error"
+    );
+
+    assert_eq!(error.message(), "cannot match `Int` with `Bool`");
+    assert!(
+        error
+            .notes()
+            .iter()
+            .any(|n| n.contains("declaration of `answer`")),
+        "the declaration should still be named for a reader with no carets, got {:?}",
+        error.notes()
     );
 }
 
@@ -143,9 +260,16 @@ fn case_branches_type_mismatch() {
             Just x -> x
             Nothing -> true
     "#};
-    assert!(
-        run(source).is_err(),
-        "case with mismatching branch types should fail"
+    let error = one_type_error(source);
+
+    // The `Nothing` branch is the one that disagrees with `Int`; `Just x -> x` does
+    // not, and underlining the whole `case` would be underlining both.
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_of(source, "true"),
+            range_of(source, "bad : Maybe Int -> Int")
+        ]
     );
 }
 
@@ -165,7 +289,18 @@ fn if_expression_types() {
     );
 }
 
-/// `if` with non-Bool condition should fail.
+/// `if` with non-Bool condition should fail, pointing at the condition and saying
+/// which rule it broke.
+///
+/// This is the one shape where the explanation and the failure are the same piece of
+/// text — `42` is both the literal that has the wrong type and the condition that
+/// required a `Bool` — so there is only one label, and the rule that was broken has
+/// to arrive as a note instead. Drawing the secondary label anyway would put two
+/// carets under the same two characters.
+///
+/// Mutation-checked by dropping the `Reason::IfCondition` arm of `Reason::note` (the
+/// note disappears) and by removing the `span != primary.span` guard in
+/// `Error::labels` (a second, identical label appears).
 #[test]
 fn if_non_bool_condition() {
     let source = indoc::indoc! {r#"
@@ -173,7 +308,17 @@ fn if_non_bool_condition() {
         bad : Int
         bad = if 42 then 1 else 2
     "#};
-    assert!(run(source).is_err(), "if condition must be Bool, not Int");
+    let error = one_type_error(source);
+
+    assert_eq!(ranges(&error.labels()), vec![range_of(source, "42")]);
+    assert!(
+        error
+            .notes()
+            .iter()
+            .any(|n| n.contains("condition of an `if` must be a `Bool`")),
+        "the broken rule should be named, got {:?}",
+        error.notes()
+    );
 }
 
 // ── Char and Float literals ───────────────────────────────────────────────────
@@ -203,7 +348,8 @@ fn float_literal_has_type_float() {
     );
 }
 
-/// A `Char` literal used where `Int` is expected should fail.
+/// A `Char` literal used where `Int` is expected should fail, and the message should
+/// name both types the way the source spells them.
 #[test]
 fn char_type_mismatch() {
     let source = indoc::indoc! {r#"
@@ -211,7 +357,17 @@ fn char_type_mismatch() {
         bad : Int
         bad = 'x'
     "#};
-    assert!(run(source).is_err(), "Char literal used as Int should fail");
+    let error = one_type_error(source);
+
+    assert_eq!(
+        error.message(),
+        "cannot match `Int` with `Char`",
+        "the headline names both types, in declared-then-inferred order"
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_of(source, "'x'"), range_of(source, "bad : Int")]
+    );
 }
 
 // ── Tuple types and expressions ───────────────────────────────────────────────
@@ -235,9 +391,16 @@ fn tuple_type_mismatch() {
         bad : (Int, Int)
         bad = (42, true)
     "#};
-    assert!(
-        run(source).is_err(),
-        "(Int, Bool) used as (Int, Int) should fail"
+    let error = one_type_error(source);
+
+    // Not the whole tuple: the first element agrees with the annotation and only the
+    // second does not.
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_of(source, "true"),
+            range_of(source, "bad : (Int, Int)")
+        ]
     );
 }
 
@@ -269,10 +432,9 @@ fn tuple_triple_type_mismatch() {
         bad : (Int, Bool, Char)
         bad = (42, true, 7)
     "#};
-    assert!(
-        run(source).is_err(),
-        "(Int, Bool, Int) used as (Int, Bool, Char) should fail"
-    );
+    // `type_errors` rather than `is_err`: these are about which `unify` arm the two
+    // arities reach, so a failure raised by an earlier phase would not exercise them.
+    assert_eq!(type_errors(source).len(), 1);
 }
 
 /// A pair used where a triple is expected should fail. Unification has one arm
@@ -288,10 +450,9 @@ fn tuple_pair_against_triple_annotation_is_a_mismatch() {
         bad : (Int, Bool, Char)
         bad = (42, true)
     "#};
-    assert!(
-        run(source).is_err(),
-        "a 2-tuple body under a 3-tuple annotation should fail"
-    );
+    // `type_errors` rather than `is_err`: these are about which `unify` arm the two
+    // arities reach, so a failure raised by an earlier phase would not exercise them.
+    assert_eq!(type_errors(source).len(), 1);
 }
 
 /// The other direction of `tuple_pair_against_triple_annotation_is_a_mismatch`:
@@ -305,8 +466,7 @@ fn tuple_triple_against_pair_annotation_is_a_mismatch() {
         bad : (Int, Bool)
         bad = (42, true, 'a')
     "#};
-    assert!(
-        run(source).is_err(),
-        "a 3-tuple body under a 2-tuple annotation should fail"
-    );
+    // `type_errors` rather than `is_err`: these are about which `unify` arm the two
+    // arities reach, so a failure raised by an earlier phase would not exercise them.
+    assert_eq!(type_errors(source).len(), 1);
 }
