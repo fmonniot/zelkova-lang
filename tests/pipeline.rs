@@ -178,7 +178,7 @@ fn check_module_interface_can_be_used_by_dependent() {
     "#};
     let parsed_a = parse_source(source_a);
     let module_a = check_module(&pkg, &interfaces, &parsed_a).expect("Lib should compile");
-    interfaces.insert(module_a.name.name().clone(), module_a.to_interface());
+    interfaces.insert(module_a.name.name().clone(), module_a.to_interface(None));
 
     // Second module: imports and uses Lib
     let source_b = indoc::indoc! {r#"
@@ -241,7 +241,7 @@ fn stdlib_basics_chain_compiles() {
         let parsed = parse_file(&path);
         let module = check_module(&pkg, &interfaces, &parsed)
             .unwrap_or_else(|e| panic!("{} failed: {:?}", js_module, e));
-        interfaces.insert(module.name.name().clone(), module.to_interface());
+        interfaces.insert(module.name.name().clone(), module.to_interface(None));
     }
 
     // Basics depends on Js.Basics and Js.Utils
@@ -255,7 +255,7 @@ fn stdlib_basics_chain_compiles() {
         .unwrap_or_else(|e| panic!("Basics.zel failed: {:?}", e));
     interfaces.insert(
         basics_module.name.name().clone(),
-        basics_module.to_interface(),
+        basics_module.to_interface(None),
     );
 
     // Maybe depends on Basics
@@ -269,7 +269,7 @@ fn stdlib_basics_chain_compiles() {
         .unwrap_or_else(|e| panic!("Maybe.zel failed: {:?}", e));
     interfaces.insert(
         maybe_module.name.name().clone(),
-        maybe_module.to_interface(),
+        maybe_module.to_interface(None),
     );
 
     // Result depends on Basics and Maybe
@@ -283,7 +283,7 @@ fn stdlib_basics_chain_compiles() {
         .unwrap_or_else(|e| panic!("Result.zel failed: {:?}", e));
     interfaces.insert(
         result_module.name.name().clone(),
-        result_module.to_interface(),
+        result_module.to_interface(None),
     );
 
     // At this point we've successfully compiled the core stdlib chain.
@@ -474,7 +474,7 @@ fn stdlib_bitwise_compiles() {
         let parsed = parse_file(&path);
         let checked = check_module(&pkg, &interfaces, &parsed)
             .unwrap_or_else(|e| panic!("{} failed: {:?}", module, e));
-        interfaces.insert(checked.name.name().clone(), checked.to_interface());
+        interfaces.insert(checked.name.name().clone(), checked.to_interface(None));
     }
 
     assert!(interfaces.contains_key(&"Js.Bitwise".into()));
@@ -1073,5 +1073,65 @@ fn ambiguous_import_labels_point_into_each_defining_module() {
         "expected a label at B's declaration {:?}, got {:?}",
         b_start..b_end,
         ranges
+    );
+}
+
+// ── Test 23: a cross-module label does not need the checked module's file ────
+
+/// A label that carries its own file renders even when the diagnostic has none.
+///
+/// `phase_diagnostic` takes the module's `SourceFileId` as the *fallback* for a
+/// label that does not name one, not as a precondition for rendering labels at
+/// all. The distinction only became meaningful with `ERR-5`: a `SpanLabel` built
+/// from an `Interface`'s `SourceSpan` already knows which file to underline and
+/// needs nothing from the module under check.
+///
+/// `compile_package` always wraps in `CompilationError::InFile`, so this is not
+/// reachable from the driver — but `as_diagnostic` is public precisely so a test
+/// can assert on what a user is shown, and unwrapping the `InFile` here is how
+/// that public entry point behaves on a `CompilationError` built by hand.
+///
+/// Mutation-checked by putting the old `match file { Some(id) => .., None =>
+/// Vec::new() }` gate back in `phase_diagnostic`, which drops every label and
+/// turns the `secondary.len() == 2` assertion red.
+#[test]
+fn cross_module_labels_render_without_the_checked_module_file() {
+    let root = fixture_package("package_ambiguous_import");
+
+    let error = compile_package(&root).expect_err("an ambiguous import must not compile");
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+
+    // The bare phase error, with no `InFile` wrapper: nothing tells it which file
+    // `Main` was read from.
+    let bare = unwrap_in_file(&errors[0]);
+    let diagnostic = bare.as_diagnostic();
+
+    let secondary: Vec<_> = diagnostic
+        .labels
+        .iter()
+        .filter(|l| l.style == codespan_reporting::diagnostic::LabelStyle::Secondary)
+        .collect();
+    assert_eq!(
+        secondary.len(),
+        2,
+        "the two candidate labels carry their own file and must survive, got {:?}",
+        diagnostic.labels
+    );
+    assert_ne!(
+        secondary[0].file_id, secondary[1].file_id,
+        "each candidate is still underlined in its own file"
+    );
+
+    // The primary label is about `Main` itself, and there is no file for it, so it
+    // is the one thing that drops.
+    assert!(
+        !diagnostic
+            .labels
+            .iter()
+            .any(|l| l.style == codespan_reporting::diagnostic::LabelStyle::Primary),
+        "a label with neither its own file nor a fallback has nothing to underline, got {:?}",
+        diagnostic.labels
     );
 }

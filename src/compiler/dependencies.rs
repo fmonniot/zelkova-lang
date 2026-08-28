@@ -170,8 +170,10 @@ impl<'a> ModuleWalker<'a> {
                     // Once we have successfuly checked a module, we can add it to the available interfaces
                     // for the following modules.
                     let iface_name = m.name.name().clone();
-                    let mut iface = m.to_interface();
-                    iface.file = module_files.get(&module.name).copied();
+                    // Driver code, so this is where the module's file is known: the
+                    // interface carries it so a *later* module's diagnostic can point
+                    // back into this one's source (`ERR-5`).
+                    let iface = m.to_interface(module_files.get(&module.name).copied());
                     debug!("Inserting {} with value {:?}", iface_name, iface);
                     interfaces.insert(iface_name, iface);
 

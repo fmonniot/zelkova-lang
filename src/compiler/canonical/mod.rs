@@ -28,6 +28,7 @@ use environment::{new_environment, EnvError, Environment, RootEnvironment, Value
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
 use crate::compiler::position::NodeSpan;
+use crate::compiler::source::files::SourceFileId;
 use crate::compiler::tuple::Tuple;
 pub use parser::Associativity;
 
@@ -50,14 +51,17 @@ pub struct Module {
 impl Module {
     /// Build the trimmed-down view of this module other modules import against.
     ///
-    /// `file` starts `None` here on purpose: canonicalizing a module is a phase
-    /// operation, called from inside `check_module`, and a phase never knows the
-    /// `SourceFileId` of the file it was read from — see `PhaseError`'s
-    /// documentation. It is driver code, not a phase, that knows that id
-    /// (`dependencies::ModuleWalker::check_in_order`, mirroring how
-    /// `compile_package` attaches it to a `CompilationError`), and it fills
-    /// `Interface::file` in itself once this method returns.
-    pub fn to_interface(&self) -> super::Interface {
+    /// `file` is the [`SourceFileId`] this module was read from, which is what lets
+    /// a later module's diagnostic point back into *this* module's source — see
+    /// [`Interface::file`](super::Interface::file). It is a parameter rather than
+    /// something this method could work out because a `canonical::Module` does not
+    /// know it: only driver code does, and the sole caller
+    /// (`dependencies::ModuleWalker::check_in_order`) is driver code that has the
+    /// map from module name to file in hand. A caller with nothing to give — every
+    /// test that hand-builds an interface — passes `None`, and
+    /// [`Interface::source_span`](super::Interface::source_span) then declines to
+    /// build a cross-module label rather than building one at the wrong place.
+    pub fn to_interface(&self, file: Option<SourceFileId>) -> super::Interface {
         let values = self
             .values
             .iter()
@@ -72,7 +76,7 @@ impl Module {
             values,
             unions: self.types.clone(),
             infixes: self.infixes.clone(),
-            file: None,
+            file,
         }
     }
 }

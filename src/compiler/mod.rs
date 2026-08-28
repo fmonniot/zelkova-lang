@@ -142,19 +142,19 @@ pub struct Interface {
     //aliases: HashMap<Name, >
     /// infixes is a map from the operator symbol to its information
     pub infixes: HashMap<Name, canonical::Infix>,
-    /// The file this interface's module was read from, when the driver knows it.
+    /// The file this interface's module was read from, when the caller knows it.
     ///
-    /// [`canonical::Module::to_interface`] cannot fill this in — building an
-    /// `Interface` is not itself a phase, but it runs from inside one module's
-    /// check, which never knows its own [`SourceFileId`] any more than a phase
-    /// does. It leaves this `None`, and [`dependencies::ModuleWalker::check_in_order`]
-    /// — which, like [`compile_package`], is driver code rather than a phase, and
-    /// already has the file each module it is checking came from — fills it in
-    /// once the module has checked, right before the interface goes into the
-    /// shared map. A hand-built interface, as every test below `check_module`
-    /// constructs, leaves it `None`; [`Interface::source_span`] then has no file to
-    /// pair a span with and returns `None`, so the diagnostic degrades to no
-    /// secondary label rather than a wrong one.
+    /// It is what makes a diagnostic about an imported name able to underline that
+    /// name's *own* source rather than merely naming its module. Nothing inside a
+    /// module check can supply it: a phase only ever sees one module and never
+    /// learns its [`SourceFileId`] (see [`PhaseError`]). Driver code does, so
+    /// [`canonical::Module::to_interface`] takes it as an argument, and its one
+    /// caller — [`dependencies::ModuleWalker::check_in_order`], which like
+    /// [`compile_package`] is a driver loop and already holds the file each module
+    /// came from — passes it there. A hand-built interface, as every test below
+    /// `check_module` constructs, passes `None`; [`Interface::source_span`] then has
+    /// no file to pair a span with and returns `None`, so the diagnostic degrades to
+    /// no secondary label rather than a wrong one.
     pub file: Option<SourceFileId>,
 }
 
@@ -298,12 +298,14 @@ pub trait PhaseError {
 /// headline and a group is summarised instead, with every message demoted to a note.
 /// `phase` names the phase in that summary line ("canonical", "type", …).
 ///
-/// `file` is the module's source file when the caller knows it. Labels need one — a
-/// byte range on its own does not say which file to underline — so when it is `None`
-/// the errors' [`PhaseError::labels`] are not rendered and the diagnostic is message
-/// and notes only. That is the case for a `CompilationError` built by hand, as the
-/// tests in this module do; `compile_package` always wraps in
-/// [`CompilationError::InFile`] and so always has one.
+/// `file` is the module's source file when the caller knows it, and it is the
+/// fallback rather than a gate: a label needs *some* file — a byte range on its own
+/// does not say which file to underline — but a [`SpanLabel`] that carries its own
+/// [`SpanLabel::file`] already has one and renders whether or not `file` is `Some`.
+/// Only a label with neither is dropped. So a `CompilationError` built by hand, as
+/// the tests in this module do, still shows the cross-module labels `ERR-5` added
+/// and loses only the ones about the module under check; `compile_package` always
+/// wraps in [`CompilationError::InFile`] and so loses none.
 ///
 /// Both branches attach labels: only the headline demotion differs between one error
 /// and a group, and an error that got swallowed into a note still knows where it was.
@@ -313,26 +315,27 @@ fn phase_diagnostic<E: PhaseError>(
     errors: &[E],
     file: Option<SourceFileId>,
 ) -> Diagnostic<SourceFileId> {
-    let labels = |errors: &[E]| match file {
-        Some(id) => errors
+    let labels = |errors: &[E]| {
+        errors
             .iter()
             .flat_map(|e| e.labels())
-            .map(|l| {
-                let range = l.span.to_range();
+            .filter_map(|l| {
                 // A label with its own file — a `SourceSpan` cloned out of an
                 // `Interface` — points into that file instead of the module being
-                // checked. That is the whole mechanism `ERR-5` adds: everything
-                // built before it left `file` `None` and always fell through to `id`.
-                let label_file = l.file.unwrap_or(id);
+                // checked. That is the whole mechanism `ERR-5` adds: everything built
+                // before it left `file` `None` and falls back on the diagnostic's own
+                // id here. A label with neither is a byte range nobody can place, so
+                // it is dropped rather than guessed at.
+                let label_file = l.file.or(file)?;
+                let range = l.span.to_range();
                 let label = if l.primary {
                     Label::primary(label_file, range)
                 } else {
                     Label::secondary(label_file, range)
                 };
-                label.with_message(l.message)
+                Some(label.with_message(l.message))
             })
-            .collect(),
-        None => Vec::new(),
+            .collect()
     };
 
     match errors {
@@ -418,9 +421,8 @@ impl CompilationError {
     ///
     /// `file` is `None` until an [`InFile`](CompilationError::InFile) wrapper supplies
     /// one, which only `compile_package` builds. Everything downstream of that
-    /// distinction is in `phase_diagnostic`: with a file, the phase errors' labels are
-    /// rendered; without one, the diagnostic is message and notes, as it was before
-    /// spans existed.
+    /// distinction is in `phase_diagnostic`, where it serves as the fallback file for
+    /// labels that do not name one themselves.
     fn as_diagnostic_in(&self, file: Option<SourceFileId>) -> Diagnostic<SourceFileId> {
         match self {
             // The one arm that changes `file`, and the only one that can: it is the
