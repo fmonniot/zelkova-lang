@@ -35,8 +35,11 @@ ERR-3  spans in the parser + canonical ASTs; PhaseError::labels() ← done 2026-
   ├── ERR-9  span `parser::Exposed` — the one node ERR-3 left unspanned ← done 2026-08-28
   └── ERR-7  "did you mean" suggestions (better after ERR-9: a suggestion on
              `ValueNotFound` wants a caret under the name it is about)
-ERR-8  warnings as a severity                                    ← independent, and see its
-                                                                   own "open question"
+ERR-10  first real warning: unused imports in canonicalization    ← independent of the span
+                                                                     work; exists to unblock ERR-8
+  └── ERR-8  warnings as a severity                                 ← was "independent", now
+                                                                       gated on ERR-10 landing a
+                                                                       concrete diagnostic to carry
 ```
 
 `ERR-2` (closed) is the ancestor of all of them: it made every phase error describe itself in
@@ -115,6 +118,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-7](err-7.md) | task | — | open | "Did you mean …?" on unresolved names |
 | [ERR-8](err-8.md) | task | — | open | Let a phase report a warning |
 | ERR-9 | task | — | closed 2026-08-28 | Span `parser::Exposed`, so an exposing list can be underlined |
+| [ERR-10](err-10.md) | task | — | open | Give a phase its first real warning: unused imports in canonicalization |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

@@ -2,7 +2,9 @@
 
 **Sizing:** medium.
 
-**Depends on:** nothing. It is orthogonal to the span work.
+**Depends on:** [ERR-10](err-10.md) — this ticket's own "open question" below concluded that
+building the severity channel before there is a single caller risks guessing wrong; ERR-10 is
+that first caller (unused imports), filed to be resolved before this one starts.
 
 **Location:** `PhaseError` and `CompilationError` in `src/compiler/mod.rs`,
 `phase_diagnostic`, and the accumulate-then-decide logic at the end of `compile_package`.
@@ -34,6 +36,10 @@ Prefer to pick this up **together with the first real warning** — most likely 
 exhaustiveness checker, or from an unused-import check in canonicalization, where the
 requirements are concrete. If it is still empty-handed when someone reaches for it, closing it
 unbuilt is a legitimate outcome.
+
+Resolved by filing [ERR-10](err-10.md): unused-import detection in canonicalization, chosen
+over an exhaustiveness-based warning because the exhaustiveness checker is itself unwritten.
+Do not start this ticket until ERR-10 has landed a concrete diagnostic to carry.
 
 **Acceptance:** a phase emits a warning; it renders with warning severity; `compile_package`
 returns `Ok(())` and `main` exits 0 in its presence; a test pins all three.
