@@ -8,6 +8,13 @@ will keep producing them — writing down a rule that was never written down is 
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
 from one chapter.
 
+`SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
+chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
+is a deliberate exception: `write-spec-chapter` no longer files its own tracking ticket (doing
+so from inside the run that later closes it reproduced the same-PR file-and-delete pattern
+tickets otherwise avoid), so a chapter's `SPEC-n` has to already exist before that skill will
+touch it. Filing the whole remaining list up front means it always does.
+
 One file per ticket: `docs/tickets/<id-lower>.md`. Bugs and tasks share one ID namespace, one
 closing convention and this one table — a bug is a ticket **type**, not a separate file. Each
 ticket is self-contained so it can be picked up on its own: it names the **location**, the
@@ -146,6 +153,14 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
+| [SPEC-4](spec-4.md) | task | — | open | Write the Declarations chapter |
+| [SPEC-5](spec-5.md) | task | — | open | Write the Types and type annotations chapter |
+| [SPEC-6](spec-6.md) | task | — | open | Write the Expressions chapter |
+| [SPEC-7](spec-7.md) | task | — | open | Write the Patterns chapter |
+| [SPEC-8](spec-8.md) | task | — | open | Write the Name resolution and scoping chapter |
+| [SPEC-9](spec-9.md) | task | — | open | Write the Evaluation semantics chapter |
+| [SPEC-10](spec-10.md) | task | — | open | Write the Packages and source layout chapter |
+| [SPEC-11](spec-11.md) | task | — | open | Write the Constrained type variables chapter |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
