@@ -100,8 +100,22 @@ become a lie.
 So pin the reason: those blocks are tagged `expect=parse-error:UnexpectedToken`, naming
 the wrong-but-current error deliberately. When ERR-11 lands and the error becomes a proper
 `LayoutError`, that block goes **red**, and whoever fixed the diagnostic has to update the
-paragraph describing it in the same change. The rule stays stated; the stale sentence
-cannot survive.
+paragraph describing it in the same change.
+
+Two consequences, both deliberate. **First**, this reads as being in tension with *A spec
+change and a semantics change do not share a diff*, immediately below — pinning the reason
+guarantees that whoever fixes ERR-11 edits `docs/spec/layout.md` in the same PR to get
+green. That is the wanted outcome and not the shape that rule is aimed at. What it forces
+is a small, prose-only edit, written by the one person who has just read the code the
+paragraph describes; what the rule forbids is deciding what the language *is* inside the
+diff that changes what the compiler *does*. A red block is the mechanism that makes the
+first happen; the rule is what stops it becoming the second.
+
+**Second**, the guarantee is narrower than "the stale sentence cannot survive". The pin is
+on the error *variant* only, so an ERR-11 fix that produced a different but still
+`UnexpectedToken` error would leave the block green with the stale paragraph intact.
+Pinning the token as well is possible and is deliberately not done: wiring that much
+grammar detail into a prose document costs more than the residual risk is worth.
 
 The general form: **tag every claim you make, at the granularity you make it.** Claim only
 rejection, and use the bare tag. Describe the diagnostic, and pin it. There is no manual
