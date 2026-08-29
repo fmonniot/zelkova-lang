@@ -99,8 +99,13 @@ first place. The ticket has to come from a separate `create-ticket` run, committ
 its own, before this skill starts.
 
 Check `docs/tickets/README.md` for an open `SPEC-` ticket whose title names this chapter. If
-one exists, read it — its **Approach** and **Acceptance** are the chapter's scope, and Step 4
-below is where whatever it left open gets settled.
+one exists, read it — but treat its **Problem** and **Approach** as a lead, not a scope. They
+were written from a quick grounding pass, not from the probing Step 2 demands, and the ticket
+says so in its own **Grounding note**. Re-verify anything specific it claims, and don't let its
+bullet list cap what the chapter ends up covering — Steps 1–2 (read, then probe) and Step 4
+(design questions) are what actually decide that. **Acceptance** is the one section that is
+load-bearing as written: it's about the process holding (every block tagged and proven to
+fail, the index row moved), not about limiting content.
 
 If none exists, **stop here.** Report what Steps 1–2 just turned up — it's exactly the
 grounding `create-ticket` needs — and tell the user to file `SPEC-n` before running this skill

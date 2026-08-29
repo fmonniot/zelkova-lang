@@ -1,8 +1,8 @@
 # SPEC-6 · Write the Expressions chapter
 
-**Sizing:** medium-to-large. This is the chapter with the most unimplemented surface — `let …
-in` and lambdas have no grammar production at all, and precedence/associativity resolution
-looks unfinished (see Problem).
+**Sizing:** medium-to-large. Likely the chapter with the most unimplemented surface — `let …
+in` and lambdas have no grammar production at all — but confirm the rest by probing rather
+than assuming it from this ticket.
 
 **Location:** `src/compiler/parser/grammar.lalrpop` — `AtomicExpr`, `AppExpr`, `InfixExpr`,
 `Expr`; `src/compiler/parser/mod.rs` — `ExpressionKind`, `CaseBranch`;
@@ -10,18 +10,25 @@ looks unfinished (see Problem).
 `VarTopLevel` / `VarForeign` / `VarConstructor`) and its commented-out `// Lambda`, `// Let`,
 `// LetRec` variants; `Infix`/`canonical::Infix` for precedence and associativity.
 
+**Grounding note:** the above and the specifics below came from one quick pass done only to
+scope this ticket, not from `write-spec-chapter`'s Step 2 probing. Treat every specific claim
+as a lead to re-verify, not as settled — and don't let this ticket's Approach cap what the
+chapter ends up covering. Steps 1–2 (read the grammar/AST, then probe the compiler) and Step 4
+(design questions) are what actually decide that.
+
 **Problem:** application, `if`/`then`/`else`, `case … of`, `let … in`, lambdas, and the
 operator table (precedence, associativity, the fact that no operator's meaning is built in)
-have never been written down. `let … in` and lambdas are unimplemented per `CLAUDE.md`.
-Grounding this ticket also found `InfixExpr`'s own comment questioning whether it needs a real
-precedence-climbing node — worth confirming during drafting whether operator precedence is
-actually resolved anywhere, or whether an example mixing two operators of different precedence
-currently parses as naive left/right nesting instead.
+have never been written down. `let … in` and lambdas are unimplemented per `CLAUDE.md`. One
+open question worth probing early rather than assuming either way: `InfixExpr`'s own comment in
+the grammar questions whether it needs a real precedence-climbing node, which suggests operator
+precedence may not actually be resolved anywhere — confirm with a real example mixing two
+operators of different precedence before writing the operator table as settled fact.
 
-**Approach:** follow `write-spec-chapter`. Cover the implemented forms in full (application,
-`if/then/else`, `case … of`, tuples, the infix-to-application rewrite); mark `let … in` and
-lambdas `**Not implemented:**`; confirm and document precedence/associativity behaviour, filing
-a ticket rather than fixing it if the grounding finding above turns out to be a real gap.
+**Approach:** follow `write-spec-chapter` in full. Likely territory, to confirm by probing
+rather than assume from this ticket: the implemented forms (application, `if/then/else`,
+`case … of`, tuples, the infix-to-application rewrite); `let … in` and lambdas as
+`**Not implemented:**`; and whatever Step 2 finds about precedence/associativity — file a
+ticket rather than fix it if that turns out to be a real gap.
 
 **Acceptance:** `cargo test --test spec` green, `docs/spec/expressions.md` contributing its
 blocks with every block tagged and each tag proven to fail, `docs/spec/README.md`'s row for
