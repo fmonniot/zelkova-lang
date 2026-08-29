@@ -5,10 +5,10 @@
 //! chapters, extracts each such block, and runs it through the phase its tag implies.
 //! An example that does not match its tag — or carries no tag at all — is a test
 //! failure, not a skip, because an unchecked example in a spec is the exact defect
-//! this harness exists to prevent (`SPEC-1`; `docs/spec/INDEX.md` carries the reasoning
+//! this harness exists to prevent (`SPEC-1`; `docs/spec/README.md` carries the reasoning
 //! and is the document chapter authors read).
 //!
-//! The vocabulary is fixed, and `docs/spec/INDEX.md` documents it for chapter authors —
+//! The vocabulary is fixed, and `docs/spec/README.md` documents it for chapter authors —
 //! keep the two in step. Chapters are written against it independently of this file:
 //!
 //! - `zel expect=ok` — parses and canonicalizes with no errors.
@@ -43,7 +43,7 @@
 //! chapter, are one package: they are parsed together, ordered by their imports, and
 //! canonicalized in that order against each other's `Interface`s — which is how a
 //! chapter shows two modules at once (`SPEC-3`, settling the question
-//! `docs/spec/INDEX.md` left open). Each block keeps its **own** `expect=`, so an
+//! `docs/spec/README.md` left open). Each block keeps its **own** `expect=`, so an
 //! example can show one module compiling and its importer failing. A block with no
 //! `package=` is a package of one, compiled with no interfaces at all, exactly as
 //! before.

@@ -14,7 +14,7 @@ do an adversarial review and post the findings as GitHub comments — inline whe
 $ARGUMENTS
 
 Pairs like `AST-1 -> PR 120` or `BUG-2 -> PR 121`. A ticket ID is any ID in
-`docs/tickets/INDEX.md` — bugs and tasks share one namespace. Bare PR numbers are fine when
+`docs/tickets/README.md` — bugs and tasks share one namespace. Bare PR numbers are fine when
 there is no associated ticket. Normalize to a list of `(ticket_id_or_none, pr_number)`.
 
 ### Model
@@ -163,7 +163,7 @@ Single message, multiple `Agent` calls. For each:
 > with `cargo clippy --all-features` and `cargo fmt --all --check` in your worktree.
 >
 > Also check the ticket close-out, which is part of the diff: the PR should **delete**
-> `docs/tickets/<ID-LOWER>.md` and rewrite that ticket's row in `docs/tickets/INDEX.md` as a
+> `docs/tickets/<ID-LOWER>.md` and rewrite that ticket's row in `docs/tickets/README.md` as a
 > tombstone — link dropped, `status` set to `closed <YYYY-MM-DD>`, and **no SHA and no PR number
 > in the row** (the closing commit runs before either exists). A PR that leaves the ticket file
 > in place, or that drops the row instead of tombstoning it, is a finding: the row is the only

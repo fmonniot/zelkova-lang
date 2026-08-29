@@ -38,7 +38,7 @@ ID="AST-1"
 ID_LOWER="ast-1"
 
 # The index — cross-cutting notes and the conventions live here, not on the ticket.
-git show "origin/main:docs/tickets/INDEX.md"
+git show "origin/main:docs/tickets/README.md"
 
 # The ticket itself.
 git show "origin/main:docs/tickets/$ID_LOWER.md"
@@ -51,7 +51,7 @@ user rather than reconstructing it.
 Keep the ticket text — Step 2 pastes it into the agent's prompt and you need it to sanity-check
 the work later. While reading, check whether the ticket is safe to start:
 
-- A **"do not fix" / blocked / superseded** note, on the ticket or in `INDEX.md`.
+- A **"do not fix" / blocked / superseded** note, on the ticket or in `README.md`.
 - A **`Depends on:`** field naming a prerequisite ticket that is still open. `AST-2` depends on
   `AST-1` this way. Read the dependency's own wording — `AST-2`'s says the dependency is soft
   and describes how to absorb it, which is workable; a hard one is not.
@@ -136,7 +136,7 @@ round trip on its first turn.
 >    which is the set of rules that outlive individual tickets. Every one of them is there
 >    because breaking it produced a bad diff.
 > 2. Follow any cross-reference the ticket actually makes. Another ticket is just
->    `docs/tickets/<other-id-lower>.md`; `docs/tickets/INDEX.md` lists them all.
+>    `docs/tickets/<other-id-lower>.md`; `docs/tickets/README.md` lists them all.
 > 3. Explore the relevant files and confirm the current state before editing. The ticket was
 >    written at some point in the past and the tree has moved since; if what you find
 >    contradicts the ticket, say so in the PR body rather than quietly working around it.
@@ -172,7 +172,7 @@ round trip on its first turn.
 >    rejected it" from "it was never reached"; and one the type system already guarantees.
 >    A test asserting only `is_err()` where the point of the change was *which* error is raised
 >    is the local version of this — assert on the variant.
-> 7. Close out `<ID>`: delete `docs/tickets/<ID-LOWER>.md`, and in `docs/tickets/INDEX.md`
+> 7. Close out `<ID>`: delete `docs/tickets/<ID-LOWER>.md`, and in `docs/tickets/README.md`
 >    rewrite that ticket's row as a tombstone — drop the link, set `status` to
 >    `closed <YYYY-MM-DD>`:
 >
@@ -185,7 +185,7 @@ round trip on its first turn.
 >    recovers it. Before deleting, promote anything worth keeping longer than the fix: into the
 >    code as a doc comment where it explains behaviour, or into `CLAUDE.md`'s *Standing
 >    invariants* where it is a rule. Then grep the repo for `<ID>` and repoint anything that
->    linked to the ticket file at `INDEX.md` — including comments in your own diff pointing at
+>    linked to the ticket file at `README.md` — including comments in your own diff pointing at
 >    "future work `<ID>`" that your diff has just done.
 > 8. Commit with a message explaining *why*, not just *what*. Subject line: `<ID>: <summary>`.
 > 9. Push: `git push -u origin <branch-prefix>/<id-lower>-<slug>`.
@@ -226,7 +226,7 @@ gh pr list --repo fmonniot/zelkova-lang --head "<branch>" --json number,url -q '
 | No | No | No | Not started | Re-spawn with the same prompt into the same empty worktree |
 
 Also confirm the close-out actually happened — `git -C "$WT" show --stat HEAD` should show
-`docs/tickets/<id-lower>.md` deleted and `INDEX.md` modified. Agents forget step 7 more often
+`docs/tickets/<id-lower>.md` deleted and `README.md` modified. Agents forget step 7 more often
 than they forget step 6.
 
 ## Step 5 — Report

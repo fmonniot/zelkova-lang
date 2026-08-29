@@ -469,7 +469,7 @@ impl PhaseError for Error {
 /// at all. Reporting that as an error would fail 53 of the declarations in
 /// `std/core/src` that are simply beyond today's inference; it is a gap in the
 /// typer, and what it wants is a warning, which the compiler does not have yet
-/// (`ERR-8`, see `docs/tickets/INDEX.md`).
+/// (`ERR-8`, see `docs/tickets/README.md`).
 ///
 /// **An unbound variable.** [`ErrorKind::UnboundVariable`] means the name is missing
 /// from the environment the two passes above build — and that environment is

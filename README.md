@@ -51,7 +51,7 @@ The above references ended up unused because of the amazing [petgraph](https://d
 
 ## Documentation
 
-The language itself is specified under [`docs/spec/`](docs/spec/INDEX.md), one chapter
+The language itself is specified under [`docs/spec/`](docs/spec/README.md), one chapter
 per file, starting from that directory's index. It is normative — it describes
 Zelkova as designed, not just what the compiler happens to accept today — and every
 code example in it is checked against the compiler by `cargo test --test spec`, so a

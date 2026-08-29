@@ -1,7 +1,7 @@
 ---
 name: write-spec-chapter
-description: Write one chapter of the Zelkova language specification under docs/spec/, with every example checked by cargo test --test spec, and file a ticket for every divergence it uncovers instead of fixing it. Use when the user says "write the modules chapter", "let's do Expressions next", "continue the spec", or names any chapter from docs/spec/INDEX.md's list.
-argument-hint: <chapter name from docs/spec/INDEX.md's chapter list>
+description: Write one chapter of the Zelkova language specification under docs/spec/, with every example checked by cargo test --test spec, and file a ticket for every divergence it uncovers instead of fixing it. Use when the user says "write the modules chapter", "let's do Expressions next", "continue the spec", or names any chapter from docs/spec/README.md's list.
+argument-hint: <chapter name from docs/spec/README.md's chapter list>
 ---
 
 # Write Spec Chapter
@@ -18,9 +18,10 @@ skill exists to prevent.
 
 $ARGUMENTS
 
-A chapter name from the table in `docs/spec/INDEX.md`. Often it is not in the arguments at all
-but in the preceding conversation ("do the next one"), in which case take the next `planned`
-row in reading order.
+A chapter name from the table in `docs/spec/README.md`, or a `SPEC-n` ticket ID. Either way, a
+`SPEC-n` ticket for the chapter must already exist, filed ahead of time with `create-ticket` —
+see Step 3. Often the chapter name is not in the arguments at all but in the preceding
+conversation ("do the next one"), in which case take the next `planned` row in reading order.
 
 ## Why this exists
 
@@ -38,7 +39,7 @@ documentation. Where a rule is inherited, write it out in full.
 
 ## Step 1 — Read the conventions before writing a word
 
-- `docs/spec/INDEX.md` — the `expect=` vocabulary, the **Known gap:** / **Not implemented:**
+- `docs/spec/README.md` — the `expect=` vocabulary, the **Known gap:** / **Not implemented:**
   lead-ins, and *A spec change and a semantics change do not share a diff*. This is the
   document chapter authors are written against; read all of it.
 - `tests/spec.rs` — what the harness actually enforces, as opposed to what the index says it
@@ -89,10 +90,32 @@ Reasoning about tokenizer or grammar behaviour instead of probing it produces wr
 a high rate. `SPEC-2` predicted the behaviour of eight constructs and got three wrong,
 including two that looked obvious.
 
-## Step 3 — Ask the design decisions before writing prose
+## Step 3 — Confirm the `SPEC-n` ticket already exists
+
+**This skill does not file the `SPEC-n` ticket.** Filing it from inside the same run that later
+drafts and closes it collapses the ticket straight back into a same-PR file-and-delete — the
+exact pattern normal tickets avoid, and the reason `SPEC-n` moved to this convention in the
+first place. The ticket has to come from a separate `create-ticket` run, committed to `main` on
+its own, before this skill starts.
+
+Check `docs/tickets/README.md` for an open `SPEC-` ticket whose title names this chapter. If
+one exists, read it — but treat its **Problem** and **Approach** as a lead, not a scope. They
+were written from a quick grounding pass, not from the probing Step 2 demands, and the ticket
+says so in its own **Grounding note**. Re-verify anything specific it claims, and don't let its
+bullet list cap what the chapter ends up covering — Steps 1–2 (read, then probe) and Step 4
+(design questions) are what actually decide that. **Acceptance** is the one section that is
+load-bearing as written: it's about the process holding (every block tagged and proven to
+fail, the index row moved), not about limiting content.
+
+If none exists, **stop here.** Report what Steps 1–2 just turned up — it's exactly the
+grounding `create-ticket` needs — and tell the user to file `SPEC-n` before running this skill
+again. Do not offer to file it as a convenience; that offer is how the same-PR pattern creeps
+back in.
+
+## Step 4 — Ask the design decisions before writing prose
 
 Collect every question the chapter must commit to and that nothing in the tree settles, then
-put them to the user in `AskUserQuestion` calls — **max 4 per call, two calls is fine** — up
+put them to the user in `AskUserQuestion` calls — **max 4 per call, multiple calls is fine** — up
 front, before drafting. Not one at a time mid-draft.
 
 Each option gets a concrete `preview` showing the syntax or the consequence, and the
@@ -109,7 +132,7 @@ If the chapter's job is to *record* an open question rather than settle one — 
 Constrained type variables chapter is the planned example — bring the user the framing, not a
 decision.
 
-## Step 4 — Write `docs/spec/<chapter-name>.md`
+## Step 5 — Write `docs/spec/<chapter-name>.md`
 
 - **Every ```` ```zel ```` block carries an `expect=` tag.** No tag is a hard test failure, not
   a skip. `expect=fragment` is the only opt-out and must be explicit.
@@ -124,7 +147,7 @@ decision.
   makes it the one thing in the directory that can drift.
 - Cross-link sibling chapters by relative path and anchor (`[Layout](layout.md#tabs-are-legal-only-inside-a-comment)`).
 
-## Step 5 — Prove the tests can fail
+## Step 6 — Prove the tests can fail
 
 `cargo test --test spec` going green on the first run proves nothing. Pick two or three of the
 **least obvious** tags — a `canonical-error:` variant, a pinned parse-error reason, a
@@ -134,44 +157,50 @@ harness reports it, and restore.
 Report in your summary that you did this and which blocks you used. `CLAUDE.md`: *tests that
 pass both ways are the most common review finding there is.*
 
-## Step 6 — File tickets, fix nothing
+## Step 7 — File tickets for what the chapter turns up, fix nothing
 
-`docs/spec/INDEX.md`'s *A spec change and a semantics change do not share a diff* is the rule.
+This step is for `BUG-`/`LANG-` tickets discovered while drafting — the `SPEC-n` ticket for
+the chapter itself was confirmed in Step 3 (filed separately, before this run) and gets
+tombstoned in Step 8, not filed here.
+
+`docs/spec/README.md`'s *A spec change and a semantics change do not share a diff* is the rule.
 A spec claim the compiler fails is a red test, which is a working record rather than a lost
 one. Match the `create-ticket` skill's format — read it for the ticket anatomy and the
 grounding rules, both of which apply here unchanged.
 
-**One thing does not apply: commit the tickets on the chapter's own branch, not on `main`.**
+**One thing does not apply: commit these tickets on the chapter's own branch, not on `main`.**
 `create-ticket`'s Step 5 says to file on `main` so a ticket is not invisible until its
-discovering PR merges, and that is right for a finding that stands on its own. A chapter's
-tickets do not. They are cited by name from the chapter's `**Known gap:**` paragraphs, and a
-chapter often introduces a prefix (`LANG-`) whose meaning only its own text explains — so
-splitting them onto `main` leaves the branch linking to files whose reason for existing is on
-the other side of the split, and leaves `main` holding tickets that reference a chapter nobody
-can read yet. Keep them together and let the branch land as one story.
+discovering PR merges, and that is right for a finding that stands on its own. A `BUG-`/`LANG-`
+ticket found here does not. It is cited by name from the chapter's `**Known gap:**` paragraphs,
+and a chapter often introduces a prefix (`LANG-`) whose meaning only its own text explains — so
+splitting it onto `main` leaves the branch linking to a file whose reason for existing is on
+the other side of the split, and leaves `main` holding a ticket that references a chapter
+nobody can read yet. Keep it with the chapter and let the branch land as one story.
 
-Which prefix, from `docs/tickets/INDEX.md`:
+Which prefix, from `docs/tickets/README.md`:
 
 - **`BUG-`** — code failing at what it was trying to do. A panic, a swallowed line, a
   never-terminating iterator.
 - **`LANG-`** — code succeeding at something the language has since decided against. It was
   never wrong until this chapter was written. Every `LANG-` names the chapter that decided it
   **and the tagged block that goes red when it lands**.
-- **`SPEC-n`** for the chapter itself, listing what it settled — the chapter states each rule
-  but not that it was ever open, and that record is worth keeping somewhere.
 
 Then flag, in your report, **any `**Known gap:**` whose block stays green across its own fix**.
 That gap has no test holding it to account and its paragraph has to be deleted by hand; say so
 in the ticket too. `LANG-4` is the worked example: prefix negation's syntax is unchanged by the
 fix, only its meaning.
 
-## Step 7 — Update both indexes
+## Step 8 — Update both indexes
 
-- `docs/spec/INDEX.md` — move the chapter's row from `planned` to `written`, linked.
-- `docs/tickets/INDEX.md` — a row per new ticket, above the tombstones, grouped by prefix. Add
-  any new prefix to the header list with a sentence on what distinguishes it.
+- `docs/spec/README.md` — move the chapter's row from `planned` to `written`, linked.
+- `docs/tickets/README.md` — a row per new `BUG-`/`LANG-` ticket, above the tombstones, grouped
+  by prefix. Add any new prefix to the header list with a sentence on what distinguishes it.
+- **Tombstone the `SPEC-n` ticket confirmed in Step 3**: delete `docs/tickets/spec-n.md` and
+  rewrite its row in place — status becomes the close date, no SHA, no PR number — the same
+  convention every other ticket closes under, per `docs/tickets/README.md`'s *Closing
+  convention*.
 
-## Step 8 — Verify
+## Step 9 — Verify
 
 ```sh
 cargo test                     # includes --test spec
@@ -184,7 +213,7 @@ cargo clippy --all-features
 needed a `tests/` helper may have touched more than intended. CI does not gate on fmt or
 clippy — run both locally.
 
-## Step 9 — Report, and commit only if asked
+## Step 11 — Report, and commit only if asked
 
 What the chapter settled, what it turned up, and the block count from the spec run (it prints
 `spec: N block(s) passed`). Name the tickets filed and, explicitly, any gap with no red test
@@ -192,10 +221,13 @@ behind it. **Do not commit without being asked.**
 
 When you are asked, split the branch into distinct commits in this order:
 
-1. **The tickets** — every new file under `docs/tickets/` plus its INDEX rows. This goes
-   first so the chapter's `../tickets/<id>.md` links resolve at every commit in the branch,
-   rather than dangling until the tip.
-2. **The chapter** — `docs/spec/`, including the INDEX row moving to `written`.
+1. **The `BUG-`/`LANG-` tickets** — every new file under `docs/tickets/` plus its INDEX rows.
+   This goes first so the chapter's `../tickets/<id>.md` links resolve at every commit in the
+   branch, rather than dangling until the tip. The `SPEC-n` ticket is not part of this commit —
+   it was filed on `main` by a separate `create-ticket` run before this branch existed at all.
+2. **The chapter** — `docs/spec/`, including the INDEX row moving to `written`, together with
+   tombstoning `SPEC-n`: deleting its file and rewriting its `docs/tickets/README.md` row. The
+   two move together because the tombstone *is* the chapter landing.
 3. **Anything else** the session produced, such as a skill or a test helper.
 
 If a later commit adds a pointer to something an earlier one does not have yet, take that
@@ -218,7 +250,7 @@ broken for one commit of history.
   why it is described rather than shown — `docs/spec/lexical-structure.md`'s last section is
   the model.
 - **One module per block.** How to write an example spanning two modules is still open —
-  `docs/spec/INDEX.md` lists four candidate mechanisms and says whichever chapter needs it
+  `docs/spec/README.md` lists four candidate mechanisms and says whichever chapter needs it
   first decides. The **Modules, exposing and imports** chapter is that chapter; settle it
   before starting, not halfway through.
 - **`NodeSpan`'s `PartialEq` always returns `true`**, so a whole-value assertion in any test

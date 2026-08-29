@@ -81,20 +81,22 @@ example belongs in a block with no `package=` label.
 | [Lexical structure](lexical-structure.md) | written |
 | [Layout (the offside rule)](layout.md) | written |
 | [Modules, exposing and imports](modules.md) | written |
-| Declarations | planned |
-| Types and type annotations | planned |
-| Expressions | planned |
-| Patterns | planned |
-| Name resolution and scoping | planned |
-| Evaluation semantics | planned |
+| Declarations | planned ([SPEC-4](../tickets/spec-4.md)) |
+| Types and type annotations | planned ([SPEC-5](../tickets/spec-5.md)) |
+| Expressions | planned ([SPEC-6](../tickets/spec-6.md)) |
+| Patterns | planned ([SPEC-7](../tickets/spec-7.md)) |
+| Name resolution and scoping | planned ([SPEC-8](../tickets/spec-8.md)) |
+| Evaluation semantics | planned ([SPEC-9](../tickets/spec-9.md)) |
 | [JS interop](js-interop.md) | written |
-| Packages and source layout | planned |
-| Constrained type variables | planned — records an open question, does not settle it |
+| Packages and source layout | planned ([SPEC-10](../tickets/spec-10.md)) |
+| Constrained type variables | planned ([SPEC-11](../tickets/spec-11.md)) — records an open question, does not settle it |
 
 Together the planned chapters are meant to be the whole language, not a set of footnotes to
 somebody else's manual — that is what *the spec is self-contained* costs, and it is the
-point. They are listed in a reading order rather than a writing order; each is its own
-ticket, filed when it is picked up rather than in bulk. The `write-spec-chapter` skill
+point. They are listed in a reading order rather than a writing order; each already has its own
+`SPEC-n` ticket (linked above), filed up front rather than one at a time as it is picked up —
+`write-spec-chapter` refuses to file the ticket it would later close in the same run, so one
+has to exist before that skill will touch a chapter. The `write-spec-chapter` skill
 (`.claude/skills/`) carries the method — probe the compiler rather than reasoning about it,
 settle the design questions with the owner before drafting, file what turns up instead of
 fixing it. What each chapter has to cover:

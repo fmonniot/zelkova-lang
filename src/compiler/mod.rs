@@ -511,7 +511,7 @@ impl CompilationError {
 // it. `From` has nowhere to get it from, so the two impls lost information instead —
 // one discarded the error and the other panicked. `check_module` is the one place that
 // knows both halves, so that is where the conversion happens (see `ERR-2` in
-// `docs/tickets/INDEX.md`).
+// `docs/tickets/README.md`).
 
 impl From<dependencies::Error> for CompilationError {
     fn from(err: dependencies::Error) -> Self {
@@ -631,7 +631,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     if let Some(walker) = walker {
         // `check_in_order` checks every module regardless of earlier failures and
         // hands back both halves: the modules that checked, and the errors from the
-        // ones that didn't (see `docs/tickets/INDEX.md`, `BUG-2`). Both are reported
+        // ones that didn't (see `docs/tickets/README.md`, `BUG-2`). Both are reported
         // here, and the errors still flow into `errors` below so a failing module
         // keeps making this function return `Err` — only the previously-discarded
         // successes are new.

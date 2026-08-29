@@ -1,13 +1,13 @@
 ---
 name: create-ticket
 description: File a new ticket under docs/tickets/, grounded in the actual code, and add its row to the index. Use when the user says "file a ticket for X", "make a ticket out of that", "create a bug for the thing we just found", or when a problem surfaces mid-work that is real but out of scope for what is being done.
-argument-hint: <description of the problem or task> [--prefix BUG|ERR|AST|PERF|TIDY|TEST]
+argument-hint: <description of the problem or task> [--prefix BUG|ERR|AST|PERF|TIDY|TEST|SPEC|LANG|SITE]
 ---
 
 # Create Ticket
 
 Turn a described problem into a self-contained ticket file under `docs/tickets/`, plus its row
-in `docs/tickets/INDEX.md`.
+in `docs/tickets/README.md`.
 
 **This skill runs in the current session.** No worktree, no subagent. Filing needs the
 conversation context that just produced the finding, and the result is a docs-only commit.
@@ -31,7 +31,7 @@ outcome.
 
 ```bash
 git fetch origin main
-git show origin/main:docs/tickets/INDEX.md
+git show origin/main:docs/tickets/README.md
 ```
 
 Read the whole table, **tombstone rows included**. IDs are never reused, so the next `BUG-` is
@@ -43,7 +43,7 @@ Prefixes in use are listed in the INDEX header. Use an existing one unless the w
 genuinely a new theme; a prefix with one ticket in it is noise. `BUG-` is for defects — code
 that does the wrong thing. Everything else is a task.
 
-Read the working tree's `docs/tickets/INDEX.md` too if it differs from `origin/main` — a ticket
+Read the working tree's `docs/tickets/README.md` too if it differs from `origin/main` — a ticket
 filed locally but not yet pushed still owns its number.
 
 ## Step 2 — Ground it in the code before writing a word
@@ -102,7 +102,7 @@ Rules that are not negotiable:
 
 ## Step 4 — Add the INDEX row
 
-Insert into the table in `docs/tickets/INDEX.md`, **above the tombstone rows**, grouped with
+Insert into the table in `docs/tickets/README.md`, **above the tombstone rows**, grouped with
 its own prefix:
 
 ```

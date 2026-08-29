@@ -331,7 +331,7 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
     let root = fixture_package("package_canonicalize_fails");
 
     // The fixture deliberately holds a second, *passing* module: it is what
-    // `BUG-2` (see `docs/tickets/INDEX.md`) was about — the modules that checked
+    // `BUG-2` (see `docs/tickets/README.md`) was about — the modules that checked
     // being discarded when a sibling fails — and this directory is its
     // reproduction. Nothing else asserts `Fine.zel` exists, so pin it here —
     // silently losing it would leave that regression with a repro that proves

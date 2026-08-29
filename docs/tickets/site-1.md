@@ -4,7 +4,7 @@
 for `docs/spec/` that has to invent its own `expect=` styling — none of which exists today).
 
 **Location:** `.github/workflows/rustdoc.yml`; new files under a to-be-decided site source
-directory (see Approach); `docs/spec/INDEX.md` and its chapter files, as the renderer's input.
+directory (see Approach); `docs/spec/README.md` and its chapter files, as the renderer's input.
 
 **Problem:** the only thing published to GitHub Pages today is `cargo doc`'s output, deployed
 by `.github/workflows/rustdoc.yml` straight from `target/doc`:
@@ -28,7 +28,7 @@ Two consequences follow from that:
    `https://francois.monniot.eu/zelkova-lang/zelkova_lang/` — `cargo doc`'s crate-root index,
    with no framing of what Zelkova is or where else to look.
 2. `docs/spec/` — the normative language specification, checked chapter-by-chapter against the
-   compiler by `cargo test --test spec` (`docs/spec/INDEX.md`) — is not published anywhere. It
+   compiler by `cargo test --test spec` (`docs/spec/README.md`) — is not published anywhere. It
    only exists as markdown in the repo.
 3. `force_orphan: true` with `publish_dir: ./target/doc` means the workflow can only ever
    publish exactly one directory tree, replaced wholesale on every push to `main`. Adding a
@@ -39,7 +39,7 @@ Two consequences follow from that:
 
 **Wanted:** a landing page at the site root that frames the project and links to the rustdoc
 and the spec, and `docs/spec/`'s chapters rendered as HTML on the same site — each chapter's
-```` ```zel ```` blocks styled by their `expect=` tag (`docs/spec/INDEX.md`'s vocabulary:
+```` ```zel ```` blocks styled by their `expect=` tag (`docs/spec/README.md`'s vocabulary:
 `ok`, `parse-error[:Reason]`, `canonical-error:Variant`, `unimplemented`, `fragment`) so a
 reader can see at a glance which examples the compiler accepts today and which are aspirational.
 
@@ -54,7 +54,7 @@ reader can see at a glance which examples the compiler accepts today and which a
    could hang the `expect=` badge rendering off of; or an external static-site generator. This
    ticket does not pick one — `tests/spec.rs`'s block-parsing is worth checking first since a
    second, drifting implementation of the `expect=` grammar is exactly the failure mode
-   `docs/spec/INDEX.md`'s *every example is checked* section exists to prevent.
+   `docs/spec/README.md`'s *every example is checked* section exists to prevent.
 2. **What the `expect=` styling actually looks like.** At minimum, a reader should be able to
    tell `expect=ok` from `expect=unimplemented`/`expect=parse-error*` at a glance (e.g. a
    colored badge or border — green for accepted, amber/red for rejected, with the tag's literal

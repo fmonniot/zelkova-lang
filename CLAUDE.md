@@ -30,7 +30,7 @@ caught for you.
 ## Where work is tracked
 
 Open work lives in `docs/tickets/`, one markdown file per ticket, indexed by
-[`docs/tickets/INDEX.md`](docs/tickets/INDEX.md). Read that index before proposing work — it
+[`docs/tickets/README.md`](docs/tickets/README.md). Read that index before proposing work — it
 carries the conventions, the open list, and a dated tombstone row for everything already
 closed.
 
@@ -42,7 +42,7 @@ The `.claude/skills/` directory holds the skills that drive this loop: `create-t
 separate loop below — specifying the language rather than changing the compiler.
 
 The language itself — as opposed to the compiler that implements it — is specified under
-[`docs/spec/`](docs/spec/INDEX.md). It is normative and every code example in it is checked
+[`docs/spec/`](docs/spec/README.md). It is normative and every code example in it is checked
 against the compiler by `cargo test --test spec`; see that index before writing prose about
 what Zelkova's syntax or semantics are.
 
@@ -226,5 +226,5 @@ Open design question, unresolved: the std library uses Elm's constrained type va
 (`number`, `comparable`, `appendable`). Whether those become real type classes, compiler-known
 constraints, or nothing at all has not been decided. Don't assume an answer in a diff. A
 `docs/spec/` chapter recording this as open is planned — see that directory's
-[`INDEX.md`](docs/spec/INDEX.md) chapter list — but not yet written; this note is the record
+[`README.md`](docs/spec/README.md) chapter list — but not yet written; this note is the record
 until then.

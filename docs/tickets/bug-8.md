@@ -34,7 +34,7 @@ error at all. `Error::ExportNotFound` and its rendering (`export_type_noun`) alr
 `ExportType::Value`, `UnionPublic` and `UnionPrivate` generically — the message and diagnostic
 plumbing are not the gap, only the check that would raise them for two of the three cases.
 
-Found while grounding [ERR-9](../../docs/tickets/INDEX.md) (PR #141): its `ExportNotFound`
+Found while grounding [ERR-9](../../docs/tickets/README.md) (PR #141): its `ExportNotFound`
 acceptance test had to exercise the `Operator` case, because an undeclared value or type in a
 `module … exposing (...)` header does not currently produce this error at all — there was no
 way to reach it through `Lower`/`Upper`.

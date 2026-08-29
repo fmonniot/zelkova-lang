@@ -15,7 +15,7 @@ resolve the comment threads on GitHub.
 $ARGUMENTS
 
 Pairs like `AST-1 -> PR 120` or `BUG-2 -> PR 121`. A ticket ID is any ID in
-`docs/tickets/INDEX.md` — bugs and tasks share one namespace.
+`docs/tickets/README.md` — bugs and tasks share one namespace.
 
 ### Model
 
@@ -138,7 +138,7 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 >    git fetch origin main
 >    git merge origin/main
 >    ```
->    `docs/tickets/INDEX.md` is the one file every ticket's PR touches — each closes out by
+>    `docs/tickets/README.md` is the one file every ticket's PR touches — each closes out by
 >    rewriting its own row as a tombstone — so it is the likely conflict. **Resolve it by keeping
 >    both sides' rows.** Never drop another ticket's row to make the merge go away: that row is
 >    the only record its ticket file ever existed, and deleting it breaks the
