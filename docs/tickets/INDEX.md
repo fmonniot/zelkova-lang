@@ -15,7 +15,8 @@ file instead.
 
 Prefixes are created ad-hoc per theme. Current ones: `BUG-` (defects), `ERR-` (error handling
 and diagnostics), `AST-` (parser and canonical AST shape), `PERF-` (allocation and hot paths),
-`TIDY-` (small self-contained cleanups), `TEST-` (test infrastructure).
+`TIDY-` (small self-contained cleanups), `TEST-` (test infrastructure), `SPEC-` (specifying
+and documenting the language itself, under `docs/spec/`).
 
 ## The diagnostics program
 
@@ -119,6 +120,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-8](err-8.md) | task | — | open | Let a phase report a warning |
 | ERR-9 | task | — | closed 2026-08-28 | Span `parser::Exposed`, so an exposing list can be underlined |
 | [ERR-10](err-10.md) | task | — | open | Give a phase its first real warning: unused imports in canonicalization |
+| [SPEC-1](spec-1.md) | task | — | open | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
