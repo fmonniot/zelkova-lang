@@ -5,14 +5,23 @@
 //! chapters, extracts each such block, and runs it through the phase its tag implies.
 //! An example that does not match its tag — or carries no tag at all — is a test
 //! failure, not a skip, because an unchecked example in a spec is the exact defect
-//! `SPEC-1` exists to prevent (see `docs/tickets/spec-1.md`).
+//! this harness exists to prevent (`SPEC-1`; `docs/spec/INDEX.md` carries the reasoning
+//! and is the document chapter authors read).
 //!
-//! The vocabulary is fixed (`SPEC-1`'s approach section), because chapters are
-//! authored against it independently of this file:
+//! The vocabulary is fixed, and `docs/spec/INDEX.md` documents it for chapter authors —
+//! keep the two in step. Chapters are written against it independently of this file:
 //!
 //! - `zel expect=ok` — parses and canonicalizes with no errors.
 //! - `zel expect=parse-error` — fails in the parser (tokenizer, layout or grammar).
 //!   Which error is not pinned.
+//! - `zel expect=parse-error:Reason` — the same, but the reason must match one of the
+//!   names [`parse_error_reasons`] returns for the actual error (a phase, `Tokenizer`
+//!   or `Layout`, or a specific one like `TabError` or `UnexpectedToken`). Pin the
+//!   reason whenever a chapter's prose describes the error the reader will see. That
+//!   matters most where the described diagnostic is a known-bad one with a ticket
+//!   against it: rejection is the same before and after such a fix, so a bare
+//!   `parse-error` stays green across it and the prose describing the old behaviour
+//!   silently rots. The pin is what turns that into a red test.
 //! - `zel expect=canonical-error:VariantName` — parses, then canonicalization returns
 //!   a `Vec<canonical::Error>` containing at least one error of that variant.
 //!   `VariantName` is matched against the real `canonical::Error` variant names.
@@ -37,6 +46,7 @@ use std::path::Path;
 use codespan_reporting::files::SimpleFile;
 use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::parser;
+use zelkova_lang::compiler::parser::tokenizer::TokenizerErrorType;
 
 mod support;
 
@@ -48,7 +58,14 @@ use support::test_package;
 #[derive(Debug, PartialEq, Eq)]
 enum Expect {
     Ok,
-    ParseError,
+    /// `None` claims only that the parser rejected the block. `Some(reason)` also
+    /// pins *why*, against the names in [`parse_error_reasons`].
+    ///
+    /// Pin the reason whenever the chapter's prose describes the error the reader
+    /// will see — especially when that error is a known-bad one with a ticket
+    /// against it. The pin is what makes the chapter go red when the diagnostic
+    /// improves, so the sentence describing the old behaviour cannot outlive it.
+    ParseError(Option<String>),
     CanonicalError(String),
     Unimplemented,
     Fragment,
@@ -83,9 +100,17 @@ fn parse_expect(rest: &str) -> Result<Expect, String> {
     };
     match value {
         "ok" => Ok(Expect::Ok),
-        "parse-error" => Ok(Expect::ParseError),
+        "parse-error" => Ok(Expect::ParseError(None)),
         "unimplemented" => Ok(Expect::Unimplemented),
         "fragment" => Ok(Expect::Fragment),
+        _ if value.starts_with("parse-error:") => {
+            let reason = &value["parse-error:".len()..];
+            if reason.is_empty() {
+                Err("`parse-error:` names no reason".to_string())
+            } else {
+                Ok(Expect::ParseError(Some(reason.to_string())))
+            }
+        }
         _ if value.starts_with("canonical-error:") => {
             let variant = &value["canonical-error:".len()..];
             if variant.is_empty() {
@@ -171,6 +196,37 @@ fn canonicalize(module: &parser::Module) -> Result<canonical::Module, Vec<canoni
     canonical::canonicalize(&test_package(), &interfaces, module)
 }
 
+/// The names an `expect=parse-error:<reason>` tag may pin, for one actual error.
+///
+/// Returns every name that matches, coarse first: a tab used for indentation is both
+/// `Tokenizer` and `TabError`, so a chapter can pin either the phase that rejected the
+/// block or the exact reason, depending on which one its prose actually claims.
+///
+/// Written as an explicit match over the real enums — `parser::Error`,
+/// `TokenizerErrorType` — rather than by formatting with `Debug` and splitting the
+/// string, so that adding a variant fails this file to compile rather than silently
+/// producing a name no chapter can ever match.
+fn parse_error_reasons(error: &parser::Error) -> Vec<&'static str> {
+    match error {
+        parser::Error::Tokenizer(e) => {
+            let specific = match e.error.value {
+                TokenizerErrorType::CharNotClosedError(_) => "CharNotClosedError",
+                TokenizerErrorType::StringError => "StringError",
+                TokenizerErrorType::UnicodeError => "UnicodeError",
+                TokenizerErrorType::IndentationError => "IndentationError",
+                TokenizerErrorType::TabError => "TabError",
+                TokenizerErrorType::UnrecognizedToken { .. } => "UnrecognizedToken",
+            };
+            vec!["Tokenizer", specific]
+        }
+        parser::Error::Layout(_) => vec!["Layout", "LayoutError"],
+        parser::Error::InvalidToken(_) => vec!["InvalidToken"],
+        parser::Error::UnexpectedEOF { .. } => vec!["UnexpectedEOF"],
+        parser::Error::UnexpectedToken { .. } => vec!["UnexpectedToken"],
+        parser::Error::ExtraToken { .. } => vec!["ExtraToken"],
+    }
+}
+
 /// The `canonical::Error` variant names present in `errors`, flattening `Error::Many`
 /// since it is a grouping construct rather than a kind of failure a chapter would
 /// tag against. Written as an explicit match rather than reaching for `Debug` and
@@ -219,11 +275,28 @@ fn evaluate(block: &Block) -> Verdict {
                 Ok(_) => Verdict::Pass,
             },
         },
-        Expect::ParseError => match parse(&block.source) {
-            Err(_) => Verdict::Pass,
-            Ok(_) => Verdict::Fail(
-                "expected `parse-error`, but the block parsed successfully".to_string(),
-            ),
+        Expect::ParseError(wanted) => match parse(&block.source) {
+            Ok(_) => Verdict::Fail(format!(
+                "expected `{}`, but the block parsed successfully",
+                expect_label(block)
+            )),
+            Err(e) => match wanted {
+                None => Verdict::Pass,
+                Some(wanted) => {
+                    let found = parse_error_reasons(&e);
+                    if found.contains(&wanted.as_str()) {
+                        Verdict::Pass
+                    } else {
+                        Verdict::Fail(format!(
+                            "expected the parser to reject this for `{}`, but it rejected it \
+                             for {:?} ({:?}).\nIf the diagnostic was deliberately improved, the \
+                             chapter's prose about it needs updating in this same change — that \
+                             is what this pin is for.",
+                            wanted, found, e
+                        ))
+                    }
+                }
+            },
         },
         Expect::CanonicalError(wanted) => match parse(&block.source) {
             Err(e) => Verdict::Fail(format!(
@@ -277,7 +350,8 @@ fn evaluate(block: &Block) -> Verdict {
 fn expect_label(block: &Block) -> String {
     match &block.expect {
         Ok(Expect::Ok) => "expect=ok".to_string(),
-        Ok(Expect::ParseError) => "expect=parse-error".to_string(),
+        Ok(Expect::ParseError(None)) => "expect=parse-error".to_string(),
+        Ok(Expect::ParseError(Some(r))) => format!("expect=parse-error:{}", r),
         Ok(Expect::CanonicalError(v)) => format!("expect=canonical-error:{}", v),
         Ok(Expect::Unimplemented) => "expect=unimplemented".to_string(),
         Ok(Expect::Fragment) => "expect=fragment".to_string(),
@@ -480,6 +554,57 @@ fn canonical_error_wrong_variant_is_a_failure() {
         }
         _ => panic!("a canonical error of the wrong variant must fail, not pass"),
     }
+}
+
+/// `expect=parse-error:<reason>` must check the reason, not just that the parse failed.
+///
+/// This is what lets a chapter describe a *known-bad* diagnostic in prose and be forced
+/// to update that prose when the diagnostic improves — see `ERR-11` and `ERR-12`, whose
+/// blocks in `docs/spec/layout.md` pin the wrong-but-current error deliberately. Without
+/// the reason check, both the bad and the improved diagnostic satisfy a bare
+/// `parse-error`, and the stale sentence survives.
+///
+/// Pins: `tests/fixtures/spec/parse_error_wrong_reason.md` tags
+/// `expect=parse-error:TabError` a block whose actual failure is `IndentationError`
+/// (three-space indentation, no tab anywhere). Neutralised by making the
+/// `Expect::ParseError` arm return `Verdict::Pass` for any `Err(_)` regardless of
+/// `wanted` — i.e. reverting it to the bare pre-pin behaviour: with that change this
+/// test goes red because the mismatched reason reports `Pass`. Restored afterwards.
+#[test]
+fn parse_error_wrong_reason_is_a_failure() {
+    let block = only_block("parse_error_wrong_reason.md");
+    assert_eq!(
+        block.expect,
+        Ok(Expect::ParseError(Some("TabError".to_string())))
+    );
+    match evaluate(&block) {
+        Verdict::Fail(reason) => {
+            assert!(
+                reason.contains("TabError"),
+                "failure message should name what was wanted, got {:?}",
+                reason
+            );
+            assert!(
+                reason.contains("IndentationError"),
+                "failure message should name what was actually found, got {:?}",
+                reason
+            );
+        }
+        _ => panic!("a parse error for the wrong reason must fail, not pass"),
+    }
+}
+
+/// A bare `expect=parse-error` still claims only that the parser rejected the block,
+/// and must keep passing whatever the reason — chapters that do not describe the
+/// diagnostic should not be forced to track it.
+#[test]
+fn bare_parse_error_does_not_pin_the_reason() {
+    let mut block = only_block("parse_error_wrong_reason.md");
+    block.expect = Ok(Expect::ParseError(None));
+    assert!(
+        matches!(evaluate(&block), Verdict::Pass),
+        "a bare parse-error must accept any parser rejection"
+    );
 }
 
 /// `expect=unimplemented` on a block that parses *and* canonicalizes successfully is
