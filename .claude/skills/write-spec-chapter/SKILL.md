@@ -115,7 +115,7 @@ back in.
 ## Step 4 — Ask the design decisions before writing prose
 
 Collect every question the chapter must commit to and that nothing in the tree settles, then
-put them to the user in `AskUserQuestion` calls — **max 4 per call, two calls is fine** — up
+put them to the user in `AskUserQuestion` calls — **max 4 per call, multiple calls is fine** — up
 front, before drafting. Not one at a time mid-draft.
 
 Each option gets a concrete `preview` showing the syntax or the consequence, and the
@@ -157,11 +157,11 @@ harness reports it, and restore.
 Report in your summary that you did this and which blocks you used. `CLAUDE.md`: *tests that
 pass both ways are the most common review finding there is.*
 
-## Step 8 — File tickets for what the chapter turns up, fix nothing
+## Step 7 — File tickets for what the chapter turns up, fix nothing
 
 This step is for `BUG-`/`LANG-` tickets discovered while drafting — the `SPEC-n` ticket for
 the chapter itself was confirmed in Step 3 (filed separately, before this run) and gets
-tombstoned in Step 9, not filed here.
+tombstoned in Step 8, not filed here.
 
 `docs/spec/README.md`'s *A spec change and a semantics change do not share a diff* is the rule.
 A spec claim the compiler fails is a red test, which is a working record rather than a lost
@@ -190,7 +190,7 @@ That gap has no test holding it to account and its paragraph has to be deleted b
 in the ticket too. `LANG-4` is the worked example: prefix negation's syntax is unchanged by the
 fix, only its meaning.
 
-## Step 9 — Update both indexes
+## Step 8 — Update both indexes
 
 - `docs/spec/README.md` — move the chapter's row from `planned` to `written`, linked.
 - `docs/tickets/README.md` — a row per new `BUG-`/`LANG-` ticket, above the tombstones, grouped
@@ -200,7 +200,7 @@ fix, only its meaning.
   convention every other ticket closes under, per `docs/tickets/README.md`'s *Closing
   convention*.
 
-## Step 10 — Verify
+## Step 9 — Verify
 
 ```sh
 cargo test                     # includes --test spec
