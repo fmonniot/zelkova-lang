@@ -219,7 +219,7 @@ broken for one commit of history.
   the model.
 - **One module per block.** How to write an example spanning two modules is still open —
   `docs/spec/INDEX.md` lists four candidate mechanisms and says whichever chapter needs it
-  first decides. The **Modules, `exposing` and imports** chapter is that chapter; settle it
+  first decides. The **Modules, exposing and imports** chapter is that chapter; settle it
   before starting, not halfway through.
 - **`NodeSpan`'s `PartialEq` always returns `true`**, so a whole-value assertion in any test
   you add proves nothing about position. Assert on `.span` or on `diagnostic.labels[..].range`.

@@ -1,4 +1,4 @@
-# Modules, `exposing` and imports
+# Modules, exposing and imports
 
 Every Zelkova source file is exactly one module, and every module is exactly one source
 file. A module names itself, says which of its declarations the rest of the world may

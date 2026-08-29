@@ -1,4 +1,4 @@
-# SPEC-3 · Write the Modules, `exposing` and imports chapter, and settle multi-module examples
+# SPEC-3 · Write the Modules, exposing and imports chapter, and settle multi-module examples
 
 **Sizing:** medium. The chapter is one file; the harness change it needed is the other half.
 
@@ -47,7 +47,7 @@ also confirmed [BUG-8](bug-8.md) and [BUG-9](bug-9.md) from the language side an
 red-on-fix block in the chapter.
 
 **Acceptance:** `cargo test --test spec` green, with `docs/spec/modules.md` contributing its
-blocks; `docs/spec/INDEX.md`'s chapter row for *Modules, `exposing` and imports* reading
+blocks; `docs/spec/INDEX.md`'s chapter row for *Modules, exposing and imports* reading
 `written` and linked, its *One module per block* section replaced by the decision, and its
 `expect=` table carrying `dependency-error` and `package=`; `tests/spec.rs`'s own fixture
 tests covering the group path — a group where one block fails and the other does not, a

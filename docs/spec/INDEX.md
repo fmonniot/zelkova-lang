@@ -61,7 +61,7 @@ together, ordered by their imports, and canonicalized in that order against each
 own `expect=`, so an example can show one module compiling and its importer failing, and
 the failure is reported on the importer's line rather than on the group.
 
-`SPEC-3` settled this, for the *Modules, `exposing` and imports* chapter, which cannot be
+`SPEC-3` settled this, for the *Modules, exposing and imports* chapter, which cannot be
 written one module at a time. Three alternatives were considered and rejected: adjacent
 blocks sharing one expectation (a group can then only say "something failed", not which
 module), a hand-built `Interface` in `tests/spec.rs` (the other module never appears in
@@ -80,7 +80,7 @@ example belongs in a block with no `package=` label.
 |---|---|
 | [Lexical structure](lexical-structure.md) | written |
 | [Layout (the offside rule)](layout.md) | written |
-| [Modules, `exposing` and imports](modules.md) | written |
+| [Modules, exposing and imports](modules.md) | written |
 | Declarations | planned |
 | Types and type annotations | planned |
 | Expressions | planned |
@@ -99,7 +99,7 @@ ticket, filed when it is picked up rather than in bulk. The `write-spec-chapter`
 settle the design questions with the owner before drafting, file what turns up instead of
 fixing it. What each chapter has to cover:
 
-- **Modules, `exposing` and imports** — the header, the four forms an `exposing` entry can
+- **Modules, exposing and imports** — the header, the four forms an `exposing` entry can
   take, `import … as … exposing`, how a module name maps to a file path, and whether any
   module is implicitly in scope. This is the chapter that answered the multi-module
   question below, since it cannot be written with one module at a time.
