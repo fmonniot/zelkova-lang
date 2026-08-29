@@ -51,7 +51,13 @@ The above references ended up unused because of the amazing [petgraph](https://d
 
 ## Documentation
 
-It is still (very) early day so there is next to nothing in term of documentation, but here are some sources I could use in the future, when it will be time to think about it (basically I'm using this README as a bookmark holder).
+The language itself is specified under [`docs/spec/`](docs/spec/INDEX.md), one chapter
+per file, starting from that directory's index. It is normative — it describes
+Zelkova as designed, not just what the compiler happens to accept today — and every
+code example in it is checked against the compiler by `cargo test --test spec`, so a
+chapter that drifts from the compiler is a red test rather than a stale sentence.
 
-- `cargo doc` have a few things, but nothing explaining the language itself.
+`cargo doc` documents the compiler's own Rust, not the language; `docs/tickets/` is
+the compiler's work log, not documentation for someone writing Zelkova.
+
 - [Greg Wilson has some idea of what a community need](https://third-bit.com/2020/09/01/what-every-community-needs.html), maybe we can use some of them.

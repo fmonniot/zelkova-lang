@@ -40,6 +40,11 @@ opens is not a record. (The codebase still has plenty of pre-existing ones; don'
 The `.claude/skills/` directory holds the skills that drive this loop: `create-ticket`,
 `work-ticket`, `review-pr`, `fix-pr-comments`.
 
+The language itself — as opposed to the compiler that implements it — is specified under
+[`docs/spec/`](docs/spec/INDEX.md). It is normative and every code example in it is checked
+against the compiler by `cargo test --test spec`; see that index before writing prose about
+what Zelkova's syntax or semantics are.
+
 ## Architecture
 
 The pipeline is documented at the top of `src/compiler/mod.rs`. `compile_package` walks a
@@ -201,6 +206,11 @@ These outlive any single ticket. Each is here because breaking it produced a bad
 
 ## Language notes
 
+What Zelkova's syntax and semantics *are* is specified under `docs/spec/`, not here — see
+*Where work is tracked*, above. This section stays only as a quick implemented/not-implemented
+status check for the compiler as it stands today; `docs/spec/` is the normative record and the
+place to look for anything beyond that split, including open design questions.
+
 Implemented: modules with `exposing`/`import`/`as`, union types, pattern matching via `case
 … of`, `if/then/else`, function declarations with annotations, multi-line function
 declarations with pattern matching (a deliberate divergence from Elm), infix declarations,
@@ -213,4 +223,6 @@ unit type, type aliases, and the `zelkova.json` package manifest. The standard l
 
 Open design question, unresolved: the std library uses Elm's constrained type variables
 (`number`, `comparable`, `appendable`). Whether those become real type classes, compiler-known
-constraints, or nothing at all has not been decided. Don't assume an answer in a diff.
+constraints, or nothing at all has not been decided. Don't assume an answer in a diff. A
+`docs/spec/` chapter recording this as open is planned (`docs/tickets/spec-1.md`'s *Follow-up
+chapters*) but not yet written; this note is the record until then.
