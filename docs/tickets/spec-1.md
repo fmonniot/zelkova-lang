@@ -98,10 +98,37 @@ language.
    chapter to be updated in the same PR; pick the strictness that preserves that without
    making the doc a mirror of `parser::Error`.
 
-**On what this will find:** writing down what `layout.rs` does will probably surface behaviour
-that is neither intended nor documented anywhere. File those as `BUG-` tickets and specify the
-behaviour the chapter *should* describe with the example tagged accordingly — do not fix
-compiler behaviour in this ticket. A spec change and a semantics change in one diff is
+**Layout rules established while grounding this ticket**, by running snippets through
+`parser::parse`. The chapter states these; each is already checkable with an executable block:
+
+- Indentation is a multiple of two spaces (`handle_indentation`, `spaces % 2 != 0` →
+  `IndentationError`); a tab used for indentation is `TabError`.
+- The first branch of a `case … of` fixes the column for every branch in that block
+  (`Context::CaseBlock(Some(col))`, read back by `Offside::min_indent`).
+- A branch body must be at least one two-space level deeper than its pattern — `CaseBranch` is
+  pushed at `min_indent + 1`, so anything at or left of that closes the branch.
+- Nesting works, and the scrutinee may sit on its own line: `case` / `m` / `of` on three lines
+  parses.
+- `let … in` is tokenized and laid out — `layout.rs` has a full `Context::Let` — but
+  `grammar.lalrpop`'s `extern` token list has no `let` or `in`, so it fails as
+  `UnexpectedToken { value: Let }`. This is the natural first `expect=unimplemented` example:
+  it goes red the day `let` is implemented.
+
+**Two rules decided by the language owner** while grounding this ticket, both of which the
+chapter states and both of which the compiler already enforces — badly. Each has an `ERR-`
+ticket for the diagnostic, and the spec block for each is `expect=parse-error`, which pins the
+rule today and keeps pinning it after the message improves:
+
+- **All branches of one `case … of` start on the same column.** A deeper line beginning a new
+  branch is an error, not a continuation of the previous branch's body. Today it is absorbed
+  and the parse error names the `->` two tokens later — [ERR-11](err-11.md).
+- **A source file's first token is at column 1.** Any space or tab before `module` is invalid.
+  Today an indented file is rejected only because a `column == 1` literal disagrees with the
+  context bootstrap, and the caret lands on the second declaration — [ERR-12](err-12.md).
+
+**On what else this will find:** the rest of `layout.rs` is likely to hold more of the same.
+File those the way ERR-11 and ERR-12 were filed and specify the behaviour the chapter *should*
+describe, with the example tagged accordingly — do not fix compiler behaviour in this ticket. A spec change and a semantics change in one diff is
 unreviewable, and the point of the harness is that a spec claim the compiler fails is a red
 test, which is a working record rather than a lost one.
 
