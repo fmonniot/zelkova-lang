@@ -123,6 +123,23 @@ verification step here on purpose — a convention that depends on someone remem
 check something by hand is one that will be skipped, and a spec whose examples are checked
 by ritual is the same document `lang.md` was.
 
+A block tagged this way still looks, at a glance, like an ordinary green example —
+`expect=ok` and `expect=parse-error:UnexpectedToken` are exactly the tags a correct example
+would carry too, and the only thing marking the block as current-but-wrong is prose a
+skimming reader can miss. So the sentence that says so opens with a fixed, bolded lead-in: **Known gap:**. That makes
+it something a reader — or `grep -r "Known gap:" docs/spec/` — can find without reading
+every paragraph, and it is what tells a future session not to treat the block's shown
+behaviour as what the language should do. `expect=fragment` doesn't need it: the tag itself
+already says the block isn't normative.
+
+A `expect=unimplemented` block is the same kind of risk from the other direction: the tag
+says the *example* doesn't compile yet, but prose right next to it can still describe design
+intent — a rule the language will have once the feature exists — in a way that reads as
+settled fact. That prose gets its own lead-in, **Not implemented:**, for the same reason:
+`grep -r "Not implemented:" docs/spec/` finds every place a chapter is describing a feature
+ahead of the compiler rather than behind it. The `let … in` section of `layout.md` is the
+first example of both lead-ins living in one section.
+
 ### A spec change and a semantics change do not share a diff
 
 Writing a chapter surfaces compiler behaviour nobody intended — that is much of the value.

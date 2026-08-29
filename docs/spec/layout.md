@@ -137,9 +137,9 @@ declaration is accepted:
   module Example exposing (f)
 ```
 
-That block is tagged `expect=ok` because that is what happens today, and it is the gap
-[`docs/tickets/err-12.md`](../tickets/err-12.md) tracks made visible. The language's answer
-is that this file is invalid.
+**Known gap:** that block is tagged `expect=ok` because that is what happens today, and it
+is the gap [`docs/tickets/err-12.md`](../tickets/err-12.md) tracks made visible. The
+language's answer is that this file is invalid.
 
 An indented file with a *second* declaration is rejected, but for a reason one step removed
 from the rule: the second declaration is what fails, not the indentation on line 1.
@@ -151,13 +151,13 @@ from the rule: the second declaration is what fails, not the indentation on line
     1
 ```
 
-So that block pins "an indented file with two declarations is rejected", not "a file must
-start at column 1". The diagnostic is bad in the way ERR-12 describes — the caret lands on
-the later declaration and the message asks for `close block`, which the reader cannot
-write. It is tagged `expect=parse-error:UnexpectedToken`, naming that wrong-but-current
-error on purpose: when ERR-12 lands and the message becomes a real one, the block goes red,
-which is the point. The paragraph you are reading describes a diagnostic that will stop
-existing, and it should not be able to outlive it.
+**Known gap:** that block pins "an indented file with two declarations is rejected", not "a
+file must start at column 1". The diagnostic is bad in the way ERR-12 describes — the caret
+lands on the later declaration and the message asks for `close block`, which the reader
+cannot write. It is tagged `expect=parse-error:UnexpectedToken`, naming that
+wrong-but-current error on purpose: when ERR-12 lands and the message becomes a real one,
+the block goes red, which is the point. The paragraph you are reading describes a
+diagnostic that will stop existing, and it should not be able to outlive it.
 
 ## Top-level declarations
 
@@ -267,12 +267,12 @@ describe f =
       Off -> 0
 ```
 
-The compiler rejects that today, but for the wrong reason and with the wrong caret: layout
-has no rule for the deeper line, so it is absorbed into the previous branch's body and the
-grammar then trips on the second `->`. [`docs/tickets/err-11.md`](../tickets/err-11.md)
-tracks the diagnostic. As with the column-1 rule above, the language's answer is unchanged
-by that ticket, and the block pins today's `UnexpectedToken` so this paragraph goes red
-along with it.
+**Known gap:** the compiler rejects that today, but for the wrong reason and with the wrong
+caret: layout has no rule for the deeper line, so it is absorbed into the previous branch's
+body and the grammar then trips on the second `->`.
+[`docs/tickets/err-11.md`](../tickets/err-11.md) tracks the diagnostic. As with the column-1
+rule above, the language's answer is unchanged by that ticket, and the block pins today's
+`UnexpectedToken` so this paragraph goes red along with it.
 
 What the compiler does **not** enforce is the floor relative to `case` itself. It derives
 the branch block's minimum column from the enclosing block rather than from the `case`
@@ -291,9 +291,9 @@ describe f =
   Off -> 0
 ```
 
-That file is invalid Zelkova; the `expect=ok` records what the compiler does, not what the
-language says. [`docs/tickets/bug-10.md`](../tickets/bug-10.md) tracks it, and this block
-goes red when it is fixed — which is the signal to come back and retag it.
+**Known gap:** that file is invalid Zelkova; the `expect=ok` records what the compiler does,
+not what the language says. [`docs/tickets/bug-10.md`](../tickets/bug-10.md) tracks it, and
+this block goes red when it is fixed — which is the signal to come back and retag it.
 
 ### A branch body is deeper than its pattern
 
@@ -376,19 +376,12 @@ f x =
     y
 ```
 
-That example is tagged `expect=unimplemented`: it will go red the day `let` is implemented,
-which is the signal to come back and finish this section.
+**Not implemented:** that example is tagged `expect=unimplemented`; it will go red the day
+`let` is implemented, which is the signal to come back and finish this section.
 
-The layout rules already decided for it: the bindings sit deeper than the `let`, and `in`
-closes the block. Two questions are **open**, and this chapter deliberately does not answer
-them — whether the bindings of a `let` form a block with the same column discipline as
-`case … of` branches, so that the first binding fixes the column for all of them; and
-whether `in` must align with its `let`.
-
-## One layout error at a time
-
-A file with a layout mistake yields exactly one layout error, never a list — unlike
-canonicalization and type checking, which report everything they find. Indentation is not
-independent line by line: a wrong column changes what every column after it means, so a
-second error reported past the first would be a guess about a file the reader has not
-written yet.
+**Not implemented:** the layout rules below are design intent, not something the compiler
+has ever checked. The bindings sit deeper than the `let`, and `in` closes the block. Two
+questions are **open**, and this chapter deliberately does not answer them — whether the
+bindings of a `let` form a block with the same column discipline as `case … of` branches, so
+that the first binding fixes the column for all of them; and whether `in` must align with
+its `let`.
