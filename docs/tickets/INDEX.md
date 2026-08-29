@@ -111,6 +111,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-7](bug-7.md) | bug | low | open | The unclosed-char diagnostic draws two invisible carets, and swaps their messages |
 | [BUG-8](bug-8.md) | bug | medium | open | `do_exports` never checks that an exposed value or type actually exists |
 | [BUG-9](bug-9.md) | bug | medium | open | A module's `exposing` list is computed and then never consulted |
+| [BUG-10](bug-10.md) | bug | low | open | A `case` branch level with, or left of, the `case` keyword is accepted |
+| [BUG-11](bug-11.md) | bug | low | open | The `Tokenizer` never terminates on a tab outside leading whitespace |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
