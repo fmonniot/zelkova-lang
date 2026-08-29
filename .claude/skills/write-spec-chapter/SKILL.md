@@ -138,7 +138,17 @@ pass both ways are the most common review finding there is.*
 
 `docs/spec/INDEX.md`'s *A spec change and a semantics change do not share a diff* is the rule.
 A spec claim the compiler fails is a red test, which is a working record rather than a lost
-one. Use the `create-ticket` skill, or match its format.
+one. Match the `create-ticket` skill's format — read it for the ticket anatomy and the
+grounding rules, both of which apply here unchanged.
+
+**One thing does not apply: commit the tickets on the chapter's own branch, not on `main`.**
+`create-ticket`'s Step 5 says to file on `main` so a ticket is not invisible until its
+discovering PR merges, and that is right for a finding that stands on its own. A chapter's
+tickets do not. They are cited by name from the chapter's `**Known gap:**` paragraphs, and a
+chapter often introduces a prefix (`LANG-`) whose meaning only its own text explains — so
+splitting them onto `main` leaves the branch linking to files whose reason for existing is on
+the other side of the split, and leaves `main` holding tickets that reference a chapter nobody
+can read yet. Keep them together and let the branch land as one story.
 
 Which prefix, from `docs/tickets/INDEX.md`:
 
@@ -174,11 +184,23 @@ cargo clippy --all-features
 needed a `tests/` helper may have touched more than intended. CI does not gate on fmt or
 clippy — run both locally.
 
-## Step 9 — Report
+## Step 9 — Report, and commit only if asked
 
 What the chapter settled, what it turned up, and the block count from the spec run (it prints
 `spec: N block(s) passed`). Name the tickets filed and, explicitly, any gap with no red test
-behind it. Do not commit without asking.
+behind it. **Do not commit without being asked.**
+
+When you are asked, split the branch into distinct commits in this order:
+
+1. **The tickets** — every new file under `docs/tickets/` plus its INDEX rows. This goes
+   first so the chapter's `../tickets/<id>.md` links resolve at every commit in the branch,
+   rather than dangling until the tip.
+2. **The chapter** — `docs/spec/`, including the INDEX row moving to `written`.
+3. **Anything else** the session produced, such as a skill or a test helper.
+
+If a later commit adds a pointer to something an earlier one does not have yet, take that
+sentence out, commit, and put it back — a one-line edit is cheaper than a reference that is
+broken for one commit of history.
 
 ## Notes — harness gotchas that cost time otherwise
 
