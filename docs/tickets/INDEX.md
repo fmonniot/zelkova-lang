@@ -2,6 +2,11 @@
 
 _Last updated: 2026-08-28._
 
+`SPEC-2` opened a second body of work alongside the diagnostics program below: specifying the
+language itself, one chapter at a time. It is where the four `LANG-` tickets came from, and it
+will keep producing them — writing down a rule that was never written down is how you find out
+the compiler had quietly picked a different one.
+
 One file per ticket: `docs/tickets/<id-lower>.md`. Bugs and tasks share one ID namespace, one
 closing convention and this one table — a bug is a ticket **type**, not a separate file. Each
 ticket is self-contained so it can be picked up on its own: it names the **location**, the
@@ -16,7 +21,14 @@ file instead.
 Prefixes are created ad-hoc per theme. Current ones: `BUG-` (defects), `ERR-` (error handling
 and diagnostics), `AST-` (parser and canonical AST shape), `PERF-` (allocation and hot paths),
 `TIDY-` (small self-contained cleanups), `TEST-` (test infrastructure), `SPEC-` (specifying
-and documenting the language itself, under `docs/spec/`).
+and documenting the language itself, under `docs/spec/`), `LANG-` (bringing the compiler into
+line with a rule `docs/spec/` has since settled).
+
+`LANG-` and `BUG-` are not the same thing and the split is worth keeping straight. A `BUG-` is
+code that fails at what it was trying to do. A `LANG-` is code that succeeds at something the
+language has since decided against — it was never wrong until a chapter was written, and the
+chapter is the only reason it is a ticket. Every `LANG-` therefore names the chapter that
+decided it and the tagged block there that goes red when it lands.
 
 ## The diagnostics program
 
@@ -113,6 +125,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-9](bug-9.md) | bug | medium | open | A module's `exposing` list is computed and then never consulted |
 | [BUG-10](bug-10.md) | bug | low | open | A `case` branch level with, or left of, the `case` keyword is accepted |
 | [BUG-11](bug-11.md) | bug | low | open | The `Tokenizer` never terminates on a tab outside leading whitespace |
+| [BUG-12](bug-12.md) | bug | medium | open | Four `unwrap()`s on user input panic the compiler instead of reporting a syntax error |
+| [BUG-13](bug-13.md) | bug | medium | open | Block comments are lexed only at the start of a line, swallow the rest of their closing line, do not nest, and are accepted unterminated |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -125,6 +139,11 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-11](err-11.md) | task | — | open | A `case` branch indented deeper than its siblings is absorbed, and the error names the wrong token |
 | [ERR-12](err-12.md) | task | — | open | Leading indentation before `module` is rejected only by accident, and the caret lands on an unrelated line |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
+| [SPEC-2](spec-2.md) | task | — | open | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
+| [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
+| [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
+| [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
+| [LANG-4](lang-4.md) | task | — | open | Prefix `-` is desugared to `0 - e`, so negating a `Float` mixes it with an `Int` literal |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
