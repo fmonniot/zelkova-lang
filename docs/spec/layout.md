@@ -1,9 +1,9 @@
 # Layout — the offside rule
 
 Zelkova is indentation-sensitive: where a line starts decides which construct it belongs
-to, and there are no braces to fall back on. This chapter is the normative account of
-that, because nothing else is — Elm, which Zelkova takes its surface from, never specified
-its own offside rule, so "like Elm" is not an answer here.
+to, and there are no braces to fall back on. This chapter is the normative account of that
+rule, in full: what a line's leading whitespace may contain, and which construct a line
+belongs to given the column it starts on.
 
 Two kinds of thing can go wrong with a line, and the split matters when reading an error
 message. The leading whitespace may be malformed in its own right — an odd number of
