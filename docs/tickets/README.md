@@ -6,7 +6,8 @@ _Last updated: 2026-08-29._
 language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
 will keep producing them — writing down a rule that was never written down is how you find out
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
-from one chapter, and `SPEC-5` another four plus three `BUG-`s and a `TEST-`.
+from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, and `SPEC-11` a
+`BUG-` and an `ERR-`.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
@@ -142,6 +143,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-17](bug-17.md) | bug | high | open | A type application's arguments are discarded when its head resolves |
 | [BUG-18](bug-18.md) | bug | medium | open | A variant that is not a constructor application is silently dropped |
 | [BUG-19](bug-19.md) | bug | medium | open | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
+| [BUG-20](bug-20.md) | bug | high | open | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -153,6 +155,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-10](err-10.md) | task | — | open | Give a phase its first real warning: unused imports in canonicalization |
 | [ERR-11](err-11.md) | task | — | open | A `case` branch indented deeper than its siblings is absorbed, and the error names the wrong token |
 | [ERR-12](err-12.md) | task | — | open | Leading indentation before `module` is rejected only by accident, and the caret lands on an unrelated line |
+| [ERR-13](err-13.md) | task | — | open | A type error spells the numeric-literal type `number`, which the language reads as an ordinary type variable |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
