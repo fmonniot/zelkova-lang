@@ -31,22 +31,40 @@
 //!   the feature lands. On an expected failure the harness prints the actual error
 //!   observed, so a human reviewing a chapter can eyeball that it failed for the
 //!   intended reason.
+//! - `zel expect=dependency-error` — the block's *group* (see below) fails before any
+//!   module is canonicalized, because its imports have no valid order: a cycle. It is
+//!   the one expectation that belongs to a group rather than to a module, so every
+//!   block of the group carries it or none does.
 //! - `zel expect=fragment` — an illustrative fragment, deliberately not executed. Only
 //!   opt-out, and it must be explicit in the source. Counted and reported at the end
 //!   of a run.
 //!
-//! A `zel` block with no `expect=`, or an unrecognised `expect=` value, is a hard
-//! failure. The extraction and evaluation logic below is written to take an arbitrary
+//! A block may also carry `package=<label>`. Blocks sharing one label, within one
+//! chapter, are one package: they are parsed together, ordered by their imports, and
+//! canonicalized in that order against each other's `Interface`s — which is how a
+//! chapter shows two modules at once (`SPEC-3`, settling the question
+//! `docs/spec/INDEX.md` left open). Each block keeps its **own** `expect=`, so an
+//! example can show one module compiling and its importer failing. A block with no
+//! `package=` is a package of one, compiled with no interfaces at all, exactly as
+//! before.
+//!
+//! A `zel` block with no `expect=`, an unrecognised `expect=` value, or an
+//! unrecognised key in its info string, is a hard failure. The extraction and evaluation logic below is written to take an arbitrary
 //! path or string rather than being hardcoded to `docs/spec/`, so the harness's own
 //! failure modes can be pinned against fixtures under `tests/fixtures/spec/` instead
 //! of committing a deliberately-broken example to a real chapter.
 
 use std::path::Path;
 
+use std::collections::HashMap;
+
 use codespan_reporting::files::SimpleFile;
 use zelkova_lang::compiler::canonical;
+use zelkova_lang::compiler::dependencies::ModuleWalker;
+use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser;
 use zelkova_lang::compiler::parser::tokenizer::TokenizerErrorType;
+use zelkova_lang::compiler::Interface;
 
 mod support;
 
@@ -68,6 +86,10 @@ enum Expect {
     ParseError(Option<String>),
     CanonicalError(String),
     Unimplemented,
+    /// The group this block belongs to has no valid module order — its imports form
+    /// a cycle — so nothing in it is canonicalized at all. Group-wide by nature:
+    /// [`evaluate_group`] requires every block of the group to agree on it.
+    DependencyError,
     Fragment,
 }
 
@@ -81,27 +103,67 @@ struct Block {
     /// The info string exactly as written, past the leading `zel` token — kept for
     /// failure messages so an unrecognised tag can be quoted back at the author.
     info_rest: String,
-    /// `Err` when the info string carried no `expect=`, or an unrecognised one.
+    /// `Err` when the info string carried no `expect=`, an unrecognised one, or an
+    /// unrecognised key beside it.
     expect: Result<Expect, String>,
+    /// The `package=<label>` this block belongs to, if any. Blocks sharing a label
+    /// within one chapter are compiled together, in dependency order. `None` is a
+    /// package of one.
+    package: Option<String>,
     source: String,
 }
 
-/// Parse an `expect=` value (already stripped of the `zel` token). `rest` is the
-/// trimmed remainder of the info string after `zel`.
-fn parse_expect(rest: &str) -> Result<Expect, String> {
-    if rest.is_empty() {
-        return Err("no `expect=` in the info string".to_string());
+/// Parse one info string's `key=value` tokens (already stripped of the leading `zel`).
+/// `rest` is the trimmed remainder of the info string after `zel`.
+///
+/// Returns the expectation and the `package=` label separately, because a malformed
+/// `expect=` still has to produce a `Block` — a chapter author who mistypes a tag gets
+/// a named failure rather than a silently skipped example.
+fn parse_info(rest: &str) -> (Result<Expect, String>, Option<String>) {
+    let mut expect = None;
+    let mut package = None;
+
+    for token in rest.split_whitespace() {
+        if let Some(value) = token.strip_prefix("expect=") {
+            if expect.is_some() {
+                return (
+                    Err("more than one `expect=` in the info string".to_string()),
+                    package,
+                );
+            }
+            expect = Some(parse_expect(value));
+        } else if let Some(value) = token.strip_prefix("package=") {
+            if value.is_empty() {
+                return (Err("`package=` names no label".to_string()), None);
+            }
+            if package.is_some() {
+                return (
+                    Err("more than one `package=` in the info string".to_string()),
+                    None,
+                );
+            }
+            package = Some(value.to_string());
+        } else {
+            return (
+                Err(format!("unrecognised `{}` in the info string", token)),
+                package,
+            );
+        }
     }
-    let Some(value) = rest.strip_prefix("expect=") else {
-        return Err(format!(
-            "info string `{}` does not start with `expect=`",
-            rest
-        ));
-    };
+
+    match expect {
+        Some(e) => (e, package),
+        None => (Err("no `expect=` in the info string".to_string()), package),
+    }
+}
+
+/// Parse the value of one `expect=` token.
+fn parse_expect(value: &str) -> Result<Expect, String> {
     match value {
         "ok" => Ok(Expect::Ok),
         "parse-error" => Ok(Expect::ParseError(None)),
         "unimplemented" => Ok(Expect::Unimplemented),
+        "dependency-error" => Ok(Expect::DependencyError),
         "fragment" => Ok(Expect::Fragment),
         _ if value.starts_with("parse-error:") => {
             let reason = &value["parse-error:".len()..];
@@ -162,12 +224,13 @@ fn extract_zel_blocks(content: &str, file_label: &str) -> Vec<Block> {
 
         if is_zel {
             let source = lines[(i + 1)..close.min(lines.len())].join("\n");
-            let expect = parse_expect(&info_rest);
+            let (expect, package) = parse_info(&info_rest);
             blocks.push(Block {
                 file: file_label.to_string(),
                 line: open_line,
                 info_rest,
                 expect,
+                package,
                 source,
             });
         }
@@ -265,6 +328,12 @@ fn evaluate(block: &Block) -> Verdict {
 
     match expect {
         Expect::Fragment => Verdict::Fragment,
+        Expect::DependencyError => Verdict::Fail(
+            "`expect=dependency-error` is about a group of modules having no valid \
+             import order, so it needs a `package=` label naming the other modules \
+             it cycles with"
+                .to_string(),
+        ),
         Expect::Ok => match parse(&block.source) {
             Err(e) => Verdict::Fail(format!("expected `ok`, but the parser rejected it: {:?}", e)),
             Ok(module) => match canonicalize(&module) {
@@ -347,6 +416,198 @@ fn evaluate(block: &Block) -> Verdict {
     }
 }
 
+/// Canonicalize one module, tagging any errors with the module they came from.
+///
+/// [`ModuleWalker::check_in_order`] hands back one flat error list for the whole
+/// package, so without the tag there is no way to say *which* block of a group failed
+/// — which is the entire point of letting each block carry its own `expect=`. Written
+/// as a free function rather than a closure because `check_in_order` takes a `fn`
+/// pointer.
+fn canonicalize_tagged(
+    package: &zelkova_lang::compiler::PackageName,
+    interfaces: &HashMap<Name, Interface>,
+    source: &parser::Module,
+) -> Result<canonical::Module, (Name, Vec<canonical::Error>)> {
+    canonical::canonicalize(package, interfaces, source)
+        .map_err(|errors| (source.name.clone(), errors))
+}
+
+/// Run one `package=` group: every block of it is a module of the same package, and
+/// they are canonicalized in dependency order against each other's `Interface`s.
+///
+/// Returns one [`Verdict`] per block, in the order given. The group is compiled once;
+/// each block is then judged against its own `expect=`, so an example can show a
+/// module compiling and its importer failing in the same package.
+///
+/// Three whole-group failure modes, each reported on every block rather than on one,
+/// because none of them is any single block's fault:
+///
+/// - a `parse-error` expectation, which a group cannot express — the group has to
+///   parse before any of it can be compiled, so a rejected-source example belongs in
+///   a package-less block;
+/// - a block that fails to parse, which leaves the rest of the group with a module
+///   missing;
+/// - two blocks declaring the same module name, which would make the mapping from
+///   module back to block ambiguous. (The language forbids it too — see
+///   `docs/spec/modules.md` — but here it is the harness protecting its own bookkeeping.)
+fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
+    let group_failure = |reason: String| -> Vec<Verdict> {
+        blocks
+            .iter()
+            .map(|_| Verdict::Fail(reason.clone()))
+            .collect()
+    };
+
+    // A malformed tag is the block's own failure, not the group's, but it also means
+    // there is no expectation to judge it against — so the group stops here and every
+    // block says why.
+    let mut expects = Vec::new();
+    for block in blocks {
+        match &block.expect {
+            Ok(e) => expects.push(e),
+            Err(reason) => {
+                return group_failure(format!(
+                    "{}:{} has a tag this harness cannot read ({}), so the package \
+                     could not be compiled",
+                    block.file, block.line, reason
+                ))
+            }
+        }
+    }
+
+    if let Some(i) = expects
+        .iter()
+        .position(|e| matches!(e, Expect::ParseError(_)))
+    {
+        return group_failure(format!(
+            "{}:{} expects a parse error inside a `package=` group. A group is parsed \
+             as a whole before anything is compiled, so a block showing rejected \
+             source has to stand on its own, without a `package=` label",
+            blocks[i].file, blocks[i].line
+        ));
+    }
+
+    // `expect=fragment` is an opt-out from being executed, and a group is executed as
+    // a unit — so a fragment cannot sit in one.
+    if let Some(i) = expects.iter().position(|e| matches!(e, Expect::Fragment)) {
+        return group_failure(format!(
+            "{}:{} is an `expect=fragment` inside a `package=` group. A fragment is \
+             never executed and a group is compiled as a unit; drop the `package=` \
+             label",
+            blocks[i].file, blocks[i].line
+        ));
+    }
+
+    let mut modules = Vec::new();
+    for block in blocks {
+        match parse(&block.source) {
+            Ok(module) => modules.push(module),
+            Err(e) => {
+                return group_failure(format!(
+                    "{}:{} failed to parse, so the whole package could not be \
+                     compiled: {:?}",
+                    block.file, block.line, e
+                ))
+            }
+        }
+    }
+
+    for (i, module) in modules.iter().enumerate() {
+        if let Some(j) = modules[..i].iter().position(|m| m.name == module.name) {
+            return group_failure(format!(
+                "{}:{} and {}:{} both declare `module {}`; a package holds one module \
+                 per name",
+                blocks[j].file, blocks[j].line, blocks[i].file, blocks[i].line, module.name
+            ));
+        }
+    }
+
+    // No files on disk behind these modules, so no `SourceFileId` for any of them:
+    // an `Interface` built here carries `file: None`, and a cross-module label falls
+    // back on the module under check the way it did before `ERR-5`. Nothing the
+    // harness asserts on depends on that.
+    let module_files = HashMap::new();
+    let walker = match ModuleWalker::new(&modules, &module_files) {
+        Ok(walker) => walker,
+        Err(err) => {
+            return blocks
+                .iter()
+                .zip(&expects)
+                .map(|(block, expect)| match expect {
+                    Expect::DependencyError => Verdict::Pass,
+                    _ => Verdict::Fail(format!(
+                        "expected `{}`, but the package has no valid module order and \
+                         so was never compiled: {:?}",
+                        expect_label(block),
+                        err
+                    )),
+                })
+                .collect()
+        }
+    };
+
+    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
+    let (_checked, failures) = walker.check_in_order(
+        &test_package(),
+        &mut interfaces,
+        &module_files,
+        canonicalize_tagged,
+    );
+    let failures: HashMap<Name, Vec<canonical::Error>> = failures.into_iter().collect();
+
+    blocks
+        .iter()
+        .zip(&expects)
+        .zip(&modules)
+        .map(|((block, expect), module)| {
+            let errors = failures.get(&module.name);
+            match (expect, errors) {
+                (Expect::Ok, None) => Verdict::Pass,
+                (Expect::Ok, Some(errors)) => Verdict::Fail(format!(
+                    "expected `ok`, but canonicalization failed: {:?}",
+                    errors
+                )),
+                (Expect::CanonicalError(wanted), None) => Verdict::Fail(format!(
+                    "expected `canonical-error:{}`, but the module canonicalized with \
+                     no errors",
+                    wanted
+                )),
+                (Expect::CanonicalError(wanted), Some(errors)) => {
+                    let found = variant_names(errors);
+                    if found.contains(&wanted.as_str()) {
+                        Verdict::Pass
+                    } else {
+                        Verdict::Fail(format!(
+                            "expected a canonical error of variant `{}`, got {:?} ({:?})",
+                            wanted, found, errors
+                        ))
+                    }
+                }
+                (Expect::Unimplemented, Some(errors)) => {
+                    println!(
+                        "{}:{} (expect=unimplemented) failed in canonicalization, as \
+                         expected: {:?}",
+                        block.file, block.line, errors
+                    );
+                    Verdict::Pass
+                }
+                (Expect::Unimplemented, None) => Verdict::Fail(
+                    "expected `unimplemented`, but the block parsed and canonicalized \
+                     successfully — this feature looks implemented now; update the chapter"
+                        .to_string(),
+                ),
+                (Expect::DependencyError, _) => Verdict::Fail(
+                    "expected `dependency-error`, but the package had a valid module \
+                     order — nothing here forms an import cycle"
+                        .to_string(),
+                ),
+                // Both are refused above, before anything is parsed.
+                (Expect::ParseError(_), _) | (Expect::Fragment, _) => unreachable!(),
+            }
+        })
+        .collect()
+}
+
 fn expect_label(block: &Block) -> String {
     match &block.expect {
         Ok(Expect::Ok) => "expect=ok".to_string(),
@@ -354,6 +615,7 @@ fn expect_label(block: &Block) -> String {
         Ok(Expect::ParseError(Some(r))) => format!("expect=parse-error:{}", r),
         Ok(Expect::CanonicalError(v)) => format!("expect=canonical-error:{}", v),
         Ok(Expect::Unimplemented) => "expect=unimplemented".to_string(),
+        Ok(Expect::DependencyError) => "expect=dependency-error".to_string(),
         Ok(Expect::Fragment) => "expect=fragment".to_string(),
         Err(_) => format!("`{}`", block.info_rest),
     }
@@ -401,8 +663,34 @@ fn spec_chapters_pass() {
             .to_string_lossy()
             .to_string();
 
-        for block in extract_zel_blocks(&content, &label) {
-            match evaluate(&block) {
+        let blocks = extract_zel_blocks(&content, &label);
+
+        // A block with no `package=` is judged on its own; blocks sharing a label are
+        // one package, compiled together and judged individually against their own
+        // tags. Groups are keyed per chapter, so two chapters may reuse a label.
+        let mut verdicts: Vec<Option<Verdict>> = Vec::with_capacity(blocks.len());
+        let mut groups: Vec<(&str, Vec<usize>)> = Vec::new();
+        for (i, block) in blocks.iter().enumerate() {
+            match &block.package {
+                None => verdicts.push(Some(evaluate(block))),
+                Some(label) => {
+                    verdicts.push(None);
+                    match groups.iter_mut().find(|(l, _)| *l == label.as_str()) {
+                        Some((_, members)) => members.push(i),
+                        None => groups.push((label.as_str(), vec![i])),
+                    }
+                }
+            }
+        }
+        for (_, members) in &groups {
+            let group: Vec<&Block> = members.iter().map(|&i| &blocks[i]).collect();
+            for (&i, verdict) in members.iter().zip(evaluate_group(&group)) {
+                verdicts[i] = Some(verdict);
+            }
+        }
+
+        for (block, verdict) in blocks.iter().zip(verdicts) {
+            match verdict.expect("every block is judged exactly once") {
                 Verdict::Pass => pass_count += 1,
                 Verdict::Fragment => fragment_count += 1,
                 Verdict::Fail(reason) => {
@@ -410,7 +698,7 @@ fn spec_chapters_pass() {
                         "{}:{} ({}): {}",
                         block.file,
                         block.line,
-                        expect_label(&block),
+                        expect_label(block),
                         reason
                     ));
                 }
@@ -625,6 +913,116 @@ fn unimplemented_block_that_compiles_is_a_failure() {
             "an `expect=unimplemented` block that compiles cleanly must fail, \
              not pass silently"
         ),
+    }
+}
+
+/// A `package=` group is compiled as one package, and each block is judged on its own
+/// `expect=` — the property that makes multi-module examples worth having at all.
+///
+/// Pins: `tests/fixtures/spec/package_group_ok_fails.md` holds two blocks labelled
+/// `package=fixture`. `Widget` compiles; `Main` imports a name `Widget` does not
+/// declare and so must fail, despite carrying the same `expect=ok`. Neutralised by
+/// having `evaluate_group` return `Verdict::Pass` for every block whenever *any*
+/// module in the group checked — the "one verdict for the group" reading this test
+/// exists to rule out: with that change `Main` reports `Pass` and this goes red.
+/// Restored afterwards.
+#[test]
+fn package_group_judges_each_block_separately() {
+    let content = read_fixture("package_group_ok_fails.md");
+    let blocks = extract_zel_blocks(&content, "package_group_ok_fails.md");
+    assert_eq!(blocks.len(), 2, "fixture should hold two zel blocks");
+    assert!(
+        blocks
+            .iter()
+            .all(|b| b.package.as_deref() == Some("fixture")),
+        "both blocks should share one package label"
+    );
+
+    let group: Vec<&Block> = blocks.iter().collect();
+    let verdicts = evaluate_group(&group);
+
+    assert!(
+        matches!(verdicts[0], Verdict::Pass),
+        "the exporting module compiles and must pass"
+    );
+    match &verdicts[1] {
+        Verdict::Fail(reason) => assert!(
+            reason.contains("ValueNotFound"),
+            "the failure should name what actually went wrong, got {:?}",
+            reason
+        ),
+        _ => panic!("the importing module fails to canonicalize and must not pass"),
+    }
+}
+
+/// `expect=dependency-error` passes exactly when the group has no valid module order.
+///
+/// Pins: `tests/fixtures/spec/package_group_cycle.md` holds two modules importing each
+/// other. Neutralised by giving the `Err` arm of `evaluate_group`'s `ModuleWalker::new`
+/// match the same treatment as a parse failure — a `group_failure(..)` for every block:
+/// with that change the cycle is reported as a failure rather than as the expected
+/// outcome and this goes red. Restored afterwards.
+#[test]
+fn package_group_cycle_is_a_dependency_error() {
+    let content = read_fixture("package_group_cycle.md");
+    let blocks = extract_zel_blocks(&content, "package_group_cycle.md");
+    assert_eq!(blocks.len(), 2, "fixture should hold two zel blocks");
+
+    let group: Vec<&Block> = blocks.iter().collect();
+    assert!(
+        evaluate_group(&group)
+            .iter()
+            .all(|v| matches!(v, Verdict::Pass)),
+        "both blocks of a cyclic package must pass their `dependency-error` tag"
+    );
+}
+
+/// `expect=dependency-error` on a group that *does* have a valid order is a failure —
+/// the tag must not become a way of saying "something went wrong somewhere".
+///
+/// Reuses the two-module fixture from
+/// [`package_group_judges_each_block_separately`], whose imports do not cycle, and
+/// retags both blocks in memory.
+#[test]
+fn dependency_error_without_a_cycle_is_a_failure() {
+    let content = read_fixture("package_group_ok_fails.md");
+    let mut blocks = extract_zel_blocks(&content, "package_group_ok_fails.md");
+    for block in &mut blocks {
+        block.expect = Ok(Expect::DependencyError);
+    }
+
+    let group: Vec<&Block> = blocks.iter().collect();
+    for verdict in evaluate_group(&group) {
+        match verdict {
+            Verdict::Fail(reason) => assert!(
+                reason.contains("import cycle"),
+                "the failure should say the package had a valid order, got {:?}",
+                reason
+            ),
+            _ => panic!("`dependency-error` must fail when the package orders fine"),
+        }
+    }
+}
+
+/// `expect=parse-error` cannot live in a `package=` group, and saying so is a failure
+/// rather than a silent pass: a group has to parse as a whole before any of it is
+/// compiled, so a block showing rejected source has to stand alone.
+#[test]
+fn parse_error_inside_a_group_is_a_failure() {
+    let content = read_fixture("package_group_ok_fails.md");
+    let mut blocks = extract_zel_blocks(&content, "package_group_ok_fails.md");
+    blocks[1].expect = Ok(Expect::ParseError(None));
+
+    let group: Vec<&Block> = blocks.iter().collect();
+    for verdict in evaluate_group(&group) {
+        match verdict {
+            Verdict::Fail(reason) => assert!(
+                reason.contains("stand on its own"),
+                "the failure should say why, got {:?}",
+                reason
+            ),
+            _ => panic!("a parse-error expectation inside a group must fail"),
+        }
     }
 }
 
