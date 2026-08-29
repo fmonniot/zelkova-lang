@@ -783,3 +783,190 @@ fn annotation_without_a_body_labels_the_annotation() {
         "the caret must sit under the annotation"
     );
 }
+
+// ── ERR-7: "did you mean …?" on unresolved names ─────────────────────────────
+//
+// A typo'd name that is one edit away from something in scope gets a suggestion
+// hung off the same label the caret already sits under (`labels[0].message`); a
+// name resembling nothing in scope gets none — a wrong suggestion is worse than
+// silence, since it sends the reader to check something irrelevant.
+
+/// `Error::VariableNotFound`: a one-character typo of an unqualified, explicitly
+/// exposed import suggests the name it is one edit away from.
+///
+/// Mutation-checked by reverting `Expression::from_parser`'s `Variable` arm to
+/// build `Error::VariableNotFound(.., e.span, None)` unconditionally (skipping the
+/// `suggest_name` call): this test goes red because `suggestion` becomes `None`.
+#[test]
+fn unresolved_variable_suggests_a_near_miss() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let (iface_name, iface) = maybe_interface();
+    let mut interfaces = HashMap::new();
+    interfaces.insert(iface_name, iface);
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        import Maybe exposing (withDefault)
+        answer = widthDefault
+    "#};
+
+    let errors = canonicalize_with_interfaces(source, &interfaces)
+        .expect_err("a typo'd variable should not resolve");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::VariableNotFound(name, _, suggestion) => {
+            assert_eq!(name.unqualified_name(), "widthDefault".into());
+            assert_eq!(suggestion.as_ref().map(|n| n.as_str()), Some("withDefault"));
+        }
+        other => panic!("expected VariableNotFound, got {:?}", other),
+    }
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert!(
+        labels[0].message.contains("did you mean `withDefault`?"),
+        "the label should carry the suggestion, got {:?}",
+        labels[0].message
+    );
+}
+
+/// `Error::VariableNotFound`: a name resembling nothing in scope — not the
+/// imported `withDefault`, not the module's own `answer` — gets no suggestion.
+///
+/// Mutation-checked by widening `utils::suggest`'s threshold to always accept
+/// (e.g. `usize::MAX`): this test goes red because `suggestion` stops being
+/// `None`.
+#[test]
+fn unresolved_variable_with_no_near_miss_has_no_suggestion() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        answer = 42
+        mystery = zzzzzzzzzzzz
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("an undefined name should not resolve");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::VariableNotFound(_, _, suggestion) => {
+            assert_eq!(
+                *suggestion, None,
+                "an unrelated name must not produce a suggestion"
+            );
+        }
+        other => panic!("expected VariableNotFound, got {:?}", other),
+    }
+}
+
+/// `Error::VariantNotFound`: a one-character typo of a locally declared
+/// constructor suggests the name it is one edit away from.
+///
+/// Mutation-checked by reverting `Pattern::from_parser`'s `Constructor` arm to
+/// build `Error::VariantNotFound(.., p.span, None)` unconditionally: this test
+/// goes red because `suggestion` becomes `None`.
+#[test]
+fn unresolved_constructor_suggests_a_near_miss() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Color = Red | Green | Blue
+        isRed Reed = true
+    "#};
+
+    let errors = canonicalize_standalone(source)
+        .expect_err("a typo'd constructor pattern should not resolve");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::VariantNotFound(name, _, suggestion) => {
+            assert_eq!(name.unqualified_name(), "Reed".into());
+            assert_eq!(suggestion.as_ref().map(|n| n.as_str()), Some("Red"));
+        }
+        other => panic!("expected VariantNotFound, got {:?}", other),
+    }
+}
+
+/// `Error::VariantNotFound`: a constructor name resembling none of `Red`,
+/// `Green` or `Blue` gets no suggestion.
+#[test]
+fn unresolved_constructor_with_no_near_miss_has_no_suggestion() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Color = Red | Green | Blue
+        isRed Zzzzzzzzzzzz = true
+    "#};
+
+    let errors = canonicalize_standalone(source)
+        .expect_err("an undeclared constructor pattern should not resolve");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::VariantNotFound(_, _, suggestion) => {
+            assert_eq!(
+                *suggestion, None,
+                "an unrelated name must not produce a suggestion"
+            );
+        }
+        other => panic!("expected VariantNotFound, got {:?}", other),
+    }
+}
+
+/// `EnvError::InterfaceNotFound`, reached through `canonicalize` rather than
+/// `new_environment` directly, so the label carries a real span and the
+/// suggestion is asserted the same way as the parser-backed tests above.
+#[test]
+fn unresolved_import_module_suggests_a_near_miss() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let (iface_name, iface) = maybe_interface();
+    let mut interfaces = HashMap::new();
+    interfaces.insert(iface_name, iface);
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        import Mabye
+        answer = 1
+    "#};
+
+    let errors = canonicalize_with_interfaces(source, &interfaces)
+        .expect_err("an unknown module import should not resolve");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert!(
+        labels[0].message.contains("did you mean `Maybe`?"),
+        "expected a suggestion naming `Maybe`, got {:?}",
+        labels[0].message
+    );
+}
+
+/// `EnvError::ValueNotFound`, through `canonicalize`: an exposing-list typo of a
+/// value the imported module does declare.
+#[test]
+fn unresolved_import_exposed_value_suggests_a_near_miss() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let (iface_name, iface) = maybe_interface();
+    let mut interfaces = HashMap::new();
+    interfaces.insert(iface_name, iface);
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        import Maybe exposing (widthDefault)
+        answer = 1
+    "#};
+
+    let errors = canonicalize_with_interfaces(source, &interfaces)
+        .expect_err("an unknown exposed value should not resolve");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert!(
+        labels[0].message.contains("did you mean `withDefault`?"),
+        "expected a suggestion naming `withDefault`, got {:?}",
+        labels[0].message
+    );
+}
