@@ -81,7 +81,10 @@ written so adding this is not a rewrite; don't reshape it in a way that foreclos
 Together the planned chapters are meant to be the whole language, not a set of footnotes to
 somebody else's manual — that is what *the spec is self-contained* costs, and it is the
 point. They are listed in a reading order rather than a writing order; each is its own
-ticket, filed when it is picked up rather than in bulk. What each has to cover:
+ticket, filed when it is picked up rather than in bulk. The `write-spec-chapter` skill
+(`.claude/skills/`) carries the method — probe the compiler rather than reasoning about it,
+settle the design questions with the owner before drafting, file what turns up instead of
+fixing it. What each chapter has to cover:
 
 - **Modules, `exposing` and imports** — the header, the four forms an `exposing` entry can
   take, `import … as … exposing`, how a module name maps to a file path, and whether any
