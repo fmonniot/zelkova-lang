@@ -218,7 +218,9 @@ tooMany = Nothing
 
 **Known gap:** both blocks should be rejected — `Maybe` takes exactly one argument, and the
 first supplies none while the second supplies two. Neither is checked, for the reason the next
-section gives.
+section gives ([`docs/tickets/bug-17.md`](../tickets/bug-17.md)). These two blocks are the
+red test that ticket lands against: nothing else in this chapter goes red when arguments start
+being counted.
 
 ### An applied type still means what it says
 
@@ -249,8 +251,9 @@ to count.
 
 **This gap has no red test.** The block above is valid Zelkova and stays `expect=ok` across the
 fix; the wrong behaviour is a *missing* type error, and the spec harness never runs the type
-checker. The arity blocks in the previous section do go red, which is what will bring someone
-back to this paragraph.
+checker — [`docs/tickets/test-2.md`](../tickets/test-2.md) is what would make it one. Until
+that lands, this paragraph has to be deleted by hand when BUG-17 does. The arity blocks in the
+previous section do go red, which is what will bring someone back here.
 
 ## The function arrow
 
@@ -331,11 +334,9 @@ quad p =
   Small
 ```
 
-The limit is deliberate, and it is one rule rather than three. A tuple of four is where a
-record belongs: past three elements, position stops being a usable way to say which field is
-which, and the type `(Int, Int, Int, Int)` tells a reader nothing that a record's field names
-would not have told them. Drawing the line in the grammar rather than in the type checker is
-what makes the answer immediate and the diagnostic about the shape of the text.
+The limit is deliberate. A tuple of four is where a record belongs: past three elements,
+position stops being a usable way to say which field is which, and a record's field names
+is a better solution.
 
 The same limit applies to tuple *patterns* and tuple *expressions*, so no tuple of any other
 size is representable anywhere in the language.
@@ -374,12 +375,59 @@ grow s =
   s
 ```
 
-An annotation is optional. A declaration without one gets whatever type the checker infers for
-it, and is no less typed for the absence.
+### An exposed declaration must be annotated
+
+A declaration named in its module's [`exposing` list](modules.md#the-exposing-list) **must**
+carry an annotation. A declaration the module keeps to itself need not: it gets whatever type
+the checker infers for it, and is no less typed for the absence.
+
+The line the rule is drawn on is the module boundary, because that is where a type stops being
+the compiler's business and becomes a promise to someone else — the sense of *promise* the
+[next section](#an-annotation-is-a-promise) is about.
+
+```zel expect=ok
+module Example exposing (Size, visible)
+
+type Size
+  = Small
+
+visible : Size
+visible =
+  hidden
+
+hidden =
+  Small
+```
+
+`visible` is exposed and annotated; `hidden` is neither, and needs no annotation to be used by
+its neighbour.
+
+Because `exposing (..)` exposes everything a module declares, a module written that way must
+annotate **every** top-level declaration. That is the rule applied rather than an exception to
+it: `(..)` is a claim that the whole module is public. A module that wants unannotated helpers
+lists what it exposes.
+
+```zel expect=ok
+module Example exposing (Size, count)
+
+type Size
+  = Small
+
+count = Small
+```
+
+**Known gap:** that block should be rejected — `count` is exposed and carries no annotation.
+Today it is accepted, and the consequence falls on the *importer* rather than here:
+`Module::to_interface` keeps only annotated values, so `count` is silently absent from every
+importing module's scope and the diagnostic there says the name does not exist
+([`docs/tickets/bug-14.md`](../tickets/bug-14.md), whose *Exposing is what other modules can
+see* blocks in [Modules](modules.md#exposing-is-what-other-modules-can-see) show that end of
+it). This rule is what that ticket's fix enforces, turning a name that vanishes across the
+boundary into an error at the declaration that failed to describe itself.
 
 ### An annotation is a promise
 
-An annotation is not a hint and not a starting point for inference. It is what callers may rely
+An annotation is not a hint and not a starting point for inference. It is what callers rely
 on, so the declared type may be **no more general** than what the body can actually support.
 
 `f : a -> a` promises to return whatever the caller passed in. A body that always returns one
@@ -404,8 +452,9 @@ compiler works with is not the one written in the file
 
 **This gap has no red test**, for the same reason as the one under
 [An applied type still means what it says](#an-applied-type-still-means-what-it-says): the
-harness stops before the type checker, and this block canonicalizes cleanly either way. The
-paragraph above has to be deleted by hand when the ticket lands.
+harness stops before the type checker ([`docs/tickets/test-2.md`](../tickets/test-2.md)), and
+this block canonicalizes cleanly either way. The paragraph above has to be deleted by hand when
+the ticket lands.
 
 Going the other way is fine. An annotation *more* specific than the body would allow is an
 ordinary, useful thing to write — it is how a general function is given a narrower published
@@ -413,11 +462,12 @@ type.
 
 ### Where an annotation goes
 
-An annotation is written immediately above the declaration it annotates, with nothing between
-them but blank lines and comments, and a declaration carries **at most one**.
+An annotation is written on the line directly above the declaration it annotates, with
+**nothing** between the two — not another declaration, not a comment, not even a blank line —
+and a declaration carries **at most one**.
 
-Both halves are about the same thing: the annotation is the first line of a declaration a
-reader reads, and it is only that if it is there and there is one of it.
+A comment belonging to the declaration goes *above* the annotation, where it
+reads as a comment on both.
 
 ```zel expect=ok
 module Example exposing (Size, first, second)
@@ -427,9 +477,21 @@ type Size
 
 first : Size
 
+second : Size
 second = Small
 
 first = Small
+```
+
+```zel expect=ok
+module Example exposing (Size, spaced)
+
+type Size
+  = Small
+
+spaced : Size
+
+spaced = Small
 ```
 
 ```zel expect=ok
@@ -446,10 +508,11 @@ ambiguous : Other
 ambiguous = Small
 ```
 
-**Known gap:** both blocks should be rejected and both are accepted. Declarations are grouped
-by name into a map with their order thrown away, so an annotation may sit anywhere among the
-top-level declarations; and when a name carries two, the **last** silently wins — the second
-block above is checked against `Other`, not against `Size`
+**Known gap:** all three blocks should be rejected and all three are accepted. Declarations are
+grouped by name into a map with their order thrown away, so an annotation may sit anywhere
+among the top-level declarations — and, position being gone entirely, a blank line between an
+annotation and its declaration is not noticed either. When a name carries two annotations the
+**last** silently wins: the third block above is checked against `Other`, not against `Size`
 ([`docs/tickets/lang-11.md`](../tickets/lang-11.md)).
 
 A [JS interop](js-interop.md) facade is the one place an annotation stands alone: a
@@ -459,7 +522,7 @@ facade.
 ### An annotation may span several lines
 
 An annotation is one declaration, so it may be carried onto following lines as long as they are
-indented — [Layout](layout.md#top-level-declarations) carries that rule and its reasoning.
+indented, following [Layout](layout.md#top-level-declarations) rules.
 
 ```zel expect=ok
 module Example exposing (Size, combine)
@@ -498,8 +561,13 @@ of a space run in the middle of it — `  ->Size` and `  ->  Size` both pass.
 
 ### The annotation and the declaration's parameters
 
-A function's parameter list and its annotation have to agree: the annotation's arrows, read
-left to right, are the parameters, and the last type is what the body produces.
+A function's parameter list and its annotation have to agree. The annotation's arrows, read
+left to right, are the parameters, and the type after the last arrow is what the body produces.
+So `Size -> Size` describes a function of exactly **one** parameter, and the declaration below
+it must name exactly one.
+
+Writing a different number is an error. Here the annotation has one arrow and `f a b` supplies
+two parameters:
 
 ```zel expect=canonical-error:BindingPatternsInvalidLen
 module Example exposing (Size, f)
@@ -511,11 +579,6 @@ f : Size -> Size
 f a b =
   a
 ```
-
-`Size -> Size` describes one parameter; `f a b` supplies two. This is checked during
-canonicalization, before the type checker runs, because it is a disagreement about *shape*
-rather than about types — and the same check is what makes
-`f _x` two parameters rather than one, in [Lexical structure](lexical-structure.md#the-underscore-is-not-a-letter).
 
 A tuple or a parenthesised function counts as **one** parameter, which is the point of the
 parentheses:
@@ -590,9 +653,11 @@ type Chain
   | End
 ```
 
-What a `type` declaration exposes to other modules — the type alone, or the type with its
-constructors — is the `Size` / `Size(..)` split in
-[Modules](modules.md#the-exposing-list).
+A `type` declaration can be exposed to other modules in two ways, and the module's `exposing`
+list is where the choice is made: naming the type on its own exposes it without its
+constructors, so other modules can mention `Chain` but cannot build or match one; naming it
+`Chain(..)` exposes the constructors too. [Modules](modules.md#the-exposing-list) specifies
+both forms and why the difference matters.
 
 ### What a variant may be
 
