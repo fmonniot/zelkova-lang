@@ -1,7 +1,7 @@
 ---
 name: write-spec-chapter
-description: Write one chapter of the Zelkova language specification under docs/spec/, with every example checked by cargo test --test spec, and file a ticket for every divergence it uncovers instead of fixing it. Use when the user says "write the modules chapter", "let's do Expressions next", "continue the spec", or names any chapter from docs/spec/INDEX.md's list.
-argument-hint: <chapter name from docs/spec/INDEX.md's chapter list>
+description: Write one chapter of the Zelkova language specification under docs/spec/, with every example checked by cargo test --test spec, and file a ticket for every divergence it uncovers instead of fixing it. Use when the user says "write the modules chapter", "let's do Expressions next", "continue the spec", or names any chapter from docs/spec/README.md's list.
+argument-hint: <chapter name from docs/spec/README.md's chapter list>
 ---
 
 # Write Spec Chapter
@@ -18,7 +18,7 @@ skill exists to prevent.
 
 $ARGUMENTS
 
-A chapter name from the table in `docs/spec/INDEX.md`. Often it is not in the arguments at all
+A chapter name from the table in `docs/spec/README.md`. Often it is not in the arguments at all
 but in the preceding conversation ("do the next one"), in which case take the next `planned`
 row in reading order.
 
@@ -38,7 +38,7 @@ documentation. Where a rule is inherited, write it out in full.
 
 ## Step 1 — Read the conventions before writing a word
 
-- `docs/spec/INDEX.md` — the `expect=` vocabulary, the **Known gap:** / **Not implemented:**
+- `docs/spec/README.md` — the `expect=` vocabulary, the **Known gap:** / **Not implemented:**
   lead-ins, and *A spec change and a semantics change do not share a diff*. This is the
   document chapter authors are written against; read all of it.
 - `tests/spec.rs` — what the harness actually enforces, as opposed to what the index says it
@@ -136,7 +136,7 @@ pass both ways are the most common review finding there is.*
 
 ## Step 6 — File tickets, fix nothing
 
-`docs/spec/INDEX.md`'s *A spec change and a semantics change do not share a diff* is the rule.
+`docs/spec/README.md`'s *A spec change and a semantics change do not share a diff* is the rule.
 A spec claim the compiler fails is a red test, which is a working record rather than a lost
 one. Match the `create-ticket` skill's format — read it for the ticket anatomy and the
 grounding rules, both of which apply here unchanged.
@@ -150,7 +150,7 @@ splitting them onto `main` leaves the branch linking to files whose reason for e
 the other side of the split, and leaves `main` holding tickets that reference a chapter nobody
 can read yet. Keep them together and let the branch land as one story.
 
-Which prefix, from `docs/tickets/INDEX.md`:
+Which prefix, from `docs/tickets/README.md`:
 
 - **`BUG-`** — code failing at what it was trying to do. A panic, a swallowed line, a
   never-terminating iterator.
@@ -167,8 +167,8 @@ fix, only its meaning.
 
 ## Step 7 — Update both indexes
 
-- `docs/spec/INDEX.md` — move the chapter's row from `planned` to `written`, linked.
-- `docs/tickets/INDEX.md` — a row per new ticket, above the tombstones, grouped by prefix. Add
+- `docs/spec/README.md` — move the chapter's row from `planned` to `written`, linked.
+- `docs/tickets/README.md` — a row per new ticket, above the tombstones, grouped by prefix. Add
   any new prefix to the header list with a sentence on what distinguishes it.
 
 ## Step 8 — Verify
@@ -218,7 +218,7 @@ broken for one commit of history.
   why it is described rather than shown — `docs/spec/lexical-structure.md`'s last section is
   the model.
 - **One module per block.** How to write an example spanning two modules is still open —
-  `docs/spec/INDEX.md` lists four candidate mechanisms and says whichever chapter needs it
+  `docs/spec/README.md` lists four candidate mechanisms and says whichever chapter needs it
   first decides. The **Modules, exposing and imports** chapter is that chapter; settle it
   before starting, not halfway through.
 - **`NodeSpan`'s `PartialEq` always returns `true`**, so a whole-value assertion in any test

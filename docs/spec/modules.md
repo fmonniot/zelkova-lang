@@ -623,7 +623,7 @@ x = label
 
 The qualified spelling is unaffected: `Widget.label` and `Gadget.label` both still
 resolve, and are the fix. *Name resolution and scoping* — planned; see
-[the chapter list](INDEX.md#chapters) — is where the general rule lives, including what
+[the chapter list](README.md#chapters) — is where the general rule lives, including what
 shadows what.
 
 ### One module, one import
@@ -769,4 +769,4 @@ x = 1 + 2
 A module name is unique within a package, and an `import` names a module in the package
 being compiled or in one of its dependencies. What a package is, how its dependencies are
 declared, and what visibility means at a package boundary are the subject of *Packages and
-source layout* — planned; see [the chapter list](INDEX.md#chapters).
+source layout* — planned; see [the chapter list](README.md#chapters).

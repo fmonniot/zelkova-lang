@@ -7,7 +7,7 @@ context-stack bootstrap (`Offside { context: Context::TopLevelDeclaration, inden
 which appears twice) and the step-3 `_ =>` arm testing `token.span.start.column == 1`.
 
 **Found:** while writing `docs/spec/layout.md` under `SPEC-1` (closed — see
-[INDEX.md](INDEX.md)). Left unfixed there for the same reason as [ERR-11](err-11.md).
+[README.md](README.md)). Left unfixed there for the same reason as [ERR-11](err-11.md).
 
 **Decided (SPEC-1, by the language owner):** a source file's first token is at column 1. Any
 space or tab before the `module` keyword is invalid. This ticket is not asking for indented
