@@ -5,15 +5,17 @@ to, and there are no braces to fall back on. This chapter is the normative accou
 that, because nothing else is — Elm, which Zelkova takes its surface from, never specified
 its own offside rule, so "like Elm" is not an answer here.
 
-Two passes share the work, and the split matters when reading an error message:
+Two kinds of thing can go wrong with a line, and the split matters when reading an error
+message. The leading whitespace may be malformed in its own right — an odd number of
+spaces, or a tab — in which case the error is about the whitespace and says so. Or the
+whitespace may be well-formed and the *column* wrong for the construct the line belongs
+to, in which case the error names the block that was broken: "the branches of a
+`case … of`", "the expression of a `case … of`".
 
-- The **tokenizer** (`src/compiler/parser/tokenizer.rs` — `handle_indentation`) looks at
-  the whitespace at the start of each line and decides whether it is *well-formed* at all.
-- The **layout pass** (`src/compiler/parser/layout.rs` — `layout`, `Layout::handle_next_token`)
-  runs over the resulting tokens and decides what each column *means*, injecting the
-  `OpenBlock` and `CloseBlock` tokens that let the grammar be written without any notion of
-  indentation. Those two tokens are internal: they are not spellable in source, and seeing
-  one named in an error message means a layout rule was violated rather than a token missed.
+An error message may also name `open block` or `close block`. Those are not tokens you can
+write. They are Zelkova's block structure made explicit so that a diagnostic has something
+to point at, and seeing one in a message means a layout rule was violated rather than a
+token missed.
 
 ## Indentation is measured in two-space levels
 
@@ -60,8 +62,7 @@ A tab *after* the first non-whitespace character of a line is ordinary whitespac
 fine; the rule is about indentation only.
 
 Whitespace-only lines are exempt from both rules. A "blank" line carrying three spaces, or
-a tab, is still blank — `handle_indentation` resets its count and moves on when it reaches
-the newline, so such a line neither breaks the even-width rule nor closes any block.
+a tab, is still blank: such a line neither breaks the even-width rule nor closes any block.
 
 The blank line in the example below is not empty: it holds three spaces, which would be an
 odd-width indentation error on any line that had a token on it. That whitespace is
@@ -146,9 +147,8 @@ describe f =
 ### The first branch fixes the column for all of them
 
 When the block of branches opens, the first token after it sets the column that every
-branch in that block must start on. The implementation records it as
-`Context::CaseBlock(Some(column))` and reads it back through `Offside::min_indent`; there
-is no fixed relationship to the column of the `case` keyword, only that it be deeper.
+branch in that block must start on. There is no fixed relationship to the column of the
+`case` keyword, only that it be deeper.
 
 Branches may be written one per line:
 
@@ -272,11 +272,8 @@ both a b =
 
 ## `let … in`
 
-`let` blocks are designed and partially built, but not usable. `layout.rs` carries a
-complete `Context::Let` — `let` opens a context at its own column plus one, and `in` closes
-it — and the tokenizer produces both keywords. The grammar does not: `grammar.lalrpop`'s
-`extern` token list has no `let` and no `in`, so nothing downstream can consume them and
-the parse fails on the `let` itself.
+`let … in` is part of the language as designed and is not implemented yet. A `let` in a
+source file is rejected today.
 
 ```zel expect=unimplemented
 module Example exposing (f)
@@ -288,24 +285,18 @@ f x =
     y
 ```
 
-The layout rules recorded in `layout.rs` for when it does land: the bindings sit deeper
-than the `let`, and `in` closes the block. Two questions its own `TODO`s leave open —
-whether a `let` block should emit `OpenBlock`/`CloseBlock` the way `case … of` does, and
-whether `in` must align with its `let` — are undecided, so this chapter does not answer
-them either. That example is tagged `expect=unimplemented`: it will go red the day `let`
-is implemented, which is the signal to come back and finish this section.
+The layout rules already decided for it: the bindings sit deeper than the `let`, and `in`
+closes the block. Two questions are **open**, and this chapter deliberately does not answer
+them — whether the bindings of a `let` form a block with the same column discipline as
+`case … of` branches, so that the first binding fixes the column for all of them; and
+whether `in` must align with its `let`. That example is tagged `expect=unimplemented`: it
+will go red the day `let` is implemented, which is the signal to come back and finish this
+section.
 
-## What the compiler tracks
+## One layout error at a time
 
-For anyone reading `layout.rs` alongside this chapter: the pass keeps a stack of
-`Offside { context, indent, line }`, one entry per open block, and `Context` names the five
-kinds — `TopLevelDeclaration`, `CaseExpression`, `CaseBlock`, `CaseBranch`, `Let`.
-`Context::description()` is what turns one of those into the phrase a diagnostic shows the
-user ("the branches of a `case … of`"), so an indentation error names the block it broke.
-
-The pass **stops at its first error**. A layout violation is diagnosed without changing the
-context stack, so there is no state from which the same input could be read differently;
-the iterator therefore fuses rather than retrying and looping forever. One malformed source
-file yields one layout error, never a list — unlike canonicalization and type checking,
-which accumulate. `CLAUDE.md`'s standing invariant on `Result`-yielding iterators has the
-history (`BUG-4`, `BUG-5`).
+A file with a layout mistake yields exactly one layout error, never a list — unlike
+canonicalization and type checking, which report everything they find. Indentation is not
+independent line by line: a wrong column changes what every column after it means, so a
+second error reported past the first would be a guess about a file the reader has not
+written yet.

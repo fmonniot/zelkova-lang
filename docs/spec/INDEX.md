@@ -68,16 +68,16 @@ are the places Zelkova **cannot defer to Elm's documentation**, either because i
 or because Elm never wrote the rule down. Each is its own ticket, filed when it is picked
 up rather than in bulk. What each has to cover:
 
-- **Multi-line function declarations with pattern matching** — `CLAUDE.md` calls this "a
-  deliberate divergence from Elm", so Elm's docs are actively wrong here.
-- **Lexical structure, including the soft keywords** — `tokenizer.rs` groups four of them
-  (`left`, `right`, `non`, `javascript`) under a single "authorized as identifier"
-  comment, but `grammar.lalrpop`'s `VarIdent` maps only the first three back to a `Name`.
-  So `javascript` is reserved in identifier position and the other three are not, and the
-  comment overstates it. Establish which behaviour is intended before writing the chapter.
-- **Tuples' fixed arity** — size 2 or 3 only, written down exactly once in `tuple.rs`'s
-  `Tuple<T>`; see `CLAUDE.md`'s standing invariant for why three disagreeing arity checks
-  was a bug worth preventing structurally.
+- **Multi-line function declarations with pattern matching** — a deliberate divergence
+  from Elm, so Elm's documentation is actively wrong here and there is nothing to defer to.
+- **Lexical structure, including the soft keywords** — `left`, `right`, `non` and
+  `javascript` each act as a keyword in one position and as an ordinary identifier in
+  others, and the four do not behave alike today: `javascript` is reserved in identifier
+  position and the other three are not. Whether that split is intended has to be settled
+  before the chapter can state a rule.
+- **Tuples' fixed arity** — Zelkova has 2-tuples and 3-tuples and no other size. A
+  four-element tuple is a syntax error rather than a type error, which is a fact about the
+  grammar of the language and belongs in the spec.
 - **Constrained type variables** (`number`, `comparable`, `appendable`) — whether these
   become real type classes, compiler-known constraints, or nothing at all is undecided.
   The chapter records the question. A spec is a good place to hold an open design question
