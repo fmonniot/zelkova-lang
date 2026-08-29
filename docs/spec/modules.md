@@ -61,8 +61,7 @@ label = 1
 ```
 
 The header is one layout block, so the `exposing` clause may be carried onto later lines
-as long as they are indented past column 1 — which is how every module in `std/core`
-writes a list too long for one line:
+as long as they are indented past column 1:
 
 ```zel expect=ok
 module Widget exposing
@@ -183,8 +182,7 @@ label = 1
 This is a deliberate divergence — most languages of this family reject it — and it is
 here for one reason: a one-name-per-line `exposing` list is the normal way to write a
 long one, and with no trailing comma every addition to the end of such a list touches
-two lines instead of one. That is a small cost paid on every review of every module, for
-no gain.
+two lines instead of one.
 
 `(..)` is all or nothing. It cannot be combined with named entries:
 
@@ -229,11 +227,6 @@ module Facade exposing (label)
 
 import Widget exposing (label)
 ```
-
-The last two blocks carry the same `package=` label, which is how this chapter shows a
-rule that needs two modules at once: they are one package, compiled together, and each is
-still checked against its own expectation. The notation is described in
-[the specification's index](INDEX.md#more-than-one-module-package).
 
 ### Exposing is what other modules can see
 
@@ -477,6 +470,25 @@ y : Size
 y = Small
 ```
 
+Constructors are the only thing the bare entry gives up. The type's name is in scope
+unqualified, so a module can name it in its own signatures while leaving every way of
+building one to `Widget`:
+
+```zel expect=ok package=variants
+module Shape exposing (grow)
+
+import Widget exposing (Size)
+
+grow : Size -> Size
+grow s =
+  s
+```
+
+**Known gap:** that block states the rule rather than testing it. It compiles unchanged
+with the `exposing (Size)` dropped, because neither the entry nor the annotation is
+checked today ([`docs/tickets/bug-16.md`](../tickets/bug-16.md), which covers both sites
+and is the gap described further down).
+
 An `exposing (..)` on an import brings in everything the module exposes, unqualified. A
 bare `import Widget` with no `exposing` clause brings in nothing unqualified, and means
 the same as `import Widget exposing ()`.
@@ -612,7 +624,7 @@ x = label
 The qualified spelling is unaffected: `Widget.label` and `Gadget.label` both still
 resolve, and are the fix. *Name resolution and scoping* — planned; see
 [the chapter list](INDEX.md#chapters) — is where the general rule lives, including what
-shadows what. This section is only the part of it the import list creates.
+shadows what.
 
 ### One module, one import
 
@@ -712,10 +724,6 @@ import Left
 y = 2
 ```
 
-`expect=dependency-error` is the one expectation in this directory that belongs to a
-package rather than to a module, which is why both blocks carry it: neither module is at
-fault on its own.
-
 ## The default imports
 
 **Not implemented:** every module behaves as though it began with these seven imports,
@@ -737,8 +745,9 @@ at the top of it, `Maybe` and `Just` likewise, and `List.map`, `Char.toUpper` an
 wants `Dict` imports it.
 
 The list is chosen so that the types appearing in ordinary type annotations are always
-writable. `Maybe` and `Result` are exposed with their constructors because a `Maybe`
-whose `Just` had to be qualified would be worse than useless in a `case` branch, and
+writable. `Maybe` and `Result` are exposed with their constructors because matching on
+them is the ordinary way to use them, and a qualified `Maybe.Just` in every `case` branch
+would spell out a module name on one of the most common patterns in the language.
 `List` is exposed as a bare type because its module's functions read better qualified —
 `List.map`, not `map`. Writing any of these imports out explicitly is allowed and changes
 nothing.
@@ -760,7 +769,4 @@ x = 1 + 2
 A module name is unique within a package, and an `import` names a module in the package
 being compiled or in one of its dependencies. What a package is, how its dependencies are
 declared, and what visibility means at a package boundary are the subject of *Packages and
-source layout* — planned; see [the chapter list](INDEX.md#chapters). One rule already
-settled belongs here though: a `module javascript` facade is visible only inside the
-package that declares it, and is never importable from another
-([JS interop](js-interop.md)).
+source layout* — planned; see [the chapter list](INDEX.md#chapters).
