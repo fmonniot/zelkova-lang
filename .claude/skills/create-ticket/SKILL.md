@@ -1,7 +1,7 @@
 ---
 name: create-ticket
 description: File a new ticket under docs/tickets/, grounded in the actual code, and add its row to the index. Use when the user says "file a ticket for X", "make a ticket out of that", "create a bug for the thing we just found", or when a problem surfaces mid-work that is real but out of scope for what is being done.
-argument-hint: <description of the problem or task> [--prefix BUG|ERR|AST|PERF|TIDY|TEST]
+argument-hint: <description of the problem or task> [--prefix BUG|ERR|AST|PERF|TIDY|TEST|SPEC|LANG|SITE]
 ---
 
 # Create Ticket
