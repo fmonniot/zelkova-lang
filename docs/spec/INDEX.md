@@ -16,11 +16,8 @@ split gets explained rather than just listed.
 Every fenced ```` ```zel ```` block in a chapter carries an `expect=` tag in its info
 string, and `cargo test --test spec` runs every one of them through the compiler. A
 chapter claim the compiler disagrees with is a red test, not a stale sentence nobody
-notices — which is the failure mode this directory exists to prevent. The document this
-replaced, a root-level `lang.md`, described a facade module as `Basics.Js` while the tree
-had spelled it `Js.Basics` since March 2021. That contradiction sat there for five years,
-because nothing read `lang.md` and nothing checked it. `SPEC-1` (closed, recoverable per
-[`docs/tickets/INDEX.md`](../tickets/INDEX.md)) has the rest of that history.
+notices — which is the failure mode this directory exists to prevent: documentation
+nothing checks drifts from the code it describes, silently and indefinitely.
 
 A `zel` block with no `expect=` tag, or with a tag the harness does not recognise, is
 a hard test failure — never a silent skip. When you add an example, tag it.
@@ -57,7 +54,7 @@ written so adding this is not a rewrite; don't reshape it in a way that foreclos
 | Chapter | Status |
 |---|---|
 | [Layout (the offside rule)](layout.md) | written |
-| [JS interop](js-interop.md) | written — migrated from the former `lang.md` |
+| [JS interop](js-interop.md) | written |
 | Multi-line function declarations with pattern matching | planned |
 | Lexical structure, including the soft keywords | planned |
 | Tuples' fixed arity | planned |
@@ -121,7 +118,7 @@ The general form: **tag every claim you make, at the granularity you make it.** 
 rejection, and use the bare tag. Describe the diagnostic, and pin it. There is no manual
 verification step here on purpose — a convention that depends on someone remembering to
 check something by hand is one that will be skipped, and a spec whose examples are checked
-by ritual is the same document `lang.md` was.
+by ritual is not checked at all.
 
 A block tagged this way still looks, at a glance, like an ordinary green example —
 `expect=ok` and `expect=parse-error:UnexpectedToken` are exactly the tags a correct example

@@ -1,12 +1,5 @@
 # JS interoperability
 
-Migrated from the former root-level `lang.md`, which drifted from the compiler almost
-immediately: its one example wrote `module javascript Basics.Js exposing`, while the
-real facade under `std/core/src/Js/Basics.zel` has always spelled it
-`module javascript Js.Basics exposing` — the module name and the file name agree,
-`lang.md`'s example did not. Fixed here; [`INDEX.md`](INDEX.md) has why nothing caught it
-for as long as it went unnoticed, and what this directory does about it.
-
 A user can mark a Zelkova module as being a JavaScript interface. This is done by
 using the `javascript` modifier after the `module` keyword. When declaring a JS
 module, only function signatures are accepted — no bodies, no infix declarations, no
@@ -43,10 +36,6 @@ sub : number -> number -> number
 ```
 
 ## Open questions
-
-Carried over from `lang.md`'s two `TODO` notes, unanswered here — this spec is a
-record of what is decided, and a place to hold what is not, not a place to settle
-either by accident:
 
 - Reuse Elm's language definition and documentation where it applies, since Zelkova
   started as a fork of the language. `docs/spec/` is itself the beginning of that
