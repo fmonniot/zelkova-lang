@@ -47,9 +47,14 @@ f x =
    1
 ```
 
-**Tabs never indent.** A tab in a line's leading whitespace is an error in its own right,
-not a width — Zelkova takes no position on how wide a tab is because no line may be
-indented with one:
+## Tabs are legal only inside a comment
+
+A tab is an error anywhere in a source line except inside a comment. That is the whole
+rule: it does not matter whether the tab is indenting the line, separating two tokens, or
+sitting alone on a line that would otherwise be blank. Zelkova therefore takes no position
+on how wide a tab is, because no position in a program can depend on one.
+
+A tab in a line's leading whitespace:
 
 ```zel expect=parse-error:TabError
 module Example exposing (f)
@@ -58,11 +63,41 @@ f x =
 	1
 ```
 
-A tab *after* the first non-whitespace character of a line is ordinary whitespace and is
-fine; the rule is about indentation only.
+A tab between two tokens, well after the line's first non-whitespace character, is the
+same error:
 
-Whitespace-only lines are exempt from both rules. A "blank" line carrying three spaces, or
-a tab, is still blank: such a line neither breaks the even-width rule nor closes any block.
+```zel expect=parse-error:TabError
+module Example exposing (f)
+
+f x =
+  1	+	2
+```
+
+So is a tab on a line that carries nothing else:
+
+```zel expect=parse-error:TabError
+module Example exposing (f)
+	
+f x =
+  1
+```
+
+Inside a comment — from `--` to the end of the line, or between `{-` and `-}` — a tab is
+ordinary text and is accepted:
+
+```zel expect=ok
+module Example exposing (f)
+
+-- a	tab in a line comment
+{- and a	tab in a block comment -}
+f x =
+  1
+```
+
+## A blank line is blank whatever spaces it holds
+
+A line holding only spaces is exempt from the even-width rule. A "blank" line carrying
+three spaces is still blank: it neither breaks the even-width rule nor closes any block.
 
 The blank line in the example below is not empty: it holds three spaces, which would be an
 odd-width indentation error on any line that had a token on it. That whitespace is
@@ -79,8 +114,35 @@ f x =
 
 ## A file starts at column 1
 
-The first token of a source file is the `module` keyword, and it sits in column 1. Any
-space or tab before it is invalid.
+The first **token** of a source file is the `module` keyword, and it sits in column 1. A
+comment may precede it — comments are consumed as part of the indentation scan, so they
+are invisible to this rule and a file may open with one:
+
+```zel expect=ok
+-- Comments before the header are fine.
+module Example exposing (f)
+
+f x =
+  1
+```
+
+Whitespace before `module` is not. A leading space is invalid under this rule; a leading
+tab is invalid too, but as a tab (above) rather than under this rule — a different rule
+reaching the same verdict.
+
+The compiler does not enforce this rule as stated. An indented file holding a single
+declaration is accepted:
+
+```zel expect=ok
+  module Example exposing (f)
+```
+
+That block is tagged `expect=ok` because that is what happens today, and it is the gap
+[`docs/tickets/err-12.md`](../tickets/err-12.md) tracks made visible. The language's answer
+is that this file is invalid.
+
+An indented file with a *second* declaration is rejected, but for a reason one step removed
+from the rule: the second declaration is what fails, not the indentation on line 1.
 
 ```zel expect=parse-error:UnexpectedToken
   module Example exposing (f)
@@ -89,15 +151,12 @@ space or tab before it is invalid.
     1
 ```
 
-This is a real rule rather than an accident of the implementation, but the implementation
-currently enforces it by accident and reports it badly — the caret lands on a later
-declaration and the message asks for `close block`, an internal token the reader cannot
-write. [`docs/tickets/err-12.md`](../tickets/err-12.md) tracks the diagnostic; the rule
-above is what the language says either way.
-
-The example is tagged `expect=parse-error:UnexpectedToken`, naming that wrong-but-current
-error on purpose. When ERR-12 lands and the message becomes a real one, the block goes red
-— which is the point: the paragraph you are reading describes a diagnostic that will stop
+So that block pins "an indented file with two declarations is rejected", not "a file must
+start at column 1". The diagnostic is bad in the way ERR-12 describes — the caret lands on
+the later declaration and the message asks for `close block`, which the reader cannot
+write. It is tagged `expect=parse-error:UnexpectedToken`, naming that wrong-but-current
+error on purpose: when ERR-12 lands and the message becomes a real one, the block goes red,
+which is the point. The paragraph you are reading describes a diagnostic that will stop
 existing, and it should not be able to outlive it.
 
 ## Top-level declarations
@@ -115,6 +174,17 @@ first x =
 
 second x =
   2
+```
+
+Both halves of that are one fact seen from two sides, and one example pins both: a line
+written in column 1 where a continuation was meant closes the declaration, and the parser
+is then handed the end of a declaration whose body never arrived.
+
+```zel expect=parse-error:UnexpectedToken
+module Example exposing (f)
+
+f x =
+1
 ```
 
 There is no separator between declarations. Blank lines between them are conventional and
@@ -147,8 +217,8 @@ describe f =
 ### The first branch fixes the column for all of them
 
 When the block of branches opens, the first token after it sets the column that every
-branch in that block must start on. There is no fixed relationship to the column of the
-`case` keyword, only that it be deeper.
+branch in that block must start on. That column must be strictly deeper than the column of
+the `case` keyword itself: a branch level with `case`, or left of it, is not legal Zelkova.
 
 Branches may be written one per line:
 
@@ -165,7 +235,7 @@ describe f =
     Off -> 0
 ```
 
-A branch that starts **left** of that column is an error:
+A branch that starts **left** of the column the first branch established is an error:
 
 ```zel expect=parse-error:LayoutError
 module Example exposing (describe)
@@ -203,6 +273,27 @@ grammar then trips on the second `->`. [`docs/tickets/err-11.md`](../tickets/err
 tracks the diagnostic. As with the column-1 rule above, the language's answer is unchanged
 by that ticket, and the block pins today's `UnexpectedToken` so this paragraph goes red
 along with it.
+
+What the compiler does **not** enforce is the floor relative to `case` itself. It derives
+the branch block's minimum column from the enclosing block rather than from the `case`
+keyword, so branches level with `case` — or left of it — are accepted today:
+
+```zel expect=ok
+module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f =
+  case f of
+  On -> 1
+  Off -> 0
+```
+
+That file is invalid Zelkova; the `expect=ok` records what the compiler does, not what the
+language says. [`docs/tickets/bug-10.md`](../tickets/bug-10.md) tracks it, and this block
+goes red when it is fixed — which is the signal to come back and retag it.
 
 ### A branch body is deeper than its pattern
 
@@ -272,8 +363,8 @@ both a b =
 
 ## `let … in`
 
-`let … in` is part of the language as designed and is not implemented yet. A `let` in a
-source file is rejected today.
+`let … in` is part of the language as designed and is not implemented. A `let` in a source
+file is rejected today:
 
 ```zel expect=unimplemented
 module Example exposing (f)
@@ -285,13 +376,14 @@ f x =
     y
 ```
 
+That example is tagged `expect=unimplemented`: it will go red the day `let` is implemented,
+which is the signal to come back and finish this section.
+
 The layout rules already decided for it: the bindings sit deeper than the `let`, and `in`
 closes the block. Two questions are **open**, and this chapter deliberately does not answer
 them — whether the bindings of a `let` form a block with the same column discipline as
 `case … of` branches, so that the first binding fixes the column for all of them; and
-whether `in` must align with its `let`. That example is tagged `expect=unimplemented`: it
-will go red the day `let` is implemented, which is the signal to come back and finish this
-section.
+whether `in` must align with its `let`.
 
 ## One layout error at a time
 
