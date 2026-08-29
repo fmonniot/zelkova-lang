@@ -11,6 +11,18 @@ accordingly (see the vocabulary below). `CLAUDE.md`'s *Language notes* section h
 compiler's current implemented/not-implemented split; this directory is where that
 split gets explained rather than just listed.
 
+**The spec is self-contained.** Zelkova began as a fork of Elm's surface syntax and owes
+it most of its good ideas, but Elm is an *inspiration*, not a reference: no chapter here
+may resolve a question by pointing at Elm's documentation. Where a rule is inherited it
+is written out in full; where the two languages differ, this directory is the answer.
+
+That rule is not fastidiousness. Deferring works only for as long as the two languages
+agree, so it fails precisely when a divergence is wanted — at which point the spec has to
+answer a question in vocabulary that lives in someone else's document, describing someone
+else's language, and changing without notice. It also frames every deliberate divergence
+as a defect. Writing the rules down here is what makes "we do this differently, and here
+is why" a sentence this directory can hold (`SPEC-2`).
+
 ## Every example is checked
 
 Every fenced ```` ```zel ```` block in a chapter carries an `expect=` tag in its info
@@ -53,28 +65,45 @@ written so adding this is not a rewrite; don't reshape it in a way that foreclos
 
 | Chapter | Status |
 |---|---|
+| [Lexical structure](lexical-structure.md) | written |
 | [Layout (the offside rule)](layout.md) | written |
+| Modules, `exposing` and imports | planned |
+| Declarations | planned |
+| Types and type annotations | planned |
+| Expressions | planned |
+| Patterns | planned |
+| Name resolution and scoping | planned |
+| Evaluation semantics | planned |
 | [JS interop](js-interop.md) | written |
-| Multi-line function declarations with pattern matching | planned |
-| Lexical structure, including the soft keywords | planned |
-| Tuples' fixed arity | planned |
+| Packages and source layout | planned |
 | Constrained type variables | planned — records an open question, does not settle it |
 
-The planned chapters are in rough priority order, and the order is not arbitrary: these
-are the places Zelkova **cannot defer to Elm's documentation**, either because it diverges
-or because Elm never wrote the rule down. Each is its own ticket, filed when it is picked
-up rather than in bulk. What each has to cover:
+Together the planned chapters are meant to be the whole language, not a set of footnotes to
+somebody else's manual — that is what *the spec is self-contained* costs, and it is the
+point. They are listed in a reading order rather than a writing order; each is its own
+ticket, filed when it is picked up rather than in bulk. What each has to cover:
 
-- **Multi-line function declarations with pattern matching** — a deliberate divergence
-  from Elm, so Elm's documentation is actively wrong here and there is nothing to defer to.
-- **Lexical structure, including the soft keywords** — `left`, `right`, `non` and
-  `javascript` each act as a keyword in one position and as an ordinary identifier in
-  others, and the four do not behave alike today: `javascript` is reserved in identifier
-  position and the other three are not. Whether that split is intended has to be settled
-  before the chapter can state a rule.
-- **Tuples' fixed arity** — Zelkova has 2-tuples and 3-tuples and no other size. A
-  four-element tuple is a syntax error rather than a type error, which is a fact about the
-  grammar of the language and belongs in the spec.
+- **Modules, `exposing` and imports** — the header, the four forms an `exposing` entry can
+  take, `import … as … exposing`, how a module name maps to a file path, and whether any
+  module is implicitly in scope. This is the chapter that has to answer the *one module per
+  block* question below, since it cannot be written with one module at a time.
+- **Declarations** — value and function declarations, type annotations, `type`
+  declarations, `infix` declarations, and **multi-line function declarations with pattern
+  matching**, which is a deliberate divergence: Elm has no equivalent, so there is no
+  inherited rule even to restate.
+- **Types and type annotations** — type expressions, the function arrow, type variables,
+  tuple types, and the fixed arity that makes a four-element tuple a *syntax* error rather
+  than a type error.
+- **Expressions** — application, `if`/`then`/`else`, `case … of`, `let … in`, lambdas, and
+  the operator table: precedence, associativity, and the fact that no operator's meaning is
+  built in.
+- **Patterns** — every pattern form, and where each may appear.
+- **Name resolution and scoping** — qualified names, what shadows what, and what makes a
+  reference ambiguous rather than merely unresolved.
+- **Evaluation semantics** — order of evaluation, what `==` means structurally, which
+  operators short-circuit, and what a function value is.
+- **Packages and source layout** — the package directory, the `zelkova.json` manifest, and
+  what a package boundary means for visibility.
 - **Constrained type variables** (`number`, `comparable`, `appendable`) — whether these
   become real type classes, compiler-known constraints, or nothing at all is undecided.
   The chapter records the question. A spec is a good place to hold an open design question
