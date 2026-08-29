@@ -22,7 +22,8 @@ Prefixes are created ad-hoc per theme. Current ones: `BUG-` (defects), `ERR-` (e
 and diagnostics), `AST-` (parser and canonical AST shape), `PERF-` (allocation and hot paths),
 `TIDY-` (small self-contained cleanups), `TEST-` (test infrastructure), `SPEC-` (specifying
 and documenting the language itself, under `docs/spec/`), `LANG-` (bringing the compiler into
-line with a rule `docs/spec/` has since settled).
+line with a rule `docs/spec/` has since settled), `SITE-` (the public GitHub Pages site built
+from this repo — rustdoc, the rendered spec, the landing page).
 
 `LANG-` and `BUG-` are not the same thing and the split is worth keeping straight. A `BUG-` is
 code that fails at what it was trying to do. A `LANG-` is code that succeeds at something the
@@ -144,6 +145,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
 | [LANG-4](lang-4.md) | task | — | open | Prefix `-` is desugared to `0 - e`, so negating a `Float` mixes it with an `Int` literal |
+| [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
