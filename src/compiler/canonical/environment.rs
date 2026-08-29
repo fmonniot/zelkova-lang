@@ -76,9 +76,15 @@ pub trait Environment<'parent>: std::fmt::Debug {
 /// `RootEnvironment::constructors`) hold both forms as distinct keys already
 /// — `map` and `Maybe.map` are two separate entries once `Maybe` is
 /// imported — so this needs no lookup beyond string-splitting on the last
-/// `.`; a single `Interface`'s own namespace (used for `EnvError`'s
-/// variants) never holds a qualified name at all, so it always takes the
-/// unqualified branch, unaffected by this distinction.
+/// `.`. The three `EnvError` sites that use this — `ValueNotFound`,
+/// `UnionNotFound`, `InfixNotFound` — draw from a single `Interface`'s own
+/// namespace (`interface.values`, `.unions`, `.infixes`), which never holds
+/// a qualified name, so they always take the unqualified branch.
+///
+/// `InterfaceNotFound` deliberately does *not* come through here: its
+/// candidates are module names, where a `.` separates two segments of one
+/// identifier rather than a module from a value. `process_import` calls
+/// [`suggest`](crate::utils::suggest) over the whole string instead.
 pub fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>) -> Option<Name> {
     match target.as_str().rsplit_once('.') {
         Some((prefix, local)) => {
@@ -158,7 +164,19 @@ fn process_import(
     span: NodeSpan,
 ) -> Result<(), EnvError> {
     let interface = interfaces.get(imported_module_name).ok_or_else(|| {
-        let suggestion = suggest_name(imported_module_name, interfaces.keys().cloned());
+        // Module names live in a flat namespace and a dotted one — `Js.Basics` —
+        // is a single opaque identifier, not a prefix plus a local part. So this
+        // measures the distance over the whole string with `suggest` rather than
+        // going through `suggest_name`, whose qualified/unqualified split is
+        // about `Name` vs `QualName` for values and constructors. Splitting here
+        // would silently drop every typo outside the last segment: `Jz.Basics`
+        // and `JsBasics` are both one edit from `Js.Basics`, and neither shares
+        // its prefix.
+        let suggestion = suggest(
+            imported_module_name.as_str(),
+            interfaces.keys().map(Name::as_str),
+        )
+        .map(Name::new);
         EnvError::InterfaceNotFound(imported_module_name.clone(), span, suggestion)
     })?;
 
@@ -1084,7 +1102,7 @@ mod tests {
         ("Ops".into(), interface)
     }
 
-    /// Neutralising `suggest_name`'s call in the `InterfaceNotFound` arm of
+    /// Neutralising the `suggest` call in the `InterfaceNotFound` arm of
     /// `process_import` (passing `None` instead) turns this red: `suggestion`
     /// becomes `None` where the test expects `Some("Maybe")`.
     #[test]
@@ -1129,6 +1147,43 @@ mod tests {
                 assert_eq!(suggestion, &None);
             }
             other => panic!("expected InterfaceNotFound, got {:?}", other),
+        }
+    }
+
+    /// A dotted module name — `Js.Basics`, `Js.Utils` and `Js.Bitwise` all exist
+    /// in `std/core/src` today — is one identifier, not a module prefix plus a
+    /// local part. Routing this through `suggest_name` would compare only the
+    /// segment after the last `.` and only against candidates sharing the prefix
+    /// exactly, so a typo anywhere else, or a dropped dot, would get nothing.
+    /// All three of these are one edit from `Js.Basics`.
+    #[test]
+    fn unknown_dotted_module_suggests_on_the_whole_name() {
+        let mut interfaces = HashMap::new();
+        {
+            let (_, iface) = maybe_interface();
+            interfaces.insert("Js.Basics".into(), iface);
+        }
+
+        // `Js.Basicz` shares the prefix, `Jz.Basics` does not, and `JsBasics` has
+        // no prefix at all — the last is the likeliest typo of the three.
+        for typo in ["Js.Basicz", "Jz.Basics", "JsBasics"] {
+            let imports = vec![import(typo.into(), None, exposing_open())];
+            let errors = new_environment(&module_name(), &interfaces, &imports)
+                .expect_err("an unknown module should not resolve");
+            assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+            match &errors[0] {
+                EnvError::InterfaceNotFound(name, _, suggestion) => {
+                    assert_eq!(name, &Name::from(typo));
+                    assert_eq!(
+                        suggestion,
+                        &Some(Name::from("Js.Basics")),
+                        "no suggestion for `{}`",
+                        typo
+                    );
+                }
+                other => panic!("expected InterfaceNotFound, got {:?}", other),
+            }
         }
     }
 
