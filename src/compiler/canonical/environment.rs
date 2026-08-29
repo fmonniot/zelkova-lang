@@ -4,7 +4,7 @@ use super::{parser, Pattern, PatternKind};
 use super::{Infix, Interface, ModuleName, Name, Type, TypeConstructor, UnionType};
 use crate::compiler::position::NodeSpan;
 use crate::compiler::{PhaseError, SourceSpan, SpanLabel};
-use crate::utils::collect_accumulate;
+use crate::utils::{collect_accumulate, suggest};
 use log::trace;
 use std::collections::HashMap;
 
@@ -37,6 +37,32 @@ pub trait Environment<'parent>: std::fmt::Debug {
 
     fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor>;
 
+    /// The value names resolvable from this scope right now, for building a
+    /// "did you mean …?" suggestion once `find_value` has already failed
+    /// (`ERR-7`). Not on the lookup path itself: this walks the whole table,
+    /// `find_value` a single key.
+    ///
+    /// A `Vec` and not a set: [`ScopedEnvironment`] appends its own bindings
+    /// to whatever the parent returned, so a name a scope shadows appears
+    /// twice. That is harmless here — both entries are the same string, and
+    /// [`suggest`](crate::utils::suggest) breaks ties by comparing the
+    /// candidates themselves rather than by the order they arrive in, so
+    /// neither the duplication nor the parent-before-locals order changes
+    /// which name comes back.
+    ///
+    /// Two things this does *not* mirror from `find_value`, both deliberate:
+    /// the ordering (`find_value` checks a scope's own bindings before the
+    /// parent's; this appends them last), and `RootEnvironment`'s redirect
+    /// through `infixes` to `Infix::function_name` — that redirect lands on a
+    /// `variables` key, which is already in the result, so following it would
+    /// only add a duplicate.
+    fn value_names(&self) -> Vec<Name>;
+
+    /// Same as [`value_names`](Environment::value_names), for type
+    /// constructors. A scope never binds its own, so this is always the root
+    /// environment's `constructors` and never carries duplicates.
+    fn type_constructor_names(&self) -> Vec<Name>;
+
     fn local_infix_exists(&self, name: &Name) -> bool;
 
     #[allow(dead_code)]
@@ -46,6 +72,60 @@ pub trait Environment<'parent>: std::fmt::Debug {
     fn new_scope<'a>(&'a self) -> ScopedEnvironment<'parent, 'a>
     where
         'parent: 'a;
+}
+
+/// Build a "did you mean …?" suggestion for a name that failed to resolve,
+/// from the full set of names available at the point of failure (`ERR-7`).
+///
+/// Respects the qualified/unqualified distinction called out on
+/// [`super::Error::VariableNotFound`]: a qualified `target` (`Widget.map`)
+/// only considers candidates qualified with that exact same module prefix,
+/// comparing distance on the local part once the prefix is confirmed equal;
+/// an unqualified `target` only considers unqualified candidates. Crossing
+/// that boundary would let a typo in one module's name get "fixed" by
+/// pointing at an entirely different module's value of the same local name,
+/// which is the wrong-module case the ticket calls out explicitly as worse
+/// than no suggestion at all.
+///
+/// The `Environment`'s own candidate sets (`RootEnvironment::variables`,
+/// `RootEnvironment::constructors`) hold both forms as distinct keys already
+/// — `map` and `Maybe.map` are two separate entries once `Maybe` is
+/// imported — so this needs no lookup beyond string-splitting on the last
+/// `.`. The three `EnvError` sites that use this — `ValueNotFound`,
+/// `UnionNotFound`, `InfixNotFound` — draw from a single `Interface`'s own
+/// namespace (`interface.values`, `.unions`, `.infixes`), which never holds
+/// a qualified name, so they always take the unqualified branch.
+///
+/// `InterfaceNotFound` deliberately does *not* come through here: its
+/// candidates are module names, where a `.` separates two segments of one
+/// identifier rather than a module from a value. `process_import` calls
+/// [`suggest`](crate::utils::suggest) over the whole string instead.
+pub fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>) -> Option<Name> {
+    match target.as_str().rsplit_once('.') {
+        Some((prefix, local)) => {
+            let locals: Vec<String> = candidates
+                .filter_map(|c| {
+                    c.as_str().rsplit_once('.').and_then(|(p, l)| {
+                        if p == prefix {
+                            Some(l.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .collect();
+            let refs: Vec<&str> = locals.iter().map(String::as_str).collect();
+            suggest(local, refs).map(|l| Name::new(format!("{}.{}", prefix, l)))
+        }
+        None => {
+            let unqualified: Vec<String> = candidates
+                .filter(|c| !c.as_str().contains('.'))
+                .map(|c| c.to_string())
+                .collect();
+            let refs: Vec<&str> = unqualified.iter().map(String::as_str).collect();
+            suggest(target.as_str(), refs).map(Name::new)
+        }
+    }
 }
 
 pub fn new_environment(
@@ -98,9 +178,22 @@ fn process_import(
     // sits on.
     span: NodeSpan,
 ) -> Result<(), EnvError> {
-    let interface = interfaces
-        .get(imported_module_name)
-        .ok_or_else(|| EnvError::InterfaceNotFound(imported_module_name.clone(), span))?;
+    let interface = interfaces.get(imported_module_name).ok_or_else(|| {
+        // Module names live in a flat namespace and a dotted one — `Js.Basics` —
+        // is a single opaque identifier, not a prefix plus a local part. So this
+        // measures the distance over the whole string with `suggest` rather than
+        // going through `suggest_name`, whose qualified/unqualified split is
+        // about `Name` vs `QualName` for values and constructors. Splitting here
+        // would silently drop every typo outside the last segment: `Jz.Basics`
+        // and `JsBasics` are both one edit from `Js.Basics`, and neither shares
+        // its prefix.
+        let suggestion = suggest(
+            imported_module_name.as_str(),
+            interfaces.keys().map(Name::as_str),
+        )
+        .map(Name::new);
+        EnvError::InterfaceNotFound(imported_module_name.clone(), span, suggestion)
+    })?;
 
     trace!(
         "process_import(imported_module_name={:?}, alias={:?}, exposing: {:?})",
@@ -160,7 +253,13 @@ fn process_import(
                     parser::ExposedKind::Lower(value_name) => {
                         let (node_span, tpe) =
                             interface.values.get(value_name).ok_or_else(|| {
-                                EnvError::ValueNotFound(value_name.clone(), exposed.span)
+                                let suggestion =
+                                    suggest_name(value_name, interface.values.keys().cloned());
+                                EnvError::ValueNotFound(
+                                    value_name.clone(),
+                                    exposed.span,
+                                    suggestion,
+                                )
                             })?;
 
                         insert_foreign_value(
@@ -179,14 +278,18 @@ fn process_import(
                     }
                     parser::ExposedKind::Upper(type_name, parser::Privacy::Public) => {
                         let union = interface.unions.get(type_name).ok_or_else(|| {
-                            EnvError::UnionNotFound(type_name.clone(), exposed.span)
+                            let suggestion =
+                                suggest_name(type_name, interface.unions.keys().cloned());
+                            EnvError::UnionNotFound(type_name.clone(), exposed.span, suggestion)
                         })?;
 
                         insert_foreign_union_type(env, None, type_name, union.variants.iter());
                     }
                     parser::ExposedKind::Operator(variable_name) => {
                         let infix = interface.infixes.get(variable_name).ok_or_else(|| {
-                            EnvError::InfixNotFound(variable_name.clone(), exposed.span)
+                            let suggestion =
+                                suggest_name(variable_name, interface.infixes.keys().cloned());
+                            EnvError::InfixNotFound(variable_name.clone(), exposed.span, suggestion)
                         })?;
 
                         env.infixes.insert(variable_name.clone(), infix.clone());
@@ -259,18 +362,33 @@ fn insert_foreign_value(
 
 #[derive(Debug)]
 pub enum EnvError {
-    /// No module of that name was available to import, and where the `import` was written.
-    InterfaceNotFound(Name, NodeSpan),
-    /// A `TypeIdent(..)` in an `exposing` list naming a type the imported module does
-    /// not declare, and where that name was written (`ERR-9`).
-    UnionNotFound(Name, NodeSpan),
+    /// No module of that name was available to import, where the `import` was
+    /// written, and — when one candidate module name is a close enough
+    /// typo-distance match (`ERR-7`) — a suggestion for what was meant.
+    InterfaceNotFound(Name, NodeSpan, Option<Name>),
+    /// A `TypeIdent(..)` in an `exposing` list naming a type the imported module
+    /// does not declare, where that name was written (`ERR-9`), and an optional
+    /// "did you mean …?" suggestion (`ERR-7`).
+    UnionNotFound(Name, NodeSpan, Option<Name>),
     /// An `(op)` in an `exposing` list naming an infix the imported module does not
-    /// declare, and where that name was written (`ERR-9`).
-    InfixNotFound(Name, NodeSpan),
+    /// declare, where that name was written (`ERR-9`), and an optional "did you
+    /// mean …?" suggestion (`ERR-7`).
+    InfixNotFound(Name, NodeSpan, Option<Name>),
     /// A lowercase name in an `exposing` list naming a value the imported module
-    /// does not declare, and where that name was written (`ERR-9`).
-    ValueNotFound(Name, NodeSpan),
+    /// does not declare, where that name was written (`ERR-9`), and an optional
+    /// "did you mean …?" suggestion (`ERR-7`).
+    ValueNotFound(Name, NodeSpan, Option<Name>),
     Multiple(Vec<EnvError>),
+}
+
+/// A "did you mean `X`?" suffix for a label message, when a suggestion was
+/// found — empty otherwise, so callers can always append the result without
+/// checking `is_some()` first (`ERR-7`).
+fn suggestion_suffix(suggestion: &Option<Name>) -> String {
+    match suggestion {
+        Some(name) => format!(" — did you mean `{}`?", name),
+        None => String::new(),
+    }
 }
 
 /// An import that could not be resolved always names the thing it could not find,
@@ -278,20 +396,20 @@ pub enum EnvError {
 impl PhaseError for EnvError {
     fn message(&self) -> String {
         match self {
-            EnvError::InterfaceNotFound(name, _) => {
+            EnvError::InterfaceNotFound(name, _, _) => {
                 format!("cannot find a module named `{}` to import", name)
             }
-            EnvError::UnionNotFound(name, _) => {
+            EnvError::UnionNotFound(name, _, _) => {
                 format!(
                     "the imported module does not expose a type named `{}`",
                     name
                 )
             }
-            EnvError::InfixNotFound(name, _) => format!(
+            EnvError::InfixNotFound(name, _, _) => format!(
                 "the imported module does not expose an infix operator named `{}`",
                 name
             ),
-            EnvError::ValueNotFound(name, _) => format!(
+            EnvError::ValueNotFound(name, _, _) => format!(
                 "the imported module does not expose a value named `{}`",
                 name
             ),
@@ -314,20 +432,36 @@ impl PhaseError for EnvError {
         };
 
         match self {
-            EnvError::InterfaceNotFound(_, span) => {
-                primary(span, "no module of this name was found".to_owned())
-            }
-            EnvError::UnionNotFound(name, span) => primary(
+            EnvError::InterfaceNotFound(_, span, suggestion) => primary(
                 span,
-                format!("`{}` is not exposed by the imported module", name),
+                format!(
+                    "no module of this name was found{}",
+                    suggestion_suffix(suggestion)
+                ),
             ),
-            EnvError::InfixNotFound(name, span) => primary(
+            EnvError::UnionNotFound(name, span, suggestion) => primary(
                 span,
-                format!("`{}` is not exposed by the imported module", name),
+                format!(
+                    "`{}` is not exposed by the imported module{}",
+                    name,
+                    suggestion_suffix(suggestion)
+                ),
             ),
-            EnvError::ValueNotFound(name, span) => primary(
+            EnvError::InfixNotFound(name, span, suggestion) => primary(
                 span,
-                format!("`{}` is not exposed by the imported module", name),
+                format!(
+                    "`{}` is not exposed by the imported module{}",
+                    name,
+                    suggestion_suffix(suggestion)
+                ),
+            ),
+            EnvError::ValueNotFound(name, span, suggestion) => primary(
+                span,
+                format!(
+                    "`{}` is not exposed by the imported module{}",
+                    name,
+                    suggestion_suffix(suggestion)
+                ),
             ),
             EnvError::Multiple(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
         }
@@ -409,6 +543,14 @@ impl<'p> Environment<'p> for RootEnvironment {
         self.constructors.get(name)
     }
 
+    fn value_names(&self) -> Vec<Name> {
+        self.variables.keys().cloned().collect()
+    }
+
+    fn type_constructor_names(&self) -> Vec<Name> {
+        self.constructors.keys().cloned().collect()
+    }
+
     fn local_infix_exists(&self, name: &Name) -> bool {
         self.infixes.contains_key(name)
     }
@@ -452,6 +594,18 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
 
     fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor> {
         self.parent.find_type_constructor(name)
+    }
+
+    fn value_names(&self) -> Vec<Name> {
+        let mut names = self.parent.value_names();
+        names.extend(self.variables.keys().cloned());
+        names
+    }
+
+    fn type_constructor_names(&self) -> Vec<Name> {
+        // A scope never binds its own constructors — only patterns bind
+        // values (`expose_pattern`) — so this always delegates.
+        self.parent.type_constructor_names()
     }
 
     fn local_infix_exists(&self, name: &Name) -> bool {
@@ -927,5 +1081,204 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    // ── ERR-7: "did you mean …?" suggestions ────────────────────────────────
+    //
+    // These hand-build every `Import`/`Exposed` with `NodeSpan::none()` (see the
+    // `import`/`exposing_*` helpers above), so `EnvError::labels` — which needs a
+    // real span to attach a caret to — renders nothing for them; that path is
+    // covered instead by `tests/compiler/canonical.rs`, which goes through the
+    // parser and so has real spans. These assert directly on the `Option<Name>`
+    // suggestion field each variant now carries.
+
+    /// A minimal interface with one infix, `maybe_interface` has none — needed to
+    /// exercise `EnvError::InfixNotFound`'s suggestion.
+    fn ops_interface() -> (Name, Interface) {
+        let mut infixes = HashMap::new();
+        infixes.insert(
+            "plus".into(),
+            Infix {
+                associativity: Associativity::Left,
+                precedence: 6,
+                function_name: "add".into(),
+                span: NodeSpan::none(),
+            },
+        );
+
+        let interface = Interface {
+            module_name: ModuleName::new(PackageName::new("test", "project"), "Ops".into()),
+            values: HashMap::new(),
+            unions: HashMap::new(),
+            infixes,
+            file: None,
+        };
+
+        ("Ops".into(), interface)
+    }
+
+    /// Neutralising the `suggest` call in the `InterfaceNotFound` arm of
+    /// `process_import` (passing `None` instead) turns this red: `suggestion`
+    /// becomes `None` where the test expects `Some("Maybe")`.
+    #[test]
+    fn unknown_module_suggests_a_near_miss() {
+        let imports = vec![import("Mabye".into(), None, exposing_open())];
+        let mut interfaces = HashMap::new();
+        {
+            let (name, iface) = maybe_interface();
+            interfaces.insert(name, iface);
+        }
+
+        let errors = new_environment(&module_name(), &interfaces, &imports)
+            .expect_err("an unknown module should not resolve");
+        assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+        match &errors[0] {
+            EnvError::InterfaceNotFound(name, _, suggestion) => {
+                assert_eq!(name, &Name::from("Mabye"));
+                assert_eq!(suggestion, &Some(Name::from("Maybe")));
+            }
+            other => panic!("expected InterfaceNotFound, got {:?}", other),
+        }
+    }
+
+    /// A module name resembling nothing among the known interfaces gets no
+    /// suggestion — a bad one would send the reader to check an unrelated import.
+    #[test]
+    fn unrelated_unknown_module_has_no_suggestion() {
+        let imports = vec![import("Zzzzzzzzzzzz".into(), None, exposing_open())];
+        let mut interfaces = HashMap::new();
+        {
+            let (name, iface) = maybe_interface();
+            interfaces.insert(name, iface);
+        }
+
+        let errors = new_environment(&module_name(), &interfaces, &imports)
+            .expect_err("an unknown module should not resolve");
+        assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+        match &errors[0] {
+            EnvError::InterfaceNotFound(_, _, suggestion) => {
+                assert_eq!(suggestion, &None);
+            }
+            other => panic!("expected InterfaceNotFound, got {:?}", other),
+        }
+    }
+
+    /// A dotted module name — `Js.Basics`, `Js.Utils` and `Js.Bitwise` all exist
+    /// in `std/core/src` today — is one identifier, not a module prefix plus a
+    /// local part. Routing this through `suggest_name` would compare only the
+    /// segment after the last `.` and only against candidates sharing the prefix
+    /// exactly, so a typo anywhere else, or a dropped dot, would get nothing.
+    /// All three of these are one edit from `Js.Basics`.
+    #[test]
+    fn unknown_dotted_module_suggests_on_the_whole_name() {
+        let mut interfaces = HashMap::new();
+        {
+            let (_, iface) = maybe_interface();
+            interfaces.insert("Js.Basics".into(), iface);
+        }
+
+        // `Js.Basicz` shares the prefix, `Jz.Basics` does not, and `JsBasics` has
+        // no prefix at all — the last is the likeliest typo of the three.
+        for typo in ["Js.Basicz", "Jz.Basics", "JsBasics"] {
+            let imports = vec![import(typo.into(), None, exposing_open())];
+            let errors = new_environment(&module_name(), &interfaces, &imports)
+                .expect_err("an unknown module should not resolve");
+            assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+            match &errors[0] {
+                EnvError::InterfaceNotFound(name, _, suggestion) => {
+                    assert_eq!(name, &Name::from(typo));
+                    assert_eq!(
+                        suggestion,
+                        &Some(Name::from("Js.Basics")),
+                        "no suggestion for `{}`",
+                        typo
+                    );
+                }
+                other => panic!("expected InterfaceNotFound, got {:?}", other),
+            }
+        }
+    }
+
+    /// The `Explicit` exposing arm wraps whatever `collect_accumulate` returns in
+    /// `EnvError::Multiple`, even for a single failing entry — see
+    /// `process_import`'s last statement — so the `UnionNotFound` this produces is
+    /// nested one level deeper than `InterfaceNotFound`'s.
+    ///
+    /// Neutralising the `suggest_name` call in the `Upper(.., Public)` arm of
+    /// `process_import` (passing `None` instead) turns this red.
+    #[test]
+    fn unknown_exposed_type_suggests_a_near_miss() {
+        let imports = vec![import(
+            "Maybe".into(),
+            None,
+            exposing_explicit(vec![parser::Exposed::bare(parser::ExposedKind::Upper(
+                "Mayeb".into(),
+                parser::Privacy::Public,
+            ))]),
+        )];
+        let mut interfaces = HashMap::new();
+        {
+            let (name, iface) = maybe_interface();
+            interfaces.insert(name, iface);
+        }
+
+        let errors = new_environment(&module_name(), &interfaces, &imports)
+            .expect_err("an unknown exposed type should not resolve");
+        assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+        let inner = match &errors[0] {
+            EnvError::Multiple(inner) => inner,
+            other => panic!("expected Multiple, got {:?}", other),
+        };
+        assert_eq!(inner.len(), 1, "got {:?}", inner);
+
+        match &inner[0] {
+            EnvError::UnionNotFound(name, _, suggestion) => {
+                assert_eq!(name, &Name::from("Mayeb"));
+                assert_eq!(suggestion, &Some(Name::from("Maybe")));
+            }
+            other => panic!("expected UnionNotFound, got {:?}", other),
+        }
+    }
+
+    /// Same nesting as the type case above, for `EnvError::InfixNotFound`.
+    ///
+    /// Neutralising the `suggest_name` call in the `Operator` arm of
+    /// `process_import` (passing `None` instead) turns this red.
+    #[test]
+    fn unknown_exposed_infix_suggests_a_near_miss() {
+        let imports = vec![import(
+            "Ops".into(),
+            None,
+            exposing_explicit(vec![parser::Exposed::bare(parser::ExposedKind::Operator(
+                "pluss".into(),
+            ))]),
+        )];
+        let mut interfaces = HashMap::new();
+        {
+            let (name, iface) = ops_interface();
+            interfaces.insert(name, iface);
+        }
+
+        let errors = new_environment(&module_name(), &interfaces, &imports)
+            .expect_err("an unknown exposed infix should not resolve");
+        assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+        let inner = match &errors[0] {
+            EnvError::Multiple(inner) => inner,
+            other => panic!("expected Multiple, got {:?}", other),
+        };
+        assert_eq!(inner.len(), 1, "got {:?}", inner);
+
+        match &inner[0] {
+            EnvError::InfixNotFound(name, _, suggestion) => {
+                assert_eq!(name, &Name::from("pluss"));
+                assert_eq!(suggestion, &Some(Name::from("plus")));
+            }
+            other => panic!("expected InfixNotFound, got {:?}", other),
+        }
     }
 }

@@ -23,7 +23,9 @@ use log::{debug, trace};
 use std::collections::HashMap;
 
 mod environment;
-use environment::{new_environment, EnvError, Environment, RootEnvironment, ValueType};
+use environment::{
+    new_environment, suggest_name, EnvError, Environment, RootEnvironment, ValueType,
+};
 
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
@@ -318,7 +320,13 @@ impl Pattern {
                 let ctor = env
                     .find_type_constructor(name)
                     .ok_or_else(|| {
-                        Error::VariantNotFound(env.module_name().qualify_name(name), p.span)
+                        let suggestion =
+                            suggest_name(name, env.type_constructor_names().into_iter());
+                        Error::VariantNotFound(
+                            env.module_name().qualify_name(name),
+                            p.span,
+                            suggestion,
+                        )
                     })?
                     .clone();
 
@@ -434,7 +442,12 @@ impl Expression {
             parser::ExpressionKind::Lit(parser::Literal::Bool(b)) => ExpressionKind::Bool(*b),
             parser::ExpressionKind::Variable(name) => {
                 match env.find_value(name).ok_or_else(|| {
-                    Error::VariableNotFound(env.module_name().qualify_name(name), e.span)
+                    let suggestion = suggest_name(name, env.value_names().into_iter());
+                    Error::VariableNotFound(
+                        env.module_name().qualify_name(name),
+                        e.span,
+                        suggestion,
+                    )
                 })? {
                     ValueType::Local => ExpressionKind::VarLocal(name.clone()),
                     ValueType::TopLevel => {
@@ -454,7 +467,8 @@ impl Expression {
             }
             parser::ExpressionKind::TypeConstructor(name) => {
                 let ctor = env.find_type_constructor(name).ok_or_else(|| {
-                    Error::VariantNotFound(env.module_name().qualify_name(name), e.span)
+                    let suggestion = suggest_name(name, env.type_constructor_names().into_iter());
+                    Error::VariantNotFound(env.module_name().qualify_name(name), e.span, suggestion)
                 })?;
 
                 let tpe = if ctor.type_parameters.is_empty() {
@@ -563,9 +577,11 @@ pub enum Error {
     /// A declaration with a type annotation and no body, and where the annotation
     /// was written — which is the only part of it there is to point at.
     NoBindings(NodeSpan),
-    /// A name used as a value that nothing in scope declares, and where it was
-    /// written — the identifier alone, not the declaration around it.
-    VariableNotFound(QualName, NodeSpan), // add name suggestion ?
+    /// A name used as a value that nothing in scope declares, where it was
+    /// written — the identifier alone, not the declaration around it — and,
+    /// when one name in scope is a close enough typo-distance match, a
+    /// suggestion for what was meant (`ERR-7`).
+    VariableNotFound(QualName, NodeSpan, Option<Name>),
     /// A name exposed unqualified by more than one imported module, and where it
     /// was used. Each candidate module is paired with where the name is declared
     /// there — `Some` when that module's `Interface` knows both its file and the
@@ -573,8 +589,9 @@ pub enum Error {
     /// before its module's file was known (`ERR-5`).
     AmbiguousVariables(Name, Vec<(ModuleName, Option<super::SourceSpan>)>, NodeSpan),
     /// A constructor used in an expression or a pattern that nothing in scope
-    /// declares, and where it was written.
-    VariantNotFound(QualName, NodeSpan),
+    /// declares, where it was written, and an optional "did you mean …?"
+    /// suggestion (`ERR-7`).
+    VariantNotFound(QualName, NodeSpan, Option<Name>),
     /// Nothing constructs this today — `Environment::find_type_constructor` returns
     /// at most one constructor per name, so it has no way to report an ambiguity.
     /// It is the designated rejection path once it can, and carries the span the
@@ -632,13 +649,13 @@ impl PhaseError for Error {
             Error::NoBindings(_) => {
                 "this declaration has a type annotation but no body".to_owned()
             }
-            Error::VariableNotFound(name, _) => {
+            Error::VariableNotFound(name, _, _) => {
                 format!("cannot find a value named `{}`", name.to_name())
             }
             Error::AmbiguousVariables(name, _, _) => {
                 format!("`{}` is exposed by several imported modules", name)
             }
-            Error::VariantNotFound(name, _) => {
+            Error::VariantNotFound(name, _, _) => {
                 format!("cannot find a type constructor named `{}`", name.to_name())
             }
             Error::AmbiguousVariants(name, _, _) => format!(
@@ -712,16 +729,29 @@ impl PhaseError for Error {
             Error::InfixReferenceInvalidValue(_, _, span) => primary(span, "declared here"),
             // The four that name an identifier: the caret sits under the name the
             // user wrote, which is the whole point of spanning expressions and
-            // patterns rather than only declarations.
-            Error::VariableNotFound(_, span) => primary(span, "no value of this name is in scope"),
+            // patterns rather than only declarations. `VariableNotFound` and
+            // `VariantNotFound` append their suggestion, when they have one, to
+            // this same label rather than a free-floating note, so the caret and
+            // the suggestion agree about which name is meant (`ERR-7`).
+            Error::VariableNotFound(_, span, suggestion) => primary(
+                span,
+                &format!(
+                    "no value of this name is in scope{}",
+                    suggestion_suffix(suggestion)
+                ),
+            ),
             Error::AmbiguousVariables(_, candidates, span) => {
                 let mut labels = primary(span, "this name is ambiguous");
                 labels.extend(ambiguous_candidates(candidates));
                 labels
             }
-            Error::VariantNotFound(_, span) => {
-                primary(span, "no type constructor of this name is in scope")
-            }
+            Error::VariantNotFound(_, span, suggestion) => primary(
+                span,
+                &format!(
+                    "no type constructor of this name is in scope{}",
+                    suggestion_suffix(suggestion)
+                ),
+            ),
             Error::AmbiguousVariants(_, candidates, span) => {
                 let mut labels = primary(span, "this type constructor is ambiguous");
                 labels.extend(ambiguous_candidates(candidates));
@@ -765,6 +795,19 @@ impl PhaseError for Error {
             },
             _ => Vec::new(),
         }
+    }
+}
+
+/// A "did you mean `X`?" suffix for a label message, when a suggestion was
+/// found — empty otherwise, so callers can always append the result without
+/// checking `is_some()` first (`ERR-7`). Mirrors the identically-named helper
+/// in `environment.rs`; kept separate rather than shared because the two
+/// modules' `EnvError`/`Error` types are unrelated and neither should reach
+/// into the other for a two-line formatter.
+fn suggestion_suffix(suggestion: &Option<Name>) -> String {
+    match suggestion {
+        Some(name) => format!(" — did you mean `{}`?", name),
+        None => String::new(),
     }
 }
 
