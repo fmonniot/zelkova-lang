@@ -5,10 +5,11 @@
 //! chapters, extracts each such block, and runs it through the phase its tag implies.
 //! An example that does not match its tag — or carries no tag at all — is a test
 //! failure, not a skip, because an unchecked example in a spec is the exact defect
-//! `SPEC-1` exists to prevent (see `docs/tickets/spec-1.md`).
+//! this harness exists to prevent (`SPEC-1`; `docs/spec/INDEX.md` carries the reasoning
+//! and is the document chapter authors read).
 //!
-//! The vocabulary is fixed (`SPEC-1`'s approach section), because chapters are
-//! authored against it independently of this file:
+//! The vocabulary is fixed, and `docs/spec/INDEX.md` documents it for chapter authors —
+//! keep the two in step. Chapters are written against it independently of this file:
 //!
 //! - `zel expect=ok` — parses and canonicalizes with no errors.
 //! - `zel expect=parse-error` — fails in the parser (tokenizer, layout or grammar).

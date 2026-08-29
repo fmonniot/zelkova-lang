@@ -224,5 +224,6 @@ unit type, type aliases, and the `zelkova.json` package manifest. The standard l
 Open design question, unresolved: the std library uses Elm's constrained type variables
 (`number`, `comparable`, `appendable`). Whether those become real type classes, compiler-known
 constraints, or nothing at all has not been decided. Don't assume an answer in a diff. A
-`docs/spec/` chapter recording this as open is planned (`docs/tickets/spec-1.md`'s *Follow-up
-chapters*) but not yet written; this note is the record until then.
+`docs/spec/` chapter recording this as open is planned — see that directory's
+[`INDEX.md`](docs/spec/INDEX.md) chapter list — but not yet written; this note is the record
+until then.

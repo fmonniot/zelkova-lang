@@ -8,9 +8,10 @@ step-3 match; what makes it medium is that the obvious arm rests on an assumptio
 `match (&token.value, &offside.context)` and its `_ =>` fallthrough; `Context::CaseBlock`,
 `Context::CaseBranch`, `Offside::min_indent`.
 
-**Found:** while grounding [SPEC-1](spec-1.md)'s Layout chapter, by running snippets through
-`parser::parse`. Left unfixed there because SPEC-1 says a spec change and a semantics change in
-one diff is unreviewable.
+**Found:** while writing `docs/spec/layout.md` under `SPEC-1` (closed — see
+[INDEX.md](INDEX.md)), by running snippets through `parser::parse`. Left unfixed there because
+a spec change and a semantics change in one diff is unreviewable; see `docs/spec/INDEX.md`'s
+*A spec change and a semantics change do not share a diff*.
 
 **Problem:** the first branch of a `case … of` fixes the column for every branch in that block
 (`CaseBlock(Some(col))`, read back by `Offside::min_indent`). A later branch **left** of that

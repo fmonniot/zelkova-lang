@@ -4,8 +4,8 @@ Migrated from the former root-level `lang.md`, which drifted from the compiler a
 immediately: its one example wrote `module javascript Basics.Js exposing`, while the
 real facade under `std/core/src/Js/Basics.zel` has always spelled it
 `module javascript Js.Basics exposing` — the module name and the file name agree,
-`lang.md`'s example did not. Fixed here; see `docs/tickets/spec-1.md` for why nothing
-caught it for as long as it went unnoticed.
+`lang.md`'s example did not. Fixed here; [`INDEX.md`](INDEX.md) has why nothing caught it
+for as long as it went unnoticed, and what this directory does about it.
 
 A user can mark a Zelkova module as being a JavaScript interface. This is done by
 using the `javascript` modifier after the `module` keyword. When declaring a JS
