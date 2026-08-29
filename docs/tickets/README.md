@@ -6,7 +6,7 @@ _Last updated: 2026-08-29._
 language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
 will keep producing them — writing down a rule that was never written down is how you find out
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
-from one chapter.
+from one chapter, and `SPEC-5` another four plus three `BUG-`s and a `TEST-`.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
@@ -139,6 +139,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-14](bug-14.md) | bug | medium | open | A top-level value with no type annotation never reaches the module's interface |
 | [BUG-15](bug-15.md) | bug | medium | open | An imported operator is unresolvable unless the function behind it is also in scope |
 | [BUG-16](bug-16.md) | bug | medium | open | An unresolved type name is invented rather than reported |
+| [BUG-17](bug-17.md) | bug | high | open | A type application's arguments are discarded when its head resolves |
+| [BUG-18](bug-18.md) | bug | medium | open | A variant that is not a constructor application is silently dropped |
+| [BUG-19](bug-19.md) | bug | medium | open | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -154,7 +157,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
 | [SPEC-4](spec-4.md) | task | — | open | Write the Declarations chapter |
-| [SPEC-5](spec-5.md) | task | — | open | Write the Types and type annotations chapter |
+| SPEC-5 | task | — | closed 2026-08-29 | Write the Types and type annotations chapter |
 | [SPEC-6](spec-6.md) | task | — | open | Write the Expressions chapter |
 | [SPEC-7](spec-7.md) | task | — | open | Write the Patterns chapter |
 | [SPEC-8](spec-8.md) | task | — | open | Write the Name resolution and scoping chapter |
@@ -169,6 +172,10 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-6](lang-6.md) | task | — | open | A module's declared name is unrelated to the file it lives in |
 | [LANG-7](lang-7.md) | task | — | open | Nothing checks an import list for duplicates, alias collisions or self-imports |
 | [LANG-8](lang-8.md) | task | — | open | There is no default import list |
+| [LANG-9](lang-9.md) | task | — | open | A type argument must be a bare name, so `Maybe (Maybe Int)` does not parse |
+| [LANG-10](lang-10.md) | task | — | open | A trailing `\|` and a variant-less `type T =` are both accepted |
+| [LANG-11](lang-11.md) | task | — | open | A type annotation may sit anywhere in the file, and a repeated one silently wins |
+| [LANG-12](lang-12.md) | task | — | open | An annotation more general than its body is accepted and silently specialised |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
@@ -182,3 +189,4 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TIDY-6 | task | — | closed 2026-08-26 | Stale doc comment on `canonical_type_to_typer_type` |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
+| [TEST-2](test-2.md) | task | — | open | The spec harness stops at canonicalization, so no chapter can pin a type error |

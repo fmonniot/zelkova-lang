@@ -49,25 +49,50 @@ Found while writing [`docs/spec/modules.md`](../spec/modules.md) (`SPEC-3`), who
 but independent: [BUG-9](bug-9.md) is the same function leaking what it should hide, this is
 it hiding what it should publish. Either can land first.
 
-**Approach:** there is a real choice here and this ticket does not make it.
+**Decided (`SPEC-5`, by the language owner):** option 1 below. A declaration named in its
+module's `exposing` list must carry a type annotation; a private declaration need not. Because
+`exposing (..)` exposes everything a module declares, a module written that way must annotate
+every top-level declaration — the rule applied, not an exception to it. Written up in
+[`docs/spec/types.md`](../spec/types.md)'s *An exposed declaration must be annotated*, which
+carries the `**Known gap:**` block this ticket turns red.
 
-1. **Require an annotation on anything exposed.** A declaration named in a module's
-   `exposing` list must carry a type; a private declaration need not. Small, needs no new
+**Approach:** the two options this ticket was filed weighing, kept because the second is still
+what someone will reach for if the first turns out to be wrong:
+
+1. **Require an annotation on anything exposed** — the decided one. Small, needs no new
    machinery, and gives an error that says what to do. It makes annotations mandatory at
-   exactly the boundary where they are documentation anyway. It is also a language rule, so
-   it belongs in `docs/spec/` and is the owner's call, not this ticket's.
+   exactly the boundary where they are documentation anyway.
 2. **Get the inferred type into the interface.** The typer already solves the declaration;
    the missing piece is a path from its substitution back into `canonical::Module` before
-   `to_interface` runs. Larger, touches `check_module`'s phase order, and is the answer if
-   annotations are to stay optional everywhere.
+   `to_interface` runs. Larger, touches `check_module`'s phase order, and would be the answer
+   if annotations were to stay optional everywhere. They are not.
 
 Either way `to_interface` stops silently dropping the value: option 1 makes the drop
 unreachable, option 2 makes it unnecessary.
 
-**Acceptance:** a `tests/pipeline.rs` test with two modules, where the first exposes an
-unannotated value and the second imports it, asserting the outcome the chosen option
-specifies — a `canonical::Error` naming the *unannotated declaration* under option 1, or a
-clean compile under option 2. In neither case may the importer get `VariableNotFound` for a
-name the exporting module plainly declares. The `**Known gap:**` block in
-`docs/spec/modules.md` (the `package=unannotated` pair) goes red on its
-`canonical-error:VariableNotFound` pin and is retagged with its paragraph rewritten.
+Under option 1 the check belongs where the `exposing` list is already walked — `do_exports`
+(`canonical/mod.rs`), which is the one place that knows both what a module exposes and what it
+declared, and already returns into a `Vec<canonical::Error>`. It wants a new `Error` variant
+naming the declaration, with the caret under the name in the `exposing` list (`parser::Exposed`
+carries a span — `ERR-9`) and a secondary label on the unannotated declaration itself. Note
+[BUG-8](bug-8.md) is a defect in that same function and is worth reading first: `do_exports`
+does not today check that an exposed `Lower` name exists at all, so the walk this check hangs
+off is one that has to be written either way.
+
+`std/core/src/` costs nothing here: checked while the rule was decided, every value exposed by
+each of the eight compiling modules already carries an annotation, so none of them becomes an
+error when this lands. The `.ignored` modules were not checked.
+
+**Acceptance:** a module exposing an unannotated value is a `canonical::Error` naming that
+declaration — a test in `tests/compiler/canonical.rs` — and a module keeping it private still
+compiles. A `tests/pipeline.rs` test with two modules, where the first exposes an unannotated
+value and the second imports it, asserts that the error lands on the *exporting* module: the
+importer must not get `VariableNotFound` for a name the exporting module plainly declares. A
+module using `exposing (..)` with one unannotated top-level declaration is an error too.
+`cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+
+Two spec blocks go red and are retagged with their `**Known gap:**` paragraphs deleted: the
+`package=unannotated` pair in `docs/spec/modules.md` (on its `canonical-error:VariableNotFound`
+pin — the error moves modules, so the pin moves with it), and the `count` block under *An
+exposed declaration must be annotated* in [`docs/spec/types.md`](../spec/types.md), which is
+the block that pins the rule itself.

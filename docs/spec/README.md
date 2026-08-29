@@ -82,7 +82,7 @@ example belongs in a block with no `package=` label.
 | [Layout (the offside rule)](layout.md) | written |
 | [Modules, exposing and imports](modules.md) | written |
 | Declarations | planned ([SPEC-4](../tickets/spec-4.md)) |
-| Types and type annotations | planned ([SPEC-5](../tickets/spec-5.md)) |
+| [Types and type annotations](types.md) | written |
 | Expressions | planned ([SPEC-6](../tickets/spec-6.md)) |
 | Patterns | planned ([SPEC-7](../tickets/spec-7.md)) |
 | Name resolution and scoping | planned ([SPEC-8](../tickets/spec-8.md)) |
@@ -105,13 +105,15 @@ fixing it. What each chapter has to cover:
   take, `import … as … exposing`, how a module name maps to a file path, and whether any
   module is implicitly in scope. This is the chapter that answered the multi-module
   question below, since it cannot be written with one module at a time.
-- **Declarations** — value and function declarations, type annotations, `type`
-  declarations, `infix` declarations, and **multi-line function declarations with pattern
-  matching**, which is a deliberate divergence: Elm has no equivalent, so there is no
-  inherited rule even to restate.
+- **Declarations** — value and function declarations, `infix` declarations, and **multi-line
+  function declarations with pattern matching**, which is a deliberate divergence: Elm has no
+  equivalent, so there is no inherited rule even to restate. The two type-shaped declarations
+  — the annotation `name : Type` and the `type` declaration — are in *Types and type
+  annotations* instead; `SPEC-5` settled that split, on the grounds that both are made of
+  type expressions and neither reads well away from them.
 - **Types and type annotations** — type expressions, the function arrow, type variables,
   tuple types, and the fixed arity that makes a four-element tuple a *syntax* error rather
-  than a type error.
+  than a type error; plus the annotation and `type` declarations, per the note above.
 - **Expressions** — application, `if`/`then`/`else`, `case … of`, `let … in`, lambdas, and
   the operator table: precedence, associativity, and the fact that no operator's meaning is
   built in.

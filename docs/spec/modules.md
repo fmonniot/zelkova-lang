@@ -266,7 +266,10 @@ cross the boundary. A top-level declaration written without a type annotation is
 when the module's interface is built, so importers cannot see it at all, and the
 diagnostic they get says the name does not exist rather than saying why
 ([`docs/tickets/bug-14.md`](../tickets/bug-14.md)). Annotating `label` in the first block
-below makes the second compile.
+below makes the second compile. Note that the first block is not valid Zelkova either way:
+an exposed declaration [must be annotated](types.md#an-exposed-declaration-must-be-annotated),
+and enforcing that rule is what removes this gap — the error moves to the declaration that
+failed to describe itself, instead of landing on the importer.
 
 ```zel expect=ok package=unannotated
 module Widget exposing (label)
