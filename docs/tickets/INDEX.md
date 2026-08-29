@@ -1,11 +1,12 @@
 # Zelkova — Ticket index
 
-_Last updated: 2026-08-28._
+_Last updated: 2026-08-29._
 
 `SPEC-2` opened a second body of work alongside the diagnostics program below: specifying the
-language itself, one chapter at a time. It is where the four `LANG-` tickets came from, and it
+language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
 will keep producing them — writing down a rule that was never written down is how you find out
-the compiler had quietly picked a different one.
+the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
+from one chapter.
 
 One file per ticket: `docs/tickets/<id-lower>.md`. Bugs and tasks share one ID namespace, one
 closing convention and this one table — a bug is a ticket **type**, not a separate file. Each
@@ -128,6 +129,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-11](bug-11.md) | bug | low | open | The `Tokenizer` never terminates on a tab outside leading whitespace |
 | [BUG-12](bug-12.md) | bug | medium | open | Four `unwrap()`s on user input panic the compiler instead of reporting a syntax error |
 | [BUG-13](bug-13.md) | bug | medium | open | Block comments are lexed only at the start of a line, swallow the rest of their closing line, do not nest, and are accepted unterminated |
+| [BUG-14](bug-14.md) | bug | medium | open | A top-level value with no type annotation never reaches the module's interface |
+| [BUG-15](bug-15.md) | bug | medium | open | An imported operator is unresolvable unless the function behind it is also in scope |
+| [BUG-16](bug-16.md) | bug | medium | open | An unresolved type name is invented rather than reported |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -141,11 +145,15 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-12](err-12.md) | task | — | open | Leading indentation before `module` is rejected only by accident, and the caret lands on an unrelated line |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
-| [SPEC-3](spec-3.md) | task | — | open | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
+| SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
 | [LANG-4](lang-4.md) | task | — | open | Prefix `-` is desugared to `0 - e`, so negating a `Float` mixes it with an `Int` literal |
+| [LANG-5](lang-5.md) | task | — | open | An `import` is accepted anywhere among the declarations |
+| [LANG-6](lang-6.md) | task | — | open | A module's declared name is unrelated to the file it lives in |
+| [LANG-7](lang-7.md) | task | — | open | Nothing checks an import list for duplicates, alias collisions or self-imports |
+| [LANG-8](lang-8.md) | task | — | open | There is no default import list |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |

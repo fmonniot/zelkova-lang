@@ -43,23 +43,36 @@ a hard test failure — never a silent skip. When you add an example, tag it.
 | `expect=parse-error:Reason` | The same, and the reason must match. `Reason` is either the phase (`Tokenizer`, `Layout`) or a specific error (`IndentationError`, `TabError`, `LayoutError`, `UnexpectedToken`, `UnexpectedEOF`, `InvalidToken`, `ExtraToken`) — matched against the real enums in `src/compiler/parser/`. Use whenever the chapter's prose describes the error the reader will see. |
 | `expect=canonical-error:VariantName` | Parses, then canonicalization returns a `Vec<canonical::Error>` containing at least one error of variant `VariantName` — matched against the real variant names in `src/compiler/canonical/mod.rs`'s `Error` enum. |
 | `expect=unimplemented` | Must fail somewhere in parse-or-canonicalize, but deliberately does not pin *which* error: pinning would wire tokenizer/grammar internals into a prose document, and the tag's whole job is to go red the day the feature is actually implemented. On an expected failure the test run prints the error it observed, so a reviewer can eyeball that the block failed for the reason the chapter intends. |
+| `expect=dependency-error` | The block's *package* (see below) has no valid module order — its imports form a cycle — so nothing in it is canonicalized at all. The one expectation that belongs to a group rather than to a module: every block of the package carries it, or none does. |
 | `expect=fragment` | An illustrative fragment, deliberately not executed. The only opt-out, and it must be written explicitly — there is no implicit skip. |
 
 A fenced block whose info string's first token is not `zel` (` ```sh `, a bare
 ` ``` `, prose) is not touched by the harness at all.
 
-### One module per block — undecided beyond that
+### More than one module: `package=`
 
-A block holds a single module. The chapters on modules, imports and cross-module errors
-will need two or three at once, and how to express that is **open**:
-`canonicalize_standalone` takes one source string, so the options are adjacent fenced
-blocks sharing one expectation; a block that names the module it defines and accumulates
-into an implicit package; `canonicalize_with_interfaces` with a hand-built `Interface`; or
-writing the example to a temp directory and calling `compile_package` the way
-`tests/pipeline.rs`'s `fixture_package` drives `tests/fixtures/`.
+A block holds a single module, and by default it is compiled alone, against no interfaces
+at all. A block may also carry a second tag, `package=<label>`, beside its `expect=` — an
+info string reading ```` ```zel expect=ok package=alias ````.
 
-Whichever chapter needs it first decides. `tests/spec.rs`'s dispatch was deliberately
-written so adding this is not a rewrite; don't reshape it in a way that forecloses them.
+Blocks sharing one label, **within one chapter**, are one package. They are parsed
+together, ordered by their imports, and canonicalized in that order against each other's
+`Interface`s — which is how a chapter shows two modules at once. Each block keeps its
+own `expect=`, so an example can show one module compiling and its importer failing, and
+the failure is reported on the importer's line rather than on the group.
+
+`SPEC-3` settled this, for the *Modules, exposing and imports* chapter, which cannot be
+written one module at a time. Three alternatives were considered and rejected: adjacent
+blocks sharing one expectation (a group can then only say "something failed", not which
+module), a hand-built `Interface` in `tests/spec.rs` (the other module never appears in
+the chapter, so the reader cannot see it), and writing the group to a temp directory for
+`compile_package` (slow, touches disk, and prints status lines on every spec run).
+
+Four things a group cannot do, each a hard failure rather than a skip, because none is
+expressible once the group is compiled as a unit: hold a `parse-error` expectation (the
+group is parsed as a whole before any of it is compiled), hold an `expect=fragment`,
+contain a block that fails to parse, or declare one module name twice. A rejected-source
+example belongs in a block with no `package=` label.
 
 ## Chapters
 
@@ -67,7 +80,7 @@ written so adding this is not a rewrite; don't reshape it in a way that foreclos
 |---|---|
 | [Lexical structure](lexical-structure.md) | written |
 | [Layout (the offside rule)](layout.md) | written |
-| Modules, `exposing` and imports | planned |
+| [Modules, exposing and imports](modules.md) | written |
 | Declarations | planned |
 | Types and type annotations | planned |
 | Expressions | planned |
@@ -86,10 +99,10 @@ ticket, filed when it is picked up rather than in bulk. The `write-spec-chapter`
 settle the design questions with the owner before drafting, file what turns up instead of
 fixing it. What each chapter has to cover:
 
-- **Modules, `exposing` and imports** — the header, the four forms an `exposing` entry can
+- **Modules, exposing and imports** — the header, the four forms an `exposing` entry can
   take, `import … as … exposing`, how a module name maps to a file path, and whether any
-  module is implicitly in scope. This is the chapter that has to answer the *one module per
-  block* question below, since it cannot be written with one module at a time.
+  module is implicitly in scope. This is the chapter that answered the multi-module
+  question below, since it cannot be written with one module at a time.
 - **Declarations** — value and function declarations, type annotations, `type`
   declarations, `infix` declarations, and **multi-line function declarations with pattern
   matching**, which is a deliberate divergence: Elm has no equivalent, so there is no
