@@ -114,12 +114,12 @@ identity x =
   x
 ```
 
-Three lowercase spellings — `number`, `comparable` and `appendable` — are written throughout
-`std/core/src/` as though they meant something more than an ordinary variable. Whether they
-become real constraints is an **open design question**, deliberately not answered anywhere in
-this directory yet; the *Constrained type variables* chapter (planned; see
-[the chapter list](README.md#chapters)) is where it will be recorded. Until then this chapter's
-rule stands unqualified: every lowercase-initial name in a type is an ordinary type variable.
+Three lowercase spellings — `number`, `comparable` and `appendable` — were written throughout
+`std/core/src/` as though they meant something more than an ordinary variable, and they never
+did. [Constrained type variables](constrained-type-variables.md) is the chapter about that: it
+confirms the rule above holds for those three exactly as for any other name, records that type
+classes are the intended way to say what they were reaching for, and is why `std/core/src/`
+now spells all three `a`.
 
 A type variable is never **applied**. Only a type name may head an application, so `m a` — a
 variable standing for a type constructor rather than for a type — is a syntax error:

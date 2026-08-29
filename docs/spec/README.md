@@ -89,7 +89,7 @@ example belongs in a block with no `package=` label.
 | Evaluation semantics | planned ([SPEC-9](../tickets/spec-9.md)) |
 | [JS interop](js-interop.md) | written |
 | Packages and source layout | planned ([SPEC-10](../tickets/spec-10.md)) |
-| Constrained type variables | planned ([SPEC-11](../tickets/spec-11.md)) — records an open question, does not settle it |
+| [Constrained type variables](constrained-type-variables.md) | written |
 
 Together the planned chapters are meant to be the whole language, not a set of footnotes to
 somebody else's manual — that is what *the spec is self-contained* costs, and it is the
@@ -124,10 +124,12 @@ fixing it. What each chapter has to cover:
   operators short-circuit, and what a function value is.
 - **Packages and source layout** — the package directory, the `zelkova.json` manifest, and
   what a package boundary means for visibility.
-- **Constrained type variables** (`number`, `comparable`, `appendable`) — whether these
-  become real type classes, compiler-known constraints, or nothing at all is undecided.
-  The chapter records the question. A spec is a good place to hold an open design question
-  and a bad place to settle one by accident.
+- **Constrained type variables** (`number`, `comparable`, `appendable`) — these are ordinary
+  type variables and always were; the chapter says so, and records that **type classes**,
+  without higher-kinded variables, are the intended way to express what they were reaching for.
+  The direction is the language owner's decision; the mechanism is not designed, and the
+  chapter lists what it still has to answer. A spec is a good place to hold an open design
+  question and a bad place to settle one by accident.
 
 ### Tag every claim the chapter makes
 

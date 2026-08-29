@@ -39,9 +39,14 @@ module javascript Js.Basics exposing
   , sub
   )
 
-add : number -> number -> number
-sub : number -> number -> number
+add : a -> a -> a
+sub : a -> a -> a
 ```
+
+Both were spelled `number -> number -> number` until `SPEC-11`, which found the spelling
+carried no meaning and rewrote `std/core/src/` off it — see
+[Constrained type variables](constrained-type-variables.md). The type is unchanged; only the
+name of the variable is.
 
 ## Open questions
 
