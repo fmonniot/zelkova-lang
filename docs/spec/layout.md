@@ -38,7 +38,7 @@ describe f =
 
 An odd number of leading spaces is rejected before layout ever sees the line:
 
-```zel expect=parse-error
+```zel expect=parse-error:IndentationError
 module Example exposing (f)
 
 f x =
@@ -49,7 +49,7 @@ f x =
 not a width — Zelkova takes no position on how wide a tab is because no line may be
 indented with one:
 
-```zel expect=parse-error
+```zel expect=parse-error:TabError
 module Example exposing (f)
 
 f x =
@@ -81,7 +81,7 @@ f x =
 The first token of a source file is the `module` keyword, and it sits in column 1. Any
 space or tab before it is invalid.
 
-```zel expect=parse-error
+```zel expect=parse-error:UnexpectedToken
   module Example exposing (f)
 
   f x =
@@ -91,9 +91,13 @@ space or tab before it is invalid.
 This is a real rule rather than an accident of the implementation, but the implementation
 currently enforces it by accident and reports it badly — the caret lands on a later
 declaration and the message asks for `close block`, an internal token the reader cannot
-write. [`docs/tickets/err-12.md`](../tickets/err-12.md) tracks the diagnostic. The rule
-above is what the language says either way, which is why the example is tagged
-`expect=parse-error` and stays correct once that ticket lands.
+write. [`docs/tickets/err-12.md`](../tickets/err-12.md) tracks the diagnostic; the rule
+above is what the language says either way.
+
+The example is tagged `expect=parse-error:UnexpectedToken`, naming that wrong-but-current
+error on purpose. When ERR-12 lands and the message becomes a real one, the block goes red
+— which is the point: the paragraph you are reading describes a diagnostic that will stop
+existing, and it should not be able to outlive it.
 
 ## Top-level declarations
 
@@ -163,7 +167,7 @@ describe f =
 
 A branch that starts **left** of that column is an error:
 
-```zel expect=parse-error
+```zel expect=parse-error:LayoutError
 module Example exposing (describe)
 
 type Flag
@@ -180,7 +184,7 @@ A branch that starts **right** of it is equally an error. All branches of one `c
 start on the same column; a deeper line that begins a new branch is a mistake, not a
 continuation of the branch above it:
 
-```zel expect=parse-error
+```zel expect=parse-error:UnexpectedToken
 module Example exposing (describe)
 
 type Flag
@@ -197,7 +201,8 @@ The compiler rejects that today, but for the wrong reason and with the wrong car
 has no rule for the deeper line, so it is absorbed into the previous branch's body and the
 grammar then trips on the second `->`. [`docs/tickets/err-11.md`](../tickets/err-11.md)
 tracks the diagnostic. As with the column-1 rule above, the language's answer is unchanged
-by that ticket.
+by that ticket, and the block pins today's `UnexpectedToken` so this paragraph goes red
+along with it.
 
 ### A branch body is deeper than its pattern
 
@@ -205,7 +210,7 @@ A branch body may sit on the same line as its `->`, or on following lines indent
 the branch's own column. It may not start at the branch's column — that column belongs to
 the next branch, so a body written there closes the branch and leaves it empty:
 
-```zel expect=parse-error
+```zel expect=parse-error:UnexpectedToken
 module Example exposing (describe)
 
 type Flag
