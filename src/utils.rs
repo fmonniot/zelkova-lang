@@ -37,9 +37,13 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 /// what `ERR-7` was tuned against (`widthDefault` → `withDefault`, distance
 /// 1 over 12 characters).
 ///
-/// Ties are broken by the order `candidates` is iterated in, so a caller that
-/// wants a deterministic pick should hand this a deterministically ordered
-/// iterator.
+/// Equally-distant candidates are broken by comparing the candidates
+/// themselves, so the answer depends only on the *set* of candidates and not
+/// on the order they arrive in. That matters because every caller in the
+/// compiler feeds this `HashMap` key iteration, whose order is randomised per
+/// instance: without the tie-break, `foldl`/`foldr` or two sibling
+/// constructors would produce a different suggestion from one run to the next
+/// for unchanged source.
 pub fn suggest<'a, I>(target: &str, candidates: I) -> Option<&'a str>
 where
     I: IntoIterator<Item = &'a str>,
@@ -51,7 +55,7 @@ where
         .filter(|c| *c != target)
         .map(|c| (c, levenshtein_distance(target, c)))
         .filter(|(_, distance)| *distance <= threshold)
-        .min_by_key(|(_, distance)| *distance)
+        .min_by(|(a, da), (b, db)| da.cmp(db).then_with(|| a.cmp(b)))
         .map(|(c, _)| c)
 }
 
@@ -137,11 +141,22 @@ mod tests {
 
     #[test]
     fn suggest_picks_the_closest_of_several_candidates() {
-        let candidates = vec!["mad", "map", "mac"];
-        // "map" and "mac" are both distance 1 from "maq"; "mad" is distance 1
-        // too — this asserts the nearest (here, a three-way tie broken by
-        // iteration order) rather than an arbitrary one, so a regression that
-        // stops comparing distances at all still fails a specific way.
-        assert_eq!(suggest("maq", candidates), Some("mad"));
+        // Distances from "withDefault" are 4, 2 and 1 respectively, and the
+        // threshold for an 11-character target is 4 — so all three survive the
+        // filter and only the distance comparison separates them. The nearest
+        // is deliberately *last*: returning the first candidate under the
+        // threshold, or dropping the comparison entirely, picks "withDef".
+        let candidates = vec!["withDef", "withDefau", "withDefaults"];
+        assert_eq!(suggest("withDefault", candidates), Some("withDefaults"));
+    }
+
+    #[test]
+    fn suggest_breaks_ties_on_the_candidate_not_on_iteration_order() {
+        // All three are distance 1 from "maq", so only the tie-break decides.
+        // Callers hand `suggest` `HashMap` key iteration, whose order is
+        // randomised per instance; the answer must depend on the set alone.
+        assert_eq!(suggest("maq", vec!["mad", "map", "mac"]), Some("mac"));
+        assert_eq!(suggest("maq", vec!["map", "mac", "mad"]), Some("mac"));
+        assert_eq!(suggest("maq", vec!["mac", "mad", "map"]), Some("mac"));
     }
 }
