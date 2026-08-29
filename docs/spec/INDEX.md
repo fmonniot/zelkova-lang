@@ -45,10 +45,18 @@ see that ticket's *Open, this ticket does not pick* section before adding one.
 
 | Chapter | Status |
 |---|---|
+| [Layout (the offside rule)](layout.md) | written |
 | [JS interop](js-interop.md) | written — migrated from the former `lang.md` |
-| Layout (the offside rule) | planned, not yet written — see `docs/tickets/spec-1.md` |
 
 Further chapters (multi-line function declarations with pattern matching, lexical
 structure and the soft keywords, tuples' fixed arity, constrained type variables) are
 each their own ticket; `docs/tickets/spec-1.md`'s *Follow-up chapters* section has the
 list and the reasoning for the order.
+
+Two rules the Layout chapter states are enforced by the compiler today but reported
+badly — a `case` branch indented deeper than its siblings
+([ERR-11](../tickets/err-11.md)) and leading indentation before `module`
+([ERR-12](../tickets/err-12.md)). Both chapters' examples are tagged
+`expect=parse-error`, which pins the rule rather than the message, so they stay green
+across those fixes. That is the general pattern: tag the claim the chapter is making,
+not the diagnostic the compiler currently happens to emit.
