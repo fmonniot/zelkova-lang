@@ -27,9 +27,11 @@ module Basics exposing
 
 # Comparison
 
-These functions only work on `comparable` types. This includes numbers,
+These functions are *intended* for comparable types only — numbers,
 characters, strings, lists of comparable things, and tuples of comparable
-things.
+things. The language cannot say so yet: their type variables are ordinary
+ones, so the signatures accept anything at all. See
+`docs/spec/constrained-type-variables.md`.
 
 @docs (<), (>), (<=), (>=), max, min, compare, Order
 
@@ -144,9 +146,15 @@ compatible with any widely-used assembly language.
 type Float = Float -- NOTE: The compiler provides the real implementation.
 
 
-{-| Add two numbers. The `number` type variable means this operation can be
-specialized to `Int -> Int -> Int` or to `Float -> Float -> Float`. So you
-can do things like this:
+{-| Add two numbers. This is *intended* to specialize to `Int -> Int -> Int`
+or to `Float -> Float -> Float`, and to nothing else. The `a` in its signature
+is an ordinary type variable and says no such thing: nothing stops the
+function being applied to two values that are not numbers at all. Zelkova has
+no way to write that restriction, and type classes are the intended answer —
+see `docs/spec/constrained-type-variables.md`. Until then the annotation is
+honest about what the compiler enforces rather than about what is meant.
+
+So you can do things like this:
 
     3002 + 4004 == 7006  -- all ints
     3.14 + 3.14 == 6.28  -- all floats
@@ -165,25 +173,25 @@ exactly what type of number you are dealing with. When you try to _infer_ these
 conversions (as Scala does) it can be even more confusing. Elm has opted for a
 design that makes all conversions explicit.
 -}
-add : number -> number -> number
+add : a -> a -> a
 add =
   Js.Basics.add
 
 
 {-| Subtract numbers like `4 - 3 == 1`.
 
-See [`(+)`](#+) for docs on the `number` type variable.
+See [`(+)`](#+) for why `a` is not the restriction it looks like.
 -}
-sub : number -> number -> number
+sub : a -> a -> a
 sub =
   Js.Basics.sub
 
 
 {-| Multiply numbers like `2 * 3 == 6`.
 
-See [`(+)`](#+) for docs on the `number` type variable.
+See [`(+)`](#+) for why `a` is not the restriction it looks like.
 -}
-mul : number -> number -> number
+mul : a -> a -> a
 mul =
   Js.Basics.mul
 
@@ -232,7 +240,7 @@ idiv =
     3^2 == 9
     3^3 == 27
 -}
-pow : number -> number -> number
+pow : a -> a -> a
 pow =
   Js.Basics.pow
 
@@ -364,25 +372,25 @@ neq =
 
 
 {-|-}
-lt : comparable -> comparable -> Bool
+lt : a -> a -> Bool
 lt =
   Js.Utils.lt
 
 
 {-|-}
-gt : comparable -> comparable -> Bool
+gt : a -> a -> Bool
 gt =
   Js.Utils.gt
 
 
 {-|-}
-le : comparable -> comparable -> Bool
+le : a -> a -> Bool
 le =
   Js.Utils.le
 
 
 {-|-}
-ge : comparable -> comparable -> Bool
+ge : a -> a -> Bool
 ge =
   Js.Utils.ge
 
@@ -392,7 +400,7 @@ ge =
     min 42 12345678 == 42
     min "abc" "xyz" == "abc"
 -}
-min : comparable -> comparable -> comparable
+min : a -> a -> a
 min x y =
   if lt x y then x else y
 
@@ -402,20 +410,21 @@ min x y =
     max 42 12345678 == 12345678
     max "abc" "xyz" == "xyz"
 -}
-max : comparable -> comparable -> comparable
+max : a -> a -> a
 max x y =
   if gt x y then x else y
 
 
-{-| Compare any two comparable values. Comparable values include `String`,
-`Char`, `Int`, `Float`, or a list or tuple containing comparable values. These
-are also the only values that work as `Dict` keys or `Set` members.
+{-| Compare any two comparable values. Comparable values are meant to be
+`String`, `Char`, `Int`, `Float`, or a list or tuple containing comparable
+values, and those are also the only values meant to work as `Dict` keys or
+`Set` members. The signature does not enforce it — see [`(+)`](#+).
 
     compare 3 4 == LT
     compare 4 4 == EQ
     compare 5 4 == GT
 -}
-compare : comparable -> comparable -> Order
+compare : a -> a -> Order
 compare a b =
   EQ
 -- TODO Uncomment that one as soon as we have let expression in the parser
@@ -507,12 +516,13 @@ xor =
 -- APPEND
 
 
-{-| Put two appendable things together. This includes strings and lists.
+{-| Put two appendable things together. This is meant to be strings and
+lists only; the signature does not enforce it — see [`(+)`](#+).
 
     "hello" ++ "world" == "helloworld"
     [1,1,2] ++ [3,5,8] == [1,1,2,3,5,8]
 -}
-append : appendable -> appendable -> appendable
+append : a -> a -> a
 append =
   Js.Utils.append
 
@@ -568,7 +578,7 @@ remainderBy =
     negate -42 == 42
     negate 0 == 0
 -}
-negate : number -> number
+negate : a -> a
 negate n =
   -n
 
@@ -582,7 +592,7 @@ negate n =
 
 [abs]: https://en.wikipedia.org/wiki/Absolute_value
 -}
-abs : number -> number
+abs : a -> a
 abs n =
   if lt n 0 then -n else n
 
@@ -594,7 +604,7 @@ abs n =
      x      if 100 <= x < 200
     200     if 200 <= x
 -}
-clamp : number -> number -> number -> number
+clamp : a -> a -> a -> a
 clamp low high number =
   if lt number low then
     low

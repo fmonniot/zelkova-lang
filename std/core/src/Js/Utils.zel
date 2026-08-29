@@ -14,10 +14,10 @@ will contains the actual implementation of this module.
 equal : a -> a -> Bool
 notEqual : a -> a -> Bool
 
-lt: comparable -> comparable -> Bool
-le: comparable -> comparable -> Bool
-gt: comparable -> comparable -> Bool
-ge: comparable -> comparable -> Bool
-compare: comparable -> comparable -> Int
+lt: a -> a -> Bool
+le: a -> a -> Bool
+gt: a -> a -> Bool
+ge: a -> a -> Bool
+compare: a -> a -> Int
 
-append : appendable -> appendable -> appendable
+append : a -> a -> a

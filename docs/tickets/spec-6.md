@@ -24,6 +24,15 @@ the grammar questions whether it needs a real precedence-climbing node, which su
 precedence may not actually be resolved anywhere — confirm with a real example mixing two
 operators of different precedence before writing the operator table as settled fact.
 
+**Also owns the numeric-literal rule.**
+[`docs/spec/constrained-type-variables.md`](../spec/constrained-type-variables.md) (`SPEC-11`)
+handed it here rather than answering half of it in passing. The type checker gives an integer
+literal an internal type that unifies with `Int` and `Float` and nothing else — so `x : Float`
+with a body of `1` checks and `x : Char` with the same body does not. Whether that is a rule of
+the language or an implementation detail is undecided, and this chapter is where literals are
+specified. Note [ERR-13](err-13.md) is about how that type is *spelled* in a diagnostic, not
+about what it means, and the two are independent.
+
 **Approach:** follow `write-spec-chapter` in full. Likely territory, to confirm by probing
 rather than assume from this ticket: the implemented forms (application, `if/then/else`,
 `case … of`, tuples, the infix-to-application rewrite); `let … in` and lambdas as

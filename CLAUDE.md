@@ -222,9 +222,10 @@ Not implemented: string literals, `let … in`, lambdas, records, lists, negativ
 unit type, type aliases, and the `zelkova.json` package manifest. The standard library under
 `std/core/src/` carries `.ignored` files for modules that do not compile yet.
 
-Open design question, unresolved: the std library uses Elm's constrained type variables
-(`number`, `comparable`, `appendable`). Whether those become real type classes, compiler-known
-constraints, or nothing at all has not been decided. Don't assume an answer in a diff. A
-`docs/spec/` chapter recording this as open is planned — see that directory's
-[`README.md`](docs/spec/README.md) chapter list — but not yet written; this note is the record
-until then.
+Settled by [`docs/spec/constrained-type-variables.md`](docs/spec/constrained-type-variables.md)
+(`SPEC-11`): `number`, `comparable` and `appendable` are **ordinary type variables** and always
+were — the compiler never special-cased them — and `std/core/src/` now spells all three `a`
+rather than implying a restriction the language cannot express. **Type classes**, without
+higher-kinded variables, are the intended way to express what they were reaching for; the
+direction is decided, the mechanism is not designed, and that chapter lists what it still has
+to answer. Don't assume an answer to the mechanism in a diff.
