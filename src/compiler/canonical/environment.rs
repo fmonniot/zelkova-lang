@@ -37,15 +37,30 @@ pub trait Environment<'parent>: std::fmt::Debug {
 
     fn find_type_constructor(&self, name: &Name) -> Option<&TypeConstructor>;
 
-    /// Every value name resolvable from this scope right now — local
-    /// bindings first, then everything the enclosing scope can already
-    /// resolve — for building a "did you mean …?" suggestion once
-    /// `find_value` has already failed (`ERR-7`). Not on the lookup path
-    /// itself: this walks the whole table, `find_value` a single key.
+    /// The value names resolvable from this scope right now, for building a
+    /// "did you mean …?" suggestion once `find_value` has already failed
+    /// (`ERR-7`). Not on the lookup path itself: this walks the whole table,
+    /// `find_value` a single key.
+    ///
+    /// A `Vec` and not a set: [`ScopedEnvironment`] appends its own bindings
+    /// to whatever the parent returned, so a name a scope shadows appears
+    /// twice. That is harmless here — both entries are the same string, and
+    /// [`suggest`](crate::utils::suggest) breaks ties by comparing the
+    /// candidates themselves rather than by the order they arrive in, so
+    /// neither the duplication nor the parent-before-locals order changes
+    /// which name comes back.
+    ///
+    /// Two things this does *not* mirror from `find_value`, both deliberate:
+    /// the ordering (`find_value` checks a scope's own bindings before the
+    /// parent's; this appends them last), and `RootEnvironment`'s redirect
+    /// through `infixes` to `Infix::function_name` — that redirect lands on a
+    /// `variables` key, which is already in the result, so following it would
+    /// only add a duplicate.
     fn value_names(&self) -> Vec<Name>;
 
     /// Same as [`value_names`](Environment::value_names), for type
-    /// constructors.
+    /// constructors. A scope never binds its own, so this is always the root
+    /// environment's `constructors` and never carries duplicates.
     fn type_constructor_names(&self) -> Vec<Name>;
 
     fn local_infix_exists(&self, name: &Name) -> bool;
