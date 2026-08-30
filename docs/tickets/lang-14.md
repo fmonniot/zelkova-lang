@@ -18,7 +18,7 @@ other than the one being compiled; `src/compiler/canonical/environment.rs`, whic
   splitting at the hyphens, uppercasing each piece and joining: `acme-widgets` is
   `AcmeWidgets`. A package never writes its own namespace — inside `acme-widgets`, the module
   is `Size`.
-- A depending package may **unwrap** one dependency by writing `"wrapped": false` in that
+- A depending package may **unwrap** one dependency by writing `wrapped = false` in that
   dependency's entry, and then that package's modules are named by their own names throughout
   the depending package. The choice belongs to the depending package and is invisible to
   anyone else. Either way a module has exactly one spelling in a file.
@@ -57,7 +57,7 @@ driver and the environment.
    all.
 2. For each direct dependency, load its public modules into the environment: keyed
    `<Namespace>.<module name>` by default, or by their own names when that dependency's entry
-   says `"wrapped": false`. Private modules and `module javascript` facades are not loaded at
+   says `wrapped = false`. Private modules and `module javascript` facades are not loaded at
    all, so a name that reaches one of them fails as a module that does not exist rather than
    as one that is refused.
 3. Build the whole name map before canonicalizing anything, and report a name claimed twice as

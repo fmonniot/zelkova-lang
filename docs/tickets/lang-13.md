@@ -1,6 +1,6 @@
 # LANG-13 · A package has no manifest, and its name is hardcoded
 
-**Sizing:** medium. Reading and validating a small JSON document is small; changing what
+**Sizing:** medium. Reading and validating a small TOML document is small; changing what
 `compile_package` is handed, and reshaping `PackageName`, touches every caller and every test
 that builds one.
 
@@ -13,7 +13,7 @@ that builds one.
 directly.
 
 **Decided ([`docs/spec/packages.md`](../spec/packages.md)):** a package is a directory holding
-a `zelkova.json` manifest, with `src/` beside it as the source root holding what the package
+a `zelkova.toml` manifest, with `src/` beside it as the source root holding what the package
 ships, not configurable. (`tests/` is a second root, and it is `LANG-15`'s.) A
 package name is a single flat identifier — lowercase ASCII letters, digits and hyphens,
 starting with a letter and with every hyphen followed by a letter — and not an author/project
@@ -35,13 +35,13 @@ one.
 
 **Approach:**
 
-1. Write `std/core/zelkova.json`, naming the package `zelkova-core`, with `"private-modules":
-   []` and both dependency maps empty. Every module of a package is public unless listed, and
+1. Write `std/core/zelkova.toml`, naming the package `zelkova-core`, with
+   `private-modules = []` and both dependency tables empty. Every module of a package is public unless listed, and
    the three `Js.*` facades need no listing: a `module javascript` facade is package-internal
    by its own declaration ([`docs/spec/js-interop.md`](../spec/js-interop.md)).
 2. `compile_package` takes the *package* directory, reads and validates the manifest, and
    derives the source root as `<package>/src` before calling `load_package_sources`. A
-   directory with no `zelkova.json`, a malformed one, or a name that is not a legal package
+   directory with no `zelkova.toml`, a malformed one, or a name that is not a legal package
    name is a `CompilationError` — and it is raised before the file database exists, so it goes
    back to the caller unrendered, the way loading errors already do.
 3. `PackageName` becomes one `String` with a validating constructor — the hyphen rule
@@ -55,7 +55,7 @@ Enforcing it is `LANG-14`.
 
 **Acceptance:** `cargo run` compiles `std/core` rather than `std/core/src`, still prints
 `parsed 8 modules`, lists all eight as checked, and exits 0. Two `tests/pipeline.rs` tests
-over `tests/fixtures/` packages: a directory with no `zelkova.json` is an `Err` naming the
+over `tests/fixtures/` packages: a directory with no `zelkova.toml` is an `Err` naming the
 missing manifest, and a manifest whose `name` is not a legal package name is an `Err` naming
 the field.
 

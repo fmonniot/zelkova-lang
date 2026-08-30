@@ -13,14 +13,14 @@ everything outside it calls `Todo.Model`.
 
 ## What a package is
 
-A package is a directory containing a `zelkova.json` manifest. The manifest names the
+A package is a directory containing a `zelkova.toml` manifest. The manifest names the
 package and describes it; a directory without one is not a package, and the compiler will 
 refuse to compile a raw collection of source files. Beside the manifest are the two source roots,
 `src/` and `tests/`.
 
 ```text
 todo/
-  zelkova.json
+  zelkova.toml
   zelkova.lock
   src/
     App.zel            module App
@@ -31,11 +31,16 @@ todo/
     ModelTest.zel      module ModelTest
 ```
 
-Requiring the manifest is what gives those three questions an answer for every package
-without exception. A package always has a name, so a diagnostic can say which package a
-module came from; it always has a stated public surface, so "may I import this" is
-decidable; and it always has a dependency list, so "where could this module have come from"
-is answerable by reading one file.
+`zelkova.lock` is written beside the manifest by the toolchain and records the exact
+versions a build was resolved to. It is not written by hand and says nothing the manifest
+does not already permit; the [toolchain appendix](toolchain.md#resolution-and-zelkovalock)
+is where it is described.
+
+Requiring the manifest is what gives three questions an answer for every package without
+exception. *Which package is this module in?* — a package always has a name, so a diagnostic
+can say where a module came from. *May I import this?* — it always has a stated public
+surface, so the question is decidable. *Where could this module have come from?* — it always
+has a dependency list, so the answer is in one file.
 
 **Not implemented:** the compiler reads no manifest. It is handed a source directory
 directly, and the name of the package it is compiling is fixed at the call site rather than
@@ -87,27 +92,34 @@ src/
 
 ## The manifest
 
-`zelkova.json` is a JSON object with six fields, of which five are required:
+`zelkova.toml` is a [TOML](https://toml.io) document with six fields, of which five are
+required:
 
-```text
-{
-  "name": "todo",
-  "version": "0.4.1",
-  "main": "App",
-  "private-modules": [ "Model.Internal" ],
-  "dependencies": {
-    "acme-widgets": { "version": "^1.2.0",
-                      "git": "https://github.com/acme/widgets" },
-    "acme-json":    { "version": "^0.4.1",
-                      "git": "https://github.com/acme/json",
-                      "wrapped": false }
-  },
-  "test-dependencies": {
-    "acme-expect": { "version": "^2.0.0",
-                     "git": "https://github.com/acme/expect" }
-  }
-}
+```toml
+name = "todo"
+version = "0.4.1"
+main = "App"
+private-modules = ["Model.Internal"]
+
+[dependencies.acme-widgets]
+version = "^1.2.0"
+git = "https://github.com/acme/widgets"
+
+# unwrapped: its Decode module is on every other line in this package
+[dependencies.acme-json]
+version = "^0.4.1"
+git = "https://github.com/acme/json"
+wrapped = false
+
+[test-dependencies.acme-expect]
+version = "^2.0.0"
+git = "https://github.com/acme/expect"
 ```
+
+The format is TOML because a manifest is read and edited by hand far more often than it is
+generated. It takes comments, so why a dependency is pinned or unwrapped can be written
+beside the pin rather than in a commit message nobody will find; and a dependency's fields
+read as one line each instead of as nested punctuation.
 
 **`name`** is one identifier: ASCII lowercase letters, digits and hyphens. It begins with a
 letter, and every hyphen is followed by a letter. It is not a dotted name and has no author
@@ -122,15 +134,16 @@ pre-release suffixes and no build metadata.
 [Programs](#programs).
 
 **`private-modules`** lists the modules other packages may not import. It is required, and
-it may be empty — a package that keeps nothing private writes `[]`, so that a reader can tell
-a wholly public package from a forgotten field. Every entry must name a module the package
-actually holds.
+it may be empty — a package that keeps nothing private writes `private-modules = []`, so that
+a reader can tell a wholly public package from a forgotten field. Every entry must name a
+module the package actually holds.
 
-**`dependencies`** maps package names to what is wanted of each; see
-[Dependencies](#dependencies). It is required and may be empty.
+**`dependencies`** is a table mapping package names to what is wanted of each; see
+[Dependencies](#dependencies). It is required, and a package with none writes the header
+`[dependencies]` with nothing under it.
 
-**`test-dependencies`** is the same map for packages the tests need and the package itself
-does not; see [Tests](#tests). It is required and may be empty.
+**`test-dependencies`** is the same table for packages the tests need and the package itself
+does not; see [Tests](#tests). It is required and may likewise be empty.
 
 **Not implemented:** no part of this is read ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
 A manifest is not source text, so no tagged example can hold the compiler to any of it, and
@@ -142,12 +155,18 @@ Every module of a package under `src/` is importable from outside it, except the
 `private-modules` names. Those are **package-internal**: importable from other modules of the
 same package and from nowhere else.
 
-
 A `module javascript` facade is never importable from outside, whatever the manifest says,
 because its guarantees are about a companion `.mjs` file that ships with the package that
 declares it — [JS interop](js-interop.md) is where that rule and its reasoning live. Listing
 a facade in `private-modules` changes nothing; the declaration itself is what makes it
 internal.
+
+A package offers JavaScript-backed values to its dependents by wrapping them: an ordinary
+module imports the facade and re-declares what it offers under the types it really handles.
+That module is public like any other, and it is where a signature the compiler cannot check
+becomes one it can. `zelkova-core` is the worked example — `Basics` is an ordinary module,
+and every value in it that JavaScript computes reaches its dependents through a declaration
+there rather than out of `Js.Basics`.
 
 ```zel expect=ok
 module javascript Js.Widget exposing (measure)
@@ -164,15 +183,18 @@ represents a package other than the one being compiled
 A package may only use another package it has declared. `dependencies` maps a package name
 to an object, which says both what is wanted of that package and where it comes from:
 
-```text
-"dependencies": {
-  "acme-widgets": { "version": "^1.2.0",
-                    "git": "https://github.com/acme/widgets" },
-  "acme-json":    { "version": "=0.4.1",
-                    "git": "https://github.com/acme/json", "tag": "v0.4.1" },
-  "acme-parser":  { "version": ">=2.1.0, <2.5.0",
-                    "path": "../acme-parser" }
-}
+```toml
+[dependencies.acme-widgets]
+version = "^1.2.0"
+git = "https://github.com/acme/widgets"
+
+[dependencies.acme-json]
+version = "=0.4.1"
+git = "https://github.com/acme/json"
+
+[dependencies.acme-parser]
+version = ">=2.1.0, <2.5.0"
+path = "../acme-parser"
 ```
 
 ### The version constraint
@@ -189,18 +211,48 @@ bounds, the lower inclusive and the upper exclusive.
 Every entry names a **source**, and names exactly one. There is no index anywhere that a bare
 name could be looked up in, and so no version constraint alone is enough to find a package:
 the manifest is where a package says where its dependencies are, and reading one file is
-enough to know.
+enough to know. `git` is a repository URL; `path` is a directory, relative to the manifest
+that names it, holding a package being developed alongside this one.
 
-`git` is a repository URL. It may be accompanied by one of `tag`, `branch` or `rev`, and by at
-most one; with none of them, the repository's default branch is used. `path` is a directory,
-relative to the manifest that names it, holding a package being developed alongside this one.
-Whichever is written, the version constraint still applies and is checked against the `version`
-the package found there declares — a `path` dependency is a different way of obtaining a
-package, not a way of skipping what is asked of it.
+Naming a published version and naming its commit are one act, because publishing a version
+*is* tagging a commit with `v` followed by that version — `1.2.4` is published as `v1.2.4`.
+So a `git` entry asks for a version and stops there: the constraint is what finds the commit,
+by way of the tag, and nothing else in the entry restates in a repository's vocabulary what
+the constraint has already said.
+
+```toml
+[dependencies.acme-json]
+version = "^0.4.1"
+git = "https://github.com/acme/json"    # resolves through the tag v0.4.3
+```
+
+Work that has not been published has no version to ask for, and an entry reaches it by
+writing `rev` or `branch` in place of `version`: one commit, or a branch whose tip is taken
+when the build is resolved.
+
+```toml
+[dependencies.acme-widgets]
+git = "https://github.com/acme/widgets"
+branch = "size-rework"
+```
+
+An entry carries a constraint or a pin, never both, and never two pins. They are alternative
+answers to one question, and an entry giving both would say which commit it wants twice, in
+two vocabularies that can contradict each other — a state a manifest should not be able to
+describe at all. A pinned package still declares a `version` in the manifest at that commit,
+and that version is what it brings to the rest of the build: every constraint anyone else
+placed on that package still has to hold.
+
+A `path` entry has no tags to resolve through, so its version constraint is checked rather
+than resolved — against the `version` declared by the package in that directory. A `path`
+dependency is a different way of obtaining a package, not a way of skipping what is asked of
+it.
 
 The key is the package's name and the fetched package's own `name` field must equal it.
 Otherwise a manifest could call a package anything, and the namespace a dependent derives from
-that key would name modules the package itself has never heard of.
+that key would name modules the package itself has never heard of. Writing the name rather
+than only the source is also what keeps the manifest readable on its own: `AcmeWidgets.Size`
+is traceable to an entry by reading, with nothing fetched.
 
 Two entries anywhere in a build that give one name two different sources is an error, and so
 is one name given a source and, elsewhere, another. A name is a package's identity for the
@@ -216,11 +268,11 @@ is unavailable are matters for the toolchain rather than the language, and the
 An entry may also carry `wrapped`, which is `true` unless written, and which decides
 [how that dependency's modules are named](#unwrapping-a-dependency) in this package.
 
-```text
-"dependencies": {
-  "acme-parser": { "version": ">=2.1.0, <2.5.0",
-                   "path": "../acme-parser", "wrapped": false }
-}
+```toml
+[dependencies.acme-parser]
+version = ">=2.1.0, <2.5.0"
+path = "../acme-parser"
+wrapped = false
 ```
 
 ### One version of each
@@ -256,7 +308,7 @@ Its version is the compiler's.
 
 It is seen unwrapped, in every package. So `Basics` is `Basics` and `List` is `List` everywhere in the language. The names of
 core's public modules are therefore taken in every package — a module of your own called
-`List` would be [a second module answering to one name](#when-two-modules-answer-to-one-name).
+`List` would be [a second module answering to one name](#two-modules-under-one-name-is-an-error).
 
 ## Imports across a package boundary
 
@@ -349,15 +401,15 @@ start = Task
 ### Unwrapping a dependency
 
 A package that finds the prefix costs more than it is worth may drop it, per dependency,
-by writing `"wrapped": false` in that dependency's entry. That package's modules are then
+by writing `wrapped = false` in that dependency's entry. That package's modules are then
 named by their own names in every file of the depending package: `Size`, not
 `AcmeWidgets.Size`.
 
-```text
-"dependencies": {
-  "acme-widgets": { "version": "^1.2.0",
-                    "git": "https://github.com/acme/widgets", "wrapped": false }
-}
+```toml
+[dependencies.acme-widgets]
+version = "^1.2.0"
+git = "https://github.com/acme/widgets"
+wrapped = false
 ```
 
 Unwrapping is a property of the pair (this package, that dependency) and not of the
@@ -372,20 +424,15 @@ A module has exactly one spelling in any file. Wrapped, `Size` names nothing; un
 module, which is the thing [one module, one import](modules.md#one-module-one-import) exists
 to prevent.
 
-### A local spelling stays local
-
-A module's **name** is its namespace and its path within its package: `AcmeWidgets.Size`. That
-is its identity, everywhere, and it is what every package other than the one holding it sees.
+### What a package boundary cannot rename
 
 Unwrapping and `as` produce **spellings**, and a spelling is a convenience the file or the
-package granting it keeps to itself. A file that writes `import AcmeWidgets.Size as Size` has
-chosen how to write that name in that file; a package that unwraps `acme-widgets` has chosen
-how to write it throughout its own source. Neither choice travels. What a module offers to
-whoever imports it is written in canonical names, so a type does not change identity by being
-mentioned in a file that spells it short, and two packages that spell one dependency
-differently still agree about every type in it.
+package granting it keeps to itself. What a module offers to whoever imports it is written in
+names — `AcmeWidgets.Size`, always — so a type does not change identity by being mentioned in
+a file that spells it short, and two packages that spell one dependency differently still
+agree about every type in it.
 
-Three things follow, and together they answer what a package boundary can and cannot rename.
+Three things follow.
 
 **A package cannot rename a module it exposes.** A public module's name is its path, so
 `src/Model/Internal.zel` is `Todo.Model.Internal` to everyone outside `todo` and cannot be
@@ -424,7 +471,7 @@ type in a public signature is part of the package's interface, and a package tha
 dependency's type there has made that dependency part of what it asks of its users. Wrapping
 the type in one of its own is how a package chooses not to.
 
-### When two modules answer to one name
+### Two modules under one name is an error
 
 Two wrapped dependencies cannot collide, whatever they contain, and that is what the namespace
 is for. Unwrapping is what puts names in the same space: an unwrapped dependency's modules sit

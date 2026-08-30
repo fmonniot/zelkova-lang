@@ -126,7 +126,7 @@ fixing it. What each chapter has to cover:
   reference ambiguous rather than merely unresolved.
 - **Evaluation semantics** — order of evaluation, what `==` means structurally, which
   operators short-circuit, and what a function value is.
-- **Packages and source layout** — the package directory, the `zelkova.json` manifest, and
+- **Packages and source layout** — the package directory, the `zelkova.toml` manifest, and
   what a package boundary means for visibility.
 - **Type classes** — the `class` and `instance` declarations, how a constraint is written in an
   annotation, superclasses, where an instance may be declared, and what a constrained function

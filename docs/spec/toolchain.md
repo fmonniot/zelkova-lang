@@ -9,7 +9,7 @@ It is **not normative.** A chapter of the specification says what Zelkova is, an
 one is either checked by `cargo test --test spec` or marked as a gap between the language and
 the compiler. Nothing here is checked by anything: a toolchain is free to do this differently
 and still compile Zelkova. What is written here is written because most of these questions have
-exactly one sensible answer once the language's own answers are fixed, and leaving them
+a sensible answer once the language's own answers are fixed, and leaving them
 unwritten means every reader invents that answer privately and slightly differently.
 
 Two chapters carry the parts that *are* normative, and they are not restated below:
@@ -23,7 +23,7 @@ Much of what follows is designed here rather than recorded from something alread
 paragraph describing such a mechanism opens with a bolded **Provisional:**, so that
 `grep -r "Provisional:" docs/spec/` finds every place the toolchain has been invented and
 nothing yet holds it to account. A provisional mechanism is one to argue with and replace, not
-one to build against.
+one to build against. Keep the owner in the loop on any argue/replace action.
 
 The marker belongs to this appendix alone. A chapter never carries it: a language question
 with no settled answer is an **Open question** at the foot of the chapter, because a language
@@ -51,22 +51,25 @@ is a legal source: `https://`, `ssh://`, `git@host:path`, and a local repository
 path. Authentication is `git`'s: a private dependency works if the user's `git` can already
 fetch it, and the toolchain neither stores nor asks for a credential.
 
-`tag`, `branch` and `rev` select what to check out, and an entry carries at most one. With
-none, the repository's default branch is used.
+An entry says which commit it wants in one of three ways, and which three is the language's
+([Packages](packages.md#where-a-dependency-comes-from)): a `version` constraint, resolved
+through the repository's version tags, or a `rev`, or a `branch`.
+
+| Field | Names | Moves when |
+|---|---|---|
+| `version` | the highest tagged version satisfying the constraint | a satisfying tag is pushed, until the lock file names a commit |
+| `rev` | one commit | never |
+| `branch` | a branch's tip | the branch advances |
+
+**Provisional:** resolving a `version` means listing the source's tags, and a tag is read as a
+version when it is `v` followed by three dot-separated integers and nothing else. Every other
+tag is invisible to resolution, so a repository is free to tag whatever else it likes. A tag
+is fetched as a tag and never as a branch, so a repository with both under one name resolves
+to the tag; a `rev` may be abbreviated as long as it is unambiguous in the fetched repository.
 
 The three differ in how firmly they pin, and the difference matters only until the lock file
 exists — after that, the lock names a commit and the entry is consulted again just to check
 that commit still satisfies it.
-
-| Field | Names | Moves when |
-|---|---|---|
-| `rev` | one commit | never |
-| `tag` | one tag | the tag is moved, which is a repository owner rewriting history |
-| `branch` | a branch's tip | the branch advances |
-
-**Provisional:** a `tag` is fetched as a tag and never as a branch, so a repository that has
-both under one name resolves to the tag. A `rev` may be abbreviated as long as it is
-unambiguous in the fetched repository.
 
 ### `path`
 
@@ -94,10 +97,13 @@ The package's own `name` must equal the key that asked for it. A manifest that f
 `TodoWidgets` for modules the package itself has never heard of, and a diagnostic naming the
 package would name one that does not exist.
 
-The package's own `version` must satisfy the constraint written beside the source. A `git`
-source that resolves to a commit whose manifest declares `2.0.0` does not satisfy `^1.2.0`,
-and the fact that a human chose that commit does not make it satisfy it — the constraint is
-what the depending package said it could work with.
+The package's own `version` must agree with how the package was found. A `git` source reached
+through the tag `v1.2.4` declares `1.2.4` at that commit, or the tag and the manifest disagree
+about what was published — a hard error, because everything downstream, the lock file
+included, records the declared version. A `path` source, and a `rev` or `branch` pin, name a
+commit directly and so are checked the other way round: whatever version the package declares
+there must satisfy every constraint the build places on that name. The fact that a human chose
+that commit does not make it satisfy them.
 
 ## Resolution and `zelkova.lock`
 
@@ -115,26 +121,26 @@ appendix's.
 highest version satisfying all of them is chosen. When their constraints have no common
 version, resolution fails and the error names each constraint and the package that wrote it —
 there is nothing to fall back on, because choosing one of them would build a package against a
-version it declared it could not work with.
+version it declared it could not work with. An entry pinned to a `rev` or a `branch` has
+nothing chosen for it: it contributes the version its own manifest declares, and if that
+version fails somebody else's constraint, resolution fails exactly as a conflict between two
+constraints does.
 
-**Provisional:** `zelkova.lock` is written beside `zelkova.json`, by the toolchain, and is
-checked into version control. It records one entry per resolved package:
+**Provisional:** `zelkova.lock` is written beside `zelkova.toml`, by the toolchain, and is
+checked into version control. It is TOML like the manifest, and records one entry per resolved
+package:
 
-```json
-{
-  "lock-version": 1,
-  "packages": {
-    "acme-widgets": {
-      "version": "1.2.4",
-      "git": "https://github.com/acme/widgets",
-      "commit": "a3f9c1d84b2e57906fbbb0a4c1d2e3f4a5b6c7d8",
-      "hash": "sha256-9f1c…"
-    },
-    "acme-parser": {
-      "version": "2.4.0"
-    }
-  }
-}
+```toml
+lock-version = 1
+
+[packages.acme-widgets]
+version = "1.2.4"
+git = "https://github.com/acme/widgets"
+commit = "a3f9c1d84b2e57906fbbb0a4c1d2e3f4a5b6c7d8"
+hash = "sha256-9f1c…"
+
+[packages.acme-parser]
+version = "2.4.0"
 ```
 
 `commit` is what makes a `git` source reproducible: a `branch` entry resolves to a tip once and
@@ -181,14 +187,16 @@ in place is detected rather than silently built.
 ## Publishing a package
 
 **Provisional:** publishing is tagging. A package is published by pushing a commit, on which
-`zelkova.json` declares the version being published, under a tag naming that version. There is
+`zelkova.toml` declares the version being published, under the tag `v` followed by that
+version — a commit declaring `1.2.4` is published as `v1.2.4`, which is the tag a dependent's
+`^1.2.0` finds. There is
 nothing to upload and no account to hold, which is what having no registry means in the one place
 it is most visible.
 
 Three things are worth checking before that tag is pushed, and a toolchain that offers a publish
 command is checking them:
 
-- The version in `zelkova.json` is one no existing tag already names. A published version is
+- The version in `zelkova.toml` is one no existing tag already names. A published version is
   immutable — a lock file holds a commit and a hash, so a moved tag is a mismatch rather than an
   update — and re-using a number is the one mistake that cannot be corrected afterwards.
 - No entry in `dependencies` has a `path` source. The directory will not exist for anyone else.
@@ -225,7 +233,7 @@ non-zero if any phase reported an error, which is the one part of its behaviour 
 what a toolchain needs of it ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
 
 **Provisional:** what it becomes is a compiler pointed at a package root — the directory holding
-`zelkova.json` — which resolves, compiles every module of `src/`, and writes its output beside
+`zelkova.toml` — which resolves, compiles every module of `src/`, and writes its output beside
 that directory rather than beside any source it read. Errors are reported with a caret in the
 file they came from, in the format `codespan_reporting` already produces, and a build that
 emitted any error exits non-zero and writes no output.
