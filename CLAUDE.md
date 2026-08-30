@@ -222,12 +222,14 @@ Not implemented: string literals, `let … in`, lambdas, records, lists, negativ
 unit type, type aliases, and the `zelkova.json` package manifest. The standard library under
 `std/core/src/` carries `.ignored` files for modules that do not compile yet.
 
-Settled by [`docs/spec/type-classes.md`](docs/spec/type-classes.md) (`SPEC-11`, then `SPEC-12`):
-`number`, `comparable` and `appendable` are **ordinary type variables** and always were — the
-compiler never special-cased them — and `std/core/src/` now spells all three `a` rather than
-implying a restriction the language cannot express. **Type classes**, without higher-kinded
-variables, are what replaces them, and that chapter specifies the mechanism rather than merely
-recording the direction.
+Settled by `SPEC-11`, then `SPEC-12`: `number`, `comparable` and `appendable` are **ordinary
+type variables** and always were — the compiler never special-cased them — and `std/core/src/`
+now spells all three `a` rather than implying a restriction the language cannot express. No
+chapter names those three: they are covered by
+[`docs/spec/types.md`](docs/spec/types.md)'s rule that no lowercase spelling means anything.
+**Type classes**, without higher-kinded variables, are what replaces them, and
+[`docs/spec/type-classes.md`](docs/spec/type-classes.md) specifies that mechanism rather than
+merely recording the direction.
 
 Read the chapter before touching any of it; the `CLASS-` program in
 [`docs/tickets/README.md`](docs/tickets/README.md) carries the order the six implementing

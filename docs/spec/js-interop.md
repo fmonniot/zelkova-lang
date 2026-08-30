@@ -47,11 +47,13 @@ sub : a -> a -> a
 types its JavaScript really handles only as far as the types it names.
 
 **Not implemented:** a facade signature may never carry a class constraint, and that restriction
-exists to protect the plain parameter list above. A class is normally implemented by passing a
-function a hidden table of its class's operations, which is exactly the calling convention this
-file is promised it will never see — so a constrained function lives in ordinary Zelkova and
-calls a monomorphic facade underneath it. The table does not survive to runtime either: a
-constrained function is specialised per type before code is generated.
+exists to protect the plain parameter list above. A constrained function is specialised — one
+generated function per type it is used at — and a facade has no body to generate one from, so a
+constrained facade would have to serve every instance from a single hand-written export, telling
+them apart by how its arguments are represented at runtime. That is exactly what this file is
+promised it will never have to know, so a constrained function lives in ordinary Zelkova and
+calls a monomorphic facade underneath it. No table of the class's operations exists at runtime
+either: specialisation is what discharges a constraint, before code is generated.
 [Type classes](type-classes.md#a-constrained-function-may-not-be-a-javascript-facade) is the
 chapter.
 

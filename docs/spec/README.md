@@ -126,9 +126,9 @@ fixing it. What each chapter has to cover:
   what a package boundary means for visibility.
 - **Type classes** — the `class` and `instance` declarations, how a constraint is written in an
   annotation, superclasses, where an instance may be declared, and what a constrained function
-  may *not* be: a `module javascript` facade. It also carries the rule that `number`,
-  `comparable` and `appendable` are ordinary type variables, since a class constraint is what
-  the language offers in their place.
+  may *not* be: a `module javascript` facade. A class constraint is what the language offers in
+  place of a privileged type-variable spelling; that no spelling is privileged is *Types*'
+  rule, stated there.
 
 ### Tag every claim the chapter makes
 

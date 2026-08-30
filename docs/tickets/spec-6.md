@@ -32,7 +32,10 @@ literal an internal type that unifies with `Int` and `Float` and nothing else â€
 with a body of `1` checks and `x : Char` with the same body does not. Whether that is a rule of
 the language or an implementation detail is undecided, and this chapter is where literals are
 specified. Note [ERR-13](err-13.md) is about how that type is *spelled* in a diagnostic, not
-about what it means, and the two are independent.
+about what it means, and the two are independent. Writing this chapter takes the literal-typing
+prose out of that chapter's *Numeric literals* section: what stays there is the pair that is a
+class rule rather than a literal one â€” the constraint a literal carries, and the one default
+that discharges it.
 
 **Approach:** follow `write-spec-chapter` in full. Likely territory, to confirm by probing
 rather than assume from this ticket: the implemented forms (application, `if/then/else`,

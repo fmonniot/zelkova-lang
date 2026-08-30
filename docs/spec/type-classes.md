@@ -28,50 +28,6 @@ and each goes red the day the construct it shows starts working. The `CLASS-` pr
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
 land.
 
-## `number`, `comparable` and `appendable`
-
-These three lowercase spellings are **ordinary type variables**, no different from `a`. A
-lowercase-initial identifier in a type is a type variable, and nothing distinguishes one
-lowercase spelling from another ([Types](types.md#type-variables) states the rule).
-
-So `comparable` is `a` under a longer name, and a function annotated with it accepts a value of
-any type at all — including one that cannot be compared:
-
-```zel expect=ok
-module Example exposing (Colour, smaller)
-
-type Colour
-  = Red
-  | Blue
-
-min : a -> a -> a
-min x y =
-  x
-
-smaller : Colour
-smaller =
-  min Red Blue
-```
-
-That call is legal, and nothing about the spelling makes it otherwise: `min`'s declared type
-accepts two `Colour`s. A signature that means to demand comparison has to say so with a
-constraint, which is what the rest of this chapter is about.
-
-None of the three spellings is a keyword. A program may name a value `number` and may use
-`comparable` as a type variable; they are identifiers. `Comparable` — the class — is an ordinary
-uppercase name that a module declares, no different from a type.
-
-```zel expect=ok
-module Example exposing (pick)
-
-pick : number -> number -> number
-pick number other =
-  number
-```
-
-An annotation's `number` and the body's `number` are unrelated even on one line of source,
-because a type variable and a parameter live in different namespaces and never meet.
-
 ## Declaring a class
 
 A class declaration is the keyword `class`, the class's name, one type variable, `where`, and an
@@ -288,8 +244,8 @@ instance Comparable Colour where
 The rule exists because an instance is the one thing that crosses a module boundary without
 being named. Everything else — a value, a type, an operator — arrives because an importer wrote
 it down, so two modules disagreeing about a name is a question the importer can settle. An
-instance arrives unasked, and it has to: a constrained call must mean the same thing everywhere,
-or a function that type checks in the module that wrote it fails in the module that calls it.
+instance arrives unasked, and it has to: a constrained call must mean the same thing in every
+module that can write it, so an instance cannot wait to be imported.
 
 Given that, two instances of one class for one type would make the meaning of a call depend on
 what else happened to be linked into the program — which is not a question any source file can
@@ -324,11 +280,9 @@ class Functor f where
 ```
 
 That block fails today because `class` does not parse, and it will still be rejected when it
-does, because `f a` is not a type — it applies a variable. Both halves are deliberate.
-
-Allowing it would mean variables ranging over type constructors as well as types, and telling
-the two apart is what a kind system is for. Zelkova does not have one. A class over a complete
-type is the whole of what the language offers.
+does, because `f a` is not a type — it applies a variable. Allowing it would need variables
+ranging over type constructors as well as types, which is what a kind system is for, and Zelkova
+does not have one.
 
 ## Numeric literals
 
@@ -351,14 +305,17 @@ The narrowness is the point — defaulting makes a program's meaning depend on a
 has to remember, and one such rule for the one case that comes up constantly is a different
 proposition from a general facility.
 
-What the literal *rule* is, as opposed to how the constraint is spelled, belongs with the rest of
-literal typing in the planned *Expressions* chapter (see [the chapter list](README.md#chapters)).
+How a literal is typed at all, and which types it may take, belong with the rest of literal
+typing in the planned *Expressions* chapter (see [the chapter list](README.md#chapters)); that
+chapter takes those paragraphs out of here when it is written. What stays is the pair above that
+is a class rule rather than a literal one — the constraint a literal carries, and the one default
+that discharges it.
 
 **Known gap:** the type checker has a hard-coded ancestor of `Number` today — an internal type
 given to every integer literal, which unifies with `Int` and `Float` and nothing else. It has no
 source syntax, no instances behind it, and no way to fail; a literal that nothing determines
 simply stays that type forever rather than defaulting. It is also rendered `number` in a
-diagnostic, which this chapter's own rule reads as an ordinary type variable — so `x : Char` with
+diagnostic, which [Types](types.md#type-variables) reads as an ordinary type variable — so `x : Char` with
 a body of `1` reports *cannot match `Char` with `number`*, naming something the reader's source
 does not contain. [`ERR-13`](../tickets/err-13.md) is the spelling;
 [`CLASS-5`](../tickets/class-5.md) is what retires the type itself. No block here holds either to
@@ -378,9 +335,16 @@ compare : Comparable a => a -> a -> Int
 
 The reason is a promise made in [JS interop](js-interop.md): a facade's companion export takes a
 **plain parameter list**, and a hand-written JavaScript file is never asked to know how the
-compiler represents anything. A class is normally implemented by handing a function a table of
-its class's operations as an extra, invisible argument — which is exactly the kind of calling
-convention that promise exists to keep out of a `.mjs` file.
+compiler represents anything.
+
+A constrained function is **specialised** — the compiler generates one ordinary function per
+type the constraint is discharged at — and a facade has no body to generate one from. Its `.mjs`
+export is the whole implementation, so a constrained facade would have to serve every instance
+from that one JavaScript function, which could only tell them apart by inspecting how its
+arguments are represented at runtime. That is precisely the knowledge the promise keeps out of a
+`.mjs` file, and it is the shape of the gap noted at the end of this section. A dictionary — an
+extra, invisible argument carrying a table of the class's operations — is the other way to
+implement a class, and it breaks the same promise more directly.
 
 So the constraint moves up one level. The facade stays monomorphic and is called only at types
 its JavaScript can actually handle; the class, its instances, and the constraint live in ordinary
@@ -397,10 +361,9 @@ instance Comparable Int where
     orderOf (Js.Utils.compareInt a b)
 ```
 
-**Not implemented:** the operations table never exists at runtime either. A constrained function
-is **specialised** for each type it is used at before code is generated, so the generated
-JavaScript contains one ordinary function per instantiation and no table is built or passed. Two
-consequences: a program is compiled as a whole rather than a module at a time, and a constrained
+**Not implemented:** specialisation is a rule about code generation, and code generation has not
+started. When it exists, the generated JavaScript holds one ordinary function per instantiation
+and no table of operations is built or passed at runtime. Two consequences: a program is compiled as a whole rather than a module at a time, and a constrained
 function cannot call itself at a different type than it was called with. The second is already
 impossible — a class variable stands for a complete type, so there is no different type for it to
 recurse at.
@@ -416,15 +379,14 @@ constraint.
 `class` and `instance` are reserved words, usable nowhere but at the start of the declarations
 they introduce. `where` is reserved in two narrower senses: it opens a class or instance body,
 and it may not be a type variable. Everywhere a *value* is named — a declaration, a parameter,
-an `exposing` entry — `where` stays an ordinary identifier.
-
-That asymmetry is not arbitrary. `class` and `instance` sit at the start of a declaration, which
-is exactly where a function declaration also starts, so a reader — and the parser — cannot tell
-which they are looking at unless the words are reserved. `where` sits after a class head, where
-the only other thing that could appear is another type argument; excluding it from type-variable
-position is all that takes, and there is no reason to spend the name in value position as well.
+an `exposing` entry — `where` stays an ordinary identifier. `class` and `instance` share the
+start of a line with a function declaration, so nothing tells the two apart unless those words
+are reserved; `where` needs only its one type-variable position excluded.
 
 `=>` is a token of the language rather than a name, so it cannot be declared as an operator.
+
+A class's own name reserves nothing either. `Comparable` is an ordinary uppercase name that a
+module declares, no different from a type.
 
 **Known gap:** all four are ordinary today, and each of these blocks goes red when the ticket
 naming it lands. `class` and `instance` as value names ([`CLASS-2`](../tickets/class-2.md)):
@@ -471,8 +433,14 @@ both a b =
 
 ## What the standard library declares
 
-Four classes, and they are ordinary declarations in ordinary modules — nothing about them is
-known to the compiler, and a program may declare its own alongside.
+Four classes, and they are ordinary declarations in ordinary modules. A program may declare its
+own alongside, and nothing about what a member means, or about which types have instances, is
+built into the compiler.
+
+One name is the exception, and it is as narrow as it reads: an integer literal has to carry
+*some* constraint, so the compiler knows `Number` by name and knows that an undetermined one
+resolves to `Int` (*[Numeric literals](#numeric-literals)*, above). It knows no instance of
+`Number`, and nothing whatever about the other three.
 
 | Class | Members, roughly | What it constrains a variable to |
 |---|---|---|
@@ -487,42 +455,3 @@ on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).
 **Not implemented:** [`CLASS-6`](../tickets/class-6.md) is the pass that declares them. A
 constrained function cannot be a single-line re-export of a JavaScript facade, which is what most
 of these are in `std/core` — its body has to choose an instance.
-
-## Writing without a class
-
-Two things stand in for a constraint, and neither is a workaround so much as what the language
-offers without one.
-
-**Pass the operation.** Take the comparison, or the addition, as an argument. More verbose at
-every call site, and honest: the type says exactly what the function needs.
-
-```zel expect=ok
-module Example exposing (Colour, Order, smaller)
-
-type Colour
-  = Red
-  | Blue
-
-type Order
-  = LT
-  | EQ
-  | GT
-
-pickSmaller : (a -> a -> Order) -> a -> a -> a
-pickSmaller cmp x y =
-  x
-
-colourOrder : Colour -> Colour -> Order
-colourOrder a b =
-  EQ
-
-smaller : Colour
-smaller =
-  pickSmaller colourOrder Red Blue
-```
-
-**Write one function per type.** A monomorphic `addInt` cannot be applied to the wrong thing,
-because its type names the right one. This is what the standard library falls back on.
-
-Between them they cover the ground, at a cost in repetition — which is the cost a class
-mechanism exists to remove.
