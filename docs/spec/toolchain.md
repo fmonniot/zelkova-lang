@@ -99,7 +99,7 @@ A package with a `path` dependency in `dependencies` is not publishable, because
 it points at will not exist for anyone else. In `test-dependencies` it is fine: nobody but this
 package's own tests will ever resolve it.
 
-### What is checked on arrival
+### Checking a fetched package's identity
 
 Two checks happen before a fetched package is used at all, and both are about identity rather
 than correctness.
