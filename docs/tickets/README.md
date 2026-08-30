@@ -249,10 +249,10 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-10](lang-10.md) | task | — | open | A trailing `\|` and a variant-less `type T =` are both accepted |
 | [LANG-11](lang-11.md) | task | — | open | A type annotation may sit anywhere in the file, and a repeated one silently wins |
 | [LANG-12](lang-12.md) | task | — | open | An annotation more general than its body is accepted and silently specialised |
-| [LANG-13](lang-13.md) | task | — | open | A constructor pattern may not nest, and may not be parenthesised in a `case` branch |
-| [LANG-14](lang-14.md) | task | — | open | A constructor pattern's arity is never checked |
-| [LANG-15](lang-15.md) | task | — | open | A pattern may bind the same name more than once |
-| [LANG-16](lang-16.md) | task | — | open | Nothing checks that a `case` covers its type |
+| [LANG-16](lang-16.md) | task | — | open | A constructor pattern may not nest, and may not be parenthesised in a `case` branch |
+| [LANG-17](lang-17.md) | task | — | open | A constructor pattern's arity is never checked |
+| [LANG-18](lang-18.md) | task | — | open | A pattern may bind the same name more than once |
+| [LANG-19](lang-19.md) | task | — | open | Nothing checks that a `case` covers its type |
 | [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |

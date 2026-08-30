@@ -1,4 +1,4 @@
-# LANG-15 · A pattern may bind the same name more than once
+# LANG-18 · A pattern may bind the same name more than once
 
 **Sizing:** small.
 

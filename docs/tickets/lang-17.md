@@ -1,4 +1,4 @@
-# LANG-14 · A constructor pattern's arity is never checked
+# LANG-17 · A constructor pattern's arity is never checked
 
 **Sizing:** small.
 
