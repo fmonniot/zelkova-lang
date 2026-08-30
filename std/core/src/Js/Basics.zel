@@ -15,12 +15,12 @@ will contains the actual implementation of this module.
 -}
 
 
-add : number -> number -> number
-sub : number -> number -> number
-mul : number -> number -> number
+add : a -> a -> a
+sub : a -> a -> a
+mul : a -> a -> a
 fdiv : Float -> Float -> Float
 idiv : Int -> Int -> Int
-pow : number -> number -> number
+pow : a -> a -> a
 
 toFloat : Int -> Float
 round : Float -> Int

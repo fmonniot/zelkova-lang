@@ -40,12 +40,13 @@ documentation. Where a rule is inherited, write it out in full.
 ## Step 1 — Read the conventions before writing a word
 
 - `docs/spec/README.md` — the `expect=` vocabulary, the **Known gap:** / **Not implemented:**
-  lead-ins, and *A spec change and a semantics change do not share a diff*. This is the
-  document chapter authors are written against; read all of it.
+  lead-ins, *A chapter says what the language is*, and *A spec change and a semantics change do
+  not share a diff*. This is the document chapter authors are written against; read all of it.
 - `tests/spec.rs` — what the harness actually enforces, as opposed to what the index says it
   does. The two are kept in step deliberately; if they have drifted, that is the first finding.
 - `docs/spec/layout.md` and `docs/spec/lexical-structure.md` — the two worked examples, for
-  voice and structure. Chapters explain *why* a rule is what it is, not only what it is.
+  voice and structure. Chapters explain *why* a rule is what it is, not only what it is — where
+  the reason is a property of the language rather than a fact about this project's past.
 - `CLAUDE.md`'s *Standing invariants*, if the chapter touches a phase that has one.
 
 ## Step 2 — Ground yourself in the surface, then probe it
@@ -128,9 +129,9 @@ What is this literal's range? Does this construct nest? Is this word reserved ev
 only in one position? Questions **not** worth asking are ones the tree already answers, or
 where a conventional default is obvious — decide those, say you did, and move on.
 
-If the chapter's job is to *record* an open question rather than settle one — the
-Constrained type variables chapter is the planned example — bring the user the framing, not a
-decision.
+If the chapter's job is to *record* an open question rather than settle one, bring the user the
+framing rather than a decision — and write the question as the language's open question, not as
+a note about who has yet to answer it.
 
 ## Step 5 — Write `docs/spec/<chapter-name>.md`
 
@@ -142,6 +143,15 @@ decision.
 - **Prose describing today's wrong behaviour opens with `**Known gap:**`.** Prose describing a
   feature ahead of the compiler opens with `**Not implemented:**`. Both are greppable on
   purpose. Say what the language's answer is, and link the ticket.
+- **Write what the language is, in the present tense.** A chapter is not a record of how it got
+  that way. Never write project history into one — no `SPEC-n` ticket that settled a question, no
+  "was spelled `x` until", no "which superseded", no "this pass found", no chapter narrating its
+  own writing ("this chapter is the record of that design", "that block matters more than it
+  looks"). All of that is real and all of it belongs in `docs/tickets/` and in the commit
+  message; a reader of the spec needs the rule and the reason it is a good rule. Two things you
+  are *not* being told to drop: rationale that is a property of the language, and the
+  **Known gap:** / **Not implemented:** lead-ins, which describe the compiler rather than the
+  language. `docs/spec/README.md`'s *A chapter says what the language is* is the full rule.
 - **Prefer prose plus checked examples.** Drop into EBNF only where English is genuinely
   worse — an exposing list's nesting, an operator table. Nothing checks an EBNF block, which
   makes it the one thing in the directory that can drift.
@@ -212,6 +222,13 @@ cargo clippy --all-features
 `cargo run` matters even for a docs-only change: it is the smoke test, and a chapter that
 needed a `tests/` helper may have touched more than intended. CI does not gate on fmt or
 clippy — run both locally.
+
+Then read the chapter once more for the present-tense rule, since nothing tests it. A drafting
+session knows *why* it wrote each rule and leaks that reasoning into the prose without noticing;
+the leaks are easy to spot on a second pass and read as noise to everyone else.
+`grep -n 'SPEC-\|until\|used to\|no longer\|this chapter' docs/spec/<chapter>.md` catches most
+of them — every hit is either a **Known gap:** / **Not implemented:** sentence about the
+compiler, or a sentence to rewrite.
 
 ## Step 11 — Report, and commit only if asked
 

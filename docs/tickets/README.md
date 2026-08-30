@@ -6,7 +6,8 @@ _Last updated: 2026-08-29._
 language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
 will keep producing them — writing down a rule that was never written down is how you find out
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
-from one chapter, and `SPEC-5` another four plus three `BUG-`s and a `TEST-`.
+from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, and `SPEC-11` a
+`BUG-` and an `ERR-`.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
@@ -30,8 +31,16 @@ Prefixes are created ad-hoc per theme. Current ones: `BUG-` (defects), `ERR-` (e
 and diagnostics), `AST-` (parser and canonical AST shape), `PERF-` (allocation and hot paths),
 `TIDY-` (small self-contained cleanups), `TEST-` (test infrastructure), `SPEC-` (specifying
 and documenting the language itself, under `docs/spec/`), `LANG-` (bringing the compiler into
-line with a rule `docs/spec/` has since settled), `SITE-` (the public GitHub Pages site built
-from this repo — rustdoc, the rendered spec, the landing page).
+line with a rule `docs/spec/` has since settled), `CLASS-` (the type-class program below —
+building a mechanism the language has decided on but has never had), `SITE-` (the public GitHub
+Pages site built from this repo — rustdoc, the rendered spec, the landing page).
+
+`CLASS-` is neither a `BUG-` nor a `LANG-`, and the distinction is the same one that separates
+those two. A `LANG-` is code that succeeds at something a chapter has since decided against; a
+`CLASS-` is a construct the language does not have at all and is going to grow. It gets its own
+prefix rather than joining `LANG-` because the six of them are one ordered body of work, the way
+`ERR-3` through `ERR-9` were, and a reader picking one up needs the rest of the order more than
+they need the theme.
 
 `LANG-` and `BUG-` are not the same thing and the split is worth keeping straight. A `BUG-` is
 code that fails at what it was trying to do. A `LANG-` is code that succeeds at something the
@@ -88,6 +97,67 @@ a commit on a branch, and when it is written neither the merge SHA nor the PR nu
 yet. The row may only contain what the closing commit can know about itself — and it doesn't
 need more, because the file path is the query key.
 
+## The type-classes program
+
+`CLASS-1` through `CLASS-6` are one body of work, filed together on 2026-08-29 after the
+language owner settled the mechanism. The goal is that **a signature can say what it needs of
+its type** — `min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what
+`min`'s type has always actually been.
+
+[`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
+read before picking any of these up: none of them re-argues a decision, and several would look
+arbitrary without it. `SPEC-12` settled those decisions and wrote that chapter; its own ticket
+file is gone, per the closing convention above, because the chapter is where the decisions live
+now and two records of one decision means the unmaintained one is what someone eventually
+reads.
+
+They have a dependency order, and three tickets that already existed sit inside it rather than
+beside it:
+
+```
+CLASS-1  `=>` becomes a token; a constrained annotation parses
+  │      (the only one that can start today)
+  │
+CLASS-2  `class` / `instance` declarations, and a `where` block of members
+  │      ← LANG-9 sequences before this: an instance head wants `(List a)`
+  │
+CLASS-3  resolution, the instance environment, and the orphan rule
+  │      ← BUG-17 and BUG-16 are HARD prerequisites. Both would sabotage
+  │        instance-head resolution silently: BUG-17 makes two instance
+  │        heads indistinguishable, BUG-16 invents a type for a misspelt one.
+  │
+CLASS-4  the solver: obligations are collected, deferred and discharged
+  │      ← LANG-12 is a HARD prerequisite. Without rigid annotation
+  │        variables a constrained declaration proves `Comparable Int`
+  │        and publishes `Comparable a` — strictly weaker than its own
+  │        signature, and nothing downstream notices.
+  │
+  ├── CLASS-5  `Type::Number` retires into a `Number` class, defaulting to `Int`
+  │              ← supersedes ERR-13, which is worth doing first anyway:
+  │                one `Display` arm, against four tickets of latency
+  │
+  └── CLASS-6  `std/core` declares Eq, Comparable, Number, Appendable
+                 ← needs CLASS-5.  Closes BUG-20 for the right reason.
+
+SPEC-12  the Type classes chapter          ← done 2026-08-29
+```
+
+**`TEST-2` was placed as a gate on the chapter and turned out not to be one.** The reasoning was
+that every claim a class mechanism makes is a type-level claim and the harness stops at
+canonicalization. Writing the chapter showed that is true of the claims it will make *once the
+mechanism exists*, and not of the claims it makes today: nothing about a class parses, so all
+eleven of its class-and-constraint blocks are `expect=unimplemented`, which the harness checks
+perfectly well. `TEST-2` becomes load-bearing when `CLASS-4` lands and those blocks start wanting
+`expect=type-error` — the chapter's *Numeric literals* section already carries one
+`**Known gap:**` with no red test behind it for exactly this reason. The `CLASS-` tickets are
+held to `tests/typer.rs`, which already reaches the typer.
+
+**What is not a ticket:** dictionary erasure. `SPEC-12` decision 7 settles that a constrained
+function is specialised per instantiation and no dictionary exists at runtime — which is a
+constraint on code generation, and code generation has not started. It is recorded in `SPEC-12`
+and in `docs/spec/js-interop.md` for the first codegen ticket to inherit, rather than filed
+against a phase that does not exist.
+
 ## Recovering a closed ticket
 
 The tombstone's job is not to link anywhere. It is to tell you that
@@ -142,6 +212,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-17](bug-17.md) | bug | high | open | A type application's arguments are discarded when its head resolves |
 | [BUG-18](bug-18.md) | bug | medium | open | A variant that is not a constructor application is silently dropped |
 | [BUG-19](bug-19.md) | bug | medium | open | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
+| [BUG-20](bug-20.md) | bug | high | open | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -153,6 +224,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-10](err-10.md) | task | — | open | Give a phase its first real warning: unused imports in canonicalization |
 | [ERR-11](err-11.md) | task | — | open | A `case` branch indented deeper than its siblings is absorbed, and the error names the wrong token |
 | [ERR-12](err-12.md) | task | — | open | Leading indentation before `module` is rejected only by accident, and the caret lands on an unrelated line |
+| [ERR-13](err-13.md) | task | — | open | A type error spells the numeric-literal type `number`, which the language reads as an ordinary type variable |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
@@ -163,7 +235,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-8](spec-8.md) | task | — | open | Write the Name resolution and scoping chapter |
 | [SPEC-9](spec-9.md) | task | — | open | Write the Evaluation semantics chapter |
 | [SPEC-10](spec-10.md) | task | — | open | Write the Packages and source layout chapter |
-| [SPEC-11](spec-11.md) | task | — | open | Write the Constrained type variables chapter |
+| SPEC-11 | task | — | closed 2026-08-29 | Write the Constrained type variables chapter |
+| SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -176,6 +249,12 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-10](lang-10.md) | task | — | open | A trailing `\|` and a variant-less `type T =` are both accepted |
 | [LANG-11](lang-11.md) | task | — | open | A type annotation may sit anywhere in the file, and a repeated one silently wins |
 | [LANG-12](lang-12.md) | task | — | open | An annotation more general than its body is accepted and silently specialised |
+| [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
+| [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
+| [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
+| [CLASS-4](class-4.md) | task | — | open | Discharge class constraints in the type checker |
+| [CLASS-5](class-5.md) | task | — | open | Retire `Type::Number` in favour of a `Number` class, defaulting to `Int` |
+| [CLASS-6](class-6.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |

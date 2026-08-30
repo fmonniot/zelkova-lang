@@ -49,16 +49,21 @@ Two things must keep checking, and are the real test of the change:
 
 - `f : a -> a` with `f x = x` — the honest polymorphic identity. Its body genuinely works for
   any `a`, so the rigid variable never needs solving.
-- `std/core/src/Basics.zel`'s `eq : a -> a -> Bool` and
-  `append : appendable -> appendable -> appendable`, whose bodies are `Js.Utils` facade values
-  annotated with the same variables. If a rigid variable makes those stop checking, the
-  interaction is with how a `module javascript` facade's type flows in, not with this rule —
-  investigate before relaxing anything.
+- `std/core/src/Basics.zel`'s `eq : a -> a -> Bool` and `append : a -> a -> a`, whose bodies
+  are `Js.Utils` facade values annotated with the same variables. If a rigid variable makes
+  those stop checking, the interaction is with how a `module javascript` facade's type flows
+  in, not with this rule — investigate before relaxing anything.
 
-Constrained type variables (`number`, `comparable`, `appendable`) are an unresolved design
-question and this ticket must not settle it by accident — see `docs/spec/README.md`'s planned
-*Constrained type variables* chapter ([SPEC-11](spec-11.md)). Treating them as ordinary rigid
-variables is the conservative reading and is what the tree does today.
+`number`, `comparable` and `appendable` are **ordinary type variables** — settled by
+[`docs/spec/type-classes.md`](../spec/type-classes.md), which also rewrote `std/core/src/` off
+the three spellings, so they no longer appear in the tree at all. There is nothing here for this
+ticket to settle by accident: they get whatever rule an ordinary variable gets.
+
+**This ticket is a hard prerequisite of [`CLASS-4`](class-4.md)**, and that is the reason it
+matters most. A constrained declaration whose annotation variables are unification variables
+proves a narrower obligation than its own signature publishes — `min : Comparable a => …` whose
+body forces `a := Int` proves `Comparable Int` and publishes `Comparable a`. Rigid variables are
+what make an annotation's context a thing the body is held to.
 
 **Acceptance:** `f : a -> a` with `f x = C` is a type error naming the annotation, and
 `f : a -> a` with `f x = x` still checks — tests in `tests/typer.rs`. `cargo run` still prints

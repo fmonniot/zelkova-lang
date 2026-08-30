@@ -222,9 +222,27 @@ Not implemented: string literals, `let … in`, lambdas, records, lists, negativ
 unit type, type aliases, and the `zelkova.json` package manifest. The standard library under
 `std/core/src/` carries `.ignored` files for modules that do not compile yet.
 
-Open design question, unresolved: the std library uses Elm's constrained type variables
-(`number`, `comparable`, `appendable`). Whether those become real type classes, compiler-known
-constraints, or nothing at all has not been decided. Don't assume an answer in a diff. A
-`docs/spec/` chapter recording this as open is planned — see that directory's
-[`README.md`](docs/spec/README.md) chapter list — but not yet written; this note is the record
-until then.
+Settled by `SPEC-11`, then `SPEC-12`: `number`, `comparable` and `appendable` are **ordinary
+type variables** and always were — the compiler never special-cased them — and `std/core/src/`
+now spells all three `a` rather than implying a restriction the language cannot express. No
+chapter names those three: they are covered by
+[`docs/spec/types.md`](docs/spec/types.md)'s rule that no lowercase spelling means anything.
+**Type classes**, without higher-kinded variables, are what replaces them, and
+[`docs/spec/type-classes.md`](docs/spec/type-classes.md) specifies that mechanism rather than
+merely recording the direction.
+
+Read the chapter before touching any of it; the `CLASS-` program in
+[`docs/tickets/README.md`](docs/tickets/README.md) carries the order the six implementing
+tickets have to land in. Four of its rules constrain diffs outside that program:
+
+- **`=>`, `class` and `instance` become reserved, and `where` becomes reserved as a type
+  variable.** All four are ordinary identifiers today, so this is a breaking change — and
+  `instance C T where …` currently *misparses* as a function declaration named `instance`
+  rather than being rejected, which is why both words are reserved outright and cannot be soft
+  the way `javascript` is.
+- **An instance may be declared only in the module declaring its class or its type.**
+- **A `module javascript` facade signature may not carry a constraint**, which is what preserves
+  the plain-parameter-list guarantee
+  [`docs/spec/js-interop.md`](docs/spec/js-interop.md) makes.
+- **A class dictionary is erased by specialisation before code generation**, never passed — a
+  constraint the first codegen work inherits.

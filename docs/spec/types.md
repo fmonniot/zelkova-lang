@@ -114,13 +114,6 @@ identity x =
   x
 ```
 
-Three lowercase spellings — `number`, `comparable` and `appendable` — are written throughout
-`std/core/src/` as though they meant something more than an ordinary variable. Whether they
-become real constraints is an **open design question**, deliberately not answered anywhere in
-this directory yet; the *Constrained type variables* chapter (planned; see
-[the chapter list](README.md#chapters)) is where it will be recorded. Until then this chapter's
-rule stands unqualified: every lowercase-initial name in a type is an ordinary type variable.
-
 A type variable is never **applied**. Only a type name may head an application, so `m a` — a
 variable standing for a type constructor rather than for a type — is a syntax error:
 
@@ -138,7 +131,8 @@ lift x =
 That is a deliberate limit and not an oversight. Allowing it would mean type variables ranging
 over type constructors as well as types, which needs a kind system — a large
 commitment the language is not ready for it yet. A variable always stands for a complete
-type.
+type. [Type classes](type-classes.md#a-class-is-always-over-a-complete-type) carries what that
+costs: a class is always over a complete type.
 
 ## Applying a type to arguments
 

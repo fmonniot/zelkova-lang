@@ -39,9 +39,23 @@ module javascript Js.Basics exposing
   , sub
   )
 
-add : number -> number -> number
-sub : number -> number -> number
+add : a -> a -> a
+sub : a -> a -> a
 ```
+
+`a` there is an ordinary type variable and constrains nothing; a facade's signature says which
+types its JavaScript really handles only as far as the types it names.
+
+**Not implemented:** a facade signature may never carry a class constraint, and that restriction
+exists to protect the plain parameter list above. A constrained function is specialised — one
+generated function per type it is used at — and a facade has no body to generate one from, so a
+constrained facade would have to serve every instance from a single hand-written export, telling
+them apart by how its arguments are represented at runtime. That is exactly what this file is
+promised it will never have to know, so a constrained function lives in ordinary Zelkova and
+calls a monomorphic facade underneath it. No table of the class's operations exists at runtime
+either: specialisation is what discharges a constraint, before code is generated.
+[Type classes](type-classes.md#a-constrained-function-may-not-be-a-javascript-facade) is the
+chapter.
 
 ## Open questions
 
