@@ -45,8 +45,17 @@ sub : a -> a -> a
 
 Both were spelled `number -> number -> number` until `SPEC-11`, which found the spelling
 carried no meaning and rewrote `std/core/src/` off it — see
-[Constrained type variables](constrained-type-variables.md). The type is unchanged; only the
-name of the variable is.
+[Type classes](type-classes.md#what-this-replaces). The type is unchanged; only the name of the
+variable is.
+
+**Not implemented:** a facade signature may never carry a class constraint, and that restriction
+exists to protect the plain parameter list above. A class is normally implemented by passing a
+function a hidden table of its class's operations, which is exactly the calling convention this
+file is promised it will never see — so a constrained function lives in ordinary Zelkova and
+calls a monomorphic facade underneath it. The table does not survive to runtime either: a
+constrained function is specialised per type before code is generated.
+[Type classes](type-classes.md#a-constrained-function-may-not-be-a-javascript-facade) is the
+chapter, and its rule is a constraint the first code-generation work inherits.
 
 ## Open questions
 

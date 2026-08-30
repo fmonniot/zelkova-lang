@@ -112,3 +112,15 @@ assertion pinning the caret rather than an `assert_eq!` on the whole value (`Nod
 `PartialEq` is blind — `CLAUDE.md`, *An error has to describe itself*). `infix left 5 (=>) = f`
 becomes a parse error, with a test recording that deliberately. `cargo run` still prints
 `parsed 8 modules` and lists all eight as checked.
+
+In [`docs/spec/type-classes.md`](../spec/type-classes.md), the `expect=ok` block under *The words
+this reserves* showing `(=>)` declared as a user infix goes red and is retagged with its
+`**Known gap:**` paragraph deleted, and the four `expect=unimplemented` blocks showing a
+constrained annotation go red.
+
+**One block needs retagging without going red.** The facade block under *A constrained function
+may not be a JavaScript facade* fails today because `=>` does not parse; after this ticket it
+fails because a facade may not be constrained. Same verdict, different reason, and
+`expect=unimplemented` cannot tell them apart. Retag it
+`expect=canonical-error:<the new variant>` — that is the tag that pins what the chapter's prose
+actually claims.

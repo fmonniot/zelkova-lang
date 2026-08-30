@@ -7,8 +7,8 @@ picking a spelling that cannot be mistaken for source syntax.
 `impl Display for Type`, reached from `ErrorKind::message`'s
 `format!("cannot match `{}` with `{}`", left, right)`.
 
-**Found:** while writing
-[`docs/spec/constrained-type-variables.md`](../spec/constrained-type-variables.md) (`SPEC-11`).
+**Found:** while writing the Constrained type variables chapter (`SPEC-11`), which `SPEC-12`
+has since superseded with [`docs/spec/type-classes.md`](../spec/type-classes.md).
 
 **Problem:** `Type::Number` is the type the checker gives an integer literal — it unifies with
 `Int` and `Float` and nothing else. It has no source syntax: there is no way to write it in an
@@ -24,7 +24,8 @@ x =
 reports **cannot match `Char` with `number`**.
 
 Under the rule
-[`docs/spec/constrained-type-variables.md`](../spec/constrained-type-variables.md) states, a
+[`docs/spec/type-classes.md`](../spec/type-classes.md) restates from
+[`types.md`](../spec/types.md#type-variables), a
 reader parses `number` in that sentence as a type variable named `number` — a lowercase name
 in a type position is a type variable, and `number` is an ordinary one with no special
 meaning. So the message reads as "cannot match `Char` with some type variable", which is both
@@ -59,6 +60,8 @@ a spelling the grammar would accept as a type variable.
 
 **This gap has no red test behind it.** The spec harness stops at canonicalization
 ([TEST-2](test-2.md)), so no block in
-[`docs/spec/constrained-type-variables.md`](../spec/constrained-type-variables.md) exercises a
-type error at all; the chapter describes this in prose under a `**Known gap:**` lead-in and
-that paragraph has to be deleted by hand when this lands.
+[`docs/spec/type-classes.md`](../spec/type-classes.md) exercises a type error at all; the
+*Numeric literals* section describes this in prose under a `**Known gap:**` lead-in and that
+paragraph has to be deleted by hand when this lands. [`CLASS-5`](class-5.md) supersedes this
+ticket by deleting `Type::Number` outright — do this one anyway, because CLASS-5 is four tickets
+away and the wrong message stands for the whole of that time.

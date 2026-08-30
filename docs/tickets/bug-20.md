@@ -8,8 +8,8 @@ signatures; `std/core/src/Js/Utils.mjs` — `_Utils_cmp` and `append`, which are
 signatures are facades for. `std/core/src/Basics.zel` re-exports every one of them under the
 same type.
 
-**Found:** while writing
-[`docs/spec/constrained-type-variables.md`](../spec/constrained-type-variables.md) (`SPEC-11`).
+**Found:** while writing the Constrained type variables chapter (`SPEC-11`), which `SPEC-12`
+has since superseded with [`docs/spec/type-classes.md`](../spec/type-classes.md).
 
 **Problem:** the six facades accept any type. They did so before this ticket too — the
 spellings were `comparable` and `appendable`, which the language gives no meaning to, so the
@@ -52,9 +52,8 @@ undesigned, so there is no facade-level rule to appeal to either.
 
 **Approach:** this cannot be fixed by narrowing the annotation, because the language has no
 way to write the restriction — that is the whole subject of
-[`docs/spec/constrained-type-variables.md`](../spec/constrained-type-variables.md), and its
-answer is a class mechanism that does not exist. Two things are separable, and only the first
-is available now:
+[`docs/spec/type-classes.md`](../spec/type-classes.md), and its answer is a class mechanism that
+does not exist yet. Two things are separable, and only the first is available now:
 
 - **Make the runtime say so.** `_Utils_cmp` and `append` should reject a value they cannot
   handle rather than returning a nonsense answer for it. That is a change to the `.mjs` files

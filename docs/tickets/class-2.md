@@ -42,6 +42,27 @@ can begin with an uppercase name. On lookahead `up_ident` the parser can neither
 `"class"` to `VarIdent` nor shift it as a keyword. Both become hard keywords, and
 `class : Int` / `instance = 1` stop compiling — probed, both compile on `main`.
 
+**And `instance` is worse than merely unreserved: an instance declaration misparses.** Probed
+while writing the chapter — this compiles today, declaring one value, called `instance`:
+
+```zel
+type Thing
+  = Comparable
+  | Colour
+  | EQ
+
+instance Comparable Colour where
+  compare a b =
+    EQ
+```
+
+`instance` is read as a function name and `Comparable`, `Colour`, `where`, `compare`, `a` and `b`
+as its parameters, because `DeclPattern` admits a bare `QualTypeIdent` as a nullary constructor
+pattern. So the failure mode for someone writing an instance before this ticket lands is not a
+syntax error they can act on — it is a different program that happens to compile whenever the
+names resolve. A two-member instance fails, but only incidentally, on the second `=`. That is
+the sharpest argument for reserving both words rather than finding a way to keep them soft.
+
 **`where` is soft in value positions and hard as a type variable.** Narrower than it first
 looks, and probed in both directions:
 
@@ -129,3 +150,15 @@ and `type Box where = Box where` are parse errors, and `where : Int`, `f where =
 `exposing (where)` still compile, each with a test recording the split deliberately. A
 canonicalization test asserts a `class` and an `instance` survive into `canonical::Module`.
 `cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+
+In [`docs/spec/type-classes.md`](../spec/type-classes.md), the `expect=ok` blocks under *The
+words this reserves* (`class`/`instance` as value names, and `where` as a type variable) and the
+one under *Declaring an instance* go red and are retagged with their `**Known gap:**` paragraphs
+deleted.
+
+**Two blocks in that chapter need retagging even though they do not go red**, and they will not
+announce themselves. The class declarations under *Declaring a class* and *Superclasses* start
+parsing when this lands and their `expect=unimplemented` tags correctly go red — but the
+`class Functor f where` block under *A class is always over a complete type* keeps failing, on
+`f a` rather than on `class`, so its tag stays green while the reason changes underneath it.
+Retag it `expect=parse-error` — the rejection is permanent, and that is the tag that says so.

@@ -31,7 +31,7 @@ These functions are *intended* for comparable types only — numbers,
 characters, strings, lists of comparable things, and tuples of comparable
 things. The language cannot say so yet: their type variables are ordinary
 ones, so the signatures accept anything at all. See
-`docs/spec/constrained-type-variables.md`.
+`docs/spec/type-classes.md`.
 
 @docs (<), (>), (<=), (>=), max, min, compare, Order
 
@@ -150,8 +150,8 @@ type Float = Float -- NOTE: The compiler provides the real implementation.
 or to `Float -> Float -> Float`, and to nothing else. The `a` in its signature
 is an ordinary type variable and says no such thing: nothing stops the
 function being applied to two values that are not numbers at all. Zelkova has
-no way to write that restriction, and type classes are the intended answer —
-see `docs/spec/constrained-type-variables.md`. Until then the annotation is
+no way to write that restriction, and type classes are the answer —
+see `docs/spec/type-classes.md`. Until then the annotation is
 honest about what the compiler enforces rather than about what is meant.
 
 So you can do things like this:

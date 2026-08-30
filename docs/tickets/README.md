@@ -102,9 +102,14 @@ need more, because the file path is the query key.
 `CLASS-1` through `CLASS-6` are one body of work, filed together on 2026-08-29 after the
 language owner settled the mechanism. The goal is that **a signature can say what it needs of
 its type** — `min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what
-`min`'s type has always actually been. `SPEC-12` carries the eleven design decisions all six are
-written against; read it before picking any of them up, because none of these tickets re-argues
-a decision and several would look arbitrary without it.
+`min`'s type has always actually been.
+
+[`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
+read before picking any of these up: none of them re-argues a decision, and several would look
+arbitrary without it. `SPEC-12` settled those decisions and wrote that chapter; its own ticket
+file is gone, per the closing convention above, because the chapter is where the decisions live
+now and two records of one decision means the unmaintained one is what someone eventually
+reads.
 
 They have a dependency order, and three tickets that already existed sit inside it rather than
 beside it:
@@ -134,15 +139,18 @@ CLASS-4  the solver: obligations are collected, deferred and discharged
   └── CLASS-6  `std/core` declares Eq, Comparable, Number, Appendable
                  ← needs CLASS-5.  Closes BUG-20 for the right reason.
 
-SPEC-12  the Type classes chapter          ← needs TEST-2, and nothing else
-         (supersedes docs/spec/constrained-type-variables.md)
+SPEC-12  the Type classes chapter          ← done 2026-08-29
 ```
 
-**`TEST-2` gates the chapter and not the compiler work**, which is a deliberate placement rather
-than an oversight. Every claim a class mechanism makes is a type-level claim, and the spec
-harness stops at canonicalization — so `SPEC-12` written before `TEST-2` would be prose nothing
-checks. The `CLASS-` tickets are held to `tests/typer.rs` instead, which already reaches the
-typer.
+**`TEST-2` was placed as a gate on the chapter and turned out not to be one.** The reasoning was
+that every claim a class mechanism makes is a type-level claim and the harness stops at
+canonicalization. Writing the chapter showed that is true of the claims it will make *once the
+mechanism exists*, and not of the claims it makes today: nothing about a class parses, so all
+eleven of its class-and-constraint blocks are `expect=unimplemented`, which the harness checks
+perfectly well. `TEST-2` becomes load-bearing when `CLASS-4` lands and those blocks start wanting
+`expect=type-error` — the chapter's *Numeric literals* section already carries one
+`**Known gap:**` with no red test behind it for exactly this reason. The `CLASS-` tickets are
+held to `tests/typer.rs`, which already reaches the typer.
 
 **What is not a ticket:** dictionary erasure. `SPEC-12` decision 7 settles that a constrained
 function is specialised per instantiation and no dictionary exists at runtime — which is a
@@ -228,7 +236,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-9](spec-9.md) | task | — | open | Write the Evaluation semantics chapter |
 | [SPEC-10](spec-10.md) | task | — | open | Write the Packages and source layout chapter |
 | SPEC-11 | task | — | closed 2026-08-29 | Write the Constrained type variables chapter |
-| [SPEC-12](spec-12.md) | task | — | open | Write the Type classes chapter, superseding Constrained type variables |
+| SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |

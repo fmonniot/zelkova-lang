@@ -55,10 +55,15 @@ Two things must keep checking, and are the real test of the change:
   in, not with this rule — investigate before relaxing anything.
 
 `number`, `comparable` and `appendable` are **ordinary type variables** — settled by
-[`docs/spec/constrained-type-variables.md`](../spec/constrained-type-variables.md), which also
-rewrote `std/core/src/` off the three spellings, so they no longer appear in the tree at all.
-There is nothing here for this ticket to settle by accident: they get whatever rule an ordinary
-variable gets.
+[`docs/spec/type-classes.md`](../spec/type-classes.md), which also rewrote `std/core/src/` off
+the three spellings, so they no longer appear in the tree at all. There is nothing here for this
+ticket to settle by accident: they get whatever rule an ordinary variable gets.
+
+**This ticket is a hard prerequisite of [`CLASS-4`](class-4.md)**, and that is the reason it
+matters most. A constrained declaration whose annotation variables are unification variables
+proves a narrower obligation than its own signature publishes — `min : Comparable a => …` whose
+body forces `a := Int` proves `Comparable Int` and publishes `Comparable a`. Rigid variables are
+what make an annotation's context a thing the body is held to.
 
 **Acceptance:** `f : a -> a` with `f x = C` is a type error naming the annotation, and
 `f : a -> a` with `f x = x` still checks — tests in `tests/typer.rs`. `cargo run` still prints

@@ -25,8 +25,9 @@ precedence may not actually be resolved anywhere — confirm with a real example
 operators of different precedence before writing the operator table as settled fact.
 
 **Also owns the numeric-literal rule.**
-[`docs/spec/constrained-type-variables.md`](../spec/constrained-type-variables.md) (`SPEC-11`)
-handed it here rather than answering half of it in passing. The type checker gives an integer
+[`docs/spec/type-classes.md`](../spec/type-classes.md) (`SPEC-12`) handed it here rather than
+answering half of it in passing — it settles that an undetermined numeric literal defaults to
+`Int` and that nothing else in the language defaults, but not what the literal's type *means*. The type checker gives an integer
 literal an internal type that unifies with `Int` and `Float` and nothing else — so `x : Float`
 with a body of `1` checks and `x : Char` with the same body does not. Whether that is a rule of
 the language or an implementation detail is undecided, and this chapter is where literals are

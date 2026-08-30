@@ -222,20 +222,25 @@ Not implemented: string literals, `let … in`, lambdas, records, lists, negativ
 unit type, type aliases, and the `zelkova.json` package manifest. The standard library under
 `std/core/src/` carries `.ignored` files for modules that do not compile yet.
 
-Settled by [`docs/spec/constrained-type-variables.md`](docs/spec/constrained-type-variables.md)
-(`SPEC-11`): `number`, `comparable` and `appendable` are **ordinary type variables** and always
-were — the compiler never special-cased them — and `std/core/src/` now spells all three `a`
-rather than implying a restriction the language cannot express.
+Settled by [`docs/spec/type-classes.md`](docs/spec/type-classes.md) (`SPEC-11`, then `SPEC-12`):
+`number`, `comparable` and `appendable` are **ordinary type variables** and always were — the
+compiler never special-cased them — and `std/core/src/` now spells all three `a` rather than
+implying a restriction the language cannot express. **Type classes**, without higher-kinded
+variables, are what replaces them, and that chapter specifies the mechanism rather than merely
+recording the direction.
 
-**Type classes**, without higher-kinded variables, are what replaces them, and the mechanism is
-now designed as well as decided. [`docs/tickets/spec-12.md`](docs/tickets/spec-12.md) carries
-the eleven decisions and is the thing to read before touching any of it; the `CLASS-` program in
+Read the chapter before touching any of it; the `CLASS-` program in
 [`docs/tickets/README.md`](docs/tickets/README.md) carries the order the six implementing
-tickets have to land in. Four of the decisions constrain diffs outside that program, so they are
-worth knowing here: `=>`, `class`, `instance` and `where` become reserved (`=>` is a legal
-user-defined operator today, so that is a breaking change); an instance may be declared only in
-the module declaring its class or its type; a `module javascript` facade signature may **not**
-carry a constraint, which is what preserves the plain-parameter-list guarantee
-[`docs/spec/js-interop.md`](docs/spec/js-interop.md) makes; and a class dictionary is erased by
-specialisation before code generation rather than passed, which is a constraint the first
-codegen work inherits. `SPEC-12` also supersedes the chapter linked above and deletes it.
+tickets have to land in. Four of its rules constrain diffs outside that program:
+
+- **`=>`, `class` and `instance` become reserved, and `where` becomes reserved as a type
+  variable.** All four are ordinary identifiers today, so this is a breaking change — and
+  `instance C T where …` currently *misparses* as a function declaration named `instance`
+  rather than being rejected, which is why both words are reserved outright and cannot be soft
+  the way `javascript` is.
+- **An instance may be declared only in the module declaring its class or its type.**
+- **A `module javascript` facade signature may not carry a constraint**, which is what preserves
+  the plain-parameter-list guarantee
+  [`docs/spec/js-interop.md`](docs/spec/js-interop.md) makes.
+- **A class dictionary is erased by specialisation before code generation**, never passed — a
+  constraint the first codegen work inherits.

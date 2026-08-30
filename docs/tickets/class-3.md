@@ -102,3 +102,9 @@ helpers in `tests/support/mod.rs`:
 - A class member is callable by its bare name in an importing module.
 
 `cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+
+**The orphan block in [`docs/spec/type-classes.md`](../spec/type-classes.md) needs retagging and
+will not go red to remind you.** It sits under *Where an instance may be declared*, is tagged
+`expect=unimplemented`, and fails today because `Comparable` resolves to nothing. After this
+ticket it fails because the instance is an orphan — the verdict the chapter actually claims, and
+a different one. Retag it `expect=canonical-error:<the new variant>`.
