@@ -84,7 +84,7 @@ example belongs in a block with no `package=` label.
 | Declarations | planned ([SPEC-4](../tickets/spec-4.md)) |
 | [Types and type annotations](types.md) | written |
 | Expressions | planned ([SPEC-6](../tickets/spec-6.md)) |
-| Patterns | planned ([SPEC-7](../tickets/spec-7.md)) |
+| [Patterns](patterns.md) | written |
 | Name resolution and scoping | planned ([SPEC-8](../tickets/spec-8.md)) |
 | Evaluation semantics | planned ([SPEC-9](../tickets/spec-9.md)) |
 | [JS interop](js-interop.md) | written |
