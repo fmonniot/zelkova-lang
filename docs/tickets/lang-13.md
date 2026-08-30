@@ -15,9 +15,9 @@ directly.
 **Decided ([`docs/spec/packages.md`](../spec/packages.md)):** a package is a directory holding
 a `zelkova.json` manifest, with `src/` beside it as its one source root, not configurable. A
 package name is a single flat identifier — lowercase ASCII letters, digits and hyphens,
-starting with a letter — and not an author/project pair. The manifest carries `name`,
-`version`, `exposed-modules`, `dependencies`, and an optional `main` naming the module that
-holds a program's entry point.
+starting with a letter and with every hyphen followed by a letter — and not an author/project
+pair. The manifest carries `name`, `version`, `private-modules`, `dependencies`, and an
+optional `main` naming the module that holds a program's entry point.
 
 **Problem:** none of it exists. `compile_package` is handed a source directory and never looks
 for a manifest, so a package has no declared name, no version, no stated public surface and no
@@ -29,19 +29,21 @@ one.
 
 **Approach:**
 
-1. Write `std/core/zelkova.json`, naming the package `zelkova-core` and listing the eight
-   modules that compile today under `exposed-modules`. The three `Js.*` facades are not listed:
-   a `module javascript` facade is package-internal ([`docs/spec/js-interop.md`](../spec/js-interop.md)).
+1. Write `std/core/zelkova.json`, naming the package `zelkova-core`, with `"private-modules":
+   []`. Every module of a package is public unless listed, and the three `Js.*` facades need no
+   listing: a `module javascript` facade is package-internal by its own declaration
+   ([`docs/spec/js-interop.md`](../spec/js-interop.md)).
 2. `compile_package` takes the *package* directory, reads and validates the manifest, and
    derives the source root as `<package>/src` before calling `load_package_sources`. A
    directory with no `zelkova.json`, a malformed one, or a name that is not a legal package
    name is a `CompilationError` — and it is raised before the file database exists, so it goes
    back to the caller unrendered, the way loading errors already do.
-3. `PackageName` becomes one `String` with a validating constructor;
+3. `PackageName` becomes one `String` with a validating constructor — the hyphen rule
+   included, since it is what keeps the derived namespace unambiguous;
    `as_human_string` becomes `name:Module`.
 4. `src/main.rs` passes `std/core`.
 
-`exposed-modules` is read and validated here — every entry naming a module the package
+`private-modules` is read and validated here — every entry naming a module the package
 actually holds — but nothing consults it yet, because no second package exists to be kept out.
 Enforcing it is `LANG-14`.
 

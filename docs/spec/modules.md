@@ -770,7 +770,9 @@ x = 1 + 2
 ## Packages
 
 A module belongs to exactly one package, and its name is unique within it. An `import`
-names a module of the package being compiled or an exposed module of one of that package's
-direct dependencies. What a package is, which of its modules it exposes, how its dependencies
-are declared, and how an import names a package when two of them expose one module name are
-the subject of [Packages and source layout](packages.md).
+names a module of the package being compiled or a public module of one of that package's
+direct dependencies — the second under that dependency's namespace, so the name written is
+longer than the name the module has at home. What a package is, which of its modules it keeps
+private, how its dependencies are declared, and how a namespace is derived and when a
+depending package may drop one are the subject of
+[Packages and source layout](packages.md).
