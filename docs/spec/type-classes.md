@@ -22,20 +22,17 @@ class Comparable a where
   compare : a -> a -> Order
 ```
 
-**Not implemented:** none of this parses. The design is settled — the mechanism, not only the
-direction — and this chapter is the record of it; the compiler has none of it yet. Every block
-here showing a class, an instance or a constraint is tagged `expect=unimplemented` for that
-reason, and each goes red the day the construct it shows starts working. The `CLASS-` program in
+**Not implemented:** the compiler has none of this, and none of it parses. Every block here
+showing a class, an instance or a constraint is tagged `expect=unimplemented` for that reason,
+and each goes red the day the construct it shows starts working. The `CLASS-` program in
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
 land.
 
-## What this replaces
+## `number`, `comparable` and `appendable`
 
-Three lowercase spellings — `number`, `comparable` and `appendable` — appear throughout the
-standard library as though the compiler knew them. It never did. They are **ordinary type
-variables**, and always were: a lowercase-initial identifier in a type is a type variable, and
-nothing distinguishes one lowercase spelling from another
-([Types](types.md#type-variables) states the rule).
+These three lowercase spellings are **ordinary type variables**, no different from `a`. A
+lowercase-initial identifier in a type is a type variable, and nothing distinguishes one
+lowercase spelling from another ([Types](types.md#type-variables) states the rule).
 
 So `comparable` is `a` under a longer name, and a function annotated with it accepts a value of
 any type at all — including one that cannot be compared:
@@ -56,15 +53,13 @@ smaller =
   min Red Blue
 ```
 
-That block is correct today and is meant to stop being correct. `min`'s declared type genuinely
-does accept two `Colour`s; the language as specified has no rule the call breaks. What is wrong
-is one level up — the signature promises something the function cannot deliver, and there has
-been no way to write the promise it meant. The whole of this chapter is that way.
+That call is legal, and nothing about the spelling makes it otherwise: `min`'s declared type
+accepts two `Colour`s. A signature that means to demand comparison has to say so with a
+constraint, which is what the rest of this chapter is about.
 
-The three spellings do not become keywords, now or later. A program may name a value `number`,
-and may use `comparable` as a type variable, and neither is borrowing against a change: they are
-identifiers, they stay identifiers, and `Comparable` — the class — is an ordinary uppercase name
-that a module declares, no different from a type.
+None of the three spellings is a keyword. A program may name a value `number` and may use
+`comparable` as a type variable; they are identifiers. `Comparable` — the class — is an ordinary
+uppercase name that a module declares, no different from a type.
 
 ```zel expect=ok
 module Example exposing (pick)
@@ -108,11 +103,10 @@ front:
 compare : Comparable a => a -> a -> Order
 ```
 
-That is worth stating plainly because it is what makes a class useful rather than merely
-declarative: declaring `Comparable` puts `compare` and `lt` into the module's value namespace,
-the way a `type` declaration puts its constructors there. There is no separate step that exports
-a member, and no qualified spelling that reaches "the class's `compare`" as distinct from the
-`compare`. There is one `compare`.
+Declaring `Comparable` puts `compare` and `lt` into the module's value namespace, the way a
+`type` declaration puts its constructors there. There is no separate step that exports a member,
+and no qualified spelling that reaches "the class's `compare`" as distinct from the `compare`.
+There is one `compare`.
 
 A class has exactly one variable. A class over two types at once — a relation rather than a
 property — is not part of this design.
@@ -169,9 +163,9 @@ instance Comparable Colour where
     EQ
 ```
 
-One value is declared by that module, and it is called `instance`. This is the sharpest reason
-`class` and `instance` become reserved words rather than remaining identifiers: the failure mode
-is not a syntax error a reader can act on, it is a different program.
+One value is declared by that module, and it is called `instance`. That is the sharpest reason
+the language reserves `class` and `instance` rather than leaving them identifiers: the failure
+mode is not a syntax error a reader can act on, it is a different program.
 [`CLASS-2`](../tickets/class-2.md) is the ticket, and this block goes red when it lands.
 
 ## Constraining an annotation
@@ -242,11 +236,10 @@ f x =
   x
 ```
 
-That block matters more than it looks. `Size -> Size` is a perfectly good type, and
-`(Comparable k, Eq v)` is — read as a type — a perfectly good two-tuple. Nothing about the
-tokens distinguishes a constraint list from a type, so a constrained annotation is read as a
-type first and checked to be constraint-shaped afterwards, and this is the error that check
-produces.
+`Size -> Size` is a perfectly good type, and `(Comparable k, Eq v)` is — read as a type — a
+perfectly good two-tuple. Nothing about the tokens distinguishes a constraint list from a type,
+so a constrained annotation is read as a type first and checked to be constraint-shaped
+afterwards, and this is the error that check produces.
 
 ## Superclasses
 
@@ -268,8 +261,7 @@ class Eq a => Comparable a where
   compare : a -> a -> Order
 ```
 
-Two things follow, and they pull in opposite directions, which is why superclasses are worth
-their cost.
+Two things follow, and they pull in opposite directions.
 
 **An instance acquires an obligation.** `instance Comparable Colour` is rejected unless
 `instance Eq Colour` also exists. A type cannot be ordered without being comparable for equality
@@ -309,9 +301,9 @@ answer. Tying an instance to the class's module or the type's module makes a dup
 impossible to write accidentally: the only way to produce one is for both of those two modules
 to declare it, and that collision is visible to whoever reads either file.
 
-The cost is real and worth naming. If neither the class nor the type is yours, you cannot make
+The cost falls on the third party: if neither the class nor the type is yours, you cannot make
 the one an instance of the other, and the way out is a type of your own that wraps the one you
-wanted. This design accepts that in exchange for a call meaning one thing.
+wanted. That is the price of a call meaning one thing.
 
 What a **package** boundary adds is not settled here; see
 [Packages and source layout](README.md#chapters) when that chapter exists.
@@ -322,9 +314,8 @@ A type variable stands for a complete type and is never applied — that is the 
 [Types](types.md#type-variables) already states, and a class mechanism does not relax it. A class
 variable is a type variable, so a class is always over a complete type.
 
-The consequence is worth stating directly rather than leaving to be discovered: classes whose
-variable stands for a *type constructor* cannot be written. There is no `Functor`, no `Monad`, no
-class over "a thing that takes one type argument".
+So classes whose variable stands for a *type constructor* cannot be written. There is no
+`Functor`, no `Monad`, no class over "a thing that takes one type argument".
 
 ```zel expect=unimplemented
 module Example exposing (Box)
@@ -340,14 +331,14 @@ That block fails today because `class` does not parse, and it will still be reje
 does, because `f a` is not a type — it applies a variable. Both halves are deliberate.
 
 Allowing it would mean variables ranging over type constructors as well as types, and telling
-the two apart is what a kind system is for. Zelkova does not have one and this design does not
-add one. A class over a complete type is the whole of what the language offers, and it is enough
-for the three the standard library was reaching for.
+the two apart is what a kind system is for. Zelkova does not have one. A class over a complete
+type is the whole of what the language offers, and it covers equality, ordering, arithmetic and
+appending.
 
 ## Numeric literals
 
-An integer literal is usable where an `Int` or a `Float` is wanted, and the class mechanism is
-what will say so: a literal carries a `Number` constraint rather than a type, and whatever
+An integer literal is usable where an `Int` or a `Float` is wanted, and a constraint is how the
+language says so: a literal carries a `Number` constraint rather than a type, and whatever
 determines it — an annotation, an argument position, an operator — discharges that constraint.
 
 When nothing determines it, the literal is an `Int`.
@@ -360,10 +351,10 @@ x =
 ```
 
 That default is the only one in the language. Every other constraint the compiler cannot
-discharge is an error rather than a guess: there is no mechanism for declaring what a class
-should fall back to, and none is planned. The narrowness is the point — defaulting makes a
-program's meaning depend on a rule the reader has to remember, and one such rule for the one case
-that comes up constantly is a different proposition from a general facility.
+discharge is an error rather than a guess: there is no way to declare what a class falls back to.
+The narrowness is the point — defaulting makes a program's meaning depend on a rule the reader
+has to remember, and one such rule for the one case that comes up constantly is a different
+proposition from a general facility.
 
 What the literal *rule* is, as opposed to how the constraint is spelled, belongs with the rest of
 literal typing in the planned *Expressions* chapter (see [the chapter list](README.md#chapters)).
@@ -377,7 +368,7 @@ a body of `1` reports *cannot match `Char` with `number`*, naming something the 
 does not contain. [`ERR-13`](../tickets/err-13.md) is the spelling;
 [`CLASS-5`](../tickets/class-5.md) is what retires the type itself. No block here holds either to
 account: the spec harness stops at canonicalization and never runs the type checker
-([`TEST-2`](../tickets/test-2.md)), so this paragraph has to be deleted by hand.
+([`TEST-2`](../tickets/test-2.md)).
 
 ## A constrained function may not be a JavaScript facade
 
@@ -414,31 +405,31 @@ instance Comparable Int where
 **Not implemented:** the operations table never exists at runtime either. A constrained function
 is **specialised** for each type it is used at before code is generated, so the generated
 JavaScript contains one ordinary function per instantiation and no table is built or passed. Two
-consequences a reader should not have to infer: a program is compiled as a whole rather than a
-module at a time, and a constrained function cannot call itself at a different type than it was
-called with. The second is already impossible — a class variable stands for a complete type, so
-there is no different type for it to recurse at.
+consequences: a program is compiled as a whole rather than a module at a time, and a constrained
+function cannot call itself at a different type than it was called with. The second is already
+impossible — a class variable stands for a complete type, so there is no different type for it to
+recurse at.
 
-This is also the answer to a real defect rather than a hypothetical one. The comparison and
-append facades in `std/core` are declared over any type at all, and the JavaScript behind them
-assumes its arguments are numbers, strings or tuples; handed a value of a user union type it
-reads fields that are not there. [`BUG-20`](../tickets/bug-20.md) tracks it, and it closes when
-those six signatures get a real constraint.
+**Known gap:** the comparison and append facades in `std/core` are declared over any type at all,
+and the JavaScript behind them assumes its arguments are numbers, strings or tuples; handed a
+value of a user union type it reads fields that are not there.
+[`BUG-20`](../tickets/bug-20.md) tracks it, and it closes when those six signatures get a real
+constraint.
 
 ## The words this reserves
 
-`class` and `instance` become reserved words, usable nowhere but at the start of the declarations
-they introduce. `where` becomes reserved in two narrower senses: it opens a class or instance
-body, and it may not be a type variable. Everywhere a *value* is named — a declaration, a
-parameter, an `exposing` entry — `where` stays an ordinary identifier.
+`class` and `instance` are reserved words, usable nowhere but at the start of the declarations
+they introduce. `where` is reserved in two narrower senses: it opens a class or instance body,
+and it may not be a type variable. Everywhere a *value* is named — a declaration, a parameter,
+an `exposing` entry — `where` stays an ordinary identifier.
 
 That asymmetry is not arbitrary. `class` and `instance` sit at the start of a declaration, which
 is exactly where a function declaration also starts, so a reader — and the parser — cannot tell
-which they are looking at without them being reserved. `where` sits after a class head, where the
-only other thing that could appear is another type argument; excluding it from type-variable
+which they are looking at unless the words are reserved. `where` sits after a class head, where
+the only other thing that could appear is another type argument; excluding it from type-variable
 position is all that takes, and there is no reason to spend the name in value position as well.
 
-`=>` becomes a token of the language, so it can no longer be declared as an operator.
+`=>` is a token of the language rather than a name, so it cannot be declared as an operator.
 
 **Known gap:** all four are ordinary today, and each of these blocks goes red when the ticket
 naming it lands. `class` and `instance` as value names ([`CLASS-2`](../tickets/class-2.md)):
@@ -458,7 +449,7 @@ instance =
   Small
 ```
 
-`where` as a type variable, which is the one `where` use that stops working
+`where` as a type variable, the one `where` position the language excludes
 ([`CLASS-2`](../tickets/class-2.md)):
 
 ```zel expect=ok
@@ -483,34 +474,29 @@ both a b =
   a
 ```
 
-Nothing in `std/core/src/` uses any of the four, so the breakage is a rule about programs that
-could be written rather than about programs that are.
-
 ## What the standard library declares
 
 Four classes, and they are ordinary declarations in ordinary modules — nothing about them is
 known to the compiler, and a program may declare its own alongside.
 
-| Class | Members, roughly | What it fixes |
+| Class | Members, roughly | What it constrains a variable to |
 |---|---|---|
-| `Eq` | `eq`, `neq` | `==` on a function value, which crashes at runtime today |
-| `Comparable` (superclass `Eq`) | `compare`, and the four ordering operators | `min Red Blue`, at the top of this chapter |
-| `Number` | `add`, `sub`, `mul`, and the rest of the arithmetic | `add 'x' 'y'`, which the compiler accepts |
-| `Appendable` | `append` | `++` over strings and lists |
+| `Eq` | `eq`, `neq` | types that can be compared for equality |
+| `Comparable` (superclass `Eq`) | `compare`, and the four ordering operators | types that are ordered |
+| `Number` | `add`, `sub`, `mul`, and the rest of the arithmetic | the numeric types |
+| `Appendable` | `append` | types `++` joins |
 
-`Appendable` is the awkward one and the chapter should say so: its intended domain is strings and
-lists, and the compiler implements neither — see the note on brackets and quotes in
-[Lexical structure](lexical-structure.md#punctuation). It is declared for the same reason the
-other three are, and until those types exist it is a class with very little to range over.
+`Appendable` ranges over strings and lists. The compiler implements neither type — see the note
+on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).
 
-[`CLASS-6`](../tickets/class-6.md) is the pass that adds them, and it is a change of shape rather
-than a retyping: most of the functions that gain a constraint are single-line re-exports of a
-JavaScript facade today, and a constrained function cannot be one — its body has to choose an
-instance.
+**Not implemented:** [`CLASS-6`](../tickets/class-6.md) is the pass that declares them. A
+constrained function cannot be a single-line re-export of a JavaScript facade, which is what most
+of these are in `std/core` — its body has to choose an instance.
 
-## Until it lands
+## Writing without a class
 
-Two things work now, and neither is a workaround so much as what the language currently offers.
+Two things stand in for a constraint, and neither is a workaround so much as what the language
+offers without one.
 
 **Pass the operation.** Take the comparison, or the addition, as an argument. More verbose at
 every call site, and honest: the type says exactly what the function needs.
@@ -541,9 +527,7 @@ smaller =
 ```
 
 **Write one function per type.** A monomorphic `addInt` cannot be applied to the wrong thing,
-because its type names the right one. This is what the standard library falls back on for
-anything that cannot wait.
+because its type names the right one. This is what the standard library falls back on.
 
 Between them they cover the ground, at a cost in repetition — which is the cost a class
-mechanism exists to remove, and the reason this chapter is not a description of a finished
-feature.
+mechanism exists to remove.

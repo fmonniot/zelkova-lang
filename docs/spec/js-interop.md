@@ -43,10 +43,8 @@ add : a -> a -> a
 sub : a -> a -> a
 ```
 
-Both were spelled `number -> number -> number` until `SPEC-11`, which found the spelling
-carried no meaning and rewrote `std/core/src/` off it — see
-[Type classes](type-classes.md#what-this-replaces). The type is unchanged; only the name of the
-variable is.
+`a` there is an ordinary type variable and constrains nothing; a facade's signature says which
+types its JavaScript really handles only as far as the types it names.
 
 **Not implemented:** a facade signature may never carry a class constraint, and that restriction
 exists to protect the plain parameter list above. A class is normally implemented by passing a
@@ -55,7 +53,7 @@ file is promised it will never see — so a constrained function lives in ordina
 calls a monomorphic facade underneath it. The table does not survive to runtime either: a
 constrained function is specialised per type before code is generated.
 [Type classes](type-classes.md#a-constrained-function-may-not-be-a-javascript-facade) is the
-chapter, and its rule is a constraint the first code-generation work inherits.
+chapter.
 
 ## Open questions
 

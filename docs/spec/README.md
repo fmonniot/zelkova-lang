@@ -127,9 +127,8 @@ fixing it. What each chapter has to cover:
 - **Type classes** — the `class` and `instance` declarations, how a constraint is written in an
   annotation, superclasses, where an instance may be declared, and what a constrained function
   may *not* be: a `module javascript` facade. It also carries the rule that `number`,
-  `comparable` and `appendable` are ordinary type variables and always were — which was a
-  chapter of its own (`SPEC-11`) until `SPEC-12` found that two chapters on one subject means
-  the unmaintained one is what someone eventually reads.
+  `comparable` and `appendable` are ordinary type variables, since a class constraint is what
+  the language offers in their place.
 
 ### Tag every claim the chapter makes
 
@@ -187,6 +186,31 @@ settled fact. That prose gets its own lead-in, **Not implemented:**, for the sam
 `grep -r "Not implemented:" docs/spec/` finds every place a chapter is describing a feature
 ahead of the compiler rather than behind it. The `let … in` section of `layout.md` is the
 first example of both lead-ins living in one section.
+
+### A chapter says what the language is
+
+Every sentence in a chapter describes Zelkova as designed, in the present tense. Three
+things therefore never appear in one:
+
+- **Project history.** How a rule came to be decided, which `SPEC-` ticket decided it, what a
+  signature used to be spelled, which chapter superseded which, what a pass "found". A reader
+  needs the rule; a rule that leans on its own past is one the chapter has not finished
+  writing. `docs/tickets/` is the work log and keeps all of that.
+- **Commentary on the document.** *This chapter is the record of that design*, *that block
+  matters more than it looks*, *the chapter should say so*. Say the thing rather than
+  announcing that you are about to.
+- **Alternatives considered and dropped.** The language is what is written down. A road not
+  taken belongs in the ticket that took the other one — this file included, which is why the
+  paragraphs above are allowed to name `SPEC-2` and `SPEC-3` and a chapter is not.
+
+Explaining *why* a rule is what it is stays in scope, and is much of what makes a chapter worth
+reading — the test is whether the reason is a property of the language ("allowing it would need
+a kind system") or a fact about the project ("`SPEC-11` found the spelling carried no meaning").
+
+The two lead-ins above are the exception, and both are about the *compiler* rather than the
+language: **Known gap:** describes behaviour that exists today and should not, **Not
+implemented:** a rule the compiler does not have yet. Those measure the distance between the
+spec and the binary, which is the one "not yet" a chapter is for.
 
 ### A spec change and a semantics change do not share a diff
 
