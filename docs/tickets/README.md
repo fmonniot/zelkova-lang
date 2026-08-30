@@ -6,8 +6,8 @@ _Last updated: 2026-08-29._
 language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
 will keep producing them — writing down a rule that was never written down is how you find out
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
-from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, and `SPEC-11` a
-`BUG-` and an `ERR-`.
+from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, `SPEC-11` a
+`BUG-` and an `ERR-`, and `SPEC-7` another four.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
@@ -249,6 +249,10 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-10](lang-10.md) | task | — | open | A trailing `\|` and a variant-less `type T =` are both accepted |
 | [LANG-11](lang-11.md) | task | — | open | A type annotation may sit anywhere in the file, and a repeated one silently wins |
 | [LANG-12](lang-12.md) | task | — | open | An annotation more general than its body is accepted and silently specialised |
+| [LANG-13](lang-13.md) | task | — | open | A constructor pattern may not nest, and may not be parenthesised in a `case` branch |
+| [LANG-14](lang-14.md) | task | — | open | A constructor pattern's arity is never checked |
+| [LANG-15](lang-15.md) | task | — | open | A pattern may bind the same name more than once |
+| [LANG-16](lang-16.md) | task | — | open | Nothing checks that a `case` covers its type |
 | [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
