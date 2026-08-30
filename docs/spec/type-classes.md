@@ -145,11 +145,6 @@ never written in an `exposing` list. It is in scope wherever its class and its t
 is what makes a constrained call mean the same thing in every module that can write it. How far
 "wherever" reaches is [the orphan rule](#where-an-instance-may-be-declared), below.
 
-**Known gap:** an `instance` declaration is not rejected today. It is *accepted as something
-else*. `instance` is an ordinary lowercase identifier, so the parser reads the line as a function
-declaration named `instance` whose parameters are `Comparable`, `Colour`, `where`, `compare`, `a`
-and `b` — and when those names happen to resolve, the module compiles:
-
 ```zel expect=ok
 module Example exposing (Thing)
 
@@ -163,10 +158,11 @@ instance Comparable Colour where
     EQ
 ```
 
-One value is declared by that module, and it is called `instance`. That is the sharpest reason
-the language reserves `class` and `instance` rather than leaving them identifiers: the failure
-mode is not a syntax error a reader can act on, it is a different program.
-[`CLASS-2`](../tickets/class-2.md) is the ticket, and this block goes red when it lands.
+**Known gap:** an `instance` declaration is not rejected today. It is *accepted as something
+else*. `instance` is an ordinary lowercase identifier, so the parser reads the line as a function
+declaration named `instance` whose parameters are `Comparable`, `Colour`, `where`, `compare`, `a`
+and `b` — and when those names happen to resolve. [`CLASS-2`](../tickets/class-2.md) is the ticket,
+and this block goes red when it lands.
 
 ## Constraining an annotation
 
@@ -305,7 +301,7 @@ The cost falls on the third party: if neither the class nor the type is yours, y
 the one an instance of the other, and the way out is a type of your own that wraps the one you
 wanted. That is the price of a call meaning one thing.
 
-What a **package** boundary adds is not settled here; see
+**Known gap:** What a **package** boundary adds is not settled here; see
 [Packages and source layout](README.md#chapters) when that chapter exists.
 
 ## A class is always over a complete type
@@ -332,8 +328,7 @@ does, because `f a` is not a type — it applies a variable. Both halves are del
 
 Allowing it would mean variables ranging over type constructors as well as types, and telling
 the two apart is what a kind system is for. Zelkova does not have one. A class over a complete
-type is the whole of what the language offers, and it covers equality, ordering, arithmetic and
-appending.
+type is the whole of what the language offers.
 
 ## Numeric literals
 
