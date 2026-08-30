@@ -3,22 +3,19 @@
 A module is one file, and it is the unit of encapsulation
 ([Modules](modules.md)). A **package** is a directory of modules, and it is the unit of
 distribution — the thing that has a name and a version, that depends on other things, and
-that a compiler is pointed at. Every module belongs to exactly one package, and no module
-belongs to two.
+that a compiler is pointed at. Every module belongs to exactly one package.
 
-The two units nest, and each has its own way of saying what is public. A module chooses
+The two units nest: a module chooses
 which of its declarations other modules may see; a package chooses which of its modules
-other packages may see. Neither can be worked around from the other side: a name a module
-does not expose is unreachable even from inside its own package, and a module a package
-keeps private is unreachable from outside even though every name in it is exposed. A
+other packages may see. A
 package boundary is also where a module's name changes: what a package calls `Model`,
 everything outside it calls `Todo.Model`.
 
 ## What a package is
 
 A package is a directory containing a `zelkova.json` manifest. The manifest names the
-package and describes it; a directory without one is not a package, and there is no way to
-compile a loose collection of source files. Beside the manifest are the two source roots,
+package and describes it; a directory without one is not a package, and the compiler will 
+refuse to compile a raw collection of source files. Beside the manifest are the two source roots,
 `src/` and `tests/`.
 
 ```text
@@ -47,8 +44,7 @@ name nothing wrote down ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
 
 ## Source roots
 
-A package has two source roots, `src/` and `tests/`. Neither is configurable, and there is
-no third.
+A package has two fixed source roots: `src/` and `tests/`.
 
 `src/` holds the package's modules — what the package *is*, and the only thing it ships.
 `tests/` holds modules that exercise them, compiled when this package's own tests are run
@@ -72,8 +68,7 @@ not a legal module name.
 
 The two roots share one set of names. `src/Model.zel` and `tests/Model.zel` are both `Model`,
 which is a module name declared twice in one package, and that is an error — the same error
-as declaring it twice under one root. A test module is imported by its name like any other,
-so there is nothing for a second namespace to buy and a great deal for it to cost.
+as declaring it twice under one root. A test module is imported by its name like any other.
 
 **Known gap:** neither half is checked, and the path-derived name is computed and then
 discarded ([`docs/tickets/lang-6.md`](../tickets/lang-6.md)). A file may declare any module
@@ -145,17 +140,8 @@ the ticket carries the obligation to rewrite this section when it lands.
 
 Every module of a package under `src/` is importable from outside it, except the ones
 `private-modules` names. Those are **package-internal**: importable from other modules of the
-same package and from nowhere else, no matter what their own `exposing` lists say.
+same package and from nowhere else.
 
-A module is written to be used, and in most packages most modules are; the manifest records
-the exceptions rather than restating the rule. What that asks of a package is that a module
-meant to stay internal is listed in the change that creates it — a module is importable the
-moment it exists, and a package that lists it later is taking something away from whoever
-imported it in between.
-
-Within that, a package's internal layout stays changeable. A package can split a private
-module in two, rename one, or introduce a helper without any of it being a breaking change,
-as long as the public modules keep exposing what they exposed.
 
 A `module javascript` facade is never importable from outside, whatever the manifest says,
 because its guarantees are about a companion `.mjs` file that ships with the package that
@@ -244,8 +230,7 @@ Two rules bind the resolved set of packages a build is made from. The package gr
 reason the module graph is ([Modules](modules.md#imports-may-not-form-a-cycle)): there is no
 order in which the members of a cycle could be compiled. And **at most one version of a
 package** is in a build. Two versions of one package would present the same namespace to the
-same importers, and a namespace is what an import resolves through, so the second copy would
-be unreachable under any spelling.
+same importers.
 
 Beyond satisfying every constraint, which version a resolver picks is not a question the
 language answers. What it picked is recorded in `zelkova.lock`, generated beside the
@@ -255,8 +240,8 @@ build is reproducible without the manifest having to be rewritten to pin it. Its
 
 ### Only direct dependencies are usable
 
-A package listed in `dependencies` is importable; a package reached only through one of those
-is not. So the packages a module may draw on are exactly the ones written in the manifest
+Only a package listed in `dependencies` is importable within this package.
+So the packages a module may draw on are exactly the ones written in the manifest
 beside it, and a reader never has to walk a dependency chain to find out where a module could
 have come from. It also means upgrading a dependency cannot change what any import in your own
 package resolves to.
@@ -269,15 +254,9 @@ Every module behaves as though it began with a fixed list of imports, drawn from
 `zelkova-core`, which is a dependency of every package and is not written in `dependencies`.
 Its version is the compiler's.
 
-It is seen unwrapped, in every package, and that is not a property of the package but of the
-dependency on it: there is no entry in `dependencies` in which a `wrapped` field could be
-written, so `Basics` is `Basics` and `List` is `List` everywhere in the language. The names of
+It is seen unwrapped, in every package. So `Basics` is `Basics` and `List` is `List` everywhere in the language. The names of
 core's public modules are therefore taken in every package — a module of your own called
 `List` would be [a second module answering to one name](#when-two-modules-answer-to-one-name).
-
-Nothing else about it is special. `zelkova-core` is an ordinary package with an ordinary
-manifest, its facades are package-internal like any other package's, and a package that wants
-one of its modules beyond the default list imports it in the ordinary way.
 
 ## Imports across a package boundary
 
@@ -288,9 +267,9 @@ a package's modules are named from outside through that package's **namespace**.
 ### The namespace
 
 A package's namespace is derived from its name: split it at the hyphens, uppercase the first
-letter of each piece, and join. `acme-widgets` is `AcmeWidgets`, `fmonniot-json` is
-`FmonniotJson`, `todo` is `Todo`. A dependent names one of its modules by writing the
-namespace, a `.`, and the module's name within its package.
+letter of each piece, and join. `acme-widgets` is `AcmeWidgets`, `todo` is `Todo`.
+A dependent names one of its modules by writing the namespace, a `.`,
+and the module's name within its package.
 
 ```text
 acme-widgets/
@@ -301,8 +280,7 @@ acme-widgets/
 ```
 
 Nothing has to be checked for two packages to keep out of each other's way. A package name is
-unique in a build, and the derivation is reversible — every uppercase letter marks a piece
-boundary, which is what requiring a letter after each hyphen buys — so distinct package names
+unique in a build, so distinct package names
 give distinct namespaces, and no two wrapped modules can be reached by one name.
 
 The namespace is not a directory and does not appear under `src/`. Nor does a package ever
@@ -370,7 +348,7 @@ start = Task
 
 ### Unwrapping a dependency
 
-A package that finds the prefix costs more than it is worth may drop it, for one dependency,
+A package that finds the prefix costs more than it is worth may drop it, per dependency,
 by writing `"wrapped": false` in that dependency's entry. That package's modules are then
 named by their own names in every file of the depending package: `Size`, not
 `AcmeWidgets.Size`.
@@ -382,7 +360,7 @@ named by their own names in every file of the depending package: `Size`, not
 }
 ```
 
-Unwrapping is a property of the pair — this package, that dependency — and not of the
+Unwrapping is a property of the pair (this package, that dependency) and not of the
 dependency itself. It is written by the package doing the importing because that is where the
 cost of the prefix is paid: a package used once in a file and a package used on every other
 line are the same package, and only its user knows which it is. Two packages depending on one
@@ -480,31 +458,22 @@ one difference: it is compiled when this package's own tests are run, and never 
 A package that depends on this one does not compile it, does not resolve what it needs, and
 cannot observe that it exists.
 
-A test module may import any module of its own package, the private ones included — reaching
-what a package keeps to itself is most of why the root exists, and a package whose internals
+A test module may import any module of its own package, the private ones included.
+A package whose internals
 could only be tested through its public surface would be pushed into exposing them. It may
-also import the public modules of the package's dependencies and of its test-dependencies,
-under exactly the rules above: namespaced, or unwrapped where that dependency's entry says so.
+also import the public modules of the package's dependencies and of its test-dependencies.
 
 Nothing may import a test module. A module under `src/` cannot, which is what keeps `tests/`
-out of what the package ships, and no other package can, whatever the manifest says — a test
-module is not listed in `private-modules` for the same reason a `module javascript` facade is
-not: it is internal by where it lives rather than by being named.
+out of what the package ships.
 
 ### `test-dependencies`
 
-`test-dependencies` maps package names to entries of exactly the shape `dependencies` takes —
-a version constraint, a source, and optionally `wrapped`. It is required and may be empty.
+`test-dependencies` maps package names to entries of exactly the shape `dependencies` takes.
+It is required and may be empty.
 
-A package listed there is available to `tests/` and to nothing else. It is not part of what
-this package offers, it is not resolved by anyone depending on this package, and it does not
-constrain their versions of anything. A test framework, a fixture generator and a
-property-checking library therefore cost a package's users nothing at all, which is the whole
-of why the second map exists: a package that needed a library only to check itself would
-otherwise be shipping that library to everyone.
+A package listed there is available to `tests/` and to nothing else.
 
-A package name appears in at most one of the two maps. Listing it in both would be asking for
-two entries about one package, and there is only one of it in a build; anything already in
+A package name appears in at most one of the two maps. Anything already in
 `dependencies` is usable from `tests/` without being written twice.
 
 The rest of the resolution rules are unchanged and apply to the union of the two maps. The
