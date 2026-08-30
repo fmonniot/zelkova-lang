@@ -83,8 +83,8 @@ pattern is irrefutable exactly when all of its elements are. A literal pattern i
 refutable. A constructor pattern is irrefutable only when its type has that one constructor
 and its arguments are themselves irrefutable.
 
-Both positions accept both kinds. What the language requires is not that any one pattern is
-irrefutable but that the patterns in a position **cover** the type between them — a `case`
+Both positions accept both kinds. The language requires the patterns in a position to
+**cover** the type between them — a `case`
 covers it with its branches, and a function declaration covers it with its clauses:
 
 ```zel expect=canonical-error:MultipleBindingsUnsupported
@@ -250,7 +250,7 @@ isVowel c =
 ```
 
 A literal pattern is refutable, so it needs a branch after it that covers the rest of the
-type — which for a numeric type means a wildcard or a variable, since no finite list of
+type — which for a literal type means a wildcard or a variable, since no finite list of
 literals covers one.
 
 A pattern may hold a **negative** number. The sign belongs to the literal rather than being an
@@ -406,9 +406,8 @@ annotation has nothing to disagree with, so it takes however many parameters its
 
 ### The arguments must be the ones it was declared with
 
-A constructor pattern supplies exactly as many argument patterns as the `type` declaration
-gave that constructor. Fewer is not a partial match and more is not an error the type checker
-can absorb: a constructor's arity is part of what it is.
+A constructor pattern must supplies exactly as many argument patterns as the `type` declaration
+gave that constructor.
 
 ```zel expect=ok
 module Example exposing (Count, Shape, width)
@@ -494,8 +493,7 @@ f flag =
 Every pattern position takes a whole pattern, so patterns nest to any depth: a constructor
 argument may be a tuple, a tuple element may be a constructor pattern, and a constructor
 argument may be another constructor pattern. An applied constructor written as a sub-pattern
-is parenthesised, for the same reason it is in a function head — juxtaposition inside a
-constructor pattern already separates one argument from the next.
+is parenthesised.
 
 **Known gap:** a constructor pattern may not appear inside another pattern at all, and a
 parenthesised one may not head a `case` branch. The grammar has one production for
