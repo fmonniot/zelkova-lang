@@ -2,7 +2,8 @@
 
 This is the specification of Zelkova the language, as distinct from `docs/tickets/`
 (the compiler's own work log) and `cargo doc` (the compiler's Rust API). One markdown
-file per chapter, sibling files in this directory.
+file per chapter, sibling files in this directory, plus the non-normative
+[appendices](#appendices) at the foot of this index.
 
 **The spec is normative.** It describes Zelkova as designed, including constructs the
 compiler does not implement yet — it is not a description of today's binary. Where a
@@ -90,6 +91,9 @@ example belongs in a block with no `package=` label.
 | [JS interop](js-interop.md) | written |
 | [Packages and source layout](packages.md) | written |
 | [Type classes](type-classes.md) | written |
+
+Beside them, and outside that table, is one **appendix**: [the toolchain](toolchain.md).
+It is not part of the language and is not normative; see [Appendices](#appendices).
 
 Together the planned chapters are meant to be the whole language, not a set of footnotes to
 somebody else's manual — that is what *the spec is self-contained* costs, and it is the
@@ -179,6 +183,9 @@ every paragraph, and it is what tells a future session not to treat the block's 
 behaviour as what the language should do. `expect=fragment` doesn't need it: the tag itself
 already says the block isn't normative.
 
+The appendices have a third lead-in, **Provisional:**, and a chapter never carries it —
+see [Appendices](#appendices).
+
 A `expect=unimplemented` block is the same kind of risk from the other direction: the tag
 says the *example* doesn't compile yet, but prose right next to it can still describe design
 intent — a rule the language will have once the feature exists — in a way that reads as
@@ -220,3 +227,40 @@ the example for what the compiler does today. ERR-11 and ERR-12 were both found 
 Fixing the compiler in the same diff that documents it makes the change unreviewable, and
 it is unnecessary: a spec claim the compiler fails is a red test, which is a working
 record rather than a lost one.
+
+## Appendices
+
+An appendix is a sibling file in this directory that is deliberately **not** part of the
+language. It describes what surrounds Zelkova rather than what Zelkova is, and nothing in
+one is normative or checked. There is one:
+
+| Appendix | Covers |
+|---|---|
+| [The toolchain](toolchain.md) | Fetching a dependency, resolution and `zelkova.lock`, the cache, vendoring and offline builds, publishing, running a package's tests, and the compiler's interface. |
+
+An appendix exists because a language decision leaves a toolchain question with one sensible
+answer, and leaving it unwritten means every reader invents that answer privately and slightly
+differently. `docs/spec/packages.md` settles what a dependency entry *means*; something still
+has to say what happens when one is fetched, and that is not a sentence about the language.
+
+The line between the two is what a claim changes. A rule that decides what a program means —
+what a name resolves to, what is visible across a boundary, what a manifest field obliges —
+is a chapter's, however file-shaped it looks. A rule about how bytes arrive, where they are
+kept, or what a command prints is an appendix's.
+
+### **Provisional:**
+
+An appendix designs as much as it records, and a paragraph describing a mechanism nothing has
+built yet opens with a bolded **Provisional:**. `grep -r "Provisional:" docs/spec/` finds every
+one. It marks a mechanism to argue with and replace rather than one to build against, and it
+is the appendices' equivalent of the honesty the `expect=` tags buy a chapter: an appendix
+cannot be held to account by a test, so it says in the text which of its claims have nothing
+behind them.
+
+A chapter never carries it. A language question with no settled answer is an **Open question**
+at the foot of the chapter instead — a language may have questions it has not answered, but it
+cannot have a rule that is only provisionally a rule and still be one thing.
+
+The other two lead-ins keep their meanings in an appendix: **Known gap:** for behaviour that
+exists today and should not, **Not implemented:** for something written down that the compiler
+does not have yet.

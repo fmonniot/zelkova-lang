@@ -252,6 +252,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-12](lang-12.md) | task | — | open | An annotation more general than its body is accepted and silently specialised |
 | [LANG-13](lang-13.md) | task | — | open | A package has no manifest, and its name is hardcoded |
 | [LANG-14](lang-14.md) | task | — | open | Nothing implements a package boundary |
+| [LANG-15](lang-15.md) | task | — | open | A package has no test root, and nothing runs a package's tests |
 | [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |

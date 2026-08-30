@@ -13,11 +13,17 @@ that builds one.
 directly.
 
 **Decided ([`docs/spec/packages.md`](../spec/packages.md)):** a package is a directory holding
-a `zelkova.json` manifest, with `src/` beside it as its one source root, not configurable. A
+a `zelkova.json` manifest, with `src/` beside it as the source root holding what the package
+ships, not configurable. (`tests/` is a second root, and it is `LANG-15`'s.) A
 package name is a single flat identifier — lowercase ASCII letters, digits and hyphens,
 starting with a letter and with every hyphen followed by a letter — and not an author/project
-pair. The manifest carries `name`, `version`, `private-modules`, `dependencies`, and an
-optional `main` naming the module that holds a program's entry point.
+pair. The manifest carries `name`, `version`, `private-modules`, `dependencies`,
+`test-dependencies`, and an optional `main` naming the module that holds a program's entry
+point — six fields, of which five are required. An entry in either dependency map is an object
+carrying a version constraint and exactly one source, `git` or `path`; there is no index
+anywhere, so a bare version string names no place a package could be found and is not a legal
+entry. `test-dependencies` is `LANG-15`'s, not this ticket's, beyond being read and validated
+here alongside `dependencies`.
 
 **Problem:** none of it exists. `compile_package` is handed a source directory and never looks
 for a manifest, so a package has no declared name, no version, no stated public surface and no
@@ -30,9 +36,9 @@ one.
 **Approach:**
 
 1. Write `std/core/zelkova.json`, naming the package `zelkova-core`, with `"private-modules":
-   []`. Every module of a package is public unless listed, and the three `Js.*` facades need no
-   listing: a `module javascript` facade is package-internal by its own declaration
-   ([`docs/spec/js-interop.md`](../spec/js-interop.md)).
+   []` and both dependency maps empty. Every module of a package is public unless listed, and
+   the three `Js.*` facades need no listing: a `module javascript` facade is package-internal
+   by its own declaration ([`docs/spec/js-interop.md`](../spec/js-interop.md)).
 2. `compile_package` takes the *package* directory, reads and validates the manifest, and
    derives the source root as `<package>/src` before calling `load_package_sources`. A
    directory with no `zelkova.json`, a malformed one, or a name that is not a legal package

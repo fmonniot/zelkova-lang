@@ -18,18 +18,20 @@ everything outside it calls `Todo.Model`.
 
 A package is a directory containing a `zelkova.json` manifest. The manifest names the
 package and describes it; a directory without one is not a package, and there is no way to
-compile a loose collection of source files. Beside the manifest is `src/`, which holds the
-modules.
+compile a loose collection of source files. Beside the manifest are the two source roots,
+`src/` and `tests/`.
 
 ```text
 todo/
   zelkova.json
   zelkova.lock
   src/
-    App.zel          module App
-    Model.zel        module Model
+    App.zel            module App
+    Model.zel          module Model
     Model/
-      Internal.zel   module Model.Internal
+      Internal.zel     module Model.Internal
+  tests/
+    ModelTest.zel      module ModelTest
 ```
 
 Requiring the manifest is what gives those three questions an answer for every package
@@ -43,24 +45,35 @@ directly, and the name of the package it is compiling is fixed at the call site 
 declared — so every module it compiles, from any directory, belongs to one package with a
 name nothing wrote down ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
 
-## The source root
+## Source roots
 
-`src/` is the package's only source root. It is not configurable, and a package cannot have
-a second one.
+A package has two source roots, `src/` and `tests/`. Neither is configurable, and there is
+no third.
 
-Every file under `src/` whose name ends in `.zel` is a module of the package, found by
-walking `src/` recursively. That is true whether or not the package keeps the module private
-and whether or not anything imports it: an unreferenced module still has to parse and still
-has to type-check, so a package cannot carry a broken file by leaving it unmentioned.
+`src/` holds the package's modules — what the package *is*, and the only thing it ships.
+`tests/` holds modules that exercise them, compiled when this package's own tests are run
+and at no other time; a package that depends on this one never reads a file under `tests/`.
+[Tests](#tests) describes the second root in full. Everything below is true of both.
 
-A module's name is its path under `src/`, with each directory separator written as a `.` and
-the `.zel` dropped — the rule stated in full under
+Every file under a root whose name ends in `.zel` is a module of the package, found by
+walking that root recursively. That is true whether or not the package keeps the module
+private and whether or not anything imports it: an unreferenced module still has to parse
+and still has to type-check, so a package cannot carry a broken file by leaving it
+unmentioned.
+
+A module's name is its path under its root, with each directory separator written as a `.`
+and the `.zel` dropped — the rule stated in full under
 [Modules](modules.md#the-name-and-the-file). That is the module's name *within* its package,
 which is what its neighbours import it by; how a package's modules are named from outside is
 [Imports across a package boundary](#imports-across-a-package-boundary), below. Every
-directory under `src/` is a segment of a module name, and must be spelled like one: an
+directory under a root is a segment of a module name, and must be spelled like one: an
 uppercase-initial identifier. `src/js/Basics.zel` is not a legal file, because `js.Basics` is
 not a legal module name.
+
+The two roots share one set of names. `src/Model.zel` and `tests/Model.zel` are both `Model`,
+which is a module name declared twice in one package, and that is an error — the same error
+as declaring it twice under one root. A test module is imported by its name like any other,
+so there is nothing for a second namespace to buy and a great deal for it to cost.
 
 **Known gap:** neither half is checked, and the path-derived name is computed and then
 discarded ([`docs/tickets/lang-6.md`](../tickets/lang-6.md)). A file may declare any module
@@ -79,7 +92,7 @@ src/
 
 ## The manifest
 
-`zelkova.json` is a JSON object with five fields, of which four are required:
+`zelkova.json` is a JSON object with six fields, of which five are required:
 
 ```text
 {
@@ -88,8 +101,15 @@ src/
   "main": "App",
   "private-modules": [ "Model.Internal" ],
   "dependencies": {
-    "zelkova-widgets": "^1.2.0",
-    "acme-json": { "version": "^0.4.1", "wrapped": false }
+    "acme-widgets": { "version": "^1.2.0",
+                      "git": "https://github.com/acme/widgets" },
+    "acme-json":    { "version": "^0.4.1",
+                      "git": "https://github.com/acme/json",
+                      "wrapped": false }
+  },
+  "test-dependencies": {
+    "acme-expect": { "version": "^2.0.0",
+                     "git": "https://github.com/acme/expect" }
   }
 }
 ```
@@ -114,15 +134,18 @@ actually holds.
 **`dependencies`** maps package names to what is wanted of each; see
 [Dependencies](#dependencies). It is required and may be empty.
 
+**`test-dependencies`** is the same map for packages the tests need and the package itself
+does not; see [Tests](#tests). It is required and may be empty.
+
 **Not implemented:** no part of this is read ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
 A manifest is not source text, so no tagged example can hold the compiler to any of it, and
 the ticket carries the obligation to rewrite this section when it lands.
 
 ## What a package exposes
 
-Every module of a package is importable from outside it, except the ones `private-modules`
-names. Those are **package-internal**: importable from other modules of the same package and
-from nowhere else, no matter what their own `exposing` lists say.
+Every module of a package under `src/` is importable from outside it, except the ones
+`private-modules` names. Those are **package-internal**: importable from other modules of the
+same package and from nowhere else, no matter what their own `exposing` lists say.
 
 A module is written to be used, and in most packages most modules are; the manifest records
 the exceptions rather than restating the rule. What that asks of a package is that a module
@@ -153,15 +176,20 @@ represents a package other than the one being compiled
 ## Dependencies
 
 A package may only use another package it has declared. `dependencies` maps a package name
-to a version constraint, in one of three forms:
+to an object, which says both what is wanted of that package and where it comes from:
 
 ```text
 "dependencies": {
-  "zelkova-widgets": "^1.2.0",
-  "fmonniot-json":   "=0.4.1",
-  "acme-parser":     ">=2.1.0, <2.5.0"
+  "acme-widgets": { "version": "^1.2.0",
+                    "git": "https://github.com/acme/widgets" },
+  "acme-json":    { "version": "=0.4.1",
+                    "git": "https://github.com/acme/json", "tag": "v0.4.1" },
+  "acme-parser":  { "version": ">=2.1.0, <2.5.0",
+                    "path": "../acme-parser" }
 }
 ```
+
+### The version constraint
 
 `^x.y.z` is the ordinary form. It admits any version at or above `x.y.z` that does not change
 the leftmost non-zero position — so `^1.2.0` allows `1.9.3` and not `2.0.0`, `^0.3.1` allows
@@ -170,16 +198,46 @@ position is where breaking changes go, and below `1.0.0` there is no major posit
 to go in. `=x.y.z` admits that version alone. A two-sided range admits everything between its
 bounds, the lower inclusive and the upper exclusive.
 
-A dependency may also be written as an object, which is the same constraint under a `version`
-field plus anything else the depending package wants to say about it. One thing is sayable
-today: `wrapped`, which is `true` unless written, and which decides
+### Where a dependency comes from
+
+Every entry names a **source**, and names exactly one. There is no index anywhere that a bare
+name could be looked up in, and so no version constraint alone is enough to find a package:
+the manifest is where a package says where its dependencies are, and reading one file is
+enough to know.
+
+`git` is a repository URL. It may be accompanied by one of `tag`, `branch` or `rev`, and by at
+most one; with none of them, the repository's default branch is used. `path` is a directory,
+relative to the manifest that names it, holding a package being developed alongside this one.
+Whichever is written, the version constraint still applies and is checked against the `version`
+the package found there declares — a `path` dependency is a different way of obtaining a
+package, not a way of skipping what is asked of it.
+
+The key is the package's name and the fetched package's own `name` field must equal it.
+Otherwise a manifest could call a package anything, and the namespace a dependent derives from
+that key would name modules the package itself has never heard of.
+
+Two entries anywhere in a build that give one name two different sources is an error, and so
+is one name given a source and, elsewhere, another. A name is a package's identity for the
+whole build, not a label local to the manifest that writes it, and two packages under one name
+would collide in exactly the way [at most one version](#one-version-of-each) already forbids.
+
+How a source is fetched, where the fetched copy is kept, and what a build does when the network
+is unavailable are matters for the toolchain rather than the language, and the
+[toolchain appendix](toolchain.md) describes them.
+
+### `wrapped`
+
+An entry may also carry `wrapped`, which is `true` unless written, and which decides
 [how that dependency's modules are named](#unwrapping-a-dependency) in this package.
 
 ```text
 "dependencies": {
-  "acme-parser": { "version": ">=2.1.0, <2.5.0", "wrapped": false }
+  "acme-parser": { "version": ">=2.1.0, <2.5.0",
+                   "path": "../acme-parser", "wrapped": false }
 }
 ```
+
+### One version of each
 
 Two rules bind the resolved set of packages a build is made from. The package graph is
 **acyclic** — a package may not depend on itself, directly or through a chain — for the same
@@ -192,13 +250,16 @@ be unreachable under any spelling.
 Beyond satisfying every constraint, which version a resolver picks is not a question the
 language answers. What it picked is recorded in `zelkova.lock`, generated beside the
 manifest: the manifest says what is acceptable and the lock file says what was chosen, so a
-build is reproducible without the manifest having to be rewritten to pin it.
+build is reproducible without the manifest having to be rewritten to pin it. Its contents are
+[in the toolchain appendix](toolchain.md#resolution-and-zelkovalock).
 
-**Only direct dependencies are usable.** A package listed in `dependencies` is importable; a
-package reached only through one of those is not. So the packages a module may draw on are
-exactly the ones written in the manifest beside it, and a reader never has to walk a
-dependency chain to find out where a module could have come from. It also means upgrading a
-dependency cannot change what any import in your own package resolves to.
+### Only direct dependencies are usable
+
+A package listed in `dependencies` is importable; a package reached only through one of those
+is not. So the packages a module may draw on are exactly the ones written in the manifest
+beside it, and a reader never has to walk a dependency chain to find out where a module could
+have come from. It also means upgrading a dependency cannot change what any import in your own
+package resolves to.
 
 ### `zelkova-core` is a dependency of every package
 
@@ -316,7 +377,8 @@ named by their own names in every file of the depending package: `Size`, not
 
 ```text
 "dependencies": {
-  "acme-widgets": { "version": "^1.2.0", "wrapped": false }
+  "acme-widgets": { "version": "^1.2.0",
+                    "git": "https://github.com/acme/widgets", "wrapped": false }
 }
 ```
 
@@ -331,6 +393,58 @@ A module has exactly one spelling in any file. Wrapped, `Size` names nothing; un
 `AcmeWidgets.Size` names nothing. Two ways to write one import would put two prefixes on one
 module, which is the thing [one module, one import](modules.md#one-module-one-import) exists
 to prevent.
+
+### A local spelling stays local
+
+A module's **name** is its namespace and its path within its package: `AcmeWidgets.Size`. That
+is its identity, everywhere, and it is what every package other than the one holding it sees.
+
+Unwrapping and `as` produce **spellings**, and a spelling is a convenience the file or the
+package granting it keeps to itself. A file that writes `import AcmeWidgets.Size as Size` has
+chosen how to write that name in that file; a package that unwraps `acme-widgets` has chosen
+how to write it throughout its own source. Neither choice travels. What a module offers to
+whoever imports it is written in canonical names, so a type does not change identity by being
+mentioned in a file that spells it short, and two packages that spell one dependency
+differently still agree about every type in it.
+
+Three things follow, and together they answer what a package boundary can and cannot rename.
+
+**A package cannot rename a module it exposes.** A public module's name is its path, so
+`src/Model/Internal.zel` is `Todo.Model.Internal` to everyone outside `todo` and cannot be
+presented as `Todo.Parser`. Moving the file is the only way to change the name, and it is a
+breaking change for the same reason renaming an exposed function is.
+
+**A package cannot re-export a module of a dependency as one of its own.** `todo` may depend
+on `acme-widgets` and use it throughout, but `AcmeWidgets.Size` is a module of `acme-widgets`
+under every spelling and there is no `Todo.Size` to be had. A package's public surface is its
+own modules and nothing else, which is what makes the namespace prefix reliable: the package a
+module comes from is readable from the name.
+
+**A signature that names a dependency's type asks the consumer for that dependency.** Values
+flow freely — a consumer can call the function, hold the result and pass it on, knowing nothing
+about where its type was declared. Writing that type down is what needs the dependency, and a
+consumer adds it to its own manifest, at which point both packages mean the same type: one
+version of `acme-widgets` is in the build, so `AcmeWidgets.Size.Size` is one type wherever it
+is written.
+
+```text
+-- todo exposes:   resize : Task -> AcmeWidgets.Size.Size
+
+-- in a package depending on todo alone:
+import Todo.Model
+
+bigger = Todo.Model.resize task            -- fine
+
+f : Todo.Model.Task -> AcmeWidgets.Size.Size
+                       ^^^^^^^^^^^^^^^^^^^^
+-- error: there is no module named `AcmeWidgets.Size`
+--   `acme-widgets` is not a dependency of this package
+```
+
+That cost falls on whoever exposes the type, and it is the design pressure it looks like: a
+type in a public signature is part of the package's interface, and a package that puts a
+dependency's type there has made that dependency part of what it asks of its users. Wrapping
+the type in one of its own is how a package chooses not to.
 
 ### When two modules answer to one name
 
@@ -359,12 +473,53 @@ so no namespace is ever applied, nothing is unwrappable, and the two blocks abov
 `AcmeWidgets.Size` fail on a module that cannot be found
 ([`docs/tickets/lang-14.md`](../tickets/lang-14.md)).
 
+## Tests
+
+`tests/` is the package's second source root. A module under it is an ordinary module, with
+one difference: it is compiled when this package's own tests are run, and never otherwise.
+A package that depends on this one does not compile it, does not resolve what it needs, and
+cannot observe that it exists.
+
+A test module may import any module of its own package, the private ones included — reaching
+what a package keeps to itself is most of why the root exists, and a package whose internals
+could only be tested through its public surface would be pushed into exposing them. It may
+also import the public modules of the package's dependencies and of its test-dependencies,
+under exactly the rules above: namespaced, or unwrapped where that dependency's entry says so.
+
+Nothing may import a test module. A module under `src/` cannot, which is what keeps `tests/`
+out of what the package ships, and no other package can, whatever the manifest says — a test
+module is not listed in `private-modules` for the same reason a `module javascript` facade is
+not: it is internal by where it lives rather than by being named.
+
+### `test-dependencies`
+
+`test-dependencies` maps package names to entries of exactly the shape `dependencies` takes —
+a version constraint, a source, and optionally `wrapped`. It is required and may be empty.
+
+A package listed there is available to `tests/` and to nothing else. It is not part of what
+this package offers, it is not resolved by anyone depending on this package, and it does not
+constrain their versions of anything. A test framework, a fixture generator and a
+property-checking library therefore cost a package's users nothing at all, which is the whole
+of why the second map exists: a package that needed a library only to check itself would
+otherwise be shipping that library to everyone.
+
+A package name appears in at most one of the two maps. Listing it in both would be asking for
+two entries about one package, and there is only one of it in a build; anything already in
+`dependencies` is usable from `tests/` without being written twice.
+
+The rest of the resolution rules are unchanged and apply to the union of the two maps. The
+graph stays acyclic, at most one version of each package is in the build, only direct
+dependencies are usable, and `zelkova.lock` records what was chosen for both.
+
+**Not implemented:** the compiler has one source root and no notion of a test at all
+([`docs/tickets/lang-15.md`](../tickets/lang-15.md)).
+
 ## Programs
 
 A package whose manifest has no `main` field is a library: it is something other packages
 depend on, and it does not run.
 
-`main` names one module, by its name within the package, which must be a module of the package
+`main` names one module, by its name within the package, which must be a module under `src/`
 and must expose a value called `main`. Naming it in the manifest rather than fixing it by
 convention means the entry point is findable in the same file as everything else about the
 package, and a module can be a program's entry point without its name having to say so.
@@ -380,12 +535,9 @@ that runs ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
 - **What type `main` must have.** A program is more than a value of an arbitrary type — it
   has to describe how it starts, what it reacts to and what it does to the outside world —
   and the type that says so is undesigned.
-- **Where a dependency's code lives.** How a resolved package's source or compiled interfaces
-  reach the machine doing the compiling, and where they sit once they do, is a question about
-  a toolchain rather than about the language.
-- **Dependencies needed only for tests.** There is one `dependencies` map, so a package that
-  wants a library for its tests alone must ship that dependency to everyone who uses it.
-- **Whether a package may present a module under a name of its choosing.** The namespace
-  prefix is the only renaming a package boundary does, and it is mechanical, so a package
-  cannot present `Model.Internal` as `Todo.Parser`, and a public module's path is its name.
-  Nor can a package re-export a module of a dependency as one of its own.
+- **What a test is.** A module under `tests/` is compiled, and nothing yet says what makes a
+  declaration in it something a runner will run: an exposed value of a particular type, a
+  naming convention, or a declaration form the language does not have. It waits on the same
+  design `main`'s type waits on, since both are a value the outside world picks up and acts
+  on. How a runner is invoked, and what it reports, are
+  [toolchain](toolchain.md#running-a-packages-tests) questions rather than language ones.

@@ -22,6 +22,12 @@ other than the one being compiled; `src/compiler/canonical/environment.rs`, whic
   dependency's entry, and then that package's modules are named by their own names throughout
   the depending package. The choice belongs to the depending package and is invisible to
   anyone else. Either way a module has exactly one spelling in a file.
+- **A local spelling never travels.** A module's name is its namespace plus its path within
+  its package, and that is its identity everywhere; unwrapping and `as` produce spellings, and
+  an `Interface` carries canonical names throughout. So a package cannot rename a module it
+  exposes, cannot re-export a dependency's module as one of its own, and a consumer that wants
+  to *write* a type a dependency's signature mentions adds that package to its own
+  `dependencies` — one version is in the build, so both then mean the same type.
 - `zelkova-core` is unwrapped in every package and is not written in `dependencies`, so
   `Basics` is `Basics` everywhere.
 - Two modules answering to one name in one package is an error, reported **when the build is
@@ -43,9 +49,12 @@ driver and the environment.
 **Approach:** after `LANG-13`, in roughly this order.
 
 1. Resolve the dependency set — reading `zelkova.lock`, generating it when absent — and give
-   `compile_package` a way to obtain each dependency's `Interface`s. Where those come from on
-   disk is a toolchain question the spec leaves open; compiling each dependency from source is
-   the simplest first answer.
+   `compile_package` a way to obtain each dependency's `Interface`s. How a source is fetched
+   and where the fetched copy sits is
+   [the toolchain appendix](../spec/toolchain.md#where-a-dependency-comes-from)'s, and none of
+   it is normative; compiling each dependency from source is the simplest first answer, and a
+   `path` dependency is the cheapest source to support first because it needs no fetching at
+   all.
 2. For each direct dependency, load its public modules into the environment: keyed
    `<Namespace>.<module name>` by default, or by their own names when that dependency's entry
    says `"wrapped": false`. Private modules and `module javascript` facades are not loaded at
