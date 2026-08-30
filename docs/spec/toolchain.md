@@ -51,23 +51,35 @@ is a legal source: `https://`, `ssh://`, `git@host:path`, and a local repository
 path. Authentication is `git`'s: a private dependency works if the user's `git` can already
 fetch it, and the toolchain neither stores nor asks for a credential.
 
-An entry says which commit it wants in one of three ways, and which three is the language's
+An entry says which commit it wants in one of two ways, and which two is the language's
 ([Packages](packages.md#where-a-dependency-comes-from)): a `version` constraint, resolved
-through the repository's version tags, or a `rev`, or a `branch`.
+through the repository's version tags, or a `rev`.
 
 | Field | Names | Moves when |
 |---|---|---|
 | `version` | the highest tagged version satisfying the constraint | a satisfying tag is pushed, until the lock file names a commit |
 | `rev` | one commit | never |
-| `branch` | a branch's tip | the branch advances |
 
 **Provisional:** resolving a `version` means listing the source's tags, and a tag is read as a
 version when it is `v` followed by three dot-separated integers and nothing else. Every other
 tag is invisible to resolution, so a repository is free to tag whatever else it likes. A tag
 is fetched as a tag and never as a branch, so a repository with both under one name resolves
-to the tag; a `rev` may be abbreviated as long as it is unambiguous in the fetched repository.
+to the tag.
 
-The three differ in how firmly they pin, and the difference matters only until the lock file
+**Provisional:** a `rev` is a whole commit hash and is never abbreviated. An abbreviation is
+unambiguous only against the repository as it stands, so one that resolves today can stop
+resolving as the repository grows, and a prefix is a weaker statement about which bytes are
+wanted than the hash it was taken from. Nothing is gained by shortening a field written once
+and read by a machine.
+
+**Provisional:** a toolchain offers to write a `rev` rather than making the user find one:
+given a branch, it resolves that branch's tip, rewrites the entry with the commit it found,
+and leaves the branch it followed and the date in a comment beside it — the provenance a bare
+hash loses, put where nothing can resolve against it. Following a branch is an act with a
+date, and this is where it belongs: between edits of the manifest, producing a diff, rather
+than inside an entry that would move on its own afterwards.
+
+The two differ in how firmly they pin, and the difference matters only until the lock file
 exists — after that, the lock names a commit and the entry is consulted again just to check
 that commit still satisfies it.
 
@@ -100,9 +112,9 @@ package would name one that does not exist.
 The package's own `version` must agree with how the package was found. A `git` source reached
 through the tag `v1.2.4` declares `1.2.4` at that commit, or the tag and the manifest disagree
 about what was published — a hard error, because everything downstream, the lock file
-included, records the declared version. A `path` source, and a `rev` or `branch` pin, name a
-commit directly and so are checked the other way round: whatever version the package declares
-there must satisfy every constraint the build places on that name. The fact that a human chose
+included, records the declared version. A `path` source and a `rev` pin name their bytes
+directly rather than by version, and so are checked the other way round: whatever version the
+package declares there must satisfy every constraint the build places on that name. The fact that a human chose
 that commit does not make it satisfy them.
 
 ## Resolution and `zelkova.lock`
@@ -121,10 +133,9 @@ appendix's.
 highest version satisfying all of them is chosen. When their constraints have no common
 version, resolution fails and the error names each constraint and the package that wrote it —
 there is nothing to fall back on, because choosing one of them would build a package against a
-version it declared it could not work with. An entry pinned to a `rev` or a `branch` has
-nothing chosen for it: it contributes the version its own manifest declares, and if that
-version fails somebody else's constraint, resolution fails exactly as a conflict between two
-constraints does.
+version it declared it could not work with. An entry pinned to a `rev` has nothing chosen for
+it: it contributes the version its own manifest declares, and if that version fails somebody
+else's constraint, resolution fails exactly as a conflict between two constraints does.
 
 **Provisional:** `zelkova.lock` is written beside `zelkova.toml`, by the toolchain, and is
 checked into version control. It is TOML like the manifest, and records one entry per resolved
@@ -143,8 +154,8 @@ hash = "sha256-9f1c…"
 version = "2.4.0"
 ```
 
-`commit` is what makes a `git` source reproducible: a `branch` entry resolves to a tip once and
-then stays there until something asks it to move. `hash` is over the fetched package's files
+`commit` is what makes a `git` source reproducible: a `version` entry resolves through a tag
+once and then stays on that commit until something asks it to move, whatever is tagged later. `hash` is over the fetched package's files
 and is what makes it verifiable — a source that later serves different bytes under the same
 commit is a mismatch and a hard error, not a silent update. An entry with a version and no
 source is a `path` dependency, recorded for what it resolved to and not for where it was.

@@ -36,12 +36,6 @@ versions a build was resolved to. It is not written by hand and says nothing the
 does not already permit; the [toolchain appendix](toolchain.md#resolution-and-zelkovalock)
 is where it is described.
 
-Requiring the manifest is what gives three questions an answer for every package without
-exception. *Which package is this module in?* — a package always has a name, so a diagnostic
-can say where a module came from. *May I import this?* — it always has a stated public
-surface, so the question is decidable. *Where could this module have come from?* — it always
-has a dependency list, so the answer is in one file.
-
 **Not implemented:** the compiler reads no manifest. It is handed a source directory
 directly, and the name of the package it is compiling is fixed at the call site rather than
 declared — so every module it compiles, from any directory, belongs to one package with a
@@ -180,8 +174,8 @@ represents a package other than the one being compiled
 
 ## Dependencies
 
-A package may only use another package it has declared. `dependencies` maps a package name
-to an object, which says both what is wanted of that package and where it comes from:
+A package may only use another package it has declared. `dependencies` maps a package name to
+a table, which says both what is wanted of that package and where it comes from:
 
 ```toml
 [dependencies.acme-widgets]
@@ -189,11 +183,10 @@ version = "^1.2.0"
 git = "https://github.com/acme/widgets"
 
 [dependencies.acme-json]
-version = "=0.4.1"
+version = ">=0.4.1, <0.6.0"
 git = "https://github.com/acme/json"
 
 [dependencies.acme-parser]
-version = ">=2.1.0, <2.5.0"
 path = "../acme-parser"
 ```
 
@@ -227,26 +220,40 @@ git = "https://github.com/acme/json"    # resolves through the tag v0.4.3
 ```
 
 Work that has not been published has no version to ask for, and an entry reaches it by
-writing `rev` or `branch` in place of `version`: one commit, or a branch whose tip is taken
-when the build is resolved.
+writing `rev` in place of `version`: one commit, named in full.
 
 ```toml
 [dependencies.acme-widgets]
 git = "https://github.com/acme/widgets"
-branch = "size-rework"
+rev = "a3f9c1d84b2e57906fbbb0a4c1d2e3f4a5b6c7d8"  # size-rework, 2026-08-30
 ```
 
-An entry carries a constraint or a pin, never both, and never two pins. They are alternative
-answers to one question, and an entry giving both would say which commit it wants twice, in
-two vocabularies that can contradict each other — a state a manifest should not be able to
-describe at all. A pinned package still declares a `version` in the manifest at that commit,
-and that version is what it brings to the rest of the build: every constraint anyone else
-placed on that package still has to hold.
+A commit is the only pin there is, and a branch name is not one. A version constraint and a
+commit are both things the manifest states and a reader can check; a branch is a name someone
+else owns, and what it points at changes with nothing in this package changing — a dependency
+that moves without a diff is one nobody reviewed. Following a branch is something done between
+edits of the manifest, by resolving a tip and writing down the commit it was, and where that
+commit came from is a comment beside it.
 
-A `path` entry has no tags to resolve through, so its version constraint is checked rather
-than resolved — against the `version` declared by the package in that directory. A `path`
-dependency is a different way of obtaining a package, not a way of skipping what is asked of
-it.
+A `path` names a directory, and there is nothing left for a version constraint to choose
+among, so an entry naming one carries no `version` either:
+
+```toml
+[dependencies.acme-parser]
+path = "../acme-parser"
+```
+
+So an entry says what it wants exactly once: a `git` source carries a version constraint or a
+`rev`, and a `path` carries neither. Two of them in one entry would be two answers to a
+question that has one, and the second is either agreeing with the first or contradicting it.
+Which of those the manifest is doing cannot be read off the entry, so neither is a state worth
+being able to write.
+
+Saying it once is not saying less. Whichever form is written, a package arrives declaring a
+`version` in its own manifest, and that version is what it brings to the rest of the build:
+every constraint anyone else placed on that package still has to hold. What an entry gives up
+is a constraint on its *own* choice, which had already been made by the time the constraint
+could be read.
 
 The key is the package's name and the fetched package's own `name` field must equal it.
 Otherwise a manifest could call a package anything, and the namespace a dependent derives from
@@ -270,7 +277,6 @@ An entry may also carry `wrapped`, which is `true` unless written, and which dec
 
 ```toml
 [dependencies.acme-parser]
-version = ">=2.1.0, <2.5.0"
 path = "../acme-parser"
 wrapped = false
 ```
