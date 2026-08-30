@@ -219,7 +219,7 @@ tuples, JS interop via `module javascript` facades with companion `.mjs` files, 
 `{- -}` comments.
 
 Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, the
-unit type, type aliases, and the `zelkova.json` package manifest. The standard library under
+unit type, type aliases, and the `zelkova.toml` package manifest. The standard library under
 `std/core/src/` carries `.ignored` files for modules that do not compile yet.
 
 Settled by `SPEC-11`, then `SPEC-12`: `number`, `comparable` and `appendable` are **ordinary

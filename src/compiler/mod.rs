@@ -6,7 +6,7 @@
 //! Note: We don't manage interfaces and external modules. We try to keep them
 //! in mind, so they can be relatively easily added later on.
 //!
-//! 1. Start at the src/ folder. We name it root. (later on defined in a `zelkova.json` manifest)
+//! 1. Start at the src/ folder. We name it root. (later on defined in a `zelkova.toml` manifest)
 //! 2. Collect all `*.zelkova` files with their path name relatives to the root.
 //! 3. Create a `SourceFiles` mapping from `ModuleName` to `parser::Module`.
 //!     1. module names are deduced from file name

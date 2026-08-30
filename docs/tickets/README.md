@@ -1,13 +1,13 @@
 # Zelkova — Ticket index
 
-_Last updated: 2026-08-29._
+_Last updated: 2026-08-30._
 
 `SPEC-2` opened a second body of work alongside the diagnostics program below: specifying the
 language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
 will keep producing them — writing down a rule that was never written down is how you find out
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
 from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, `SPEC-11` a
-`BUG-` and an `ERR-`, and `SPEC-7` another four.
+`BUG-` and an `ERR-`, `SPEC-10` a `BUG-` and two `LANG-`s, and `SPEC-7` another four.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
@@ -213,6 +213,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-18](bug-18.md) | bug | medium | open | A variant that is not a constructor application is silently dropped |
 | [BUG-19](bug-19.md) | bug | medium | open | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
 | [BUG-20](bug-20.md) | bug | high | open | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |
+| [BUG-21](bug-21.md) | bug | medium | open | Every error from the source-directory walk is discarded, so a missing package root compiles as success |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -234,7 +235,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-7 | task | — | closed 2026-08-29 | Write the Patterns chapter |
 | [SPEC-8](spec-8.md) | task | — | open | Write the Name resolution and scoping chapter |
 | [SPEC-9](spec-9.md) | task | — | open | Write the Evaluation semantics chapter |
-| [SPEC-10](spec-10.md) | task | — | open | Write the Packages and source layout chapter |
+| SPEC-10 | task | — | closed 2026-08-30 | Write the Packages and source layout chapter |
 | SPEC-11 | task | — | closed 2026-08-29 | Write the Constrained type variables chapter |
 | SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
@@ -249,6 +250,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-10](lang-10.md) | task | — | open | A trailing `\|` and a variant-less `type T =` are both accepted |
 | [LANG-11](lang-11.md) | task | — | open | A type annotation may sit anywhere in the file, and a repeated one silently wins |
 | [LANG-12](lang-12.md) | task | — | open | An annotation more general than its body is accepted and silently specialised |
+| [LANG-13](lang-13.md) | task | — | open | A package has no manifest, and its name is hardcoded |
+| [LANG-14](lang-14.md) | task | — | open | Nothing implements a package boundary |
+| [LANG-15](lang-15.md) | task | — | open | A package has no test root, and nothing runs a package's tests |
 | [LANG-16](lang-16.md) | task | — | open | A constructor pattern may not nest, and may not be parenthesised in a `case` branch |
 | [LANG-17](lang-17.md) | task | — | open | A constructor pattern's arity is never checked |
 | [LANG-18](lang-18.md) | task | — | open | A pattern may bind the same name more than once |
