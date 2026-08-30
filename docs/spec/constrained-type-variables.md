@@ -12,7 +12,8 @@ much as `a`, and no spelling of one carries a restriction.
 This chapter exists because that is not what a reader assumes. The three names look like
 vocabulary; every one of them is a variable, and reading one as a constraint is the specific
 error the chapter is here to prevent. It then records what the language means to do instead —
-the direction is settled, the mechanism is not — and what a program should do until that lands.
+**type classes**, whose design is now settled and written up in [`SPEC-12`](../tickets/spec-12.md)
+— and what a program should do until that lands.
 
 ## The rule
 
@@ -172,9 +173,10 @@ than answering half of it in passing.
 
 ## The intended answer: type classes
 
-**Not implemented:** none of this parses. The direction below is the language owner's decision
-and is recorded as settled; the syntax is not, and the sketches in this section are tagged
-`expect=fragment` for that reason. A fragment is the one block the harness does not execute, so
+**Not implemented:** none of this parses. The direction *and* the syntax below are the language
+owner's decisions and are recorded as settled — [`SPEC-12`](../tickets/spec-12.md) carries them
+in full — but nothing in the compiler implements either yet, so the sketches in this section
+stay tagged `expect=fragment`. A fragment is the one block the harness does not execute, so
 nothing here is a claim about what the compiler accepts.
 
 Zelkova will grow **type classes**, and they will be what these three names become. Not a fixed
@@ -206,36 +208,31 @@ instance Comparable Colour where
     Js.Utils.compare a b
 ```
 
-### What is still open
+### The mechanism is designed, and lives elsewhere
 
-The direction does not answer any of these, and each has to be settled before the mechanism can
-be written down:
+**Not implemented:** none of it parses yet, and this chapter is not where it is written down.
+The six questions this section used to hold open — how a constraint is spelled, where an
+instance may be declared, whether a class may require another, how a class reaches JavaScript,
+defaulting, and what happens to the standard library — were settled together by the language
+owner. The record is [`SPEC-12`](../tickets/spec-12.md), which carries the decisions in full and
+is also the ticket for the *Type classes* chapter that **supersedes this one**.
 
-- **How a constraint is spelled in an annotation.** The sketch borrows `=>`, which today is not
-  a token the type grammar has any use for. Whether a constrained annotation is one production
-  or two, and how a constraint interacts with the two-space continuation rule that
-  [Types](types.md#the-function-arrow) describes for a long signature, is undesigned.
-- **Where an instance may be declared.** If any module may declare an instance for any class
-  and any type, two packages can define conflicting instances for the same pair and the meaning
-  of a call depends on what else was linked. The usual answer is an orphan rule tying an
-  instance to the module declaring either the class or the type. That is a rule about package
-  boundaries as much as about types, so it wants settling alongside the planned *Packages and
-  source layout* chapter (see [the chapter list](README.md#chapters)).
-- **Whether a class may require another.** `Ord` needing `Eq` is the standard case, and
-  superclasses are a real increment in complexity for the checker.
-- **How a class reaches JavaScript.** The obvious implementation passes a dictionary of the
-  class's methods as a hidden argument. That collides with what
-  [JS interop](js-interop.md) guarantees: a `module javascript` facade's companion `.mjs`
-  export takes a plain parameter list, and a hidden dictionary argument is exactly the kind of
-  calling convention that file is promised it will never have to know about. Either
-  constrained functions may not be facades, or the dictionary is erased before codegen — a
-  choice with consequences for both chapters.
-- **Defaulting.** `1` on its own, with nothing else to constrain it, has to resolve to
-  something. So does a call whose constraint the checker cannot discharge from context.
-- **What happens to the standard library.** `Basics` currently declares `eq : a -> a -> Bool`,
-  unconstrained, and the runtime behind it crashes on a function. Once classes exist, deciding
-  which of `std/core`'s signatures gain a constraint is a pass over the whole package rather
-  than a mechanical rename.
+The four that change how the sketches above should be read:
+
+- A constraint is written before the type, with `=>`, exactly as sketched. `=>` becomes its own
+  token, which it is not today.
+- `class` and `instance` are keywords, and members live in an indented `where` block.
+- An instance may be declared in the module declaring the class, or in the module declaring the
+  type, and nowhere else.
+- **A `module javascript` facade signature may not carry a constraint.** This is the answer to
+  the sharpest of the six. [JS interop](js-interop.md) promises a companion `.mjs` export a
+  plain parameter list; rather than relax that, the constraint moves one level up into an
+  ordinary Zelkova function, and the facade underneath it becomes monomorphic. Dictionaries are
+  erased by specialisation before code generation, so none exists at runtime.
+
+`SPEC-12` deletes this file when that chapter is written. What survives into it: the rule at the
+top, the fact that the three spellings stay ordinary identifiers permanently rather than
+transitionally, and the *Until then* section below.
 
 ## Until then
 

@@ -89,7 +89,8 @@ example belongs in a block with no `package=` label.
 | Evaluation semantics | planned ([SPEC-9](../tickets/spec-9.md)) |
 | [JS interop](js-interop.md) | written |
 | Packages and source layout | planned ([SPEC-10](../tickets/spec-10.md)) |
-| [Constrained type variables](constrained-type-variables.md) | written |
+| [Constrained type variables](constrained-type-variables.md) | written — superseded by SPEC-12 |
+| Type classes | planned ([SPEC-12](../tickets/spec-12.md)) |
 
 Together the planned chapters are meant to be the whole language, not a set of footnotes to
 somebody else's manual — that is what *the spec is self-contained* costs, and it is the
@@ -127,9 +128,17 @@ fixing it. What each chapter has to cover:
 - **Constrained type variables** (`number`, `comparable`, `appendable`) — these are ordinary
   type variables and always were; the chapter says so, and records that **type classes**,
   without higher-kinded variables, are the intended way to express what they were reaching for.
-  The direction is the language owner's decision; the mechanism is not designed, and the
-  chapter lists what it still has to answer. A spec is a good place to hold an open design
-  question and a bad place to settle one by accident.
+  **This chapter is superseded**: the mechanism has since been designed
+  ([SPEC-12](../tickets/spec-12.md) carries the decisions), and a *Type classes* chapter answers
+  the question this one holds open as a paragraph of a larger story. `SPEC-12` deletes this file
+  and absorbs the three parts of it that survive — the rule itself, the fact that the three
+  spellings stay ordinary identifiers forever, and what a program does until the mechanism
+  lands.
+- **Type classes** — the class and instance declarations, how a constraint is written in an
+  annotation, where an instance may be declared, superclasses, and what a constrained function
+  may not be: a `module javascript` facade. Supersedes *Constrained type variables*. Gated on
+  [TEST-2](../tickets/test-2.md), because every claim it makes is a type-level claim and the
+  harness stops at canonicalization.
 
 ### Tag every claim the chapter makes
 
