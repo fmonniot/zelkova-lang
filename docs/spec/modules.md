@@ -769,7 +769,8 @@ x = 1 + 2
 
 ## Packages
 
-A module name is unique within a package, and an `import` names a module in the package
-being compiled or in one of its dependencies. What a package is, how its dependencies are
-declared, and what visibility means at a package boundary are the subject of *Packages and
-source layout* — planned; see [the chapter list](README.md#chapters).
+A module belongs to exactly one package, and its name is unique within it. An `import`
+names a module of the package being compiled or an exposed module of one of that package's
+direct dependencies. What a package is, which of its modules it exposes, how its dependencies
+are declared, and how an import names a package when two of them expose one module name are
+the subject of [Packages and source layout](packages.md).

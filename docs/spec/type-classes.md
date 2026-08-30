@@ -257,8 +257,10 @@ The cost falls on the third party: if neither the class nor the type is yours, y
 the one an instance of the other, and the way out is a type of your own that wraps the one you
 wanted. That is the price of a call meaning one thing.
 
-**Known gap:** What a **package** boundary adds is not settled here; see
-[Packages and source layout](README.md#chapters) when that chapter exists.
+A **package** boundary adds nothing to this rule and does not need to. Every module belongs
+to exactly one package ([Packages and source layout](packages.md)), so an instance can only be
+written by whoever owns the class's module or the type's module — which is to say by whoever
+ships one of those two packages. A third package that depends on both still cannot pair them.
 
 ## A class is always over a complete type
 

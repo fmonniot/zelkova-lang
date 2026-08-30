@@ -235,7 +235,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-7](spec-7.md) | task | — | open | Write the Patterns chapter |
 | [SPEC-8](spec-8.md) | task | — | open | Write the Name resolution and scoping chapter |
 | [SPEC-9](spec-9.md) | task | — | open | Write the Evaluation semantics chapter |
-| [SPEC-10](spec-10.md) | task | — | open | Write the Packages and source layout chapter |
+| SPEC-10 | task | — | closed 2026-08-30 | Write the Packages and source layout chapter |
 | SPEC-11 | task | — | closed 2026-08-29 | Write the Constrained type variables chapter |
 | SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
