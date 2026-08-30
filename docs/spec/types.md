@@ -114,11 +114,6 @@ identity x =
   x
 ```
 
-That rule holds for every spelling without exception, `number`, `comparable` and `appendable`
-included: they are type variables like `a`, and a signature naming one accepts any type at all.
-Restricting a variable to the types that support some set of operations is what
-[Type classes](type-classes.md) is for, and a class constraint is the only thing that does it.
-
 A type variable is never **applied**. Only a type name may head an application, so `m a` — a
 variable standing for a type constructor rather than for a type — is a syntax error:
 
@@ -137,8 +132,7 @@ That is a deliberate limit and not an oversight. Allowing it would mean type var
 over type constructors as well as types, which needs a kind system — a large
 commitment the language is not ready for it yet. A variable always stands for a complete
 type. [Type classes](type-classes.md#a-class-is-always-over-a-complete-type) carries what that
-costs: a class is always over a complete type, so `Functor`- and `Monad`-shaped abstractions are
-out of reach.
+costs: a class is always over a complete type.
 
 ## Applying a type to arguments
 
