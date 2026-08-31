@@ -190,6 +190,11 @@ f x =
 There is no separator between declarations. Blank lines between them are conventional and
 carry no meaning.
 
+A declaration written as several clauses is no exception to any of this. Each clause begins in
+column 1 and so ends the one before it, exactly as the rule says; what makes them one
+declaration is that they share a name, not anything about how they are laid out. See
+[Patterns](patterns.md#a-pattern-that-can-fail-and-one-that-cannot).
+
 ## `case … of`
 
 This is where layout does its real work, and where most of the rules live.

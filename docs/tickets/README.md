@@ -7,7 +7,7 @@ language itself, one chapter at a time. It is where the first four `LANG-` ticke
 will keep producing them — writing down a rule that was never written down is how you find out
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
 from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, `SPEC-11` a
-`BUG-` and an `ERR-`, and `SPEC-10` a `BUG-` and two `LANG-`s.
+`BUG-` and an `ERR-`, `SPEC-10` a `BUG-` and two `LANG-`s, and `SPEC-7` another five.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
@@ -232,7 +232,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-4](spec-4.md) | task | — | open | Write the Declarations chapter |
 | SPEC-5 | task | — | closed 2026-08-29 | Write the Types and type annotations chapter |
 | [SPEC-6](spec-6.md) | task | — | open | Write the Expressions chapter |
-| [SPEC-7](spec-7.md) | task | — | open | Write the Patterns chapter |
+| SPEC-7 | task | — | closed 2026-08-29 | Write the Patterns chapter |
 | [SPEC-8](spec-8.md) | task | — | open | Write the Name resolution and scoping chapter |
 | [SPEC-9](spec-9.md) | task | — | open | Write the Evaluation semantics chapter |
 | SPEC-10 | task | — | closed 2026-08-30 | Write the Packages and source layout chapter |
@@ -253,6 +253,11 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-13](lang-13.md) | task | — | open | A package has no manifest, and its name is hardcoded |
 | [LANG-14](lang-14.md) | task | — | open | Nothing implements a package boundary |
 | [LANG-15](lang-15.md) | task | — | open | A package has no test root, and nothing runs a package's tests |
+| [LANG-16](lang-16.md) | task | — | open | A constructor pattern may not nest, and may not be parenthesised in a `case` branch |
+| [LANG-17](lang-17.md) | task | — | open | A constructor pattern's arity is never checked |
+| [LANG-18](lang-18.md) | task | — | open | A pattern may bind the same name more than once |
+| [LANG-19](lang-19.md) | task | — | open | Nothing checks that a `case` covers its type |
+| [LANG-20](lang-20.md) | task | — | open | A declaration may have only one clause |
 | [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
