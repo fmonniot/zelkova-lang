@@ -20,22 +20,27 @@ made of. That chapter owns their syntax, where an annotation may be written, how
 declaration may carry, and what a variant may be. This chapter refers to it rather than
 restating any of it.
 
-**Problem:** value and function declarations, `infix` declarations, and multi-line function
+**Problem:** value and function declarations, `infix` declarations, and multi-clause function
 declarations with pattern matching have never been written down. The last is a deliberate
-divergence from Elm — there is no inherited rule even
-to restate. One thing worth checking early rather than assuming either way: the parser appears
-to group a multi-clause binding into one `Function`/`Match` (`Module::from_declarations`),
-while `do_values` in canonicalization appears to reject more than one binding for a name
-outright (`Error::MultipleBindingsUnsupported`). `CLAUDE.md` lists multi-clause function
-declarations as implemented; if probing confirms the rejection, that's a real discrepancy for
-the chapter (or a `BUG-`) to address — not something to take as given from this description.
+divergence from Elm — there is no inherited rule even to restate.
+
+**The multi-clause question this ticket raised is answered (`SPEC-7`, 2026-08-30).** The
+parser does group the clauses into one `Function` with several `Match`es, and `do_values` does
+reject any `Function` with more than one — so the construct is designed, parsed, and then
+turned away by canonicalization. [`docs/spec/patterns.md`](../spec/patterns.md)'s *A pattern
+that can fail, and one that cannot* specifies the pattern half of it (clauses cover the type
+between them, are tried in order, and are each one binding position) and tags a block
+`expect=canonical-error:MultipleBindingsUnsupported`; `LANG-20` is the implementing ticket.
+This chapter owns the declaration half — how a clause is written, how the clauses find each
+other, and how an annotation relates to all of them — and refers to `patterns.md` rather than
+restating it.
 
 **Approach:** follow `write-spec-chapter` in full. Likely territory, to confirm by probing
 rather than assume from this ticket: value/function declarations, `infix` declarations
-(precedence, associativity, fixity), and multi-line function declarations with pattern
-matching, resolving the `MultipleBindingsUnsupported` question above. Link to
-[`types.md`](../spec/types.md) for the annotation and `type` forms rather than duplicating
-them.
+(precedence, associativity, fixity), and multi-clause function declarations. Link to
+[`types.md`](../spec/types.md) for the annotation and `type` forms, and to
+[`patterns.md`](../spec/patterns.md) for the pattern side of a clause, rather than duplicating
+either.
 
 **Acceptance:** `cargo test --test spec` green, `docs/spec/declarations.md` contributing its
 blocks with every block tagged and each tag proven to fail, `docs/spec/README.md`'s row for

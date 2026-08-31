@@ -16,11 +16,18 @@ therefore tell what a pattern matches by looking at it, without knowing which mo
 
 | Form | Written | Matches |
 |---|---|---|
-| wildcard | `_` | any value, binding nothing |
-| variable | `count` | any value, binding it under that name |
-| literal | `0`, `1.5`, `'x'` | a value equal to that literal |
-| tuple | `(a, b)`, `(a, b, c)` | a tuple of that arity, each element against its own pattern |
-| constructor | `Dot`, `Circle n`, `S.Dot` | a value built by that constructor, each argument against its own pattern |
+| [wildcard](#the-wildcard) | `_` | any value, binding nothing |
+| [variable](#variable-patterns) | `count` | any value, binding it under that name |
+| [literal](#literal-patterns) | `0`, `1.5`, `'x'`, `"ok"` | a value equal to that literal |
+| [tuple](#tuple-patterns) | `(a, b)`, `(a, b, c)` | a tuple of that arity, each element against its own pattern |
+| [constructor](#constructor-patterns) | `Dot`, `Circle n`, `S.Dot` | a value built by that constructor, each argument against its own pattern |
+| [as-pattern](#as-patterns) | `Circle n as whole` | whatever its left side matches, also binding the whole value |
+| [list](#list-patterns) | `[]`, `[a, b]` | a list of exactly that length |
+| [cons](#list-patterns) | `first :: rest` | a non-empty list, split into its first element and the rest |
+| [unit](#the-unit-pattern) | `()` | the one value of the unit type |
+
+The one form this table does not give a spelling for is the [record pattern](#record-patterns),
+because record syntax itself is not settled.
 
 ```zel expect=ok
 module Example exposing (Count, Shape, describe)
@@ -80,12 +87,14 @@ lambda's parameter. Neither construct exists yet; see [Layout](layout.md#let--in
 A pattern is **irrefutable** when every value of the type it is written against matches it,
 and **refutable** otherwise. The wildcard and a variable are always irrefutable. A tuple
 pattern is irrefutable exactly when all of its elements are. A literal pattern is always
-refutable. A constructor pattern is irrefutable only when its type has that one constructor
-and its arguments are themselves irrefutable.
+refutable, and so is every list pattern, the cons form included. A constructor pattern is
+irrefutable only when its type has that one constructor and its arguments are themselves
+irrefutable.
 
 Both positions accept both kinds. The language requires the patterns in a position to
-**cover** the type between them — a `case`
-covers it with its branches, and a function declaration covers it with its clauses:
+**cover** the type between them — a `case` covers it with its branches, and a function
+declaration covers it with its clauses. Both are tried in the order written, so an earlier
+branch or clause wins over a later one that would also have matched:
 
 ```zel expect=canonical-error:MultipleBindingsUnsupported
 module Example exposing (Flag, invert)
@@ -100,9 +109,10 @@ invert Off = On
 ```
 
 **Not implemented:** a declaration may be written as several clauses, one per line, each with
-its own patterns and its own body. The compiler parses them and then reports that a name
-declared over more than one binding is not supported, so today a declaration has exactly one
-clause and any pattern that can fail has to go in a `case`.
+its own patterns and its own body. Every clause names the same number of parameters. The
+compiler parses them and then reports that a name declared over more than one binding is not
+supported, so today a declaration has exactly one clause and any pattern that can fail has to
+go in a `case`. [`docs/tickets/lang-20.md`](../tickets/lang-20.md) is the ticket.
 
 Coverage is what makes this safe, and it is checked rather than assumed:
 
@@ -123,7 +133,7 @@ ignore flag =
 **Known gap:** that block should be rejected — the `case` has no branch for `Off`, so
 `ignore Off` has no value to produce. Nothing checks coverage today: the exhaustiveness phase
 inspects nothing and accepts every module.
-[`docs/tickets/lang-16.md`](../tickets/lang-16.md) is the ticket.
+[`docs/tickets/lang-19.md`](../tickets/lang-19.md) is the ticket.
 
 ## The wildcard
 
@@ -146,10 +156,8 @@ middle (Triple _ b _) =
   b
 ```
 
-`_` is a token in its own right and not a letter, so `_count` is *two* tokens — a wildcard
-followed by a variable — rather than one name. There is no convention by which a leading
-underscore marks a binding as unused; write `_`. See
-[Lexical structure](lexical-structure.md#the-underscore-is-not-a-letter).
+Ignore fields have to use a wildcard cannot use a variable name preceded by an underscore.
+`_count` is not a legal pattern. See [Lexical structure](lexical-structure.md#the-underscore-is-not-a-letter).
 
 ## Variable patterns
 
@@ -168,10 +176,12 @@ f : Flag -> Flag
 f flag =
   case flag of
     inner ->
+      -- legal: `inner` is the branch that bound it
       inner
 
 g : Flag
 g =
+  -- rejected: the branch above ended, and its bindings ended with it
   inner
 ```
 
@@ -217,17 +227,37 @@ same (Pair a a) =
 
 **Known gap:** that block should be rejected. Canonicalization inserts each of a pattern's
 variables into the branch's scope in turn, so the second `a` silently replaces the first and
-the body sees the second field. [`docs/tickets/lang-15.md`](../tickets/lang-15.md) is the
+the body sees the second field. [`docs/tickets/lang-18.md`](../tickets/lang-18.md) is the
 ticket.
 
-The rule spans a whole clause rather than one pattern, so `f a a = a` is an error too: the two
-parameters are one binding position, and a body naming `a` would have no way to say which it
-meant.
+The rule spans a whole **clause**, not one pattern. A declaration's parameters are separate
+patterns but one binding position between them, so repeating a name across two parameters is
+the same error:
+
+```zel expect=ok
+module Example exposing (Flag, pick)
+
+type Flag
+  = On
+  | Off
+
+pick : Flag -> Flag -> Flag
+pick a a =
+  a
+```
+
+`pick` takes two arguments and its body names `a`, which could mean either of them — there is
+no rule that picks one, so the declaration is rejected rather than resolved.
+
+**Known gap:** that block should be rejected too, and for the same reason as the one above:
+the two parameter patterns are exposed into the scope one after another, so the second `a`
+replaces the first and the body sees the second argument.
+[`docs/tickets/lang-18.md`](../tickets/lang-18.md) covers both.
 
 ## Literal patterns
 
-An integer, float or character literal matches a value equal to it. The literal is written
-exactly as it is in an expression; see
+Any literal (integer, float, character or string) matches a value equal to it. The literal is
+written exactly as it is in an expression; see
 [Lexical structure](lexical-structure.md#literals) for what each may contain.
 
 ```zel expect=ok
@@ -280,9 +310,6 @@ There is no boolean literal, and none is needed: `True` and `False` are ordinary
 of an ordinary union type, so a boolean pattern is a constructor pattern like any other. See
 [Lexical structure](lexical-structure.md#reserved-words).
 
-There is no string literal pattern, because there are no string literals; see
-[Lexical structure](lexical-structure.md#strings).
-
 ## Tuple patterns
 
 A tuple pattern has two or three elements, matching the tuple types the language has and no
@@ -300,9 +327,9 @@ swap (a, b) =
   (b, a)
 ```
 
-A four-element tuple pattern is a syntax error, not a type error, for the same reason a
-four-element tuple type is: there is no such tuple to describe. See
-[Types](types.md#tuple-types).
+The two-or-three limit and the reasoning behind it are in [Types](types.md#tuple-types); it
+holds in pattern position exactly as it does in type position, so a four-element tuple pattern
+is a syntax error rather than a type error:
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing (Flag)
@@ -380,10 +407,9 @@ identity Unit =
   Unit
 ```
 
-Dropping the parentheses is not a mistake the grammar can catch, and that is why the rule is
-worth knowing rather than merely obeying. A head is a sequence of patterns, so `width Dot n`
-below is a well-formed head of **two** parameters — a nullary constructor pattern and a
-variable. What rejects it is the annotation, which promises one:
+Dropping the parentheses means `width Dot n` below is a well-formed head of **two**
+parameters: a nullary constructor pattern and a variable. Nothing about the patterns
+is wrong; what rejects it is the annotation, which promises one parameter:
 
 ```zel expect=canonical-error:BindingPatternsInvalidLen
 module Example exposing (Count, Shape, width)
@@ -401,12 +427,14 @@ width Dot n =
   One
 ```
 
-See [Types](types.md#the-annotation-and-the-declarations-parameters). A declaration with no
-annotation has nothing to disagree with, so it takes however many parameters its head names.
+That check belongs to the annotation rather than to the patterns, and
+[Types](types.md#the-annotation-and-the-declarations-parameters) is where it is specified. A
+declaration with no annotation has nothing to disagree with, so it takes however many
+parameters its head names — and dropping the parentheses there changes the declaration's arity.
 
 ### The arguments must be the ones it was declared with
 
-A constructor pattern must supplies exactly as many argument patterns as the `type` declaration
+A constructor pattern must supply exactly as many argument patterns as the `type` declaration
 gave that constructor.
 
 ```zel expect=ok
@@ -434,7 +462,7 @@ width shape =
 one. No phase checks: canonicalization resolves the constructor without counting, and the type
 checker pairs argument patterns with declared parameter types by zipping the two lists, which
 stops at the shorter. A pattern with too many arguments is accepted the same way, and the
-extra ones bind nothing. [`docs/tickets/lang-14.md`](../tickets/lang-14.md) is the ticket.
+extra ones bind nothing. [`docs/tickets/lang-17.md`](../tickets/lang-17.md) is the ticket.
 
 ### Qualified constructors
 
@@ -498,7 +526,7 @@ is parenthesised.
 **Known gap:** a constructor pattern may not appear inside another pattern at all, and a
 parenthesised one may not head a `case` branch. The grammar has one production for
 sub-patterns and it has no constructor alternative, which also means the parenthesised form
-does not admit one. [`docs/tickets/lang-13.md`](../tickets/lang-13.md) is the ticket, and each
+does not admit one. [`docs/tickets/lang-16.md`](../tickets/lang-16.md) is the ticket, and each
 of the three blocks below is an `expect=ok` once it lands.
 
 A nullary constructor as a tuple element:
@@ -608,12 +636,33 @@ so a pattern using it is a syntax error.
 A list pattern is a bracketed sequence of patterns and matches a list of exactly that length,
 element by element. `[]` matches the empty list, `[a]` a list of one, `[a, b]` a list of two.
 
-There is no head-and-tail pattern. Taking a list apart by its first element is an operation on
-lists rather than a shape a list has, so it is a function that `List` provides and not syntax
-that every pattern position has to carry.
+A **cons pattern**, `first :: rest`, matches a list of one element or more: it binds the first
+element to the pattern on the left and the rest of the list — possibly empty — to the pattern
+on the right. Both sides are whole patterns, so `a :: b :: rest` matches a list of two or more,
+and `Circle n :: rest` matches on the first element's shape.
 
-A list pattern is therefore always refutable: no finite set of lengths covers a list, so a
-`case` over one needs a variable or a wildcard branch to be complete.
+`::` here is a form of the grammar and not a name. Pattern syntax is closed, so a pattern
+never looks up an operator: `::` separates a head from a tail the way `,` separates tuple
+elements, and it means that regardless of what is in scope.
+
+`[]` and a cons pattern cover the list type between them, because every list is either empty
+or has a first element. A `case` written out of the two is complete and needs no wildcard:
+
+```zel expect=unimplemented
+module Example exposing (dropFirst)
+
+dropFirst xs =
+  case xs of
+    [] ->
+      xs
+
+    _ :: rest ->
+      rest
+```
+
+A bracketed list pattern is a different matter, because it fixes a length. No finite set of
+lengths covers a list, so a `case` built only out of those needs a variable or a wildcard
+branch to be complete:
 
 ```zel expect=unimplemented
 module Example exposing (Flag)
@@ -634,8 +683,9 @@ firstOf xs =
       On
 ```
 
-**Not implemented:** lists are not implemented in any position. Brackets are tokenized but no
-construct consumes them; see [Lexical structure](lexical-structure.md#punctuation).
+**Not implemented:** lists are not implemented in any position. Brackets are tokenized and
+`::` tokenizes as an ordinary operator, but no construct consumes either; see
+[Lexical structure](lexical-structure.md#punctuation).
 
 ## The unit pattern
 
@@ -659,6 +709,8 @@ always () =
 
 ## Record patterns
 
-A record pattern names fields rather than positions, and is specified together with the record
-syntax it takes apart — see [Types](types.md#the-forms-of-a-type-expression), which draws the
-same line for record types.
+A record pattern names fields rather than positions. Its spelling is not settled, because
+record syntax itself is not: records are part of the language, and no chapter yet says what
+one looks like in a type, an expression or a pattern. See
+[Lexical structure](lexical-structure.md#punctuation) for what the braces do today, which is
+nothing.

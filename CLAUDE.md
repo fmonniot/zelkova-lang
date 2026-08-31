@@ -213,13 +213,14 @@ status check for the compiler as it stands today; `docs/spec/` is the normative 
 place to look for anything beyond that split, including open design questions.
 
 Implemented: modules with `exposing`/`import`/`as`, union types, pattern matching via `case
-… of`, `if/then/else`, function declarations with annotations, multi-line function
-declarations with pattern matching (a deliberate divergence from Elm), infix declarations,
-tuples, JS interop via `module javascript` facades with companion `.mjs` files, `--` and
-`{- -}` comments.
+… of`, `if/then/else`, function declarations with annotations, infix declarations, tuples, JS
+interop via `module javascript` facades with companion `.mjs` files, `--` and `{- -}`
+comments.
 
 Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, the
-unit type, type aliases, and the `zelkova.toml` package manifest. The standard library under
+unit type, type aliases, and the `zelkova.toml` package manifest. **Multi-clause function
+declarations** — a deliberate divergence from Elm — parse but are rejected by canonicalization
+(`Error::MultipleBindingsUnsupported`); `LANG-20` is the ticket. The standard library under
 `std/core/src/` carries `.ignored` files for modules that do not compile yet.
 
 Settled by `SPEC-11`, then `SPEC-12`: `number`, `comparable` and `appendable` are **ordinary

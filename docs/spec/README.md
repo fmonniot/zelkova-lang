@@ -109,9 +109,12 @@ fixing it. What each chapter has to cover:
   take, `import … as … exposing`, how a module name maps to a file path, and whether any
   module is implicitly in scope. This is the chapter that answered the multi-module
   question below, since it cannot be written with one module at a time.
-- **Declarations** — value and function declarations, `infix` declarations, and **multi-line
+- **Declarations** — value and function declarations, `infix` declarations, and **multi-clause
   function declarations with pattern matching**, which is a deliberate divergence: Elm has no
-  equivalent, so there is no inherited rule even to restate. The two type-shaped declarations
+  equivalent, so there is no inherited rule even to restate. [Patterns](patterns.md) settles
+  the half of that construct which is about patterns — that the clauses must cover the type
+  between them, that they are tried in order, and that each clause is one binding position —
+  so this chapter owns the declaration side and refers to it rather than restating it. The two type-shaped declarations
   — the annotation `name : Type` and the `type` declaration — are in *Types and type
   annotations* instead; `SPEC-5` settled that split, on the grounds that both are made of
   type expressions and neither reads well away from them.
