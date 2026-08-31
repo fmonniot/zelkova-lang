@@ -288,11 +288,9 @@ does not have one.
 
 ## Numeric literals
 
-An integer literal is usable where an `Int` or a `Float` is wanted, and a constraint is how the
-language says so: a literal carries a `Number` constraint rather than a type, and whatever
-determines it — an annotation, an argument position, an operator — discharges that constraint.
-
-When nothing determines it, the literal is an `Int`.
+A numeric literal carries no constraint. Its type is decided by how it is spelled — `1` is an
+`Int`, `1.5` is a `Float` — and [Expressions](expressions.md#a-literals-type-is-its-spelling)
+is where that rule lives.
 
 ```zel expect=ok
 module Example exposing (x)
@@ -301,28 +299,16 @@ x =
   1
 ```
 
-That default is the only one in the language. Every other constraint the compiler cannot
-discharge is an error rather than a guess: there is no way to declare what a class falls back to.
-The narrowness is the point — defaulting makes a program's meaning depend on a rule the reader
-has to remember, and one such rule for the one case that comes up constantly is a different
-proposition from a general facility.
+It is worth saying here because of what it means for classes: **nothing in the language
+defaults, and the compiler knows no class by name.** A constraint the solver cannot discharge
+is an error rather than a guess, in every case and with no exception carved out for arithmetic;
+there is no way to declare what a class falls back to, and no class the compiler treats
+differently from one a program declares itself.
 
-How a literal is typed at all, and which types it may take, belong with the rest of literal
-typing in the planned *Expressions* chapter (see [the chapter list](README.md#chapters)); that
-chapter takes those paragraphs out of here when it is written. What stays is the pair above that
-is a class rule rather than a literal one — the constraint a literal carries, and the one default
-that discharges it.
-
-**Known gap:** the type checker has a hard-coded ancestor of `Number` today — an internal type
-given to every integer literal, which unifies with `Int` and `Float` and nothing else. It has no
-source syntax, no instances behind it, and no way to fail; a literal that nothing determines
-simply stays that type forever rather than defaulting. It is also rendered `number` in a
-diagnostic, which [Types](types.md#type-variables) reads as an ordinary type variable — so `x : Char` with
-a body of `1` reports *cannot match `Char` with `number`*, naming something the reader's source
-does not contain. [`ERR-13`](../tickets/err-13.md) is the spelling;
-[`CLASS-5`](../tickets/class-5.md) is what retires the type itself. No block here holds either to
-account: the spec harness stops at canonicalization and never runs the type checker
-([`TEST-2`](../tickets/test-2.md)).
+The price is paid inside a constrained function, where a literal is already concrete and so
+cannot be used at the constrained type — `double x = mul x 2` under `Number a => a -> a`
+forces `a` to be `Int`. A class that wants numeric constants declares them as members, the way
+it declares everything else.
 
 ## A constrained function may not be a JavaScript facade
 
@@ -439,10 +425,9 @@ Four classes, and they are ordinary declarations in ordinary modules. A program 
 own alongside, and nothing about what a member means, or about which types have instances, is
 built into the compiler.
 
-One name is the exception, and it is as narrow as it reads: an integer literal has to carry
-*some* constraint, so the compiler knows `Number` by name and knows that an undetermined one
-resolves to `Int` (*[Numeric literals](#numeric-literals)*, above). It knows no instance of
-`Number`, and nothing whatever about the other three.
+No name is an exception. `Number` is as ordinary as the other three: the compiler does not know
+it by name, knows no instance of it, and would behave identically if `std/core` declared it
+under another name or not at all (*[Numeric literals](#numeric-literals)*, above).
 
 | Class | Members, roughly | What it constrains a variable to |
 |---|---|---|
