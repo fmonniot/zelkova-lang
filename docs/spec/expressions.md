@@ -384,22 +384,19 @@ f g n =
   g -n
 ```
 
-The trap is real and the alternative is worse. A rule that read `g -n` as an application would
-have to be a rule about spacing — `g -n` and `g - n` differing by one space — and a language
-whose meaning turns on invisible characters is one whose programs cannot be read aloud. Write
-`g (-n)` when an argument is what is meant.
+The trap is real: reading `g -n` as an application would make meaning turn on spacing alone,
+which the rule above never does. Write `g (-n)` when an argument is what is meant.
 
-In an expression there is no negative literal. `-1` is negation applied to the literal `1`,
-and the rule above is the whole of why: a `-` opening an expression has no left operand. A
+There is likewise no negative literal: `-1` is negation applied to the literal `1`. A
 [pattern](patterns.md#literal-patterns) carries its sign on the literal instead, because
-pattern syntax is closed and never looks an operator up — so the same three characters are two
-different things in the two positions, deliberately.
+pattern syntax is closed and never looks an operator up — so the same three characters mean
+two different things in the two positions, deliberately.
 
 ## `if … then … else`
 
 `if c then a else b` evaluates `c`, which must be a `Bool`, and has the value of `a` or of
-`b`. **The `else` is not optional.** An `if` is an expression and must have a value in every
-case; there is no value the language could invent for the missing branch.
+`b`. **The `else` is not optional** — an `if` with no value for one of its cases could not be
+an expression.
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing (Flag, f)
@@ -602,13 +599,11 @@ f n =
   double (add lo hi)
 ```
 
-**Not implemented:** `let` and `in` are reserved words with no production behind them. Where
-the bindings sit on the page is [Layout](layout.md#let--in)'s subject, and it has two open
-questions of its own.
-
-**Not implemented:** the rules in this section are design intent. A `let` binding takes any
-form a module's declarations take — a [type annotation](types.md#type-annotations), a value
-binding, a function binding with parameters, and a
+**Not implemented:** `let` and `in` are reserved words with no production behind them, and
+everything below is design intent. Where the bindings sit on the page is
+[Layout](layout.md#let--in)'s subject, with two open questions of its own. A `let` binding
+takes any form a module's declarations take — a [type annotation](types.md#type-annotations),
+a value binding, a function binding with parameters, and a
 [destructuring pattern](patterns.md#where-a-pattern-may-appear), which must be irrefutable
 since there is nowhere for a failed match to go. The bindings of one `let` are **mutually
 recursive**: every one of them is in scope in every other's body, and in the expression after
