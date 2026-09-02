@@ -49,19 +49,19 @@ ratio = 1.5
 letter = 'x'
 ```
 
-So `1` and `1.0` are different expressions of different types, and an annotation cannot
-change that: a declaration annotated `Float` whose body is `1` is an error, and the fix is to
-write `1.0`. Arithmetic between the two is an error for the same reason.
+An annotation cannot change that: a declaration annotated `Float` whose body is `1` is an
+error, and the fix is to write `1.0`. Arithmetic between the two is an error for the same
+reason.
 
-The rule is stronger than it needs to be, and the strength is what it buys. Because a literal
-carries no constraint, nothing in the language defaults: there is no fallback rule for a reader
-to remember, and no class the compiler has to know by name. A literal that stood instead for a
-value in any type with a `Number` instance would put a conversion member on every such
-instance, and a call to it under every literal in every program — machinery, and invisible work
-at runtime, spread across the whole language.
+That strictness buys something: because a literal carries no constraint, nothing in the
+language defaults. There is no fallback rule for a reader to remember, and no class the
+compiler has to know by name. A literal that stood instead for a value in any type with a
+`Number` instance would put a conversion member on every such instance, and a call to it under
+every literal in every program — machinery, and invisible work at runtime, spread across the
+whole language.
 
-What that costs lands in exactly one place. Inside a function constrained over a numeric class,
-a literal is already concrete, so it cannot be used at the constrained type:
+The cost lands in one place: inside a function constrained over a numeric class, a literal is
+already concrete, so it cannot be used at the constrained type:
 
 ```zel expect=unimplemented
 module Example exposing (double)
@@ -528,8 +528,8 @@ both a b =
       Off
 ```
 
-Being an expression, a `case` may also be parenthesised, and so may appear as an argument, a
-tuple element, or an operand:
+The same is true of parenthesisation, so a `case` may also appear as an argument, a tuple
+element, or an operand:
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing (Flag, f)
@@ -626,13 +626,12 @@ f =
   \x y -> add x y
 ```
 
-**Not implemented:** there is no lambda production. `\` is an ordinary operator character, so
-`\x -> x` is rejected as an operator in a position where an expression was wanted.
-
-**Not implemented:** a lambda's parameters are the patterns a function declaration's
-parameters accept, and for the same reason: a lambda has one body, so a pattern that can fail
-has nowhere to fall through to. Only [irrefutable
-patterns](patterns.md#a-pattern-that-can-fail-and-one-that-cannot) may appear.
+**Not implemented:** there is no lambda production — `\` is an ordinary operator character, so
+`\x -> x` is rejected as an operator in a position where an expression was wanted. Its
+parameters are meant to be the patterns a function declaration's parameters accept, for the
+same reason: a lambda has one body, so a pattern that can fail has nowhere to fall through to.
+Only [irrefutable patterns](patterns.md#a-pattern-that-can-fail-and-one-that-cannot) may
+appear.
 
 ```zel expect=unimplemented
 module Example exposing (Point, f)
