@@ -2,11 +2,10 @@
 
 An expression denotes a value. Every declaration's body is one, every argument to a function
 is one, and every branch of a `case` is one — there is no statement form anywhere in the
-language, and nothing an expression can do except have a value.
+language.
 
 That is what makes `if` require its `else`, and a `case` cover its type: a form that produced
-no value in some of its cases would not be an expression, and there is nowhere in the grammar
-for such a thing to go.
+no value in some of its cases would not be an expression.
 
 ## The forms
 
@@ -38,7 +37,7 @@ A literal is an expression whose value is written out in full. The spelling of e
 ### A literal's type is its spelling
 
 **A numeric literal written without a point is an `Int`. One written with a point is a
-`Float`.** Nothing else determines either, and a literal is never any other type.
+`Float`.**
 
 ```zel expect=ok
 module Example exposing (count, ratio, letter)
@@ -52,8 +51,7 @@ letter = 'x'
 
 So `1` and `1.0` are different expressions of different types, and an annotation cannot
 change that: a declaration annotated `Float` whose body is `1` is an error, and the fix is to
-write `1.0`. Arithmetic between the two is an error for the same reason — there is no implicit
-widening, because there is no point at which a literal's type is still undecided.
+write `1.0`. Arithmetic between the two is an error for the same reason.
 
 The rule is stronger than it needs to be, and the strength is what it buys. Because a literal
 carries no constraint, nothing in the language defaults: there is no fallback rule for a reader
