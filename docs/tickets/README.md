@@ -245,7 +245,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-6 | task | — | closed 2026-08-30 | Write the Expressions chapter |
 | SPEC-7 | task | — | closed 2026-08-29 | Write the Patterns chapter |
 | SPEC-8 | task | — | closed 2026-09-02 | Write the Name resolution and scoping chapter |
-| [SPEC-9](spec-9.md) | task | — | open | Write the Evaluation semantics chapter |
+| SPEC-9 | task | — | closed 2026-09-02 | Write the Evaluation semantics chapter |
 | SPEC-10 | task | — | closed 2026-08-30 | Write the Packages and source layout chapter |
 | SPEC-11 | task | — | closed 2026-08-29 | Write the Constrained type variables chapter |
 | SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |

@@ -87,7 +87,7 @@ example belongs in a block with no `package=` label.
 | [Expressions](expressions.md) | written |
 | [Patterns](patterns.md) | written |
 | [Name resolution and scoping](name-resolution.md) | written |
-| Evaluation semantics | planned ([SPEC-9](../tickets/spec-9.md)) |
+| [Evaluation semantics](evaluation-semantics.md) | written |
 | [JS interop](js-interop.md) | written |
 | [Packages and source layout](packages.md) | written |
 | [Type classes](type-classes.md) | written |
