@@ -625,9 +625,9 @@ x = label
 ```
 
 The qualified spelling is unaffected: `Widget.label` and `Gadget.label` both still
-resolve, and are the fix. *Name resolution and scoping* — planned; see
-[the chapter list](README.md#chapters) — is where the general rule lives, including what
-shadows what.
+resolve, and are the fix.
+[Name resolution and scoping](name-resolution.md#ambiguous-rather-than-unresolved) is where
+the general rule lives, including what shadows what.
 
 ### One module, one import
 

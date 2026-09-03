@@ -101,8 +101,9 @@ greeting = "hello"
 
 A **variable** is a lowercase-initial name, optionally qualified by a module. A
 **constructor** is an uppercase-initial one, likewise qualifiable. Which module a name is
-looked up in, and what makes one ambiguous, is *Name resolution and scoping*' subject; this
-chapter needs only that both are expressions.
+looked up in, and what makes one ambiguous, is
+[Name resolution and scoping](name-resolution.md)' subject; this chapter needs only that both
+are expressions.
 
 ```zel expect=ok
 module Example exposing (Shape, area, corners)
