@@ -272,6 +272,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-25](lang-25.md) | task | — | open | A declaration may not name fewer parameters than its annotation has arrows |
 | [LANG-26](lang-26.md) | task | — | open | A declaration's clauses need not stand together |
 | [LANG-27](lang-27.md) | task | — | open | An operator may carry more than one `infix` declaration, and the last silently wins |
+| [LANG-28](lang-28.md) | task | — | open | An `infix` declaration's function is never checked to take two arguments |
 | [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
