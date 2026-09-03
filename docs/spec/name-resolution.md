@@ -3,12 +3,11 @@
 Every name a program writes is resolved statically, from the text around it. Resolution asks
 one question of each occurrence — *which declaration does it name?* — and there are only three
 answers: exactly one, which is the ordinary case; none, which is an **unresolved** name; or
-more than one, which is an **ambiguous** name. The last two are both errors, and they are
-different errors, because the fixes are different: an unresolved name has to be declared or
-imported, an ambiguous one has to be spelled so that it picks.
+more than one, which is an **ambiguous** name. The last two are both errors: an unresolved name
+has to be declared or imported, an ambiguous one has to be spelled so that it picks.
 
-Nothing in the answer depends on a value, so a reader answers that question with exactly the
-information the compiler has: the file, and the modules it imports.
+Nothing in the answer depends on a value, so a reader has exactly the information the compiler
+does: the file, and the modules it imports.
 
 ## Namespaces
 
@@ -17,17 +16,14 @@ A program has five namespaces, and a name in one never collides with a name in a
 | Namespace | Holds | Written |
 |---|---|---|
 | values | top-level bindings, parameters, pattern bindings | lowercase-initial |
-| types | `type` declarations | uppercase-initial, in a type expression |
-| constructors | the variants of a `type` declaration | uppercase-initial, in an expression or pattern |
+| types | `type` declarations | uppercase-initial, in a [type expression](types.md#type-names) |
+| constructors | the variants of a `type` declaration | uppercase-initial, [in an expression](expressions.md#names) or a [pattern](patterns.md#constructor-patterns) |
 | operators | `infix` declarations | operator characters, never letters |
 | modules | the prefix of a qualified name | uppercase-initial, before the final `.` |
 
 Which namespace an occurrence is looked up in is decided by how it is written and where it
-sits, never by what happens to be in scope. A lowercase-initial name is a value; an
-uppercase-initial one is a type in a [type expression](types.md#type-names) and a constructor
-[in an expression](expressions.md#names) or a [pattern](patterns.md#constructor-patterns); a
-name before the final `.` of a qualified name is a module. So one spelling can be several
-unrelated things at once, and each occurrence still has exactly one meaning:
+sits, never by what happens to be in scope. So one spelling can be several unrelated things at
+once, and each occurrence still has exactly one meaning:
 
 ```zel expect=ok
 module Example exposing (Reading, Celsius, boiling)
@@ -43,18 +39,15 @@ boiling =
   Celsius
 ```
 
-`Celsius` is a constructor of `Reading` and also the name of a second type. The annotation
-`boiling : Reading` names a type, the body `Celsius` names a constructor, and neither could
-have meant the other.
+`Celsius` is both a constructor of `Reading` and the name of a second type. The annotation
+`boiling : Reading` names a type and the body `Celsius` names a constructor; neither could have
+meant the other.
 
-The one lowercase name that is not a value is a [type variable](#type-variables), which a type
-expression is the only place to write. A type variable is not resolved against a namespace at
-all: it is bound by the declaration it appears in, and the section at the foot of this chapter
-is what says by which.
+The one lowercase name that is not a value is a [type variable](#type-variables), which is not
+resolved against a namespace at all: it is bound by the declaration it appears in.
 
-Module names are a namespace of their own for the same reason. A constructor named `Widget`
-and an imported module named `Widget` coexist, because a module name is only ever read to the
-left of a `.`:
+Module names are separate for the same reason. A module name is only ever read to the left of
+a `.`, so a constructor named `Widget` and an imported module named `Widget` coexist:
 
 ```zel expect=ok package=prefix
 module Widget exposing (Size, label)
@@ -89,27 +82,6 @@ module part of a qualified name is everything before its **final** `.` and the l
 what follows. `Ui.Widget.label` names `label` in `Ui.Widget`; there is no module `Ui` in it to
 look anything up in.
 
-```zel expect=ok package=prefix
-module Ui.Widget exposing (Size, label)
-
-type Size
-  = Small
-
-label : Size
-label =
-  Small
-```
-
-```zel expect=ok package=prefix
-module Deep exposing (x)
-
-import Ui.Widget
-
-x : Ui.Widget.Size
-x =
-  Ui.Widget.label
-```
-
 ## Scopes
 
 A name is resolved in the scopes enclosing the place it is written, innermost first. There are
@@ -121,20 +93,20 @@ two kinds, and no more:
 2. **The module's top level** — everything the module declares, plus every name its imports
    bring in unqualified.
 
-There is no scope outside the module. A name is in scope because this module declares it or
-because this module imports it; being declared in a neighbouring module of the same package is
-not being in scope, and neither is being declared in the same package's dependency. The
-[default imports](modules.md#the-default-imports) are the one thing a module gets without
-writing anything, and they are imports — they bring in what they bring in and nothing else.
+There is no scope outside the module: a name is in scope because this module declares it or
+imports it, and being declared in a neighbouring module — or in a dependency — is not being in
+scope. The [default imports](modules.md#the-default-imports) are the one thing a module gets
+without writing anything, and they are imports like any other.
 
-**Not implemented:** [`let … in`](expressions.md#let--in) and
-[lambdas](expressions.md#lambdas) each add a binding position, and each is the same kind of
-scope as the two above: bindings visible in one body, invisible outside it. Neither construct
+**Not implemented:** [`let … in`](expressions.md#let--in)
+([`docs/tickets/lang-33.md`](../tickets/lang-33.md)) and [lambdas](expressions.md#lambdas)
+([`docs/tickets/lang-34.md`](../tickets/lang-34.md)) each add a binding position of the same
+kind as the two above: bindings visible in one body, invisible outside it. Neither construct
 exists yet.
 
-An inner binding **shadows** an outer name of the same spelling — that rule and its
-consequences for patterns are [Patterns](patterns.md#variable-patterns)'s, and it applies to
-imported names exactly as it does to a module's own declarations:
+An inner binding **shadows** an outer name of the same spelling — [Patterns](patterns.md#variable-patterns)
+carries that rule and its consequences — and it applies to imported names exactly as it does to
+a module's own declarations:
 
 ```zel expect=ok package=shadow
 module Widget exposing (Size, label)
@@ -163,8 +135,8 @@ f label =
 
 `Widget.label` in that body still reaches the imported value, even though `label` alone means
 the parameter. A binding position binds bare names — a pattern has no way to write a dotted
-one — so nothing an inner scope does can change what a qualified name means. That is what
-makes the qualified spelling a reliable escape: it is the fix for a shadowed name and for an
+one — so nothing an inner scope does can change what a qualified name means. That makes it a
+reliable escape: it is the fix for a shadowed name and for an
 [ambiguous](#ambiguous-rather-than-unresolved) one, and it works without knowing what else is
 in scope.
 
@@ -197,15 +169,10 @@ name as written, or its alias, which **replaces** that name rather than adding t
 
 ## A top-level name comes from exactly one place
 
-The two sources of a top-level name — what the module declares and what it imports
-unqualified — are one scope, not two. Neither shadows the other, because neither is inside the
-other: a module that declares `label` and also imports `label` unqualified is rejected.
-
-Shadowing is a relationship between a scope and the scope it sits inside. Two names arriving at
-the same level have no such relationship, and nothing that reads only the declaration, or only
-the `import` line, could tell that the other one exists. The fix is to pick one: drop the entry
-from the `exposing` list and write `Widget.label` where the imported value is wanted, or rename
-the declaration.
+What a module declares and what it imports unqualified are one scope, not two, so a module that
+declares `label` and also imports `label` unqualified is rejected. Neither shadows the other.
+The fix is to pick one — drop the entry from the `exposing` list and write `Widget.label` where
+the imported value is wanted, or rename the declaration.
 
 **Known gap:** the module's own declaration silently wins today, for values and for types
 alike. Both blocks below are accepted, and in each of them the imported name is dead without
@@ -239,11 +206,10 @@ x =
   label
 ```
 
-The rule holds for `exposing (..)` too, where the error is reported on the `import` line
-because there is no entry to point at. An open import is a claim about a whole module's
-exposed names, and it collides the same way a named entry does. The cost is real and is the
-cost `(..)` already carries: a module gaining an export can break a file that imports it
-openly. What that buys is that no name in a file is quietly two names.
+The rule holds for `exposing (..)`, which collides the same way a named entry does; the error
+is reported on the `import` line, there being no entry to point at. So a module gaining an
+export can break a file that imports it openly — the cost `(..)` already carries, and what it
+buys is that no name in a file is quietly two names.
 
 ```zel expect=ok package=clash
 module Other exposing (y)
@@ -261,13 +227,13 @@ y =
 
 ### A name is declared at most once
 
-Within one module, each type is declared once, and each operator carries [one `infix`
-declaration](declarations.md#an-operator-has-one-infix-declaration). Two declarations of one
-type introduce two types with one name, and no rule chooses between them.
+Within one module, each type is declared once and each operator carries [one `infix`
+declaration](declarations.md#an-operator-has-one-infix-declaration): two declarations of one
+name introduce two things with one name, and no rule chooses between them.
 
-Repeated *value* bindings are not an exception to that. They are not two declarations at all
-but the [clauses](declarations.md#clauses) of one, which is why they are allowed and why they
-must agree on their parameter count.
+Repeated *value* bindings are not an exception. They are not two declarations but the
+[clauses](declarations.md#clauses) of one, which is why they must agree on their parameter
+count.
 
 **Known gap:** a second `type` declaration of a name silently replaces the first, taking its
 constructors with it — after the block below the module has one type `Size`, built by `Big`,
@@ -287,10 +253,7 @@ type Size
 ## Unresolved names
 
 A name that no scope binds is an error where it is written, with the caret under the name
-rather than under the declaration containing it. That is the whole of the rule; what follows
-are the shapes it takes.
-
-A bare name that nothing declares or imports:
+rather than under the declaration containing it. A bare name that nothing declares or imports:
 
 ```zel expect=canonical-error:VariableNotFound
 module Example exposing (Size, x)
@@ -318,8 +281,7 @@ x =
 ```
 
 A qualified name resolves only if its prefix names an import *and* that module exposes the
-name. Neither half is assumed: a prefix that names no import is not a hint to go looking for
-the module.
+name. A prefix that names no import is not a hint to go looking for the module.
 
 ```zel expect=canonical-error:VariableNotFound
 module Example exposing (Size, x)
@@ -332,12 +294,11 @@ x =
   Widget.label
 ```
 
-**Known gap:** the diagnostic there reports a missing *value* called `Widget.label`, which is
-true but unhelpful — the thing actually missing is the `import`, and the message never says the
-word ([`docs/tickets/err-14.md`](../tickets/err-14.md)).
+**Known gap:** the diagnostic there reports a missing *value* called `Widget.label`. What is
+missing is the `import`, and the message never says the word
+([`docs/tickets/err-14.md`](../tickets/err-14.md)).
 
-Being in the same package is not being in scope. `Widget` below is compiled alongside `Main`
-and `Main` still cannot see it:
+`Widget` below is compiled alongside `Main`, and `Main` still cannot see it:
 
 ```zel expect=ok package=notimported
 module Widget exposing (Size, label)
@@ -364,11 +325,9 @@ x =
 ## Ambiguous rather than unresolved
 
 A name brought into scope unqualified by two different imports is not an error at either
-`import` line. It becomes one at each place the bare name is *written*, and only there — which
-is what lets a module import broadly and be told precisely what went wrong, instead of being
-made to prune imports it may never use.
-
-The report names both candidates, and the qualified spelling of either is the fix.
+`import` line. It becomes one at each place the bare name is *written*, and only there, which
+is what lets a module import broadly and still be told precisely what went wrong. The report
+names both candidates, and the qualified spelling of either is the fix.
 
 ```zel expect=ok package=ambiguous
 module Widget exposing (Size(..), label, one, add, (+))
@@ -423,9 +382,9 @@ x =
   label
 ```
 
-The same rule holds in every namespace, because the situation is the same one: two imports,
-one spelling, no reason to prefer either. A type and a constructor are ambiguous exactly as a
-value is, and `Widget.Size` and `Widget.Small` are the fixes.
+The same rule holds in every namespace: two imports, one spelling, no reason to prefer either.
+A type and a constructor are ambiguous exactly as a value is, and `Widget.Size` and
+`Widget.Small` are the fixes.
 
 **Known gap:** ambiguity is detected for values only. A type, a constructor or an operator
 arriving from two imports is taken from whichever `import` line is written last, silently, so
@@ -462,16 +421,15 @@ z =
 
 Once ambiguity is an error, nothing about resolution depends on the order things are written
 in. [Declarations are unordered](declarations.md#declarations-are-unordered), and so are
-imports: reordering the `import` lines of a file never changes what any name in it means, and
-neither does reordering the declarations that follow them. A file whose meaning turns on which
-of two lines came first is a file whose meaning cannot be read off the line in front of you.
+imports: reordering either never changes what a name in the file means. A file whose meaning
+turns on which of two lines came first is a file whose meaning cannot be read off the line in
+front of you.
 
 ## Type variables
 
 A [type variable](types.md#type-variables) is bound by the declaration it appears in, and by
 nothing outside it. No lowercase spelling is privileged — `a`, `number` and `comparable` are
-the same kind of name, which [Types](types.md#type-variables) settles — so binding is all
-there is to say about where one means something.
+the same kind of name — so binding is all there is to say about where one means something.
 
 In an annotation, every lowercase name is a variable of that annotation. Two annotations that
 happen to use the same letter share nothing:
