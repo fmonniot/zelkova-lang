@@ -7,7 +7,8 @@ language itself, one chapter at a time. It is where the first four `LANG-` ticke
 will keep producing them — writing down a rule that was never written down is how you find out
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
 from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, `SPEC-11` a
-`BUG-` and an `ERR-`, `SPEC-10` a `BUG-` and two `LANG-`s, and `SPEC-7` another five.
+`BUG-` and an `ERR-`, `SPEC-10` a `BUG-` and two `LANG-`s, `SPEC-7` another five, and `SPEC-6`
+three `LANG-`s, two `BUG-`s and a `SPEC-`.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
@@ -132,12 +133,15 @@ CLASS-4  the solver: obligations are collected, deferred and discharged
   │        and publishes `Comparable a` — strictly weaker than its own
   │        signature, and nothing downstream notices.
   │
-  ├── CLASS-5  `Type::Number` retires into a `Number` class, defaulting to `Int`
-  │              ← supersedes ERR-13, which is worth doing first anyway:
-  │                one `Display` arm, against four tickets of latency
-  │
   └── CLASS-6  `std/core` declares Eq, Comparable, Number, Appendable
-                 ← needs CLASS-5.  Closes BUG-20 for the right reason.
+                 ← needs CLASS-5, which is no longer inside this order:
+                   `docs/spec/expressions.md` settles that a literal's type
+                   is its spelling, so there is no obligation to discharge
+                   and CLASS-5 can land at any point.  Closes BUG-20 for
+                   the right reason.
+
+CLASS-5  `Type::Number` retires; an integer literal is an `Int`   ← independent
+           ← supersedes ERR-13
 
 SPEC-12  the Type classes chapter          ← done 2026-08-29
 ```
@@ -148,8 +152,8 @@ canonicalization. Writing the chapter showed that is true of the claims it will 
 mechanism exists*, and not of the claims it makes today: nothing about a class parses, so all
 eleven of its class-and-constraint blocks are `expect=unimplemented`, which the harness checks
 perfectly well. `TEST-2` becomes load-bearing when `CLASS-4` lands and those blocks start wanting
-`expect=type-error` — the chapter's *Numeric literals* section already carries one
-`**Known gap:**` with no red test behind it for exactly this reason. The `CLASS-` tickets are
+`expect=type-error` — `docs/spec/expressions.md`'s *A literal's type is its spelling* section
+already carries one `**Known gap:**` with no red test behind it for exactly this reason. The `CLASS-` tickets are
 held to `tests/typer.rs`, which already reaches the typer.
 
 **What is not a ticket:** dictionary erasure. `SPEC-12` decision 7 settles that a constrained
@@ -214,6 +218,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-19](bug-19.md) | bug | medium | open | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
 | [BUG-20](bug-20.md) | bug | high | open | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |
 | [BUG-21](bug-21.md) | bug | medium | open | Every error from the source-directory walk is discarded, so a missing package root compiles as success |
+| [BUG-22](bug-22.md) | bug | high | open | An operator's declared precedence and associativity are recorded and then ignored |
+| [BUG-23](bug-23.md) | bug | medium | open | An `else` does not close a `case` block, so a `case` in a `then` arm is a layout error |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -231,13 +237,14 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
 | [SPEC-4](spec-4.md) | task | — | open | Write the Declarations chapter |
 | SPEC-5 | task | — | closed 2026-08-29 | Write the Types and type annotations chapter |
-| [SPEC-6](spec-6.md) | task | — | open | Write the Expressions chapter |
+| SPEC-6 | task | — | closed 2026-08-30 | Write the Expressions chapter |
 | SPEC-7 | task | — | closed 2026-08-29 | Write the Patterns chapter |
 | [SPEC-8](spec-8.md) | task | — | open | Write the Name resolution and scoping chapter |
 | [SPEC-9](spec-9.md) | task | — | open | Write the Evaluation semantics chapter |
 | SPEC-10 | task | — | closed 2026-08-30 | Write the Packages and source layout chapter |
 | SPEC-11 | task | — | closed 2026-08-29 | Write the Constrained type variables chapter |
 | SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
+| [SPEC-13](spec-13.md) | task | — | open | Whether a pattern's negative literal is a token or a pattern production is unsettled, and two chapters answer it differently |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -258,6 +265,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-18](lang-18.md) | task | — | open | A pattern may bind the same name more than once |
 | [LANG-19](lang-19.md) | task | — | open | Nothing checks that a `case` covers its type |
 | [LANG-20](lang-20.md) | task | — | open | A declaration may have only one clause |
+| [LANG-21](lang-21.md) | task | — | open | A `case … of` cannot be parenthesised, so it is not an expression |
+| [LANG-22](lang-22.md) | task | — | open | An operator's right operand may not be an `if`, a `case`, or a negation |
+| [LANG-23](lang-23.md) | task | — | open | An operator cannot be named in an expression, so an exported one is unusable as a value |
 | [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |

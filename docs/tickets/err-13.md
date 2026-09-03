@@ -50,18 +50,24 @@ together. Whether the *test* rendering should follow the diagnostic one or stay 
 worth a moment's thought — `Signature` exists to make a whole inferred type readable in an
 assertion, which is a different audience.
 
-Note this ticket does not decide what the numeric-literal rule *is*; that belongs to the
-planned *Expressions* chapter ([SPEC-6](spec-6.md)), which `SPEC-11` handed it to. This is
-only about how the type is spelled once it appears in a message.
+Note this ticket does not decide what the numeric-literal rule *is*.
+[`docs/spec/expressions.md`](../spec/expressions.md) does, and it settles that a literal
+written without a point is an `Int` and one written with a point is a `Float` — so the type
+this ticket is about should not exist at all, which is [CLASS-5](class-5.md)'s subject. This is
+only about how it is spelled in the meantime. Do not render it `Int` on the strength of that
+rule: `Type::Number` really does unify with both today, and a message naming only one of them
+would describe the compiler wrongly rather than describe the language rightly.
 
 **Acceptance:** a test in `tests/typer.rs` pinning the rendered message for a literal against
 a non-numeric annotation, asserting the new spelling. No message anywhere renders a type using
 a spelling the grammar would accept as a type variable.
 
 **This gap has no red test behind it.** The spec harness stops at canonicalization
-([TEST-2](test-2.md)), so no block in
-[`docs/spec/type-classes.md`](../spec/type-classes.md) exercises a type error at all; the
-*Numeric literals* section describes this in prose under a `**Known gap:**` lead-in and that
-paragraph has to be deleted by hand when this lands. [`CLASS-5`](class-5.md) supersedes this
-ticket by deleting `Type::Number` outright — do this one anyway, because CLASS-5 is four tickets
-away and the wrong message stands for the whole of that time.
+([TEST-2](test-2.md)), so no chapter exercises a type error at all; the paragraph describing
+this is a `**Known gap:**` in
+[`docs/spec/expressions.md`](../spec/expressions.md)'s *A literal's type is its spelling*
+section, and it has to be deleted by hand when [CLASS-5](class-5.md) lands.
+[`CLASS-5`](class-5.md) supersedes this ticket by deleting `Type::Number` outright. Whether
+this one is still worth doing first is now a judgement about latency rather than a settled
+yes: CLASS-5 no longer depends on the rest of the `CLASS-` program, so it may land soon
+enough that a better spelling for a type that is about to be deleted buys little.

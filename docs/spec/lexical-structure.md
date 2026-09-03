@@ -475,9 +475,12 @@ subtraction like any other.
 ### Prefix negation
 
 A `-` written directly before an expression, where no left operand is available, is **prefix
-negation**: `-e` means the negation of `e`, with the type `number -> number`. It is not
-subtraction against an implied zero, and nothing about it is special-cased to literals — `-x`
-negates the variable `x`.
+negation**: `-e` means the negation of `e`, and has the type of `e`, which must be a numeric
+one. It is not subtraction against an implied zero, and nothing about it is special-cased to
+literals — `-x` negates the variable `x`, and `-1` negates the literal `1` rather than being a
+literal of its own. A [pattern](patterns.md#literal-patterns) carries a sign differently. Where
+a `-` has a left operand and where it does not is
+[Expressions](expressions.md#prefix-negation)' subject.
 
 ```zel expect=ok
 module Example exposing (opposite)
