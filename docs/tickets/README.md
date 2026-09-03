@@ -8,8 +8,8 @@ will keep producing them — writing down a rule that was never written down is 
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
 from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, `SPEC-11` a
 `BUG-` and an `ERR-`, `SPEC-10` a `BUG-` and two `LANG-`s, `SPEC-7` another five, `SPEC-6`
-three `LANG-`s, two `BUG-`s and a `SPEC-`, `SPEC-4` four more `LANG-`s, and `SPEC-8` six
-`LANG-`s and an `ERR-`.
+three `LANG-`s, two `BUG-`s and a `SPEC-`, `SPEC-4` four more `LANG-`s, `SPEC-8` six
+`LANG-`s and an `ERR-`, and `SPEC-9` two `LANG-`s, a `BUG-` and a `SPEC-`.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
@@ -122,6 +122,8 @@ CLASS-1  `=>` becomes a token; a constrained annotation parses
   │
 CLASS-2  `class` / `instance` declarations, and a `where` block of members
   │      ← LANG-9 sequences before this: an instance head wants `(List a)`
+  │      ← SPEC-14 is cheaper before this than after: one of the three
+  │        shapes it weighs is a change to this declaration's grammar
   │
 CLASS-3  resolution, the instance environment, and the orphan rule
   │      ← BUG-17 and BUG-16 are HARD prerequisites. Both would sabotage
@@ -221,6 +223,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-21](bug-21.md) | bug | medium | open | Every error from the source-directory walk is discarded, so a missing package root compiles as success |
 | [BUG-22](bug-22.md) | bug | high | open | An operator's declared precedence and associativity are recorded and then ignored |
 | [BUG-23](bug-23.md) | bug | medium | open | An `else` does not close a `case` block, so a `case` in a `then` arm is a layout error |
+| [BUG-24](bug-24.md) | bug | medium | open | Two `.mjs` companions call helpers no file defines, so `modBy 0` and comparing functions are `ReferenceError`s |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -247,6 +250,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-11 | task | — | closed 2026-08-29 | Write the Constrained type variables chapter |
 | SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
 | [SPEC-13](spec-13.md) | task | — | open | Whether a pattern's negative literal is a token or a pattern production is unsettled, and two chapters answer it differently |
+| [SPEC-14](spec-14.md) | task | — | open | Nothing specifies how a structural instance is derived, and equality needs it |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -281,6 +285,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-32](lang-32.md) | task | — | open | A module may declare one type twice, and the second silently replaces the first |
 | [LANG-33](lang-33.md) | task | — | open | There is no `let … in` production, so a local binding cannot be written |
 | [LANG-34](lang-34.md) | task | — | open | There is no lambda production, so `\x -> x` is read as an operator |
+| [LANG-35](lang-35.md) | task | — | open | A parameterless binding may depend on itself, and nothing notices |
+| [LANG-36](lang-36.md) | task | — | open | `std/core`'s `Basics` documents three semantics the language does not have |
 | [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
