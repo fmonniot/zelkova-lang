@@ -1,14 +1,14 @@
 # Zelkova — Ticket index
 
-_Last updated: 2026-08-30._
+_Last updated: 2026-09-02._
 
 `SPEC-2` opened a second body of work alongside the diagnostics program below: specifying the
 language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
 will keep producing them — writing down a rule that was never written down is how you find out
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
 from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, `SPEC-11` a
-`BUG-` and an `ERR-`, `SPEC-10` a `BUG-` and two `LANG-`s, `SPEC-7` another five, and `SPEC-6`
-three `LANG-`s, two `BUG-`s and a `SPEC-`.
+`BUG-` and an `ERR-`, `SPEC-10` a `BUG-` and two `LANG-`s, `SPEC-7` another five, `SPEC-6`
+three `LANG-`s, two `BUG-`s and a `SPEC-`, and `SPEC-4` four more `LANG-`s.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
@@ -235,7 +235,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
-| [SPEC-4](spec-4.md) | task | — | open | Write the Declarations chapter |
+| SPEC-4 | task | — | closed 2026-09-02 | Write the Declarations chapter |
 | SPEC-5 | task | — | closed 2026-08-29 | Write the Types and type annotations chapter |
 | SPEC-6 | task | — | closed 2026-08-30 | Write the Expressions chapter |
 | SPEC-7 | task | — | closed 2026-08-29 | Write the Patterns chapter |
@@ -268,6 +268,11 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-21](lang-21.md) | task | — | open | A `case … of` cannot be parenthesised, so it is not an expression |
 | [LANG-22](lang-22.md) | task | — | open | An operator's right operand may not be an `if`, a `case`, or a negation |
 | [LANG-23](lang-23.md) | task | — | open | An operator cannot be named in an expression, so an exported one is unusable as a value |
+| [LANG-24](lang-24.md) | task | — | open | An `infix` precedence outside 0–9 is accepted |
+| [LANG-25](lang-25.md) | task | — | open | A declaration may not name fewer parameters than its annotation has arrows |
+| [LANG-26](lang-26.md) | task | — | open | A declaration's clauses need not stand together |
+| [LANG-27](lang-27.md) | task | — | open | An operator may carry more than one `infix` declaration, and the last silently wins |
+| [LANG-28](lang-28.md) | task | — | open | An `infix` declaration's function is never checked to take two arguments |
 | [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |

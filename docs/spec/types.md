@@ -8,8 +8,8 @@ to.
 
 It also specifies the two declarations that are made of type expressions: the annotation
 `name : Type`, and the `type` declaration that introduces a new type. The neighbouring
-*Declarations* chapter — planned; see [the chapter list](README.md#chapters) — covers value and
-function bindings and `infix` declarations, and refers here for these two.
+[Declarations](declarations.md) chapter covers value and function bindings and `infix`
+declarations, and refers here for these two.
 
 **Not implemented:**  `cargo test --test spec` runs each example through the
 parser and canonicalization and stops; it never invokes the type checker. So a claim about what
@@ -557,11 +557,12 @@ of a space run in the middle of it — `  ->Size` and `  ->  Size` both pass.
 
 A function's parameter list and its annotation have to agree. The annotation's arrows, read
 left to right, are the parameters, and the type after the last arrow is what the body produces.
-So `Size -> Size` describes a function of exactly **one** parameter, and the declaration below
-it must name exactly one.
+So `Size -> Size` describes a function of one parameter, and the declaration below it may name
+**at most** one — naming fewer leaves the rest of the type for the body to produce, which is
+[Declarations](declarations.md#parameters)' subject.
 
-Writing a different number is an error. Here the annotation has one arrow and `f a b` supplies
-two parameters:
+Naming more is an error. Here the annotation has one arrow and `f a b` supplies two
+parameters:
 
 ```zel expect=canonical-error:BindingPatternsInvalidLen
 module Example exposing (Size, f)
