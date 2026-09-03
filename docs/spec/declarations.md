@@ -2,8 +2,7 @@
 
 A module is a [header](modules.md#the-module-header) followed by declarations. A declaration
 is what puts a name into a module: a value, a function, a type, an operator, or a name
-borrowed from somewhere else. There is no other way to introduce one, and there is nothing
-else at the top level of a file.
+borrowed from somewhere else.
 
 There are five forms. Three of them are made of a type expression or a module name, and are
 specified alongside those:
@@ -17,8 +16,7 @@ specified alongside those:
 | [`infix`](#infix-declarations) | `infix left 6 (+) = add` | below |
 
 Every one of them begins in column 1, and a token in column 1 is what ends the declaration
-before it — see [Layout](layout.md#top-level-declarations). There is no separator and no
-terminator; a blank line between two declarations is conventional and means nothing.
+before it — see [Layout](layout.md#top-level-declarations).
 
 ## Bindings
 
@@ -113,11 +111,8 @@ second =
   On
 ```
 
-The alternative — a name being visible only after the line that declares it — would make
-mutual recursion between two top-level functions impossible to write, and would give the order
-of a file a meaning that a reader has to keep track of. Which name refers to which declaration
-is [Name resolution](README.md#chapters)' subject; that a declaration's position never enters
-into it is this rule.
+Mutual recursion depends on it: two top-level functions can name each other because neither
+has to come first.
 
 ### Parameters
 
@@ -165,10 +160,6 @@ swap a b =
 name exactly as many as the annotation has arrows, so the only two counts accepted today are
 all of them and none ([`docs/tickets/lang-25.md`](../tickets/lang-25.md)).
 
-An arrow is part of a type, not a promise about how a declaration is written. `Flag -> Flag ->
-Flag` and `Flag -> (Flag -> Flag)` are the same type, so a rule that counted arrows would give
-two spellings of one type two different sets of legal declarations.
-
 Naming *more* parameters than the annotation has arrows is an error, and
 [Types](types.md#the-annotation-and-the-declarations-parameters) specifies it along with the
 rest of what an annotation and its declaration owe each other.
@@ -195,7 +186,7 @@ companion `.mjs` file, and having none is what makes it a facade.
 
 **Not implemented:** a binding may be written as several **clauses**, one per line, each with
 its own parameters and its own body. The clauses share a name, and that is what makes them one
-declaration.
+declaration ([`docs/tickets/lang-20.md`](../tickets/lang-20.md)).
 
 ```zel expect=canonical-error:MultipleBindingsUnsupported
 module Example exposing (Flag, invert)
@@ -211,10 +202,10 @@ invert Off = On
 
 The compiler parses the clauses and then reports that a name declared over more than one
 binding is not supported, so a declaration has exactly one clause today and any pattern that
-can fail has to go in a `case`. [`docs/tickets/lang-20.md`](../tickets/lang-20.md) is the
-ticket. [Patterns](patterns.md#a-pattern-that-can-fail-and-one-that-cannot) specifies the
-pattern half of the construct: the clauses are tried in the order written, they must cover the
-type between them, and they are one binding position each.
+can fail has to go in a `case`.
+[Patterns](patterns.md#a-pattern-that-can-fail-and-one-that-cannot) specifies the pattern half
+of the construct: the clauses are tried in the order written, they must cover the type between
+them, and they are one binding position each.
 
 A declaration with one clause is the ordinary case rather than a degenerate multi-clause one.
 The rules on a binding's name, its parameters and its body are all rules about a clause, and
@@ -396,11 +387,11 @@ was written, so `infix left 6 (+) = add` is equally correct whether `add` names 
 parameters, names one, or names none — all three are ways of writing a function of type
 `a -> b -> c`.
 
-**Not implemented:** the `infix` declaration is accepted whatever the function's type. A
-function of the wrong shape is caught, if at all, where the operator is *used*, and the caret
-lands on that expression instead of on the declaration that made the promise. The spec harness
-stops before the type checker ([`docs/tickets/test-2.md`](../tickets/test-2.md)), so no block
-above pins this.
+**Not implemented:** the `infix` declaration is accepted whatever the function's type, and so
+is every use of the operator, so a function of the wrong shape is caught nowhere
+([`docs/tickets/lang-28.md`](../tickets/lang-28.md)). No block above pins this: a check on a
+function's type is invisible to the spec harness, which stops before the type checker
+([`docs/tickets/test-2.md`](../tickets/test-2.md)).
 
 ### An operator has one `infix` declaration
 
