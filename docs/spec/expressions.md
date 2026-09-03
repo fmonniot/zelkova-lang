@@ -203,9 +203,9 @@ triple a b c = (a, b, c)
 nested a b = ((a, b), b)
 ```
 
-A tuple has two or three elements and no other size is written down anywhere — see
-[Tuple types](types.md#tuple-types), which carries the reasoning. Four elements is a *syntax*
-error, caught before anything has to count them:
+A tuple has two or three elements only — see [Tuple types](types.md#tuple-types),
+which carries the reasoning. Four elements is a *syntax* error, caught before
+anything has to count them:
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing (f)
@@ -644,12 +644,12 @@ f =
 ```
 
 A lambda's body extends as far to the right as it can, so `\x -> f x y` is `\x -> (f x y)` and
-a lambda used as an argument is parenthesised like any other non-atomic expression.
+a lambda used as an argument is parenthesised like any other non-atomic expression. A lambda can
+not span multiple lines, and a dedicated function must be used instead.
 
 ## Forms the compiler does not have
 
-Three expression forms are part of the language, are specified in their own chapters, and are
-implemented nowhere:
+Three expression forms are part of the language and are specified in their own chapters:
 
 | Form | Where it is specified |
 |---|---|
@@ -666,11 +666,3 @@ f r =
 
 **Not implemented:** `.` is punctuation for qualified names only, so `r.name` is rejected
 rather than read as a projection.
-
-The **unit** value `()` is likewise unwritable — see [The unit type](types.md#the-unit-type).
-
-```zel expect=unimplemented
-module Example exposing (f)
-
-f = ()
-```
