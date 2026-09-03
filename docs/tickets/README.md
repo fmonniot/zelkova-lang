@@ -235,7 +235,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
-| [SPEC-4](spec-4.md) | task | — | open | Write the Declarations chapter |
+| SPEC-4 | task | — | closed 2026-09-02 | Write the Declarations chapter |
 | SPEC-5 | task | — | closed 2026-08-29 | Write the Types and type annotations chapter |
 | SPEC-6 | task | — | closed 2026-08-30 | Write the Expressions chapter |
 | SPEC-7 | task | — | closed 2026-08-29 | Write the Patterns chapter |

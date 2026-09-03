@@ -192,8 +192,9 @@ carry no meaning.
 
 A declaration written as several clauses is no exception to any of this. Each clause begins in
 column 1 and so ends the one before it, exactly as the rule says; what makes them one
-declaration is that they share a name, not anything about how they are laid out. See
-[Patterns](patterns.md#a-pattern-that-can-fail-and-one-that-cannot).
+declaration is that they share a name and stand together, which is
+[Declarations](declarations.md#the-clauses-stand-together)' rule rather than a layout one. See
+also [Patterns](patterns.md#a-pattern-that-can-fail-and-one-that-cannot).
 
 ## `case … of`
 

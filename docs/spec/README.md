@@ -82,7 +82,7 @@ example belongs in a block with no `package=` label.
 | [Lexical structure](lexical-structure.md) | written |
 | [Layout (the offside rule)](layout.md) | written |
 | [Modules, exposing and imports](modules.md) | written |
-| Declarations | planned ([SPEC-4](../tickets/spec-4.md)) |
+| [Declarations](declarations.md) | written |
 | [Types and type annotations](types.md) | written |
 | [Expressions](expressions.md) | written |
 | [Patterns](patterns.md) | written |
