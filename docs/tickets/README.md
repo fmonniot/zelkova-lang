@@ -8,7 +8,7 @@ will keep producing them — writing down a rule that was never written down is 
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
 from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, `SPEC-11` a
 `BUG-` and an `ERR-`, `SPEC-10` a `BUG-` and two `LANG-`s, `SPEC-7` another five, `SPEC-6`
-three `LANG-`s, two `BUG-`s and a `SPEC-`, `SPEC-4` four more `LANG-`s, and `SPEC-8` four
+three `LANG-`s, two `BUG-`s and a `SPEC-`, `SPEC-4` four more `LANG-`s, and `SPEC-8` six
 `LANG-`s and an `ERR-`.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
@@ -279,6 +279,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-30](lang-30.md) | task | — | open | Ambiguity is detected for values only; a type, constructor or operator is taken from the last import |
 | [LANG-31](lang-31.md) | task | — | open | A variant may use a type variable its declaration does not bind |
 | [LANG-32](lang-32.md) | task | — | open | A module may declare one type twice, and the second silently replaces the first |
+| [LANG-33](lang-33.md) | task | — | open | There is no `let … in` production, so a local binding cannot be written |
+| [LANG-34](lang-34.md) | task | — | open | There is no lambda production, so `\x -> x` is read as an operator |
 | [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
