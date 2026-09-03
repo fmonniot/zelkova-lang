@@ -8,7 +8,8 @@ will keep producing them — writing down a rule that was never written down is 
 the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
 from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, `SPEC-11` a
 `BUG-` and an `ERR-`, `SPEC-10` a `BUG-` and two `LANG-`s, `SPEC-7` another five, `SPEC-6`
-three `LANG-`s, two `BUG-`s and a `SPEC-`, and `SPEC-4` four more `LANG-`s.
+three `LANG-`s, two `BUG-`s and a `SPEC-`, `SPEC-4` four more `LANG-`s, and `SPEC-8` six
+`LANG-`s and an `ERR-`.
 
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
@@ -232,6 +233,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-11](err-11.md) | task | — | open | A `case` branch indented deeper than its siblings is absorbed, and the error names the wrong token |
 | [ERR-12](err-12.md) | task | — | open | Leading indentation before `module` is rejected only by accident, and the caret lands on an unrelated line |
 | [ERR-13](err-13.md) | task | — | open | A type error spells the numeric-literal type `number`, which the language reads as an ordinary type variable |
+| [ERR-14](err-14.md) | task | — | open | A qualified name whose module is not imported is reported as a missing value |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
@@ -239,7 +241,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-5 | task | — | closed 2026-08-29 | Write the Types and type annotations chapter |
 | SPEC-6 | task | — | closed 2026-08-30 | Write the Expressions chapter |
 | SPEC-7 | task | — | closed 2026-08-29 | Write the Patterns chapter |
-| [SPEC-8](spec-8.md) | task | — | open | Write the Name resolution and scoping chapter |
+| SPEC-8 | task | — | closed 2026-09-02 | Write the Name resolution and scoping chapter |
 | [SPEC-9](spec-9.md) | task | — | open | Write the Evaluation semantics chapter |
 | SPEC-10 | task | — | closed 2026-08-30 | Write the Packages and source layout chapter |
 | SPEC-11 | task | — | closed 2026-08-29 | Write the Constrained type variables chapter |
@@ -273,6 +275,12 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-26](lang-26.md) | task | — | open | A declaration's clauses need not stand together |
 | [LANG-27](lang-27.md) | task | — | open | An operator may carry more than one `infix` declaration, and the last silently wins |
 | [LANG-28](lang-28.md) | task | — | open | An `infix` declaration's function is never checked to take two arguments |
+| [LANG-29](lang-29.md) | task | — | open | A top-level declaration silently shadows a name imported unqualified |
+| [LANG-30](lang-30.md) | task | — | open | Ambiguity is detected for values only; a type, constructor or operator is taken from the last import |
+| [LANG-31](lang-31.md) | task | — | open | A variant may use a type variable its declaration does not bind |
+| [LANG-32](lang-32.md) | task | — | open | A module may declare one type twice, and the second silently replaces the first |
+| [LANG-33](lang-33.md) | task | — | open | There is no `let … in` production, so a local binding cannot be written |
+| [LANG-34](lang-34.md) | task | — | open | There is no lambda production, so `\x -> x` is read as an operator |
 | [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |

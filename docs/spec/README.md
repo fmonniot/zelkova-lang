@@ -86,7 +86,7 @@ example belongs in a block with no `package=` label.
 | [Types and type annotations](types.md) | written |
 | [Expressions](expressions.md) | written |
 | [Patterns](patterns.md) | written |
-| Name resolution and scoping | planned ([SPEC-8](../tickets/spec-8.md)) |
+| [Name resolution and scoping](name-resolution.md) | written |
 | Evaluation semantics | planned ([SPEC-9](../tickets/spec-9.md)) |
 | [JS interop](js-interop.md) | written |
 | [Packages and source layout](packages.md) | written |
