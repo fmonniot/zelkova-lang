@@ -1,16 +1,14 @@
 # Evaluation semantics
 
-A program runs by evaluating an expression, and every one of the forms
-[Expressions](expressions.md) lists is evaluated by a rule below. Two properties decide almost
-all of them. Evaluation is **strict**: a subexpression is evaluated when it is reached, not when
-its value is demanded. And it is **pure**: evaluating an expression produces a value and has no
-other consequence, so the same expression evaluated twice gives the same answer both times.
+A program runs by evaluating an expression, and every form [Expressions](expressions.md) lists
+is evaluated by a rule below. Two properties decide almost all of them. Evaluation is
+**strict**: a subexpression is evaluated when it is reached, not when its value is demanded. And
+it is **pure**: evaluating an expression produces a value and has no other consequence.
 
 **Not implemented:** nothing in the compiler evaluates a Zelkova program. The pipeline ends at
 type checking and code generation has not started, so every rule below is one the compiler
-neither enforces nor implements. The blocks are checked for the one thing checkable without an
-evaluator — that the syntax the rules are written in is the syntax the language has — and a
-block tagged `expect=ok` says nothing at all about what it computes.
+neither enforces nor implements. Without an evaluator the blocks are checked for syntax and
+nothing else, so a block tagged `expect=ok` says nothing about what it computes.
 
 ## Two outcomes
 
@@ -35,9 +33,8 @@ every module — so a `case` missing a branch compiles today and would have no v
 
 ## Evaluation is strict
 
-An expression is evaluated when it is reached, not when its value is demanded. An argument is
-therefore a value before the function it is passed to is entered, and it is evaluated whether
-or not the body ever mentions it.
+An argument is a value before the function it is passed to is entered, and it is evaluated
+whether or not the body ever mentions it.
 
 ```zel expect=ok
 module Example exposing (first, loop, stuck)
@@ -56,12 +53,11 @@ stuck =
 before `first` is entered, and it does not terminate.
 
 Strictness is what makes the cost of an expression readable off the page. Under call-by-need
-the same text can run once, twice, or not at all depending on what its consumer demands, so
-the question "does this line run" is answered somewhere other than where the line is written.
+the same text can run once, twice, or not at all depending on what its consumer demands, so the
+question "does this line run" is answered somewhere other than where the line is written.
 
-Two forms are the exception, and they are the only two: `if` evaluates one of its arms, and
-`case` evaluates one of its branches. Both are covered under
-[Conditional evaluation](#conditional-evaluation), below.
+`if` and `case` are the exception; see [Conditional evaluation](#conditional-evaluation),
+below.
 
 ## Order of evaluation
 
@@ -90,17 +86,16 @@ f a b =
 
 `g a + h b` is `add (g a) (h b)`, so `add` is evaluated, then `g a`, then `h b`, and then the
 application happens. [Precedence and associativity](expressions.md#precedence-and-associativity)
-decide how an expression *groups*; they never decide what runs first. Once the grouping is
-known, the order is left to right through the resulting applications.
+decide how an expression *groups*; they never decide what runs first.
 
 The same rule covers every other form that holds more than one subexpression: a tuple evaluates
 its elements left to right, an `if` evaluates its condition before either arm, and a `case`
 evaluates its scrutinee before any branch is tried.
 
 Because evaluation is [pure](#purity-and-the-javascript-boundary), the order is observable only
-through non-termination. It is specified anyway, for two reasons. It settles which of two
-diverging subexpressions hangs the program, so a hang is reproducible rather than a property of
-the backend. And purity is a rule the compiler cannot check at the
+through non-termination. It is specified anyway: it settles which of two diverging
+subexpressions hangs the program, so a hang is reproducible rather than a property of the
+backend, and purity is a rule the compiler cannot check at the
 [JavaScript boundary](#purity-and-the-javascript-boundary), which is exactly where an
 unspecified order would be least recoverable.
 
@@ -155,16 +150,15 @@ careful a n =
 ```
 
 The alternative is to let `&&` skip an operand, and every way of arranging that costs more than
-it buys. Making the compiler recognise `&&` by name gives the language two kinds of operator —
-one whose meaning is its `infix` declaration, and two whose meaning is written into the
-compiler — so a reader can no longer answer "what does this operator do" by finding its
-declaration. Making the *signature* defer a parameter is honest but general: it puts a second
-evaluation strategy in the language, and every function's type then has to be read for which
-of its arguments are values.
+it buys. Recognising `&&` by name gives the language two kinds of operator — one whose meaning
+is its `infix` declaration, one whose meaning is written into the compiler — so a reader can no
+longer answer "what does this operator do" by finding its declaration. Making the *signature*
+defer a parameter is honest but general: it puts a second evaluation strategy in the language,
+and every function's type then has to be read for which of its arguments are values.
 
-What is actually lost is smaller than it looks. In a pure language the operands differ only in
-cost and in whether they terminate, and the form that expresses "only if" is `if`, which the
-language already has and which says so at the point of use.
+What is lost is smaller than it looks. In a pure language the operands differ only in cost and
+in whether they terminate, and the form that expresses "only if" is `if`, which says so at the
+point of use.
 
 **Known gap:** `std/core`'s `(&&)` and `(||)` are documented as short-circuiting.
 [`LANG-36`](../tickets/lang-36.md) is the ticket. No block holds it to account: the claim is in
@@ -303,7 +297,7 @@ pairWithOne =
 ```
 
 `pairWithOne` is a value: the function `pair`, carrying the argument it has already been given.
-Nothing of `pair`'s body has run, and nothing will until a second argument arrives.
+Nothing of `pair`'s body has run.
 
 A function value carries whatever its body needs from the scope it was built in, which is what
 makes a partially applied function, a
@@ -312,7 +306,7 @@ away from where they were written.
 
 **A function is not observable except by applying it.** It has no identity, no arity that can
 be asked for, and no equality — see below. Two functions that compute the same results are
-indistinguishable, and two occurrences of the same lambda are not distinguishable either.
+indistinguishable, and so are two occurrences of the same lambda.
 
 ## Equality
 
@@ -354,8 +348,7 @@ equality is defined by the shape of the value:
 
 An instance is free to define something else — equality up to a normal form, say, for a type
 whose representation has more than one spelling of the same value. That is the reason `Eq` is a
-class rather than a primitive: a type that knows what its own values mean can say so, and a
-type that has nothing to add gets the structural definition without writing it out.
+class rather than a primitive: a type that knows what its own values mean can say so.
 
 ```zel expect=unimplemented
 module Example exposing (Colour, alike)
@@ -418,8 +411,8 @@ use stack proportional to `n`.
 The guarantee covers a call to the declaration the call is written in, and nothing wider.
 Mutual tail recursion between two declarations carries no guarantee: a self tail call is a
 rewrite of one declaration into a loop, needing no analysis beyond that declaration and costing
-nothing at any other call site, while a general guarantee needs either a trampoline that every
-call in the program pays for or a target with proper tail calls, and neither JavaScript nor
+nothing at any other call site, while a general guarantee needs either a trampoline every call
+in the program pays for or a target with proper tail calls, and neither JavaScript nor
 WebAssembly offers one portably.
 
 ## Numbers
@@ -449,10 +442,9 @@ half n =
 ```
 
 **`n // 0` is `0`. `modBy 0 n` is `0`. `remainderBy 0 n` is `0`.** These are the values that
-keep those three operations total, which is what lets `//` stay an
-`Int -> Int -> Int` rather than becoming a `Maybe`-returning function that every arithmetic
-expression has to unwrap. A caller for whom a zero divisor is a real case tests the divisor;
-one for whom it is impossible pays nothing.
+keep those three operations total, which is what lets `//` stay an `Int -> Int -> Int` rather
+than becoming a `Maybe`-returning function every arithmetic expression has to unwrap. A caller
+for whom a zero divisor is a real case tests the divisor.
 
 **Known gap:** `modBy 0` calls an undefined `__Debug_crash`, so it is a `ReferenceError` rather
 than `0`, and `remainderBy 0` returns `nan` rather than `0`.
@@ -465,10 +457,10 @@ An expression's value depends only on the values of the names it mentions. Evalu
 gives the same value, and evaluating it does nothing else — nothing is written, read, mutated
 or sent anywhere.
 
-Every rule above rests on it. Evaluating a parameterless binding once
-and sharing the result, rewriting a self tail call into a loop, and specifying an evaluation
-order without specifying how many times anything runs are all only sound because the answer
-does not depend on when or how often the work happens.
+Every rule above rests on it: evaluating a parameterless binding once and sharing the result,
+rewriting a self tail call into a loop, and specifying an evaluation order without specifying
+how many times anything runs are sound only because the answer does not depend on when or how
+often the work happens.
 
 A [`module javascript` facade](js-interop.md) is where that guarantee meets code the compiler
 did not produce and cannot inspect. **A facade's companion export must be a function of its
