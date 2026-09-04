@@ -77,65 +77,48 @@ example belongs in a block with no `package=` label.
 
 ## Chapters
 
-| Chapter | Status |
+The chapters are the language, in reading order. Each one states its rules in full rather
+than deferring them, so together they are meant to be the whole of Zelkova and not a set of
+footnotes to somebody else's manual — that is what *the spec is self-contained* costs, and it
+is the point.
+
+| Chapter | Covers |
 |---|---|
-| [Lexical structure](lexical-structure.md) | written |
-| [Layout (the offside rule)](layout.md) | written |
-| [Modules, exposing and imports](modules.md) | written |
-| [Declarations](declarations.md) | written |
-| [Types and type annotations](types.md) | written |
-| [Expressions](expressions.md) | written |
-| [Patterns](patterns.md) | written |
-| [Name resolution and scoping](name-resolution.md) | written |
-| [Evaluation semantics](evaluation-semantics.md) | written |
-| [JS interop](js-interop.md) | written |
-| [Packages and source layout](packages.md) | written |
-| [Type classes](type-classes.md) | written |
+| [Lexical structure](lexical-structure.md) | What the characters of a file mean before any structure is imposed on them: source text, comments, identifiers, reserved words, literals, operators and punctuation. |
+| [Layout (the offside rule)](layout.md) | How a line's leading whitespace and starting column decide which construct it belongs to — for the file, a `case … of`, and a `let … in`. |
+| [Modules, exposing and imports](modules.md) | The module header, the four forms an `exposing` entry can take, `import … as … exposing`, the default imports, and how a module name maps to a file path. |
+| [Declarations](declarations.md) | The five declaration forms, and in full the two made of neither a type nor a module name: bindings, including multi-clause functions, and `infix`. |
+| [Types and type annotations](types.md) | Type expressions in full — application, the function arrow, variables, tuples, the unit type — plus the two declarations made of them, `name : Type` and `type`. |
+| [Expressions](expressions.md) | Every expression form: literals, names, application, grouping, `if … then … else`, `case … of`, `let … in`, lambdas, and the operator table. |
+| [Patterns](patterns.md) | Every pattern form, where each may appear, how they nest, and which of them can fail. |
+| [Name resolution and scoping](name-resolution.md) | The five namespaces, the scopes a name is looked up in, what shadows what, and what makes a reference ambiguous rather than merely unresolved. |
+| [Evaluation semantics](evaluation-semantics.md) | Strictness, purity, order of evaluation, which forms evaluate their subexpressions conditionally, what `==` means structurally, and what a function value is. |
+| [JS interop](js-interop.md) | The `module javascript` facade: what such a signature may say, what its companion `.mjs` exports, and why it is the only way into JavaScript. |
+| [Packages and source layout](packages.md) | The package directory, the `zelkova.toml` manifest, the two source roots, dependencies, and what a package boundary means for visibility and for a module's name. |
+| [Type classes](type-classes.md) | The `class` and `instance` declarations, how a constraint is written in an annotation, superclasses, where an instance may be declared, and the words this reserves. |
 
 Beside them, and outside that table, is one **appendix**: [the toolchain](toolchain.md).
 It is not part of the language and is not normative; see [Appendices](#appendices).
 
-Together the planned chapters are meant to be the whole language, not a set of footnotes to
-somebody else's manual — that is what *the spec is self-contained* costs, and it is the
-point. They are listed in a reading order rather than a writing order; each already has its own
-`SPEC-n` ticket (linked above), filed up front rather than one at a time as it is picked up —
-`write-spec-chapter` refuses to file the ticket it would later close in the same run, so one
-has to exist before that skill will touch a chapter. The `write-spec-chapter` skill
-(`.claude/skills/`) carries the method — probe the compiler rather than reasoning about it,
-settle the design questions with the owner before drafting, file what turns up instead of
-fixing it. What each chapter has to cover:
+Two constructs are named by the chapters above and specified by none of them: **records**
+and **lists**. Both are part of the language, both have chapters' worth of design left to
+settle, and a cross-reference to either currently arrives nowhere —
+[`SPEC-21`](../tickets/spec-21.md) and [`SPEC-22`](../tickets/spec-22.md) are the tickets, and
+each ends with a row added to the table above.
 
-- **Modules, exposing and imports** — the header, the four forms an `exposing` entry can
-  take, `import … as … exposing`, how a module name maps to a file path, and whether any
-  module is implicitly in scope. This is the chapter that answered the multi-module
-  question below, since it cannot be written with one module at a time.
-- **Declarations** — value and function declarations, `infix` declarations, and **multi-clause
-  function declarations with pattern matching**, which is a deliberate divergence: Elm has no
-  equivalent, so there is no inherited rule even to restate. [Patterns](patterns.md) settles
-  the half of that construct which is about patterns — that the clauses must cover the type
-  between them, that they are tried in order, and that each clause is one binding position —
-  so this chapter owns the declaration side and refers to it rather than restating it. The two type-shaped declarations
-  — the annotation `name : Type` and the `type` declaration — are in *Types and type
-  annotations* instead; `SPEC-5` settled that split, on the grounds that both are made of
-  type expressions and neither reads well away from them.
-- **Types and type annotations** — type expressions, the function arrow, type variables,
-  tuple types, and the fixed arity that makes a four-element tuple a *syntax* error rather
-  than a type error; plus the annotation and `type` declarations, per the note above.
-- **Expressions** — application, `if`/`then`/`else`, `case … of`, `let … in`, lambdas, and
-  the operator table: precedence, associativity, and the fact that no operator's meaning is
-  built in.
-- **Patterns** — every pattern form, and where each may appear.
-- **Name resolution and scoping** — qualified names, what shadows what, and what makes a
-  reference ambiguous rather than merely unresolved.
-- **Evaluation semantics** — order of evaluation, what `==` means structurally, which
-  operators short-circuit, and what a function value is.
-- **Packages and source layout** — the package directory, the `zelkova.toml` manifest, and
-  what a package boundary means for visibility.
-- **Type classes** — the `class` and `instance` declarations, how a constraint is written in an
-  annotation, superclasses, where an instance may be declared, and what a constrained function
-  may *not* be: a `module javascript` facade. A class constraint is what the language offers in
-  place of a privileged type-variable spelling; that no spelling is privileged is *Types*'
-  rule, stated there.
+A question a chapter has not answered is an **Open question** at the foot of that chapter. It
+is a gap in the language rather than a gap in the writing, and it stays visible where the
+rules around it are.
+
+### How a chapter is written
+
+The `write-spec-chapter` skill (`.claude/skills/`) carries the method: probe the compiler
+rather than reasoning about it, settle the design questions with the owner before drafting,
+and file what turns up instead of fixing it. Each chapter also has a `SPEC-n` ticket, filed
+by a separate run before drafting starts, because that skill refuses to file the ticket it
+would later close.
+
+The three rules below are what a chapter is written against.
 
 ### Tag every claim the chapter makes
 
