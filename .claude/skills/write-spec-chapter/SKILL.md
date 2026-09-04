@@ -41,9 +41,13 @@ documentation. Where a rule is inherited, write it out in full.
 
 ## Step 1 — Read the conventions before writing a word
 
-- `docs/spec/README.md` — the `expect=` vocabulary, the **Known gap:** / **Not implemented:**
-  lead-ins, *A chapter says what the language is*, and *A spec change and a semantics change do
-  not share a diff*. This is the document chapter authors are written against; read all of it.
+- `docs/spec/conventions.md` — the `expect=` vocabulary, `package=`, *Tag every claim the
+  chapter makes*, *A chapter says what the language is*, and *A spec change and a semantics
+  change do not share a diff*. This is the document chapter authors are written against; read
+  all of it.
+- `docs/spec/README.md` — the index a reader of the language sees: what the spec is, the three
+  lead-ins (**Known gap:**, **Not implemented:**, **Provisional:**), and the chapter table your
+  new row goes into.
 - `tests/spec.rs` — what the harness actually enforces, as opposed to what the index says it
   does. The two are kept in step deliberately; if they have drifted, that is the first finding.
 - `docs/spec/layout.md` and `docs/spec/lexical-structure.md` — the two worked examples, for
@@ -153,7 +157,7 @@ a note about who has yet to answer it.
   message; a reader of the spec needs the rule and the reason it is a good rule. Two things you
   are *not* being told to drop: rationale that is a property of the language, and the
   **Known gap:** / **Not implemented:** lead-ins, which describe the compiler rather than the
-  language. `docs/spec/README.md`'s *A chapter says what the language is* is the full rule.
+  language. `docs/spec/conventions.md`'s *A chapter says what the language is* is the full rule.
 - **Prefer prose plus checked examples.** Drop into EBNF only where English is genuinely
   worse — an exposing list's nesting, an operator table. Nothing checks an EBNF block, which
   makes it the one thing in the directory that can drift.
@@ -175,7 +179,8 @@ This step is for `BUG-`/`LANG-` tickets discovered while drafting — the `SPEC-
 the chapter itself was confirmed in Step 3 (filed separately, before this run) and gets
 tombstoned in Step 8, not filed here.
 
-`docs/spec/README.md`'s *A spec change and a semantics change do not share a diff* is the rule.
+`docs/spec/conventions.md`'s *A spec change and a semantics change do not share a diff* is the
+rule.
 A spec claim the compiler fails is a red test, which is a working record rather than a lost
 one. Match the `create-ticket` skill's format — read it for the ticket anatomy and the
 grounding rules, both of which apply here unchanged.
@@ -272,8 +277,9 @@ broken for one commit of history.
   the model.
 - **One module per block, unless the block carries a `package=` label.** Blocks sharing one
   label within a chapter are compiled together as one package, each keeping its own `expect=`;
-  a block with no label is compiled alone against no interfaces at all. `docs/spec/README.md`'s
-  *More than one module* has the mechanism and the four things a group cannot do.
+  a block with no label is compiled alone against no interfaces at all.
+  `docs/spec/conventions.md`'s *More than one module* has the mechanism and the four things a
+  group cannot do.
 - **`NodeSpan`'s `PartialEq` always returns `true`**, so a whole-value assertion in any test
   you add proves nothing about position. Assert on `.span` or on `diagnostic.labels[..].range`.
 - **Leading whitespace in a block is load-bearing** — layout is indentation-sensitive, and an
