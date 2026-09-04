@@ -469,17 +469,20 @@ below.
   and a program that only computes is not much of a program. The
   mechanism — what a value that describes an effect is, how one is run, how results come back —
   is undesigned, and it is the same design that
-  [what type `main` must have](packages.md#open-questions) waits on.
+  [what type `main` must have](packages.md#open-questions) waits on
+  ([`SPEC-15`](../tickets/spec-15.md)).
 - **How a structural instance is derived.** `Eq` is a class, so every type that wants `==` needs
   an instance, and writing a structural one out by hand for each is a tax the language should
   not charge. [Type classes](type-classes.md) specifies no way to ask for the structural
   definition — whether by a clause on the `type` declaration, an instance with no members, or
   something else. `Comparable`'s ordering over a union type has the same question and the same
-  answer.
+  answer ([`SPEC-14`](../tickets/spec-14.md)).
 - **Whether the language promises anything else about space.** The tail-call rule is the one
   promise here about memory. Whether a program can rely on anything more — that a value is not
   copied, that a partially applied function is not rebuilt per call — is unanswered, and each
-  answer constrains a code generator that does not exist.
+  answer constrains a code generator that does not exist
+  ([`SPEC-16`](../tickets/spec-16.md)).
 - **What a `Float` literal denotes exactly.** `Float` is binary64 and most decimal literals are
   not, so a literal is rounded. Which rounding, and whether a literal that is not representable
-  is an error rather than a rounding, is unspecified.
+  is an error rather than a rounding, is unspecified
+  ([`SPEC-17`](../tickets/spec-17.md)).

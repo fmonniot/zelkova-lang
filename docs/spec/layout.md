@@ -390,4 +390,5 @@ has ever checked. The bindings sit deeper than the `let`, and `in` closes the bl
 questions are **open**, and this chapter deliberately does not answer them — whether the
 bindings of a `let` form a block with the same column discipline as `case … of` branches, so
 that the first binding fixes the column for all of them; and whether `in` must align with
-its `let`.
+its `let`. [`LANG-33`](../tickets/lang-33.md) answers both, as the first step of implementing
+`let … in`.

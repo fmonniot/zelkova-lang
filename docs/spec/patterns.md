@@ -27,7 +27,7 @@ therefore tell what a pattern matches by looking at it, without knowing which mo
 | [unit](#the-unit-pattern) | `()` | the one value of the unit type |
 
 The one form this table does not give a spelling for is the [record pattern](#record-patterns),
-because record syntax itself is not settled.
+because record syntax itself is not settled ([`SPEC-21`](../tickets/spec-21.md)).
 
 ```zel expect=ok
 module Example exposing (Count, Shape, describe)
@@ -711,6 +711,6 @@ always () =
 
 A record pattern names fields rather than positions. Its spelling is not settled, because
 record syntax itself is not: records are part of the language, and no chapter yet says what
-one looks like in a type, an expression or a pattern. See
+one looks like in a type, an expression or a pattern ([`SPEC-21`](../tickets/spec-21.md)). See
 [Lexical structure](lexical-structure.md#punctuation) for what the braces do today, which is
 nothing.

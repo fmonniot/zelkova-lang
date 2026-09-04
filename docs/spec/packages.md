@@ -556,10 +556,11 @@ that runs ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
 
 - **What type `main` must have.** A program is more than a value of an arbitrary type — it
   has to describe how it starts, what it reacts to and what it does to the outside world —
-  and the type that says so is undesigned.
+  and the type that says so is undesigned ([`SPEC-15`](../tickets/spec-15.md)).
 - **What a test is.** A module under `tests/` is compiled, and nothing yet says what makes a
   declaration in it something a runner will run: an exposed value of a particular type, a
   naming convention, or a declaration form the language does not have. It waits on the same
   design `main`'s type waits on, since both are a value the outside world picks up and acts
   on. How a runner is invoked, and what it reports, are
-  [toolchain](toolchain.md#running-a-packages-tests) questions rather than language ones.
+  [toolchain](toolchain.md#running-a-packages-tests) questions rather than language ones
+  ([`SPEC-15`](../tickets/spec-15.md)).

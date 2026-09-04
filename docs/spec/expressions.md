@@ -654,9 +654,9 @@ Three expression forms are part of the language and are specified in their own c
 
 | Form | Where it is specified |
 |---|---|
-| List literals — `[1, 2]` | [Lexical structure](lexical-structure.md#punctuation) carries the brackets; the list chapter is unwritten |
-| Records — `{ a = 1 }`, `{ r \| a = 2 }` | likewise, for the braces |
-| Field access — `r.name`, `.name` | with records |
+| List literals — `[1, 2]` | [Lexical structure](lexical-structure.md#punctuation) carries the brackets; the list chapter is unwritten ([`SPEC-22`](../tickets/spec-22.md)) |
+| Records — `{ a = 1 }`, `{ r \| a = 2 }` | likewise, for the braces ([`SPEC-21`](../tickets/spec-21.md)) |
+| Field access — `r.name`, `.name` | with records ([`SPEC-21`](../tickets/spec-21.md)) |
 
 ```zel expect=unimplemented
 module Example exposing (f)
