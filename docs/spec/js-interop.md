@@ -62,9 +62,12 @@ chapter.
 - **Which types may cross the boundary.** The paragraph above says "a subset of the
   Zelkova standard types" without saying which, and that is the substance of this
   chapter rather than a detail of it. The rule wanted is one a runtime check can
-  enforce; naming the subset needs the types chapter first.
+  enforce; naming the subset needs the types chapter first
+  ([`SPEC-18`](../tickets/spec-18.md)).
 - **WebAssembly modules.** `javascript` is the only interop modifier the language
   defines. What the equivalent declaration for a WebAssembly-backed module would look
-  like — a second modifier, a different mechanism entirely — is undesigned.
+  like — a second modifier, a different mechanism entirely — is undesigned
+  ([`SPEC-19`](../tickets/spec-19.md)).
 - **Values, not just functions.** Only signatures are accepted today, and every worked
-  example is a function. Whether a facade may declare a constant is unsettled.
+  example is a function. Whether a facade may declare a constant is unsettled
+  ([`SPEC-20`](../tickets/spec-20.md)).

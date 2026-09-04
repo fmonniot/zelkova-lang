@@ -47,7 +47,8 @@ red = Red
 
 Records and list types are part of the language and are specified with the constructs they
 belong to, neither of which exists yet — see the *Not implemented* note on brackets and braces
-in [Lexical structure](lexical-structure.md#punctuation).
+in [Lexical structure](lexical-structure.md#punctuation). Neither chapter is written:
+[`SPEC-21`](../tickets/spec-21.md) and [`SPEC-22`](../tickets/spec-22.md).
 
 ### Type names
 

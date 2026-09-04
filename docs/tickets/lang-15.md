@@ -50,7 +50,8 @@ test and no way to depend on a library for it.
    appears in both, and resolve the union.
 
 **Not in this ticket: the runner.** What makes a declaration under `tests/` something a runner
-runs is an [open question in the chapter](../spec/packages.md#open-questions) — it waits on the
+runs is an [open question in the chapter](../spec/packages.md#open-questions), owned by
+[SPEC-15](spec-15.md) — it waits on the
 same design `main`'s type waits on, since both are a value the outside world picks up and acts
 on. This ticket gets test modules compiled with the right things in scope, which is everything
 that does not depend on that answer, and

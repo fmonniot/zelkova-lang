@@ -18,10 +18,12 @@ skill exists to prevent.
 
 $ARGUMENTS
 
-A chapter name from the table in `docs/spec/README.md`, or a `SPEC-n` ticket ID. Either way, a
-`SPEC-n` ticket for the chapter must already exist, filed ahead of time with `create-ticket` —
-see Step 3. Often the chapter name is not in the arguments at all but in the preceding
-conversation ("do the next one"), in which case take the next `planned` row in reading order.
+A chapter name, or a `SPEC-n` ticket ID. Every chapter in `docs/spec/README.md`'s table is
+already written, so this is normally a chapter that does not exist yet — records and lists are
+the two the other chapters defer to. Either way, a `SPEC-n` ticket for the chapter must already
+exist, filed ahead of time with `create-ticket` — see Step 3. Often the chapter name is not in
+the arguments at all but in the preceding conversation ("do the next one"), in which case take
+the oldest open `SPEC-` ticket whose title names a chapter.
 
 ## Why this exists
 
@@ -39,9 +41,13 @@ documentation. Where a rule is inherited, write it out in full.
 
 ## Step 1 — Read the conventions before writing a word
 
-- `docs/spec/README.md` — the `expect=` vocabulary, the **Known gap:** / **Not implemented:**
-  lead-ins, *A chapter says what the language is*, and *A spec change and a semantics change do
-  not share a diff*. This is the document chapter authors are written against; read all of it.
+- `docs/spec/conventions.md` — the `expect=` vocabulary, `package=`, *Tag every claim the
+  chapter makes*, *A chapter says what the language is*, and *A spec change and a semantics
+  change do not share a diff*. This is the document chapter authors are written against; read
+  all of it.
+- `docs/spec/README.md` — the index a reader of the language sees: what the spec is, the three
+  lead-ins (**Known gap:**, **Not implemented:**, **Provisional:**), and the chapter table your
+  new row goes into.
 - `tests/spec.rs` — what the harness actually enforces, as opposed to what the index says it
   does. The two are kept in step deliberately; if they have drifted, that is the first finding.
 - `docs/spec/layout.md` and `docs/spec/lexical-structure.md` — the two worked examples, for
@@ -151,7 +157,7 @@ a note about who has yet to answer it.
   message; a reader of the spec needs the rule and the reason it is a good rule. Two things you
   are *not* being told to drop: rationale that is a property of the language, and the
   **Known gap:** / **Not implemented:** lead-ins, which describe the compiler rather than the
-  language. `docs/spec/README.md`'s *A chapter says what the language is* is the full rule.
+  language. `docs/spec/conventions.md`'s *A chapter says what the language is* is the full rule.
 - **Prefer prose plus checked examples.** Drop into EBNF only where English is genuinely
   worse — an exposing list's nesting, an operator table. Nothing checks an EBNF block, which
   makes it the one thing in the directory that can drift.
@@ -173,7 +179,8 @@ This step is for `BUG-`/`LANG-` tickets discovered while drafting — the `SPEC-
 the chapter itself was confirmed in Step 3 (filed separately, before this run) and gets
 tombstoned in Step 8, not filed here.
 
-`docs/spec/README.md`'s *A spec change and a semantics change do not share a diff* is the rule.
+`docs/spec/conventions.md`'s *A spec change and a semantics change do not share a diff* is the
+rule.
 A spec claim the compiler fails is a red test, which is a working record rather than a lost
 one. Match the `create-ticket` skill's format — read it for the ticket anatomy and the
 grounding rules, both of which apply here unchanged.
@@ -202,7 +209,9 @@ fix, only its meaning.
 
 ## Step 8 — Update both indexes
 
-- `docs/spec/README.md` — move the chapter's row from `planned` to `written`, linked.
+- `docs/spec/README.md` — add the chapter's row to the chapter table, linked, in reading
+  order, with a one-line *Covers*. If any chapter deferred to this one, drop the sentence in
+  that file's gap paragraph that says the cross-reference arrives nowhere.
 - `docs/tickets/README.md` — a row per new `BUG-`/`LANG-` ticket, above the tombstones, grouped
   by prefix. Add any new prefix to the header list with a sentence on what distinguishes it.
 - **Tombstone the `SPEC-n` ticket confirmed in Step 3**: delete `docs/tickets/spec-n.md` and
@@ -266,10 +275,11 @@ broken for one commit of history.
   Never put a panicking input in a block. Describe it in prose, file it, and say in the chapter
   why it is described rather than shown — `docs/spec/lexical-structure.md`'s last section is
   the model.
-- **One module per block.** How to write an example spanning two modules is still open —
-  `docs/spec/README.md` lists four candidate mechanisms and says whichever chapter needs it
-  first decides. The **Modules, exposing and imports** chapter is that chapter; settle it
-  before starting, not halfway through.
+- **One module per block, unless the block carries a `package=` label.** Blocks sharing one
+  label within a chapter are compiled together as one package, each keeping its own `expect=`;
+  a block with no label is compiled alone against no interfaces at all.
+  `docs/spec/conventions.md`'s *More than one module* has the mechanism and the four things a
+  group cannot do.
 - **`NodeSpan`'s `PartialEq` always returns `true`**, so a whole-value assertion in any test
   you add proves nothing about position. Assert on `.span` or on `diagnostic.labels[..].range`.
 - **Leading whitespace in a block is load-bearing** — layout is indentation-sensitive, and an

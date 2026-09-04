@@ -528,6 +528,8 @@ f = { a = 1 }
 Brackets are tokenized but no construct consumes them; braces are not tokenized at all. Their
 syntax is specified in the chapters on those constructs rather than here — this section
 claims only that the characters are spoken for and are not available as operator characters.
+Neither of those chapters exists yet: [`SPEC-22`](../tickets/spec-22.md) is the list one and
+[`SPEC-21`](../tickets/spec-21.md) the record one.
 
 ## Numeric literals the tokenizer cannot represent
 

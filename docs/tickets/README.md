@@ -11,6 +11,15 @@ from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, `SPEC-
 three `LANG-`s, two `BUG-`s and a `SPEC-`, `SPEC-4` four more `LANG-`s, `SPEC-8` six
 `LANG-`s and an `ERR-`, and `SPEC-9` two `LANG-`s, a `BUG-` and a `SPEC-`.
 
+`SPEC-15` through `SPEC-22` were filed together on 2026-09-04, from an audit of `docs/spec/`
+for open questions with no ticket attached. Twelve were found: three chapters carry an
+**Open questions** section holding nine between them, two more sit inline in
+[`docs/spec/layout.md`](../spec/layout.md), and one — records — is stated inline in four
+chapters at once. Two already had owners (`SPEC-14` and `LANG-33`); the rest had none, and the
+records deferral turned out to have a twin in lists. Every open question in `docs/spec/` now
+links to the ticket that owns it, which is what makes the attachment checkable by `grep` rather
+than by memory.
+
 `SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
 chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
 is a deliberate exception: `write-spec-chapter` no longer files its own tracking ticket (doing
@@ -253,6 +262,14 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
 | [SPEC-13](spec-13.md) | task | — | open | Whether a pattern's negative literal is a token or a pattern production is unsettled, and two chapters answer it differently |
 | [SPEC-14](spec-14.md) | task | — | open | Nothing specifies how a structural instance is derived, and equality needs it |
+| [SPEC-15](spec-15.md) | task | — | open | Nothing says what an effect is, so `main`'s type and what a test is are both undesigned |
+| [SPEC-16](spec-16.md) | task | — | open | The spec makes one promise about space and does not say whether it makes others |
+| [SPEC-17](spec-17.md) | task | — | open | What a `Float` literal denotes is unspecified, and the tokenizer has already picked an answer |
+| [SPEC-18](spec-18.md) | task | — | open | "A subset of the Zelkova standard types" names no subset, and the compiler enforces none |
+| [SPEC-19](spec-19.md) | task | — | open | `javascript` is the only interop modifier, and the WebAssembly equivalent is undesigned |
+| [SPEC-20](spec-20.md) | task | — | open | A facade constant is called unsettled by the chapter and shipped by `std/core` |
+| [SPEC-21](spec-21.md) | task | — | open | Records are part of the language and no chapter says what one looks like |
+| [SPEC-22](spec-22.md) | task | — | open | Lists are part of the language and the chapter specifying them does not exist |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |

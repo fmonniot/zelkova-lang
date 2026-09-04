@@ -4,7 +4,8 @@
 for `docs/spec/` that has to invent its own `expect=` styling — none of which exists today).
 
 **Location:** `.github/workflows/rustdoc.yml`; new files under a to-be-decided site source
-directory (see Approach); `docs/spec/README.md` and its chapter files, as the renderer's input.
+directory (see Approach); `docs/spec/README.md`, `docs/spec/conventions.md` and the chapter
+files, as the renderer's input.
 
 **Problem:** the only thing published to GitHub Pages today is `cargo doc`'s output, deployed
 by `.github/workflows/rustdoc.yml` straight from `target/doc`:
@@ -39,7 +40,7 @@ Two consequences follow from that:
 
 **Wanted:** a landing page at the site root that frames the project and links to the rustdoc
 and the spec, and `docs/spec/`'s chapters rendered as HTML on the same site — each chapter's
-```` ```zel ```` blocks styled by their `expect=` tag (`docs/spec/README.md`'s vocabulary:
+```` ```zel ```` blocks styled by their `expect=` tag (`docs/spec/conventions.md`'s vocabulary:
 `ok`, `parse-error[:Reason]`, `canonical-error:Variant`, `unimplemented`, `fragment`) so a
 reader can see at a glance which examples the compiler accepts today and which are aspirational.
 

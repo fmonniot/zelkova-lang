@@ -5,8 +5,8 @@ a decision.
 
 **Location:** `tests/spec.rs` — `evaluate` and `evaluate_group`, both of which run a block
 through `parse` then `canonical::canonicalize` and stop; the `Expect` enum, which has no
-type-level variant; and `docs/spec/README.md`'s `expect=` vocabulary table, which documents
-the same set for chapter authors.
+type-level variant; and `docs/spec/conventions.md`'s `expect=` vocabulary table, which
+documents the same set for chapter authors.
 
 **Problem:** `docs/spec/` exists so that a chapter claim the compiler disagrees with is a red
 test rather than a stale sentence. That guarantee currently covers the parser and
@@ -48,7 +48,7 @@ Four things to settle, none of them mechanical:
   `canonical-error:` and `type-error:` distinction the tags need. Calling the phases
   separately keeps them apart, at the cost of the harness knowing the pipeline's shape.
 
-Keep `docs/spec/README.md`'s vocabulary table and `tests/spec.rs`'s module doc comment in step
+Keep `docs/spec/conventions.md`'s vocabulary table and `tests/spec.rs`'s module doc comment in step
 with whatever lands — they are written to be the same list read by two audiences, and the
 skill that writes chapters (`.claude/skills/write-spec-chapter`) sends authors to the first
 and reviewers to the second.

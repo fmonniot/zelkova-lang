@@ -48,7 +48,7 @@ smaller =
 Nothing in the compiler stands between that program and `_Utils_cmp`. Type checking accepts
 it because the declared type genuinely does accept it; code generation does not exist yet;
 and `docs/spec/js-interop.md` already records that *which types may cross the boundary* is
-undesigned, so there is no facade-level rule to appeal to either.
+undesigned ([SPEC-18](spec-18.md)), so there is no facade-level rule to appeal to either.
 
 **Approach:** this cannot be fixed by narrowing the annotation, because the language has no
 way to write the restriction — that is the whole subject of

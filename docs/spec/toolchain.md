@@ -229,7 +229,7 @@ nothing may import a test module.
 finds in `tests/`. What it finds — an exposed value of a particular type, a naming convention, a
 declaration form the language does not have yet — is the open question at the foot of the
 [Packages chapter](packages.md#open-questions), and this section cannot be finished until it is
-answered. What can be said now is what does not depend on that answer: a package's tests are run
+answered ([`SPEC-15`](../tickets/spec-15.md)). What can be said now is what does not depend on that answer: a package's tests are run
 by that package, dependencies' tests are never run, and a failing test is a non-zero exit.
 
 **Not implemented:** there is no `tests/` root, no `test-dependencies`, and no runner
