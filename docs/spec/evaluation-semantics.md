@@ -52,9 +52,8 @@ stuck =
 `first` ignores its second argument, and `stuck` still has no value: `loop 2` is evaluated
 before `first` is entered, and it does not terminate.
 
-Strictness is what makes the cost of an expression readable off the page. Under call-by-need
-the same text can run once, twice, or not at all depending on what its consumer demands, so the
-question "does this line run" is answered somewhere other than where the line is written.
+Strictness is what makes the cost of an expression readable off the page: under call-by-need
+the same text can run once, twice, or not at all depending on what its consumer demands.
 
 `if` and `case` are the exception; see [Conditional evaluation](#conditional-evaluation),
 below.
@@ -93,11 +92,7 @@ its elements left to right, an `if` evaluates its condition before either arm, a
 evaluates its scrutinee before any branch is tried.
 
 Because evaluation is [pure](#purity-and-the-javascript-boundary), the order is observable only
-through non-termination. It is specified anyway: it settles which of two diverging
-subexpressions hangs the program, so a hang is reproducible rather than a property of the
-backend, and purity is a rule the compiler cannot check at the
-[JavaScript boundary](#purity-and-the-javascript-boundary), which is exactly where an
-unspecified order would be least recoverable.
+through non-termination: it settles which of two diverging subexpressions hangs the program.
 
 ## Conditional evaluation
 
@@ -149,16 +144,8 @@ careful a n =
   if a then expensive n else False
 ```
 
-The alternative is to let `&&` skip an operand, and every way of arranging that costs more than
-it buys. Recognising `&&` by name gives the language two kinds of operator — one whose meaning
-is its `infix` declaration, one whose meaning is written into the compiler — so a reader can no
-longer answer "what does this operator do" by finding its declaration. Making the *signature*
-defer a parameter is honest but general: it puts a second evaluation strategy in the language,
-and every function's type then has to be read for which of its arguments are values.
-
-What is lost is smaller than it looks. In a pure language the operands differ only in cost and
-in whether they terminate, and the form that expresses "only if" is `if`, which says so at the
-point of use.
+`&&` gets no exception: an operator's meaning is its `infix` declaration and nothing else, and
+no signature can defer a parameter.
 
 **Known gap:** `std/core`'s `(&&)` and `(||)` are documented as short-circuiting.
 [`LANG-36`](../tickets/lang-36.md) is the ticket. No block holds it to account: the claim is in
@@ -347,8 +334,7 @@ equality is defined by the shape of the value:
   `-0.0`.
 
 An instance is free to define something else — equality up to a normal form, say, for a type
-whose representation has more than one spelling of the same value. That is the reason `Eq` is a
-class rather than a primitive: a type that knows what its own values mean can say so.
+whose representation has more than one spelling of the same value.
 
 ```zel expect=unimplemented
 module Example exposing (Colour, alike)
@@ -409,11 +395,7 @@ Nothing else is — not an argument, not an operand, not a scrutinee, not an `if
 use stack proportional to `n`.
 
 The guarantee covers a call to the declaration the call is written in, and nothing wider.
-Mutual tail recursion between two declarations carries no guarantee: a self tail call is a
-rewrite of one declaration into a loop, needing no analysis beyond that declaration and costing
-nothing at any other call site, while a general guarantee needs either a trampoline every call
-in the program pays for or a target with proper tail calls, and neither JavaScript nor
-WebAssembly offers one portably.
+Mutual tail recursion between two declarations carries no guarantee.
 
 ## Numbers
 
@@ -442,9 +424,8 @@ half n =
 ```
 
 **`n // 0` is `0`. `modBy 0 n` is `0`. `remainderBy 0 n` is `0`.** These are the values that
-keep those three operations total, which is what lets `//` stay an `Int -> Int -> Int` rather
-than becoming a `Maybe`-returning function every arithmetic expression has to unwrap. A caller
-for whom a zero divisor is a real case tests the divisor.
+keep those three operations total. A caller for whom a zero divisor is a real case tests the
+divisor.
 
 **Known gap:** `modBy 0` calls an undefined `__Debug_crash`, so it is a `ReferenceError` rather
 than `0`, and `remainderBy 0` returns `nan` rather than `0`.
@@ -483,8 +464,7 @@ next : a -> a
 ```
 
 Both compile. The second is a broken program, and the rule it breaks is one only its author can
-keep — which is the price of having exactly one way into JavaScript and no privileged escape
-hatch beside it.
+keep.
 
 How a program *does* reach the outside world is not this boundary's job and is undesigned; see
 below.
