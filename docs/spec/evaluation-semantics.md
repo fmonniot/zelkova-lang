@@ -105,7 +105,7 @@ These are the only two forms in the language that evaluate one subexpression and
 ### Nothing short-circuits
 
 `&&` and `||` are [names](expressions.md#an-operator-is-a-name), bound by an `infix`
-declaration to ordinary functions, and an ordinary function under call-by-value receives values.
+declaration to ordinary functions.
 **Both operands of `&&` are evaluated, always, and likewise for `||`.**
 
 ```zel expect=ok
@@ -124,8 +124,7 @@ safe a b =
   a && b
 ```
 
-`and`'s body uses `if`, so the *body* looks at `b` only when `a` is `True` — and that changes
-nothing, because `safe` has already evaluated `b` in order to call `and` with it. Conditional
+`and`'s body uses `if`, so the *body* looks at `b` only when `a` is `True`. Conditional
 evaluation is a property of the call site, and `&&` is a call.
 
 Skipping the right operand is written out:
@@ -193,8 +192,8 @@ the function, and its body runs when the function is applied.
 ### A binding may not depend on itself
 
 Under strict evaluation a parameterless binding's value has to exist before the binding can be
-used, so one that depends on its own value describes nothing. **A cycle among parameterless
-bindings is an error**, whether it is one binding long or runs through several.
+used. **A cycle among parameterless bindings is an error**, whether it is one binding long or
+runs through several.
 
 ```zel expect=ok
 module Example exposing (x)
