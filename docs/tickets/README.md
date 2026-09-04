@@ -1,6 +1,6 @@
 # Zelkova — Ticket index
 
-_Last updated: 2026-09-02._
+_Last updated: 2026-09-04._
 
 `SPEC-2` opened a second body of work alongside the diagnostics program below: specifying the
 language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
@@ -35,7 +35,9 @@ and diagnostics), `AST-` (parser and canonical AST shape), `PERF-` (allocation a
 and documenting the language itself, under `docs/spec/`), `LANG-` (bringing the compiler into
 line with a rule `docs/spec/` has since settled), `CLASS-` (the type-class program below —
 building a mechanism the language has decided on but has never had), `SITE-` (the public GitHub
-Pages site built from this repo — rustdoc, the rendered spec, the landing page).
+Pages site built from this repo — rustdoc, the rendered spec, the landing page), `GEN-` (code
+generation — turning a checked module into runnable JavaScript, a phase that does not exist
+yet).
 
 `CLASS-` is neither a `BUG-` nor a `LANG-`, and the distinction is the same one that separates
 those two. A `LANG-` is code that succeeds at something a chapter has since decided against; a
@@ -161,9 +163,9 @@ held to `tests/typer.rs`, which already reaches the typer.
 
 **What is not a ticket:** dictionary erasure. `SPEC-12` decision 7 settles that a constrained
 function is specialised per instantiation and no dictionary exists at runtime — which is a
-constraint on code generation, and code generation has not started. It is recorded in `SPEC-12`
-and in `docs/spec/js-interop.md` for the first codegen ticket to inherit, rather than filed
-against a phase that does not exist.
+constraint on code generation, and code generation has not started. It is recorded in
+`docs/spec/type-classes.md` and in `docs/spec/js-interop.md`, and [`GEN-1`](gen-1.md) — the
+ticket that starts the backend — inherits it from there, rather than it being filed twice.
 
 ## Recovering a closed ticket
 
@@ -294,6 +296,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [CLASS-5](class-5.md) | task | — | open | Retire `Type::Number` in favour of a `Number` class, defaulting to `Int` |
 | [CLASS-6](class-6.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
+| [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
