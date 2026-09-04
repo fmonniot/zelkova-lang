@@ -9,6 +9,7 @@ it is **pure**: evaluating an expression produces a value and has no other conse
 type checking and code generation has not started, so every rule below is one the compiler
 neither enforces nor implements. Without an evaluator the blocks are checked for syntax and
 nothing else, so a block tagged `expect=ok` says nothing about what it computes.
+[`GEN-1`](../tickets/gen-1.md) is the ticket.
 
 ## Two outcomes
 
@@ -52,8 +53,7 @@ stuck =
 `first` ignores its second argument, and `stuck` still has no value: `loop 2` is evaluated
 before `first` is entered, and it does not terminate.
 
-Strictness is what makes the cost of an expression readable off the page: under call-by-need
-the same text can run once, twice, or not at all depending on what its consumer demands.
+A subexpression therefore runs once each time it is reached, whether or not its value is used.
 
 `if` and `case` are the exception; see [Conditional evaluation](#conditional-evaluation),
 below.
@@ -433,14 +433,9 @@ the JavaScript companion files, which nothing in the test suite runs.
 
 ## Purity and the JavaScript boundary
 
-An expression's value depends only on the values of the names it mentions. Evaluating it twice
-gives the same value, and evaluating it does nothing else — nothing is written, read, mutated
-or sent anywhere.
-
-Every rule above rests on it: evaluating a parameterless binding once and sharing the result,
-rewriting a self tail call into a loop, and specifying an evaluation order without specifying
-how many times anything runs are sound only because the answer does not depend on when or how
-often the work happens.
+**An expression's value depends only on the values of the names it mentions.** Evaluating it
+twice gives the same value, and evaluating it does nothing else — nothing is written, read,
+mutated or sent anywhere.
 
 A [`module javascript` facade](js-interop.md) is where that guarantee meets code the compiler
 did not produce and cannot inspect. **A facade's companion export must be a function of its
