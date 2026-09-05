@@ -472,8 +472,8 @@ below.
   [what type `main` must have](packages.md#open-questions) waits on
   ([`SPEC-15`](../tickets/spec-15.md)).
 - **How a structural instance is derived.** `Eq` is a class, so every type that wants `==` needs
-  an instance, and writing a structural one out by hand for each is a tax the language should
-  not charge. [Type classes](type-classes.md) specifies no way to ask for the structural
+  an instance, and writing a structural one out by hand for each is a tax the language does not
+  want to charge. [Type classes](type-classes.md) specifies no way to ask for the structural
   definition — whether by a clause on the `type` declaration, an instance with no members, or
   something else. `Comparable`'s ordering over a union type has the same question and the same
   answer ([`SPEC-14`](../tickets/spec-14.md)).

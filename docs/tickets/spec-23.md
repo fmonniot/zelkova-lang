@@ -5,8 +5,10 @@ chapter's full text; this is a second pass over the same string plus a fixture-b
 self-test. What could make it bigger is the scope question below — whether links out of the
 directory are checked too — which is a decision, not an implementation cost.
 
-**Depends on:** [SPEC-24](spec-24.md), which corrects the vocabulary this checker would
-otherwise assert against. Landing this first means landing it red.
+**Dependency, already met:** the vocabulary this checker asserts against is the table in
+[`docs/spec/conventions.md`](../spec/conventions.md)'s *The `expect=` vocabulary*, corrected by
+`SPEC-24` (closed 2026-09-05 — see [the index](README.md)). Before that it listed seven of the
+harness's eleven specific error names, so a checker written against it would have landed red.
 
 **Location:** `tests/spec.rs` — `spec_chapters_pass`, which walks `docs/spec/*.md` and already
 has each file's `content` in hand; `parse_error_reasons` and `variant_names`, which hold the
@@ -39,17 +41,17 @@ terminal `grep` and loud on a rendered HTML page.
 The second half of the same gap is the `expect=` vocabulary. `parse_error_reasons` is written
 as an explicit match over the real enums specifically so that adding a variant "fails this file
 to compile rather than silently producing a name no chapter can ever match" — it guards the
-enum-to-name direction. Nothing guards the name-to-prose direction, and it has already drifted:
-the harness accepts **eleven** specific error names (plus the two phase names) and
-[`docs/spec/conventions.md`](../spec/conventions.md)'s table documents **seven** of them. The four
-undocumented ones are `CharNotClosedError`, `StringError`, `UnicodeError` and
-`UnrecognizedToken` — and `UnrecognizedToken` is in active use, at two blocks in
-[`docs/spec/lexical-structure.md`](../spec/lexical-structure.md). A chapter author reading the
-document they are told to read is reading a short list.
+enum-to-name direction. Nothing guards the name-to-prose direction, and it had already drifted
+once: the harness accepts **eleven** specific error names (plus the two phase names) and
+[`docs/spec/conventions.md`](../spec/conventions.md)'s table documented **seven** of them, with
+`UnrecognizedToken` among the four missing and in active use at two blocks in
+[`docs/spec/lexical-structure.md`](../spec/lexical-structure.md). `SPEC-24` transcribed the
+missing four, so the two lists agree today — by hand, and with nothing to keep them that way
+the next time a variant is added or renamed.
 
 **This is preventive, not a repair.** All 156 anchors and all 115 ticket links resolve on
-`main` today; the vocabulary table is the one thing actually wrong, and [SPEC-24](spec-24.md)
-fixes that. What this ticket buys is that they stay that way without anyone remembering to
+`main` today, and the vocabulary table — the one thing that was actually wrong — has since been
+corrected by hand. What this ticket buys is that they stay that way without anyone remembering to
 look — the same trade the `expect=` tags already made for examples.
 
 **The scope question this does not settle:** whether the `../tickets/*.md` links are checked
@@ -104,8 +106,8 @@ existing style — one holding a link to an anchor that does not exist, one hold
 header set — with self-tests beside `block_with_no_expect_is_a_hard_failure` and its siblings,
 each carrying the same doc comment those have, naming what it pins and how it was neutralised.
 `cargo test --test spec` also fails when a chapter uses an `expect=parse-error:Reason` name that
-`conventions.md` does not document. The whole suite is green on `main` after
-[SPEC-24](spec-24.md) lands, and `cargo run` still prints `parsed 8 modules` and exits 0.
+`conventions.md` does not document. The whole suite is green on `main`, and `cargo run` still
+prints `parsed 8 modules` and exits 0.
 
 **What this is not.** Not a general markdown linter, and not a link checker for the repository —
 `CLAUDE.md`, `docs/tickets/` and `README.md` are out of scope. The claim being defended is

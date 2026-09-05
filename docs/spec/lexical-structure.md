@@ -97,8 +97,8 @@ f = 1
 indentation is what the tokenizer complains about. The reported error is pinned here
 precisely because it is an accident of two other bugs, and should not survive their fix.
 
-Reaching the end of a file inside a block comment is an error. A stray `{-` should not be
-able to delete the rest of a file without saying so.
+Reaching the end of a file inside a block comment is an error. A stray `{-` cannot delete
+the rest of a file without saying so.
 
 ```zel expect=ok
 module Example exposing (f)
@@ -199,7 +199,7 @@ it.
 pattern, and that is what it stays when it is written in front of a name: `_x` is two tokens,
 not one identifier.
 
-This matters more than it sounds like it should, because in a function's parameter list two
+This matters more than it looks like it will, because in a function's parameter list two
 tokens are two parameters:
 
 ```zel expect=canonical-error:BindingPatternsInvalidLen

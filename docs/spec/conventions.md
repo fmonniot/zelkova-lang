@@ -19,7 +19,7 @@ skip. When you add an example, tag it.
 |---|---|
 | `expect=ok` | Parses and canonicalizes with no errors. |
 | `expect=parse-error` | Fails somewhere in the parser (tokenizer, layout or grammar). Which specific error is not pinned. Use when the chapter claims only that the source is rejected. |
-| `expect=parse-error:Reason` | The same, and the reason must match. `Reason` is either the phase (`Tokenizer`, `Layout`) or a specific error (`IndentationError`, `TabError`, `LayoutError`, `UnexpectedToken`, `UnexpectedEOF`, `InvalidToken`, `ExtraToken`) — matched against the real enums in `src/compiler/parser/`. Use whenever the chapter's prose describes the error the reader will see. |
+| `expect=parse-error:Reason` | The same, and the reason must match. `Reason` is either the phase (`Tokenizer`, `Layout`) or one of the eleven specific errors — `CharNotClosedError`, `StringError`, `UnicodeError`, `IndentationError`, `TabError` and `UnrecognizedToken` from the tokenizer; `LayoutError` from layout; `InvalidToken`, `UnexpectedEOF`, `UnexpectedToken` and `ExtraToken` from the grammar — matched against the real enums in `src/compiler/parser/`. Use whenever the chapter's prose describes the error the reader will see. |
 | `expect=canonical-error:VariantName` | Parses, then canonicalization returns a `Vec<canonical::Error>` containing at least one error of variant `VariantName` — matched against the real variant names in `src/compiler/canonical/mod.rs`'s `Error` enum. |
 | `expect=unimplemented` | Must fail somewhere in parse-or-canonicalize, but deliberately does not pin *which* error: pinning would wire tokenizer/grammar internals into a prose document, and the tag's whole job is to go red the day the feature is actually implemented. On an expected failure the test run prints the error it observed, so a reviewer can eyeball that the block failed for the reason the chapter intends. |
 | `expect=dependency-error` | The block's *package* (see below) has no valid module order — its imports form a cycle — so nothing in it is canonicalized at all. The one expectation that belongs to a group rather than to a module: every block of the package carries it, or none does. |
@@ -99,7 +99,7 @@ would carry too, and the only thing marking the block as current-but-wrong is pr
 skimming reader can miss. So the sentence that says so opens with a fixed, bolded lead-in:
 **Known gap:**. That makes it something a reader — or `grep -r "Known gap:" docs/spec/` —
 can find without reading every paragraph, and it is what tells a future session not to treat
-the block's shown behaviour as what the language should do. `expect=fragment` doesn't need it: the tag itself
+the block's shown behaviour as what the language requires. `expect=fragment` doesn't need it: the tag itself
 already says the block isn't normative.
 
 A `expect=unimplemented` block is the same kind of risk from the other direction: the tag
@@ -118,6 +118,58 @@ them. A chapter has no need of it, because a language question with no settled a
 not answered, but it cannot have a rule that is only provisionally a rule and still be one
 thing.
 
+## The words a chapter uses
+
+The rules above are about the half of a chapter a test reads. Nothing reads this half, so it
+is written down here: the vocabulary the chapters already use, recorded rather than proposed.
+Every rule below is one that reading the chapters would teach, and none of them makes an
+existing paragraph wrong.
+
+**A rule a program has to follow is written `must`, `cannot`, `may not` or `is an error`.**
+Those are one force spelled four ways, and choosing between them is grammar rather than
+degree. `must` and `cannot` take the construct as their subject — *leading whitespace on a
+line must be an even number of spaces*, *a qualified name cannot be shadowed*. *Is an error*
+takes the situation instead, which is what a sentence wants when the thing ruled out is a
+combination rather than a construct: *repeating a name is an error*. *Is rejected* is the
+same claim told from the compiler's side, and reads naturally as the line introducing a
+block. Nothing separates the four in strength, because there is no weaker degree for them to
+be stronger than: a chapter states rules, never advice a program may decline.
+
+**`may` grants a permission** — *a name may mix scripts freely after its first character* —
+and is the word for a latitude a reader would not otherwise assume. **`never`** is its
+mirror, prohibiting something of the language rather than of one program: *thirteen words are
+reserved and may never be used as identifiers*.
+
+**`should` is reserved, and never states a requirement on a program.** It belongs to the
+sentence a **Known gap:** or **Not implemented:** lead-in opens — *that block should be
+rejected and is accepted* — and to the continuations of such a paragraph. That is prose about
+the compiler: the language requires something and the binary does not do it. A rule for a
+program is written with the words above, and reserving a common English word for the
+compiler-facing case is worth its cost, because a rule written in that voice reads as one the
+reader may weigh against others and this document holds no such rules.
+
+Which is also why the obvious import — RFC 2119's MUST / SHOULD / MAY — would be wrong here,
+worth writing down so that the next reader does not have to re-derive it. RFC 2119's SHOULD
+means *recommended, and a valid implementation may decline*, the opposite of what `should`
+means in a **Known gap:** sentence, where the thing is required and the compiler is at fault.
+Taking the standard meaning would either invalidate every sentence of that shape or, worse,
+leave them readable both ways. The other half of that convention's appeal is letting a reader
+tell a guarantee from guidance, and a chapter has no guidance in it to tell apart.
+
+**None of these words obliges an example.** Most rules here carry no block at all — whole
+sections of [name resolution](name-resolution.md) and [packages](packages.md) state theirs in
+prose alone, and a rule is no weaker for it. What holds is the converse: where a block *is*
+the demonstration of a rejection claim, it carries a rejection tag — `expect=parse-error`,
+`expect=parse-error:Reason`, `expect=canonical-error:Variant`, `expect=unimplemented` or
+`expect=dependency-error` — and not `expect=ok`.
+
+The exception is the case the lead-ins exist for, and it is common: an `expect=ok` block sits
+under a rejection claim in most chapters, and every one of those blocks has a **Known gap:**
+or **Not implemented:** paragraph beside it — before or after — saying so. The rule is the
+language, the green block is the binary, and the lead-in is the whole of what separates them.
+Nothing else can be: `expect=ok` beside *is an error* is exactly as green as `expect=ok`
+beside *is accepted*, which is the one contradiction in a chapter the harness cannot see.
+
 ## A chapter says what the language is
 
 Every sentence in a chapter describes Zelkova as designed, in the present tense. Three
@@ -128,7 +180,7 @@ things therefore never appear in one:
   needs the rule; a rule that leans on its own past is one the chapter has not finished
   writing. `docs/tickets/` is the work log and keeps all of that.
 - **Commentary on the document.** *This chapter is the record of that design*, *that block
-  matters more than it looks*, *the chapter should say so*. Say the thing rather than
+  matters more than it looks*, *it is worth saying this twice*. Say the thing rather than
   announcing that you are about to.
 - **Alternatives considered and dropped.** The language is what is written down. A road not
   taken belongs in the ticket that took the other one — this file and [the index](README.md)
@@ -146,7 +198,7 @@ spec and the binary, which is the one "not yet" a chapter is for.
 ## A spec change and a semantics change do not share a diff
 
 Writing a chapter surfaces compiler behaviour nobody intended — that is much of the value.
-When it does, file a ticket and specify the behaviour the language *should* have, tagging
+When it does, file a ticket and specify the behaviour the language *requires*, tagging
 the example for what the compiler does today. ERR-11 and ERR-12 were both found this way.
 Fixing the compiler in the same diff that documents it makes the change unreviewable, and
 it is unnecessary: a spec claim the compiler fails is a red test, which is a working
