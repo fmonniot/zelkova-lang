@@ -25,7 +25,7 @@ Each facade module is paired with a companion `.mjs` file of the same base name
 is an ES module, and its exports take a **plain parameter list**: a Zelkova function
 of two arguments is backed by a JavaScript function of two arguments, called directly.
 There is no curried-wrapper convention to observe on the JavaScript side — currying is
-the compiler's business, and a hand-written interop file should not have to know how
+the compiler's business, and a hand-written interop file does not have to know how
 it is done. `std/core/src/Js/Basics`, `Js/Utils` and `Js/Bitwise` are the worked
 examples.
 

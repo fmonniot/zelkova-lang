@@ -42,9 +42,10 @@ documentation. Where a rule is inherited, write it out in full.
 ## Step 1 — Read the conventions before writing a word
 
 - `docs/spec/conventions.md` — the `expect=` vocabulary, `package=`, *Tag every claim the
-  chapter makes*, *A chapter says what the language is*, and *A spec change and a semantics
-  change do not share a diff*. This is the document chapter authors are written against; read
-  all of it.
+  chapter makes*, *The words a chapter uses* (the wording rules, including that `should` is
+  reserved for compiler-facing prose), *A chapter says what the language is*, and *A spec
+  change and a semantics change do not share a diff*. This is the document chapter authors are
+  written against; read all of it.
 - `docs/spec/README.md` — the index a reader of the language sees: what the spec is, the three
   lead-ins (**Known gap:**, **Not implemented:**, **Provisional:**), and the chapter table your
   new row goes into.
