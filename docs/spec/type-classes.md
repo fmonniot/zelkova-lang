@@ -122,13 +122,7 @@ and this block goes red when it lands.
 
 ### An instance may be derived
 
-Equality over a union type is the same definition in every program that ever declares one: two
-values are equal when they are the same constructor and their arguments are pairwise equal.
-Ordering is the same again. Written out by hand, that is a block of code per type saying nothing
-a reader could not have worked out from the type — and one that goes quietly wrong the day a
-variant is added and the instance is not.
-
-So an instance may ask for the definition its type's shape already implies rather than write it.
+An instance may ask for the definition its type's shape already implies rather than write it.
 Its body is the single word `derived`:
 
 ```zel expect=unimplemented
@@ -147,14 +141,10 @@ It is an ordinary instance declaration in every other respect.
 
 `derived` is the **whole** body: an instance is either derived or written out, never a mixture.
 A derivation defines every member of the class at once, out of one description of the type's
-shape, and defining them together is what keeps them answering to one another — an ordering
-agreeing with the equality it is built on. Half a derivation is a description of nothing, and a
-body that mixed the two would have to be read member by member before either half could be
-trusted.
+shape.
 
 ### A class says how it is derived
 
-`Eq` is not built into the compiler, and asking for a derived instance of it does not make it so.
 What a derivation can see is the **shape** of a value — which constructor, in what position, with
 what arguments — and shape alone says nothing about what an answer to a member means. A class
 that may be derived is one whose own declaration supplies that half, in ordinary Zelkova.
