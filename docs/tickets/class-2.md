@@ -137,7 +137,7 @@ same treatment.
    **Decided (`SPEC-14`, by the language owner):** each body has a second shape, and both are
    this ticket's to parse. An `instance` body may be the single word `derived` instead of the
    member list — never a mixture — and a `class` body may follow a member signature with
-   `derived <member>` opening a block of two bindings, `matched` and `combine`, which is what
+   `derived <member>` opening a block of three bindings — `matched`, `differed` and `combine` — which is what
    makes the class derivable at all. [`docs/spec/type-classes.md`](../spec/type-classes.md)'s
    *An instance may be derived* and *A class says how it is derived* specify both, and *The
    words this reserves* is why `derived` is a soft keyword rather than a reserved one: one token

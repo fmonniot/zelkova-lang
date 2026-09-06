@@ -150,7 +150,7 @@ what arguments — and shape alone says nothing about what an answer to a member
 that may be derived is one whose own declaration supplies that half, in ordinary Zelkova.
 
 A member signature may be followed by a **derivation**: the word `derived`, the member it is for,
-and two bindings.
+and three bindings.
 
 ```zel expect=unimplemented
 module Example exposing (Eq)
@@ -160,18 +160,22 @@ class Eq a where
 
   derived eq
     matched = True
+    differed _ _ = False
     combine x y =
       and x y
 ```
 
-`matched` is the answer when the walk finds nothing to tell the two values apart; `combine` folds
-the answers from the parts into the answer for the whole. Neither mentions the class variable, so
-both stand for every type that derives the class.
+`matched` is the answer when the walk finds nothing to tell the two values apart. `differed` is
+the answer when the two values are of different constructors, and receives the **position** each
+constructor is declared at, counting from zero. `combine` folds the answers from the parts into
+the answer for the whole. None of the three mentions the class variable, so all three stand for
+every type that derives the class.
 
 A member may carry a derivation only when its signature is `a -> a -> R`, with the class variable
 absent from `R`: two values to walk in step, and an answer that is not itself of the type being
-walked. Anything else is an error at the class declaration. A member returning `a` — the shape
-`add` and `append` have in
+walked. `matched` is then an `R`, `differed` an `Int -> Int -> R`, and `combine` an
+`R -> R -> R`. Anything else is an error at the class declaration. A member returning `a` — the
+shape `add` and `append` have in
 [what the standard library declares](#what-the-standard-library-declares) — would ask the walk for
 a third value of the type it is walking, and nothing a class says about itself can lend it the
 means.
@@ -185,26 +189,25 @@ and half written, which is the mixture a `derived` body rules out.
 The derivation walks the two values in step, and every answer it collects comes from an instance —
 never from a definition invented for the occasion.
 
-- **The constructors first.** Each value's constructor is compared as its **position** in the
-  type's declaration, counting from zero, through the class's own instance at `Int`. Reordering
-  the variants of a type therefore changes what a derived member computes, which is why the order
-  is the declaration's rather than, say, alphabetical: the one a reader can see is the one that
-  decides.
+- **The constructors first.** Two values of different constructors are answered by `differed`,
+  handed the **position** each constructor is declared at, counting from zero, and the walk stops
+  there — there is nothing else the two values have in common to look at. Reordering the variants
+  of a type therefore changes what a derived member computes, which is why the order is the
+  declaration's rather than, say, alphabetical: the one a reader can see is the one that decides.
 - **Then the arguments,** when the constructors agree: each pair in turn, left to right, through
-  the instance belonging to *that argument's* type. Values of different constructors have no
-  argument pairs at all.
+  the instance belonging to *that argument's* type.
 - **`combine` folds those answers** into one, in that order, ending at `matched`.
 
 Nothing in that walk reaches inside an argument. Each pair is answered by the instance its own
 type declares, whatever that instance computes — so a type whose equality is defined up to a
 normal form keeps that meaning wherever it appears inside a derived one.
 
-`Eq`'s two definitions above turn the walk into
-[structural equality](evaluation-semantics.md#what-structural-equality-computes): `and` carries a
-single `False` — a differing constructor, or one unequal pair of arguments — out to the answer,
-and `matched` makes a constructor with no arguments equal to itself.
+`Eq`'s three definitions above turn the walk into
+[structural equality](evaluation-semantics.md#what-structural-equality-computes): `differed`
+discards the positions to answer `False` outright, `and` carries a single unequal pair of
+arguments out to the answer, and `matched` makes a constructor with no arguments equal to itself.
 
-`Comparable`'s pair turns the same walk into a lexicographic ordering:
+`Comparable`'s three turn the same walk into a lexicographic ordering:
 
 ```zel expect=unimplemented
 module Example exposing (Comparable)
@@ -219,6 +222,9 @@ class Comparable a where
 
   derived compare
     matched = EQ
+    differed i j =
+      compare i j
+
     combine x y =
       case x of
         EQ ->
@@ -231,18 +237,17 @@ class Comparable a where
 Two values of different constructors are ordered by the positions those constructors are declared
 at, so `Red` is less than `Green` in the `Colour` type above; two of the same constructor by their
 arguments, left to right, the first unequal pair deciding. Neither sentence is written anywhere in
-the compiler. Both are what `matched = EQ` and a `combine` that stops at the first answer other
-than `EQ` say, applied to the one walk.
+the compiler. Both are what these three definitions say, applied to the one walk — the first
+sentence is `differed` handing its two positions to `Comparable`'s own instance at `Int`, and the
+second is a `combine` that stops at the first answer other than `EQ`.
 
 ### What a derived instance requires
 
-USER REVIEW: Why are we talking about `Int` here? Is it because of the position of each constructor? If yes, that sounds more like an implementation details than a spec text no?
-
 The arguments a derivation compares are the ones the variants write down, and each of their
-types needs an instance of the class being derived. So does `Int`, since that is what the
-constructors themselves are compared as — a class with no `Int` instance derives for no type at
-all. `Eq Int` and `Comparable Int` are instances `std/core` writes out; a program deriving a
-class of its own owes the same one.
+types needs an instance of the class being derived. Nothing else does. In particular a class owes
+no `Int` instance for the positions `differed` receives: what a class makes of them is written in
+its own `differed`, and a class whose answer does not depend on them — `Eq`'s, above — never
+mentions `Int` at all.
 
 Where an argument's type is a variable, that requirement cannot be checked at the derivation —
 the variable is whatever a use of the type chooses — so it becomes a **constraint on the derived
