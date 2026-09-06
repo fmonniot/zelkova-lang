@@ -79,7 +79,7 @@ is the point.
 | [Evaluation semantics](evaluation-semantics.md) | Strictness, purity, order of evaluation, which forms evaluate their subexpressions conditionally, what `==` means structurally, and what a function value is. |
 | [JS interop](js-interop.md) | The `module javascript` facade: what such a signature may say, what its companion `.mjs` exports, and why it is the only way into JavaScript. |
 | [Packages and source layout](packages.md) | The package directory, the `zelkova.toml` manifest, the two source roots, dependencies, and what a package boundary means for visibility and for a module's name. |
-| [Type classes](type-classes.md) | The `class` and `instance` declarations, how a constraint is written in an annotation, superclasses, where an instance may be declared, how a type derives the structural instance instead of writing it, and the words this reserves. |
+| [Type classes](type-classes.md) | The `class` and `instance` declarations, how a constraint is written in an annotation, superclasses, where an instance may be declared, how a class says it can be derived and what a derived instance then computes, and the words this reserves. |
 
 Two constructs are named by the chapters above and specified by none of them: **records**
 and **lists**. Both are part of the language, both have chapters' worth of design left to

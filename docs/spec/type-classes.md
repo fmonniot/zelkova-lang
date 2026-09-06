@@ -128,8 +128,8 @@ Ordering is the same again. Written out by hand, that is a block of code per typ
 a reader could not have worked out from the type — and one that goes quietly wrong the day a
 variant is added and the instance is not.
 
-So an instance may ask for that definition rather than write it. Its body is the single word
-`derived`:
+So an instance may ask for the definition its type's shape already implies rather than write it.
+Its body is the single word `derived`:
 
 ```zel expect=unimplemented
 module Example exposing (Colour)
@@ -145,33 +145,114 @@ instance Eq Colour where
 
 It is an ordinary instance declaration in every other respect.
 
-`derived` is the **whole** body. An instance is either derived or written out
-A class's members answer to one another —
-an ordering has to agree with the equality it is built on — and the derivation gets that right
-by defining them together, from one description of the type's shape. Half a derivation is a
-description of nothing, and a body that mixed the two would have to be read member by member
-before either half could be trusted.
+`derived` is the **whole** body: an instance is either derived or written out, never a mixture.
+A derivation defines every member of the class at once, out of one description of the type's
+shape, and defining them together is what keeps them answering to one another — an ordering
+agreeing with the equality it is built on. Half a derivation is a description of nothing, and a
+body that mixed the two would have to be read member by member before either half could be
+trusted.
+
+### A class says how it is derived
+
+`Eq` is not built into the compiler, and asking for a derived instance of it does not make it so.
+What a derivation can see is the **shape** of a value — which constructor, in what position, with
+what arguments — and shape alone says nothing about what an answer to a member means. A class
+that may be derived is one whose own declaration supplies that half, in ordinary Zelkova.
+
+A member signature may be followed by a **derivation**: the word `derived`, the member it is for,
+and two bindings.
+
+```zel expect=unimplemented
+module Example exposing (Eq)
+
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    combine x y =
+      and x y
+```
+
+`matched` is the answer when the walk found nothing to tell the two values apart. `combine` folds
+the answers from the parts into the answer for the whole. Neither mentions the class variable —
+they are the same two definitions for every type that ever derives the class, which is what makes
+them something the class can state once and be done with.
+
+A member may carry a derivation only when its signature is `a -> a -> R`, with the class variable
+absent from `R`: two values to walk in step, and an answer that is not itself of the type being
+walked. Anything else is an error at the class declaration. That is where the line between
+derivable and not falls, and it falls without the compiler knowing one class from another — a
+member returning `a`, the shape `add` and `append` have in
+[what the standard library declares](#what-the-standard-library-declares), asks a walk over two
+values to produce a third of the type it is walking, and no marker on a class could lend it the
+means.
+
+A class is derivable when **every** member carries a derivation. Covering some and not the rest
+is an error naming the members left out, for the same reason a half-derived instance body is: what
+it would mean is a question nobody has answered.
 
 ### What a derived instance computes
 
-A derived `Eq` computes
-[structural equality](evaluation-semantics.md#what-structural-equality-computes).
+The derivation walks the two values in step, and every answer it collects comes from an instance —
+never from a definition invented for the occasion.
 
-A derived `Comparable` orders two values of different constructors by the order their
-constructors are **declared** in, so `Red` is less than `Green` above because it is written
-first; and two values of the same constructor by their arguments, left to right, the first
-unequal pair deciding. Reordering the variants of a type therefore changes what a derived
-ordering means, which is why the order is the declaration's rather than, say, alphabetical:
-the one a reader can see is the one that decides.
+- **The constructors first.** Each value's constructor is compared as its **position** in the
+  type's declaration, counting from zero, through the class's own instance at `Int`. Reordering
+  the variants of a type therefore changes what a derived member computes, which is why the order
+  is the declaration's rather than, say, alphabetical: the one a reader can see is the one that
+  decides.
+- **Then the arguments,** when the constructors agree: each pair in turn, left to right, through
+  the instance belonging to *that argument's* type. Values of different constructors have no
+  argument pairs at all.
+- **`combine` folds those answers** into one, in that order, ending at `matched`.
 
-Neither definition reaches inside an argument itself. Each pair of arguments is compared by the
-instance belonging to *their* type, whatever that instance computes — so a type whose equality
-is defined up to a normal form keeps that meaning wherever it appears inside a derived one.
+Nothing in that walk reaches inside an argument. Each pair is answered by the instance its own
+type declares, whatever that instance computes — so a type whose equality is defined up to a
+normal form keeps that meaning wherever it appears inside a derived one.
+
+`Eq`'s two definitions above turn the walk into
+[structural equality](evaluation-semantics.md#what-structural-equality-computes): `and` carries a
+single `False` — a differing constructor, or one unequal pair of arguments — out to the answer,
+and `matched` makes a constructor with no arguments equal to itself.
+
+`Comparable`'s pair turns the same walk into a lexicographic ordering:
+
+```zel expect=unimplemented
+module Example exposing (Comparable)
+
+type Order
+  = LT
+  | EQ
+  | GT
+
+class Comparable a where
+  compare : a -> a -> Order
+
+  derived compare
+    matched = EQ
+    combine x y =
+      case x of
+        EQ ->
+          y
+
+        _ ->
+          x
+```
+
+Two values of different constructors are ordered by the positions those constructors are declared
+at, so `Red` is less than `Green` in the `Colour` type above; two of the same constructor by their
+arguments, left to right, the first unequal pair deciding. Neither sentence is written anywhere in
+the compiler. Both are what `matched = EQ` and a `combine` that stops at the first answer other
+than `EQ` say, applied to the one walk.
 
 ### What a derived instance requires
 
 The arguments a derivation compares are the ones the variants write down, and each of their
-types needs an instance of the class being derived.
+types needs an instance of the class being derived. So does `Int`, since that is what the
+constructors themselves are compared as — a class with no `Int` instance derives for no type at
+all. `Eq Int` and `Comparable Int` are instances `std/core` writes out; a program deriving a
+class of its own owes the same one.
 
 Where an argument's type is a variable, that requirement cannot be checked at the derivation —
 the variable is whatever a use of the type chooses — so it becomes a **constraint on the derived
@@ -224,22 +305,10 @@ compared for equality, and the claim is false where it is written. A variant hol
 A superclass obligation is unchanged too. A derived `Comparable Colour` is rejected unless an
 `Eq Colour` instance exists — derived in its turn, or written out.
 
-### Which classes may be derived
-
-`Eq` and `Comparable`, and nothing else.
-
-Those two are the classes whose meaning a type's shape decides. `Number` and `Appendable` are
-not: nothing about the shape of a union type says what adding two of its values produces, or
-what joining them produces, and a definition invented for them would be one no reader could
-predict. Neither is a class a program declares itself — its members mean whatever that program
-says they mean, which is exactly the thing a derivation has no access to. `derived` under any
-class but those two is an error naming the class.
-
-This is the one thing the compiler knows a class by name for, and it reaches no further than
-the word: it decides whether a `derived` body is accepted, and nothing else. It gives no class a
-member, an instance, or a place in resolution, and a constraint on `Eq` is solved by exactly the
-search a constraint on a program's own class is
-(*[Numeric literals](#numeric-literals)*, below).
+And the class has to be one that says how it is derived. `derived` under a class whose
+declaration carries no derivation is an error naming the class — not because the compiler holds
+a list of the classes that do, but because it looked at the declaration and found nothing there
+to run.
 
 ## Constraining an annotation
 
@@ -421,13 +490,12 @@ x =
 ```
 
 It is worth saying here because of what it means for classes: **nothing in the language
-defaults, and no class is resolved differently from any other.** A constraint the solver cannot
-discharge is an error rather than a guess, in every case and with no exception carved out for
-arithmetic; there is no way to declare what a class falls back to, and a constraint on `Eq` is
-solved by the same search as a constraint on a class a program declared itself. The single place
-a class name means anything to the compiler is
-[which classes may be derived](#which-classes-may-be-derived), which decides whether one
-declaration is accepted and touches nothing here.
+defaults, and the compiler knows no class by name.** A constraint the solver cannot discharge
+is an error rather than a guess, in every case and with no exception carved out for arithmetic;
+there is no way to declare what a class falls back to, and no class the compiler treats
+differently from one a program declares itself. Not even
+[a derived instance](#a-class-says-how-it-is-derived) is an exception: what it computes is read
+off the class's own declaration.
 
 The price is paid inside a constrained function, where a literal is already concrete and so
 cannot be used at the constrained type — `double x = mul x 2` under `Number a => a -> a`
@@ -500,12 +568,13 @@ are reserved; `where` needs only its one type-variable position excluded.
 A class's own name reserves nothing either. `Comparable` is an ordinary uppercase name that a
 module declares, no different from a type.
 
-`derived` reserves nothing. It is a [soft keyword](lexical-structure.md#reserved-words) — the
-body of an instance declaration and an ordinary identifier in every other position, the name of
-an instance's own member binding included. What tells the two apart is the token after it:
-`derived` standing alone is [the request](#an-instance-may-be-derived), and `derived = …` is a
-binding of a member called `derived`. One token of lookahead settles it, so reserving a word a
-program has every right to want would buy nothing.
+`derived` reserves nothing either. It is a [soft keyword](lexical-structure.md#reserved-words) —
+a keyword in a class body and in an instance body, an ordinary identifier in every other
+position, the name of a class's own member included. What tells the readings apart is the token
+after it: `derived` alone is [the request](#an-instance-may-be-derived), `derived eq` opens
+[a derivation](#a-class-says-how-it-is-derived) for the member `eq`, and `derived : …` or
+`derived = …` declares a member called `derived`. One token of lookahead settles it, so
+reserving a word a program has every right to want would buy nothing.
 
 **Known gap:** none of those four reservations exists today, and each of these blocks goes red
 when the ticket naming it lands. `class` and `instance` as value names ([`CLASS-2`](../tickets/class-2.md)):
@@ -556,20 +625,29 @@ Four classes, and they are ordinary declarations in ordinary modules. A program 
 own alongside, and nothing about what a member means, or about which types have instances, is
 built into the compiler.
 
-`Number` shows how little is. The compiler does not know it by name, knows no instance of it,
-and would behave identically if `std/core` declared it under another name or not at all
-(*[Numeric literals](#numeric-literals)*, above).
+No name is an exception. `Number` is as ordinary as the other three: the compiler does not know
+it by name, knows no instance of it, and would behave identically if `std/core` declared it
+under another name or not at all (*[Numeric literals](#numeric-literals)*, above).
 
 | Class | Members, roughly | What it constrains a variable to |
 |---|---|---|
 | `Eq` | `eq`, `neq` | types that can be compared for equality |
-| `Comparable` (superclass `Eq`) | `compare`, and the four ordering operators | types that are ordered |
+| `Comparable` (superclass `Eq`) | `compare` | types that are ordered |
 | `Number` | `add`, `sub`, `mul`, and the rest of the arithmetic | the numeric types |
 | `Appendable` | `append` | types `++` joins |
 
-Two of the four may be [derived](#which-classes-may-be-derived): `Eq` and `Comparable`. A
-program's own type joins either by declaring an instance whose body is `derived`, and joins
-`Number` or `Appendable` — or any class the program declares — only by writing the members out.
+`Comparable` has the one member, and the four ordering operators are ordinary functions
+constrained by it — `lt : Comparable a => a -> a -> Bool`, and so on — rather than members of
+it. That is not tidiness. A class is derivable only when *every* member is, and `lt` is not: a
+lexicographic `lt` cannot be folded out of the `lt` of each pair of arguments, because it has to
+know whether the pair before it was *equal*. `compare` can, so `Comparable` keeps `compare` and
+builds the rest on top.
+
+Two of the four carry [derivations](#a-class-says-how-it-is-derived): `Eq` and `Comparable`, in
+the shape this chapter has already shown them. `Number` and `Appendable` carry none and could
+not — `add` and `append` return the class variable, which a walk over two values has no way to
+produce — and that is a fact about their signatures, not about their names. A program's own
+class is derivable on exactly the same terms as either.
 
 `Appendable` ranges over strings and lists. The compiler implements neither type — see the note
 on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).

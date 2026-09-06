@@ -134,6 +134,18 @@ same treatment.
    (superclass context, class name, arguments) afterwards — reusing `CLASS-1`'s validation, and
    raising a real error for a head that is not shaped like one.
 
+   **Decided (`SPEC-14`, by the language owner):** each body has a second shape, and both are
+   this ticket's to parse. An `instance` body may be the single word `derived` instead of the
+   member list — never a mixture — and a `class` body may follow a member signature with
+   `derived <member>` opening a block of two bindings, `matched` and `combine`, which is what
+   makes the class derivable at all. [`docs/spec/type-classes.md`](../spec/type-classes.md)'s
+   *An instance may be derived* and *A class says how it is derived* specify both, and *The
+   words this reserves* is why `derived` is a soft keyword rather than a reserved one: one token
+   of lookahead — a member name, an `=`, or a `:` — separates the three readings. Only the
+   parsing is here; checking that a derivable member's signature is `a -> a -> R`, and that a
+   `derived` instance names a class that carries a derivation, belongs with the rest of
+   resolution in [CLASS-3](class-3.md).
+
 4. **Both ASTs, same commit.** `parser::Declaration` gains `Class` and `Instance` variants,
    `canonical::Module` gains somewhere to hold them, and `from_parser_module` converts. What
    canonicalization *does* with them — resolution, the orphan rule, the instance environment —

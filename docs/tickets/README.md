@@ -143,8 +143,9 @@ CLASS-1  `=>` becomes a token; a constrained annotation parses
   │
 CLASS-2  `class` / `instance` declarations, and a `where` block of members
   │      ← LANG-9 sequences before this: an instance head wants `(List a)`
-  │      ← the body this parses is a member list *or* the single word
-  │        `derived`, which SPEC-14 settled; the chapter specifies it
+  │      ← two more bodies than "a member list", both settled by SPEC-14
+  │        and specified in the chapter: an instance body may be the single
+  │        word `derived`, and a class body may carry `derived <member>`
   │
 CLASS-3  resolution, the instance environment, and the orphan rule
   │      ← BUG-17 and BUG-16 are HARD prerequisites. Both would sabotage

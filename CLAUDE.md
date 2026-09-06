@@ -248,10 +248,13 @@ tickets have to land in. Five of its rules constrain diffs outside that program:
   the way `javascript` is.
 - **An instance may be declared only in the module declaring its class or its type.**
 - **An instance body is either a list of member bindings or the single word `derived`**, never a
-  mixture. `derived` asks for the structural definition and is the language's only way to get
-  one; only `Eq` and `Comparable` may be derived. It stays a **soft keyword** — one token of
-  lookahead separates the request from a member binding called `derived`, which has an `=` after
-  it — so it does not join the reserved words above, and `CLASS-2` parses both bodies.
+  mixture. `derived` asks for the definition the type's shape implies, and is the language's only
+  way to get one. **Which classes allow it is not a list of names the compiler holds**: a class is
+  derivable only when its own declaration carries a derivation — `derived <member>` plus the two
+  bindings a walk over a value's shape cannot invent — so `Eq` and `Comparable` are derivable
+  because `std/core` says how, and a program's own class is on identical terms. `derived` stays a
+  **soft keyword** in both positions, separated from a member called `derived` by one token of
+  lookahead, so it does not join the reserved words above; `CLASS-2` parses both bodies.
 - **A `module javascript` facade signature may not carry a constraint**, which is what preserves
   the plain-parameter-list guarantee
   [`docs/spec/js-interop.md`](docs/spec/js-interop.md) makes.
