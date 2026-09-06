@@ -143,8 +143,8 @@ CLASS-1  `=>` becomes a token; a constrained annotation parses
   │
 CLASS-2  `class` / `instance` declarations, and a `where` block of members
   │      ← LANG-9 sequences before this: an instance head wants `(List a)`
-  │      ← SPEC-14 is cheaper before this than after: one of the three
-  │        shapes it weighs is a change to this declaration's grammar
+  │      ← the body this parses is a member list *or* the single word
+  │        `derived`, which SPEC-14 settled; the chapter specifies it
   │
 CLASS-3  resolution, the instance environment, and the orphan rule
   │      ← BUG-17 and BUG-16 are HARD prerequisites. Both would sabotage
@@ -272,7 +272,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-11 | task | — | closed 2026-08-29 | Write the Constrained type variables chapter |
 | SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
 | [SPEC-13](spec-13.md) | task | — | open | Whether a pattern's negative literal is a token or a pattern production is unsettled, and two chapters answer it differently |
-| [SPEC-14](spec-14.md) | task | — | open | Nothing specifies how a structural instance is derived, and equality needs it |
+| SPEC-14 | task | — | closed 2026-09-06 | Nothing specifies how a structural instance is derived, and equality needs it |
 | [SPEC-15](spec-15.md) | task | — | open | Nothing says what an effect is, so `main`'s type and what a test is are both undesigned |
 | [SPEC-16](spec-16.md) | task | — | open | The spec makes one promise about space and does not say whether it makes others |
 | SPEC-17 | task | — | closed 2026-09-06 | Nothing says a `Float`-returning operation may not totalize with a zero, and one of them does |

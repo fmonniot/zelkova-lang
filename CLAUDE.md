@@ -239,7 +239,7 @@ merely recording the direction.
 
 Read the chapter before touching any of it; the `CLASS-` program in
 [`docs/tickets/README.md`](docs/tickets/README.md) carries the order the six implementing
-tickets have to land in. Four of its rules constrain diffs outside that program:
+tickets have to land in. Five of its rules constrain diffs outside that program:
 
 - **`=>`, `class` and `instance` become reserved, and `where` becomes reserved as a type
   variable.** All four are ordinary identifiers today, so this is a breaking change — and
@@ -247,6 +247,11 @@ tickets have to land in. Four of its rules constrain diffs outside that program:
   rather than being rejected, which is why both words are reserved outright and cannot be soft
   the way `javascript` is.
 - **An instance may be declared only in the module declaring its class or its type.**
+- **An instance body is either a list of member bindings or the single word `derived`**, never a
+  mixture. `derived` asks for the structural definition and is the language's only way to get
+  one; only `Eq` and `Comparable` may be derived. It stays a **soft keyword** — one token of
+  lookahead separates the request from a member binding called `derived`, which has an `=` after
+  it — so it does not join the reserved words above, and `CLASS-2` parses both bodies.
 - **A `module javascript` facade signature may not carry a constraint**, which is what preserves
   the plain-parameter-list guarantee
   [`docs/spec/js-interop.md`](docs/spec/js-interop.md) makes.
