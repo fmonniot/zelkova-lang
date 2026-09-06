@@ -54,6 +54,58 @@
 //! path or string rather than being hardcoded to `docs/spec/`, so the harness's own
 //! failure modes can be pinned against fixtures under `tests/fixtures/spec/` instead
 //! of committing a deliberately-broken example to a real chapter.
+//!
+//! # The chapters' prose, as far as it is checkable
+//!
+//! Two sibling tests hold the rest of the directory to the same premise the `expect=`
+//! tags hold its examples to — documentation nothing checks drifts from what it
+//! describes.
+//!
+//! [`spec_cross_references_resolve`] resolves every inline markdown link a chapter
+//! makes. An anchor is checked against the headers of the file it names, slugified by
+//! GitHub's rule, and a relative path is checked for existing at all. A broken anchor
+//! is invisible to `grep` and loud on a rendered page, which is why nothing was
+//! catching it.
+//!
+//! Two scope decisions, both of which the ticket that asked for this
+//! (`SPEC-23`) left open on purpose:
+//!
+//! - **Links into `docs/tickets/` are checked**, along with everything else that is
+//!   not an absolute URL. The chapters cite ticket files from their **Known gap:** and
+//!   **Not implemented:** paragraphs, and those citations are the spec's own account of
+//!   the distance between itself and the compiler; a citation of a file the ticket
+//!   process has since deleted is a claim about a gap that may no longer exist. The
+//!   cost is real and lands on whoever closes a cited ticket rather than on whoever
+//!   wrote the paragraph: `docs/tickets/README.md`'s closing convention deletes the
+//!   ticket file, so closing one that a chapter cites turns this test red until the
+//!   citing paragraph is edited. That is the intended pressure — a closed `LANG-`
+//!   usually means the chapter's **Known gap:** paragraph is now false, and the cases
+//!   where the tagged block stays green across its own fix are exactly the ones nothing
+//!   else notices.
+//! - **The anchor is checked in whatever file the link names**, `docs/tickets/` files
+//!   included, rather than only within `docs/spec/`. No such link exists today; the
+//!   uniform rule costs nothing now and does the right thing if one appears.
+//!
+//! [`spec_tag_vocabulary_is_documented`] holds `docs/spec/conventions.md`'s
+//! *The `expect=` vocabulary* table to the names this file actually accepts, in both
+//! directions: every name [`parse_error_reasons`] can produce is documented, and every
+//! name the table documents is one of those. [`parse_error_reasons`]'s explicit match
+//! guards the enum-to-name direction — a new variant fails this file to compile — and
+//! nothing guarded name-to-prose, which had already drifted once: the table documented
+//! seven of the eleven specific errors while `UnrecognizedToken` was in use at two
+//! blocks in `docs/spec/lexical-structure.md`.
+//!
+//! That check reads the table row rather than searching the section for each name
+//! verbatim, the second choice `SPEC-23` left open. Parsing costs a coupling to one
+//! row's formatting — the names have to be backticked in the row documenting
+//! `expect=parse-error:Reason` — and buys the reverse direction, which a verbatim
+//! search cannot have: a name the table invents, or one left behind by a rename, is
+//! caught rather than ignored.
+//!
+//! The `canonical::Error` variant names of [`variant_names`] are deliberately **not**
+//! checked this way. `conventions.md` documents them by rule — "matched against the
+//! real variant names in `src/compiler/canonical/mod.rs`'s `Error` enum" — and not by
+//! list, so there is no prose enumeration to drift.
 
 use std::path::Path;
 
@@ -260,6 +312,43 @@ fn canonicalize(module: &parser::Module) -> Result<canonical::Module, Vec<canoni
     canonical::canonicalize(&test_package(), &interfaces, module)
 }
 
+/// The two phase names an `expect=parse-error:<reason>` tag may pin instead of naming
+/// a specific error — the coarse half of what [`parse_error_reasons`] returns.
+const PARSE_ERROR_PHASES: &[&str] = &["Tokenizer", "Layout"];
+
+/// The specific error names an `expect=parse-error:<reason>` tag may pin: one per
+/// `TokenizerErrorType` variant, one for layout, and one per grammar-level
+/// `parser::Error` variant.
+///
+/// This list and [`parse_error_reasons`]'s match move together, and
+/// [`parse_error_reasons`] asserts that every name it hands back is in it — so a name
+/// added to the match by the one edit a new enum variant forces cannot reach a chapter
+/// without also reaching this list, and from here
+/// [`spec_tag_vocabulary_is_documented`] carries it on to `conventions.md`'s table.
+const PARSE_ERROR_SPECIFICS: &[&str] = &[
+    "CharNotClosedError",
+    "StringError",
+    "UnicodeError",
+    "IndentationError",
+    "TabError",
+    "UnrecognizedToken",
+    "LayoutError",
+    "InvalidToken",
+    "UnexpectedEOF",
+    "UnexpectedToken",
+    "ExtraToken",
+];
+
+/// Every name an `expect=parse-error:<reason>` tag may pin, phases and specific errors
+/// together.
+fn parse_error_vocabulary() -> Vec<&'static str> {
+    PARSE_ERROR_PHASES
+        .iter()
+        .chain(PARSE_ERROR_SPECIFICS)
+        .copied()
+        .collect()
+}
+
 /// The names an `expect=parse-error:<reason>` tag may pin, for one actual error.
 ///
 /// Returns every name that matches, coarse first: a tab used for indentation is both
@@ -271,7 +360,7 @@ fn canonicalize(module: &parser::Module) -> Result<canonical::Module, Vec<canoni
 /// string, so that adding a variant fails this file to compile rather than silently
 /// producing a name no chapter can ever match.
 fn parse_error_reasons(error: &parser::Error) -> Vec<&'static str> {
-    match error {
+    let names = match error {
         parser::Error::Tokenizer(e) => {
             let specific = match e.error.value {
                 TokenizerErrorType::CharNotClosedError(_) => "CharNotClosedError",
@@ -288,7 +377,24 @@ fn parse_error_reasons(error: &parser::Error) -> Vec<&'static str> {
         parser::Error::UnexpectedEOF { .. } => vec!["UnexpectedEOF"],
         parser::Error::UnexpectedToken { .. } => vec!["UnexpectedToken"],
         parser::Error::ExtraToken { .. } => vec!["ExtraToken"],
+    };
+
+    // A name the match can produce but the constants above do not list is a name
+    // `spec_tag_vocabulary_is_documented` never carries to `conventions.md`, so it
+    // would be usable in a chapter and documented nowhere. Caught here rather than
+    // there because only an actual error can say what the match produces.
+    let vocabulary = parse_error_vocabulary();
+    for name in &names {
+        assert!(
+            vocabulary.contains(name),
+            "`parse_error_reasons` returned `{}`, which `PARSE_ERROR_PHASES` and \
+             `PARSE_ERROR_SPECIFICS` do not list — add it there, and to the \
+             `expect=parse-error:Reason` row of `docs/spec/conventions.md`",
+            name
+        );
     }
+
+    names
 }
 
 /// The `canonical::Error` variant names present in `errors`, flattening `Error::Many`
@@ -622,7 +728,432 @@ fn expect_label(block: &Block) -> String {
     }
 }
 
+// ── Cross-references ──────────────────────────────────────────────────────────
+
+/// Every line of `content` that is not inside a fenced code block, paired with its
+/// 1-indexed line number. The fence lines themselves are excluded too.
+///
+/// Both the header scan and the link scan need this and neither is correct without it:
+/// `docs/spec/packages.md` holds a ```` ```toml ```` block whose comment lines begin
+/// with `#`, and reading one of those as a markdown header would invent an anchor no
+/// reader can reach. The fence rule is [`extract_zel_blocks`]'s, one level simpler
+/// because nothing here cares what a block contains.
+fn prose_lines(content: &str) -> Vec<(usize, &str)> {
+    let mut lines = Vec::new();
+    let mut fence: Option<usize> = None;
+    for (i, line) in content.lines().enumerate() {
+        let trimmed = line.trim_start();
+        let ticks = trimmed.chars().take_while(|&c| c == '`').count();
+        match fence {
+            None if ticks >= 3 => fence = Some(ticks),
+            None => lines.push((i + 1, line)),
+            Some(open) if ticks >= open && trimmed[ticks..].trim().is_empty() => fence = None,
+            Some(_) => {}
+        }
+    }
+    lines
+}
+
+/// GitHub's header-anchor rule: lowercase the text, drop every character that is not
+/// alphanumeric, a hyphen or an underscore, and turn each remaining space into one
+/// hyphen.
+///
+/// Punctuation vanishes without leaving a separator behind, which is the part worth
+/// stating: a header whose text is `let … in` slugs to `let--in` — two hyphens, one
+/// for each space around the ellipsis — and four chapters link to exactly that.
+fn slugify(header: &str) -> String {
+    let mut slug = String::with_capacity(header.len());
+    for c in header.to_lowercase().chars() {
+        if c.is_alphanumeric() || c == '-' || c == '_' {
+            slug.push(c);
+        } else if c == ' ' {
+            slug.push('-');
+        }
+    }
+    slug
+}
+
+/// The anchors `content`'s headers define, in document order.
+///
+/// A repeated header does not shadow the one before it: GitHub appends `-1`, `-2`, …
+/// to the second and later spellings, so both are addressable and a link to the bare
+/// slug reaches the first.
+fn header_anchors(content: &str) -> Vec<String> {
+    let mut anchors: Vec<String> = Vec::new();
+    for (_, line) in prose_lines(content) {
+        let trimmed = line.trim_start();
+        let hashes = trimmed.chars().take_while(|&c| c == '#').count();
+        if hashes == 0 || hashes > 6 || !trimmed[hashes..].starts_with(' ') {
+            continue;
+        }
+        let base = slugify(trimmed[hashes..].trim());
+        let mut anchor = base.clone();
+        let mut repeat = 0;
+        while anchors.contains(&anchor) {
+            repeat += 1;
+            anchor = format!("{}-{}", base, repeat);
+        }
+        anchors.push(anchor);
+    }
+    anchors
+}
+
+/// One inline markdown link found in a chapter.
+struct Link {
+    /// Display label for the file the link was written in.
+    file: String,
+    /// 1-indexed line the link sits on.
+    line: usize,
+    /// The target exactly as written, before it is split on `#`.
+    target: String,
+}
+
+/// Extract every inline `[text](target)` link from `content`, by hand and one line at a
+/// time — the same no-markdown-dependency choice [`extract_zel_blocks`] makes.
+///
+/// Only the inline form is recognised, because it is the only one `docs/spec/` uses. A
+/// link title (`](file.md "Title")`) is not part of the target and is dropped. Links
+/// inside a fenced block are not links and are not collected.
+fn extract_links(content: &str, file_label: &str) -> Vec<Link> {
+    let mut links = Vec::new();
+    for (number, line) in prose_lines(content) {
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        while i + 1 < bytes.len() {
+            if bytes[i] == b']' && bytes[i + 1] == b'(' {
+                let after = &line[i + 2..];
+                if let Some(end) = after.find(')') {
+                    if let Some(target) = after[..end].split_whitespace().next() {
+                        links.push(Link {
+                            file: file_label.to_string(),
+                            line: number,
+                            target: target.to_string(),
+                        });
+                    }
+                    i += 2 + end + 1;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+    }
+    links
+}
+
+/// One markdown file the checks read, kept as a label plus its text.
+struct Chapter {
+    /// Path relative to the crate root — what a failure names, and what a relative
+    /// link is resolved against.
+    label: String,
+    content: String,
+}
+
+/// Read every `*.md` directly under `dir`, sorted, labelled relative to `root`.
+fn load_chapters(root: &Path, dir: &Path) -> Vec<Chapter> {
+    let mut paths: Vec<_> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", dir, e))
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "md"))
+        .collect();
+    paths.sort();
+
+    paths
+        .into_iter()
+        .map(|path| {
+            let content = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+            let label = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            Chapter { label, content }
+        })
+        .collect()
+}
+
+/// Resolve `.` and `..` lexically, so a failure can name `docs/tickets/lang-4.md`
+/// rather than `docs/spec/../tickets/lang-4.md`.
+fn normalize(path: &Path) -> std::path::PathBuf {
+    let mut out = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// Every link in `chapters` that does not land, one message per failure.
+///
+/// Collected rather than short-circuited, the way [`spec_chapters_pass`] collects block
+/// failures: one renamed header usually breaks several links and a reader wants all of
+/// them. Each message names the file the link was written in, its line, and the target
+/// it wanted.
+///
+/// `root` is the directory the chapters' labels are relative to; a link's target is
+/// resolved against the directory of the file that wrote it, which is what lets
+/// `docs/spec/types.md`'s `../tickets/bug-17.md` and a fixture's sibling link go
+/// through the same code.
+fn cross_reference_failures(root: &Path, chapters: &[Chapter]) -> Vec<String> {
+    let mut anchors: HashMap<String, Vec<String>> = chapters
+        .iter()
+        .map(|c| (c.label.clone(), header_anchors(&c.content)))
+        .collect();
+    let mut failures = Vec::new();
+
+    for chapter in chapters {
+        for link in extract_links(&chapter.content, &chapter.label) {
+            let (file_part, anchor) = match link.target.split_once('#') {
+                Some((file, anchor)) => (file, Some(anchor)),
+                None => (link.target.as_str(), None),
+            };
+
+            // Anything addressed by scheme is somebody else's to keep alive.
+            if file_part.contains("://") || file_part.starts_with("mailto:") {
+                continue;
+            }
+
+            let target = if file_part.is_empty() {
+                chapter.label.clone()
+            } else {
+                let dir = Path::new(&chapter.label).parent().unwrap_or(Path::new(""));
+                normalize(&dir.join(file_part))
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            };
+
+            if !root.join(&target).exists() {
+                failures.push(format!(
+                    "{}:{} links to `{}`, but `{}` does not exist",
+                    link.file, link.line, link.target, target
+                ));
+                continue;
+            }
+
+            let Some(anchor) = anchor else { continue };
+            if anchor.is_empty() {
+                failures.push(format!(
+                    "{}:{} links to `{}`, whose `#` names no anchor",
+                    link.file, link.line, link.target
+                ));
+                continue;
+            }
+
+            if !anchors.contains_key(&target) {
+                // A file outside the set under check — a ticket, say. Read it and
+                // slugify its headers by the same rule.
+                match std::fs::read_to_string(root.join(&target)) {
+                    Ok(content) => {
+                        anchors.insert(target.clone(), header_anchors(&content));
+                    }
+                    Err(e) => {
+                        failures.push(format!(
+                            "{}:{} links to `{}`, but `{}` could not be read: {}",
+                            link.file, link.line, link.target, target, e
+                        ));
+                        continue;
+                    }
+                }
+            }
+
+            if !anchors[&target].iter().any(|a| a == anchor) {
+                failures.push(format!(
+                    "{}:{} links to `{}`, but `{}` has no header whose anchor is \
+                     `#{}` — a header it names was renamed, or the anchor was \
+                     mistyped",
+                    link.file, link.line, link.target, target, anchor
+                ));
+            }
+        }
+    }
+
+    failures
+}
+
+// ── The documented tag vocabulary ─────────────────────────────────────────────
+
+/// The English words for the counts a vocabulary is plausibly ever going to have —
+/// enough to check the one `conventions.md` writes out in prose.
+const NUMBER_WORDS: &[&str] = &[
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+];
+
+/// The row of `conventions.md`'s *The `expect=` vocabulary* table that documents
+/// `expect=parse-error:Reason`, or the reason it could not be found.
+///
+/// Located by slug rather than by line number, and by the tag the row is about rather
+/// than by its position in the table, so reordering the rows or rewording the heading
+/// does not move it.
+fn parse_error_reason_row(conventions: &str) -> Result<String, String> {
+    let lines = prose_lines(conventions);
+    let start = lines
+        .iter()
+        .position(|(_, line)| {
+            line.starts_with("## ") && slugify(line[3..].trim()) == "the-expect-vocabulary"
+        })
+        .ok_or(
+            "`docs/spec/conventions.md` has no section whose anchor is `#the-expect-vocabulary`",
+        )?;
+
+    lines[start + 1..]
+        .iter()
+        .take_while(|(_, line)| !line.starts_with("## "))
+        .map(|(_, line)| line.trim())
+        .find(|line| line.starts_with('|') && line.contains("parse-error:Reason"))
+        .map(|line| line.to_string())
+        .ok_or_else(|| {
+            "the `expect=` vocabulary section of `docs/spec/conventions.md` has no \
+             table row documenting `expect=parse-error:Reason`"
+                .to_string()
+        })
+}
+
+/// The backticked spans of `text`, in order.
+fn backticked(text: &str) -> Vec<&str> {
+    let mut spans = Vec::new();
+    let mut rest = text;
+    while let Some(open) = rest.find('`') {
+        let after = &rest[open + 1..];
+        match after.find('`') {
+            Some(close) => {
+                spans.push(&after[..close]);
+                rest = &after[close + 1..];
+            }
+            None => break,
+        }
+    }
+    spans
+}
+
+/// The reason names a table row documents: its backticked spans that are bare
+/// UpperCamel identifiers.
+///
+/// The filter is what lets the whole row be scanned rather than one of its cells:
+/// `expect=parse-error:Reason` and `src/compiler/parser/` are backticked too and carry
+/// characters no error name has. `Reason` itself is the tag's own placeholder — the
+/// row is titled with it — and is not one of the names it documents.
+fn documented_reason_names(row: &str) -> Vec<&str> {
+    backticked(row)
+        .into_iter()
+        .filter(|span| {
+            *span != "Reason"
+                && span.starts_with(|c: char| c.is_ascii_uppercase())
+                && span.chars().all(|c| c.is_ascii_alphabetic())
+        })
+        .collect()
+}
+
+/// Compare the names `conventions.md` documents against the ones this harness accepts,
+/// in both directions, plus the count its prose writes out in words.
+///
+/// Returns one message per disagreement, each saying which side to edit. `documented`
+/// is what [`documented_reason_names`] read out of the row; `phases` and `specifics`
+/// are [`PARSE_ERROR_PHASES`] and [`PARSE_ERROR_SPECIFICS`], taken as parameters so
+/// the self-test can hand in a deliberately-wrong pair.
+fn vocabulary_failures(
+    row: &str,
+    documented: &[&str],
+    phases: &[&str],
+    specifics: &[&str],
+) -> Vec<String> {
+    let mut failures = Vec::new();
+
+    for name in phases.iter().chain(specifics) {
+        if !documented.contains(name) {
+            failures.push(format!(
+                "`{}` is a reason a chapter may pin, and the \
+                 `expect=parse-error:Reason` row of `docs/spec/conventions.md` does \
+                 not document it — a chapter can write a tag no reader can look up",
+                name
+            ));
+        }
+    }
+
+    for name in documented {
+        if !phases.contains(name) && !specifics.contains(name) {
+            failures.push(format!(
+                "the `expect=parse-error:Reason` row of `docs/spec/conventions.md` \
+                 documents `{}`, which this harness does not accept — a chapter \
+                 written against the table would fail",
+                name
+            ));
+        }
+    }
+
+    match NUMBER_WORDS.get(specifics.len()) {
+        Some(word) if row.contains(&format!(" {} ", word)) => {}
+        Some(word) => failures.push(format!(
+            "there are {} specific error names, and the \
+             `expect=parse-error:Reason` row of `docs/spec/conventions.md` does not \
+             say `{}` anywhere — it counts them out in words, so the count is the \
+             word to fix",
+            specifics.len(),
+            word
+        )),
+        None => failures.push(format!(
+            "there are now {} specific error names, more than `NUMBER_WORDS` can \
+             spell — extend it, or drop the count from the row",
+            specifics.len()
+        )),
+    }
+
+    failures
+}
+
+/// The `expect=parse-error:<reason>` names `blocks` actually write, deduplicated.
+fn pinned_reason_names(blocks: &[Block]) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for block in blocks {
+        if let Ok(Expect::ParseError(Some(reason))) = &block.expect {
+            if !names.contains(reason) {
+                names.push(reason.clone());
+            }
+        }
+    }
+    names
+}
+
 // ── The real chapters ─────────────────────────────────────────────────────────
+
+/// The crate root, and every `docs/spec/*.md` under it — top level only, sorted for a
+/// deterministic run order.
+fn spec_chapters() -> (std::path::PathBuf, Vec<Chapter>) {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let root = std::path::PathBuf::from(manifest);
+    let chapters = load_chapters(&root, &root.join("docs/spec"));
+    assert!(
+        !chapters.is_empty(),
+        "expected at least one chapter under {:?}",
+        root.join("docs/spec")
+    );
+    (root, chapters)
+}
 
 /// `cargo test --test spec`: every `zel` block under `docs/spec/` must match its tag.
 ///
@@ -634,37 +1165,14 @@ fn expect_label(block: &Block) -> String {
 /// blocks are counted and reported at the end, per `SPEC-1`.
 #[test]
 fn spec_chapters_pass() {
-    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let spec_dir = Path::new(&manifest).join("docs/spec");
-
-    let mut entries: Vec<_> = std::fs::read_dir(&spec_dir)
-        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", spec_dir, e))
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-        .collect();
-    entries.sort_by_key(|e| e.path());
-
-    assert!(
-        !entries.is_empty(),
-        "expected at least one chapter under {:?}",
-        spec_dir
-    );
+    let (_root, chapters) = spec_chapters();
 
     let mut failures = Vec::new();
     let mut pass_count = 0usize;
     let mut fragment_count = 0usize;
 
-    for entry in entries {
-        let path = entry.path();
-        let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
-        let label = path
-            .strip_prefix(&manifest)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .to_string();
-
-        let blocks = extract_zel_blocks(&content, &label);
+    for chapter in &chapters {
+        let blocks = extract_zel_blocks(&chapter.content, &chapter.label);
 
         // A block with no `package=` is judged on its own; blocks sharing a label are
         // one package, compiled together and judged individually against their own
@@ -720,16 +1228,105 @@ fn spec_chapters_pass() {
     );
 }
 
+/// `cargo test --test spec`: every link `docs/spec/` writes must land.
+///
+/// A sibling of [`spec_chapters_pass`] rather than part of it: a broken link is not a
+/// block failure, and lumping the two makes a panic message that is harder to read than
+/// either on its own.
+///
+/// The two scope decisions — that `../tickets/*.md` citations are checked, and that an
+/// anchor is checked in whatever file names it — are argued at the head of this file.
+#[test]
+fn spec_cross_references_resolve() {
+    let (root, chapters) = spec_chapters();
+
+    let link_count: usize = chapters
+        .iter()
+        .map(|c| extract_links(&c.content, &c.label).len())
+        .sum();
+    assert!(
+        link_count > 100,
+        "expected `docs/spec/` to be densely cross-linked, found {} link(s) — the \
+         extractor is probably reading nothing",
+        link_count
+    );
+
+    let failures = cross_reference_failures(&root, &chapters);
+
+    println!("spec: {} cross-reference(s) checked", link_count);
+
+    assert!(
+        failures.is_empty(),
+        "{} cross-reference(s) in `docs/spec/` do not resolve:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// `cargo test --test spec`: `conventions.md`'s tag table and this harness name the
+/// same reasons.
+///
+/// Three claims, all about the same vocabulary: every name [`parse_error_reasons`] can
+/// produce is documented, every name the table documents is one this harness accepts,
+/// and every `expect=parse-error:Reason` a chapter actually writes is one of them.
+#[test]
+fn spec_tag_vocabulary_is_documented() {
+    let (_root, chapters) = spec_chapters();
+
+    let conventions = chapters
+        .iter()
+        .find(|c| c.label.ends_with("conventions.md"))
+        .expect("`docs/spec/conventions.md` should be one of the chapters");
+    let row = parse_error_reason_row(&conventions.content).expect("the vocabulary row");
+    let documented = documented_reason_names(&row);
+
+    let mut failures =
+        vocabulary_failures(&row, &documented, PARSE_ERROR_PHASES, PARSE_ERROR_SPECIFICS);
+
+    // And the direction a chapter can break on its own: a tag naming a reason the
+    // table does not carry is one a reader cannot look up, whether or not the block
+    // it sits on happens to be green.
+    for chapter in &chapters {
+        let blocks = extract_zel_blocks(&chapter.content, &chapter.label);
+        for name in pinned_reason_names(&blocks) {
+            if !documented.contains(&name.as_str()) {
+                failures.push(format!(
+                    "{} pins `expect=parse-error:{}`, a reason the \
+                     `expect=parse-error:Reason` row of `docs/spec/conventions.md` \
+                     does not document",
+                    chapter.label, name
+                ));
+            }
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "the documented `expect=` vocabulary and the harness's disagree:\n{}",
+        failures.join("\n")
+    );
+}
+
 // ── Harness self-tests ────────────────────────────────────────────────────────
 //
 // These prove the harness can fail, against fixtures under `tests/fixtures/spec/`
 // rather than against a real chapter — `SPEC-1`'s explicit request, so a red run
 // never has to be manufactured by breaking `docs/spec/` on purpose. Each fixture
-// holds exactly one `zel` block, isolating the one behaviour its test pins.
+// holds exactly one `zel` block, isolating the one behaviour its test pins. The
+// cross-reference fixtures — `anchor_targets.md` and `broken_anchor.md` — hold no
+// `zel` block at all and are read as a two-file `docs/spec/` of their own.
 
 fn read_fixture(name: &str) -> String {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     let path = Path::new(&manifest).join("tests/fixtures/spec").join(name);
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e))
+}
+
+/// One real chapter's text, for the self-tests that are about `docs/spec/` itself
+/// rather than about a fixture.
+fn read_chapter(name: &str) -> String {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let path = Path::new(&manifest).join("docs/spec").join(name);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e))
 }
 
@@ -1052,4 +1649,256 @@ fn fragment_block_is_skipped_and_counted() {
             }
         ),
     }
+}
+
+/// The two cross-reference fixtures, read as a two-file `docs/spec/` of their own.
+///
+/// Labelled by their real path under the crate root, because that is what a relative
+/// link is resolved against: `anchor_targets.md` from `broken_anchor.md` has to reach
+/// its sibling exactly the way `layout.md` reaches `expressions.md`.
+fn link_fixtures() -> (std::path::PathBuf, Vec<Chapter>) {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let chapters = ["anchor_targets.md", "broken_anchor.md"]
+        .iter()
+        .map(|name| Chapter {
+            label: format!("tests/fixtures/spec/{}", name),
+            content: read_fixture(name),
+        })
+        .collect();
+    (std::path::PathBuf::from(manifest), chapters)
+}
+
+/// The one failure of `failures` mentioning `needle`, or a panic naming what was found
+/// instead.
+fn only_failure_about<'a>(failures: &'a [String], needle: &str) -> &'a str {
+    let mut matching = failures.iter().filter(|f| f.contains(needle));
+    let found = matching
+        .next()
+        .unwrap_or_else(|| panic!("no failure mentioned `{}`, got {:?}", needle, failures));
+    assert!(
+        matching.next().is_none(),
+        "expected exactly one failure about `{}`, got {:?}",
+        needle,
+        failures
+    );
+    found.as_str()
+}
+
+/// Header anchors are slugified by GitHub's rule, headers inside a fenced block are not
+/// headers, and a repeated header does not shadow the one before it.
+///
+/// Pins: `tests/fixtures/spec/anchor_targets.md` holds one header per rule the slug has
+/// to get right — an ellipsis and the two spaces around it (`let--in`, which four real
+/// chapters link to), a dot, an apostrophe, a `#` comment line inside a ```` ```toml ````
+/// block, and a header repeated after it. Neutralised three ways, each of which turns
+/// this test red on its own: dropping the `c == ' '` arm of `slugify` (every multi-word
+/// anchor loses its hyphens); giving `header_anchors` the raw `content.lines()` instead
+/// of `prose_lines` (the toml comment becomes a third `two-outcomes`); and returning
+/// `base` unconditionally from the repeat loop (the second `## Two outcomes` collides
+/// rather than becoming `two-outcomes-1`). Restored afterwards.
+#[test]
+fn header_anchors_follow_githubs_slug_rule() {
+    let anchors = header_anchors(&read_fixture("anchor_targets.md"));
+    assert_eq!(
+        anchors.iter().map(String::as_str).collect::<Vec<_>>(),
+        vec![
+            "anchor-targets",
+            "let--in",
+            "resolution-and-zelkovalock",
+            "the-annotation-and-the-declarations-parameters",
+            "two-outcomes",
+            "two-outcomes-1",
+        ]
+    );
+}
+
+/// A link to an anchor no header defines is a failure, and the failure names the file
+/// the link was written in, its line, and the anchor it wanted.
+///
+/// This is the whole point of the check: renaming a header is an ordinary edit, and
+/// every link that pointed at it breaks with no error anywhere — invisible to a
+/// terminal `grep`, loud on a rendered page.
+///
+/// Pins: `tests/fixtures/spec/broken_anchor.md` holds one link of every shape — two
+/// that resolve (one same-file, one into `anchor_targets.md`), two that name anchors
+/// neither file defines, one naming a file that does not exist, and one inside a fenced
+/// block that is not a link at all. Neutralised by making
+/// `cross_reference_failures` `continue` instead of pushing when
+/// `anchors[&target]` does not hold the anchor: with that change both anchor failures
+/// vanish and this goes red on the `no-such-section` lookup. Restored afterwards.
+#[test]
+fn broken_anchor_is_a_failure() {
+    let (root, chapters) = link_fixtures();
+    let failures = cross_reference_failures(&root, &chapters);
+
+    let content = read_fixture("broken_anchor.md");
+    let line = content
+        .lines()
+        .position(|l| l.contains("#no-such-section"))
+        .expect("the fixture links to `#no-such-section`")
+        + 1;
+
+    let same_file = only_failure_about(&failures, "no-such-section");
+    assert!(
+        same_file.starts_with(&format!("tests/fixtures/spec/broken_anchor.md:{} ", line)),
+        "the failure should name the referring file and its line, got {:?}",
+        same_file
+    );
+
+    let cross_file = only_failure_about(&failures, "no-such-header");
+    assert!(
+        cross_file.contains("tests/fixtures/spec/anchor_targets.md"),
+        "the failure should name the file whose header was wanted, got {:?}",
+        cross_file
+    );
+}
+
+/// A link to a file that does not exist is a failure too — the shape a chapter's
+/// `../tickets/*.md` citation takes once the ticket process deletes the ticket it
+/// cites.
+///
+/// Pins: the `no_such_chapter.md` link in `tests/fixtures/spec/broken_anchor.md`.
+/// Neutralised by making the `!root.join(&target).exists()` arm of
+/// `cross_reference_failures` `continue` without pushing: with that change this goes
+/// red because nothing reports the missing file. Restored afterwards.
+#[test]
+fn link_to_a_missing_file_is_a_failure() {
+    let (root, chapters) = link_fixtures();
+    let failures = cross_reference_failures(&root, &chapters);
+
+    let missing = only_failure_about(&failures, "no_such_chapter.md");
+    assert!(
+        missing.contains("does not exist"),
+        "the failure should say the target does not exist, got {:?}",
+        missing
+    );
+}
+
+/// A link that resolves is not reported, and a link inside a fenced code block is not a
+/// link — without both, the check would be a test that always fails.
+///
+/// Pins: `tests/fixtures/spec/broken_anchor.md`'s two resolving links and its fenced
+/// `[not a link](no_such_chapter.md#no-such-anchor)`, which names both a missing file
+/// and a missing anchor and so would contribute a failure if it were collected.
+/// Neutralised by giving `extract_links` the raw `content.lines()` instead of
+/// `prose_lines`: with that change the fenced link is collected, the count reaches four
+/// and this goes red. Restored afterwards.
+#[test]
+fn resolving_and_fenced_links_are_not_reported() {
+    let (root, chapters) = link_fixtures();
+    let failures = cross_reference_failures(&root, &chapters);
+
+    assert!(
+        !failures.iter().any(|f| f.contains("no-such-anchor")),
+        "a link inside a fenced block is not a link, got {:?}",
+        failures
+    );
+    assert_eq!(
+        failures.len(),
+        3,
+        "the fixture holds exactly three links that do not land, got {:?}",
+        failures
+    );
+}
+
+/// The documented vocabulary and the harness's are compared in both directions: a name
+/// the table omits is a failure, and so is a name the table invents.
+///
+/// The first direction is the one that had already drifted — the table documented seven
+/// of the eleven specific errors while `UnrecognizedToken` was in use at two blocks in
+/// `docs/spec/lexical-structure.md`. The second is what reading the table row buys over
+/// searching the section for each name.
+///
+/// Pins: the real `expect=parse-error:Reason` row, compared against a deliberately
+/// wrong pair of lists rather than against a fixture, because the row is the artefact
+/// under test and a copy of it would prove nothing about the real one. Neutralised by
+/// dropping either loop of `vocabulary_failures`: each direction's assertion below goes
+/// red with its own loop removed. Restored afterwards.
+#[test]
+fn a_vocabulary_disagreement_is_a_failure() {
+    let conventions = read_chapter("conventions.md");
+    let row = parse_error_reason_row(&conventions).expect("the vocabulary row");
+    let documented = documented_reason_names(&row);
+
+    let mut invented: Vec<&str> = PARSE_ERROR_SPECIFICS.to_vec();
+    invented.push("NoSuchError");
+    let omitted = vocabulary_failures(&row, &documented, PARSE_ERROR_PHASES, &invented);
+    let omitted = only_failure_about(&omitted, "NoSuchError");
+    assert!(
+        omitted.contains("does not document it"),
+        "an undocumented reason should say the table is missing it, got {:?}",
+        omitted
+    );
+
+    let mut over_documented = documented.clone();
+    over_documented.push("Fictional");
+    let invented = vocabulary_failures(
+        &row,
+        &over_documented,
+        PARSE_ERROR_PHASES,
+        PARSE_ERROR_SPECIFICS,
+    );
+    let invented = only_failure_about(&invented, "Fictional");
+    assert!(
+        invented.contains("this harness does not accept"),
+        "a documented-but-unreal reason should say so, got {:?}",
+        invented
+    );
+}
+
+/// The count `conventions.md` writes out in words is checked against the real one.
+///
+/// The row says "one of the eleven specific errors", which is a claim about the same
+/// vocabulary the names are and is one added variant away from being wrong.
+///
+/// Pins: the real row, compared against a `specifics` list one name short, so the
+/// expected word becomes `ten` and the row still says `eleven`. Neutralised by deleting
+/// the `NUMBER_WORDS` match at the foot of `vocabulary_failures`: with that change the
+/// short list produces no failure at all and this goes red. Restored afterwards.
+#[test]
+fn a_stale_count_in_the_vocabulary_row_is_a_failure() {
+    let conventions = read_chapter("conventions.md");
+    let row = parse_error_reason_row(&conventions).expect("the vocabulary row");
+    let documented = documented_reason_names(&row);
+
+    let short = &PARSE_ERROR_SPECIFICS[..PARSE_ERROR_SPECIFICS.len() - 1];
+    let failures = vocabulary_failures(&row, &documented, PARSE_ERROR_PHASES, short);
+    let stale = only_failure_about(&failures, "the count is the word to fix");
+    assert!(
+        stale.contains(NUMBER_WORDS[short.len()]),
+        "the failure should name the word the row ought to say, got {:?}",
+        stale
+    );
+}
+
+/// A chapter pinning a reason the table does not document is a failure, whether or not
+/// the block it sits on is green.
+///
+/// A tag naming a real error the conventions never wrote down passes its block and
+/// leaves a reader with a word they cannot look up — the direction
+/// [`spec_tag_vocabulary_is_documented`]'s second half exists for.
+///
+/// Pins: `tests/fixtures/spec/parse_error_wrong_reason.md`, retagged in memory to pin
+/// `NoSuchReason`, which the real row does not carry. Neutralised by having
+/// `pinned_reason_names` return an empty vector: with that change nothing is compared
+/// and this goes red. Restored afterwards.
+#[test]
+fn a_chapter_pinning_an_undocumented_reason_is_a_failure() {
+    let conventions = read_chapter("conventions.md");
+    let row = parse_error_reason_row(&conventions).expect("the vocabulary row");
+    let documented = documented_reason_names(&row);
+
+    let mut block = only_block("parse_error_wrong_reason.md");
+    assert!(
+        documented.contains(&"TabError"),
+        "the fixture's own reason should be a documented one"
+    );
+
+    block.expect = Ok(Expect::ParseError(Some("NoSuchReason".to_string())));
+    let pinned = pinned_reason_names(std::slice::from_ref(&block));
+    assert_eq!(pinned, vec!["NoSuchReason".to_string()]);
+    assert!(
+        !pinned.iter().any(|n| documented.contains(&n.as_str())),
+        "`NoSuchReason` should not be a documented reason"
+    );
 }

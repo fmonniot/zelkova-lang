@@ -1,6 +1,6 @@
 # Zelkova — Ticket index
 
-_Last updated: 2026-09-04._
+_Last updated: 2026-09-05._
 
 `SPEC-2` opened a second body of work alongside the diagnostics program below: specifying the
 language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
@@ -109,6 +109,16 @@ A tombstone row carries **no SHA and no PR number**. The commit that deletes a t
 a commit on a branch, and when it is written neither the merge SHA nor the PR number exists
 yet. The row may only contain what the closing commit can know about itself — and it doesn't
 need more, because the file path is the query key.
+
+**Deleting a ticket a chapter cites turns `cargo test --test spec` red**, and fixing it is part
+of closing the ticket. Chapters in [`docs/spec/`](../spec/README.md) cite ticket files from
+their **Known gap:** and **Not implemented:** paragraphs, and `spec_cross_references_resolve`
+checks that every one of those files still exists. That is deliberate: such a paragraph is the
+spec's account of a gap, so a citation of a deleted ticket is a claim about a gap that may no
+longer exist. Grep the chapters for the ID before deleting its file, and edit the paragraph —
+usually the whole paragraph goes, because the gap it describes is the one that just closed.
+`SPEC-23` weighed the alternative (leave the chapters out of it, and let a stale citation
+survive) and took this one; the reasoning is at the head of `tests/spec.rs`.
 
 ## The type-classes program
 
@@ -270,7 +280,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-20](spec-20.md) | task | — | open | A facade constant is called unsettled by the chapter and shipped by `std/core` |
 | [SPEC-21](spec-21.md) | task | — | open | Records are part of the language and no chapter says what one looks like |
 | [SPEC-22](spec-22.md) | task | — | open | Lists are part of the language and the chapter specifying them does not exist |
-| [SPEC-23](spec-23.md) | task | — | open | Nothing checks the spec's own cross-references, and 271 of them are one rename from silence |
+| SPEC-23 | task | — | closed 2026-09-05 | Nothing checks the spec's own cross-references, and 271 of them are one rename from silence |
 | SPEC-24 | task | — | closed 2026-09-05 | The conventions name every tag a chapter may write but not a single word it may write, and the tag table is four names short |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
