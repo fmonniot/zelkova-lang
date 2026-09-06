@@ -274,7 +274,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-14](spec-14.md) | task | — | open | Nothing specifies how a structural instance is derived, and equality needs it |
 | [SPEC-15](spec-15.md) | task | — | open | Nothing says what an effect is, so `main`'s type and what a test is are both undesigned |
 | [SPEC-16](spec-16.md) | task | — | open | The spec makes one promise about space and does not say whether it makes others |
-| [SPEC-17](spec-17.md) | task | — | open | What a `Float` literal denotes is unspecified, and the tokenizer has already picked an answer |
+| [SPEC-17](spec-17.md) | task | — | open | Nothing says a `Float`-returning operation may not totalize with a zero, and one of them does |
 | [SPEC-18](spec-18.md) | task | — | open | "A subset of the Zelkova standard types" names no subset, and the compiler enforces none |
 | [SPEC-19](spec-19.md) | task | — | open | `javascript` is the only interop modifier, and the WebAssembly equivalent is undesigned |
 | SPEC-20 | task | — | closed 2026-09-06 | A facade constant is called unsettled by the chapter and shipped by `std/core` |

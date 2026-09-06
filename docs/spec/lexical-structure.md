@@ -351,8 +351,10 @@ avogadro = 6.022e23
 **Not implemented:** exponents are not recognised. As with hexadecimal above, `6.022e23`
 currently parses as an application of `6.022` to an unresolvable `e23`.
 
-Requiring a digit on each side of the point is what keeps `.` usable as punctuation. Floats
-are IEEE 754 double-precision.
+Requiring a digit on each side of the point is what keeps `.` usable as punctuation. What a
+float literal *denotes* — the binary64 value it rounds to, and what becomes of one whose value
+does not fit — is [Evaluation semantics](evaluation-semantics.md#numbers)'s rule, not this
+section's: this section governs only the token's spelling.
 
 ```zel expect=ok
 module Example exposing (f)

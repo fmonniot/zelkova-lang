@@ -407,6 +407,26 @@ positive infinity, `0.0 / 0.0` is `nan`, and the ordering of a `nan` against any
 `False`. Nothing about a `Float` operation is a failure; IEEE defines a result for every one of
 them, and those results are the language's.
 
+A float literal denotes the binary64 value nearest to the decimal number it spells, rounding
+**to nearest, with ties going to the value whose final mantissa bit is even** — the rounding
+IEEE 754 specifies for every decimal-to-binary conversion, and this language has no reason to
+pick anything else. Rounding is total: every literal that [Lexical
+structure](lexical-structure.md#floats) accepts denotes some binary64 value, and none is
+rejected for the value it rounds to. A literal too large in magnitude for any finite binary64
+value denotes positive infinity; one too small to be distinguished from zero denotes positive
+zero, which is the subject of an [open question](#open-questions) below. Both are the *positive* infinity and the
+*positive* zero, because a float literal's grammar never places a `-` before it — a literal is
+always non-negative — so a negative literal, a negative infinity and a negative zero are all
+reached the same way any other negative `Float` is: by [prefix
+negation](lexical-structure.md#prefix-negation) applied to a non-negative one.
+
+`nan` has no literal spelling at all — no run of digits denotes it — and is reached only
+through an operation IEEE defines to produce it, such as the `0.0 / 0.0` above. Once reached,
+`nan`, the infinities and the negative zero are ordinary `Float` values: every operation this
+section defines accepts them and returns IEEE's answer, and [structural
+equality](#what-structural-equality-computes) is the one place that answer is not the everyday
+one.
+
 Integer division has to define a result for a zero divisor, because a well-typed program has
 [only two outcomes](#two-outcomes) and a crash is not one of them:
 
@@ -482,7 +502,10 @@ below.
   copied, that a partially applied function is not rebuilt per call — is unanswered, and each
   answer constrains a code generator that does not exist
   ([`SPEC-16`](../tickets/spec-16.md)).
-- **What a `Float` literal denotes exactly.** `Float` is binary64 and most decimal literals are
-  not, so a literal is rounded. Which rounding, and whether a literal that is not representable
-  is an error rather than a rounding, is unspecified
+- **Whether a `Float` may totalize with a zero.** `Int` division by zero is `0` because a
+  two's-complement integer has no value meaning *no answer*; binary64 has `nan`, and nothing
+  here says a `Float`-returning operation must reach for that rather than for a zero. Every one
+  of them does today, by inheriting IEEE's answer through the JavaScript companions — but the
+  underflowing literal above does not, and whether the rule reaches across a [`module
+  javascript`](js-interop.md) boundary at all is unasked
   ([`SPEC-17`](../tickets/spec-17.md)).
