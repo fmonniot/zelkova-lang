@@ -44,7 +44,12 @@ separate loop below — specifying the language rather than changing the compile
 The language itself — as opposed to the compiler that implements it — is specified under
 [`docs/spec/`](docs/spec/README.md). It is normative and every code example in it is checked
 against the compiler by `cargo test --test spec`; see that index before writing prose about
-what Zelkova's syntax or semantics are.
+what Zelkova's syntax or semantics are. That same binary also checks the directory's
+connective tissue: every anchor and relative link a chapter writes has to resolve, and the tag
+vocabulary `docs/spec/conventions.md` documents has to be the one the harness accepts. Two
+consequences reach outside `tests/spec.rs` — renaming a chapter header breaks every link that
+named it, and deleting a ticket file a chapter cites turns the suite red until the citing
+paragraph is edited (`docs/tickets/README.md`'s closing convention says so too).
 
 ## Architecture
 
