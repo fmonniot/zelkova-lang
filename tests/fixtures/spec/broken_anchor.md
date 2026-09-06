@@ -18,3 +18,8 @@ A link inside a fenced block is not a link, and is not checked:
 ```markdown
 [not a link](no_such_chapter.md#no-such-anchor)
 ```
+
+## After an inline code span
+
+```` ```zel ```` opens no fence, so the link that follows it is still a link and still
+has to land: [a section this file does not have](#neither-does-this-one).

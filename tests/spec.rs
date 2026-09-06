@@ -238,24 +238,55 @@ fn parse_expect(value: &str) -> Result<Expect, String> {
     }
 }
 
+/// The info string of the fenced code block `line` opens, if it opens one, paired with
+/// the length of its backtick run.
+///
+/// Two halves, and the second is the one worth stating. A fence is three or more
+/// backticks — and CommonMark forbids a backtick anywhere in a *backtick* fence's info
+/// string, precisely so that a line beginning with an inline code span is not read as
+/// opening a block. That case is not hypothetical here: prose that names a fence writes
+/// it as an inline span (```` ```zel ````), and `docs/tickets/site-1.md` already opens a
+/// line that way. Without the rule such a line swallows every header and every link
+/// after it, to the next backticks-only line or to the end of the file, and a checker
+/// whose whole premise is that unchecked things drift silently acquires a silent-stop
+/// mode of its own.
+///
+/// Shared by [`extract_zel_blocks`] and [`prose_lines`], which have to agree about what
+/// a fence is or the block scan and the prose scan disagree about the same file.
+fn fence_open(line: &str) -> Option<(usize, &str)> {
+    let trimmed = line.trim_start();
+    let ticks = trimmed.chars().take_while(|&c| c == '`').count();
+    let info = &trimmed[ticks..];
+    if ticks >= 3 && !info.contains('`') {
+        Some((ticks, info.trim()))
+    } else {
+        None
+    }
+}
+
+/// Whether `line` closes a fence opened with `open` backticks: at least as many
+/// backticks, and nothing else on the line.
+fn fence_close(line: &str, open: usize) -> bool {
+    let trimmed = line.trim_start();
+    let ticks = trimmed.chars().take_while(|&c| c == '`').count();
+    ticks >= open && trimmed[ticks..].trim().is_empty()
+}
+
 /// Extract every ```` ```zel ```` fenced block from `content`, by hand — no markdown
-/// dependency, per `SPEC-1`. A fence is a line whose trimmed text starts with three
-/// or more backticks; the block runs until a line whose trimmed text is *only*
-/// backticks, at least as many as the opener. Only fences whose info string's first
-/// whitespace-delimited token is exactly `zel` become a [`Block`]; anything else
-/// (`sh`, bare fences, prose) is skipped over without being inspected.
+/// dependency, per `SPEC-1`. A fence is what [`fence_open`] says it is; the block runs
+/// until a line whose trimmed text is *only* backticks, at least as many as the opener.
+/// Only fences whose info string's first whitespace-delimited token is exactly `zel`
+/// become a [`Block`]; anything else (`sh`, bare fences, prose) is skipped over without
+/// being inspected.
 fn extract_zel_blocks(content: &str, file_label: &str) -> Vec<Block> {
     let mut blocks = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
     while i < lines.len() {
-        let trimmed = lines[i].trim_start();
-        let fence_len = trimmed.chars().take_while(|&c| c == '`').count();
-        if fence_len < 3 {
+        let Some((fence_len, info)) = fence_open(lines[i]) else {
             i += 1;
             continue;
-        }
-        let info = trimmed[fence_len..].trim();
+        };
         let open_line = i + 1; // 1-indexed
         let mut tokens = info.split_whitespace();
         let is_zel = tokens.next() == Some("zel");
@@ -265,9 +296,7 @@ fn extract_zel_blocks(content: &str, file_label: &str) -> Vec<Block> {
         let mut j = i + 1;
         let mut close = None;
         while j < lines.len() {
-            let ct = lines[j].trim_start();
-            let ct_fence_len = ct.chars().take_while(|&c| c == '`').count();
-            if ct_fence_len >= fence_len && ct[ct_fence_len..].trim().is_empty() {
+            if fence_close(lines[j], fence_len) {
                 close = Some(j);
                 break;
             }
@@ -736,18 +765,19 @@ fn expect_label(block: &Block) -> String {
 /// Both the header scan and the link scan need this and neither is correct without it:
 /// `docs/spec/packages.md` holds a ```` ```toml ```` block whose comment lines begin
 /// with `#`, and reading one of those as a markdown header would invent an anchor no
-/// reader can reach. The fence rule is [`extract_zel_blocks`]'s, one level simpler
-/// because nothing here cares what a block contains.
+/// reader can reach. The fence rule is [`fence_open`]'s and [`fence_close`]'s, shared
+/// with [`extract_zel_blocks`]; nothing here cares what a block contains, only where it
+/// ends.
 fn prose_lines(content: &str) -> Vec<(usize, &str)> {
     let mut lines = Vec::new();
     let mut fence: Option<usize> = None;
     for (i, line) in content.lines().enumerate() {
-        let trimmed = line.trim_start();
-        let ticks = trimmed.chars().take_while(|&c| c == '`').count();
         match fence {
-            None if ticks >= 3 => fence = Some(ticks),
-            None => lines.push((i + 1, line)),
-            Some(open) if ticks >= open && trimmed[ticks..].trim().is_empty() => fence = None,
+            None => match fence_open(line) {
+                Some((ticks, _)) => fence = Some(ticks),
+                None => lines.push((i + 1, line)),
+            },
+            Some(open) if fence_close(line, open) => fence = None,
             Some(_) => {}
         }
     }
@@ -760,7 +790,8 @@ fn prose_lines(content: &str) -> Vec<(usize, &str)> {
 ///
 /// Punctuation vanishes without leaving a separator behind, which is the part worth
 /// stating: a header whose text is `let … in` slugs to `let--in` — two hyphens, one
-/// for each space around the ellipsis — and four chapters link to exactly that.
+/// for each space around the ellipsis — and seven links across six chapters name
+/// exactly that.
 fn slugify(header: &str) -> String {
     let mut slug = String::with_capacity(header.len());
     for c in header.to_lowercase().chars() {
@@ -1236,9 +1267,29 @@ fn spec_chapters_pass() {
 ///
 /// The two scope decisions — that `../tickets/*.md` citations are checked, and that an
 /// anchor is checked in whatever file names it — are argued at the head of this file.
+///
+/// Two liveness assertions come before the check itself, because every failure mode of
+/// the scan is silent: it reports what it read, and a file it read nothing out of looks
+/// exactly like a file with nothing in it. The per-chapter one is the sharper of the
+/// two — a single swallowed chapter is invisible in a whole-directory total.
 #[test]
 fn spec_cross_references_resolve() {
     let (root, chapters) = spec_chapters();
+
+    let mute: Vec<&str> = chapters
+        .iter()
+        .filter(|c| {
+            header_anchors(&c.content).is_empty() || extract_links(&c.content, &c.label).is_empty()
+        })
+        .map(|c| c.label.as_str())
+        .collect();
+    assert!(
+        mute.is_empty(),
+        "every chapter under `docs/spec/` writes headers and links to its neighbours, so \
+         a chapter the scan reads none of one or the other out of is one it stopped \
+         reading part way — most likely a line it mistook for a code fence: {}",
+        mute.join(", ")
+    );
 
     let link_count: usize = chapters
         .iter()
@@ -1688,9 +1739,9 @@ fn only_failure_about<'a>(failures: &'a [String], needle: &str) -> &'a str {
 /// headers, and a repeated header does not shadow the one before it.
 ///
 /// Pins: `tests/fixtures/spec/anchor_targets.md` holds one header per rule the slug has
-/// to get right — an ellipsis and the two spaces around it (`let--in`, which four real
-/// chapters link to), a dot, an apostrophe, a `#` comment line inside a ```` ```toml ````
-/// block, and a header repeated after it. Neutralised three ways, each of which turns
+/// to get right — an ellipsis and the two spaces around it (`let--in`, which seven links
+/// across six real chapters name), a dot, an apostrophe, a `#` comment line inside a
+/// ```` ```toml ```` block, and a header repeated after it. Neutralised three ways, each of which turns
 /// this test red on its own: dropping the `c == ' '` arm of `slugify` (every multi-word
 /// anchor loses its hyphens); giving `header_anchors` the raw `content.lines()` instead
 /// of `prose_lines` (the toml comment becomes a third `two-outcomes`); and returning
@@ -1708,7 +1759,44 @@ fn header_anchors_follow_githubs_slug_rule() {
             "the-annotation-and-the-declarations-parameters",
             "two-outcomes",
             "two-outcomes-1",
+            "a-line-beginning-with-an-inline-code-span",
+            "still-a-header",
         ]
+    );
+}
+
+/// A prose line that *begins* with an inline code span opens no fenced block.
+///
+/// CommonMark's rule for a backtick fence is that its info string may not contain a
+/// backtick, and that rule exists for exactly this line: prose naming a fence writes it
+/// as an inline span (```` ```zel ````), which is what `docs/spec/`'s own conventions
+/// chapter and several tickets do. Reading such a line as an opener swallows every
+/// header and every link after it, silently — the failure mode this whole file exists to
+/// prevent, turned on the file itself.
+///
+/// Pins: the closing section of both cross-reference fixtures, each of which writes such
+/// a line and then something the scan has to still see — a header in
+/// `anchor_targets.md`, a link to a missing anchor in `broken_anchor.md`. Neutralised by
+/// dropping the ``!info.contains('`')`` half of `fence_open`'s condition: with that change
+/// the ```` ```zel ```` line opens a fence that never closes, `still-a-header` is not
+/// collected and the link below is never checked, and both halves of this test go red.
+/// Restored afterwards.
+#[test]
+fn a_line_beginning_with_an_inline_code_span_is_not_a_fence() {
+    let anchors = header_anchors(&read_fixture("anchor_targets.md"));
+    assert!(
+        anchors.iter().any(|a| a == "still-a-header"),
+        "a header written after an inline code span is still a header, got {:?}",
+        anchors
+    );
+
+    let (root, chapters) = link_fixtures();
+    let failures = cross_reference_failures(&root, &chapters);
+    let after = only_failure_about(&failures, "neither-does-this-one");
+    assert!(
+        after.contains("has no header whose anchor is"),
+        "a link written after an inline code span is still checked, got {:?}",
+        after
     );
 }
 
@@ -1781,7 +1869,7 @@ fn link_to_a_missing_file_is_a_failure() {
 /// `[not a link](no_such_chapter.md#no-such-anchor)`, which names both a missing file
 /// and a missing anchor and so would contribute a failure if it were collected.
 /// Neutralised by giving `extract_links` the raw `content.lines()` instead of
-/// `prose_lines`: with that change the fenced link is collected, the count reaches four
+/// `prose_lines`: with that change the fenced link is collected, the count reaches five
 /// and this goes red. Restored afterwards.
 #[test]
 fn resolving_and_fenced_links_are_not_reported() {
@@ -1795,8 +1883,8 @@ fn resolving_and_fenced_links_are_not_reported() {
     );
     assert_eq!(
         failures.len(),
-        3,
-        "the fixture holds exactly three links that do not land, got {:?}",
+        4,
+        "the fixture holds exactly four links that do not land, got {:?}",
         failures
     );
 }
