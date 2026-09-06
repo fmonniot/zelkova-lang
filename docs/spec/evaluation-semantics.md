@@ -25,7 +25,7 @@ somewhere earlier or somewhere else:
 | A `case` with no branch for the value | [Coverage](patterns.md#a-pattern-that-can-fail-and-one-that-cannot) is checked, so no such `case` compiles |
 | A name that is not in scope | [Name resolution](name-resolution.md#unresolved-names) |
 | Applying a value that is not a function | Type checking |
-| Integer division by zero | [Defined below](#numbers) to be `0` |
+| Integer division by zero | [Defined below](#an-operation-with-no-answer) to be `0`, because no `Int` value means *no answer* |
 | A lookup, a parse, a conversion that can fail | The type: `Maybe a`, `Result e a` |
 
 **Known gap:** coverage is not checked — the exhaustiveness phase inspects nothing and accepts
@@ -414,11 +414,10 @@ pick anything else. Rounding is total: every literal that [Lexical
 structure](lexical-structure.md#floats) accepts denotes some binary64 value, and none is
 rejected for the value it rounds to. A literal too large in magnitude for any finite binary64
 value denotes positive infinity; one too small to be distinguished from zero denotes positive
-zero, which is the subject of an [open question](#open-questions) below. Both are the *positive* infinity and the
-*positive* zero, because a float literal's grammar never places a `-` before it — a literal is
-always non-negative — so a negative literal, a negative infinity and a negative zero are all
-reached the same way any other negative `Float` is: by [prefix
-negation](lexical-structure.md#prefix-negation) applied to a non-negative one.
+zero. Both are the *positive* infinity and the *positive* zero, because a float literal's
+grammar never places a `-` before it — a literal is always non-negative — so a negative literal,
+a negative infinity and a negative zero are all reached the same way any other negative `Float`
+is: by [prefix negation](lexical-structure.md#prefix-negation) applied to a non-negative one.
 
 `nan` has no literal spelling at all — no run of digits denotes it — and is reached only
 through an operation IEEE defines to produce it, such as the `0.0 / 0.0` above. Once reached,
@@ -427,8 +426,28 @@ section defines accepts them and returns IEEE's answer, and [structural
 equality](#what-structural-equality-computes) is the one place that answer is not the everyday
 one.
 
-Integer division has to define a result for a zero divisor, because a well-typed program has
-[only two outcomes](#two-outcomes) and a crash is not one of them:
+### An operation with no answer
+
+Some operations are handed arguments for which no answer exists: a divisor of zero, the square
+root of a negative number, the logarithm of a negative one. A well-typed program has [only two
+outcomes](#two-outcomes) and a crash is not one of them, so each of these still produces a
+value — and which value it produces is decided by what the result type has room for.
+
+**A `Float`-returning operation with no answer produces `nan`.** binary64 keeps a value meaning
+*not a number*: `nan` is not any number, it propagates through every arithmetic operation it
+reaches, and `isNaN` detects it. So a `Float` operation never invents a stand-in answer.
+`sqrt (-1)` is `nan`, `logBase 0 0` is `nan`, `0.0 / 0.0` is `nan`, and a caller can ask
+afterwards whether an answer was ever found.
+
+Rounding is a different thing, and this rule does not reach it. An operation whose exact result
+is too small for binary64 *has* an answer — the nearest representable value, which is a zero —
+and returns it, so `1.0e-300 * 1.0e-300` is `0.0` rather than `nan`, and a literal too small to
+be distinguished from zero denotes positive zero for the same reason. Losing precision, even all
+of it, is not the same as having nothing to return.
+
+`Int` has no such value. Every 32-bit two's-complement bit pattern is a number somebody might
+have meant, so whatever an integer operation returns is indistinguishable from a real result,
+and the language names one rather than leaving the operation partial:
 
 ```zel expect=ok
 module Example exposing ((//), idiv, half)
@@ -443,13 +462,32 @@ half n =
 ```
 
 **`n // 0` is `0`. `modBy 0 n` is `0`. `remainderBy 0 n` is `0`.** These are the values that
-keep those three operations total. A caller for whom a zero divisor is a real case tests the
-divisor.
+keep those three operations total. Nothing marks such a zero as invented, so a caller for whom a
+zero divisor is a real case tests the divisor beforehand, where a `Float` caller can test the
+result afterwards.
 
 **Known gap:** `modBy 0` calls an undefined `__Debug_crash`, so it is a `ReferenceError` rather
 than `0`, and `remainderBy 0` returns `nan` rather than `0`.
 [`BUG-24`](../tickets/bug-24.md) is the ticket. No block holds either to account: both are in
 the JavaScript companion files, which nothing in the test suite runs.
+
+### Converting a `Float` to an `Int`
+
+`round`, `floor`, `ceiling` and `truncate` each take a `Float` and produce an `Int`, and there
+are `Float`s the `Int`s have no room for: `nan`, both infinities, and every finite value outside
+the 32-bit range.
+
+**A conversion to `Int` rounds as its name says and then wraps into 32 bits**, the way `Int`
+arithmetic wraps, **and `nan` and both infinities convert to `0`.** That zero is the same
+concession `//` makes, and for the same reason: the result type has no value meaning *no
+answer*, so the conversion returns one that means something else. A program holding a `Float` it
+is unsure of tests it with `isNaN` or `isInfinite` before converting, as a program holding a
+divisor tests the divisor.
+
+**Known gap:** `round`, `floor` and `ceiling` return their JavaScript `Math` result with no
+wrap, so `round nan` is `nan` and `round 1.0e20` is `1.0e20` — neither of them an `Int`. Only
+`truncate` wraps. [`BUG-25`](../tickets/bug-25.md) is the ticket. No block holds it to account:
+all four conversions are in a JavaScript companion, which nothing in the test suite runs.
 
 ## Purity and the JavaScript boundary
 
@@ -480,6 +518,14 @@ next : a -> a
 Both compile. The second is a broken program, and the rule it breaks is one only its author can
 keep.
 
+Purity is not the only rule that crosses this boundary. **A companion also owes the answers
+[Numbers](#an-operation-with-no-answer) defines**: a `Float`-returning companion with no answer
+returns `nan`, an `Int`-returning one returns the value that section names, and a conversion
+returns a value the `Int` type can hold. Neither returns a stand-in a caller cannot tell from a
+real result. Most of the language's arithmetic is written as a facade, so a rule that stopped
+here would be a rule the language did not have — and it is unenforceable in exactly the way
+purity is, because a type annotation with no body is all the compiler ever sees.
+
 How a program *does* reach the outside world is not this boundary's job and is undesigned; see
 below.
 
@@ -502,10 +548,3 @@ below.
   copied, that a partially applied function is not rebuilt per call — is unanswered, and each
   answer constrains a code generator that does not exist
   ([`SPEC-16`](../tickets/spec-16.md)).
-- **Whether a `Float` may totalize with a zero.** `Int` division by zero is `0` because a
-  two's-complement integer has no value meaning *no answer*; binary64 has `nan`, and nothing
-  here says a `Float`-returning operation must reach for that rather than for a zero. Every one
-  of them does today, by inheriting IEEE's answer through the JavaScript companions — but the
-  underflowing literal above does not, and whether the rule reaches across a [`module
-  javascript`](js-interop.md) boundary at all is unasked
-  ([`SPEC-17`](../tickets/spec-17.md)).
