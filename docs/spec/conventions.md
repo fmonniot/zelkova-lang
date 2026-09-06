@@ -28,6 +28,10 @@ skip. When you add an example, tag it.
 A fenced block whose info string's first token is not `zel` (` ```sh `, a bare
 ` ``` `, prose) is not touched by the harness at all.
 
+The `expect=parse-error:Reason` row above is read by `tests/spec.rs`, which checks it against
+the reasons the harness really accepts: keep every reason name in it backticked, and keep the
+count of specific errors spelled out as a word.
+
 ## More than one module: `package=`
 
 A block holds a single module, and by default it is compiled alone, against no interfaces

@@ -1157,6 +1157,32 @@ fn vocabulary_failures(
     failures
 }
 
+/// Every `expect=parse-error:<reason>` a chapter pins that `documented` does not carry,
+/// one message per chapter and name.
+///
+/// The direction of the check a chapter can break on its own, and the counterpart of
+/// [`vocabulary_failures`]: that one compares the table against the harness, this one
+/// compares the chapters against the table. It takes `documented` as a parameter for the
+/// same reason — so the self-test can hand in a chapter and a vocabulary that disagree,
+/// and exercise the code the real test runs rather than a copy of it.
+fn undocumented_pins(chapters: &[Chapter], documented: &[&str]) -> Vec<String> {
+    let mut failures = Vec::new();
+    for chapter in chapters {
+        let blocks = extract_zel_blocks(&chapter.content, &chapter.label);
+        for name in pinned_reason_names(&blocks) {
+            if !documented.contains(&name.as_str()) {
+                failures.push(format!(
+                    "{} pins `expect=parse-error:{}`, a reason the \
+                     `expect=parse-error:Reason` row of `docs/spec/conventions.md` \
+                     does not document",
+                    chapter.label, name
+                ));
+            }
+        }
+    }
+    failures
+}
+
 /// The `expect=parse-error:<reason>` names `blocks` actually write, deduplicated.
 fn pinned_reason_names(blocks: &[Block]) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
@@ -1337,19 +1363,7 @@ fn spec_tag_vocabulary_is_documented() {
     // And the direction a chapter can break on its own: a tag naming a reason the
     // table does not carry is one a reader cannot look up, whether or not the block
     // it sits on happens to be green.
-    for chapter in &chapters {
-        let blocks = extract_zel_blocks(&chapter.content, &chapter.label);
-        for name in pinned_reason_names(&blocks) {
-            if !documented.contains(&name.as_str()) {
-                failures.push(format!(
-                    "{} pins `expect=parse-error:{}`, a reason the \
-                     `expect=parse-error:Reason` row of `docs/spec/conventions.md` \
-                     does not document",
-                    chapter.label, name
-                ));
-            }
-        }
-    }
+    failures.extend(undocumented_pins(&chapters, &documented));
 
     assert!(
         failures.is_empty(),
@@ -1966,27 +1980,51 @@ fn a_stale_count_in_the_vocabulary_row_is_a_failure() {
 /// leaves a reader with a word they cannot look up — the direction
 /// [`spec_tag_vocabulary_is_documented`]'s second half exists for.
 ///
-/// Pins: `tests/fixtures/spec/parse_error_wrong_reason.md`, retagged in memory to pin
-/// `NoSuchReason`, which the real row does not carry. Neutralised by having
-/// `pinned_reason_names` return an empty vector: with that change nothing is compared
-/// and this goes red. Restored afterwards.
+/// Pins: [`undocumented_pins`], the function [`spec_tag_vocabulary_is_documented`] runs
+/// for this direction, given `tests/fixtures/spec/parse_error_wrong_reason.md` twice —
+/// once as written, whose `TabError` the real row documents, and once with its tag
+/// rewritten to `NoSuchReason`, which it does not. Neutralised by having
+/// `undocumented_pins` return an empty vector: with that change the retagged chapter
+/// produces no failure and this goes red on `only_failure_about`. Restored afterwards.
 #[test]
 fn a_chapter_pinning_an_undocumented_reason_is_a_failure() {
     let conventions = read_chapter("conventions.md");
     let row = parse_error_reason_row(&conventions).expect("the vocabulary row");
     let documented = documented_reason_names(&row);
-
-    let mut block = only_block("parse_error_wrong_reason.md");
     assert!(
         documented.contains(&"TabError"),
         "the fixture's own reason should be a documented one"
     );
 
-    block.expect = Ok(Expect::ParseError(Some("NoSuchReason".to_string())));
-    let pinned = pinned_reason_names(std::slice::from_ref(&block));
-    assert_eq!(pinned, vec!["NoSuchReason".to_string()]);
+    let label = "tests/fixtures/spec/parse_error_wrong_reason.md";
+    let content = read_fixture("parse_error_wrong_reason.md");
+    let as_written = Chapter {
+        label: label.to_string(),
+        content: content.clone(),
+    };
     assert!(
-        !pinned.iter().any(|n| documented.contains(&n.as_str())),
-        "`NoSuchReason` should not be a documented reason"
+        undocumented_pins(std::slice::from_ref(&as_written), &documented).is_empty(),
+        "the fixture as written pins a documented reason, so it is not a failure"
+    );
+
+    let retagged = Chapter {
+        label: label.to_string(),
+        content: content.replace(
+            "expect=parse-error:TabError",
+            "expect=parse-error:NoSuchReason",
+        ),
+    };
+    assert_ne!(
+        retagged.content, content,
+        "the retagging should have found the fixture's tag"
+    );
+
+    let failures = undocumented_pins(std::slice::from_ref(&retagged), &documented);
+    let failure = only_failure_about(&failures, "NoSuchReason");
+    assert!(
+        failure.starts_with(label) && failure.contains("does not document"),
+        "the failure should name the chapter and say the table is missing the reason, \
+         got {:?}",
+        failure
     );
 }
