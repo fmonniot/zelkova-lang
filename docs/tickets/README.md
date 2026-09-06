@@ -277,7 +277,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-17](spec-17.md) | task | — | open | What a `Float` literal denotes is unspecified, and the tokenizer has already picked an answer |
 | [SPEC-18](spec-18.md) | task | — | open | "A subset of the Zelkova standard types" names no subset, and the compiler enforces none |
 | [SPEC-19](spec-19.md) | task | — | open | `javascript` is the only interop modifier, and the WebAssembly equivalent is undesigned |
-| [SPEC-20](spec-20.md) | task | — | open | A facade constant is called unsettled by the chapter and shipped by `std/core` |
+| SPEC-20 | task | — | closed 2026-09-06 | A facade constant is called unsettled by the chapter and shipped by `std/core` |
 | [SPEC-21](spec-21.md) | task | — | open | Records are part of the language and no chapter says what one looks like |
 | [SPEC-22](spec-22.md) | task | — | open | Lists are part of the language and the chapter specifying them does not exist |
 | SPEC-23 | task | — | closed 2026-09-05 | Nothing checks the spec's own cross-references, and 271 of them are one rename from silence |
