@@ -412,9 +412,9 @@ A float literal denotes the binary64 value nearest to the decimal number it spel
 IEEE 754 specifies for every decimal-to-binary conversion, and this language has no reason to
 pick anything else. Rounding is total: every literal that [Lexical
 structure](lexical-structure.md#floats) accepts denotes some binary64 value, and none is
-rejected for the value it rounds to. A literal
-too large in magnitude for any finite binary64 value denotes positive infinity; one too small
-to be distinguished from zero denotes positive zero. Both are the *positive* infinity and the
+rejected for the value it rounds to. A literal too large in magnitude for any finite binary64
+value denotes positive infinity; one too small to be distinguished from zero denotes positive
+zero, which is the subject of an [open question](#open-questions) below. Both are the *positive* infinity and the
 *positive* zero, because a float literal's grammar never places a `-` before it — a literal is
 always non-negative — so a negative literal, a negative infinity and a negative zero are all
 reached the same way any other negative `Float` is: by [prefix
@@ -502,3 +502,10 @@ below.
   copied, that a partially applied function is not rebuilt per call — is unanswered, and each
   answer constrains a code generator that does not exist
   ([`SPEC-16`](../tickets/spec-16.md)).
+- **Whether a `Float` may totalize with a zero.** `Int` division by zero is `0` because a
+  two's-complement integer has no value meaning *no answer*; binary64 has `nan`, and nothing
+  here says a `Float`-returning operation must reach for that rather than for a zero. Every one
+  of them does today, by inheriting IEEE's answer through the JavaScript companions — but the
+  underflowing literal above does not, and whether the rule reaches across a [`module
+  javascript`](js-interop.md) boundary at all is unasked
+  ([`SPEC-17`](../tickets/spec-17.md)).
