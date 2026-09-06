@@ -2,10 +2,11 @@
 
 A user can mark a Zelkova module as being a JavaScript interface. This is done by
 using the `javascript` modifier after the `module` keyword. When declaring a JS
-module, only function signatures are accepted — no bodies, no infix declarations, no
-type declarations. The compiler also accepts only a subset of the Zelkova standard
-types as parameters and return types for these signatures; if you need more
-expressiveness, use a JSON data type.
+module, only signatures are accepted — no bodies, no infix declarations, no type
+declarations. A signature may be a function's or, as [below](#facade-constants), a
+constant's. The compiler also accepts only a subset of the Zelkova standard types as
+parameters and return types for these signatures; if you need more expressiveness,
+use a JSON data type.
 
 This is the **only** way into JavaScript. Zelkova has no privileged internal escape
 hatch — no module the standard library may use and a user's package may not — so a
@@ -57,6 +58,42 @@ either: specialisation is what discharges a constraint, before code is generated
 [Type classes](type-classes.md#a-constrained-function-may-not-be-a-javascript-facade) is the
 chapter.
 
+## Facade constants
+
+A facade signature may also declare a constant — a type with no arrow, taking no arguments.
+`std/core/src/Js/Basics` exposes two:
+
+```zel expect=ok
+module javascript Js.Basics exposing
+  ( pi
+  , e
+  )
+
+pi : Float
+e : Float
+```
+
+The plain-parameter-list rule above has a zero-argument case, and this is it: the `.mjs`
+export a constant names is the value itself, not a function that produces it. There is no
+thunk to call and no parameter list to be plain about.
+
+```js
+export const pi = Math.PI;
+export const e = Math.E;
+```
+
+is the whole of what `pi` and `e` require on the JavaScript side — an ordinary binding, read
+directly rather than invoked.
+
+Evaluation is [strict](evaluation-semantics.md#evaluation-is-strict), and an ordinary
+parameterless binding is placed in an evaluation order that reads off which bindings it
+mentions — see
+[A binding with no parameters is evaluated once](evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once).
+A facade constant has no Zelkova body to place in that order: it names a JavaScript binding
+directly, so it is evaluated whenever the `.mjs` module that exports it is, on whatever
+schedule the host's module loading gives that — nothing here promises it happens once, lazily,
+or at any particular point relative to the rest of the program.
+
 ## Open questions
 
 - **Which types may cross the boundary.** The paragraph above says "a subset of the
@@ -68,6 +105,3 @@ chapter.
   defines. What the equivalent declaration for a WebAssembly-backed module would look
   like — a second modifier, a different mechanism entirely — is undesigned
   ([`SPEC-19`](../tickets/spec-19.md)).
-- **Values, not just functions.** Only signatures are accepted today, and every worked
-  example is a function. Whether a facade may declare a constant is unsettled
-  ([`SPEC-20`](../tickets/spec-20.md)).
