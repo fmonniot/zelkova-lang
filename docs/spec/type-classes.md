@@ -174,10 +174,10 @@ class Eq a where
       and x y
 ```
 
-`matched` is the answer when the walk found nothing to tell the two values apart. `combine` folds
-the answers from the parts into the answer for the whole. Neither mentions the class variable —
-they are the same two definitions for every type that ever derives the class, which is what makes
-them something the class can state once and be done with.
+`matched` is the answer when the walk finds nothing to tell the two values apart. `combine` folds
+the answers from the parts into the answer for the whole. Neither mentions the class variable:
+they are the same two definitions for every type that derives the class, which is what lets the
+class state them once.
 
 A member may carry a derivation only when its signature is `a -> a -> R`, with the class variable
 absent from `R`: two values to walk in step, and an answer that is not itself of the type being
@@ -185,12 +185,12 @@ walked. Anything else is an error at the class declaration. That is where the li
 derivable and not falls, and it falls without the compiler knowing one class from another — a
 member returning `a`, the shape `add` and `append` have in
 [what the standard library declares](#what-the-standard-library-declares), asks a walk over two
-values to produce a third of the type it is walking, and no marker on a class could lend it the
-means.
+values to produce a third of the type it is walking, and nothing a class says about itself can
+lend it the means.
 
 A class is derivable when **every** member carries a derivation. Covering some and not the rest
-is an error naming the members left out, for the same reason a half-derived instance body is: what
-it would mean is a question nobody has answered.
+is an error naming the members left out: an instance of such a class could only be half derived
+and half written, which is the mixture a `derived` body rules out.
 
 ### What a derived instance computes
 
@@ -307,7 +307,7 @@ A superclass obligation is unchanged too. A derived `Comparable Colour` is rejec
 
 And the class has to be one that says how it is derived. `derived` under a class whose
 declaration carries no derivation is an error naming the class — not because the compiler holds
-a list of the classes that do, but because it looked at the declaration and found nothing there
+a list of the classes that do, but because the declaration the instance names has nothing in it
 to run.
 
 ## Constraining an annotation
