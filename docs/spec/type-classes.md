@@ -143,13 +143,10 @@ instance Eq Colour where
   derived
 ```
 
-It is an ordinary instance declaration in every other respect. It has no name, it is not
-exposed, and where it may be written is [the orphan rule](#where-an-instance-may-be-declared)
-unchanged — a derived instance is legal in the module declaring the class or the module
-declaring the type, and nowhere else.
+It is an ordinary instance declaration in every other respect.
 
-`derived` is the **whole** body. An instance is either derived or written out; deriving some of
-a class's members and writing the others is an error. A class's members answer to one another —
+`derived` is the **whole** body. An instance is either derived or written out
+A class's members answer to one another —
 an ordering has to agree with the equality it is built on — and the derivation gets that right
 by defining them together, from one description of the type's shape. Half a derivation is a
 description of nothing, and a body that mixed the two would have to be read member by member
