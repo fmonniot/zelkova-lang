@@ -164,19 +164,17 @@ class Eq a where
       and x y
 ```
 
-`matched` is the answer when the walk finds nothing to tell the two values apart. `combine` folds
-the answers from the parts into the answer for the whole. Neither mentions the class variable:
-they are the same two definitions for every type that derives the class, which is what lets the
-class state them once.
+`matched` is the answer when the walk finds nothing to tell the two values apart; `combine` folds
+the answers from the parts into the answer for the whole. Neither mentions the class variable, so
+both stand for every type that derives the class.
 
 A member may carry a derivation only when its signature is `a -> a -> R`, with the class variable
 absent from `R`: two values to walk in step, and an answer that is not itself of the type being
-walked. Anything else is an error at the class declaration. That is where the line between
-derivable and not falls, and it falls without the compiler knowing one class from another — a
-member returning `a`, the shape `add` and `append` have in
-[what the standard library declares](#what-the-standard-library-declares), asks a walk over two
-values to produce a third of the type it is walking, and nothing a class says about itself can
-lend it the means.
+walked. Anything else is an error at the class declaration. A member returning `a` — the shape
+`add` and `append` have in
+[what the standard library declares](#what-the-standard-library-declares) — would ask the walk for
+a third value of the type it is walking, and nothing a class says about itself can lend it the
+means.
 
 A class is derivable when **every** member carries a derivation. Covering some and not the rest
 is an error naming the members left out: an instance of such a class could only be half derived
@@ -238,6 +236,8 @@ than `EQ` say, applied to the one walk.
 
 ### What a derived instance requires
 
+USER REVIEW: Why are we talking about `Int` here? Is it because of the position of each constructor? If yes, that sounds more like an implementation details than a spec text no?
+
 The arguments a derivation compares are the ones the variants write down, and each of their
 types needs an instance of the class being derived. So does `Int`, since that is what the
 constructors themselves are compared as — a class with no `Int` instance derives for no type at
@@ -264,8 +264,7 @@ Eq a => Eq (Box a)
 ```
 
 Two `Box`es are equal when their contents are, which is only a definition of equality once the
-contents have one. There is nowhere in the source to write that constraint and no need to: it
-is read off the variants. A parameter no variant uses carries none, because no value of the
+contents have one. A parameter no variant uses carries no constraint, because no value of the
 type holds anything of that type to compare.
 
 Where the argument's type is concrete, the requirement is checked on the spot, and an argument
@@ -285,11 +284,9 @@ instance Eq Entry where
   derived
 ```
 
-`Entry` is equal to `Entry` when their `Key`s are, and `Key` has no `Eq` instance — neither
-written out nor derived — so there is nothing for the derivation to call. Reporting it here
-rather than at some later use is the point: the instance is the claim that an `Entry` can be
-compared for equality, and the claim is false where it is written. A variant holding a
-**function** is the case that no instance can rescue, since a function type
+Reporting that at the `instance` rather than at some later use is the point: the instance is the
+claim that an `Entry` can be compared for equality, and the claim is false where it is written.
+A variant holding a **function** is the case that no instance can rescue, since a function type
 [has no useful equality at all](evaluation-semantics.md#functions-are-not-comparable).
 
 A superclass obligation is unchanged too. A derived `Comparable Colour` is rejected unless an
