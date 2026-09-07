@@ -49,6 +49,14 @@ literal, and no cons.
   literals, and worth settling the same way.
 - **What `std/core` provides.** Whether the chapter specifies a list *type* only and leaves the
   functions over it to the library, which is the split every other chapter uses.
+- **What a list makes writable in a derivation.**
+  [Type classes](../spec/type-classes.md#a-class-says-how-it-is-derived) has a class supply
+  `combine : R -> R -> R`, folded pairwise over a constructor's arguments, only because there is
+  no list type to hand it all of them at once. With one, `combine : List R -> R` becomes
+  writable — which would let a class see how many answers it is folding, and would retire
+  [the associativity law](../spec/type-classes.md#what-a-derivation-is-trusted-to-keep) that the
+  pairwise fold has to assume and cannot check. Not a reason to hold this chapter, but the list
+  chapter should note the consequence rather than leave it to be found later.
 
 This ticket does not pick any of them.
 

@@ -187,11 +187,19 @@ Position -> Int`, and offers nothing else. A class that wants to order two const
 them; a class that wants to compute with them converts. What it may not do is arithmetic on a
 position by accident, which an `Int` in this position would allow and mean nothing by.
 
-A member returning `a` — the
-shape `add` and `append` have in
-[what the standard library declares](#what-the-standard-library-declares) — would ask the walk for
-a third value of the type it is walking, and nothing a class says about itself can lend it the
-means.
+Three member shapes therefore cannot carry a derivation, and the reasons differ:
+
+- **A member returning `a`** — the shape `add` and `append` have in
+  [what the standard library declares](#what-the-standard-library-declares) — would ask the walk
+  for a third value of the type it is walking, and nothing a class says about itself can lend it
+  the means.
+- **A member taking one `a`** — `toString : a -> String`, a hash, a size — asks for a walk over
+  one value rather than two. That walk is a smaller mechanism than this one, not a larger, and it
+  is unbuilt rather than ruled out; [`SPEC-25`](../tickets/spec-25.md) is the ticket, and
+  [Open questions](#open-questions) says what it would and would not reach.
+- **A member taking no `a`** — `bottom : a`, `allValues : List a` — asks the walk to run
+  backwards and build a value from a description of the type's constructors. That description is
+  the thing this design does not have and is not going to grow.
 
 A class is derivable when **every** member carries a derivation. Covering some and not the rest
 is an error naming the members left out: an instance of such a class could only be half derived
@@ -740,3 +748,23 @@ on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).
 **Not implemented:** [`CLASS-6`](../tickets/class-6.md) is the pass that declares them. A
 constrained function cannot be a single-line re-export of a JavaScript facade, which is what most
 of these are in `std/core` — its body has to choose an instance.
+
+## Open questions
+
+- **A walk over one value.** A derivation covers `a -> a -> R` and nothing else, so `Eq` and
+  `Comparable` are derivable and a hash, a size or a checksum is not — each of those is the same
+  walk over one value instead of two, which is a smaller mechanism than the one specified here
+  rather than a larger ([`SPEC-25`](../tickets/spec-25.md)). It would not reach `toString`, and
+  the reason is worth stating because it is the limit of the whole approach: rendering a value
+  needs a constructor's *name* rather than its position, needs a precedence handed *downwards*
+  into the arguments to decide parentheses, and needs to know which argument is the first so as
+  to place a separator. A fold over answers already computed carries none of the three.
+- **What records and lists add.** Both are unspecified constructs
+  ([`SPEC-21`](../tickets/spec-21.md), [`SPEC-22`](../tickets/spec-22.md)) and both reach this
+  mechanism when they land. A record's fields are named, so a derivation over one wants a fourth
+  binding — an answer for a labelled field — that a walk over positional arguments has no need
+  of. Lists make an n-ary `combine : List R -> R` writable, which would let a class see how many
+  answers it is folding and settle
+  [the law above](#what-a-derivation-is-trusted-to-keep) by making the fold the class's to
+  perform rather than the walk's. Neither is a reason to hold this design; both are reasons those
+  two chapters have to read it.

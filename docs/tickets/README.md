@@ -284,6 +284,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-22](spec-22.md) | task | — | open | Lists are part of the language and the chapter specifying them does not exist |
 | SPEC-23 | task | — | closed 2026-09-05 | Nothing checks the spec's own cross-references, and 271 of them are one rename from silence |
 | SPEC-24 | task | — | closed 2026-09-05 | The conventions name every tag a chapter may write but not a single word it may write, and the tag table is four names short |
+| [SPEC-25](spec-25.md) | task | — | open | A derivation walks two values, so the classes worth deriving most cannot be |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
