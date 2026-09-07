@@ -217,7 +217,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-15](spec-15.md) | task | — | open | Nothing says what an effect is, so `main`'s type and what a test is are both undesigned |
 | [SPEC-16](spec-16.md) | task | — | open | The spec makes one promise about space and does not say whether it makes others |
 | SPEC-17 | task | — | closed 2026-09-06 | Nothing says a `Float`-returning operation may not totalize with a zero, and one of them does |
-| [SPEC-18](spec-18.md) | task | — | open | "A subset of the Zelkova standard types" names no subset, and the compiler enforces none |
+| SPEC-18 | task | — | closed 2026-09-06 | "A subset of the Zelkova standard types" names no subset, and the compiler enforces none |
 | [SPEC-19](spec-19.md) | task | — | open | `javascript` is the only interop modifier, and the WebAssembly equivalent is undesigned |
 | SPEC-20 | task | — | closed 2026-09-06 | A facade constant is called unsettled by the chapter and shipped by `std/core` |
 | [SPEC-21](spec-21.md) | task | — | open | Records are part of the language and no chapter says what one looks like |
@@ -269,8 +269,10 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |
 | [LANG-41](lang-41.md) | task | — | open | Retire `Type::Number` in favour of a `Number` class, defaulting to `Int` |
 | [LANG-42](lang-42.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
+| [LANG-43](lang-43.md) | task | — | open | A facade signature may name any type at all, including ones no runtime predicate can decide |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
+| [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

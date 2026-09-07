@@ -174,6 +174,49 @@ language, the green block is the binary, and the lead-in is the whole of what se
 Nothing else can be: `expect=ok` beside *is an error* is exactly as green as `expect=ok`
 beside *is accepted*, which is the one contradiction in a chapter the harness cannot see.
 
+## The sentences a chapter does not need
+
+The section above decides which word carries a rule. This one is about the sentences standing
+around it, and it is here because a first draft grows the same handful of them every time.
+Nothing reads this half either — no test sees a paragraph that says its point twice, and the
+patterns below are what a drafting session produces when it is thinking about being convincing
+rather than about being read.
+
+Two of the patterns belong to the next section, which owns them: commentary on the document,
+and a case made for a rule rather than the rule itself. The rest are these.
+
+**A sentence opens on its subject.** *A user can mark a Zelkova module as a JavaScript
+interface. This is done by using the `javascript` modifier* is one sentence wearing two: *a user
+marks a Zelkova module as a JavaScript interface with the `javascript` modifier*. A chapter has
+no need to announce a claim before making it.
+
+**A negation that only mirrors the first half is dropped.** A closing *rather than X*, *and not
+X*, *instead of X* earns its place when X is a thing a reader might otherwise have assumed, and
+not when it merely says the first half again in the negative: *an error at the boundary rather
+than a wrong answer somewhere further on* is *an error at the boundary*. `rather than`, `not
+as` and `instead of` are the three spellings, and they are greppable.
+
+**A paragraph does not end on its own point.** *…which is the property this design exists to
+preserve*, *which is what makes the rule worth having*. The paragraph made the point; a
+restatement in the last clause reads as a chapter unsure the first one landed.
+
+**A cost is stated and then left alone.** Naming what a rule costs is worth doing; following it
+with the reason the cost is smaller than it looks is not. The reader weighs it.
+
+**One shape per paragraph.** Three *is what* sentences in a row, or a *which means … which
+means* chain, is a template rather than a thought. Vary the weakest, or cut it.
+
+**A conclusion is stated in one place.** When two sections end on the same sentence, it stays
+where the rule lives and the other links to it by anchor.
+
+Structure carries the same bias: **what a construct can do comes first, what it cannot comes
+after and shorter.** Separate sections that each say what is forbidden merge into one — the
+three prohibitions [JavaScript interop](js-interop.md#what-a-facade-signature-may-not-name)
+makes about a facade signature are one section, and shorter than the three were. A chapter
+written before this section was recorded may
+still carry any of these; the `prose-pass` skill (`.claude/skills/`) is what takes them out, one
+pattern swept at a time.
+
 ## A chapter says what the language is
 
 Every sentence in a chapter describes Zelkova as designed, in the present tense. Three
