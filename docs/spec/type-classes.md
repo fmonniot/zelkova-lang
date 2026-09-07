@@ -207,8 +207,7 @@ and half written, which is the mixture a `derived` body rules out.
 
 ### What a derived instance computes
 
-The derivation walks the two values in step, and every answer it collects comes from an instance —
-never from a definition invented for the occasion.
+The derivation walks the two values in step, and every answer it collects comes from an instance.
 
 - **The constructors first.** Two values of different constructors are answered by `differed`,
   handed the **position** each constructor is declared at, counting from zero, and the walk stops
