@@ -1,17 +1,16 @@
 # JS interoperability
 
-A user can mark a Zelkova module as being a JavaScript interface. This is done by
-using the `javascript` modifier after the `module` keyword. When declaring a JS
-module, only signatures are accepted — no bodies, no infix declarations, no type
-declarations. A signature may be a function's or, as [below](#facade-constants), a
-constant's. Only [a subset of the Zelkova types](#which-types-may-cross-the-boundary)
-may appear as a parameter or return type in one of those signatures.
+A user marks a Zelkova module as a JavaScript interface with the `javascript`
+modifier after the `module` keyword. When declaring a JS module, only signatures are
+accepted — no bodies, no infix declarations, no type declarations. A signature may be
+a function's or, as [below](#facade-constants), a constant's. Only
+[a subset of the Zelkova types](#which-types-may-cross-the-boundary) may appear as a
+parameter or return type in one of those signatures.
 
 This is the **only** way into JavaScript. Zelkova has no privileged internal escape
 hatch — no module the standard library may use and a user's package may not — so a
 standard-library module that needs a JavaScript primitive declares a facade in exactly
-the syntax written here. Ordinary code and `std/core` reach the runtime the same way,
-which is the property this design exists to preserve.
+the same syntax as any user package would.
 
 The idea is close to TypeScript's type definitions, but Zelkova is stricter about which
 types the functions can use: only things verifiable by the runtime are let through.
@@ -41,7 +40,7 @@ idiv : Int -> Int -> Int
 ```
 
 Two signatures over two types rather than one, because a facade names the
-types its JavaScript really handles 
+types its JavaScript really handles
 ([which types those may be](#which-types-may-cross-the-boundary) is the next section) and it is
 what makes the `.mjs` behind `fdiv` free to divide and the one behind `idiv` free to truncate.
 
@@ -201,14 +200,14 @@ started; the encoding above is what [`GEN-2`](../tickets/gen-2.md) emits.
 ### A facade signature may not carry a constraint
 
 **Not implemented:** a facade signature may never carry a class constraint. `Comparable a => a`
-is still a signature over `a`, and the rule [above](#a-facade-is-monomorphic) is what rejects it:
-a constrained function is specialised — one generated function per type it is used at — and a
-facade has no body to generate one from, so a constrained facade would have to serve every
-instance from a single hand-written export, telling the instances apart by inspecting arguments
-whose type the signature never named. That is dispatch on a type variable, which is what a
-predicate cannot do; a constrained function therefore lives in ordinary Zelkova and calls a
-monomorphic facade underneath it. No table of the class's operations exists at runtime either:
-specialisation is what discharges a constraint, before code is generated.
+is still a signature over `a`, and the rule [above](#a-facade-is-monomorphic) rejects it for the
+same reason: a constrained function is specialised — one generated function per type it is used
+at — and a facade has no body to generate one from, so a constrained facade would have to serve
+every instance from a single hand-written export, telling the instances apart by inspecting
+arguments whose type the signature never named. That is dispatch on a type variable, which no
+predicate can do; the dispatch happens in ordinary Zelkova instead, before the call ever reaches
+the monomorphic facade underneath. No table of the class's operations exists at runtime either —
+specialisation discharges a constraint before code is generated.
 [Type classes](type-classes.md#a-constrained-function-may-not-be-a-javascript-facade) is the
 chapter.
 
