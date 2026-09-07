@@ -575,7 +575,6 @@ where
                     self.processed_tokens.push(spanned);
                 }
                 '-' => {
-                    // TODO Add support for negative number
                     let spanned = match self.lookahead.1 {
                         Some('-') => {
                             self.consume_comment()?;

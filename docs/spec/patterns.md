@@ -283,9 +283,13 @@ A literal pattern is refutable, so it needs a branch after it that covers the re
 type — which for a literal type means a wildcard or a variable, since no finite list of
 literals covers one.
 
-A pattern may hold a **negative** number. The sign belongs to the literal rather than being an
-operator applied to it: pattern syntax is closed, and `-` in an expression is a name bound by
-an `infix` declaration, which a pattern never looks up.
+A pattern may hold a **negative** number. The **pattern grammar** carries the sign, not the
+token underneath it: pattern syntax is closed, and `-` in an expression is a name bound by an
+`infix` declaration, which a pattern never looks up, so there is nothing available to apply it
+to. A leading `-` immediately before a literal pattern is consumed there, in the pattern
+production itself, rather than by the tokenizer — [Lexical
+structure](lexical-structure.md#integers) is where the integer token is specified, and that
+token never carries a sign, in a pattern or anywhere else.
 
 ```zel expect=unimplemented
 module Example exposing (Flag)
