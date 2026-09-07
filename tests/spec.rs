@@ -55,57 +55,41 @@
 //! failure modes can be pinned against fixtures under `tests/fixtures/spec/` instead
 //! of committing a deliberately-broken example to a real chapter.
 //!
-//! # The chapters' prose, as far as it is checkable
+//! # The prose, as far as it is checkable
 //!
-//! Two sibling tests hold the rest of the directory to the same premise the `expect=`
-//! tags hold its examples to — documentation nothing checks drifts from what it
-//! describes.
+//! Three sibling tests hold the rest of `docs/` to the same premise the `expect=` tags
+//! hold the examples to — documentation nothing checks drifts from what it describes.
 //!
 //! [`spec_cross_references_resolve`] resolves every inline markdown link a chapter
 //! makes. An anchor is checked against the headers of the file it names, slugified by
 //! GitHub's rule, and a relative path is checked for existing at all. A broken anchor
 //! is invisible to `grep` and loud on a rendered page, which is why nothing was
-//! catching it.
+//! catching it. Targets outside `docs/spec/` are checked the same way, `docs/tickets/`
+//! and `docs/decisions/` included, so closing a ticket a chapter cites turns this test
+//! red until the citing paragraph is edited.
 //!
-//! Two scope decisions, both of which the ticket that asked for this
-//! (`SPEC-23`) left open on purpose:
-//!
-//! - **Links into `docs/tickets/` are checked**, along with everything else that is
-//!   not an absolute URL. The chapters cite ticket files from their **Known gap:** and
-//!   **Not implemented:** paragraphs, and those citations are the spec's own account of
-//!   the distance between itself and the compiler; a citation of a file the ticket
-//!   process has since deleted is a claim about a gap that may no longer exist. The
-//!   cost is real and lands on whoever closes a cited ticket rather than on whoever
-//!   wrote the paragraph: `docs/tickets/README.md`'s closing convention deletes the
-//!   ticket file, so closing one that a chapter cites turns this test red until the
-//!   citing paragraph is edited. That is the intended pressure — a closed `LANG-`
-//!   usually means the chapter's **Known gap:** paragraph is now false, and the cases
-//!   where the tagged block stays green across its own fix are exactly the ones nothing
-//!   else notices.
-//! - **The anchor is checked in whatever file the link names**, `docs/tickets/` files
-//!   included, rather than only within `docs/spec/`. No such link exists today; the
-//!   uniform rule costs nothing now and does the right thing if one appears.
+//! [`decision_cross_references_resolve`] runs that same check over `docs/decisions/`,
+//! which holds no `zel` block and has no `expect=` vocabulary. It is checked because it
+//! holds citations, and a citation nothing keeps alive is the failure that directory
+//! exists to prevent.
 //!
 //! [`spec_tag_vocabulary_is_documented`] holds `docs/spec/conventions.md`'s
 //! *The `expect=` vocabulary* table to the names this file actually accepts, in both
 //! directions: every name [`parse_error_reasons`] can produce is documented, and every
 //! name the table documents is one of those. [`parse_error_reasons`]'s explicit match
 //! guards the enum-to-name direction — a new variant fails this file to compile — and
-//! nothing guarded name-to-prose, which had already drifted once: the table documented
-//! seven of the eleven specific errors while `UnrecognizedToken` was in use at two
-//! blocks in `docs/spec/lexical-structure.md`.
+//! it reads the table's `expect=parse-error:Reason` row rather than searching the
+//! section name by name, so that row's formatting is load-bearing: keep every reason
+//! name in it backticked, and the count spelled out as a word.
 //!
-//! That check reads the table row rather than searching the section for each name
-//! verbatim, the second choice `SPEC-23` left open. Parsing costs a coupling to one
-//! row's formatting — the names have to be backticked in the row documenting
-//! `expect=parse-error:Reason` — and buys the reverse direction, which a verbatim
-//! search cannot have: a name the table invents, or one left behind by a rename, is
-//! caught rather than ignored.
-//!
-//! The `canonical::Error` variant names of [`variant_names`] are deliberately **not**
-//! checked this way. `conventions.md` documents them by rule — "matched against the
-//! real variant names in `src/compiler/canonical/mod.rs`'s `Error` enum" — and not by
-//! list, so there is no prose enumeration to drift.
+//! Why each of those three is scoped the way it is — why ticket citations are checked
+//! at all, why an anchor is resolved in whatever file names it, why the table is parsed
+//! rather than searched, why `docs/decisions/` is checked for links and not for
+//! examples, and what is deliberately left unchecked (the `canonical::Error` variant
+//! names of [`variant_names`] among it) — is `docs/decisions/dec-3.md`, with
+//! `docs/decisions/dec-4.md` for the last of those. Read it before narrowing any of
+//! them: each cost was weighed, and the one that looks gratuitous is the one that had
+//! already caught a drift.
 
 use std::path::Path;
 
@@ -1212,6 +1196,23 @@ fn spec_chapters() -> (std::path::PathBuf, Vec<Chapter>) {
     (root, chapters)
 }
 
+/// The crate root, and every `docs/decisions/*.md` under it.
+///
+/// Read by [`load_chapters`] like a chapter, because a link is a link: the only thing
+/// separating the two directories here is that nothing extracts `zel` blocks from these
+/// files. `docs/decisions/dec-4.md` is why.
+fn decision_records() -> (std::path::PathBuf, Vec<Chapter>) {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let root = std::path::PathBuf::from(manifest);
+    let records = load_chapters(&root, &root.join("docs/decisions"));
+    assert!(
+        !records.is_empty(),
+        "expected at least one entry under {:?}",
+        root.join("docs/decisions")
+    );
+    (root, records)
+}
+
 /// `cargo test --test spec`: every `zel` block under `docs/spec/` must match its tag.
 ///
 /// Walks `docs/spec/*.md` (top level, sorted for a deterministic run order),
@@ -1292,7 +1293,8 @@ fn spec_chapters_pass() {
 /// either on its own.
 ///
 /// The two scope decisions — that `../tickets/*.md` citations are checked, and that an
-/// anchor is checked in whatever file names it — are argued at the head of this file.
+/// anchor is checked in whatever file names it — are argued in
+/// `docs/decisions/dec-3.md`.
 ///
 /// Two liveness assertions come before the check itself, because every failure mode of
 /// the scan is silent: it reports what it read, and a file it read nothing out of looks
@@ -1335,6 +1337,55 @@ fn spec_cross_references_resolve() {
     assert!(
         failures.is_empty(),
         "{} cross-reference(s) in `docs/spec/` do not resolve:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// `cargo test --test spec`: every link `docs/decisions/` writes must land.
+///
+/// The design-decision track is not normative and holds no `zel` block, so none of the
+/// `expect=` machinery reaches it. Its *citations* are checked, and for the reason the
+/// directory exists: `SPEC-12`'s decision list was promoted nowhere when its ticket was
+/// deleted, and five files went on citing decisions of it that resolved to nothing. A
+/// directory created out of that failure that did not check its own links would be
+/// reproducing it one directory over (`docs/decisions/dec-4.md`).
+///
+/// The liveness assertion is the per-file one [`spec_cross_references_resolve`] carries
+/// and not its whole-directory count: an entry always names the rule it decided —
+/// that is the `Where the rule lives` field the README requires of every one — so an
+/// entry the scan reads no link out of is an entry it stopped reading part way.
+#[test]
+fn decision_cross_references_resolve() {
+    let (root, records) = decision_records();
+
+    let mute: Vec<&str> = records
+        .iter()
+        .filter(|c| {
+            header_anchors(&c.content).is_empty() || extract_links(&c.content, &c.label).is_empty()
+        })
+        .map(|c| c.label.as_str())
+        .collect();
+    assert!(
+        mute.is_empty(),
+        "every file under `docs/decisions/` writes headers, and every entry links to the \
+         rule it decided, so a file the scan reads none of one or the other out of is one \
+         it stopped reading part way — most likely a line it mistook for a code fence: {}",
+        mute.join(", ")
+    );
+
+    let link_count: usize = records
+        .iter()
+        .map(|c| extract_links(&c.content, &c.label).len())
+        .sum();
+
+    let failures = cross_reference_failures(&root, &records);
+
+    println!("decisions: {} cross-reference(s) checked", link_count);
+
+    assert!(
+        failures.is_empty(),
+        "{} cross-reference(s) in `docs/decisions/` do not resolve:\n{}",
         failures.len(),
         failures.join("\n")
     );

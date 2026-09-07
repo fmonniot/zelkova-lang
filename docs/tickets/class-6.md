@@ -29,7 +29,9 @@ because the declared type genuinely does accept them.
 the over-promise visible instead of hiding it behind a word that looked like a restriction. This
 ticket is the other end of that: the signatures get to say what they meant.
 
-**The shape decision 6 forces.** A facade may not be constrained, so the constraint moves up one
+**The shape [`DEC-2` decision
+6](../decisions/dec-2.md#6--a-module-javascript-facade-signature-may-not-carry-a-constraint)
+forces.** A facade may not be constrained, so the constraint moves up one
 level and the facade underneath it becomes monomorphic:
 
 ```zel

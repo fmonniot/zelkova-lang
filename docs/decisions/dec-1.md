@@ -1,9 +1,15 @@
-# Deriving in other languages
+# DEC-1 · Deriving in other languages
+
+**Settled:** 2026-09-06, while judging the mechanism [Type
+classes](../spec/type-classes.md#a-class-says-how-it-is-derived) had just been given.
+**Status:** live. One conclusion changed the design rather than confirming it — see
+[what a lexicographic fold gets wrong](#what-a-lexicographic-fold-gets-wrong).
+**Where the rule lives:** [Type classes](../spec/type-classes.md#a-class-says-how-it-is-derived).
 
 Zelkova derives an instance by walking two values in step and asking the *class* what a match, a
 mismatch and a fold mean — [A class says how it is
-derived](type-classes.md#a-class-says-how-it-is-derived) is the rule, and that chapter is the
-normative one. Nothing here is normative. This appendix records the design space that rule was
+derived](../spec/type-classes.md#a-class-says-how-it-is-derived) is the rule, and that chapter is the
+normative one. Nothing here is normative. This record holds the design space that rule was
 chosen out of, because the choice looks arbitrary without it and because the arguments against
 the alternatives are not recoverable from the chapter, which only states what was kept.
 
@@ -69,7 +75,7 @@ a type, so it needs variables ranging over type constructors; the recursion over
 families or Scala 3's `inline`/`summonInline`/match types.
 
 Zelkova has none of it, and the reason is structural rather than a matter of time: [a class is
-always over a complete type](type-classes.md#a-class-is-always-over-a-complete-type), so no
+always over a complete type](../spec/type-classes.md#a-class-is-always-over-a-complete-type), so no
 variable in the language can stand for `Maybe` or for `:*:`. **This route is closed and will stay
 closed as long as that rule holds.** It is the single strongest argument for the design that was
 adopted.
@@ -177,7 +183,7 @@ struct Colour { int r, g, b; auto operator<=>(const Colour&) const = default; };
 
 It is worth noting for a second reason. C++ synthesizes `<`, `>`, `<=` and `>=` from that single
 `<=>`, which is exactly why [Zelkova's `Comparable` has one
-member](type-classes.md#what-the-standard-library-declares) and the four ordering operators are
+member](../spec/type-classes.md#what-the-standard-library-declares) and the four ordering operators are
 ordinary constrained functions rather than members: a lexicographic `lt` cannot be folded out of
 the `lt` of each argument pair, and a lexicographic `compare` can.
 
@@ -210,7 +216,7 @@ cannot supply:
    its identity gives `RedGreen`, never `Red Green`.
 
 Two of Zelkova's own gaps bite here and are noted in [the chapter's open
-questions](type-classes.md#open-questions): with no records there is no field label for any
+questions](../spec/type-classes.md#open-questions): with no records there is no field label for any
 scheme to use, and with no lists `combine` must be binary and pairwise, which is the root of the
 failure in [what a lexicographic fold gets wrong](#what-a-lexicographic-fold-gets-wrong).
 
@@ -225,7 +231,7 @@ they agree more than they differ.
   implementation have disagreed about whether declaration order or discriminant order governs,
   and one proposed fix is to require explicit discriminants before the derive is allowed.
 - **Zelkova** uses the declaration position and [says so in the
-  chapter](type-classes.md#what-a-derived-instance-computes), with the reason: the order a reader
+  chapter](../spec/type-classes.md#what-a-derived-instance-computes), with the reason: the order a reader
   can see is the order that decides.
 
 Where Zelkova differs is the *type*. Haskell and Rust hand the derivation an integer; Zelkova
@@ -254,20 +260,20 @@ language's answer to that is "then write the instance by hand," and that is what
 An average, a ratio, "what proportion of the fields matched". The chapter states the law this
 violates — `combine` associative, `matched` its two-sided identity — and states that nothing
 checks it, in [What a derivation is trusted to
-keep](type-classes.md#what-a-derivation-is-trusted-to-keep). Haskell's derived `Ord` relies on
+keep](../spec/type-classes.md#what-a-derivation-is-trusted-to-keep). Haskell's derived `Ord` relies on
 the same law without naming it, since `Ordering`'s monoid is what `compare a1 b1 <> compare a2 b2`
 folds under; the law is not a Zelkova-specific hazard, only a Zelkova-specific piece of prose.
 
 **It very nearly went wrong on strictness, for a reason particular to this language.** Haskell's
 derived `Eq` stops at the first unequal pair because Haskell is lazy. Elm's `==` stops because it
-is a primitive. Zelkova is [strict](evaluation-semantics.md#evaluation-is-strict) and [nothing
-short-circuits](evaluation-semantics.md#nothing-short-circuits), so a `combine` *called* as a
+is a primitive. Zelkova is [strict](../spec/evaluation-semantics.md#evaluation-is-strict) and [nothing
+short-circuits](../spec/evaluation-semantics.md#nothing-short-circuits), so a `combine` *called* as a
 function would compare every argument pair in the whole value before the outermost call ran. The
 compiler could not fix this without reading `combine` and understanding what its answer means,
 which is the one thing this design refuses to do.
 
 The way out keeps the refusal: [the three bindings are
-inlined](type-classes.md#the-three-bindings-are-inlined-not-called) into the walk rather than
+inlined](../spec/type-classes.md#the-three-bindings-are-inlined-not-called) into the walk rather than
 called, so a `case` written inside `combine` is an ordinary `case` under the ordinary rule, and
 the class short-circuits itself by how it is written. The compiler still knows nothing about
 `Eq`. This is the one place where the survey changed the design rather than confirming it.

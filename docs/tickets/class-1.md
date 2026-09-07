@@ -92,7 +92,8 @@ change* applies in full.
    itself*, its `message()` is written in the reader's vocabulary: something is in the
    constraint position that is not a constraint.
 
-5. **A `module javascript` facade may not carry a constraint** (`SPEC-12` decision 6). The
+5. **A `module javascript` facade may not carry a constraint**
+   ([`DEC-2` decision 6](../decisions/dec-2.md#6--a-module-javascript-facade-signature-may-not-carry-a-constraint)). The
    facade's companion `.mjs` is promised a plain parameter list, and a constrained facade is
    the one thing that could not honour it. Canonicalization knows the module is a facade —
    `canonical::Module::binding_javascript` — so this is a check with its own error variant and

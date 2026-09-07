@@ -43,8 +43,9 @@ ticket builds, and [CLASS-5](class-5.md) is what retires it.
 
 **Approach:**
 
-1. **A class obligation is a second kind of constraint**, not a new `Type` case. `SPEC-12`
-   decision 5 — no higher-kinded variables — is what makes this simple: a class is always over
+1. **A class obligation is a second kind of constraint**, not a new `Type` case.
+   [`DEC-2` decision 5](../decisions/dec-2.md#5--no-higher-kinded-variables)
+   — no higher-kinded variables — is what makes this simple: a class is always over
    a complete type, so an obligation is a (class name, type) pair and never a partial
    application. Keep it in the same `Vec` as the equalities, for the reason `CLAUDE.md` gives:
    constraints live in a `Vec` and not a `HashSet` because deduplication drops provenance and an
