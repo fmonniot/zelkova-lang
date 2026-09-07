@@ -110,7 +110,8 @@ later reader asking "why not a generic representation" has nowhere to look and r
 answer — or doesn't, and re-opens the question. It is design rationale rather than
 specification, which is why it is not normative and why no claim in it constrains a program.
 A dedicated record for decisions of that kind would be the better home; until one exists this
-is where they go.
+is where they go, and [`SPEC-26`](../tickets/spec-26.md) is the ticket for the thing this is
+standing in for.
 
 [Conventions](conventions.md#chapter-or-appendix) has the test for which of the two a rule
 belongs to.
