@@ -13,17 +13,24 @@ file instead.
 
 ## Prefixes
 
-Created ad-hoc per theme. Current ones: `BUG-` (defects), `ERR-` (error handling and
-diagnostics), `AST-` (parser and canonical AST shape), `PERF-` (allocation and hot paths),
-`TIDY-` (small self-contained cleanups), `TEST-` (test infrastructure), `SPEC-` (specifying
-and documenting the language itself, under `docs/spec/`), `LANG-` (bringing the compiler into
-line with a rule `docs/spec/` has since settled), `CLASS-` (the type-class program below —
-building a mechanism the language has decided on but has never had), `SITE-` (the public GitHub
-Pages site built from this repo — rustdoc, the rendered spec, the landing page), `GEN-` (code
-generation — turning a checked module into runnable JavaScript, a phase that does not exist
-yet).
+This is a closed list — pick the one that fits, don't mint a new one. A theme that doesn't fit
+any of these is a question for the language owner, not a call a session makes on its own.
 
-Three distinctions worth keeping straight when filing a new one:
+| Prefix | Theme |
+|---|---|
+| `BUG-` | Defects |
+| `ERR-` | Error handling and diagnostics |
+| `AST-` | Parser and canonical AST shape |
+| `PERF-` | Allocation and hot paths |
+| `TIDY-` | Small self-contained cleanups |
+| `TEST-` | Test infrastructure |
+| `SPEC-` | Specifying and documenting the language itself, under `docs/spec/` |
+| `LANG-` | Bringing the compiler into line with a rule `docs/spec/` has since settled |
+| `CLASS-` | The type-class program below — building a mechanism the language has decided on but has never had |
+| `SITE-` | The public GitHub Pages site built from this repo — rustdoc, the rendered spec, the landing page |
+| `GEN-` | Code generation — turning a checked module into runnable JavaScript, a phase that does not exist yet |
+
+Three distinctions worth keeping straight when filing a new ticket:
 
 - **`LANG-` vs `BUG-`**: a `BUG-` is code that fails at what it was trying to do. A `LANG-` is
   code that succeeds at something the language has since decided against — it was never wrong
