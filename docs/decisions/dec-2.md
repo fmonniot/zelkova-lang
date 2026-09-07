@@ -9,7 +9,7 @@ since](#what-has-changed-since) — decision 8 is superseded and decision 11 was
 Zelkova replaced the `number`/`comparable`/`appendable` spellings with type classes, and this
 is the session that decided what a class is. Eleven questions were settled together; each was
 normative for [the chapter](../spec/type-classes.md) that was then written and for the six
-[`CLASS-`](../tickets/README.md#the-type-classes-program) tickets that implement it.
+[`CLASS-`](../tickets/README.md#active-work-type-classes) tickets that implement it.
 
 They are numbered because they are cited by number, from four ticket files and from the ticket
 index. The numbering is the one given here, and it does not change: a decision that is later
