@@ -13,9 +13,8 @@ standard-library module that needs a JavaScript primitive declares a facade in e
 the syntax written here. Ordinary code and `std/core` reach the runtime the same way,
 which is the property this design exists to preserve.
 
-The idea is close to TypeScript's type definitions, with the difference that Zelkova
-is less permissive in what types the functions can use: only things verifiable by the
-runtime are let through.
+The idea is close to TypeScript's type definitions, but Zelkova is stricter about which
+types the functions can use: only things verifiable by the runtime are let through.
 
 A `javascript module` is only usable from inside the package that declares it. The
 module name is not exposed to any other package.
@@ -57,8 +56,8 @@ wrong answer somewhere further on.
 The predicate is what makes a facade signature mean anything. Everywhere else a declaration's
 body is checked against its annotation; a facade has no body the compiler can read, so its
 annotation is a claim about JavaScript that nothing verifies while compiling. Requiring a
-predicate is what turns that claim into one the running program keeps, and it is a real
-restriction, because two of the [six forms a type expression has](types.md#the-forms-of-a-type-expression)
+predicate turns that claim into one the running program checks itself — a real restriction,
+because two of the [six forms a type expression can take](types.md#the-forms-of-a-type-expression)
 have no predicate at all.
 
 The forms that do:
@@ -143,8 +142,8 @@ many arguments it takes or what it does with them.
 The plain-parameter-list rule rejects it a second time and independently. A companion's export
 takes its arguments plainly because currying is the compiler's business; a Zelkova function
 handed *into* JavaScript would have to be called from a `.mjs`, and calling it means knowing how
-a Zelkova function of several arguments is applied — the one convention that promise keeps out
-of a companion.
+a Zelkova function of several arguments is applied — exactly the knowledge the plain-parameter-list
+rule keeps out of a companion.
 
 ```zel expect=ok
 module javascript Js.List exposing
@@ -160,7 +159,7 @@ and it is accepted — the same missing check as above, and the same ticket,
 
 ### A union crosses as a tagged object
 
-A union type is admitted, which means a `.mjs` may receive one and construct one, which means the
+A union type is admitted, which means a `.mjs` may receive one and construct one — so the
 representation of a union value is part of what a facade's two sides agree on. A union value is
 an **object carrying the name of its constructor** in a `$` field and that constructor's
 arguments, in declaration order, in fields named `a`, `b`, `c` and so on. `Red` is `{$: "Red"}`;
