@@ -162,7 +162,12 @@ class Eq a where
     matched = True
     differed _ _ = False
     combine x y =
-      and x y
+      case x of
+        True ->
+          y
+
+        False ->
+          False
 ```
 
 `matched` is the answer when the walk finds nothing to tell the two values apart. `differed` is
@@ -212,7 +217,7 @@ normal form keeps that meaning wherever it appears inside a derived one.
 
 `Eq`'s three definitions above turn the walk into
 [structural equality](evaluation-semantics.md#what-structural-equality-computes): `differed`
-discards the positions to answer `False` outright, `and` carries a single unequal pair of
+discards the positions to answer `False` outright, `combine` carries a single unequal pair of
 arguments out to the answer, and `matched` makes a constructor with no arguments equal to itself.
 
 `Comparable`'s three turn the same walk into a lexicographic ordering:
@@ -248,6 +253,34 @@ arguments, left to right, the first unequal pair deciding. Neither sentence is w
 the compiler. Both are what these three definitions say, applied to the one walk — the first
 sentence is `differed` handing its two positions to `Comparable`'s own instance at `Position`, and
 the second is a `combine` that stops at the first answer other than `EQ`.
+
+### The three bindings are inlined, not called
+
+A derivation's `matched`, `differed` and `combine` are substituted into the walk at each step
+rather than called as functions. That is the difference between a derived member that stops at
+the first difference and one that does not, and under
+[strict evaluation](evaluation-semantics.md#evaluation-is-strict) it is not a difference the
+compiler could make on its own.
+
+An argument is a value before the function it is passed to is entered. Were `combine` an ordinary
+call, `combine (eq a1 b1) (combine (eq a2 b2) matched)` would compare every pair of arguments in
+the whole value before the outermost `combine` ran — including every pair after the one that
+already settled the answer. Inlined, the same three definitions sit inside the walk, where
+[`case` evaluates one branch and not the other](evaluation-semantics.md#conditional-evaluation)
+like any other `case` in the language.
+
+So **a class decides its own short-circuiting, by what it writes**. `Eq`'s `combine` above is a
+`case` on its first argument, so a derived `eq` stops at the first unequal pair and never looks
+at the rest of the value; `Comparable`'s stops at the first answer other than `EQ`. Written
+instead as `combine x y = and x y`, the ordinary function call, `Eq`'s derivation would compare
+every pair — the same answer, at the cost of the whole value — because
+[nothing short-circuits](evaluation-semantics.md#nothing-short-circuits) and `and` is a function
+like any other. Both spellings are legal and the compiler prefers neither. Which one a class
+writes is visible in the class's own declaration, which is the only place it should be.
+
+Inlining reaches only the three bindings. Anything they *call* is an ordinary call, evaluated
+under the ordinary rules — so a `combine` whose short-circuiting hides behind a helper does not
+get it back.
 
 ### What a derived instance requires
 

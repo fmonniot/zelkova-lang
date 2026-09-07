@@ -146,6 +146,13 @@ careful a n =
 `&&` gets no exception: an operator's meaning is its `infix` declaration and nothing else, and
 no signature can defer a parameter.
 
+A [derived instance](type-classes.md#the-three-bindings-are-inlined-not-called) is the one
+place this rule is worth restating, because it is where a reader is most likely to assume
+otherwise. A derived `eq` does stop at the first unequal pair of arguments — but only because
+`Eq`'s `combine` is written as a `case` and a derivation's bindings are inlined into the walk.
+Written as a call to `and`, it would compare every pair in the value, for exactly the reason
+this section gives.
+
 **Known gap:** `std/core`'s `(&&)` and `(||)` are documented as short-circuiting.
 [`LANG-36`](../tickets/lang-36.md) is the ticket. No block holds it to account: the claim is in
 a doc comment, and the JavaScript behind those two operators already takes both operands

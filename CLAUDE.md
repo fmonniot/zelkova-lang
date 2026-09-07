@@ -260,3 +260,9 @@ tickets have to land in. Five of its rules constrain diffs outside that program:
   [`docs/spec/js-interop.md`](docs/spec/js-interop.md) makes.
 - **A class dictionary is erased by specialisation before code generation**, never passed — a
   constraint the first codegen work inherits.
+- **A derivation's three bindings are inlined into the generated walk, never called** — the other
+  constraint codegen inherits, and the one that is invisible until it is wrong. Zelkova is strict
+  and nothing short-circuits, so a `combine` emitted as a call compares every argument pair in the
+  value before the outermost call runs; inlined, a `case` inside `combine` is an ordinary `case`
+  and the class short-circuits itself. Emitting a call is not a slower version of the same thing,
+  it is a different one, and no test at the type level can see the difference.
