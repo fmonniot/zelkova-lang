@@ -35,9 +35,6 @@ Two distinctions worth keeping straight when filing a new ticket:
   code that succeeds at something the language has since decided against — it was never wrong
   until a chapter was written, and the chapter is the only reason it is a ticket. Every `LANG-`
   names the chapter that decided it and the tagged block there that goes red when it lands.
-- **`SPEC-` tickets are filed before the chapter is written, not after.** The `write-spec-chapter`
-  skill requires a chapter's `SPEC-n` to already exist before it will touch that chapter, so new
-  `planned` chapters in `docs/spec/README.md` get their ticket filed up front.
 
 ## Closing a ticket
 
