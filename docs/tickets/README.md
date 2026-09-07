@@ -1,30 +1,5 @@
 # Zelkova — Ticket index
 
-`SPEC-2` opened a second body of work alongside the diagnostics program below: specifying the
-language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
-will keep producing them — writing down a rule that was never written down is how you find out
-the compiler had quietly picked a different one. `SPEC-3` added four more, plus three `BUG-`s,
-from one chapter, `SPEC-5` another four plus three `BUG-`s and a `TEST-`, `SPEC-11` a
-`BUG-` and an `ERR-`, `SPEC-10` a `BUG-` and two `LANG-`s, `SPEC-7` another five, `SPEC-6`
-three `LANG-`s, two `BUG-`s and a `SPEC-`, `SPEC-4` four more `LANG-`s, `SPEC-8` six
-`LANG-`s and an `ERR-`, and `SPEC-9` two `LANG-`s, a `BUG-` and a `SPEC-`.
-
-`SPEC-15` through `SPEC-22` were filed together on 2026-09-04, from an audit of `docs/spec/`
-for open questions with no ticket attached. Twelve were found: three chapters carry an
-**Open questions** section holding nine between them, two more sit inline in
-[`docs/spec/layout.md`](../spec/layout.md), and one — records — is stated inline in four
-chapters at once. Two already had owners (`SPEC-14` and `LANG-33`); the rest had none, and the
-records deferral turned out to have a twin in lists. Every open question in `docs/spec/` now
-links to the ticket that owns it, which is what makes the attachment checkable by `grep` rather
-than by memory.
-
-`SPEC-4` through `SPEC-11` were filed together on 2026-08-29, one per remaining `planned`
-chapter in `docs/spec/README.md`'s table, rather than one at a time as each is picked up. That
-is a deliberate exception: `write-spec-chapter` no longer files its own tracking ticket (doing
-so from inside the run that later closes it reproduced the same-PR file-and-delete pattern
-tickets otherwise avoid), so a chapter's `SPEC-n` has to already exist before that skill will
-touch it. Filing the whole remaining list up front means it always does.
-
 One file per ticket: `docs/tickets/<id-lower>.md`. Bugs and tasks share one ID namespace, one
 closing convention and this one table — a bug is a ticket **type**, not a separate file. Each
 ticket is self-contained so it can be picked up on its own: it names the **location**, the
@@ -36,110 +11,81 @@ Severity applies to bugs: **high** = miscompile or data loss, **medium** = wrong
 under normal use, **low** = edge case or polish. Tasks carry a **Sizing** note in their own
 file instead.
 
-Prefixes are created ad-hoc per theme. Current ones: `BUG-` (defects), `ERR-` (error handling
-and diagnostics), `AST-` (parser and canonical AST shape), `PERF-` (allocation and hot paths),
-`TIDY-` (small self-contained cleanups), `TEST-` (test infrastructure), `SPEC-` (specifying
-and documenting the language itself, under `docs/spec/`), `LANG-` (bringing the compiler into
-line with a rule `docs/spec/` has since settled), `CLASS-` (the type-class program below —
-building a mechanism the language has decided on but has never had), `SITE-` (the public GitHub
-Pages site built from this repo — rustdoc, the rendered spec, the landing page), `GEN-` (code
-generation — turning a checked module into runnable JavaScript, a phase that does not exist
-yet).
+## Prefixes
 
-`CLASS-` is neither a `BUG-` nor a `LANG-`, and the distinction is the same one that separates
-those two. A `LANG-` is code that succeeds at something a chapter has since decided against; a
-`CLASS-` is a construct the language does not have at all and is going to grow. It gets its own
-prefix rather than joining `LANG-` because the six of them are one ordered body of work, the way
-`ERR-3` through `ERR-9` were, and a reader picking one up needs the rest of the order more than
-they need the theme.
+This is a closed list — pick the one that fits, don't mint a new one. A theme that doesn't fit
+any of these is a question for the language owner, not a call a session makes on its own.
 
-`LANG-` and `BUG-` are not the same thing and the split is worth keeping straight. A `BUG-` is
-code that fails at what it was trying to do. A `LANG-` is code that succeeds at something the
-language has since decided against — it was never wrong until a chapter was written, and the
-chapter is the only reason it is a ticket. Every `LANG-` therefore names the chapter that
-decided it and the tagged block there that goes red when it lands.
+| Prefix | Theme |
+|---|---|
+| `BUG-` | Defects |
+| `ERR-` | Error handling and diagnostics |
+| `AST-` | Parser and canonical AST shape |
+| `PERF-` | Allocation and hot paths |
+| `TIDY-` | Small self-contained cleanups |
+| `TEST-` | Test infrastructure |
+| `SPEC-` | Specifying and documenting the language itself, under `docs/spec/` |
+| `LANG-` | Bringing the compiler into line with a rule `docs/spec/` has since settled |
+| `CLASS-` | The type-class program below — building a mechanism the language has decided on but has never had |
+| `SITE-` | The public GitHub Pages site built from this repo — rustdoc, the rendered spec, the landing page |
+| `GEN-` | Code generation — turning a checked module into runnable JavaScript, a phase that does not exist yet |
 
-## The diagnostics program
+Three distinctions worth keeping straight when filing a new ticket:
 
-`ERR-3` through `ERR-7`, plus `ERR-9`, are one body of work rather than loose items. The goal
-is that **every phase can point its error at the source that caused it** — a caret under the offending text,
-secondary labels for context, a suggestion where one exists. They have a dependency order, and
-picking one up out of order mostly does not work:
+- **`LANG-` vs `BUG-`**: a `BUG-` is code that fails at what it was trying to do. A `LANG-` is
+  code that succeeds at something the language has since decided against — it was never wrong
+  until a chapter was written, and the chapter is the only reason it is a ticket. Every `LANG-`
+  names the chapter that decided it and the tagged block there that goes red when it lands.
+- **`CLASS-` vs `LANG-`**: a `CLASS-` is a construct the language does not have at all and is
+  going to grow, not code that regressed against a settled rule. It gets its own prefix because
+  the six of them are one ordered body of work (see below), and a reader picking one up needs
+  the order more than the theme.
+- **`SPEC-` tickets are filed before the chapter is written, not after.** The `write-spec-chapter`
+  skill requires a chapter's `SPEC-n` to already exist before it will touch that chapter, so new
+  `planned` chapters in `docs/spec/README.md` get their ticket filed up front.
 
-```
-BUG-6  rendering panics on 4 parse errors + 2 tokenizer errors   ← done 2026-08-27
-  │
-ERR-3  spans in the parser + canonical ASTs; PhaseError::labels() ← done 2026-08-27
-  │
-  ├── ERR-4  type-error provenance (typer Term → Constraint → unifier)  ← done 2026-08-27
-  ├── ERR-5  cross-module labels (Interface carries source ids)    ← done 2026-08-27
-  │      └── ERR-6  dependency cycles point at the `import` lines  ← done 2026-08-28
-  ├── ERR-9  span `parser::Exposed` — the one node ERR-3 left unspanned ← done 2026-08-28
-  └── ERR-7  "did you mean" suggestions (better after ERR-9: a suggestion on
-             `ValueNotFound` wants a caret under the name it is about) ← done 2026-08-28
-ERR-10  first real warning: unused imports in canonicalization    ← independent of the span
-                                                                     work; exists to unblock ERR-8
-  └── ERR-8  warnings as a severity                                 ← was "independent", now
-                                                                       gated on ERR-10 landing a
-                                                                       concrete diagnostic to carry
-```
+## Closing a ticket
 
-`ERR-2` (closed) is the ancestor of all of them: it made every phase error describe itself in
-prose, which is what left spans as the only thing missing.
+**Delete the ticket file, then rewrite its row below as a tombstone** — same table, `status`
+becomes the close date. A closed ticket keeps accreting implementation narrative that describes
+the tree as of the day it closed; the first change underneath it turns that into a confident
+description of code which no longer exists. Anything worth keeping longer than the fix is
+**promoted** before the ticket dies, to one of three places: into the code as a doc comment
+where it explains behaviour, into `CLAUDE.md`'s *Standing invariants* where it is a rule, or
+into [`docs/decisions/`](../decisions/README.md) where it is the argument for a choice rather
+than the choice itself. Two records of one decision means the unmaintained one is what someone
+eventually reads. A decision list in a closing ticket is cited as e.g. `DEC-2 decision 6` — an
+entry is never deleted, so that citation keeps resolving.
 
-`ERR-9`'s Acceptance clause asked for a test covering an undeclared *value* in a module's own
-`exposing (...)` header; the PR that closed it (#141) covers an undeclared *infix* instead.
-That substitution was forced by the tree rather than a shortcut: `do_exports`
-(`canonical/mod.rs`) only checked existence for the `Operator` case at the time, so a `Lower`
-or `Upper` name in a header was accepted unconditionally and there was no way to reach
-`Error::ExportNotFound` through either of them. That gap is now `BUG-8`, filed the same day
-the ticket closed.
-
-**Closing convention: delete the ticket file, then rewrite its row below as a tombstone** —
-same table, `status` becomes the close date. A closed ticket keeps accreting implementation
-narrative that describes the tree as of the day it closed; the first change underneath it
-turns that into a confident description of code which no longer exists. Anything worth keeping
-longer than the fix is **promoted** before the ticket dies, to one of three places: into the
-code as a doc comment where it explains behaviour, into `CLAUDE.md`'s *Standing invariants*
-where it is a rule, or into [`docs/decisions/`](../decisions/README.md) where it is the
-argument for a choice rather than the choice itself. Two records of one decision means the
-unmaintained one is what someone eventually reads.
-
-The third destination is the newest and exists because a ticket that settles several questions
-at once had nowhere to promote them to. `SPEC-12` was that ticket: its eleven numbered
-decisions were promoted nowhere, the file was deleted, and five citations of "`SPEC-12`
-decision 6" and "decision 7" outlived it pointing at nothing. They are
-[DEC-2](../decisions/dec-2.md) now, and a decision list in a closing ticket goes there.
-
-A tombstone row carries **no SHA and no PR number**. The commit that deletes a ticket file is
-a commit on a branch, and when it is written neither the merge SHA nor the PR number exists
-yet. The row may only contain what the closing commit can know about itself — and it doesn't
-need more, because the file path is the query key.
+A tombstone row carries **no SHA and no PR number**: the commit that deletes a ticket file is a
+commit on a branch, and neither the merge SHA nor the PR number exists yet when it is written.
+The file path is the query key; see [Recovering a closed ticket](#recovering-a-closed-ticket).
 
 **Deleting a ticket a chapter cites turns `cargo test --test spec` red**, and fixing it is part
 of closing the ticket. Chapters in [`docs/spec/`](../spec/README.md) cite ticket files from
 their **Known gap:** and **Not implemented:** paragraphs, and `spec_cross_references_resolve`
-checks that every one of those files still exists. That is deliberate: such a paragraph is the
-spec's account of a gap, so a citation of a deleted ticket is a claim about a gap that may no
-longer exist. Grep the chapters for the ID before deleting its file, and edit the paragraph —
-usually the whole paragraph goes, because the gap it describes is the one that just closed.
-`SPEC-23` weighed the alternative (leave the chapters out of it, and let a stale citation
-survive) and took this one; the reasoning is [DEC-3](../decisions/dec-3.md).
+checks that every one of those files still exists — a citation of a deleted ticket would be a
+claim about a gap that may no longer exist. Grep the chapters for the ID before deleting its
+file; usually the whole citing paragraph goes, because the gap it describes is the one that
+just closed. The reasoning for checking this at all is [DEC-3](../decisions/dec-3.md).
 
-## The type-classes program
+## Active work: diagnostics
 
-`CLASS-1` through `CLASS-6` are one body of work, filed together on 2026-08-29 after the
-language owner settled the mechanism. The goal is that **a signature can say what it needs of
-its type** — `min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what
-`min`'s type has always actually been.
+`ERR-3` through `ERR-9` (the "every phase can point its error at the source that caused it"
+work) are done. The one live edge left is `ERR-10` (unused-import warnings), which gates
+`ERR-8` (warnings as a severity) by giving it a concrete diagnostic to carry.
+
+## Active work: type classes
+
+`CLASS-1` through `CLASS-6` are one body of work, filed together after the language owner
+settled the mechanism. The goal is that **a signature can say what it needs of its type** —
+`min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what `min`'s type has
+always actually been.
 
 [`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
 read before picking any of these up: none of them re-argues a decision, and several would look
-arbitrary without it. `SPEC-12` settled those decisions and wrote that chapter; its own ticket
-file is gone, per the closing convention above, because the chapter is where the rules live now
-and two records of one rule means the unmaintained one is what someone eventually reads. The
-eleven decisions themselves, and the arguments the chapter does not carry, are
-[DEC-2](../decisions/dec-2.md) — which is what the tickets below cite by number.
+arbitrary without it. The decisions themselves, and the arguments the chapter does not carry,
+are [DEC-2](../decisions/dec-2.md) — which is what the tickets below cite by number.
 
 They have a dependency order, and three tickets that already existed sit inside it rather than
 beside it:
@@ -150,9 +96,9 @@ CLASS-1  `=>` becomes a token; a constrained annotation parses
   │
 CLASS-2  `class` / `instance` declarations, and a `where` block of members
   │      ← LANG-9 sequences before this: an instance head wants `(List a)`
-  │      ← two more bodies than "a member list", both settled by SPEC-14
-  │        and specified in the chapter: an instance body may be the single
-  │        word `derived`, and a class body may carry `derived <member>`
+  │      ← an instance body is a member list or the single word `derived`;
+  │        a class body may carry `derived <member>` — both specified in
+  │        the chapter
   │
 CLASS-3  resolution, the instance environment, and the orphan rule
   │      ← BUG-17 and BUG-16 are HARD prerequisites. Both would sabotage
@@ -164,37 +110,25 @@ CLASS-4  the solver: obligations are collected, deferred and discharged
   │        variables a constrained declaration proves `Comparable Int`
   │        and publishes `Comparable a` — strictly weaker than its own
   │        signature, and nothing downstream notices.
+  │      ← TEST-2 gates this one specifically, not the chapter: nothing
+  │        about a class parses yet, so today's spec examples are all
+  │        `expect=unimplemented`. They want `expect=type-error` once
+  │        CLASS-4 lands, and the spec harness stops at canonicalization
+  │        until TEST-2 extends it.
   │
   └── CLASS-6  `std/core` declares Eq, Comparable, Number, Appendable
-                 ← needs CLASS-5, which is no longer inside this order:
-                   `docs/spec/expressions.md` settles that a literal's type
-                   is its spelling, so there is no obligation to discharge
-                   and CLASS-5 can land at any point.  Closes BUG-20 for
-                   the right reason.
+                 ← needs CLASS-5, which is independent of this order
 
 CLASS-5  `Type::Number` retires; an integer literal is an `Int`   ← independent
            ← supersedes ERR-13
-
-SPEC-12  the Type classes chapter          ← done 2026-08-29
 ```
 
-**`TEST-2` was placed as a gate on the chapter and turned out not to be one.** The reasoning was
-that every claim a class mechanism makes is a type-level claim and the harness stops at
-canonicalization. Writing the chapter showed that is true of the claims it will make *once the
-mechanism exists*, and not of the claims it makes today: nothing about a class parses, so all
-eleven of its class-and-constraint blocks are `expect=unimplemented`, which the harness checks
-perfectly well. `TEST-2` becomes load-bearing when `CLASS-4` lands and those blocks start wanting
-`expect=type-error` — `docs/spec/expressions.md`'s *A literal's type is its spelling* section
-already carries one `**Known gap:**` with no red test behind it for exactly this reason. The `CLASS-` tickets are
-held to `tests/typer.rs`, which already reaches the typer.
-
-**What is not a ticket:** dictionary erasure.
+**What is not a ticket: dictionary erasure.**
 [`DEC-2` decision 7](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed)
-settles that a constrained
-function is specialised per instantiation and no dictionary exists at runtime — which is a
-constraint on code generation, and code generation has not started. It is recorded in
-`docs/spec/type-classes.md` and in `docs/spec/js-interop.md`, and [`GEN-1`](gen-1.md) — the
-ticket that starts the backend — inherits it from there, rather than it being filed twice.
+settles that a constrained function is specialised per instantiation and no dictionary exists
+at runtime — a constraint on code generation, which has not started. It is recorded in
+`docs/spec/type-classes.md` and `docs/spec/js-interop.md`, and [`GEN-1`](gen-1.md) inherits it
+from there rather than it being filed twice.
 
 ## Recovering a closed ticket
 
