@@ -74,5 +74,5 @@ proven to fail.
 
 **Found:** while comparing this chapter's derivation mechanism against the equivalent in Haskell,
 Clean, Scala 3, Rust, OCaml, PureScript and Elm, on 2026-09-06. That survey is
-[Deriving in other languages](../spec/deriving-elsewhere.md), and its *What the two-value shape
-gives up* section is the long form of the argument above.
+[`DEC-1`](../decisions/dec-1.md), and its *What the two-value shape gives up* section is the
+long form of the argument above.

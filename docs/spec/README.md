@@ -1,9 +1,10 @@
 # Zelkova — Language specification
 
-This is the specification of Zelkova the language, as distinct from `docs/tickets/`
+This is the specification of Zelkova the language, as distinct from
+[`docs/decisions/`](../decisions/README.md) (why a rule is what it is), `docs/tickets/`
 (the compiler's own work log) and `cargo doc` (the compiler's Rust API). One markdown
 file per chapter, sibling files in this directory, plus the non-normative
-[appendices](#appendices) at the foot of this index. A third sibling,
+[appendix](#appendices) at the foot of this index. A third sibling,
 [Conventions](conventions.md), is about this document rather than about Zelkova: the rules a
 chapter is written against, and the reasons they are what they are.
 
@@ -91,27 +92,17 @@ each ends with a row added to the table above.
 
 An appendix is a sibling file in this directory that is deliberately **not** part of the
 language. It describes what surrounds Zelkova rather than what Zelkova is, and nothing in
-one is normative or checked. There are two:
+one is normative or checked. There is one:
 
 | Appendix | Covers |
 |---|---|
 | [The toolchain](toolchain.md) | Fetching a dependency, resolution and `zelkova.lock`, the cache, vendoring and offline builds, publishing, running a package's tests, and the compiler's interface. |
-| [Deriving in other languages](deriving-elsewhere.md) | Where Haskell, Clean, Scala 3, Rust, OCaml, PureScript, Lean, C++ and Elm put the knowledge a derivation needs, what the two-value shape gives up, and which of those arguments decided [Type classes](type-classes.md#a-class-says-how-it-is-derived). |
 
-The two are appendices for different reasons. The toolchain one exists because a language
-decision leaves a toolchain question with one sensible answer, and leaving it unwritten means
-every reader invents that answer privately and slightly differently: `docs/spec/packages.md`
-settles what a dependency entry *means*; something still has to say what happens when one is
-fetched, and that is not a sentence about the language.
-
-The deriving one exists because a chapter states what was decided and cannot afford to also
-argue it. The alternatives a rule was chosen over are not recoverable from the rule, so a
-later reader asking "why not a generic representation" has nowhere to look and re-derives the
-answer — or doesn't, and re-opens the question. It is design rationale rather than
-specification, which is why it is not normative and why no claim in it constrains a program.
-A dedicated record for decisions of that kind would be the better home; until one exists this
-is where they go, and [`SPEC-26`](../tickets/spec-26.md) is the ticket for the thing this is
-standing in for.
+It exists because a language decision leaves a toolchain question with one sensible answer,
+and leaving it unwritten means every reader invents that answer privately and slightly
+differently: `docs/spec/packages.md` settles what a dependency entry *means*; something still
+has to say what happens when one is fetched, and that is not a sentence about the language.
 
 [Conventions](conventions.md#chapter-or-appendix) has the test for which of the two a rule
-belongs to.
+belongs to, and for the third thing neither of them is: *why* a rule is what it is, which
+lives in [`docs/decisions/`](../decisions/README.md).

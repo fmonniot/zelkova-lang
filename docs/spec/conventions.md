@@ -114,7 +114,7 @@ settled fact. That prose gets its own lead-in, **Not implemented:**, for the sam
 ahead of the compiler rather than behind it. The `let … in` section of `layout.md` is the
 first example of both lead-ins living in one section.
 
-The third lead-in, **Provisional:**, belongs to the appendices and a chapter never carries
+The third lead-in, **Provisional:**, belongs to the appendix and a chapter never carries
 it. It is what the `expect=` tags buy a chapter, done in prose: an appendix cannot be held
 to account by a test, so it says in its own text which of its claims have nothing behind
 them. A chapter has no need of it, because a language question with no settled answer is an
@@ -187,8 +187,9 @@ things therefore never appear in one:
   matters more than it looks*, *it is worth saying this twice*. Say the thing rather than
   announcing that you are about to.
 - **Alternatives considered and dropped.** The language is what is written down. A road not
-  taken belongs in the ticket that took the other one — this file and [the index](README.md)
-  included, which is why the two of them may name `SPEC-2` and `SPEC-3` and a chapter may not.
+  taken belongs in [`docs/decisions/`](../decisions/README.md), or in the ticket that took the
+  other one while that ticket is open — this file and [the index](README.md) included, which
+  is why the two of them may name `SPEC-2` and `SPEC-3` and a chapter may not.
 
 Explaining *why* a rule is what it is stays in scope, and is much of what makes a chapter worth
 reading — the test is whether the reason is a property of the language ("allowing it would need
@@ -214,6 +215,17 @@ The line between the two is what a claim changes. A rule that decides what a pro
 what a name resolves to, what is visible across a boundary, what a manifest field obliges —
 is a chapter's, however file-shaped it looks. A rule about how bytes arrive, where they are
 kept, or what a command prints is an appendix's.
+
+Neither is where an *argument* goes. A chapter explains why a rule is what it is only as far
+as the reason is a property of the language — "allowing it would need a kind system" — and
+stops at the point where the reason becomes a comparison with what was rejected. That is a
+third kind of document and it lives in [`docs/decisions/`](../decisions/README.md), which is
+not normative, is not checked for examples, and is where a chapter's rule may be cited *from*
+but never deferred *to*. The test is whether a later reader would otherwise re-open the
+question: [Type classes](type-classes.md#a-class-says-how-it-is-derived) states one derivation
+mechanism in full and is complete as it stands, and the survey of the eight it is not
+([DEC-1](../decisions/dec-1.md)) is what stops someone proposing a generic representation
+again.
 
 ## Writing a chapter
 

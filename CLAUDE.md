@@ -51,6 +51,17 @@ consequences reach outside `tests/spec.rs` — renaming a chapter header breaks 
 named it, and deleting a ticket file a chapter cites turns the suite red until the citing
 paragraph is edited (`docs/tickets/README.md`'s closing convention says so too).
 
+*Why* a rule is what it is lives in a third directory,
+[`docs/decisions/`](docs/decisions/README.md) — the arguments a chapter states its rule without
+making, and the alternatives it was chosen over. It is not normative and holds no checked
+example, but its links and anchors are checked by the same binary, so an entry that cites a
+chapter section pays when that header is renamed. Three rules follow from it: a chapter still
+never argues against a rejected alternative (`docs/spec/conventions.md`'s *Chapter or
+appendix*), a closing ticket promotes a decision list **there** rather than letting it die with
+the file, and a decision is cited as `DEC-2 decision 6` — an entry is never deleted, so that
+citation keeps resolving. `SPEC-12`'s eleven decisions, cited by four `CLASS-`/`GEN-` tickets,
+are [`DEC-2`](docs/decisions/dec-2.md).
+
 ## Architecture
 
 The pipeline is documented at the top of `src/compiler/mod.rs`. `compile_package` walks a
@@ -239,7 +250,9 @@ merely recording the direction.
 
 Read the chapter before touching any of it; the `CLASS-` program in
 [`docs/tickets/README.md`](docs/tickets/README.md) carries the order the six implementing
-tickets have to land in. Five of its rules constrain diffs outside that program:
+tickets have to land in, and [`DEC-2`](docs/decisions/dec-2.md) the eleven decisions behind
+both, including the two that have since moved. Five of its rules constrain diffs outside that
+program:
 
 - **`=>`, `class` and `instance` become reserved, and `where` becomes reserved as a type
   variable.** All four are ordinary identifiers today, so this is a breaking change — and

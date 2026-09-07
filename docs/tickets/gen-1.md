@@ -52,8 +52,10 @@ subexpressions evaluate left to right; both operands of `&&` and `||` are evalua
 [`BUG-24`](bug-24.md)); equality is structural and comparing functions is not allowed.
 
 One decision is inherited rather than made here: **a class dictionary is erased by
-specialisation and never passed** ([`docs/spec/type-classes.md`](../spec/type-classes.md),
-decision 7). It costs nothing while no class exists, but a backend that starts by passing
+specialisation and never passed** — stated by
+[`docs/spec/type-classes.md`](../spec/type-classes.md) and argued in
+[`DEC-2` decision 7](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed).
+It costs nothing while no class exists, but a backend that starts by passing
 dictionaries is one that has to be unpicked when [`CLASS-4`](class-4.md) lands.
 
 **Not in this ticket:** teaching the spec harness to check what a block *computes*.

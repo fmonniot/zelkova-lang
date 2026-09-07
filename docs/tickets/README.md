@@ -1,7 +1,5 @@
 # Zelkova — Ticket index
 
-_Last updated: 2026-09-05._
-
 `SPEC-2` opened a second body of work alongside the diagnostics program below: specifying the
 language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
 will keep producing them — writing down a rule that was never written down is how you find out
@@ -101,9 +99,17 @@ the ticket closed.
 same table, `status` becomes the close date. A closed ticket keeps accreting implementation
 narrative that describes the tree as of the day it closed; the first change underneath it
 turns that into a confident description of code which no longer exists. Anything worth keeping
-longer than the fix is **promoted** before the ticket dies — into the code as a doc comment
-where it explains behaviour, or into `CLAUDE.md`'s *Standing invariants* where it is a rule.
-Two records of one decision means the unmaintained one is what someone eventually reads.
+longer than the fix is **promoted** before the ticket dies, to one of three places: into the
+code as a doc comment where it explains behaviour, into `CLAUDE.md`'s *Standing invariants*
+where it is a rule, or into [`docs/decisions/`](../decisions/README.md) where it is the
+argument for a choice rather than the choice itself. Two records of one decision means the
+unmaintained one is what someone eventually reads.
+
+The third destination is the newest and exists because a ticket that settles several questions
+at once had nowhere to promote them to. `SPEC-12` was that ticket: its eleven numbered
+decisions were promoted nowhere, the file was deleted, and five citations of "`SPEC-12`
+decision 6" and "decision 7" outlived it pointing at nothing. They are
+[DEC-2](../decisions/dec-2.md) now, and a decision list in a closing ticket goes there.
 
 A tombstone row carries **no SHA and no PR number**. The commit that deletes a ticket file is
 a commit on a branch, and when it is written neither the merge SHA nor the PR number exists
@@ -118,7 +124,7 @@ spec's account of a gap, so a citation of a deleted ticket is a claim about a ga
 longer exist. Grep the chapters for the ID before deleting its file, and edit the paragraph —
 usually the whole paragraph goes, because the gap it describes is the one that just closed.
 `SPEC-23` weighed the alternative (leave the chapters out of it, and let a stale citation
-survive) and took this one; the reasoning is at the head of `tests/spec.rs`.
+survive) and took this one; the reasoning is [DEC-3](../decisions/dec-3.md).
 
 ## The type-classes program
 
@@ -130,9 +136,10 @@ its type** — `min : Comparable a => a -> a -> a` rather than `a -> a -> a`, wh
 [`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
 read before picking any of these up: none of them re-argues a decision, and several would look
 arbitrary without it. `SPEC-12` settled those decisions and wrote that chapter; its own ticket
-file is gone, per the closing convention above, because the chapter is where the decisions live
-now and two records of one decision means the unmaintained one is what someone eventually
-reads.
+file is gone, per the closing convention above, because the chapter is where the rules live now
+and two records of one rule means the unmaintained one is what someone eventually reads. The
+eleven decisions themselves, and the arguments the chapter does not carry, are
+[DEC-2](../decisions/dec-2.md) — which is what the tickets below cite by number.
 
 They have a dependency order, and three tickets that already existed sit inside it rather than
 beside it:
@@ -181,7 +188,9 @@ perfectly well. `TEST-2` becomes load-bearing when `CLASS-4` lands and those blo
 already carries one `**Known gap:**` with no red test behind it for exactly this reason. The `CLASS-` tickets are
 held to `tests/typer.rs`, which already reaches the typer.
 
-**What is not a ticket:** dictionary erasure. `SPEC-12` decision 7 settles that a constrained
+**What is not a ticket:** dictionary erasure.
+[`DEC-2` decision 7](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed)
+settles that a constrained
 function is specialised per instantiation and no dictionary exists at runtime — which is a
 constraint on code generation, and code generation has not started. It is recorded in
 `docs/spec/type-classes.md` and in `docs/spec/js-interop.md`, and [`GEN-1`](gen-1.md) — the
@@ -285,7 +294,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-23 | task | — | closed 2026-09-05 | Nothing checks the spec's own cross-references, and 271 of them are one rename from silence |
 | SPEC-24 | task | — | closed 2026-09-05 | The conventions name every tag a chapter may write but not a single word it may write, and the tag table is four names short |
 | [SPEC-25](spec-25.md) | task | — | open | A derivation walks two values, so the classes worth deriving most cannot be |
-| [SPEC-26](spec-26.md) | task | — | open | Design rationale has nowhere to live, so it is kept in three unrelated places or lost |
+| SPEC-26 | task | — | closed 2026-09-06 | Design rationale has nowhere to live, so it is kept in three unrelated places or lost |
 | [SPEC-27](spec-27.md) | task | — | open | A derivation's `combine` must be a monoid and nothing checks it, at any point |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
