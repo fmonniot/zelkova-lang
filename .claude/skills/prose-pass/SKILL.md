@@ -37,8 +37,13 @@ talk you through a pass they have already described.
 
 ## Step 0 — Load the ground rules
 
-Read `docs/spec/conventions.md`, sections *The words a chapter uses* and *A chapter says what
-the language is*. They are the authority; the steps below are a checklist for applying them.
+Read `docs/spec/conventions.md`, sections *The words a chapter uses*, *The sentences a chapter
+does not need* and *A chapter says what the language is*. They are the authority; the steps below
+are a checklist for applying them.
+
+*The sentences a chapter does not need* defines the patterns Step 3 sweeps for. It is shared
+with `write-spec-chapter`, which drafts against it — so a pattern this pass keeps finding
+belongs there, in one sentence, rather than here.
 
 Three things are load-bearing and are never reworded, never cut, and never moved away from the
 block they belong to: the **Known gap:**, **Not implemented:** and **Provisional:** lead-ins,
@@ -65,41 +70,39 @@ Two mechanics that cost time when missed:
 
 Reorder before rewriting; a paragraph you are about to cut may belong in another section.
 
-**What is possible comes first, what is forbidden comes after and smaller.** Sections that each
-say what cannot be done merge into one — `js-interop.md`'s *A facade is monomorphic*, *A
-function does not cross* and *A facade signature may not carry a constraint* became one *What a
-facade signature may not name*, half the length of the three.
+*The sentences a chapter does not need* closes on the ordering: **what is possible comes first,
+what is forbidden comes after and shorter**, and sections that each say what cannot be done
+merge into one. `js-interop.md`'s *A facade is monomorphic*, *A function does not cross* and *A
+facade signature may not carry a constraint* became one *What a facade signature may not name*,
+half the length of the three.
 
 Merging or renaming a header moves an anchor. That is Step 5, and it is not optional.
 
 ## Step 3 — The eight cuts, one sweep per pattern
 
 Sweep the whole file for **one pattern at a time**. A single read-through finds one instance of
-a pattern and moves on; a sweep finds all of them. Every example below is a real before/after
-from `docs/spec/js-interop.md`.
+a pattern and moves on; a sweep finds all of them. *The sentences a chapter does not need*
+defines the patterns; below is each one's grep and a real before/after from
+`docs/spec/js-interop.md`.
 
 1. **Throat-clearing openers.** "A user can mark a Zelkova module as a JavaScript interface.
    This is done by using the `javascript` modifier" → "A user marks a Zelkova module as a
    JavaScript interface with the `javascript` modifier".
 
-2. **Decorative negation tails.** A closing "rather than X" / "and not X" / "instead of X" that
-   only negates what the first half already ruled out. "an error at the boundary rather than a
-   wrong answer somewhere further on" → "an error at the boundary". Also: "read directly rather
-   than invoked", "paid once per crossing rather than once per use", "on exactly the terms
-   `Bool` is and not as a tolerated exception". Grep for `rather than`, `not as`, `instead of`.
+2. **Decorative negation tails.** Grep `rather than`, `not as`, `instead of`. "an error at the
+   boundary rather than a wrong answer somewhere further on" → "an error at the boundary". Also:
+   "read directly rather than invoked", "paid once per crossing rather than once per use", "on
+   exactly the terms `Bool` is and not as a tolerated exception".
 
-3. **Self-restating closers.** A last clause that says the paragraph's own point again:
-   "Ordinary code and `std/core` reach the runtime the same way, which is the property this
-   design exists to preserve."
+3. **Self-restating closers.** "Ordinary code and `std/core` reach the runtime the same way,
+   which is the property this design exists to preserve."
 
 4. **Commentary on the document.** "The predicate is what makes a facade signature mean
    anything", "a price worth naming", "the chapter states it rather than letting someone
-   discover it". `conventions.md` forbids these outright — say the thing instead of announcing
-   that you are about to.
+   discover it". Covered by *A chapter says what the language is*, which forbids them outright.
 
-5. **Reassurance after a cost.** The cost is stated, then softened: "That price is smaller than
-   it looks, because … the constructor names of an exposed union are already public API." State
-   the cost and stop.
+5. **Reassurance after a cost.** "That price is smaller than it looks, because … the constructor
+   names of an exposed union are already public API."
 
 6. **Defensive justification.** A rule gets the one property a reader acts on, not a case for
    the rule. Two independent reasons for one rejection is one too many for a chapter; the second
@@ -110,8 +113,8 @@ from `docs/spec/js-interop.md`.
 7. **Repeated templates.** Three "is what" sentences in a paragraph, a "which means … which
    means" chain. Vary, or cut the weakest.
 
-8. **Duplicated conclusions across sections.** Two sections ending on the same sentence: keep it
-   where the rule lives, and have the other link to it.
+8. **Duplicated conclusions across sections.** Keep the sentence where the rule lives, and have
+   the other section link to it by anchor.
 
 ## Step 4 — Repair what the cuts broke
 

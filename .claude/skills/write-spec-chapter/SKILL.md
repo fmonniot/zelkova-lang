@@ -43,9 +43,10 @@ documentation. Where a rule is inherited, write it out in full.
 
 - `docs/spec/conventions.md` — the `expect=` vocabulary, `package=`, *Tag every claim the
   chapter makes*, *The words a chapter uses* (the wording rules, including that `should` is
-  reserved for compiler-facing prose), *A chapter says what the language is*, and *A spec
-  change and a semantics change do not share a diff*. This is the document chapter authors are
-  written against; read all of it.
+  reserved for compiler-facing prose), *The sentences a chapter does not need* (the filler
+  patterns, which Step 5 drafts against and Step 9 sweeps for), *A chapter says what the
+  language is*, and *A spec change and a semantics change do not share a diff*. This is the
+  document chapter authors are written against; read all of it.
 - `docs/spec/README.md` — the index a reader of the language sees: what the spec is, the three
   lead-ins (**Known gap:**, **Not implemented:**, **Provisional:**), and the chapter table your
   new row goes into.
@@ -159,6 +160,14 @@ a note about who has yet to answer it.
   are *not* being told to drop: rationale that is a property of the language, and the
   **Known gap:** / **Not implemented:** lead-ins, which describe the compiler rather than the
   language. `docs/spec/conventions.md`'s *A chapter says what the language is* is the full rule.
+- **Draft against three of the filler patterns, not all six.** You cannot run six sweeps while
+  generating text; Step 9 is where the rest are caught. The three worth holding in mind as you
+  type, because they are the ones a draft produces by the paragraph: **open a sentence on its
+  subject** (no "This is done by using…"), **stop at the end of the point** (no closing clause
+  restating the paragraph, no "rather than X" that only mirrors the first half), and **state a
+  cost once** (no sentence explaining that the cost is smaller than it looks). Structure obeys
+  the same bias: what a construct can do first, what it cannot after and shorter, in one section
+  rather than three.
 - **Prefer prose plus checked examples.** Drop into EBNF only where English is genuinely
   worse — an exposing list's nesting, an operator table. Nothing checks an EBNF block, which
   makes it the one thing in the directory that can drift.
@@ -233,12 +242,21 @@ cargo clippy --all-features
 needed a `tests/` helper may have touched more than intended. CI does not gate on fmt or
 clippy — run both locally.
 
-Then read the chapter once more for the present-tense rule, since nothing tests it. A drafting
-session knows *why* it wrote each rule and leaks that reasoning into the prose without noticing;
-the leaks are easy to spot on a second pass and read as noise to everyone else.
+Then read the chapter twice more, since nothing tests either pass.
+
+**Once for the present-tense rule.** A drafting session knows *why* it wrote each rule and leaks
+that reasoning into the prose without noticing; the leaks are easy to spot on a second pass and
+read as noise to everyone else.
 `grep -n 'SPEC-\|until\|used to\|no longer\|this chapter' docs/spec/<chapter>.md` catches most
 of them — every hit is either a **Known gap:** / **Not implemented:** sentence about the
 compiler, or a sentence to rewrite.
+
+**Once for the filler patterns**, sweeping the whole chapter for one pattern at a time — a
+read-through finds one instance and moves on. *The sentences a chapter does not need* is the
+list, Step 5 already held you to three of it, and `grep -n 'rather than\|not as\|instead of'
+docs/spec/<chapter>.md` is the one with a grep. If the chapter needs more than this — a
+structural reorder, sections to merge — that is the `prose-pass` skill rather than this step,
+and running it on a chapter you just drafted is a reasonable thing to do.
 
 ## Step 11 — Report, and commit only if asked
 
