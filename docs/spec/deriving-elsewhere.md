@@ -251,9 +251,9 @@ and the interesting question is what it is wrong for.
 language's answer to that is "then write the instance by hand," and that is what deriving means.
 
 **It is wrong, silently, for an answer whose meaning depends on how many things were combined.**
-An average, a ratio, "what proportion of the fields matched". The chapter now states the law this
+An average, a ratio, "what proportion of the fields matched". The chapter states the law this
 violates — `combine` associative, `matched` its two-sided identity — and states that nothing
-checks it, with a worked failure in [What a derivation is trusted to
+checks it, in [What a derivation is trusted to
 keep](type-classes.md#what-a-derivation-is-trusted-to-keep). Haskell's derived `Ord` relies on
 the same law without naming it, since `Ordering`'s monoid is what `compare a1 b1 <> compare a2 b2`
 folds under; the law is not a Zelkova-specific hazard, only a Zelkova-specific piece of prose.

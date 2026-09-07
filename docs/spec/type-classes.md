@@ -209,25 +209,30 @@ and half written, which is the mixture a `derived` body rules out.
 
 The derivation walks the two values in step, and every answer it collects comes from an instance.
 
-- **The constructors first.** Two values of different constructors are answered by `differed`,
-  handed the **position** each constructor is declared at, counting from zero, and the walk stops
-  there — there is nothing else the two values have in common to look at. Reordering the variants
-  of a type therefore changes what a derived member computes, which is why the order is the
-  declaration's rather than, say, alphabetical: the one a reader can see is the one that decides.
+- **The constructors first.** When the two values have different constructors, `differed` answers
+  and the walk stops. There is nothing further to compare: two different constructors need not
+  take the same number of arguments, nor arguments of the same types, so no pair of arguments
+  lines up. `differed` is handed one **position** per value — where that value's constructor is
+  declared, counting from zero — and what it makes of the two is the class's own business.
+  Because positions follow the order the variants are written in, and not, say, the alphabetical
+  order of their names, reordering a type's variants changes what a derived member computes.
 - **Then the arguments,** when the constructors agree: each pair in turn, left to right, through
   the instance belonging to *that argument's* type.
 - **`combine` folds those answers** into one, in that order, ending at `matched`.
 
-Nothing in that walk reaches inside an argument. Each pair is answered by the instance its own
-type declares, whatever that instance computes — so a type whose equality is defined up to a
-normal form keeps that meaning wherever it appears inside a derived one.
+The walk never looks inside an argument. It hands each pair to the instance that argument's type
+declares and takes whatever that instance answers, so a type keeps its own definition of a member
+wherever it appears inside a derived one.
 
-`Eq`'s three definitions above turn the walk into
+`Eq`'s three definitions and `Comparable`'s are that one walk with different answers filled into
+it. `Eq`'s turn it into
 [structural equality](evaluation-semantics.md#what-structural-equality-computes): `differed`
 discards the positions to answer `False` outright, `combine` carries a single unequal pair of
 arguments out to the answer, and `matched` makes a constructor with no arguments equal to itself.
 
-`Comparable`'s three turn the same walk into a lexicographic ordering:
+`Comparable`'s three turn it into a lexicographic ordering — different constructors ordered by
+the positions they are declared at, so `Red` is less than `Green` in the `Colour` type above;
+two of the same constructor by their arguments, left to right, the first unequal pair deciding:
 
 ```zel expect=unimplemented
 module Example exposing (Comparable)
@@ -254,25 +259,20 @@ class Comparable a where
           x
 ```
 
-Two values of different constructors are ordered by the positions those constructors are declared
-at, so `Red` is less than `Green` in the `Colour` type above; two of the same constructor by their
-arguments, left to right, the first unequal pair deciding. Neither sentence is written anywhere in
-the compiler. Both are what these three definitions say, applied to the one walk — the first
-sentence is `differed` handing its two positions to `Comparable`'s own instance at `Position`, and
-the second is a `combine` that stops at the first answer other than `EQ`.
-
 ### The three bindings are inlined, not called
 
-A derivation's `matched`, `differed` and `combine` are substituted into the walk at each step
-rather than called as functions. That is the difference between a derived member that stops at
-the first difference and one that does not, and under
-[strict evaluation](evaluation-semantics.md#evaluation-is-strict) it is not a difference the
-compiler could make on its own.
+A derivation is a **compile-time** step. The compiler reads the class's three bindings and the
+type's shape and writes the member's definition out of them; what runs is that definition. Neither
+the walk nor the three bindings exist at run time, and that is what sets them apart from every
+other binding in the language: `matched`, `differed` and `combine` are substituted into the
+generated definition at each step rather than called as functions.
 
-An argument is a value before the function it is passed to is entered. Were `combine` an ordinary
-call, `combine (eq a1 b1) (combine (eq a2 b2) matched)` would compare every pair of arguments in
-the whole value before the outermost `combine` ran — including every pair after the one that
-already settled the answer. Inlined, the same three definitions sit inside the walk, where
+Under [strict evaluation](evaluation-semantics.md#evaluation-is-strict) the difference is
+observable, and it is not one the compiler could make on its own. An argument is a value before
+the function it is passed to is entered, so were `combine` an ordinary call,
+`combine (eq a1 b1) (combine (eq a2 b2) matched)` would compare every pair of arguments in the
+whole value before the outermost `combine` ran — including every pair after the one that already
+settled the answer. Substituted, the same three definitions sit inside the walk, where
 [`case` evaluates one branch and not the other](evaluation-semantics.md#conditional-evaluation)
 like any other `case` in the language.
 
@@ -300,50 +300,26 @@ combine x matched        =  x
 combine (combine x y) z  =  combine x (combine y z)
 ```
 
-`Eq`'s definitions keep it and so do `Comparable`'s — conjunction under `True`, and
-first-answer-other-than-`EQ` under `EQ`, are both monoids — which is why neither section above
-had to say which end the fold starts from.
+Keeping the law is what makes a derived member's answer a property of the value rather than of
+the walk: how many arguments a constructor happens to have, and how the walk groups their
+answers, cannot change it.
 
-**Nothing checks this.** It is a law about values of a type the compiler is not reading, written
-in a language with no way to state it, and the compiler has no more purchase on it than on any
-other property of a function body. A derivation that breaks it still compiles, and what it
-computes is then whatever the fold order happens to be:
-
-```zel expect=unimplemented
-module Example exposing (Similar)
-
-class Similar a where
-  similarity : a -> a -> Float
-
-  derived similarity
-    matched = 1.0
-    differed _ _ = 0.0
-    combine x y =
-      divide (add x y) 2.0
-```
-
-The author means *the average of the arguments' scores*. Averaging is not associative and `1.0`
-is not its identity, so on a three-argument constructor the walk yields
-`combine s1 (combine s2 (combine s3 matched))` — the first argument weighted a half, the last an
-eighth, and `matched` mixed into the answer as though it were a fourth argument. The number of
-arguments a constructor happens to have changes the score, and no diagnostic says so.
-
-That is the shape of every failure here: **an answer whose meaning depends on how many things
-were combined**. An average, a ratio, "how many of the fields matched" as a proportion. The
-counterpart that works is the same idea counted rather than averaged — `matched = 0`,
-`differed _ _ = 1`, `combine = add` — which is a monoid, and which the walk therefore gets right
-for a constructor of any size.
+**Nothing checks this.** The law is about values of a type the compiler is not reading, and the
+language has no way to state it, so a derivation that breaks it compiles and computes whatever
+the fold order gives it. Every breach has one shape — **an answer whose meaning depends on how
+many things were combined**: an average, a ratio, a proportion of the arguments that matched.
+The same idea counted rather than averaged (`matched = 0`, `differed _ _ = 1`, `combine = add`)
+is a monoid, and the walk gets it right for a constructor of any size. Whether anything could
+establish the law before a program runs is [an open question](#open-questions),
+[`SPEC-27`](../tickets/spec-27.md).
 
 ### What a derived instance requires
 
-The arguments a derivation compares are the ones the variants write down, and each of their
-types needs an instance of the class being derived. Nothing else does. In particular a class owes
-no `Position` instance for the positions `differed` receives: what a class makes of them is
-written in its own `differed`, and a class whose answer does not depend on them — `Eq`'s, above —
-never mentions `Position` at all.
+Every argument of every variant needs an instance of the class being derived, and nothing else
+does. In particular a class owes no `Position` instance for the positions `differed` receives:
+what a class makes of them is written in its own `differed`.
 
-Where an argument's type is a variable, that requirement cannot be checked at the derivation —
-the variable is whatever a use of the type chooses — so it becomes a **constraint on the derived
+Where an argument's type is a variable, the requirement becomes a **constraint on the derived
 instance**, inferred rather than written:
 
 ```zel expect=unimplemented
@@ -362,12 +338,10 @@ Eq a => Eq (Box a)
 ```
 
 Two `Box`es are equal when their contents are, which is only a definition of equality once the
-contents have one. A parameter no variant uses carries no constraint, because no value of the
-type holds anything of that type to compare.
+contents have one. A parameter no variant uses carries no constraint.
 
-Where the argument's type is concrete, the requirement is checked on the spot, and an argument
-whose type has no instance is an error at the `instance` declaration, naming the variant and
-the type:
+Where the argument's type is concrete, the requirement is checked at the declaration, and an
+argument whose type has no instance is an error there, naming the variant and the type:
 
 ```zel expect=unimplemented
 module Example exposing (Key, Entry)
@@ -382,18 +356,17 @@ instance Eq Entry where
   derived
 ```
 
-Reporting that at the `instance` rather than at some later use is the point: the instance is the
-claim that an `Entry` can be compared for equality, and the claim is false where it is written.
-A variant holding a **function** is the case that no instance can rescue, since a function type
+The instance is the claim that an `Entry` can be compared for equality, and the claim is false
+where it is written, which is why the error lands there rather than at some later use. A variant
+holding a **function** is the case no instance can rescue, since a function type
 [has no useful equality at all](evaluation-semantics.md#functions-are-not-comparable).
 
-A superclass obligation is unchanged too. A derived `Comparable Colour` is rejected unless an
-`Eq Colour` instance exists — derived in its turn, or written out.
+A superclass obligation is unchanged: a derived `Comparable Colour` is rejected unless an
+`Eq Colour` instance exists, derived in its turn or written out.
 
-And the class has to be one that says how it is derived. `derived` under a class whose
-declaration carries no derivation is an error naming the class — not because the compiler holds
-a list of the classes that do, but because the declaration the instance names has nothing in it
-to run.
+And the class must be one that says how it is derived. `derived` under a class whose declaration
+carries no derivation is an error naming the class — not because the compiler holds a list of the
+classes that do, but because the declaration the instance names has nothing in it to run.
 
 ## Constraining an annotation
 
@@ -758,6 +731,11 @@ of these are in `std/core` — its body has to choose an instance.
   needs a constructor's *name* rather than its position, needs a precedence handed *downwards*
   into the arguments to decide parentheses, and needs to know which argument is the first so as
   to place a separator. A fold over answers already computed carries none of the three.
+- **Holding a derivation to its law.** [`combine` must be associative with `matched` as its
+  identity](#what-a-derivation-is-trusted-to-keep), and nothing establishes that before a program
+  runs. Whether anything could — a restriction on the shape the three bindings may take, an
+  obligation discharged by folding over a finite answer type, or a law the class states and a
+  test discharges — is unsettled ([`SPEC-27`](../tickets/spec-27.md)).
 - **What records and lists add.** Both are unspecified constructs
   ([`SPEC-21`](../tickets/spec-21.md), [`SPEC-22`](../tickets/spec-22.md)) and both reach this
   mechanism when they land. A record's fields are named, so a derivation over one wants a fourth
