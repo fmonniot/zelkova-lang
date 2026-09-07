@@ -1,7 +1,5 @@
 # Zelkova — Ticket index
 
-_Last updated: 2026-09-06._
-
 `SPEC-2` opened a second body of work alongside the diagnostics program below: specifying the
 language itself, one chapter at a time. It is where the first four `LANG-` tickets came from, and it
 will keep producing them — writing down a rule that was never written down is how you find out

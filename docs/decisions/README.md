@@ -1,7 +1,5 @@
 # Zelkova — Design decisions
 
-_Last updated: 2026-09-06._
-
 This directory holds **why a rule is what it is**, and the alternatives it was chosen over. It
 is the fourth of this repository's long-lived records, and it exists because each of the other
 three refuses the job for a reason worth keeping:
