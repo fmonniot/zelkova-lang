@@ -571,18 +571,19 @@ module javascript Js.Cmp exposing (compare)
 compare : Comparable a => a -> a -> Int
 ```
 
-The reason is a promise made in [JS interop](js-interop.md): a facade's companion export takes a
-**plain parameter list**, and a hand-written JavaScript file is never asked to know how the
-compiler represents anything.
+The reason is a rule in
+[JS interop](js-interop.md#what-a-facade-signature-may-not-name): a facade signature names the
+types its JavaScript really handles, so a facade is monomorphic. `Comparable a => a` is still a
+signature over `a`.
 
 A constrained function is **specialised** — the compiler generates one ordinary function per
 type the constraint is discharged at — and a facade has no body to generate one from. Its `.mjs`
 export is the whole implementation, so a constrained facade would have to serve every instance
-from that one JavaScript function, which could only tell them apart by inspecting how its
-arguments are represented at runtime. That is precisely the knowledge the promise keeps out of a
-`.mjs` file, and it is the shape of the gap noted at the end of this section. A dictionary — an
-extra, invisible argument carrying a table of the class's operations — is the other way to
-implement a class, and it breaks the same promise more directly.
+from that one JavaScript function, which could only tell them apart by inspecting arguments whose
+type its signature never named. That is dispatch on a type variable, which is the shape of the
+gap noted at the end of this section. A dictionary — an extra, invisible argument carrying a
+table of the class's operations — is the other way to implement a class, and it breaks the
+companion's **plain parameter list** more directly.
 
 So the constraint moves up one level. The facade stays monomorphic and is called only at types
 its JavaScript can actually handle; the class, its instances, and the constraint live in ordinary
@@ -609,8 +610,8 @@ recurse at.
 **Known gap:** the comparison and append facades in `std/core` are declared over any type at all,
 and the JavaScript behind them assumes its arguments are numbers, strings or tuples; handed a
 value of a user union type it reads fields that are not there.
-[`BUG-20`](../tickets/bug-20.md) tracks it, and it closes when those six signatures get a real
-constraint.
+[`BUG-20`](../tickets/bug-20.md) tracks it. Those signatures are already inadmissible — a facade
+is monomorphic — and [`LANG-43`](../tickets/lang-43.md) is the check that rejects them.
 
 ## The words this reserves
 

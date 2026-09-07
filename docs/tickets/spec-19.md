@@ -33,7 +33,7 @@ different mechanism, and whether the answer is needed before [`GEN-1`](gen-1.md)
 - **A second modifier** — `module webassembly Wasm.Foo exposing (…)`, parallel to `javascript` in
   every respect: annotations only, no bodies, no infixes, no types, a companion file of the same
   base name. Cheapest, and it reuses the whole facade design including
-  [`SPEC-18`](spec-18.md)'s eventual subset rule. Against it: the two backends' boundaries are
+  [the subset rule](../spec/js-interop.md#which-types-may-cross-the-boundary). Against it: the two backends' boundaries are
   genuinely different — Wasm has no dynamic typing to verify against, and its numeric types are
   narrower than JavaScript's single number — so "parallel in every respect" may be a claim the
   types cannot support.
@@ -75,8 +75,10 @@ The second entry in its *Open questions* is gone. `cargo test --test spec` green
 any, is tagged `expect=unimplemented` and proven to fail.
 
 **Sequencing:** no dependency on [`GEN-1`](gen-1.md) in either direction, but the `bool`-to-enum
-cost above only grows, and [`SPEC-18`](spec-18.md) should be settled first if the answer is a
-second modifier — a subset rule written for one boundary and then retrofitted to two is the
-expensive order.
+cost above only grows. The subset rule the second-modifier answer would inherit is settled —
+[Which types may cross the boundary](../spec/js-interop.md#which-types-may-cross-the-boundary),
+argued in [`DEC-6`](../decisions/dec-6.md) — and it is stated in terms of a *runtime* predicate,
+which is the half a Wasm boundary has no equivalent for. Read it before choosing the second
+modifier.
 
 **Found:** while auditing `docs/spec/` for open questions with no ticket attached, on 2026-09-04.

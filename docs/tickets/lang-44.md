@@ -8,7 +8,7 @@ together.
 `Token::LBracket`; `src/compiler/parser/mod.rs`'s `ExpressionKind`; and
 `canonical::Expression::from_parser_expression`.
 
-**Depends on:** [`LANG-43`](lang-43.md), hard. A literal is read against `List`, `Nil` and
+**Depends on:** [`LANG-46`](lang-46.md), hard. A literal is read against `List`, `Nil` and
 `Cons`, and until `std/core` declares them there is nothing for it to mean.
 
 **Decided (`SPEC-22`, by the language owner; [`DEC-7`](../decisions/dec-7.md) decision 4):** a
@@ -39,7 +39,7 @@ list-shaped case in every phase after it.
 
 Resolving `Nil` and `Cons` from a module that does not expose them is the one genuinely new
 thing here, since they are deliberately not in scope for the program being compiled
-([`LANG-43`](lang-43.md)). Whether that reaches for the `List` interface directly or waits on
+([`LANG-46`](lang-46.md)). Whether that reaches for the `List` interface directly or waits on
 the default imports ([`LANG-8`](lang-8.md)) is the implementer's call; it is not a language
 question and the chapter does not answer it.
 

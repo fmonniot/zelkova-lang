@@ -8,13 +8,13 @@ together.
 `DeclPattern`, none of which has a bracket or a `::` alternative;
 `src/compiler/parser/mod.rs`'s `PatternKind`; and `canonical`'s pattern conversion.
 
-**Depends on:** [`LANG-43`](lang-43.md), hard, for the same reason as
+**Depends on:** [`LANG-46`](lang-46.md), hard, for the same reason as
 [`LANG-44`](lang-44.md) — a list pattern is a constructor pattern over constructors that have to
 exist.
 
 **Decided (`SPEC-22`, by the language owner; [`DEC-7`](../decisions/dec-7.md) decision 5):** the
 bracket pattern and the cons pattern are both **pattern-grammar productions**. `::` in a pattern
-is not the operator [`LANG-43`](lang-43.md) declares and is never looked up, which is
+is not the operator [`LANG-46`](lang-46.md) declares and is never looked up, which is
 [`DEC-5`](../decisions/dec-5.md)'s answer for a negative literal's sign applied to the same
 question. [Lists](../spec/lists.md#lists-in-patterns) is the rule.
 

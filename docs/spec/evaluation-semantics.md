@@ -507,7 +507,7 @@ that rule, and a program using it has no meaning the language defines.
 ```zel expect=ok
 module javascript Js.Math exposing (square)
 
-square : a -> a
+square : Float -> Float
 ```
 
 Nothing distinguishes that from a facade over an impure export:
@@ -515,7 +515,7 @@ Nothing distinguishes that from a facade over an impure export:
 ```zel expect=ok
 module javascript Js.Random exposing (next)
 
-next : a -> a
+next : Int -> Int
 ```
 
 Both compile. The second is a broken program, and the rule it breaks is one only its author can
