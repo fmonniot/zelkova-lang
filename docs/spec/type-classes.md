@@ -173,8 +173,16 @@ every type that derives the class.
 
 A member may carry a derivation only when its signature is `a -> a -> R`, with the class variable
 absent from `R`: two values to walk in step, and an answer that is not itself of the type being
-walked. `matched` is then an `R`, `differed` an `Int -> Int -> R`, and `combine` an
-`R -> R -> R`. Anything else is an error at the class declaration. A member returning `a` — the
+walked. `matched` is then an `R`, `differed` a `Position -> Position -> R`, and `combine` an
+`R -> R -> R`. Anything else is an error at the class declaration.
+
+`Position` is the declaration position of a constructor, and it is a type rather than a number:
+`std/core` declares it, gives it `Eq` and `Comparable` instances and a `positionIndex :
+Position -> Int`, and offers nothing else. A class that wants to order two constructors compares
+them; a class that wants to compute with them converts. What it may not do is arithmetic on a
+position by accident, which an `Int` in this position would allow and mean nothing by.
+
+A member returning `a` — the
 shape `add` and `append` have in
 [what the standard library declares](#what-the-standard-library-declares) — would ask the walk for
 a third value of the type it is walking, and nothing a class says about itself can lend it the
@@ -238,16 +246,16 @@ Two values of different constructors are ordered by the positions those construc
 at, so `Red` is less than `Green` in the `Colour` type above; two of the same constructor by their
 arguments, left to right, the first unequal pair deciding. Neither sentence is written anywhere in
 the compiler. Both are what these three definitions say, applied to the one walk — the first
-sentence is `differed` handing its two positions to `Comparable`'s own instance at `Int`, and the
-second is a `combine` that stops at the first answer other than `EQ`.
+sentence is `differed` handing its two positions to `Comparable`'s own instance at `Position`, and
+the second is a `combine` that stops at the first answer other than `EQ`.
 
 ### What a derived instance requires
 
 The arguments a derivation compares are the ones the variants write down, and each of their
 types needs an instance of the class being derived. Nothing else does. In particular a class owes
-no `Int` instance for the positions `differed` receives: what a class makes of them is written in
-its own `differed`, and a class whose answer does not depend on them — `Eq`'s, above — never
-mentions `Int` at all.
+no `Position` instance for the positions `differed` receives: what a class makes of them is
+written in its own `differed`, and a class whose answer does not depend on them — `Eq`'s, above —
+never mentions `Position` at all.
 
 Where an argument's type is a variable, that requirement cannot be checked at the derivation —
 the variable is whatever a use of the type chooses — so it becomes a **constraint on the derived
@@ -640,6 +648,13 @@ the shape this chapter has already shown them. `Number` and `Appendable` carry n
 not — `add` and `append` return the class variable, which a walk over two values has no way to
 produce — and that is a fact about their signatures, not about their names. A program's own
 class is derivable on exactly the same terms as either.
+
+`std/core` also declares `Position`, the type a derivation's `differed`
+[receives](#a-class-says-how-it-is-derived) — with an `Eq` instance, a `Comparable` instance and
+`positionIndex : Position -> Int`, and with no way to construct one. It is the one type here the
+compiler knows by name, because it has to give `differed`'s parameters a type before any class
+has been read. That is a name for a *type*, which the compiler already has four of; it is not a
+name for a class, and [Numeric literals](#numeric-literals)'s claim is unweakened by it.
 
 `Appendable` ranges over strings and lists. The compiler implements neither type — see the note
 on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).
