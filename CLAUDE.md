@@ -59,7 +59,7 @@ chapter section pays when that header is renamed. Three rules follow from it: a 
 never argues against a rejected alternative (`docs/spec/conventions.md`'s *Chapter or
 appendix*), a closing ticket promotes a decision list **there** rather than letting it die with
 the file, and a decision is cited as `DEC-2 decision 6` — an entry is never deleted, so that
-citation keeps resolving. `SPEC-12`'s eleven decisions, cited by four `CLASS-`/`GEN-` tickets,
+citation keeps resolving. `SPEC-12`'s eleven decisions, cited by four `LANG-`/`GEN-` tickets,
 are [`DEC-2`](docs/decisions/dec-2.md).
 
 ## Architecture
@@ -248,11 +248,11 @@ chapter names those three: they are covered by
 [`docs/spec/type-classes.md`](docs/spec/type-classes.md) specifies that mechanism rather than
 merely recording the direction.
 
-Read the chapter before touching any of it; the `CLASS-` program in
-[`docs/tickets/README.md`](docs/tickets/README.md) carries the order the six implementing
-tickets have to land in, and [`DEC-2`](docs/decisions/dec-2.md) the eleven decisions behind
-both, including the two that have since moved. Five of its rules constrain diffs outside that
-program:
+Read the chapter before touching any of it; the type-class ticket program (LANG-37 through
+LANG-42) in [`docs/tickets/README.md`](docs/tickets/README.md) carries the order the six
+implementing tickets have to land in, and [`DEC-2`](docs/decisions/dec-2.md) the eleven
+decisions behind both, including the two that have since moved. Five of its rules constrain
+diffs outside that program:
 
 - **`=>`, `class` and `instance` become reserved, and `where` becomes reserved as a type
   variable.** All four are ordinary identifiers today, so this is a breaking change — and
@@ -267,7 +267,7 @@ program:
   bindings a walk over a value's shape cannot invent — so `Eq` and `Comparable` are derivable
   because `std/core` says how, and a program's own class is on identical terms. `derived` stays a
   **soft keyword** in both positions, separated from a member called `derived` by one token of
-  lookahead, so it does not join the reserved words above; `CLASS-2` parses both bodies.
+  lookahead, so it does not join the reserved words above; `LANG-38` parses both bodies.
 - **A `module javascript` facade signature may not carry a constraint**, which is what preserves
   the plain-parameter-list guarantee
   [`docs/spec/js-interop.md`](docs/spec/js-interop.md) makes.

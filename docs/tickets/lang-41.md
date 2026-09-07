@@ -1,4 +1,4 @@
-# CLASS-5 · Retire `Type::Number`: an integer literal is an `Int`
+# LANG-41 · Retire `Type::Number`: an integer literal is an `Int`
 
 **Sizing:** small-to-medium. Small in the unifier — a variant and two special-case arms go
 away and nothing replaces them — but it changes what type checks, so every expectation written
@@ -22,7 +22,7 @@ work. There is no `Number` obligation to collect, no defaulting pass, and no nee
 instance environment to make an integer literal check — an integer literal simply has the type
 `Int`.
 
-**Depends on:** nothing in the `CLASS-` program, now. The original entry said `CLASS-4`, on the
+**Depends on:** nothing in the type-class ticket program, now. The original entry said `LANG-40`, on the
 grounds that a literal's `Number` obligation needed a solver to discharge it. Under the settled
 rule there is no obligation, so this can land at any point. Confirm that before sequencing it
 early: `std/core/src/Basics.zel` annotates its arithmetic `a -> a -> a`, which unifies with

@@ -56,7 +56,7 @@ specialisation and never passed** — stated by
 [`docs/spec/type-classes.md`](../spec/type-classes.md) and argued in
 [`DEC-2` decision 7](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed).
 It costs nothing while no class exists, but a backend that starts by passing
-dictionaries is one that has to be unpicked when [`CLASS-4`](class-4.md) lands.
+dictionaries is one that has to be unpicked when [`LANG-40`](lang-40.md) lands.
 
 **Not in this ticket:** teaching the spec harness to check what a block *computes*.
 [`TEST-2`](test-2.md) is the equivalent for type errors and stops at the typer; an

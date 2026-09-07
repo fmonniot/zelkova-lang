@@ -259,7 +259,7 @@ derived = 4
 
 **Not implemented:** `derived` is an ordinary identifier in every position today, because the
 class and instance declarations whose bodies it sits in do not parse at all
-([`CLASS-2`](../tickets/class-2.md)). That block is green now and stays green: what the word
+([`LANG-38`](../tickets/lang-38.md)). That block is green now and stays green: what the word
 becomes is a keyword in two positions it cannot currently occupy, not a name a program loses.
 
 ```zel expect=parse-error:UnexpectedToken

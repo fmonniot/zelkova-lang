@@ -71,14 +71,14 @@ double x =
   mul x 2
 ```
 
-**Not implemented:** constraints do not parse ([`CLASS-1`](../tickets/class-1.md)). Once they
+**Not implemented:** constraints do not parse ([`LANG-37`](../tickets/lang-37.md)). Once they
 do, that declaration is an error: `2` is an `Int`, so `mul x 2` forces `a` to be `Int` and the
 annotation promises more than the body supports. `double x = add x x` is the way to write it,
 and a class that wants numeric constants declares them as members.
 
 **Known gap:** the type checker gives an integer literal an internal type that unifies with
 `Int` *and* `Float`, so a declaration annotated `Float` with a body of `1` is accepted today.
-[`CLASS-5`](../tickets/class-5.md) is the ticket. No block here holds it to account: the spec
+[`LANG-41`](../tickets/lang-41.md) is the ticket. No block here holds it to account: the spec
 harness stops at canonicalization and never runs the type checker
 ([`TEST-2`](../tickets/test-2.md)).
 

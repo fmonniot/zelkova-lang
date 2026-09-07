@@ -3,7 +3,7 @@
 **Sizing:** small. One section added to an existing chapter, plus the paragraph in
 [`docs/spec/type-classes.md`](../spec/type-classes.md)'s *Open questions* that this closes. No
 compiler change — the mechanism it extends does not exist either
-([`CLASS-2`](class-2.md) onward).
+([`LANG-38`](lang-38.md) onward).
 
 **Location:** [`docs/spec/type-classes.md`](../spec/type-classes.md), the three sections
 *[A class says how it is derived](../spec/type-classes.md#a-class-says-how-it-is-derived)*,
@@ -58,7 +58,7 @@ and some of them will discover it by designing around it.
 3. Say in the chapter why `toString` is not on the list, in roughly the three points above, and
    name what a `toString` would need instead — a mechanism that reads constructor names, or a
    compiler primitive of the kind Elm's `Debug.toString` is.
-4. Update [`CLASS-2`](class-2.md) if the parse of a class body grows a second derivation form.
+4. Update [`LANG-38`](lang-38.md) if the parse of a class body grows a second derivation form.
 
 **What this is not.** Not a generic representation of a type. The chapter's
 *[A class is always over a complete type](../spec/type-classes.md#a-class-is-always-over-a-complete-type)*

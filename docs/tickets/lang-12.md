@@ -59,7 +59,7 @@ Two things must keep checking, and are the real test of the change:
 the three spellings, so they no longer appear in the tree at all. There is nothing here for this
 ticket to settle by accident: they get whatever rule an ordinary variable gets.
 
-**This ticket is a hard prerequisite of [`CLASS-4`](class-4.md)**, and that is the reason it
+**This ticket is a hard prerequisite of [`LANG-40`](lang-40.md)**, and that is the reason it
 matters most. A constrained declaration whose annotation variables are unification variables
 proves a narrower obligation than its own signature publishes — `min : Comparable a => …` whose
 body forces `a := Int` proves `Comparable Int` and publishes `Comparable a`. Rigid variables are
