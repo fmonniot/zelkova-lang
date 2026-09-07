@@ -282,6 +282,51 @@ Inlining reaches only the three bindings. Anything they *call* is an ordinary ca
 under the ordinary rules — so a `combine` whose short-circuiting hides behind a helper does not
 get it back.
 
+### What a derivation is trusted to keep
+
+`combine` is a fold, and a fold has a shape the answers must not notice: **`combine` has to be
+associative, with `matched` as an identity on both sides.**
+
+```zel expect=fragment
+combine matched x        =  x
+combine x matched        =  x
+combine (combine x y) z  =  combine x (combine y z)
+```
+
+`Eq`'s definitions keep it and so do `Comparable`'s — conjunction under `True`, and
+first-answer-other-than-`EQ` under `EQ`, are both monoids — which is why neither section above
+had to say which end the fold starts from.
+
+**Nothing checks this.** It is a law about values of a type the compiler is not reading, written
+in a language with no way to state it, and the compiler has no more purchase on it than on any
+other property of a function body. A derivation that breaks it still compiles, and what it
+computes is then whatever the fold order happens to be:
+
+```zel expect=unimplemented
+module Example exposing (Similar)
+
+class Similar a where
+  similarity : a -> a -> Float
+
+  derived similarity
+    matched = 1.0
+    differed _ _ = 0.0
+    combine x y =
+      divide (add x y) 2.0
+```
+
+The author means *the average of the arguments' scores*. Averaging is not associative and `1.0`
+is not its identity, so on a three-argument constructor the walk yields
+`combine s1 (combine s2 (combine s3 matched))` — the first argument weighted a half, the last an
+eighth, and `matched` mixed into the answer as though it were a fourth argument. The number of
+arguments a constructor happens to have changes the score, and no diagnostic says so.
+
+That is the shape of every failure here: **an answer whose meaning depends on how many things
+were combined**. An average, a ratio, "how many of the fields matched" as a proportion. The
+counterpart that works is the same idea counted rather than averaged — `matched = 0`,
+`differed _ _ = 1`, `combine = add` — which is a monoid, and which the walk therefore gets right
+for a constructor of any size.
+
 ### What a derived instance requires
 
 The arguments a derivation compares are the ones the variants write down, and each of their
