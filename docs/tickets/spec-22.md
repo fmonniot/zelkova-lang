@@ -45,8 +45,8 @@ literal, and no cons.
   way every other operator is, or a reserved spelling. If it is ordinary, then the *pattern*
   half is the problem: [Patterns](../spec/patterns.md) is explicit that a pattern never resolves
   an operator, so `first :: rest` as a pattern cannot be an operator application and has to be a
-  pattern production — the same distinction [`SPEC-13`](spec-13.md) is settling for negative
-  literals, and worth settling the same way.
+  pattern production — the same distinction [`DEC-5`](../decisions/dec-5.md) settled for
+  negative literals, and worth settling the same way.
 - **What `std/core` provides.** Whether the chapter specifies a list *type* only and leaves the
   functions over it to the library, which is the split every other chapter uses.
 - **What a list makes writable in a derivation.**

@@ -316,7 +316,9 @@ keywords.
 
 An integer literal is a run of ASCII digits, or `0x` followed by a run of ASCII hexadecimal
 digits. There are no digit separators, and no leading `-`: negation is an operator, described
-below.
+below. A pattern may still write what reads as a negative integer — `-1` matches only that
+value — but the sign there belongs to the [pattern grammar](patterns.md#literal-patterns), not
+to this token: the token this section specifies is unsigned everywhere, patterns included.
 
 ```zel expect=ok
 module Example exposing (count)
