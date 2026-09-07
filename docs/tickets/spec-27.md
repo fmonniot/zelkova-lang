@@ -8,9 +8,9 @@ have (a compile-time evaluator, or a test runner).
 **Location:** [`docs/spec/type-classes.md`](../spec/type-classes.md) —
 *[What a derivation is trusted to keep](../spec/type-classes.md#what-a-derivation-is-trusted-to-keep)*
 and the *Holding a derivation to its law* entry under *Open questions*. If a check is adopted it
-lands in the type-class program: [`CLASS-2`](class-2.md) is where a class body is parsed and its
-derivation's shape could be constrained, [`CLASS-3`](class-3.md) where a class and its instances
-are resolved.
+lands in the type-class ticket program: [`LANG-38`](lang-38.md) is where a class body is parsed
+and its derivation's shape could be constrained, [`LANG-39`](lang-39.md) where a class and its
+instances are resolved.
 
 **Problem:** a class that carries a derivation supplies `matched`, `differed` and `combine`, and
 the walk folds a constructor's arguments with them. That fold is only meaningful if **`combine` is
@@ -53,7 +53,7 @@ is one of the few places where the compiler could in principle look at the thing
    `a -> a -> R` with the class variable absent from `R`. Where `R` is a union of nullary
    constructors, its values can be enumerated: `Bool` has two and `Order` has three, so the three
    equations are 4, 4 and 8 closed evaluations respectively. That covers exactly the two classes
-   `std/core` derives ([`CLASS-6`](class-6.md)) and reaches nothing over `Int`, `Float` or a type
+   `std/core` derives ([`LANG-42`](lang-42.md)) and reaches nothing over `Int`, `Float` or a type
    with arguments. It needs an evaluator for the fragment of the language a derivation's three
    bindings may use, which is the first piece of `GEN-1`'s job pulled forward — the question is
    whether a check that covers the finite cases and stays silent on the rest is worth that, or
@@ -74,7 +74,7 @@ is one of the few places where the compiler could in principle look at the thing
    *[What a derivation is trusted to keep](../spec/type-classes.md#what-a-derivation-is-trusted-to-keep)*
    as a rule or as a stated non-check, with the reason, and delete the *Holding a derivation to
    its law* entry from that chapter's *Open questions*.
-3. If a check is adopted, file the `CLASS-` ticket that implements it, naming the phase it runs in
+3. If a check is adopted, file the `LANG-` ticket that implements it, naming the phase it runs in
    and the diagnostic it produces, and add a tagged block to the chapter for a derivation that
    fails it.
 

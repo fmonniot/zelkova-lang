@@ -26,23 +26,15 @@ any of these is a question for the language owner, not a call a session makes on
 | `TEST-` | Test infrastructure |
 | `SPEC-` | Specifying and documenting the language itself, under `docs/spec/` |
 | `LANG-` | Bringing the compiler into line with a rule `docs/spec/` has since settled |
-| `CLASS-` | The type-class program below — building a mechanism the language has decided on but has never had |
 | `SITE-` | The public GitHub Pages site built from this repo — rustdoc, the rendered spec, the landing page |
 | `GEN-` | Code generation — turning a checked module into runnable JavaScript, a phase that does not exist yet |
 
-Three distinctions worth keeping straight when filing a new ticket:
+Two distinctions worth keeping straight when filing a new ticket:
 
 - **`LANG-` vs `BUG-`**: a `BUG-` is code that fails at what it was trying to do. A `LANG-` is
   code that succeeds at something the language has since decided against — it was never wrong
   until a chapter was written, and the chapter is the only reason it is a ticket. Every `LANG-`
   names the chapter that decided it and the tagged block there that goes red when it lands.
-- **`CLASS-` vs `LANG-`**: a `CLASS-` is a construct the language does not have at all and is
-  going to grow, not code that regressed against a settled rule. It gets its own prefix because
-  the six of them are one ordered body of work (see below), and a reader picking one up needs
-  the order more than the theme.
-- **`SPEC-` tickets are filed before the chapter is written, not after.** The `write-spec-chapter`
-  skill requires a chapter's `SPEC-n` to already exist before it will touch that chapter, so new
-  `planned` chapters in `docs/spec/README.md` get their ticket filed up front.
 
 ## Closing a ticket
 
@@ -77,10 +69,15 @@ work) are done. The one live edge left is `ERR-10` (unused-import warnings), whi
 
 ## Active work: type classes
 
-`CLASS-1` through `CLASS-6` are one body of work, filed together after the language owner
+`LANG-37` through `LANG-42` are one body of work, filed together after the language owner
 settled the mechanism. The goal is that **a signature can say what it needs of its type** —
 `min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what `min`'s type has
 always actually been.
+
+These six get their own section despite sharing the `LANG-` prefix with everything else,
+because most `LANG-` tickets each close a complete, independently shippable gap on landing,
+while none of `LANG-37` through `LANG-41` does anything on its own — they're fragments of one
+mechanism that only works once the chain lands. `LANG-42` is the exception; see the graph.
 
 [`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
 read before picking any of these up: none of them re-argues a decision, and several would look
@@ -91,21 +88,21 @@ They have a dependency order, and three tickets that already existed sit inside 
 beside it:
 
 ```
-CLASS-1  `=>` becomes a token; a constrained annotation parses
+LANG-37  `=>` becomes a token; a constrained annotation parses
   │      (the only one that can start today)
   │
-CLASS-2  `class` / `instance` declarations, and a `where` block of members
+LANG-38  `class` / `instance` declarations, and a `where` block of members
   │      ← LANG-9 sequences before this: an instance head wants `(List a)`
   │      ← an instance body is a member list or the single word `derived`;
   │        a class body may carry `derived <member>` — both specified in
   │        the chapter
   │
-CLASS-3  resolution, the instance environment, and the orphan rule
+LANG-39  resolution, the instance environment, and the orphan rule
   │      ← BUG-17 and BUG-16 are HARD prerequisites. Both would sabotage
   │        instance-head resolution silently: BUG-17 makes two instance
   │        heads indistinguishable, BUG-16 invents a type for a misspelt one.
   │
-CLASS-4  the solver: obligations are collected, deferred and discharged
+LANG-40  the solver: obligations are collected, deferred and discharged
   │      ← LANG-12 is a HARD prerequisite. Without rigid annotation
   │        variables a constrained declaration proves `Comparable Int`
   │        and publishes `Comparable a` — strictly weaker than its own
@@ -113,13 +110,13 @@ CLASS-4  the solver: obligations are collected, deferred and discharged
   │      ← TEST-2 gates this one specifically, not the chapter: nothing
   │        about a class parses yet, so today's spec examples are all
   │        `expect=unimplemented`. They want `expect=type-error` once
-  │        CLASS-4 lands, and the spec harness stops at canonicalization
+  │        LANG-40 lands, and the spec harness stops at canonicalization
   │        until TEST-2 extends it.
   │
-  └── CLASS-6  `std/core` declares Eq, Comparable, Number, Appendable
-                 ← needs CLASS-5, which is independent of this order
+  └── LANG-42  `std/core` declares Eq, Comparable, Number, Appendable
+                 ← needs LANG-41, which is independent of this order
 
-CLASS-5  `Type::Number` retires; an integer literal is an `Int`   ← independent
+LANG-41  `Type::Number` retires; an integer literal is an `Int`   ← independent
            ← supersedes ERR-13
 ```
 
@@ -266,12 +263,12 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-34](lang-34.md) | task | — | open | There is no lambda production, so `\x -> x` is read as an operator |
 | [LANG-35](lang-35.md) | task | — | open | A parameterless binding may depend on itself, and nothing notices |
 | [LANG-36](lang-36.md) | task | — | open | `std/core`'s `Basics` documents three semantics the language does not have |
-| [CLASS-1](class-1.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
-| [CLASS-2](class-2.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
-| [CLASS-3](class-3.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
-| [CLASS-4](class-4.md) | task | — | open | Discharge class constraints in the type checker |
-| [CLASS-5](class-5.md) | task | — | open | Retire `Type::Number` in favour of a `Number` class, defaulting to `Int` |
-| [CLASS-6](class-6.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
+| [LANG-37](lang-37.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
+| [LANG-38](lang-38.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
+| [LANG-39](lang-39.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
+| [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |
+| [LANG-41](lang-41.md) | task | — | open | Retire `Type::Number` in favour of a `Number` class, defaulting to `Int` |
+| [LANG-42](lang-42.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |

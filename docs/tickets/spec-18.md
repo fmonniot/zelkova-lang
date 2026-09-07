@@ -86,7 +86,7 @@ behaviour and each one proven to fail when its tag is flipped.
 
 **Sequencing:** [`SPEC-15`](spec-15.md) is nearby — whatever an effect value turns out to be has
 to be something this boundary permits, and settling the subset first is cheaper than discovering
-it excludes the answer. [`CLASS-2`](class-2.md) is unaffected: a facade may not carry a constraint
+it excludes the answer. [`LANG-38`](lang-38.md) is unaffected: a facade may not carry a constraint
 at all, which the chapter already settles.
 
 **Found:** while auditing `docs/spec/` for open questions with no ticket attached, on 2026-09-04.

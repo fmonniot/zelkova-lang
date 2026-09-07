@@ -24,7 +24,7 @@ class Comparable a where
 
 **Not implemented:** the compiler has none of this, and none of it parses. Every block here
 showing a class, an instance or a constraint is tagged `expect=unimplemented` for that reason,
-and each goes red the day the construct it shows starts working. The `CLASS-` program in
+and each goes red the day the construct it shows starts working. The type-class ticket program in
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
 land.
 
@@ -117,7 +117,7 @@ instance Comparable Colour where
 **Known gap:** an `instance` declaration is not rejected today. It is *accepted as something
 else*. `instance` is an ordinary lowercase identifier, so the parser reads the line as a function
 declaration named `instance` whose parameters are `Comparable`, `Colour`, `where`, `compare`, `a`
-and `b` — and when those names happen to resolve. [`CLASS-2`](../tickets/class-2.md) is the ticket,
+and `b` — and when those names happen to resolve. [`LANG-38`](../tickets/lang-38.md) is the ticket,
 and this block goes red when it lands.
 
 ### An instance may be derived
@@ -635,7 +635,7 @@ after it: `derived` alone is [the request](#an-instance-may-be-derived), `derive
 reserving a word a program has every right to want would buy nothing.
 
 **Known gap:** none of those four reservations exists today, and each of these blocks goes red
-when the ticket naming it lands. `class` and `instance` as value names ([`CLASS-2`](../tickets/class-2.md)):
+when the ticket naming it lands. `class` and `instance` as value names ([`LANG-38`](../tickets/lang-38.md)):
 
 ```zel expect=ok
 module Example exposing (class, instance)
@@ -653,7 +653,7 @@ instance =
 ```
 
 `where` as a type variable, the one `where` position the language excludes
-([`CLASS-2`](../tickets/class-2.md)):
+([`LANG-38`](../tickets/lang-38.md)):
 
 ```zel expect=ok
 module Example exposing (Box)
@@ -662,7 +662,7 @@ type Box where
   = Box where
 ```
 
-And `=>` as a user-defined infix operator ([`CLASS-1`](../tickets/class-1.md)):
+And `=>` as a user-defined infix operator ([`LANG-37`](../tickets/lang-37.md)):
 
 ```zel expect=ok
 module Example exposing (both)
@@ -717,7 +717,7 @@ name for a class, and [Numeric literals](#numeric-literals)'s claim is unweakene
 `Appendable` ranges over strings and lists. The compiler implements neither type — see the note
 on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).
 
-**Not implemented:** [`CLASS-6`](../tickets/class-6.md) is the pass that declares them. A
+**Not implemented:** [`LANG-42`](../tickets/lang-42.md) is the pass that declares them. A
 constrained function cannot be a single-line re-export of a JavaScript facade, which is what most
 of these are in `std/core` — its body has to choose an instance.
 

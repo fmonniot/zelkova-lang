@@ -1,4 +1,4 @@
-# CLASS-3 · Resolve classes and instances, and enforce the orphan rule
+# LANG-39 · Resolve classes and instances, and enforce the orphan rule
 
 **Sizing:** large. Three things that look separate and are not: what a class puts in the value
 namespace, how an instance reaches another module, and which module is allowed to declare one.
@@ -9,7 +9,7 @@ namespace, how an instance reaches another module, and which module is allowed t
 `src/compiler/dependencies.rs` — `ModuleWalker::check_in_order`, which is the driver that
 builds each interface and hands it to the next module.
 
-**Depends on:** [CLASS-2](class-2.md) for the declarations to exist at all;
+**Depends on:** [LANG-38](lang-38.md) for the declarations to exist at all;
 [BUG-16](bug-16.md) and [BUG-17](bug-17.md), both of which would quietly sabotage instance-head
 resolution and are worth reading together with this ticket:
 
@@ -28,7 +28,7 @@ Neither is optional. Land both first.
 **Decided (`SPEC-12`, by the language owner):** an `instance C T` declaration is legal in the
 module declaring `C`, and in the module declaring `T`'s head, and nowhere else.
 
-**Problem:** after `CLASS-2` a class and an instance reach `canonical::Module` and nothing looks
+**Problem:** after `LANG-38` a class and an instance reach `canonical::Module` and nothing looks
 at them. Four things have to happen before a constraint can ever be discharged:
 
 **A class puts its members in the value namespace.** `compare`, declared inside
@@ -84,7 +84,7 @@ rule to a reader, so it is worth writing before the check that produces it.
    every caret it swallowed.
 
 Nothing in the typer changes in this ticket. A constrained annotation still validates and is
-discarded; [CLASS-4](class-4.md) is what starts consuming it.
+discarded; [LANG-40](lang-40.md) is what starts consuming it.
 
 **Acceptance:** tests in `tests/compiler/canonical.rs`, using the `package=`-style multi-module
 helpers in `tests/support/mod.rs`:

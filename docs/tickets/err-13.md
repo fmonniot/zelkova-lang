@@ -53,7 +53,7 @@ assertion, which is a different audience.
 Note this ticket does not decide what the numeric-literal rule *is*.
 [`docs/spec/expressions.md`](../spec/expressions.md) does, and it settles that a literal
 written without a point is an `Int` and one written with a point is a `Float` — so the type
-this ticket is about should not exist at all, which is [CLASS-5](class-5.md)'s subject. This is
+this ticket is about should not exist at all, which is [LANG-41](lang-41.md)'s subject. This is
 only about how it is spelled in the meantime. Do not render it `Int` on the strength of that
 rule: `Type::Number` really does unify with both today, and a message naming only one of them
 would describe the compiler wrongly rather than describe the language rightly.
@@ -66,8 +66,8 @@ a spelling the grammar would accept as a type variable.
 ([TEST-2](test-2.md)), so no chapter exercises a type error at all; the paragraph describing
 this is a `**Known gap:**` in
 [`docs/spec/expressions.md`](../spec/expressions.md)'s *A literal's type is its spelling*
-section, and it has to be deleted by hand when [CLASS-5](class-5.md) lands.
-[`CLASS-5`](class-5.md) supersedes this ticket by deleting `Type::Number` outright. Whether
+section, and it has to be deleted by hand when [LANG-41](lang-41.md) lands.
+[`LANG-41`](lang-41.md) supersedes this ticket by deleting `Type::Number` outright. Whether
 this one is still worth doing first is now a judgement about latency rather than a settled
-yes: CLASS-5 no longer depends on the rest of the `CLASS-` program, so it may land soon
+yes: LANG-41 no longer depends on the rest of the type-class ticket program, so it may land soon
 enough that a better spelling for a type that is about to be deleted buys little.

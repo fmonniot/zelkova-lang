@@ -1,4 +1,4 @@
-# CLASS-1 · A type annotation may carry a constraint context, written `Class a =>`
+# LANG-37 · A type annotation may carry a constraint context, written `Class a =>`
 
 **Sizing:** medium. The grammar shape is settled and probed (see **Approach**); the work is in
 the parser AST, the canonical conversion, and one validation step that has to produce a real
@@ -100,7 +100,7 @@ change* applies in full.
    its own message, not a note bolted onto step 4's.
 
 The canonical `Type` does not gain a constraint case in this ticket. Nothing consumes a context
-yet, so canonicalization validates it, reports on it, and discards it; `CLASS-3` is what gives
+yet, so canonicalization validates it, reports on it, and discards it; `LANG-39` is what gives
 it somewhere to live. Say so in the code at the discard site, because a reader finding a
 validated-then-dropped value will otherwise assume it is a bug.
 

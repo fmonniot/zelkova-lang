@@ -1,4 +1,4 @@
-# CLASS-4 · Discharge class constraints in the type checker
+# LANG-40 · Discharge class constraints in the type checker
 
 **Sizing:** large. Hindley–Milner with a constraint set is a different solver from the one in
 the tree: `unify` currently answers every constraint immediately, and a class obligation is one
@@ -9,7 +9,7 @@ it may not be able to answer yet.
 `value_to_term_and_annotation`; `src/compiler/typer/constraint.rs` — `collect`;
 `src/compiler/typer/unifier.rs` — `unify`, `unify_one_constraint`.
 
-**Depends on:** [CLASS-3](class-3.md), for an instance environment to discharge against; and
+**Depends on:** [LANG-39](lang-39.md), for an instance environment to discharge against; and
 [LANG-12](lang-12.md), for rigid annotation variables. The second is the one that is easy to
 get wrong by sequencing, so it is worth spelling out.
 
@@ -39,7 +39,7 @@ obligation is discharged against a concrete type.
 `Origin`, `unify` solves each one on sight, and the only thing resembling a class today is
 `Type::Number` — a hard-coded case that unifies with `Int`, `Float` and itself and is never
 recorded, deferred, or reported as unsatisfiable. It is the degenerate ancestor of what this
-ticket builds, and [CLASS-5](class-5.md) is what retires it.
+ticket builds, and [LANG-41](lang-41.md) is what retires it.
 
 **Approach:**
 
@@ -83,7 +83,7 @@ package's 133 values are in `module javascript` facades that `type_check` return
 43 more are bare facade re-exports (`add = Js.Basics.add`) that `value_to_term_and_annotation`
 returns `None` for. `min`, `compare`, `add` and `append` are all in that second set. So the
 solver built here will be exercised by tests and by user code long before it is exercised by the
-standard library, and [CLASS-6](class-6.md) is where that changes. Do not read a green
+standard library, and [LANG-42](lang-42.md) is where that changes. Do not read a green
 `cargo run` as evidence this ticket works.
 
 **Acceptance:** tests in `tests/typer.rs`, each with its neutralised-and-seen-red counterpart

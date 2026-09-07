@@ -9,7 +9,7 @@ since](#what-has-changed-since) — decision 8 is superseded and decision 11 was
 Zelkova replaced the `number`/`comparable`/`appendable` spellings with type classes, and this
 is the session that decided what a class is. Eleven questions were settled together; each was
 normative for [the chapter](../spec/type-classes.md) that was then written and for the six
-[`CLASS-`](../tickets/README.md#active-work-type-classes) tickets that implement it.
+[type-class](../tickets/README.md#active-work-type-classes) tickets that implement it.
 
 They are numbered because they are cited by number, from four ticket files and from the ticket
 index. The numbering is the one given here, and it does not change: a decision that is later
@@ -50,7 +50,7 @@ instance Comparable Colour where
 `class` and `instance` **cannot** be soft keywords the way `javascript` is, and the reason is
 structural rather than stylistic: `instance C T where …` already parses today, as a function
 declaration named `instance`, so a soft spelling would misread it rather than reject it.
-[`CLASS-2`](../tickets/class-2.md) carries the detail. `where` is soft in every *value*
+[`LANG-38`](../tickets/lang-38.md) carries the detail. `where` is soft in every *value*
 position and hard in the *type-variable* position only — a split narrower than what was
 offered, because probing found the wider version ambiguous.
 
@@ -122,11 +122,11 @@ The second half survives — nothing defaults, and the compiler knows no class b
 
 `Eq`, `Comparable` (with `Eq` as its superclass), `Number`, `Appendable`. `Eq` is in the set
 because it is the one whose runtime genuinely crashes today: `_Utils_eqHelp` calls
-`__Debug_crash(5)` on a function value. [`CLASS-6`](../tickets/class-6.md) is the ticket.
+`__Debug_crash(5)` on a function value. [`LANG-42`](../tickets/lang-42.md) is the ticket.
 
 ## 10 — `std/core` keeps `SPEC-11`'s rewrite to `a`
 
-The 25 signatures stay spelled `a` until `CLASS-6` gives them real constraints. `a -> a -> a`
+The 25 signatures stay spelled `a` until `LANG-42` gives them real constraints. `a -> a -> a`
 is what those types *are*; a second pass over the same lines is the cost of not shipping a
 signature that describes a restriction the language cannot express.
 
@@ -135,7 +135,7 @@ signature that describes a restriction the language cannot express.
 [`TEST-2`](../tickets/test-2.md) adds `expect=type-error` and `expect=type-error:Variant` to
 the spec harness; it does **not** tighten `expect=ok` to mean "and type checks". It was placed
 as a prerequisite of the chapter, on the reasoning that every claim a class mechanism makes is
-a type-level claim, and as a prerequisite of none of the `CLASS-` tickets.
+a type-level claim, and as a prerequisite of none of the type-class tickets.
 
 **Overtaken.** See [what has changed since](#what-has-changed-since).
 
@@ -149,13 +149,13 @@ decides before any constraint exists rather than by defaulting one. [Type
 classes](../spec/type-classes.md#numeric-literals) now says the opposite of decision 8's first
 clause and the same as its second: **nothing** in the language defaults, in every case and
 with no exception carved out for arithmetic. The visible consequence is that
-[`CLASS-5`](../tickets/class-5.md) left the `CLASS-` dependency order — with no obligation to
-discharge, it can land at any point.
+[`LANG-41`](../tickets/lang-41.md) left the type-class ticket dependency order — with no
+obligation to discharge, it can land at any point.
 
 **Decision 11 was overtaken.** `TEST-2` turned out not to gate the chapter either: nothing
 about a class parses, so all eleven of the chapter's class-and-constraint blocks are
 `expect=unimplemented`, which the harness checks perfectly well. `TEST-2` becomes load-bearing
-when [`CLASS-4`](../tickets/class-4.md) lands and those blocks start wanting
+when [`LANG-40`](../tickets/lang-40.md) lands and those blocks start wanting
 `expect=type-error`. Its narrower half — that it does not tighten `expect=ok` — is unchanged.
 
 **Decision 2 was extended, not overturned.** `SPEC-14` settled two further body forms, both

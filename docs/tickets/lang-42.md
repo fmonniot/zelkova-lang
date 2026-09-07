@@ -1,4 +1,4 @@
-# CLASS-6 · `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable`
+# LANG-42 · `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable`
 
 **Sizing:** large. Not because any one signature is hard, but because it is the first time the
 package's over-general types meet a checker that can reject them, and because it narrows the
@@ -9,7 +9,7 @@ signatures, and the `infix` declarations aliasing them; `std/core/src/Js/Utils.z
 `std/core/src/Js/Utils.mjs` — `equal`, `notEqual`, `lt`, `le`, `gt`, `ge`, `compare`, `append`;
 `std/core/src/Js/Basics.zel` and `.mjs` — the arithmetic facades.
 
-**Depends on:** [CLASS-4](class-4.md) and [CLASS-5](class-5.md).
+**Depends on:** [LANG-40](lang-40.md) and [LANG-41](lang-41.md).
 
 **Closes:** [BUG-20](bug-20.md), and for the right reason. That ticket says the fix is in two
 halves — make the runtime say so, and make the type say so — and that only the first was

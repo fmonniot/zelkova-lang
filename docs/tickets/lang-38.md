@@ -1,4 +1,4 @@
-# CLASS-2 · `class` and `instance` declarations parse, with a `where` block of members
+# LANG-38 · `class` and `instance` declarations parse, with a `where` block of members
 
 **Sizing:** large, and the largest of the program. It is the one ticket that touches the
 tokenizer, `layout.rs`, the grammar and both ASTs at once, and the layout half is the part
@@ -11,7 +11,7 @@ explicit-pop match; `src/compiler/parser/grammar.lalrpop` — `VarIdent`, `Atomi
 `Decl`; `src/compiler/parser/mod.rs` — `Declaration`; `src/compiler/canonical/mod.rs` —
 `Module`, `from_parser_module`.
 
-**Depends on:** [CLASS-1](class-1.md), for the `=>` token — a superclass context is written in
+**Depends on:** [LANG-37](lang-37.md), for the `=>` token — a superclass context is written in
 the class head (`class Eq a => Comparable a where`) and reuses the same `ConstrainedType`
 production. [LANG-9](lang-9.md) is not a hard dependency but sequences well before this one: an
 instance head like `instance Comparable (List a)` needs a parenthesised type argument, which
@@ -117,7 +117,7 @@ same treatment.
    of.
 
 3. **Grammar.** The head is parsed as **one `ConstrainedType`** and validated afterwards,
-   for the same LALR(1) reason `CLASS-1` hit. Splitting it — `"class" <ctx:(<Type> "=>")?>
+   for the same LALR(1) reason `LANG-37` hit. Splitting it — `"class" <ctx:(<Type> "=>")?>
    <name:TypeIdent> <vars:VarIdent*>` — was tried and **rejected by LALRPOP**: with the context
    optional, the parser cannot tell at `up_ident` whether it is reading the context or the
    class name. This shape builds clean:
@@ -131,7 +131,7 @@ same treatment.
    ```
 
    So `class` takes signatures and `instance` takes bindings, and both validate `head` into
-   (superclass context, class name, arguments) afterwards — reusing `CLASS-1`'s validation, and
+   (superclass context, class name, arguments) afterwards — reusing `LANG-37`'s validation, and
    raising a real error for a head that is not shaped like one.
 
    **Decided (`SPEC-14`, by the language owner):** each body has a second shape, and both are
@@ -144,12 +144,12 @@ same treatment.
    of lookahead — a member name, an `=`, or a `:` — separates the three readings. Only the
    parsing is here; checking that a derivable member's signature is `a -> a -> R`, and that a
    `derived` instance names a class that carries a derivation, belongs with the rest of
-   resolution in [CLASS-3](class-3.md).
+   resolution in [LANG-39](lang-39.md).
 
 4. **Both ASTs, same commit.** `parser::Declaration` gains `Class` and `Instance` variants,
    `canonical::Module` gains somewhere to hold them, and `from_parser_module` converts. What
    canonicalization *does* with them — resolution, the orphan rule, the instance environment —
-   is [CLASS-3](class-3.md); this ticket only has to get them across the boundary without
+   is [LANG-39](lang-39.md); this ticket only has to get them across the boundary without
    dropping anything. `CLAUDE.md`'s invariant is explicit that silently dropping a construct
    during canonicalization is the failure mode the same-commit rule exists to prevent, and
    [BUG-18](bug-18.md) is what it looks like when it happens.
