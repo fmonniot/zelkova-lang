@@ -38,8 +38,9 @@ Do not leave a `TODO` comment in code for anything worth a ticket. A comment in 
 opens is not a record. (The codebase still has plenty of pre-existing ones; don't add more.)
 
 The `.claude/skills/` directory holds the skills that drive this loop: `create-ticket`,
-`work-ticket`, `review-pr`, `fix-pr-comments`. A fifth, `write-spec-chapter`, drives the
-separate loop below — specifying the language rather than changing the compiler.
+`work-ticket`, `review-pr`, `fix-pr-comments`. Two more drive the separate loop below —
+specifying the language rather than changing the compiler: `write-spec-chapter` writes one, and
+`prose-pass` tightens one that is already written without changing a rule it states.
 
 The language itself — as opposed to the compiler that implements it — is specified under
 [`docs/spec/`](docs/spec/README.md). It is normative and every code example in it is checked
