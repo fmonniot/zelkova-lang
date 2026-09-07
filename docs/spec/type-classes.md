@@ -571,9 +571,10 @@ module javascript Js.Cmp exposing (compare)
 compare : Comparable a => a -> a -> Int
 ```
 
-The reason is a rule in [JS interop](js-interop.md#a-facade-is-monomorphic): a facade signature
-names the types its JavaScript really handles, so a facade is monomorphic. `Comparable a => a`
-is still a signature over `a`.
+The reason is a rule in
+[JS interop](js-interop.md#what-a-facade-signature-may-not-name): a facade signature names the
+types its JavaScript really handles, so a facade is monomorphic. `Comparable a => a` is still a
+signature over `a`.
 
 A constrained function is **specialised** — the compiler generates one ordinary function per
 type the constraint is discharged at — and a facade has no body to generate one from. Its `.mjs`

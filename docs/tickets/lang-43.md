@@ -21,16 +21,14 @@ infix declarations, no type declarations, and every value carrying an annotation
 bindings — and then resolves the annotation with `Type::from_parser_type`, which accepts any type
 that names something in scope. Every type a normal module may write, a facade may write.
 
-Two blocks in that chapter are tagged `expect=ok` for exactly this reason and each carries a
-**Known gap:** paragraph naming this ticket:
+Two blocks in that chapter are tagged `expect=ok` for exactly this reason, both in
+[What a facade signature may not name](../spec/js-interop.md#what-a-facade-signature-may-not-name)
+and covered by the one **Known gap:** paragraph that follows them and names this ticket:
 
-- [A facade is monomorphic](../spec/js-interop.md#a-facade-is-monomorphic) — `equal : a -> a ->
-  Bool`, a facade over a bare type variable.
-- [A function does not cross](../spec/js-interop.md#a-function-does-not-cross) — `count : (Int ->
-  Bool) -> Int -> Int`, a facade taking a function.
+- `equal : a -> a -> Bool`, a facade over a bare type variable.
+- `count : (Int -> Bool) -> Int -> Int`, a facade taking a function.
 
-Both go **red** when this lands, and the two **Known gap:** paragraphs are deleted in the same
-diff.
+Both go **red** when this lands, and that **Known gap:** paragraph is deleted in the same diff.
 
 **Approach:**
 
@@ -79,7 +77,8 @@ you have seen it fail*).
   facade naming a type that does not exist passes this check as an admitted `Type::Type`. That is
   `BUG-16`'s to fix, not this ticket's, and neither blocks the other.
 - **[`LANG-37`](lang-37.md)** adds constraint syntax. A facade may not carry a constraint either
-  ([Constraints](../spec/js-interop.md#constraints)); that is a separate rejection on a separate
+  ([What a facade signature may not name](../spec/js-interop.md#what-a-facade-signature-may-not-name));
+  that is a separate rejection on a separate
   node and belongs with the ticket that makes the syntax parse.
 
 **Found:** filed by `SPEC-18`, which wrote the chapter section that decided the rule. Not
@@ -88,5 +87,5 @@ implemented there, because a spec change and a semantics change do not share a d
 
 **Acceptance:** a `module javascript` facade whose signature names a type variable or a function
 type is rejected with a diagnostic whose caret sits under that annotation. The two `expect=ok`
-blocks named above are retagged and their **Known gap:** paragraphs deleted, and `cargo test
+blocks named above are retagged and their **Known gap:** paragraph deleted, and `cargo test
 --test spec` is green. `cargo run` prints `parsed 8 modules` and lists all eight.

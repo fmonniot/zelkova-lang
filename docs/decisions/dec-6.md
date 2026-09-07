@@ -69,8 +69,9 @@ Function types are rejected by the predicate rule too: `typeof x === 'function'`
 value is *some* function, not that it is a function of the declared type. They are also rejected
 independently, by the plain-parameter-list promise — a Zelkova function passed into JavaScript
 would have to be called from a `.mjs`, and calling it means knowing the currying convention that
-promise exists to hide. Both reasons are given in the chapter, because the second survives any
-future weakening of the first.
+promise exists to hide. The chapter gives the predicate reason only; the second is kept here
+because it survives any future weakening of the first, and would have to be written back into
+the chapter if that ever happened.
 
 ## 3 — Unions cross, and their encoding is published interop interface
 
@@ -87,6 +88,15 @@ is an object carrying its constructor's name in a `$` field and that constructor
 becomes public interop surface, so renaming one is a breaking change for any companion that
 mentions it — bounded by the fact that only an exposed type can be named in a facade signature,
 so those names were already public API.
+
+The alternative encoding, revisited on 2026-09-07 and rejected again, is a uniform
+`{$: "Rgb", args: [255, 0, 0]}` — one shape for every constructor, a predicate that loops over
+one array parallel to the declared argument types, and a companion that destructures by
+position. It loses on allocation: a union value is the pervasive runtime shape — every cons
+cell, every `Maybe`, every `Result` — and the array is a second object per value. The uniformity
+is also not quite uniform, since a nullary constructor either carries an empty array it never
+reads or becomes the exception the shape was meant to remove. Lettered fields cost a rule for a
+constructor of more than 26 arguments, which is a case no program has.
 
 One argument against this was made from a promise the chapter does not make. The chapter is
 sometimes read as promising that a hand-written `.mjs` never has to know how anything is
