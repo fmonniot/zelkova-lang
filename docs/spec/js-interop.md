@@ -25,9 +25,7 @@ Each facade module is paired with a companion `.mjs` file of the same base name
 is an ES module, and its exports take a **plain parameter list**: a Zelkova function
 of two arguments is backed by a JavaScript function of two arguments, called directly.
 There is no curried-wrapper convention to observe on the JavaScript side — currying is
-the compiler's business, and a hand-written interop file does not have to know how
-it is done. `std/core/src/Js/Basics`, `Js/Utils` and `Js/Bitwise` are the worked
-examples.
+the compiler's business.
 
 Example — a reduced version of `std/core/src/Js/Basics.zel`, keeping only the
 declarations its `exposing` list names so it stands alone as a compiling module (the
@@ -43,14 +41,14 @@ fdiv : Float -> Float -> Float
 idiv : Int -> Int -> Int
 ```
 
-Two signatures rather than one, over two types rather than one, because a facade names the
-types its JavaScript really handles and nothing wider —
-[which types those may be](#which-types-may-cross-the-boundary) is the next section, and it is
+Two signatures over two types rather than one, because a facade names the
+types its JavaScript really handles 
+([which types those may be](#which-types-may-cross-the-boundary) is the next section) and it is
 what makes the `.mjs` behind `fdiv` free to divide and the one behind `idiv` free to truncate.
 
 ## Which types may cross the boundary
 
-A type may be named in a facade signature exactly when the compiler can emit a **predicate**
+A type may be named in a facade signature when the compiler can emit a **predicate**
 for it: a piece of JavaScript that decides, from a value alone, whether that value belongs to
 that type. Every value a companion `.mjs` hands back is run through the predicate of the type
 its signature declares, and a value that fails one is an error at the boundary rather than a
