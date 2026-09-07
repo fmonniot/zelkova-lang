@@ -46,9 +46,13 @@ smaller =
 ```
 
 Nothing in the compiler stands between that program and `_Utils_cmp`. Type checking accepts
-it because the declared type genuinely does accept it; code generation does not exist yet;
-and `docs/spec/js-interop.md` already records that *which types may cross the boundary* is
-undesigned ([SPEC-18](spec-18.md)), so there is no facade-level rule to appeal to either.
+it because the declared type genuinely does accept it, and code generation does not exist yet.
+There is now a facade-level rule to appeal to —
+[Which types may cross the boundary](../spec/js-interop.md#which-types-may-cross-the-boundary)
+rejects a bare type variable in a facade signature, so all six of these are inadmissible — but
+nothing enforces it: [`LANG-43`](lang-43.md) is that check, and rewriting these six into
+monomorphic facades is part of its scope. It does not close this ticket, whose acceptance is
+about the `.mjs` failing loudly rather than about the signatures.
 
 **Approach:** this cannot be fixed by narrowing the annotation, because the language has no
 way to write the restriction — that is the whole subject of

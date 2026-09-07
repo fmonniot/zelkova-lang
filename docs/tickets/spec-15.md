@@ -52,8 +52,9 @@ cover:
   other than a function value.
 - Whether the boundary is [JS interop](../spec/js-interop.md)'s — an effect is ultimately a
   JavaScript call, and the facade mechanism already exists — or a second boundary beside it.
-  [SPEC-18](spec-18.md) is nearby: whatever crosses into an effect has to be something the
-  boundary permits.
+  [Which types may cross the boundary](../spec/js-interop.md#which-types-may-cross-the-boundary)
+  constrains the answer: whatever crosses into an effect has to be something a runtime predicate
+  can decide, which rules out a bare type variable and a function type.
 
 Only once that is settled can *What type `main` must have* say anything, and only then can
 *What a test is* choose between an exposed value of a particular type, a naming convention, and
