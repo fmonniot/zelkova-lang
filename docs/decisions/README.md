@@ -105,3 +105,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-3](dec-3.md) | What the spec harness checks, and what it declines to | live |
 | [DEC-4](dec-4.md) | Design rationale gets its own directory | live |
 | [DEC-5](dec-5.md) | A pattern's sign is the pattern grammar's, not the tokenizer's | live |
+| [DEC-7](dec-7.md) | Lists: six decisions | live |

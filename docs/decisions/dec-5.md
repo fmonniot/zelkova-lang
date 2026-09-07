@@ -42,6 +42,7 @@ meaning at the token level, and *Integers*' "no leading `-`" stays true of the t
 written.
 
 The same distinction recurs for `::` as a list-pattern separator rather than an operator
-application — [`SPEC-22`](../tickets/spec-22.md) names it as the same question, worth settling
-the same way, for the same reason: pattern syntax has nowhere to look an operator up, so a
-pattern-grammar production is the reading that costs nothing outside patterns.
+application, and is settled the same way for the same reason
+([`DEC-7`](dec-7.md#3---is-an-ordinary-operator-in-an-expression-and-a-pattern-production-in-a-pattern)):
+pattern syntax has nowhere to look an operator up, so a pattern-grammar production is the reading
+that costs nothing outside patterns.

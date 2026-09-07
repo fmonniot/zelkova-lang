@@ -645,9 +645,15 @@ element to the pattern on the left and the rest of the list — possibly empty �
 on the right. Both sides are whole patterns, so `a :: b :: rest` matches a list of two or more,
 and `Circle n :: rest` matches on the first element's shape.
 
-`::` here is a form of the grammar and not a name. Pattern syntax is closed, so a pattern
-never looks up an operator: `::` separates a head from a tail the way `,` separates tuple
-elements, and it means that regardless of what is in scope.
+`::` here is a form of the grammar and not a name — in an *expression* it is an ordinary
+operator, and [Lists](lists.md#the-cons-operator) is where the two halves are set beside each
+other. Pattern syntax is closed, so a pattern never looks up an operator: `::` separates a head
+from a tail the way `,` separates tuple elements, and it means that regardless of what is in
+scope.
+
+Both forms are the constructor patterns of the two-variant type
+[Lists](lists.md#what-a-list-is) declares — `[]` is the empty one, `first :: rest` the other —
+which is where their coverage below comes from.
 
 `[]` and a cons pattern cover the list type between them, because every list is either empty
 or has a first element. A `case` written out of the two is complete and needs no wildcard:
@@ -688,7 +694,8 @@ firstOf xs =
 ```
 
 **Not implemented:** lists are not implemented in any position. Brackets are tokenized and
-`::` tokenizes as an ordinary operator, but no construct consumes either; see
+`::` tokenizes as an ordinary operator, but no pattern production consumes either
+([`LANG-45`](../tickets/lang-45.md)); see
 [Lexical structure](lexical-structure.md#punctuation).
 
 ## The unit pattern

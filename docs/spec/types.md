@@ -45,10 +45,12 @@ red : (Colour)
 red = Red
 ```
 
-Records and list types are part of the language and are specified with the constructs they
-belong to, neither of which exists yet — see the *Not implemented* note on brackets and braces
-in [Lexical structure](lexical-structure.md#punctuation). Neither chapter is written:
-[`SPEC-21`](../tickets/spec-21.md) and [`SPEC-22`](../tickets/spec-22.md).
+A list type needs no form of its own: it is written `List a`, an application like any other, and
+[Lists](lists.md#the-type) is where that and the rest of the construct are specified. Record
+types are part of the language and are specified with the construct they belong to, which does
+not exist yet — see the *Not implemented* note on braces in
+[Lexical structure](lexical-structure.md#punctuation). That chapter is not written:
+[`SPEC-21`](../tickets/spec-21.md).
 
 ### Type names
 

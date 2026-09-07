@@ -714,8 +714,8 @@ compiler knows by name, because it has to give `differed`'s parameters a type be
 has been read. That is a name for a *type*, which the compiler already has four of; it is not a
 name for a class, and [Numeric literals](#numeric-literals)'s claim is unweakened by it.
 
-`Appendable` ranges over strings and lists. The compiler implements neither type — see the note
-on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).
+`Appendable` ranges over strings and [lists](lists.md). The compiler implements neither type —
+see the note on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).
 
 **Not implemented:** [`LANG-42`](../tickets/lang-42.md) is the pass that declares them. A
 constrained function cannot be a single-line re-export of a JavaScript facade, which is what most
@@ -736,12 +736,11 @@ of these are in `std/core` — its body has to choose an instance.
   runs. Whether anything could — a restriction on the shape the three bindings may take, an
   obligation discharged by folding over a finite answer type, or a law the class states and a
   test discharges — is unsettled ([`SPEC-27`](../tickets/spec-27.md)).
-- **What records and lists add.** Both are unspecified constructs
-  ([`SPEC-21`](../tickets/spec-21.md), [`SPEC-22`](../tickets/spec-22.md)) and both reach this
-  mechanism when they land. A record's fields are named, so a derivation over one wants a fourth
-  binding — an answer for a labelled field — that a walk over positional arguments has no need
-  of. Lists make an n-ary `combine : List R -> R` writable, which would let a class see how many
-  answers it is folding and settle
+- **What records and lists add.** Both reach this mechanism, and neither is settled here. A
+  record's fields are named, so a derivation over one wants a fourth binding — an answer for a
+  labelled field — that a walk over positional arguments has no need of; records are an
+  unspecified construct ([`SPEC-21`](../tickets/spec-21.md)). Lists are specified
+  ([Lists](lists.md)), and having them makes an n-ary `combine : List R -> R` writable, which
+  would let a class see how many answers it is folding and settle
   [the law above](#what-a-derivation-is-trusted-to-keep) by making the fold the class's to
-  perform rather than the walk's. Neither is a reason to hold this design; both are reasons those
-  two chapters have to read it.
+  perform rather than the walk's. Neither is a reason to hold this design.

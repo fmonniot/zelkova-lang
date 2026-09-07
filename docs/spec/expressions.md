@@ -25,7 +25,8 @@ no value in some of its cases would not be an expression.
 | Lambda | `\x -> e` |
 
 Three more forms — list literals, records, and record field access — are part of the language
-and are specified in their own chapters. None of them is implemented; see
+and are specified in their own chapters: [Lists](lists.md) for the first, and no chapter yet for
+the other two. None of the three is implemented; see
 [Forms the compiler does not have](#forms-the-compiler-does-not-have) at the foot of this
 chapter.
 
@@ -650,12 +651,12 @@ not span multiple lines, and a dedicated function must be used instead.
 
 ## Forms the compiler does not have
 
-Three expression forms are part of the language and are specified in their own chapters:
+Three expression forms are part of the language and are specified elsewhere:
 
 | Form | Where it is specified |
 |---|---|
-| List literals — `[1, 2]` | [Lexical structure](lexical-structure.md#punctuation) carries the brackets; the list chapter is unwritten ([`SPEC-22`](../tickets/spec-22.md)) |
-| Records — `{ a = 1 }`, `{ r \| a = 2 }` | likewise, for the braces ([`SPEC-21`](../tickets/spec-21.md)) |
+| List literals — `[1, 2]` | [Lists](lists.md#list-literals) |
+| Records — `{ a = 1 }`, `{ r \| a = 2 }` | [Lexical structure](lexical-structure.md#punctuation) carries the braces; the record chapter is unwritten ([`SPEC-21`](../tickets/spec-21.md)) |
 | Field access — `r.name`, `.name` | with records ([`SPEC-21`](../tickets/spec-21.md)) |
 
 ```zel expect=unimplemented
