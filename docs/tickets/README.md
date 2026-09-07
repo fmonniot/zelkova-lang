@@ -269,6 +269,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |
 | [LANG-41](lang-41.md) | task | — | open | Retire `Type::Number` in favour of a `Number` class, defaulting to `Int` |
 | [LANG-42](lang-42.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
+| [LANG-43](lang-43.md) | task | — | open | `std/core` declares `List`, opaquely, with `(::)` over it |
+| [LANG-44](lang-44.md) | task | — | open | There is no list-literal production, so `[1, 2]` does not parse |
+| [LANG-45](lang-45.md) | task | — | open | There is no list pattern, so neither `[]` nor `first :: rest` can be matched |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
