@@ -79,7 +79,7 @@ is the point.
 | [Evaluation semantics](evaluation-semantics.md) | Strictness, purity, order of evaluation, which forms evaluate their subexpressions conditionally, what `==` means structurally, and what a function value is. |
 | [JS interop](js-interop.md) | The `module javascript` facade: what such a signature may say, what its companion `.mjs` exports, and why it is the only way into JavaScript. |
 | [Packages and source layout](packages.md) | The package directory, the `zelkova.toml` manifest, the two source roots, dependencies, and what a package boundary means for visibility and for a module's name. |
-| [Type classes](type-classes.md) | The `class` and `instance` declarations, how a constraint is written in an annotation, superclasses, where an instance may be declared, and the words this reserves. |
+| [Type classes](type-classes.md) | The `class` and `instance` declarations, how a constraint is written in an annotation, superclasses, where an instance may be declared, how a class says it can be derived and what a derived instance then computes, and the words this reserves. |
 
 Two constructs are named by the chapters above and specified by none of them: **records**
 and **lists**. Both are part of the language, both have chapters' worth of design left to
@@ -91,15 +91,27 @@ each ends with a row added to the table above.
 
 An appendix is a sibling file in this directory that is deliberately **not** part of the
 language. It describes what surrounds Zelkova rather than what Zelkova is, and nothing in
-one is normative or checked. There is one:
+one is normative or checked. There are two:
 
 | Appendix | Covers |
 |---|---|
 | [The toolchain](toolchain.md) | Fetching a dependency, resolution and `zelkova.lock`, the cache, vendoring and offline builds, publishing, running a package's tests, and the compiler's interface. |
+| [Deriving in other languages](deriving-elsewhere.md) | Where Haskell, Clean, Scala 3, Rust, OCaml, PureScript, Lean, C++ and Elm put the knowledge a derivation needs, what the two-value shape gives up, and which of those arguments decided [Type classes](type-classes.md#a-class-says-how-it-is-derived). |
 
-An appendix exists because a language decision leaves a toolchain question with one sensible
-answer, and leaving it unwritten means every reader invents that answer privately and slightly
-differently. `docs/spec/packages.md` settles what a dependency entry *means*; something still
-has to say what happens when one is fetched, and that is not a sentence about the language.
+The two are appendices for different reasons. The toolchain one exists because a language
+decision leaves a toolchain question with one sensible answer, and leaving it unwritten means
+every reader invents that answer privately and slightly differently: `docs/spec/packages.md`
+settles what a dependency entry *means*; something still has to say what happens when one is
+fetched, and that is not a sentence about the language.
+
+The deriving one exists because a chapter states what was decided and cannot afford to also
+argue it. The alternatives a rule was chosen over are not recoverable from the rule, so a
+later reader asking "why not a generic representation" has nowhere to look and re-derives the
+answer — or doesn't, and re-opens the question. It is design rationale rather than
+specification, which is why it is not normative and why no claim in it constrains a program.
+A dedicated record for decisions of that kind would be the better home; until one exists this
+is where they go, and [`SPEC-26`](../tickets/spec-26.md) is the ticket for the thing this is
+standing in for.
+
 [Conventions](conventions.md#chapter-or-appendix) has the test for which of the two a rule
 belongs to.

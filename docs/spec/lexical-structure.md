@@ -229,28 +229,38 @@ infix  let    module of         then   type
 `let` and `in` are reserved although the construct that uses them is not implemented; see
 [Layout](layout.md#let--in).
 
-Four further words are **soft keywords**. Each is a keyword in exactly one position and an
-ordinary identifier everywhere else:
+Five further words are **soft keywords**. Each is a keyword only in the position listed against
+it, and an ordinary identifier everywhere else:
 
 | Word | Keyword in |
 |---|---|
 | `left`, `right`, `non` | the associativity of an `infix` declaration |
 | `javascript` | the header of a [JS interop](js-interop.md) module |
+| `derived` | the body of an [instance declaration](type-classes.md#an-instance-may-be-derived), and a [derivation](type-classes.md#a-class-says-how-it-is-derived) in a class body |
 
-The distinction is deliberate. These four read as ordinary vocabulary — a tree module wants
-`left` and `right`, and a project targeting the browser will want `javascript` — and each
-appears in a position where nothing else could possibly be meant, so reserving the word
-outright would take a useful name and give nothing back.
+The distinction is deliberate. These five read as ordinary vocabulary — a tree module wants
+`left` and `right`, and a project targeting the browser will want `javascript` — and each sits
+where one token of context says which reading is meant, so reserving the word outright would
+take a useful name and give nothing back. `derived` is the one that needs the token *after* it
+rather than the one before: alone it asks for an instance to be derived, `derived eq` opens the
+derivation of a member, and `derived = …` or `derived : …` is an ordinary binding or signature.
 
 ```zel expect=ok
-module Example exposing (left, right, non)
+module Example exposing (left, right, non, derived)
 
 left = 1
 
 right = 2
 
 non = 3
+
+derived = 4
 ```
+
+**Not implemented:** `derived` is an ordinary identifier in every position today, because the
+class and instance declarations whose bodies it sits in do not parse at all
+([`CLASS-2`](../tickets/class-2.md)). That block is green now and stays green: what the word
+becomes is a keyword in two positions it cannot currently occupy, not a name a program loses.
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing (f)

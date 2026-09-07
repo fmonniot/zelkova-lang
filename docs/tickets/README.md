@@ -143,8 +143,9 @@ CLASS-1  `=>` becomes a token; a constrained annotation parses
   │
 CLASS-2  `class` / `instance` declarations, and a `where` block of members
   │      ← LANG-9 sequences before this: an instance head wants `(List a)`
-  │      ← SPEC-14 is cheaper before this than after: one of the three
-  │        shapes it weighs is a change to this declaration's grammar
+  │      ← two more bodies than "a member list", both settled by SPEC-14
+  │        and specified in the chapter: an instance body may be the single
+  │        word `derived`, and a class body may carry `derived <member>`
   │
 CLASS-3  resolution, the instance environment, and the orphan rule
   │      ← BUG-17 and BUG-16 are HARD prerequisites. Both would sabotage
@@ -272,7 +273,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-11 | task | — | closed 2026-08-29 | Write the Constrained type variables chapter |
 | SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
 | [SPEC-13](spec-13.md) | task | — | open | Whether a pattern's negative literal is a token or a pattern production is unsettled, and two chapters answer it differently |
-| [SPEC-14](spec-14.md) | task | — | open | Nothing specifies how a structural instance is derived, and equality needs it |
+| SPEC-14 | task | — | closed 2026-09-06 | Nothing specifies how a structural instance is derived, and equality needs it |
 | [SPEC-15](spec-15.md) | task | — | open | Nothing says what an effect is, so `main`'s type and what a test is are both undesigned |
 | [SPEC-16](spec-16.md) | task | — | open | The spec makes one promise about space and does not say whether it makes others |
 | SPEC-17 | task | — | closed 2026-09-06 | Nothing says a `Float`-returning operation may not totalize with a zero, and one of them does |
@@ -283,6 +284,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-22](spec-22.md) | task | — | open | Lists are part of the language and the chapter specifying them does not exist |
 | SPEC-23 | task | — | closed 2026-09-05 | Nothing checks the spec's own cross-references, and 271 of them are one rename from silence |
 | SPEC-24 | task | — | closed 2026-09-05 | The conventions name every tag a chapter may write but not a single word it may write, and the tag table is four names short |
+| [SPEC-25](spec-25.md) | task | — | open | A derivation walks two values, so the classes worth deriving most cannot be |
+| [SPEC-26](spec-26.md) | task | — | open | Design rationale has nowhere to live, so it is kept in three unrelated places or lost |
+| [SPEC-27](spec-27.md) | task | — | open | A derivation's `combine` must be a monoid and nothing checks it, at any point |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |

@@ -57,6 +57,14 @@ starts from nothing, and every block in it is `expect=unimplemented`.
   nominal-ish or structural.
 - **Patterns.** What a record pattern looks like and whether it must name every field. This is
   the section [Patterns](../spec/patterns.md) is holding a place for.
+- **What a derived instance does with one.** A record's fields are named, and
+  [Type classes](../spec/type-classes.md#a-class-says-how-it-is-derived) derives an instance by
+  walking *positional* constructor arguments: a class supplies `matched`, `differed` and
+  `combine`, and nothing in those three can name a field. A derivation over a record therefore
+  wants a fourth binding — an answer for a labelled field — or a ruling that a record's fields
+  are walked in declaration order like any other arguments, which makes field order semantic and
+  interacts with the "same fields in a different order" question above. That chapter's *Open
+  questions* names this as one of the two things records and lists bring to it.
 - **Extensibility.** Whether a function may accept "any record with a `name` field" — Elm's
   extensible records. This is the big one, and it is where the cost lives: it needs row
   polymorphism in the type checker, and [Type classes](../spec/type-classes.md) deliberately has

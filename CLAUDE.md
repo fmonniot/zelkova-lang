@@ -239,7 +239,7 @@ merely recording the direction.
 
 Read the chapter before touching any of it; the `CLASS-` program in
 [`docs/tickets/README.md`](docs/tickets/README.md) carries the order the six implementing
-tickets have to land in. Four of its rules constrain diffs outside that program:
+tickets have to land in. Five of its rules constrain diffs outside that program:
 
 - **`=>`, `class` and `instance` become reserved, and `where` becomes reserved as a type
   variable.** All four are ordinary identifiers today, so this is a breaking change — and
@@ -247,8 +247,22 @@ tickets have to land in. Four of its rules constrain diffs outside that program:
   rather than being rejected, which is why both words are reserved outright and cannot be soft
   the way `javascript` is.
 - **An instance may be declared only in the module declaring its class or its type.**
+- **An instance body is either a list of member bindings or the single word `derived`**, never a
+  mixture. `derived` asks for the definition the type's shape implies, and is the language's only
+  way to get one. **Which classes allow it is not a list of names the compiler holds**: a class is
+  derivable only when its own declaration carries a derivation — `derived <member>` plus the three
+  bindings a walk over a value's shape cannot invent — so `Eq` and `Comparable` are derivable
+  because `std/core` says how, and a program's own class is on identical terms. `derived` stays a
+  **soft keyword** in both positions, separated from a member called `derived` by one token of
+  lookahead, so it does not join the reserved words above; `CLASS-2` parses both bodies.
 - **A `module javascript` facade signature may not carry a constraint**, which is what preserves
   the plain-parameter-list guarantee
   [`docs/spec/js-interop.md`](docs/spec/js-interop.md) makes.
 - **A class dictionary is erased by specialisation before code generation**, never passed — a
   constraint the first codegen work inherits.
+- **A derivation's three bindings are inlined into the generated walk, never called** — the other
+  constraint codegen inherits, and the one that is invisible until it is wrong. Zelkova is strict
+  and nothing short-circuits, so a `combine` emitted as a call compares every argument pair in the
+  value before the outermost call runs; inlined, a `case` inside `combine` is an ordinary `case`
+  and the class short-circuits itself. Emitting a call is not a slower version of the same thing,
+  it is a different one, and no test at the type level can see the difference.

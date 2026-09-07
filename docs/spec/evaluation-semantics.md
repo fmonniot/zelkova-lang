@@ -319,8 +319,9 @@ alike a b =
 
 ### What structural equality computes
 
-Every instance `std/core` declares is **structural**, and so is a derived instance. Structural
-equality is defined by the shape of the value:
+Every instance `std/core` declares is **structural**, and so is a
+[derived instance](type-classes.md#an-instance-may-be-derived). Structural equality is defined
+by the shape of the value:
 
 - Two values of a union type are equal when they are the same constructor and their
   corresponding arguments are equal.
@@ -350,8 +351,10 @@ alike a b =
 **Not implemented:** no part of a class parses — `class`, `instance` and `=>` are ordinary
 identifiers today ([`CLASS-1`](../tickets/class-1.md),
 [`CLASS-2`](../tickets/class-2.md)), and `std/core` declares no classes
-([`CLASS-6`](../tickets/class-6.md)). How a structural instance is *derived*, rather than
-written out, is an [open question](#open-questions).
+([`CLASS-6`](../tickets/class-6.md)). A type asks for the definition above rather than writing
+it out by declaring an instance whose body is `derived` — and what that yields is the definition
+[`Eq`'s own declaration supplies](type-classes.md#a-class-says-how-it-is-derived), not one the
+compiler holds for a class it recognises.
 
 ### Functions are not comparable
 
@@ -537,12 +540,6 @@ below.
   is undesigned, and it is the same design that
   [what type `main` must have](packages.md#open-questions) waits on
   ([`SPEC-15`](../tickets/spec-15.md)).
-- **How a structural instance is derived.** `Eq` is a class, so every type that wants `==` needs
-  an instance, and writing a structural one out by hand for each is a tax the language does not
-  want to charge. [Type classes](type-classes.md) specifies no way to ask for the structural
-  definition — whether by a clause on the `type` declaration, an instance with no members, or
-  something else. `Comparable`'s ordering over a union type has the same question and the same
-  answer ([`SPEC-14`](../tickets/spec-14.md)).
 - **Whether the language promises anything else about space.** The tail-call rule is the one
   promise here about memory. Whether a program can rely on anything more — that a value is not
   copied, that a partially applied function is not rebuilt per call — is unanswered, and each
