@@ -49,8 +49,7 @@ what makes the `.mjs` behind `fdiv` free to divide and the one behind `idiv` fre
 A type may be named in a facade signature when the compiler can emit a **predicate**
 for it: a piece of JavaScript that decides, from a value alone, whether that value belongs to
 that type. Every value a companion `.mjs` hands back is run through the predicate of the type
-its signature declares, and a value that fails one is an error at the boundary rather than a
-wrong answer somewhere further on.
+its signature declares, and a value that fails one is an error at the boundary.
 
 The predicate is what makes a facade signature mean anything. Everywhere else a declaration's
 body is checked against its annotation; a facade has no body the compiler can read, so its
@@ -89,8 +88,7 @@ luminance : (Int, Int, Int) -> Float
 
 `Int` and `Float` are one type in JavaScript and two here, and that costs the rule nothing.
 Whether a number is a whole one is a question about the value, which is all a predicate is ever
-allowed to ask, so `Int` is admitted on exactly the terms `Bool` is and not as a tolerated
-exception to them.
+allowed to ask, so `Int` is admitted on exactly the terms `Bool` is.
 
 A predicate is a walk over the value, so what it costs is the size of the value: a facade taking
 a list of a thousand tuples checks a thousand tuples on the way in. That cost is the price of
@@ -236,7 +234,7 @@ export const e = Math.E;
 ```
 
 is the whole of what `pi` and `e` require on the JavaScript side — an ordinary binding, read
-directly rather than invoked.
+directly.
 
 Evaluation is [strict](evaluation-semantics.md#evaluation-is-strict), and an ordinary
 parameterless binding is placed in an evaluation order that reads off which bindings it
