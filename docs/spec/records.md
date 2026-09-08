@@ -5,10 +5,9 @@ which by position; a record says it by label, so a value of several parts stays 
 is taken apart, and past the three elements a tuple stops at.
 
 A record has a spelling in all three of the languages the earlier chapters describe — a
-[type](types.md), an [expression](expressions.md) and a [pattern](patterns.md). None of the
-three is sugar over something else. A [list](lists.md) is an ordinary union type behind bracket
-syntax; a record is a form of its own in each of the three grammars, and no `type` declaration
-anywhere describes one.
+[type](types.md), an [expression](expressions.md) and a [pattern](patterns.md). A
+[list](lists.md) is an ordinary union type behind bracket syntax; a record is a form of its own
+in each of the three grammars, and no `type` declaration anywhere describes one.
 
 ## The type
 
@@ -111,7 +110,7 @@ origin =
 
 A record expression is a brace-enclosed, comma-separated list of `label = expression` fields, and
 its type is the record type its labels and its values' types spell out. Every field of the type
-is given a value: a record is complete when it is written, and there is no partial one.
+is given a value, and there is no partial record.
 
 ```zel expect=unimplemented
 module Example exposing (Celsius, reading)
@@ -128,8 +127,7 @@ reading =
 Each field's value is an ordinary expression, so anything an expression may be a field may hold.
 Repeating a label is an error here for the reason it is in a type.
 
-A record may be written across several lines with the separator leading each line, the ordinary
-way to write one of any size:
+A record may be written across several lines with the separator leading each line:
 
 ```zel expect=unimplemented
 module Example exposing (Celsius, reading)
@@ -204,18 +202,16 @@ nameOf person =
 **Not implemented:** no production consumes a leading `.` ([`LANG-50`](../tickets/lang-50.md)).
 
 An accessor has no type it can stand for on its own. `.name` names a field of *some* record, and
-[a record type is written out in full](#records-are-closed) — there is no way to write "any
-record with a `name` field", so there is no type an accessor is polymorphic in. It is therefore
-typed **from where it is written**: the record type comes from what the accessor is applied to,
-or from the annotation of the position it sits in. Where nothing fixes that type, the accessor is
-an error naming itself.
+[a record type is written out in full](#records-are-closed), so there is no type an accessor is
+polymorphic in. It is therefore typed **from where it is written**: the record type comes from
+what the accessor is applied to, or from the annotation of the position it sits in. Where nothing
+fixes that type, the accessor is an error naming itself.
 
 ### Whitespace before a `.` decides which form it is
 
-`r.name` and `f .name` are two different expressions, and the space is the whole of what
-separates them. A `.` written against the expression to its left is an **access** of that
-expression; a `.` with whitespace before it, or one opening an expression, is an **accessor**,
-and it is written against its label with no space after it.
+`r.name` and `f .name` are two different expressions. A `.` written against the expression to its
+left is an **access** of that expression; a `.` with whitespace before it, or one opening an
+expression, is an **accessor**, and it is written against its label with no space after it.
 
 The same rule governs the `.` of a [qualified name](name-resolution.md#namespaces): `Dict.get`
 is one name, and `Dict .get` is `Dict` applied to an accessor.
@@ -246,8 +242,8 @@ f =
 ## Updating a record
 
 `{ r | label = expression, … }` is `r` with the named fields replaced. Every other field keeps
-the value it had, and the result is a new record: nothing about `r` changes, in keeping with
-[evaluation](evaluation-semantics.md) having no mutation in it.
+the value it had, and the result is a new record: nothing about `r` changes, since
+[evaluation](evaluation-semantics.md) has no mutation in it.
 
 ```zel expect=unimplemented
 module Example exposing (Celsius, correct)
@@ -306,10 +302,9 @@ describe reading =
 [variable pattern](patterns.md#variable-patterns) of its own label.
 
 A record pattern **names a subset**: the fields it does not mention are not matched and not
-bound. So a record pattern is [refutable](patterns.md#a-pattern-that-can-fail-and-one-that-cannot)
-exactly when one of its sub-patterns is, and a pattern of shorthand entries alone can never fail.
-That is what lets one be written where a pattern must not fail — a parameter, or a `let`
-binding:
+bound. It is therefore [refutable](patterns.md#a-pattern-that-can-fail-and-one-that-cannot)
+exactly when one of its sub-patterns is, and a pattern of shorthand entries alone can never fail — so one may be written
+where a pattern must not fail, as a parameter or in a `let` binding:
 
 ```zel expect=unimplemented
 module Example exposing (Text, nameOf)
@@ -353,9 +348,8 @@ an error.
 
 A label is a name in a namespace of its own, the **sixth** of the ones
 [name resolution](name-resolution.md#namespaces) lists, so a name in it never collides with a
-name in another. What puts a label there is every record type that mentions it: writing
-`{ x : Int }` anywhere is what makes `x` a label, and two record types may both carry `x` without
-that being a clash or an ambiguity.
+name in another. Every record type that mentions a label puts it there: writing `{ x : Int }`
+anywhere makes `x` a label, and two record types may both carry `x` without that being a clash.
 
 Which record a label belongs to is decided by the type it is read against, never by what is in
 scope. So a label is not looked up, and is never imported, exposed or shadowed — an `exposing`
@@ -377,9 +371,9 @@ origin =
 
 **Not implemented:** [`LANG-47`](../tickets/lang-47.md), [`LANG-48`](../tickets/lang-48.md).
 
-The shorthand pattern is where the two namespaces meet, and it meets them in one direction only:
-`{ x }` reads the label `x` and binds the **value** `x`, which then shadows an outer value of
-that name like any other [pattern binding](patterns.md#variable-patterns).
+The shorthand pattern is where the two namespaces meet, in one direction only: `{ x }` reads the
+label `x` and binds the **value** `x`, which then shadows an outer value of that name like any
+other [pattern binding](patterns.md#variable-patterns).
 
 ## Records are closed
 
@@ -406,14 +400,10 @@ greet person =
 Opening records up means a variable standing for "the rest of the fields", which is a second kind
 of thing a type variable may be: today [a type variable stands for a type](types.md#type-variables)
 and nothing else, and a variable standing for a set of fields would need the type checker to solve
-a second kind of equation beside the one it solves for types. [Type classes](type-classes.md)
-declined higher-kinded variables on that reasoning, and a record's field set is the same choice
-arriving a second time.
+a second kind of equation beside the one it solves for types.
 
-A function loses by it the ability to be written once over records that differ. What it gains is
-that every record type a program mentions is written down somewhere in that program, and an
-annotation says exactly which records reach a function. A function wanting to serve many records
-takes the fields it needs as arguments.
+A function loses by it the ability to be written once over records that differ. A function
+wanting to serve many records takes the fields it needs as arguments.
 
 ## Records and derivation
 
@@ -428,15 +418,15 @@ that field's type, folded with `combine`, ending at `matched`.
 
 The fields are walked **in label order**, sorted by the label's characters. A record type is a
 set of fields with no order of its own, so the walk supplies one, and sorting is the only order
-available that two spellings of one type agree on. Nothing a program can write changes it: where
+available that two spellings of one type agree on. Nothing a program can write changes it. Where
 [reordering a union's variants changes what a derived member computes](type-classes.md#what-a-derived-instance-computes),
-reordering a record's fields changes nothing: it did not produce a different type.
+reordering a record's fields changes nothing — it did not produce a different type.
 
 A record is walked rather than delegated to, because it has no instance to delegate to. An
 [instance may be declared only in the module declaring its class or its type](type-classes.md#where-an-instance-may-be-declared),
 and a record type is declared in no module — so `instance Eq { x : Int }` names no module that
-could hold it and is not writable. The walk descends into the record's fields directly, and each
-field's *value* goes through its own type's instance in the ordinary way.
+could hold it and is not writable. Each field's *value* still goes through its own type's
+instance in the ordinary way.
 
 [Structural equality](evaluation-semantics.md#what-structural-equality-computes) over two records
 is that walk with `Eq`'s answers filled in: equal when every field is equal, compared field by
