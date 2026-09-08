@@ -110,10 +110,11 @@ Zelkova value is immutable, so there is no cycle for it to loop on. The cost is 
 chapter states it rather than letting someone discover it: a crossing checks the whole value, at
 O(size of value), not just its outermost constructor.
 
-The chapter publishes the union encoding and no other. Records and lists are admitted but have
-no chapter yet ([`SPEC-21`](../tickets/spec-21.md), [`SPEC-22`](../tickets/spec-22.md)), and
-their encodings belong there and to code generation. The union's is published here because the
-admission of unions is meaningless without it and no other chapter is going to carry it.
+The chapter publishes the union encoding and no other. Records are admitted but have no chapter
+yet ([`SPEC-21`](../tickets/spec-21.md)); lists now have one, [Lists](../spec/lists.md), though
+it does not publish a JavaScript encoding. Both encodings belong to code generation. The union's
+is published here because the admission of unions is meaningless without it and no other chapter
+is going to carry it.
 
 ## 4 — The predicate is real code that runs, not a principle for selecting a subset
 

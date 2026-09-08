@@ -76,17 +76,17 @@ is the point.
 | [Types and type annotations](types.md) | Type expressions in full — application, the function arrow, variables, tuples, the unit type — plus the two declarations made of them, `name : Type` and `type`. |
 | [Expressions](expressions.md) | Every expression form: literals, names, application, grouping, `if … then … else`, `case … of`, `let … in`, lambdas, and the operator table. |
 | [Patterns](patterns.md) | Every pattern form, where each may appear, how they nest, and which of them can fail. |
+| [Lists](lists.md) | The `List` type, the bracket literal, the cons operator and the two pattern forms, and what a backend may and may not choose about a list's representation. |
 | [Name resolution and scoping](name-resolution.md) | The five namespaces, the scopes a name is looked up in, what shadows what, and what makes a reference ambiguous rather than merely unresolved. |
 | [Evaluation semantics](evaluation-semantics.md) | Strictness, purity, order of evaluation, which forms evaluate their subexpressions conditionally, what `==` means structurally, and what a function value is. |
 | [JS interop](js-interop.md) | The `module javascript` facade: what such a signature may say, what its companion `.mjs` exports, and why it is the only way into JavaScript. |
 | [Packages and source layout](packages.md) | The package directory, the `zelkova.toml` manifest, the two source roots, dependencies, and what a package boundary means for visibility and for a module's name. |
 | [Type classes](type-classes.md) | The `class` and `instance` declarations, how a constraint is written in an annotation, superclasses, where an instance may be declared, how a class says it can be derived and what a derived instance then computes, and the words this reserves. |
 
-Two constructs are named by the chapters above and specified by none of them: **records**
-and **lists**. Both are part of the language, both have chapters' worth of design left to
-settle, and a cross-reference to either currently arrives nowhere —
-[`SPEC-21`](../tickets/spec-21.md) and [`SPEC-22`](../tickets/spec-22.md) are the tickets, and
-each ends with a row added to the table above.
+One construct is named by the chapters above and specified by none of them: **records**. They
+are part of the language, they have a chapter's worth of design left to settle, and a
+cross-reference to them currently arrives nowhere — [`SPEC-21`](../tickets/spec-21.md) is the
+ticket, and it ends with a row added to the table above.
 
 ## Appendices
 

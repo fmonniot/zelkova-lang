@@ -89,9 +89,10 @@ extensibility first, since it decides the shape of everything else. Then:
    a diff, and this is several diffs' worth.
 
 **What this is not.** Not an implementation of records, and not a reason to touch the tokenizer
-in this ticket. Also not the list chapter, which is the same shape of gap and is
-[`SPEC-22`](spec-22.md) — the two are separately shippable and neither blocks the other, though
-`[]` and `{}` are reserved by the same *Punctuation* section.
+in this ticket. Also not the list chapter, which was the same shape of gap and is now
+[`docs/spec/lists.md`](../spec/lists.md) — the two were separately shippable and neither blocked
+the other, though `[]` and `{}` are reserved by the same *Punctuation* section. That chapter is
+worth reading first: it is the nearest worked example of what this one has to produce.
 
 **Acceptance:** `docs/spec/` has a records chapter, listed in
 [`docs/spec/README.md`](../spec/README.md)'s table, specifying records in a type, an expression,

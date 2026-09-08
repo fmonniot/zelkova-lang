@@ -88,13 +88,13 @@ A predicate walks the whole value, so a facade taking a list of a thousand tuple
 thousand tuples on the way in, once per crossing.
 
 **Not implemented:** `String` has no [literal syntax](lexical-structure.md#strings) yet,
-[`()` is not recognised](types.md#the-unit-type) in either position, and records and lists have
-neither syntax nor a chapter, so four of those rows are about types a program cannot write
-today. [`SPEC-21`](../tickets/spec-21.md) and
-[`SPEC-22`](../tickets/spec-22.md) are the chapters that say what a record and a list are; what
-either looks like to JavaScript belongs to them and to code generation, and this section commits
-only to both crossing. Nothing runs a predicate either, because code generation has not started
-— [`GEN-2`](../tickets/gen-2.md) is the ticket that emits them.
+[`()` is not recognised](types.md#the-unit-type) in either position, and records have neither
+syntax nor a chapter ([`SPEC-21`](../tickets/spec-21.md)). Lists now have a chapter,
+[Lists](lists.md), but no literal production yet ([`LANG-44`](../tickets/lang-44.md)) — so four
+of those rows are about types a program cannot write today. What either looks like to
+JavaScript is undecided: a record's waits on its chapter, a list's on code generation. Nothing
+runs a predicate either, because code generation has not started —
+[`GEN-2`](../tickets/gen-2.md) is the ticket that emits them.
 
 ### A union crosses as a tagged object
 

@@ -539,11 +539,11 @@ f = { a = 1 }
 ```
 
 **Not implemented:** lists and records are part of the language and neither is implemented.
-Brackets are tokenized but no construct consumes them; braces are not tokenized at all. Their
-syntax is specified in the chapters on those constructs rather than here — this section
-claims only that the characters are spoken for and are not available as operator characters.
-Neither of those chapters exists yet: [`SPEC-22`](../tickets/spec-22.md) is the list one and
-[`SPEC-21`](../tickets/spec-21.md) the record one.
+Brackets are tokenized but no construct consumes them ([`LANG-44`](../tickets/lang-44.md),
+[`LANG-45`](../tickets/lang-45.md)); braces are not tokenized at all. Their syntax is specified
+in the chapters on those constructs rather than here — this section claims only that the
+characters are spoken for and are not available as operator characters. [Lists](lists.md) is the
+list chapter; the record one does not exist yet ([`SPEC-21`](../tickets/spec-21.md)).
 
 ## Numeric literals the tokenizer cannot represent
 
