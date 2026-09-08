@@ -25,9 +25,7 @@ therefore tell what a pattern matches by looking at it, without knowing which mo
 | [list](#list-patterns) | `[]`, `[a, b]` | a list of exactly that length |
 | [cons](#list-patterns) | `first :: rest` | a non-empty list, split into its first element and the rest |
 | [unit](#the-unit-pattern) | `()` | the one value of the unit type |
-
-The one form this table does not give a spelling for is the [record pattern](#record-patterns),
-because record syntax itself is not settled ([`SPEC-21`](../tickets/spec-21.md)).
+| [record](#record-patterns) | `{ x = p }`, `{ x }` | a record, each named field against its own pattern |
 
 ```zel expect=ok
 module Example exposing (Count, Shape, describe)
@@ -720,8 +718,30 @@ always () =
 
 ## Record patterns
 
-A record pattern names fields rather than positions. Its spelling is not settled, because
-record syntax itself is not: records are part of the language, and no chapter yet says what
-one looks like in a type, an expression or a pattern ([`SPEC-21`](../tickets/spec-21.md)). See
-[Lexical structure](lexical-structure.md#punctuation) for what the braces do today, which is
-nothing.
+A record pattern names fields rather than positions. Each entry is `label = pattern` and the
+field's value is matched against that pattern; `{ x }` is shorthand for `{ x = x }`, the field
+matched against a variable pattern of its own label.
+
+```zel expect=unimplemented
+module Example exposing (Celsius, describe)
+
+type Celsius
+  = Celsius
+
+describe reading =
+  case reading of
+    { taken = Celsius, expected = e } ->
+      e
+
+    { expected } ->
+      expected
+```
+
+**Not implemented:** the pattern grammar has no brace production
+([`LANG-49`](../tickets/lang-49.md)), and braces are not tokens at all
+([`LANG-47`](../tickets/lang-47.md)).
+
+A record pattern names a **subset** of the record's fields, so it is refutable exactly when one
+of its sub-patterns is and a pattern of shorthand entries alone can never fail. Sub-patterns are
+whole patterns, so record patterns nest in both directions like every other form.
+[Records](records.md#record-patterns) is where the rest of the construct is specified.

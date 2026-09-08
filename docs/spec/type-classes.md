@@ -737,11 +737,10 @@ of these are in `std/core` — its body has to choose an instance.
   runs. Whether anything could — a restriction on the shape the three bindings may take, an
   obligation discharged by folding over a finite answer type, or a law the class states and a
   test discharges — is unsettled ([`SPEC-27`](../tickets/spec-27.md)).
-- **What records and lists add.** Both reach this mechanism, and neither is settled here. A
-  record's fields are named, so a derivation over one wants a fourth binding — an answer for a
-  labelled field — that a walk over positional arguments has no need of; records are an
-  unspecified construct ([`SPEC-21`](../tickets/spec-21.md)). Lists are specified
-  ([Lists](lists.md)), and having them makes an n-ary `combine : List R -> R` writable, which
-  would let a class see how many answers it is folding and settle
+- **What lists add.** Having them makes an n-ary `combine : List R -> R` writable, which would
+  let a class see how many answers it is folding and settle
   [the law above](#what-a-derivation-is-trusted-to-keep) by making the fold the class's to
-  perform rather than the walk's. Neither is a reason to hold this design.
+  perform rather than the walk's. Which of the two shapes `combine` takes is unsettled, and is
+  not a reason to hold this design. Records reach the mechanism too and are settled:
+  [a record is walked field by field in label order](records.md#records-and-derivation), with the
+  three bindings a class already supplies.
