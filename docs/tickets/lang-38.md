@@ -137,14 +137,19 @@ same treatment.
    **Decided (`SPEC-14`, by the language owner):** each body has a second shape, and both are
    this ticket's to parse. An `instance` body may be the single word `derived` instead of the
    member list — never a mixture — and a `class` body may follow a member signature with
-   `derived <member>` opening a block of three bindings — `matched`, `differed` and `combine` — which is what
-   makes the class derivable at all. [`docs/spec/type-classes.md`](../spec/type-classes.md)'s
-   *An instance may be derived* and *A class says how it is derived* specify both, and *The
+   `derived <member>` opening a block of bindings, which is what makes the class derivable at
+   all. There are two sets of them — `matched`, `differed` and `combine` for a member walked over
+   two values, `atConstructor` and `combine` for one walked over a single value — and they differ
+   only in the bindings the block holds, not in how it parses, so this ticket parses a block of
+   `FunBinding`s and does not choose between them.
+   [`docs/spec/type-classes.md`](../spec/type-classes.md)'s *An instance may be derived*, *A
+   class says how it is derived* and *A derivation over one value* specify all of it, and *The
    words this reserves* is why `derived` is a soft keyword rather than a reserved one: one token
    of lookahead — a member name, an `=`, or a `:` — separates the three readings. Only the
-   parsing is here; checking that a derivable member's signature is `a -> a -> R`, and that a
-   `derived` instance names a class that carries a derivation, belongs with the rest of
-   resolution in [LANG-39](lang-39.md).
+   parsing is here; checking that a derivable member's signature is `a -> a -> R` or `a -> R`,
+   that its block holds the bindings that signature calls for, and that a `derived` instance
+   names a class that carries a derivation, belongs with the rest of resolution in
+   [LANG-39](lang-39.md).
 
 4. **Both ASTs, same commit.** `parser::Declaration` gains `Class` and `Instance` variants,
    `canonical::Module` gains somewhere to hold them, and `from_parser_module` converts. What

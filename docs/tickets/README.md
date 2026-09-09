@@ -224,7 +224,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-22 | task | — | closed 2026-09-06 | Lists are part of the language and the chapter specifying them does not exist |
 | SPEC-23 | task | — | closed 2026-09-05 | Nothing checks the spec's own cross-references, and 271 of them are one rename from silence |
 | SPEC-24 | task | — | closed 2026-09-05 | The conventions name every tag a chapter may write but not a single word it may write, and the tag table is four names short |
-| [SPEC-25](spec-25.md) | task | — | open | A derivation walks two values, so the classes worth deriving most cannot be |
+| SPEC-25 | task | — | closed 2026-09-08 | A derivation walks two values, so the classes worth deriving most cannot be |
 | SPEC-26 | task | — | closed 2026-09-06 | Design rationale has nowhere to live, so it is kept in three unrelated places or lost |
 | [SPEC-27](spec-27.md) | task | — | open | A derivation's `combine` must be a monoid and nothing checks it, at any point |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |

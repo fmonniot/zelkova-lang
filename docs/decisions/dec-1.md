@@ -43,7 +43,8 @@ add one. The knowledge is outside the language and unavailable to anything writt
 Elm belongs here by refusal rather than by inclusion: `==` and `compare` are built in, apply to
 almost every type, and there is no class to join and no derivation to ask for. `Debug.toString`
 reads the runtime representation, is banned under `--optimize`, and is deliberately not a class —
-which is a coherent answer to the problem [`SPEC-25`](../tickets/spec-25.md) is about.
+which is a coherent answer to the problem [what a derivation cannot
+render](../spec/type-classes.md#what-a-derivation-cannot-render) is about.
 
 ### Two: a generic representation the classes program against
 
@@ -187,26 +188,29 @@ member](../spec/type-classes.md#what-the-standard-library-declares) and the four
 ordinary constrained functions rather than members: a lexicographic `lt` cannot be folded out of
 the `lt` of each argument pair, and a lexicographic `compare` can.
 
-## What the two-value shape gives up
+## What a derivation gives up
 
-A member carries a derivation only at `a -> a -> R`. Sorted by how far out of reach each excluded
-shape is:
+A member carries a derivation at `a -> a -> R` or at `a -> R`. Sorted by how far out of reach
+each excluded shape is:
 
 | Shape | Examples | Reachable? |
 |---|---|---|
-| `a -> a -> R` | `eq`, `compare`, a difference count | specified today |
-| `a -> R` | `hash`, a size, a checksum | one value instead of two — a smaller mechanism ([`SPEC-25`](../tickets/spec-25.md)) |
-| `a -> String` | `toString`, `show`, `Debug` | needs names and downward context; see below |
+| `a -> a -> R` | `eq`, `compare`, a difference count | specified |
+| `a -> R` | `hash`, a size, a checksum | specified — one value instead of two |
+| `a -> String` | `toString`, `show`, `Debug` | has the signature and not the means; see below |
 | `a -> a -> a` | `add`, `append`, a merge | no third value to produce |
 | `R -> a`, `a`, `List a` | `decode`, `bottom`, `allValues` | needs the walk to run backwards |
 
-`a -> R` is the expensive omission, because it is the family every other language derives most:
-Haskell's `Show`, Rust's `Debug`/`Hash`/`Serialize`, Swift's `Hashable` and `Codable`,
-PureScript's `genericShow`. As it stands, Zelkova can derive `Eq` and `Comparable` and then
-nothing anyone asks for next.
+`a -> R` was the omission this survey judged expensive, because it is the family every other
+language derives most: Haskell's `Show`, Rust's `Debug`/`Hash`/`Serialize`, Swift's `Hashable`
+and `Codable`, PureScript's `genericShow`. It was specified on 2026-09-08 as [a derivation over
+one value](../spec/type-classes.md#a-derivation-over-one-value): `atConstructor : Position -> R`
+in place of `differed`, `combine` unchanged, and no `matched` at all, since a fold seeded by the
+constructor's own answer is never handed an empty one and has no identity to require.
 
-**`toString` is the honest limit, and it is not a matter of arity.** Three separate things a fold
-cannot supply:
+**`toString` is the honest limit, and it is not a matter of arity** — it has the signature a
+one-value derivation takes, and gives back `RedGreen` where a reader wants `Red Green`. Three
+separate things a fold cannot supply:
 
 1. A constructor's **name**. A `Position` orders and converts to an `Int`; neither yields `"Red"`.
 2. **Parenthesisation**, which is context handed *downwards*. Haskell's derived `Show` is
@@ -272,8 +276,8 @@ function would compare every argument pair in the whole value before the outermo
 compiler could not fix this without reading `combine` and understanding what its answer means,
 which is the one thing this design refuses to do.
 
-The way out keeps the refusal: [the three bindings are
-inlined](../spec/type-classes.md#the-three-bindings-are-inlined-not-called) into the walk rather than
+The way out keeps the refusal: [the bindings are
+inlined](../spec/type-classes.md#the-bindings-are-inlined-not-called) into the walk rather than
 called, so a `case` written inside `combine` is an ordinary `case` under the ordinary rule, and
 the class short-circuits itself by how it is written. The compiler still knows nothing about
 `Eq`. This is the one place where the survey changed the design rather than confirming it.

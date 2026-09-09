@@ -150,7 +150,7 @@ what arguments — and shape alone says nothing about what an answer to a member
 that may be derived is one whose own declaration supplies that half, in ordinary Zelkova.
 
 A member signature may be followed by a **derivation**: the word `derived`, the member it is for,
-and three bindings.
+and the bindings that member's signature calls for.
 
 ```zel expect=unimplemented
 module Example exposing (Eq)
@@ -176,10 +176,13 @@ constructor is declared at, counting from zero. `combine` folds the answers from
 the answer for the whole. None of the three mentions the class variable, so all three stand for
 every type that derives the class.
 
-A member may carry a derivation only when its signature is `a -> a -> R`, with the class variable
-absent from `R`: two values to walk in step, and an answer that is not itself of the type being
-walked. `matched` is then an `R`, `differed` a `Position -> Position -> R`, and `combine` an
-`R -> R -> R`. Anything else is an error at the class declaration.
+A member's signature decides whether it may carry a derivation, and which one. The derivation
+above walks **two** values and needs `a -> a -> R`, with the class variable absent from `R`: two
+values to walk in step, and an answer that is not itself of the type being walked. `matched` is
+then an `R`, `differed` a `Position -> Position -> R`, and `combine` an `R -> R -> R`. A member
+at `a -> R` carries [a derivation over one value](#a-derivation-over-one-value), which is the
+same walk with two bindings in place of three. Any other signature is an error at the class
+declaration.
 
 `Position` is the declaration position of a constructor, and it is a type rather than a number:
 `std/core` declares it, gives it `Eq` and `Comparable` instances and a `positionIndex :
@@ -187,23 +190,20 @@ Position -> Int`, and offers nothing else. A class that wants to order two const
 them; a class that wants to compute with them converts. What it may not do is arithmetic on a
 position by accident, which an `Int` in this position would allow and mean nothing by.
 
-Three member shapes therefore cannot carry a derivation, and the reasons differ:
+Two member shapes therefore cannot carry a derivation at all, and the reasons differ:
 
 - **A member returning `a`** — the shape `add` and `append` have in
   [what the standard library declares](#what-the-standard-library-declares) — would ask the walk
   for a third value of the type it is walking, and nothing a class says about itself can lend it
   the means.
-- **A member taking one `a`** — `toString : a -> String`, a hash, a size — asks for a walk over
-  one value rather than two. That walk is a smaller mechanism than this one, not a larger, and it
-  is unbuilt rather than ruled out; [`SPEC-25`](../tickets/spec-25.md) is the ticket, and
-  [Open questions](#open-questions) says what it would and would not reach.
 - **A member taking no `a`** — `bottom : a`, `allValues : List a` — asks the walk to run
   backwards and build a value from a description of the type's constructors. That description is
   the thing this design does not have and is not going to grow.
 
-A class is derivable when **every** member carries a derivation. Covering some and not the rest
-is an error naming the members left out: an instance of such a class could only be half derived
-and half written, which is the mixture a `derived` body rules out.
+A class is derivable when **every** member carries a derivation, and the two forms mix freely
+across one class: each member takes the form its own signature admits. Covering some members and
+not the rest is an error naming the ones left out: an instance of such a class could only be half
+derived and half written, which is the mixture a `derived` body rules out.
 
 ### What a derived instance computes
 
@@ -259,13 +259,64 @@ class Comparable a where
           x
 ```
 
-### The three bindings are inlined, not called
+### A derivation over one value
 
-A derivation is a **compile-time** step. The compiler reads the class's three bindings and the
-type's shape and writes the member's definition out of them; what runs is that definition. Neither
-the walk nor the three bindings exist at run time, and that is what sets them apart from every
-other binding in the language: `matched`, `differed` and `combine` are substituted into the
-generated definition at each step rather than called as functions.
+A derivation for a member at `a -> R` walks **one** value, and asks the class for two bindings
+rather than three.
+
+```zel expect=unimplemented
+module Example exposing (Hashable)
+
+class Hashable a where
+  hash : a -> Int
+
+  derived hash
+    atConstructor p =
+      positionIndex p
+
+    combine x y =
+      add x y
+```
+
+`atConstructor` is the answer for the constructor the value is of, and receives the position that
+constructor is declared at.
+
+With one value there are no two constructors to disagree, so the half of the walk that compares
+them falls away and `differed` with it: `atConstructor` answers for *the* constructor, each
+argument is answered in turn, left to right, by the instance belonging to that argument's type,
+and `combine` folds those answers onto the constructor's own. Everything else holds as it does
+over two values — the walk never looks inside an argument, and reordering a type's variants
+changes what the member computes.
+
+There is no `matched`, because the fold begins at `atConstructor`'s answer and is therefore never
+empty, not even for a constructor with no arguments. What `combine` is
+[trusted to keep](#what-a-derivation-is-trusted-to-keep) is associativity alone.
+
+### What a derivation cannot render
+
+`toString : a -> String` has the signature a one-value derivation takes, so a class may carry one
+for it. What the walk produces is `RedGreen` where the reader wanted `Red Green`, and the three
+things standing between the two are the limit of the mechanism rather than gaps in it.
+
+1. **A constructor's name.** A `Position` orders constructors and converts to an `Int`. Neither
+   yields `"Red"`.
+2. **Parenthesisation**, which is context handed *downwards* into the arguments. A walk that
+   folds answers upwards has no downward channel, so an argument cannot be told that it is being
+   rendered somewhere brackets are wanted around it.
+3. **Which argument is the first**, so that a separator goes between two answers and not before
+   the leftmost. `combine` is handed two answers and cannot tell where in the fold it sits.
+
+Rendering a value needs a mechanism that reads constructor names, or a compiler primitive that
+reads a value's representation. Zelkova has neither, and a program that wants a rendering writes
+the instance.
+
+### The bindings are inlined, not called
+
+A derivation is a **compile-time** step. The compiler reads the class's bindings and the type's
+shape and writes the member's definition out of them; what runs is that definition. Neither the
+walk nor the bindings exist at run time, and that is what sets them apart from every other
+binding in the language: a derivation's bindings are substituted into the generated definition at
+each step rather than called as functions.
 
 Under [strict evaluation](evaluation-semantics.md#evaluation-is-strict) the difference is
 observable, and it is not one the compiler could make on its own. An argument is a value before
@@ -285,20 +336,25 @@ every pair — the same answer, at the cost of the whole value — because
 like any other. Both spellings are legal and the compiler prefers neither. Which one a class
 writes is visible in the class's own declaration, which is the only place it should be.
 
-Inlining reaches only the three bindings. Anything they *call* is an ordinary call, evaluated
+Inlining reaches only those bindings. Anything they *call* is an ordinary call, evaluated
 under the ordinary rules — so a `combine` whose short-circuiting hides behind a helper does not
 get it back.
 
 ### What a derivation is trusted to keep
 
 `combine` is a fold, and a fold has a shape the answers must not notice: **`combine` has to be
-associative, with `matched` as an identity on both sides.**
+associative, and a two-value derivation's `matched` an identity on both sides.**
 
 ```zel expect=fragment
+combine (combine x y) z  =  combine x (combine y z)
+
 combine matched x        =  x
 combine x matched        =  x
-combine (combine x y) z  =  combine x (combine y z)
 ```
+
+A [one-value derivation](#a-derivation-over-one-value) owes the associativity and not the
+identity. Its fold starts at `atConstructor`'s answer and never at an empty one, so there is
+nothing for an identity to stand in for.
 
 Keeping the law is what makes a derived member's answer a property of the value rather than of
 the walk: how many arguments a constructor happens to have, and how the walk groups their
@@ -306,18 +362,26 @@ answers, cannot change it.
 
 **Nothing checks this.** The law is about values of a type the compiler is not reading, and the
 language has no way to state it, so a derivation that breaks it compiles and computes whatever
-the fold order gives it. Every breach has one shape — **an answer whose meaning depends on how
-many things were combined**: an average, a ratio, a proportion of the arguments that matched.
-The same idea counted rather than averaged (`matched = 0`, `differed _ _ = 1`, `combine = add`)
-is a monoid, and the walk gets it right for a constructor of any size. Whether anything could
+the fold order gives it. Breaches come in two shapes.
+
+The first is **an answer whose meaning depends on how many things were combined**: an average, a
+ratio, a proportion of the arguments that matched. The same idea counted rather than averaged
+(`matched = 0`, `differed _ _ = 1`, `combine = add`) is a monoid, and the walk gets it right for
+a constructor of any size.
+
+The second is **an answer that weights each part by where the fold reached it**, and it is what
+the usual way of mixing a hash does: `combine x y = add (mul 31 x) y` multiplies its left answer
+once more for every `combine` closing over it, so the same parts grouped differently mix to
+different numbers. A hash keeps the law by mixing with an operation grouping cannot see —
+`Bitwise.xor`, or the plain `add` above. Whether anything could
 establish the law before a program runs is [an open question](#open-questions),
 [`SPEC-27`](../tickets/spec-27.md).
 
 ### What a derived instance requires
 
 Every argument of every variant needs an instance of the class being derived, and nothing else
-does. In particular a class owes no `Position` instance for the positions `differed` receives:
-what a class makes of them is written in its own `differed`.
+does. In particular a class owes no `Position` instance for the positions `differed` and
+`atConstructor` receive: what a class makes of them is written in its own bindings.
 
 Where an argument's type is a variable, the requirement becomes a **constraint on the derived
 instance**, inferred rather than written:
@@ -704,16 +768,17 @@ builds the rest on top.
 
 Two of the four carry [derivations](#a-class-says-how-it-is-derived): `Eq` and `Comparable`, in
 the shape this chapter has already shown them. `Number` and `Appendable` carry none and could
-not — `add` and `append` return the class variable, which a walk over two values has no way to
+not — `add` and `append` return the class variable, which no walk over a value has a way to
 produce — and that is a fact about their signatures, not about their names. A program's own
 class is derivable on exactly the same terms as either.
 
-`std/core` also declares `Position`, the type a derivation's `differed`
-[receives](#a-class-says-how-it-is-derived) — with an `Eq` instance, a `Comparable` instance and
-`positionIndex : Position -> Int`, and with no way to construct one. It is the one type here the
-compiler knows by name, because it has to give `differed`'s parameters a type before any class
-has been read. That is a name for a *type*, which the compiler already has four of; it is not a
-name for a class, and [Numeric literals](#numeric-literals)'s claim is unweakened by it.
+`std/core` also declares `Position`, the type a derivation
+[is handed for a constructor](#a-class-says-how-it-is-derived) — with an `Eq` instance, a
+`Comparable` instance and `positionIndex : Position -> Int`, and with no way to construct one. It
+is the one type here the compiler knows by name, because it has to give those parameters a type
+before any class has been read. That is a name for a *type*, which the compiler already has four
+of; it is not a name for a class, and [Numeric literals](#numeric-literals)'s claim is unweakened
+by it.
 
 `Appendable` ranges over strings and [lists](lists.md). The compiler implements neither type —
 see the note on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).
@@ -724,23 +789,15 @@ of these are in `std/core` — its body has to choose an instance.
 
 ## Open questions
 
-- **A walk over one value.** A derivation covers `a -> a -> R` and nothing else, so `Eq` and
-  `Comparable` are derivable and a hash, a size or a checksum is not — each of those is the same
-  walk over one value instead of two, which is a smaller mechanism than the one specified here
-  rather than a larger ([`SPEC-25`](../tickets/spec-25.md)). It would not reach `toString`, and
-  the reason is worth stating because it is the limit of the whole approach: rendering a value
-  needs a constructor's *name* rather than its position, needs a precedence handed *downwards*
-  into the arguments to decide parentheses, and needs to know which argument is the first so as
-  to place a separator. A fold over answers already computed carries none of the three.
-- **Holding a derivation to its law.** [`combine` must be associative with `matched` as its
-  identity](#what-a-derivation-is-trusted-to-keep), and nothing establishes that before a program
-  runs. Whether anything could — a restriction on the shape the three bindings may take, an
-  obligation discharged by folding over a finite answer type, or a law the class states and a
-  test discharges — is unsettled ([`SPEC-27`](../tickets/spec-27.md)).
+- **Holding a derivation to its law.** [`combine` must be associative, and `matched` an identity
+  wherever a derivation has one](#what-a-derivation-is-trusted-to-keep), and nothing establishes
+  that before a program runs. Whether anything could — a restriction on the shape the bindings
+  may take, an obligation discharged by folding over a finite answer type, or a law the class
+  states and a test discharges — is unsettled ([`SPEC-27`](../tickets/spec-27.md)).
 - **What lists add.** Having them makes an n-ary `combine : List R -> R` writable, which would
   let a class see how many answers it is folding and settle
   [the law above](#what-a-derivation-is-trusted-to-keep) by making the fold the class's to
   perform rather than the walk's. Which of the two shapes `combine` takes is unsettled, and is
   not a reason to hold this design. Records reach the mechanism too and are settled:
   [a record is walked field by field in label order](records.md#records-and-derivation), with the
-  three bindings a class already supplies.
+  bindings a class already supplies.
