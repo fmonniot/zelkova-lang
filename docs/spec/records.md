@@ -407,14 +407,17 @@ wanting to serve many records takes the fields it needs as arguments.
 
 ## Records and derivation
 
-A [derivation](type-classes.md#a-class-says-how-it-is-derived) walks two values in step and folds
-the answers with `combine`, and a record is walked with the three bindings a class already
-supplies.
+A [derivation](type-classes.md#a-class-says-how-it-is-derived) folds the answers a value's parts
+produce, and a record is walked with the bindings a class already supplies.
 
-A record has exactly one shape, so the walk never reaches `differed`: two records of one type
-always agree on their fields and there are no constructor positions to hand it. What is left is
-the argument half of the walk — each **field pair** in turn, through the instance belonging to
-that field's type, folded with `combine`, ending at `matched`.
+A record has exactly one shape, so the half of the walk that answers for a constructor is never
+reached: two records of one type always agree on their fields, and there are no constructor
+positions to hand `differed` or `atConstructor`. What is left is the argument half — each
+**field** in turn, through the instance belonging to that field's type, folded with `combine`. A
+two-value derivation walks the fields in pairs and ends at `matched`; a
+[one-value derivation](type-classes.md#a-derivation-over-one-value) walks them singly and starts
+at the first field's answer, which every record has because it has
+[at least one field](#the-type).
 
 The fields are walked **in label order**, sorted by the label's characters. A record type is a
 set of fields with no order of its own, so the walk supplies one, and sorting is the only order
