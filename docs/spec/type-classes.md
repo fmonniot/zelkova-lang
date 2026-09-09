@@ -373,9 +373,11 @@ The second is **an answer that weights each part by where the fold reached it**,
 the usual way of mixing a hash does: `combine x y = add (mul 31 x) y` multiplies its left answer
 once more for every `combine` closing over it, so the same parts grouped differently mix to
 different numbers. A hash keeps the law by mixing with an operation grouping cannot see —
-`Bitwise.xor`, or the plain `add` above. Whether anything could
-establish the law before a program runs is [an open question](#open-questions),
-[`SPEC-27`](../tickets/spec-27.md).
+`Bitwise.xor`, or the plain `add` above.
+
+**Nothing will check it either.** Establishing the law before a program runs means reading what
+a derivation's answers mean, which is the one thing this mechanism does not do, so the law is
+permanently the class author's to keep ([DEC-10](../decisions/dec-10.md)).
 
 ### What a derived instance requires
 
@@ -789,13 +791,8 @@ of these are in `std/core` — its body has to choose an instance.
 
 ## Open questions
 
-- **Holding a derivation to its law.** [`combine` must be associative, and `matched` an identity
-  wherever a derivation has one](#what-a-derivation-is-trusted-to-keep), and nothing establishes
-  that before a program runs. Whether anything could — a restriction on the shape the bindings
-  may take, an obligation discharged by folding over a finite answer type, or a law the class
-  states and a test discharges — is unsettled ([`SPEC-27`](../tickets/spec-27.md)).
 - **What lists add.** Having them makes an n-ary `combine : List R -> R` writable, which would
-  let a class see how many answers it is folding and settle
+  let a class see how many answers it is folding and retire
   [the law above](#what-a-derivation-is-trusted-to-keep) by making the fold the class's to
   perform rather than the walk's. Which of the two shapes `combine` takes is unsettled, and is
   not a reason to hold this design. Records reach the mechanism too and are settled:

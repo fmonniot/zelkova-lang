@@ -109,3 +109,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-7](dec-7.md) | Lists: six decisions | live |
 | [DEC-8](dec-8.md) | Records: nine decisions | live |
 | [DEC-9](dec-9.md) | What a program may rely on about space: sharing, not closures | live |
+| [DEC-10](dec-10.md) | The law on a derivation's `combine` is checked by nothing, permanently | live |
