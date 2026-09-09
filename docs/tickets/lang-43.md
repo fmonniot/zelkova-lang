@@ -76,16 +76,17 @@ you have seen it fail*).
 - **[`BUG-16`](bug-16.md)** means an unresolved type name is invented rather than reported, so a
   facade naming a type that does not exist passes this check as an admitted `Type::Type`. That is
   `BUG-16`'s to fix, not this ticket's, and neither blocks the other.
-- **[`DEC-12`](../decisions/dec-12.md) decision 1** adds a rule about the *shape* of a facade's
-  result, which is a different check from the admitted-types walk and belongs beside it. An
-  [effectful facade](../spec/js-interop.md#an-effectful-facade) must declare
-  `Task (Result Failure a)` and may declare no other `Task`, so step 2 gains a case on the result
-  after the arrows are stripped: a result headed by `Task` is admitted only in that one shape, and
-  `a` is what the walk then descends into, `Task` and the `Result` never crossing the boundary.
-  This half cannot be tested until [`LANG-9`](lang-9.md) lands — a type argument must be a bare
-  name today, so `Task (Result Failure String)` does not parse and no fixture can be written for
-  it. Land the type-variable and function-type halves without waiting; sequence this one after
-  `LANG-9`.
+- **[`DEC-12`](../decisions/dec-12.md) decisions 1 and 7** add a rule about the *shape* of a
+  facade's result, which is a different check from the admitted-types walk and belongs beside it.
+  A facade declares `Task (Result Failure a)` unless its signature is marked
+  [`unsafe`](../spec/js-interop.md#an-unsafe-facade), so step 2 gains a case on the result after
+  the arrows are stripped: unmarked, the result is admitted only in that one shape and `a` is
+  what the walk descends into, `Task` and the `Result` never crossing the boundary; marked, the
+  result is walked as any other type. Both halves need
+  [`LANG-53`](lang-53.md) for the flag and [`LANG-9`](lang-9.md) for the form — a type argument
+  must be a bare name today, so `Task (Result Failure String)` does not parse and no fixture can
+  be written. Land the type-variable and function-type halves without waiting; sequence this one
+  after both.
 - **[`LANG-37`](lang-37.md)** adds constraint syntax. A facade may not carry a constraint either
   ([What a facade signature may not name](../spec/js-interop.md#what-a-facade-signature-may-not-name));
   that is a separate rejection on a separate

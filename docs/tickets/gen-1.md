@@ -58,9 +58,11 @@ companion itself returns a bare payload and never a `Result`
 ([JS interop](../spec/js-interop.md#an-effectful-facade)), so the two sides of the boundary
 disagree about the type on purpose and this wrapper is where they are reconciled. The predicates
 themselves are [`GEN-2`](gen-2.md)'s; the wrapper that calls one and routes its answer is this
-ticket's, and it is the whole of what keeps a throwing `.mjs` from ending the program. A *pure*
-facade gets no such wrapper, and a companion that throws under one
-[aborts](../spec/evaluation-semantics.md#when-a-program-aborts).
+ticket's, and it is the whole of what keeps a throwing `.mjs` from ending the program. A facade
+marked [`unsafe`](../spec/js-interop.md#an-unsafe-facade) gets no such wrapper — its companion is
+called directly — and one that throws under it
+[aborts](../spec/evaluation-semantics.md#when-a-program-aborts). Which facades are which is
+[`LANG-53`](lang-53.md)'s flag to carry that far.
 
 **A class dictionary is erased by specialisation and never passed** — stated by
 [`docs/spec/type-classes.md`](../spec/type-classes.md) and argued in

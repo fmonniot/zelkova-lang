@@ -31,9 +31,12 @@ every phase downstream of the boundary is entitled to believe it.
    may cross](../spec/js-interop.md#which-types-may-cross-the-boundary) settles it, and settles it
    two different ways depending on the facade. Out of an effectful facade a failing check is
    `Err (Malformed ..)`, a value the wrapper this ticket emits builds and hands to the caller; out
-   of a pure facade it [aborts the program](../spec/evaluation-semantics.md#when-a-program-aborts),
-   there being no result type to carry it. Both name the export whose companion returned the bad
-   value, because the thing being reported is always a bug in a hand-written `.mjs`.
+   of an [`unsafe`](../spec/js-interop.md#an-unsafe-facade) one it
+   [aborts the program](../spec/evaluation-semantics.md#when-a-program-aborts), there being no
+   result type to carry it. Both name the export whose companion returned the bad value, because
+   the thing being reported is always a bug in a hand-written `.mjs`. Note that `unsafe` removes
+   the `Task` and not the predicate, so this ticket emits a check for both kinds of facade and
+   only the destination differs.
 2. **Which direction is checked.** The chapter states the inbound direction — values a companion
    hands back. Whether an argument on its way *out* to JavaScript is also checked is a separate
    question: it is checked already, in the sense that the type checker proved it, so the case for

@@ -24,18 +24,25 @@ of two arguments is backed by a JavaScript function of two arguments, called dir
 There is no curried-wrapper convention to observe on the JavaScript side — currying is
 the compiler's business.
 
+A facade declares an **effect** unless it says otherwise. Its result type is
+`Task (Result Failure a)`, its companion may do anything, and the compiler wraps the call
+([An effectful facade](#an-effectful-facade)). Writing `unsafe` before a signature removes the
+`Task` and leaves a plain function type, which its author promises is pure and total
+([An `unsafe` facade](#an-unsafe-facade)). Arithmetic is the second kind and most things are the
+first.
+
 Example — a reduced version of `std/core/src/Js/Basics.zel`, keeping only the
 declarations its `exposing` list names so it stands alone as a compiling module (the
 real file exposes many more):
 
-```zel expect=ok
+```zel expect=unimplemented
 module javascript Js.Basics exposing
   ( fdiv
   , idiv
   )
 
-fdiv : Float -> Float -> Float
-idiv : Int -> Int -> Int
+unsafe fdiv : Float -> Float -> Float
+unsafe idiv : Int -> Int -> Int
 ```
 
 Two signatures rather than one, because a facade names the types its JavaScript really handles
@@ -50,8 +57,8 @@ that type. Every value a companion `.mjs` hands back is run through the predicat
 its signature declares. A value that fails one becomes [`Err (Malformed
 ..)`](evaluation-semantics.md#an-effect-that-can-fail) out of an [effectful
 facade](#an-effectful-facade), and [aborts the
-program](evaluation-semantics.md#when-a-program-aborts) out of a pure one, which has no result
-type to carry it.
+program](evaluation-semantics.md#when-a-program-aborts) out of an [`unsafe`](#an-unsafe-facade)
+one, which has no result type to carry it.
 
 A facade has no body the compiler can read, so its annotation is checked by the running program
 rather than while compiling. Two of the
@@ -175,17 +182,14 @@ chapter.
 
 ## An effectful facade
 
-Every signature above declares a function: the same arguments give the same result, and calling
-it has no other consequence
-([purity](evaluation-semantics.md#purity-and-the-javascript-boundary)). A clock, a file and a
-socket are none of those, and the language reaches them through one variation on the same
-declaration.
+A clock, a file and a socket are what a program reaches JavaScript for, and none of them is a
+function of its arguments. So a facade declares an effect by default: its companion may read,
+write, wait and fail, and nothing about that is an exception to be asked for.
 
-**A facade signature whose result type is a `Task` declares an effect**, and its companion is
-released from the rule above: it may read, write, wait and fail.
-
-**That result type must be `Task (Result Failure a)`.** A signature naming any other `Task` is
-an error, so an effectful facade cannot declare its JavaScript to be infallible.
+**A facade signature declares an effect, and its result type must be `Task (Result Failure a)`.**
+Any other result type is an error unless the signature is marked
+[`unsafe`](#an-unsafe-facade), so a facade cannot declare its JavaScript to be infallible by
+saying less.
 [`Failure`](evaluation-semantics.md#an-effect-that-can-fail) is the error type every one of them
 names, `a` being the only part its author chooses. It is not one of
 [the default imports](modules.md#the-default-imports), so a facade naming it imports it.
@@ -216,7 +220,7 @@ produces.
 
 The rules above are untouched. `a` is the type the companion really hands back, it is checked
 by `a`'s predicate at the boundary like any other returned value, and it may be neither a type
-variable nor a function type. An effectful facade is as monomorphic as a pure one.
+variable nor a function type. An effectful facade is as monomorphic as an `unsafe` one.
 
 A companion whose result is not ready at once returns a promise for it, and the predicate runs
 on the value that promise resolves to. A promise that never settles is a `Task` that never
@@ -260,6 +264,47 @@ the parentheses in `Task (Result Failure String)` are a syntax error
 other nested type. Nothing declares `Task` or `Failure` either, no wrapper is generated, and no
 predicate is run ([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)); no check
 holds a facade to the result type above, which is [`LANG-43`](../tickets/lang-43.md)'s.
+
+## An `unsafe` facade
+
+**`unsafe` before a signature declares a function rather than an effect.** The result type is
+then any [admitted type](#which-types-may-cross-the-boundary), the `Task` and its `Result` are
+gone, and no wrapper stands between the caller and the companion.
+
+```zel expect=unimplemented
+module javascript Js.Basics exposing (idiv)
+
+unsafe idiv : Int -> Int -> Int
+```
+
+The word is a promise its author makes to the compiler, covering the two things the compiler
+cannot check and does not try to:
+
+- **The companion is a function of its arguments.** The same arguments give the same result, and
+  calling it reads nothing, writes nothing and sends nothing anywhere — the same
+  [purity](evaluation-semantics.md#purity-and-the-javascript-boundary) an ordinary Zelkova
+  expression keeps.
+- **The companion returns.** It does not throw, and it hands back a value rather than a promise
+  for one: work still unfinished when the call returns cannot be declared this way.
+
+A companion that breaks the first computes wrong answers and nothing reports it. One that breaks
+the second [aborts the program](evaluation-semantics.md#when-a-program-aborts). An unchecked
+claim costs a word for that reason, and the set of them a program makes is the set of
+declarations carrying it.
+
+**`unsafe` removes the `Task`, not the predicate.** The return value is checked against its
+declared type exactly as any other crossing is, and a value that fails
+[aborts](evaluation-semantics.md#when-a-program-aborts) — an effectful facade has an `Err
+(Malformed ..)` to put it in and this one has nowhere.
+
+Every package writes `unsafe` on the same terms. `zelkova-core`'s arithmetic is written this
+way, `idiv` above being `std/core/src/Js/Basics.zel` reduced to one declaration, and a package's
+own boundary may be too.
+
+**Not implemented:** the block does not parse. `unsafe` is an ordinary identifier today, so
+`unsafe idiv : Int -> Int -> Int` reads as two names where the grammar expects one
+([`LANG-53`](../tickets/lang-53.md)), and nothing holds an unmarked facade to a `Task` result
+either.
 
 ## Facade constants
 

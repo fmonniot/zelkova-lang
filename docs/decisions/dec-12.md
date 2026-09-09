@@ -1,9 +1,10 @@
-# DEC-12 · What a broken companion does: a survey and six decisions
+# DEC-12 · What a broken companion does: a survey and seven decisions
 
 **Settled:** 2026-09-08, by the language owner (`SPEC-15`).
 **Status:** live.
-**Where the rule lives:** [JS interop — An effectful facade](../spec/js-interop.md#an-effectful-facade)
-and [Which types may cross](../spec/js-interop.md#which-types-may-cross-the-boundary),
+**Where the rule lives:** [JS interop — An effectful facade](../spec/js-interop.md#an-effectful-facade),
+[An `unsafe` facade](../spec/js-interop.md#an-unsafe-facade) and
+[Which types may cross](../spec/js-interop.md#which-types-may-cross-the-boundary),
 [Evaluation semantics — An effect that can fail](../spec/evaluation-semantics.md#an-effect-that-can-fail)
 and [When a program aborts](../spec/evaluation-semantics.md#when-a-program-aborts).
 
@@ -18,7 +19,8 @@ the backend rather than by the specification.
 
 The goal this entry was decided against: **a Zelkova program cannot fail unexpectedly.** Not that
 failure is rare or well-reported — that a program which type checks has no way to stop other
-than by finishing.
+than by finishing. Decision 7 is where that goal meets what no language achieves, and names the
+residue instead of hiding it.
 
 ## The survey
 
@@ -115,21 +117,29 @@ decision 1 makes every effectful facade name it. That list is for what every pro
 spells `Failure` at all. The constructors decide it: `Threw` and `Malformed` are ordinary enough
 words that putting them in every module's namespace costs more than the import line it saves.
 
-## 3 — A pure facade that breaks its contract aborts
+## 3 — An `unsafe` facade that breaks its promise aborts
 
 [When a program aborts](../spec/evaluation-semantics.md#when-a-program-aborts). The required
 result type in decision 1 is available to an effectful facade because it has somewhere to put an
-outcome. A pure one does not: a `Result` in the result of `and : Int -> Int -> Int` describes a
-different function, and most of the language's arithmetic is written as a facade.
+outcome. An [`unsafe`](../spec/js-interop.md#an-unsafe-facade) one does not: a `Result` in the
+result of `unsafe and : Int -> Int -> Int` describes a different function, and most of the
+language's arithmetic is declared that way.
 
 So the boundary is treated asymmetrically on purpose. An effect is a description of work the
-runtime performs, and a failure to perform it is part of the description; a pure facade claims to
-be a function, and a function that cannot produce its result has broken a claim rather than
-produced a value.
+runtime performs, and a failure to perform it is part of the description; an `unsafe` facade
+claims to be a function, and a function that cannot produce its result has broken a claim rather
+than produced a value.
+
+`unsafe` removes the `Task` and **not** the predicate. The return value is still checked against
+its declared type, and a value that fails aborts, having nowhere to go. Dropping the check as
+well would make the word buy two things at once and would make a lying companion silent instead
+of loud; the scalar predicates are also the cheapest in the system, `Js.Basics` being scalar in
+and scalar out throughout. If the cost is ever measured and matters, eliding a predicate is a
+separate decision to take then.
 
 ## 4 — A program can abort, and the chapter names the three causes
 
-A broken pure facade, exhaustion of memory or stack, and the host stopping the program. Naming
+A broken `unsafe` facade, exhaustion of memory or stack, and the host stopping the program. Naming
 them costs the unconditional headline in [Two
 outcomes](../spec/evaluation-semantics.md#two-outcomes) and buys the claim being true. The header
 survives unchanged because the claim under it is about evaluating an expression, and an abort is
@@ -138,6 +148,10 @@ an outcome of running a program: a program has a boundary and an expression does
 The rejected alternative was leaving a violation undefined, which is what a specification does by
 saying nothing. It was rejected before the survey ran and the survey confirmed it: the abort
 exists whether or not it is written down, and an unwritten one is decided by the backend.
+
+Decision 7 sharpens the first cause into something a reader can act on: every abort a program's
+own code can cause comes from a declaration with `unsafe` written on it, so *where can this
+program stop?* is a grep rather than an audit.
 
 ## 5 — There is no `crash`
 
@@ -158,6 +172,37 @@ Decision 1 is what makes that affordable. The reason Elm can leave the contract 
 that one person writes the code the contract binds; Zelkova has deliberately given that up, so it
 buys the same safety by construction instead.
 
+## 7 — The trusted surface is a word, and the default is the safe one
+
+[An `unsafe` facade](../spec/js-interop.md#an-unsafe-facade). A facade declares an effect unless
+its signature says `unsafe`, and that word is the whole of what the language trusts rather than
+checks: its author asserts the companion is a function of its arguments and that it returns.
+
+Decisions 1 through 6 are all about failures the compiler can route somewhere. This one is about
+the claim underneath them, and it exists because that claim was previously made by *saying
+nothing*. A signature with no `Task` in it was the unmarked default, so purity and totality were
+asserted by whoever wrote the shorter thing, and `add : Int -> Int -> Int` was indistinguishable
+from a facade over a clock. Rust's `unsafe` is the model: the operation the checker cannot verify
+is the one that costs a word.
+
+**Leaving purity as the unmarked default** was therefore the rejected alternative, and it is what
+every earlier draft of this entry assumed. It loses on two counts. A reader cannot find the
+trusted surface — `grep` gives modules, and telling an asserted signature from an effectful one
+inside a module means reading every result type. And the incentive runs backwards: the author who
+thinks least about the boundary writes the declaration that promises most.
+
+The name is Rust's and the meaning is weaker than Rust's, which the chapter writes out rather
+than inherits. Violating Zelkova's `unsafe` gives wrong answers or a named abort, never memory
+unsafety, because there is no memory to corrupt. `trusted` and `unchecked` were the alternatives;
+`unsafe` keeps the direction of alarm, and a word that reads as reassurance is the wrong affect
+for the one unchecked claim in the language.
+
+This is what decision 6 costs and what makes that cost payable. Keeping the boundary open to
+every package means the trusted surface grows with the ecosystem, and Elm's answer — audit it,
+because one person writes it — does not transfer. What transfers is making the surface findable:
+`unsafe` is available to `zelkova-core` and to a user's package on identical terms, and neither
+can assert anything without writing it down.
+
 ## What nothing checks
 
 None of it is implemented. `zelkova-core` declares no `Task` and therefore no `Failure`, no
@@ -166,10 +211,14 @@ wrapper is generated, no predicate is emitted, and nothing runs a program, so no
 carry a `String`, which has [no literal syntax](../spec/lexical-structure.md#strings) yet.
 
 Decision 1 is unwritable before [`LANG-9`](../tickets/lang-9.md) lands: a type argument must be a
-bare name today, so `Task (Result Failure String)` is a syntax error and every block in the two
-chapters that shows one is tagged `expect=unimplemented` for that reason. The shape check itself
-is [`LANG-43`](../tickets/lang-43.md)'s and inherits the same sequencing — no fixture for it can
-be written until the form parses.
+bare name today, so `Task (Result Failure String)` is a syntax error and three blocks across the
+two chapters are tagged `expect=unimplemented` for that reason. The shape check itself is
+[`LANG-43`](../tickets/lang-43.md)'s and inherits the same sequencing.
+
+Decision 7 is unwritable too, for a separate reason and on a separate ticket:
+[`LANG-53`](../tickets/lang-53.md) is the `unsafe` keyword, which nothing tokenizes, and the four
+remaining `expect=unimplemented` blocks are its. Every facade in `std/core` is an unmarked one
+today, asserting purity by saying nothing — the state this decision exists to end.
 
 ## Sources
 

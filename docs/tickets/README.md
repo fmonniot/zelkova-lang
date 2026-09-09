@@ -279,6 +279,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-50](lang-50.md) | task | — | open | Field access `r.name` and the accessor `.name` do not parse |
 | [LANG-51](lang-51.md) | task | — | open | The typer has no record type, so nothing checks a field, an update or an accessor |
 | [LANG-52](lang-52.md) | task | — | open | Whitespace around a qualification dot is accepted, and records need it not to be |
+| [LANG-53](lang-53.md) | task | — | open | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |

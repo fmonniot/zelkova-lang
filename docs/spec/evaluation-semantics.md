@@ -526,33 +526,34 @@ twice gives the same value, and evaluating it does nothing else — nothing is w
 mutated or sent anywhere.
 
 A [`module javascript` facade](js-interop.md) is where that guarantee meets code the compiler
-did not produce and cannot inspect. **A facade's companion export must be a function of its
-arguments**: the same arguments give the same result, and calling it has no other consequence.
-A facade whose JavaScript reads a clock, keeps a counter, prints, or reaches the network breaks
-that rule, and a program using it has no meaning the language defines.
+did not produce and cannot inspect. A facade declares an effect by default, and its companion is
+under no obligation to be a function of anything: reading a clock, keeping a counter, printing
+and reaching the network are what it is for.
 
-One facade form is exempt, and it is how a clock is read: a signature whose result type is
-[`Task`](#effects) declares an effect rather than a function, and its companion may do anything.
-[JS interop](js-interop.md#an-effectful-facade) carries that form.
+**The word [`unsafe`](js-interop.md#an-unsafe-facade) is what claims otherwise.** A signature
+marked with it declares a function rather than an effect, and its author is asserting that the
+same arguments give the same result and that calling it has no other consequence.
 
-```zel expect=ok
+```zel expect=unimplemented
 module javascript Js.Math exposing (square)
 
-square : Float -> Float
+unsafe square : Float -> Float
 ```
 
-Nothing distinguishes that from a facade over an impure export:
+Nothing distinguishes that from the same word over an impure export:
 
-```zel expect=ok
+```zel expect=unimplemented
 module javascript Js.Random exposing (next)
 
-next : Int -> Int
+unsafe next : Int -> Int
 ```
 
-Both compile. The second is a broken program, and the rule it breaks is one only its author can
-keep.
+The second is a broken program, and the rule it breaks is one only its author can keep. What the
+word buys is not a check but a place to look: the assertions a program makes about JavaScript are
+the declarations carrying it, and a reader who wants to know what this language is trusting reads
+those and nothing else.
 
-Purity is not the only rule that crosses this boundary. **A companion also owes the answers
+Purity is not the only rule an `unsafe` companion owes. **It also owes the answers
 [Numbers](#an-operation-with-no-answer) defines**: a `Float`-returning companion with no answer
 returns `nan`, an `Int`-returning one returns the value that section names, and a conversion
 returns a value the `Int` type can hold. Neither returns a stand-in a caller cannot tell from a
@@ -669,8 +670,9 @@ carrying the name of the export that returned it. Separate constructors because 
 separate repairs: the first is JavaScript doing something its author did not plan for, the second
 a `.mjs` that disagrees with the signature above it.
 
-So an effectful facade declares a `Task (Result Failure a)` and may declare no other `Task`, a
-rule [JS interop](js-interop.md#an-effectful-facade) states in full. Running such a `Task` yields a
+So a facade declares a `Task (Result Failure a)` unless it is marked
+[`unsafe`](js-interop.md#an-unsafe-facade), a rule
+[JS interop](js-interop.md#an-effectful-facade) states in full. Running such a `Task` yields a
 value even when the JavaScript behind it breaks, so the two outcomes above are the two outcomes
 of running one.
 
@@ -701,11 +703,14 @@ No Zelkova expression asks for one. The language has no keyword that aborts and 
 catches one, so an abort is never a step a program takes — it is the runtime saying it can no
 longer keep the guarantees above. Three things cause one.
 
-**A pure facade whose companion breaks its contract.** A companion declared as a function that
-throws, or that returns a value its declared type does not admit, leaves its caller owed a value
-that nothing produced. An effectful facade has somewhere to put that and a pure one has nowhere:
-a `Result` in the result of `and : Int -> Int -> Int` describes a different function, and most of
-the language's arithmetic is written as a facade.
+**An [`unsafe`](js-interop.md#an-unsafe-facade) facade whose companion breaks its promise.** A
+companion declared as a function that throws, or that returns a value its declared type does not
+admit, leaves its caller owed a value that nothing produced. An effectful facade has somewhere to
+put that and an `unsafe` one has nowhere: a `Result` in the result of `unsafe and : Int -> Int ->
+Int` describes a different function, and most of the language's arithmetic is declared this way.
+
+So every abort a program's own code can cause is attributable to a declaration carrying that
+word, which is the whole of what makes the cause findable.
 
 **Exhaustion.** No memory left to hold a value, or no stack left to enter a call. The second is
 reachable from Zelkova alone, by a recursion the [tail-call rule](#recursion-and-tail-calls) does
@@ -716,7 +721,7 @@ one.
 
 An abort says what caused it, and one caused by a facade names the export whose companion broke.
 
-Only the first is a broken promise. The other two are the runtime running out of what it needs,
+Only the first is a promise broken. The other two are the runtime running out of what it needs,
 and no rule in this chapter says how much of either a program uses.
 
 **Not implemented:** nothing runs a program, so nothing aborts ([`GEN-1`](../tickets/gen-1.md)),
