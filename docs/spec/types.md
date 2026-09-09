@@ -46,11 +46,9 @@ red = Red
 ```
 
 A list type needs no form of its own: it is written `List a`, an application like any other, and
-[Lists](lists.md#the-type) is where that and the rest of the construct are specified. Record
-types are part of the language and are specified with the construct they belong to, which does
-not exist yet — see the *Not implemented* note on braces in
-[Lexical structure](lexical-structure.md#punctuation). That chapter is not written:
-[`SPEC-21`](../tickets/spec-21.md).
+[Lists](lists.md#the-type) is where that and the rest of the construct are specified. A record
+type — `{ x : Celsius, y : Celsius }` — is a seventh form, and
+[Records](records.md#the-type) is where it and the rest of that construct are specified.
 
 ### Type names
 
@@ -331,9 +329,9 @@ quad p =
   Small
 ```
 
-The limit is deliberate. A tuple of four is where a record belongs: past three elements,
-position stops being a usable way to say which field is which, and a record's field names
-is a better solution.
+The limit is deliberate. A tuple of four is where a [record](records.md) belongs: past three
+elements, position stops being a usable way to say which field is which, and a record's field
+names is a better solution.
 
 The same limit applies to tuple *patterns* and tuple *expressions*, so no tuple of any other
 size is representable anywhere in the language.

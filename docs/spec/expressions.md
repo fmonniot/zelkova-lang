@@ -25,8 +25,8 @@ no value in some of its cases would not be an expression.
 | Lambda | `\x -> e` |
 
 Three more forms — list literals, records, and record field access — are part of the language
-and are specified in their own chapters: [Lists](lists.md) for the first, and no chapter yet for
-the other two. None of the three is implemented; see
+and are specified in their own chapters: [Lists](lists.md) for the first and
+[Records](records.md) for the other two. None of the three is implemented; see
 [Forms the compiler does not have](#forms-the-compiler-does-not-have) at the foot of this
 chapter.
 
@@ -656,8 +656,8 @@ Three expression forms are part of the language and are specified elsewhere:
 | Form | Where it is specified |
 |---|---|
 | List literals — `[1, 2]` | [Lists](lists.md#list-literals) |
-| Records — `{ a = 1 }`, `{ r \| a = 2 }` | [Lexical structure](lexical-structure.md#punctuation) carries the braces; the record chapter is unwritten ([`SPEC-21`](../tickets/spec-21.md)) |
-| Field access — `r.name`, `.name` | with records ([`SPEC-21`](../tickets/spec-21.md)) |
+| Records — `{ a = 1 }`, `{ r \| a = 2 }` | [Records](records.md#building-a-record) |
+| Field access — `r.name`, `.name` | [Records](records.md#reading-a-field) |
 
 ```zel expect=unimplemented
 module Example exposing (f)
@@ -667,4 +667,4 @@ f r =
 ```
 
 **Not implemented:** `.` is punctuation for qualified names only, so `r.name` is rejected
-rather than read as a projection.
+rather than read as a projection ([`LANG-50`](../tickets/lang-50.md)).

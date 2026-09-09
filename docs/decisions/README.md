@@ -107,3 +107,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-5](dec-5.md) | A pattern's sign is the pattern grammar's, not the tokenizer's | live |
 | [DEC-6](dec-6.md) | Which types may cross the JavaScript boundary | live |
 | [DEC-7](dec-7.md) | Lists: six decisions | live |
+| [DEC-8](dec-8.md) | Records: nine decisions | live |

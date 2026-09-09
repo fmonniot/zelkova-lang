@@ -220,7 +220,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-18 | task | — | closed 2026-09-06 | "A subset of the Zelkova standard types" names no subset, and the compiler enforces none |
 | [SPEC-19](spec-19.md) | task | — | open | `javascript` is the only interop modifier, and the WebAssembly equivalent is undesigned |
 | SPEC-20 | task | — | closed 2026-09-06 | A facade constant is called unsettled by the chapter and shipped by `std/core` |
-| [SPEC-21](spec-21.md) | task | — | open | Records are part of the language and no chapter says what one looks like |
+| SPEC-21 | task | — | closed 2026-09-07 | Records are part of the language and no chapter says what one looks like |
 | SPEC-22 | task | — | closed 2026-09-06 | Lists are part of the language and the chapter specifying them does not exist |
 | SPEC-23 | task | — | closed 2026-09-05 | Nothing checks the spec's own cross-references, and 271 of them are one rename from silence |
 | SPEC-24 | task | — | closed 2026-09-05 | The conventions name every tag a chapter may write but not a single word it may write, and the tag table is four names short |
@@ -273,6 +273,12 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-44](lang-44.md) | task | — | open | There is no list-literal production, so `[1, 2]` does not parse |
 | [LANG-45](lang-45.md) | task | — | open | There is no list pattern, so neither `[]` nor `first :: rest` can be matched |
 | [LANG-46](lang-46.md) | task | — | open | `std/core` declares `List`, opaquely, with `(::)` over it |
+| [LANG-47](lang-47.md) | task | — | open | `{` and `}` are not tokens, so nothing in a record reaches the grammar |
+| [LANG-48](lang-48.md) | task | — | open | There is no record production, so a record type, a record and an update do not parse |
+| [LANG-49](lang-49.md) | task | — | open | There is no record pattern production |
+| [LANG-50](lang-50.md) | task | — | open | Field access `r.name` and the accessor `.name` do not parse |
+| [LANG-51](lang-51.md) | task | — | open | The typer has no record type, so nothing checks a field, an update or an accessor |
+| [LANG-52](lang-52.md) | task | — | open | Whitespace around a qualification dot is accepted, and records need it not to be |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |

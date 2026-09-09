@@ -11,7 +11,7 @@ does: the file, and the modules it imports.
 
 ## Namespaces
 
-A program has five namespaces, and a name in one never collides with a name in another:
+A program has six namespaces, and a name in one never collides with a name in another:
 
 | Namespace | Holds | Written |
 |---|---|---|
@@ -20,6 +20,7 @@ A program has five namespaces, and a name in one never collides with a name in a
 | constructors | the variants of a `type` declaration | uppercase-initial, [in an expression](expressions.md#names) or a [pattern](patterns.md#constructor-patterns) |
 | operators | `infix` declarations | operator characters, never letters |
 | modules | the prefix of a qualified name | uppercase-initial, before the final `.` |
+| labels | the fields of a [record type](records.md#the-type) | lowercase-initial, before a `:`, an `=` or after a `.` |
 
 Which namespace an occurrence is looked up in is decided by how it is written and where it
 sits, never by what happens to be in scope. So one spelling can be several unrelated things at
@@ -45,6 +46,13 @@ meant the other.
 
 The one lowercase name that is not a value is a [type variable](#type-variables), which is not
 resolved against a namespace at all: it is bound by the declaration it appears in.
+
+A label is the one namespace with no declaration behind it. What puts a label in it is any
+[record type](records.md#the-type) mentioning that label, so two record types may both carry `x`
+without that being a clash, and which record a label belongs to is decided by the type it is read
+against rather than by what is in scope. Nothing below therefore reaches a label: it is not
+imported, not exposed, not shadowed, and never ambiguous.
+[Records](records.md#labels-are-not-values) is the rest of it.
 
 Module names are separate for the same reason. A module name is only ever read to the left of
 a `.`, so a constructor named `Widget` and an imported module named `Widget` coexist:
