@@ -409,7 +409,7 @@ wanting to serve many records takes the fields it needs as arguments.
 
 A [derivation](type-classes.md#a-class-says-how-it-is-derived) walks two values in step and folds
 the answers with `combine`, and a record is walked with the three bindings a class already
-supplies. It needs no fourth.
+supplies.
 
 A record has exactly one shape, so the walk never reaches `differed`: two records of one type
 always agree on their fields and there are no constructor positions to hand it. What is left is
