@@ -1,7 +1,8 @@
 # DEC-11 · What a value describing an effect is: seven decisions
 
 **Settled:** 2026-09-08, by the language owner (`SPEC-15`).
-**Status:** live.
+**Status:** live; decision 5 is extended by [DEC-12](dec-12.md), which decides how a failure
+gets into the value.
 **Where the rule lives:** [Evaluation semantics — Effects](../spec/evaluation-semantics.md#effects),
 [JS interop — An effectful facade](../spec/js-interop.md#an-effectful-facade),
 [Packages — Programs](../spec/packages.md#programs) and
@@ -76,6 +77,12 @@ it reads better at a chain of fallible effects. It costs a second parameter on e
 `Never` type so that a task which cannot fail can say so, and two ways to express failure in one
 language — where the chapter's own table already sends a lookup, a parse and a conversion into
 `Maybe` and `Result`.
+
+**Extended.** This decision left *which* value, and how it gets there, to the author of the
+`.mjs`: the chapter's rule was that a companion may not throw. [DEC-12](dec-12.md) replaces that
+contract with a required result type, so an effectful facade declares `Task (Result Failure a)`
+and cannot declare anything else. The decision above is unchanged — one type parameter, and
+failure in the value — and what moved is that the compiler now checks it rather than trusting it.
 
 ## 6 — `main : Task ()`
 

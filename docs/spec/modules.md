@@ -755,7 +755,10 @@ would spell out a module name on one of the most common patterns in the language
 `List` is exposed as a bare type because its module's functions read better qualified —
 `List.map`, not `map`. [`Task`](evaluation-semantics.md#effects) is exposed the same way and for
 the same reason, and it is on the list because [`main`](packages.md#programs) names it in an
-annotation every program has to write. Writing any of these imports out explicitly is allowed
+annotation every program has to write.
+[`Failure`](evaluation-semantics.md#an-effect-that-can-fail) does not come with it: the modules
+naming that type are the ones declaring or consuming an
+[effectful facade](js-interop.md#an-effectful-facade), and a module that names it imports it. Writing any of these imports out explicitly is allowed
 and changes nothing.
 
 **Known gap:** none of it exists. Every module resolves only what it declares and what it

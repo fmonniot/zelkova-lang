@@ -27,10 +27,15 @@ somewhere earlier or somewhere else:
 | Applying a value that is not a function | Type checking |
 | Integer division by zero | [Defined below](#an-operation-with-no-answer) to be `0`, because no `Int` value means *no answer* |
 | A lookup, a parse, a conversion that can fail | The type: `Maybe a`, `Result e a` |
+| A companion that throws, or returns a value of the wrong shape | The `Task`'s payload: [`Result Failure a`](#an-effect-that-can-fail) |
 
 **Known gap:** coverage is not checked — the exhaustiveness phase inspects nothing and accepts
 every module — so a `case` missing a branch compiles today and would have no value to produce.
 [`LANG-19`](../tickets/lang-19.md) is the ticket.
+
+That is a claim about evaluating an expression. A whole program has one more outcome, because a
+program has a boundary and an expression does not: see [When a program
+aborts](#when-a-program-aborts).
 
 ## Evaluation is strict
 
@@ -577,10 +582,12 @@ above holds over a program with effects in it.
 A primitive `Task` is declared by a [`module javascript` facade](js-interop.md) whose result
 type is one.
 
-```zel expect=ok
+```zel expect=unimplemented
 module javascript Js.File exposing (read)
 
-read : String -> Task String
+import Task exposing (Failure)
+
+read : String -> Task (Result Failure String)
 ```
 
 That is the only place an effect enters the language. What the companion behind such a signature
@@ -639,18 +646,78 @@ once the first has produced a value.
 
 ### An effect that can fail
 
-`Task` takes one type parameter and carries no channel for an error. An effect that can fail
-produces a value saying so — `read` above, made honest, is `String -> Task (Result IoError
-String)` — which is where [every other failure the language admits](#two-outcomes) goes.
+`Task` takes one type parameter and carries no channel for an error. A failure an effect can
+produce is a value in its payload, which is where [every other failure the language
+admits](#two-outcomes) goes.
 
-Running a `Task` adds no third outcome to the two that section names. A companion that would
-throw returns the failure in its result type instead, and one that throws anyway breaks its
-contract the way any other broken facade does.
+Every effect can produce two of those values whatever else it produces, because a primitive
+effect is a call into JavaScript and such a call can break in two ways its caller did not ask
+for. `Task` declares them, and exposes them with their constructors — the type is matched on
+rather than held opaque:
 
-**Not implemented:** `zelkova-core` declares no `Task`, no facade wrapper is generated, and
-nothing runs a program at all — the pipeline ends at type checking, so there is no runtime for a
-`Task` to be handed to ([`GEN-1`](../tickets/gen-1.md)).
+```zel expect=ok
+module Task exposing (Failure(..))
 
-**Known gap:** the facade block above compiles, for the reason
-[JS interop](js-interop.md#an-effectful-facade) gives: an unresolved type name is invented rather
-than reported ([`BUG-16`](../tickets/bug-16.md)). It goes red when `BUG-16` lands.
+type Failure
+  = Threw String
+  | Malformed String
+```
+
+`Threw` is a companion that threw, or whose promise rejected, carrying the host's description of
+what happened. `Malformed` is a companion that returned a value its declared type does not admit,
+carrying the name of the export that returned it. Separate constructors because the two have
+separate repairs: the first is JavaScript doing something its author did not plan for, the second
+a `.mjs` that disagrees with the signature above it.
+
+So an effectful facade declares a `Task (Result Failure a)` and may declare no other `Task`, a
+rule [JS interop](js-interop.md#an-effectful-facade) states in full. Running such a `Task` yields a
+value even when the JavaScript behind it breaks, so the two outcomes above are the two outcomes
+of running one.
+
+A failure belonging to the effect's own domain goes in the payload beside those. `read` above,
+reporting a missing file apart from a broken companion, is `String -> Task (Result Failure
+(Result IoError String))`. The module that
+[publishes `read`](packages.md#what-a-package-exposes) outside its package is where the two
+`Result`s collapse into the one its dependents see.
+
+**Not implemented:** the `read` block under
+[Where a `Task` comes from](#where-a-task-comes-from) does not parse, a type argument having to be
+a bare name today ([`LANG-9`](../tickets/lang-9.md)). `zelkova-core` declares no `Task` and no
+`Failure`, no facade wrapper is generated, and nothing runs a program at all — the pipeline ends
+at type checking, so there is no runtime for a `Task` to be handed to
+([`GEN-1`](../tickets/gen-1.md)).
+
+**Known gap:** the `Failure` block above compiles, and should not: `String` names no type the
+build has, and an unresolved type name is invented rather than reported
+([`BUG-16`](../tickets/bug-16.md)). It goes red when `BUG-16` lands, and green again once
+`zelkova-core` declares `String`.
+
+## When a program aborts
+
+Evaluating an expression has [two outcomes](#two-outcomes). Running a program has a third: it
+can **abort**, stopping without producing a value and without running any more of itself.
+
+No Zelkova expression asks for one. The language has no keyword that aborts and none that
+catches one, so an abort is never a step a program takes — it is the runtime saying it can no
+longer keep the guarantees above. Three things cause one.
+
+**A pure facade whose companion breaks its contract.** A companion declared as a function that
+throws, or that returns a value its declared type does not admit, leaves its caller owed a value
+that nothing produced. An effectful facade has somewhere to put that and a pure one has nowhere:
+a `Result` in the result of `and : Int -> Int -> Int` describes a different function, and most of
+the language's arithmetic is written as a facade.
+
+**Exhaustion.** No memory left to hold a value, or no stack left to enter a call. The second is
+reachable from Zelkova alone, by a recursion the [tail-call rule](#recursion-and-tail-calls) does
+not cover — a `case` scrutinee, an operand, or a call between two declarations rather than within
+one.
+
+**The host.** Whatever runs the program can stop it.
+
+An abort says what caused it, and one caused by a facade names the export whose companion broke.
+
+Only the first is a broken promise. The other two are the runtime running out of what it needs,
+and no rule in this chapter says how much of either a program uses.
+
+**Not implemented:** nothing runs a program, so nothing aborts ([`GEN-1`](../tickets/gen-1.md)),
+and no predicate exists to fail ([`GEN-2`](../tickets/gen-2.md)).

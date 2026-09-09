@@ -204,10 +204,18 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   kernel imports verbatim; porting one means writing its facade, not resurrecting the kernel.
   A facade that needs to *do* something rather than compute one — read a clock, a file, a
   socket — declares its result type as `Task a`, and its companion is then the one export
-  released from the purity rule. Nothing implements it: `docs/spec/js-interop.md` is the rule,
-  `docs/spec/evaluation-semantics.md` what a `Task` is, and [`DEC-11`](docs/decisions/dec-11.md)
-  the seven decisions behind both — including why sequencing is a function rather than syntax,
-  and why there is no monad class for a `Task` to be an instance of.
+  released from the purity rule. It is released from throwing, too: an effectful facade's result
+  type **must** be `Task (Result Failure a)` and may not be any other `Task`, so a facade cannot
+  declare its JavaScript infallible. No companion produces that `Result` — the compiler's wrapper
+  builds it, catching what the companion throws and running the boundary predicate over what it
+  returns. An effectful facade is the only kind with somewhere to put a failure —
+  a *pure* companion that throws or returns the wrong shape aborts the program, which is the one
+  outcome a running program has beyond the two evaluating an expression has. Nothing implements
+  any of it: `docs/spec/js-interop.md` is the rule, `docs/spec/evaluation-semantics.md` what a
+  `Task` is and what an abort is, [`DEC-11`](docs/decisions/dec-11.md) the seven decisions behind
+  both — including why sequencing is a function rather than syntax, and why there is no monad
+  class for a `Task` to be an instance of — and [`DEC-12`](docs/decisions/dec-12.md) the six
+  behind the failure half, with the survey of how four other languages answered it.
 - **A doc comment describes what the code at that site does** — not what you intended, and
   not what it used to do. An overstated comment is a real defect because it is what the next
   reader trusts. Prefer saying less over saying more than you verified.

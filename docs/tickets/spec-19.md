@@ -81,4 +81,11 @@ argued in [`DEC-6`](../decisions/dec-6.md) — and it is stated in terms of a *r
 which is the half a Wasm boundary has no equivalent for. Read it before choosing the second
 modifier.
 
+Read [`DEC-12`](../decisions/dec-12.md) too, whose survey covers the WebAssembly Component Model
+for a different reason and turns up two things this ticket wants. A component function with a
+`result` type may only return that result or trap, so the typed interface does statically much of
+what a predicate does at runtime; and the trap is the Component Model's name for what Zelkova
+calls [an abort](../spec/evaluation-semantics.md#when-a-program-aborts), which is a correspondence
+worth having in hand before inventing a third vocabulary.
+
 **Found:** while auditing `docs/spec/` for open questions with no ticket attached, on 2026-09-04.

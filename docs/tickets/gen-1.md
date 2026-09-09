@@ -51,8 +51,18 @@ subexpressions evaluate left to right; both operands of `&&` and `||` are evalua
 32-bit and wraps; `n // 0`, `modBy 0 n` and `remainderBy 0 n` are `0` (today
 [`BUG-24`](bug-24.md)); equality is structural and comparing functions is not allowed.
 
-One decision is inherited rather than made here: **a class dictionary is erased by
-specialisation and never passed** — stated by
+Two decisions are inherited rather than made here. **The wrapper around an effectful facade
+builds the `Result` its signature declares** — it catches what the companion throws, runs the
+predicate over what it returns, and yields `Ok`, `Err (Threw ..)` or `Err (Malformed ..)`. The
+companion itself returns a bare payload and never a `Result`
+([JS interop](../spec/js-interop.md#an-effectful-facade)), so the two sides of the boundary
+disagree about the type on purpose and this wrapper is where they are reconciled. The predicates
+themselves are [`GEN-2`](gen-2.md)'s; the wrapper that calls one and routes its answer is this
+ticket's, and it is the whole of what keeps a throwing `.mjs` from ending the program. A *pure*
+facade gets no such wrapper, and a companion that throws under one
+[aborts](../spec/evaluation-semantics.md#when-a-program-aborts).
+
+**A class dictionary is erased by specialisation and never passed** — stated by
 [`docs/spec/type-classes.md`](../spec/type-classes.md) and argued in
 [`DEC-2` decision 7](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed).
 It costs nothing while no class exists, but a backend that starts by passing

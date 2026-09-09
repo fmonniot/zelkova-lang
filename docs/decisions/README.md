@@ -110,4 +110,5 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-8](dec-8.md) | Records: nine decisions | live |
 | [DEC-9](dec-9.md) | What a program may rely on about space: sharing, not closures | live |
 | [DEC-10](dec-10.md) | The law on a derivation's `combine` is checked by nothing, permanently | live |
-| [DEC-11](dec-11.md) | What a value describing an effect is: seven decisions | live |
+| [DEC-11](dec-11.md) | What a value describing an effect is: seven decisions | live; 5 extended by DEC-12 |
+| [DEC-12](dec-12.md) | What a broken companion does: a survey and six decisions | live |

@@ -47,7 +47,11 @@ behind `fdiv` divides, the one behind `idiv` truncates.
 A type may be named in a facade signature when the compiler can emit a **predicate**
 for it: a piece of JavaScript that decides, from a value alone, whether that value belongs to
 that type. Every value a companion `.mjs` hands back is run through the predicate of the type
-its signature declares, and a value that fails one is an error at the boundary.
+its signature declares. A value that fails one becomes [`Err (Malformed
+..)`](evaluation-semantics.md#an-effect-that-can-fail) out of an [effectful
+facade](#an-effectful-facade), and [aborts the
+program](evaluation-semantics.md#when-a-program-aborts) out of a pure one, which has no result
+type to carry it.
 
 A facade has no body the compiler can read, so its annotation is checked by the running program
 rather than while compiling. Two of the
@@ -177,18 +181,25 @@ it has no other consequence
 socket are none of those, and the language reaches them through one variation on the same
 declaration.
 
-**A facade signature whose result type is `Task a` declares an effect**, and its companion is
+**A facade signature whose result type is a `Task` declares an effect**, and its companion is
 released from the rule above: it may read, write, wait and fail.
 
-```zel expect=ok
+**That result type must be `Task (Result Failure a)`.** A signature naming any other `Task` is
+an error, so an effectful facade cannot declare its JavaScript to be infallible.
+[`Failure`](evaluation-semantics.md#an-effect-that-can-fail) is the error type every one of them
+names, `a` being the only part its author chooses. It is not one of
+[the default imports](modules.md#the-default-imports), so a facade naming it imports it.
+
+```zel expect=unimplemented
 module javascript Js.File exposing (read)
 
-read : String -> Task String
+import Task exposing (Failure)
+
+read : String -> Task (Result Failure String)
 ```
 
-A `Task` never crosses. The companion takes the arguments the signature names and returns the
-payload — a string, for `read` — and the `Task` around it is built on the Zelkova side by the
-compiler:
+A `Task` never crosses, and neither does the `Result`. The companion takes the arguments the
+signature names and returns the payload — a string, for `read`:
 
 ```js
 export async function read(path) {
@@ -196,20 +207,31 @@ export async function read(path) {
 }
 ```
 
-So the rules above are untouched. `a` is the type the companion really hands back, it is checked
+That companion throws when the file is missing, and it is a correct companion. The `Result` is
+built on the Zelkova side, by the wrapper the compiler puts around the call: it catches what the
+companion throws, runs `a`'s predicate over what the companion returns, and yields `Ok` for a
+value that passes, `Err (Threw ..)` for a throw or a rejected promise, and `Err (Malformed ..)`
+for a value that fails. A signature therefore declares a `Result` that no companion ever
+produces.
+
+The rules above are untouched. `a` is the type the companion really hands back, it is checked
 by `a`'s predicate at the boundary like any other returned value, and it may be neither a type
 variable nor a function type. An effectful facade is as monomorphic as a pure one.
 
 A companion whose result is not ready at once returns a promise for it, and the predicate runs
-on the value that promise resolves to.
+on the value that promise resolves to. A promise that never settles is a `Task` that never
+produces a value, which is the second of the [two
+outcomes](evaluation-semantics.md#two-outcomes) rather than a failure.
 
 A [facade constant](#facade-constants) may name a `Task` too, and it is the one constant whose
 companion is a function:
 
-```zel expect=ok
+```zel expect=unimplemented
 module javascript Js.Time exposing (now)
 
-now : Task Int
+import Task exposing (Failure)
+
+now : Task (Result Failure Int)
 ```
 
 `export const now = Date.now()` would read the clock once, when the host loaded the module. The
@@ -226,17 +248,18 @@ what it offers.
 JavaScript a value it has no predicate for; and not nested inside another type, since `(Task
 Int, Task Int)` describes no single piece of work for the wrapper to build.
 
-**A companion may not throw.** A well-typed program has [two
-outcomes](evaluation-semantics.md#two-outcomes), so a failure the caller is meant to see goes in
-the result type — `read` handling a missing file is `String -> Task (Result IoError String)`.
+**A failure the caller is meant to tell apart from a broken companion goes in the payload.**
+`Failure` reports that the JavaScript broke and says nothing about what the effect was for. A
+`read` separating a missing file from a broken companion declares `String -> Task (Result Failure
+(Result IoError String))` — two `Result`s, collapsed into one by the module that
+[publishes `read`](packages.md#what-a-package-exposes) to other packages.
 
-**Not implemented:** nothing declares `Task`, no wrapper is generated, and no predicate is run
-([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)).
-
-**Known gap:** both blocks above compile. `Task` resolves to nothing and an unresolved type name
-is invented rather than reported ([`BUG-16`](../tickets/bug-16.md)), so each signature is read as
-being over a type the build does not have. Both go red when `BUG-16` lands, and green again once
-`zelkova-core` declares the type.
+**Not implemented:** neither block above parses. A type argument must be a bare name today, so
+the parentheses in `Task (Result Failure String)` are a syntax error
+([`LANG-9`](../tickets/lang-9.md)) — the same gap that rejects `Maybe (Maybe Int)` and every
+other nested type. Nothing declares `Task` or `Failure` either, no wrapper is generated, and no
+predicate is run ([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)); no check
+holds a facade to the result type above, which is [`LANG-43`](../tickets/lang-43.md)'s.
 
 ## Facade constants
 

@@ -582,6 +582,11 @@ main =
 The `()` is the whole of what a program produces: nothing is waiting on a result, so a `main`
 of any other type would name a value nobody reads.
 
+It also decides what a program does about a boundary failure. Every primitive effect carries a
+[`Result Failure`](evaluation-semantics.md#an-effect-that-can-fail) in its payload and `Task ()`
+carries no payload, so a program reaching `main` has said what to do with each of them — even
+where what it says is to ignore it.
+
 A package can be both. `main` and `private-modules` are independent, so a program may also be
 depended on as a library, and the module holding `main` may be one of the private ones.
 
