@@ -399,6 +399,28 @@ use stack proportional to `n`.
 The guarantee covers a call to the declaration the call is written in, and nothing wider.
 Mutual tail recursion between two declarations carries no guarantee.
 
+## Sharing
+
+No rule above says how long an operation takes or how much memory it uses, and nothing here
+gives one. The promise below is narrower, and needs only one notion of what a value is: a value
+exists independently of any name bound to it, so binding a second name to one produces a second
+way to reach it, not a second value.
+
+**A value is not copied when it is passed as an argument, returned as a result, bound to a name,
+or stored inside another value.** Binding a large structure to a second name costs nothing beyond
+the binding itself. A backend that copies a value on assignment does not implement Zelkova.
+
+**Not promised: anything about a function value.** Applying a function to fewer arguments than
+its type has arrows produces a function value ([Function values](#function-values)), and whether
+the code generator builds a new one on every such application or reuses one across calls made
+with the same arguments is left to it entirely. A program whose performance depends on `f 1`,
+written inside a loop where `f` is applied to a constant, not allocating depends on a particular
+backend, never on the language.
+
+Sharing does not widen [the tail-call rule](#recursion-and-tail-calls): mutual recursion between
+two declarations still carries no stack guarantee. Nor does it name an allocation count for any
+operation — only that reusing an existing value is free.
+
 ## Numbers
 
 **`Int` is a 32-bit signed two's-complement integer.** Arithmetic wraps: `2147483647 + 1` is
@@ -540,8 +562,3 @@ below.
   is undesigned, and it is the same design that
   [what type `main` must have](packages.md#open-questions) waits on
   ([`SPEC-15`](../tickets/spec-15.md)).
-- **Whether the language promises anything else about space.** The tail-call rule is the one
-  promise here about memory. Whether a program can rely on anything more — that a value is not
-  copied, that a partially applied function is not rebuilt per call — is unanswered, and each
-  answer constrains a code generator that does not exist
-  ([`SPEC-16`](../tickets/spec-16.md)).

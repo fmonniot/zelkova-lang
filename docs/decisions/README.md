@@ -108,3 +108,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-6](dec-6.md) | Which types may cross the JavaScript boundary | live |
 | [DEC-7](dec-7.md) | Lists: six decisions | live |
 | [DEC-8](dec-8.md) | Records: nine decisions | live |
+| [DEC-9](dec-9.md) | What a program may rely on about space: sharing, not closures | live |
