@@ -214,7 +214,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
 | SPEC-13 | task | — | closed 2026-09-06 | Whether a pattern's negative literal is a token or a pattern production is unsettled, and two chapters answer it differently |
 | SPEC-14 | task | — | closed 2026-09-06 | Nothing specifies how a structural instance is derived, and equality needs it |
-| [SPEC-15](spec-15.md) | task | — | open | Nothing says what an effect is, so `main`'s type and what a test is are both undesigned |
+| SPEC-15 | task | — | closed 2026-09-08 | Nothing says what an effect is, so `main`'s type and what a test is are both undesigned |
 | SPEC-16 | task | — | closed 2026-09-08 | The spec makes one promise about space and does not say whether it makes others |
 | SPEC-17 | task | — | closed 2026-09-06 | Nothing says a `Float`-returning operation may not totalize with a zero, and one of them does |
 | SPEC-18 | task | — | closed 2026-09-06 | "A subset of the Zelkova standard types" names no subset, and the compiler enforces none |

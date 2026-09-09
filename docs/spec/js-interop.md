@@ -169,6 +169,75 @@ specialise; the constraint lives in ordinary Zelkova above the monomorphic facad
 [Type classes](type-classes.md#a-constrained-function-may-not-be-a-javascript-facade) is the
 chapter.
 
+## An effectful facade
+
+Every signature above declares a function: the same arguments give the same result, and calling
+it has no other consequence
+([purity](evaluation-semantics.md#purity-and-the-javascript-boundary)). A clock, a file and a
+socket are none of those, and the language reaches them through one variation on the same
+declaration.
+
+**A facade signature whose result type is `Task a` declares an effect**, and its companion is
+released from the rule above: it may read, write, wait and fail.
+
+```zel expect=ok
+module javascript Js.File exposing (read)
+
+read : String -> Task String
+```
+
+A `Task` never crosses. The companion takes the arguments the signature names and returns the
+payload — a string, for `read` — and the `Task` around it is built on the Zelkova side by the
+compiler:
+
+```js
+export async function read(path) {
+  return await fs.promises.readFile(path, "utf8");
+}
+```
+
+So the rules above are untouched. `a` is the type the companion really hands back, it is checked
+by `a`'s predicate at the boundary like any other returned value, and it may be neither a type
+variable nor a function type. An effectful facade is as monomorphic as a pure one.
+
+A companion whose result is not ready at once returns a promise for it, and the predicate runs
+on the value that promise resolves to.
+
+A [facade constant](#facade-constants) may name a `Task` too, and it is the one constant whose
+companion is a function:
+
+```zel expect=ok
+module javascript Js.Time exposing (now)
+
+now : Task Int
+```
+
+`export const now = Date.now()` would read the clock once, when the host loaded the module. The
+wrapper calls the export each time the `Task` is run, so `now` names
+`export function now() { return Date.now(); }` — a function of no arguments, which is what a
+plain parameter list comes to when there are none.
+
+An effectful facade is a facade, so it is [not importable outside the package that declares
+it](packages.md#what-a-package-exposes). A package offers an effect to its dependents the way it
+offers any other JavaScript-backed value: an ordinary module imports the facade and re-declares
+what it offers.
+
+**`Task` may appear only as the whole of a result type.** Not as an argument, which would hand
+JavaScript a value it has no predicate for; and not nested inside another type, since `(Task
+Int, Task Int)` describes no single piece of work for the wrapper to build.
+
+**A companion may not throw.** A well-typed program has [two
+outcomes](evaluation-semantics.md#two-outcomes), so a failure the caller is meant to see goes in
+the result type — `read` handling a missing file is `String -> Task (Result IoError String)`.
+
+**Not implemented:** nothing declares `Task`, no wrapper is generated, and no predicate is run
+([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)).
+
+**Known gap:** both blocks above compile. `Task` resolves to nothing and an unresolved type name
+is invented rather than reported ([`BUG-16`](../tickets/bug-16.md)), so each signature is read as
+being over a type the build does not have. Both go red when `BUG-16` lands, and green again once
+`zelkova-core` declares the type.
+
 ## Facade constants
 
 A facade signature may also declare a constant — a type with no arrow, taking no arguments.

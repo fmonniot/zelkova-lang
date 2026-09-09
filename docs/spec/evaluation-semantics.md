@@ -526,6 +526,10 @@ arguments**: the same arguments give the same result, and calling it has no othe
 A facade whose JavaScript reads a clock, keeps a counter, prints, or reaches the network breaks
 that rule, and a program using it has no meaning the language defines.
 
+One facade form is exempt, and it is how a clock is read: a signature whose result type is
+[`Task`](#effects) declares an effect rather than a function, and its companion may do anything.
+[JS interop](js-interop.md#an-effectful-facade) carries that form.
+
 ```zel expect=ok
 module javascript Js.Math exposing (square)
 
@@ -551,14 +555,102 @@ real result. Most of the language's arithmetic is written as a facade, so a rule
 here would be a rule the language did not have — and it is unenforceable in exactly the way
 purity is, because a type annotation with no body is all the compiler ever sees.
 
-How a program *does* reach the outside world is not this boundary's job and is undesigned; see
-below.
+How a program *does* reach the outside world is the next section's.
 
-## Open questions
+## Effects
 
-- **How a program reaches the outside world.** Everything above describes a pure computation,
-  and a program that only computes is not much of a program. The
-  mechanism — what a value that describes an effect is, how one is run, how results come back —
-  is undesigned, and it is the same design that
-  [what type `main` must have](packages.md#open-questions) waits on
-  ([`SPEC-15`](../tickets/spec-15.md)).
+Everything above describes a computation, and a computation on its own does nothing. A program
+reaches the outside world by producing a **`Task`**: a value describing work, which the runtime
+performs.
+
+`Task` is a type `zelkova-core` declares and exposes without its constructors, so a `Task` is
+opaque everywhere but in core — nothing else builds one out of parts or takes one apart. A
+`Task a` describes work that produces an `a` when it is run.
+
+**Building a `Task` performs nothing.** An expression whose value is a `Task` is as pure as any
+other: evaluating it twice gives the same description twice, and neither evaluation reads a file
+or writes a byte. The work happens when a `Task` is [run](#running-a-task), so the guarantee
+above holds over a program with effects in it.
+
+### Where a `Task` comes from
+
+A primitive `Task` is declared by a [`module javascript` facade](js-interop.md) whose result
+type is one.
+
+```zel expect=ok
+module javascript Js.File exposing (read)
+
+read : String -> Task String
+```
+
+That is the only place an effect enters the language. What the companion behind such a signature
+returns, and which types the signature may still name, is
+[JS interop](js-interop.md#an-effectful-facade)'s. Every other `Task` is built from those, so a
+package declares its own effects on the same terms `zelkova-core` declares its.
+
+### Sequencing
+
+`Task.andThen` runs one `Task` after another, and it is an ordinary function.
+
+```zel expect=fragment
+succeed : a -> Task a
+map : (a -> b) -> Task a -> Task b
+andThen : (a -> Task b) -> Task a -> Task b
+```
+
+`andThen f t` describes running `t`, handing its result to `f`, and running the `Task` `f`
+returns. None of the three is a member of a class. A class over `Task` would need a variable
+ranging over type constructors, which [a class variable is
+not](type-classes.md#a-class-is-always-over-a-complete-type), so what the language offers is one
+concrete type and ordinary functions over it.
+
+Nothing about `Task` is built into the language beyond the name and
+[running one](#running-a-task). Core writes its sequencing the way any module writes a function
+over a type it declares.
+
+```zel expect=fragment
+type Task a
+  = Task (() -> a)
+
+andThen f t =
+  Task (\_ ->
+    case t of
+      Task step ->
+        case f (step ()) of
+          Task next ->
+            next ())
+```
+
+Which shape core picks is core's, and a program outside it cannot observe the difference.
+
+### Running a `Task`
+
+A program hands the runtime one `Task`, and running the program is running that `Task`. The
+value it hands over is `main`, whose type [Packages](packages.md#programs) writes down. Nothing
+else runs one: a `Task` a program builds and never gives to the runtime describes work that
+never happens.
+
+A `Task` is a value, so [sharing](#sharing) reaches it like anything else — binding one to two
+names gives two ways to reach one description. Running that description twice performs its work
+twice.
+
+The effects of a `Task` happen in the order it sequences them: `andThen` runs the second only
+once the first has produced a value.
+
+### An effect that can fail
+
+`Task` takes one type parameter and carries no channel for an error. An effect that can fail
+produces a value saying so — `read` above, made honest, is `String -> Task (Result IoError
+String)` — which is where [every other failure the language admits](#two-outcomes) goes.
+
+Running a `Task` adds no third outcome to the two that section names. A companion that would
+throw returns the failure in its result type instead, and one that throws anyway breaks its
+contract the way any other broken facade does.
+
+**Not implemented:** `zelkova-core` declares no `Task`, no facade wrapper is generated, and
+nothing runs a program at all — the pipeline ends at type checking, so there is no runtime for a
+`Task` to be handed to ([`GEN-1`](../tickets/gen-1.md)).
+
+**Known gap:** the facade block above compiles, for the reason
+[JS interop](js-interop.md#an-effectful-facade) gives: an unresolved type name is invented rather
+than reported ([`BUG-16`](../tickets/bug-16.md)). It goes red when `BUG-16` lands.

@@ -729,7 +729,7 @@ y = 2
 
 ## The default imports
 
-**Not implemented:** every module behaves as though it began with these seven imports,
+**Not implemented:** every module behaves as though it began with these eight imports,
 whether they are written or not:
 
 ```text
@@ -737,6 +737,7 @@ import Basics exposing (..)
 import List exposing (List)
 import Maybe exposing (Maybe(..))
 import Result exposing (Result(..))
+import Task exposing (Task)
 import Char
 import String
 import Tuple
@@ -752,8 +753,10 @@ writable. `Maybe` and `Result` are exposed with their constructors because match
 them is the ordinary way to use them, and a qualified `Maybe.Just` in every `case` branch
 would spell out a module name on one of the most common patterns in the language.
 `List` is exposed as a bare type because its module's functions read better qualified —
-`List.map`, not `map`. Writing any of these imports out explicitly is allowed and changes
-nothing.
+`List.map`, not `map`. [`Task`](evaluation-semantics.md#effects) is exposed the same way and for
+the same reason, and it is on the list because [`main`](packages.md#programs) names it in an
+annotation every program has to write. Writing any of these imports out explicitly is allowed
+and changes nothing.
 
 **Known gap:** none of it exists. Every module resolves only what it declares and what it
 imports by hand, which is why `std/core`'s modules all begin with `import Basics`

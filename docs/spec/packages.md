@@ -519,6 +519,26 @@ also import the public modules of the package's dependencies and of its test-dep
 Nothing may import a test module. A module under `src/` cannot, which is what keeps `tests/`
 out of what the package ships.
 
+### What a test is
+
+**A test is a value a module under `tests/` exposes whose type is `Test`.** Every such value is
+a test, and nothing else in the module is one: a test module may declare and expose helpers, and
+a helper whose type is not `Test` is never run.
+
+`Test` is a type `zelkova-core` declares and exposes without its constructors, the way
+[`Task`](evaluation-semantics.md#effects) is. It is not one of
+[the default imports](modules.md#the-default-imports), so a test module writes `import Test`.
+
+A runner has the type to go on and nothing else. One `main` can be named by a manifest field
+and found by a fixed name; a package's tests run into the dozens, spread over as many modules as
+it likes, so there is no one name to fix and nowhere to write them all down. They are exposed
+because a runner reads a module's interface, and the `exposing` clause decides what is in one —
+even though nothing imports a test module.
+
+What a `Test` holds — a name, a check, a group of other tests — belongs to `zelkova-core` and to
+whatever test library a package depends on. How a runner is invoked and what it reports is
+[the toolchain's](toolchain.md#running-a-packages-tests).
+
 ### `test-dependencies`
 
 `test-dependencies` maps package names to entries of exactly the shape `dependencies` takes.
@@ -534,7 +554,7 @@ graph stays acyclic, at most one version of each package is in the build, only d
 dependencies are usable, and `zelkova.lock` records what was chosen for both.
 
 **Not implemented:** the compiler has one source root and no notion of a test at all
-([`docs/tickets/lang-15.md`](../tickets/lang-15.md)).
+([`docs/tickets/lang-15.md`](../tickets/lang-15.md)), and `zelkova-core` declares no `Test`.
 
 ## Programs
 
@@ -546,21 +566,26 @@ and must expose a value called `main`. Naming it in the manifest rather than fix
 convention means the entry point is findable in the same file as everything else about the
 package, and a module can be a program's entry point without its name having to say so.
 
+**`main` must have type `Task ()`.** A
+[`Task`](evaluation-semantics.md#effects) describes work, and running the program is
+[running that one](evaluation-semantics.md#running-a-task): the runtime is handed the value
+`main` names and performs what it describes.
+
+```zel expect=unimplemented
+module App exposing (main)
+
+main : Task ()
+main =
+  Task.succeed ()
+```
+
+The `()` is the whole of what a program produces: nothing is waiting on a result, so a `main`
+of any other type would name a value nobody reads.
+
 A package can be both. `main` and `private-modules` are independent, so a program may also be
 depended on as a library, and the module holding `main` may be one of the private ones.
 
 **Not implemented:** the field is not read, and nothing yet turns a package into something
-that runs ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
-
-## Open questions
-
-- **What type `main` must have.** A program is more than a value of an arbitrary type — it
-  has to describe how it starts, what it reacts to and what it does to the outside world —
-  and the type that says so is undesigned ([`SPEC-15`](../tickets/spec-15.md)).
-- **What a test is.** A module under `tests/` is compiled, and nothing yet says what makes a
-  declaration in it something a runner will run: an exposed value of a particular type, a
-  naming convention, or a declaration form the language does not have. It waits on the same
-  design `main`'s type waits on, since both are a value the outside world picks up and acts
-  on. How a runner is invoked, and what it reports, are
-  [toolchain](toolchain.md#running-a-packages-tests) questions rather than language ones
-  ([`SPEC-15`](../tickets/spec-15.md)).
+that runs ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)). `zelkova-core` declares no
+`Task` either, and the block above fails earlier than that: `()` has
+[no production](types.md#the-unit-type), so it does not parse.

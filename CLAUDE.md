@@ -202,6 +202,12 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   rather than Elm's curried `F2`/`F3` wrappers. `Js/Basics`, `Js/Utils` and `Js/Bitwise` are
   the worked examples. Most of the `.ignored` modules under `std/core/src` still carry Elm's
   kernel imports verbatim; porting one means writing its facade, not resurrecting the kernel.
+  A facade that needs to *do* something rather than compute one — read a clock, a file, a
+  socket — declares its result type as `Task a`, and its companion is then the one export
+  released from the purity rule. Nothing implements it: `docs/spec/js-interop.md` is the rule,
+  `docs/spec/evaluation-semantics.md` what a `Task` is, and [`DEC-11`](docs/decisions/dec-11.md)
+  the seven decisions behind both — including why sequencing is a function rather than syntax,
+  and why there is no monad class for a `Task` to be an instance of.
 - **A doc comment describes what the code at that site does** — not what you intended, and
   not what it used to do. An overstated comment is a real defect because it is what the next
   reader trusts. Prefer saying less over saying more than you verified.
@@ -238,7 +244,8 @@ interop via `module javascript` facades with companion `.mjs` files, `--` and `{
 comments.
 
 Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, the
-unit type, type aliases, and the `zelkova.toml` package manifest. **Multi-clause function
+unit type, type aliases, effects (`Task`, and the `main` and test discovery built on it), and
+the `zelkova.toml` package manifest. **Multi-clause function
 declarations** — a deliberate divergence from Elm — parse but are rejected by canonicalization
 (`Error::MultipleBindingsUnsupported`); `LANG-20` is the ticket. The standard library under
 `std/core/src/` carries `.ignored` files for modules that do not compile yet.
