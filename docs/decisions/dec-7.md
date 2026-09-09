@@ -90,5 +90,4 @@ chapter's brevity would otherwise read as an omission.
 
 `combine : List R -> R` becoming writable is noted in
 [Lists](../spec/lists.md#lists-and-derivation) and settles nothing: which shape a derivation's
-`combine` takes stays [Type classes](../spec/type-classes.md#open-questions)' open question, with
-[`SPEC-27`](../tickets/spec-27.md) the ticket.
+`combine` takes stays [Type classes](../spec/type-classes.md#open-questions)' open question.
