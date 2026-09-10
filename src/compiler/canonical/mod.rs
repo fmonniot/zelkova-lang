@@ -195,12 +195,15 @@ impl Type {
                     // `name` resolves to a declared type: `args` is what was
                     // written after it, and has to match the declaration's own
                     // arity (`BUG-17`) — nothing else here re-derives that check.
-                    Some(arity) if arity.arity() == args.len() => {
-                        Ok(Type::Type(name.clone(), args))
+                    // The head is the *declaration's* name, not the one written:
+                    // `Lib.Option` and `Option` are two spellings of one entry, and
+                    // normalizing here is what lets the two unify downstream.
+                    Some(declared) if declared.arity() == args.len() => {
+                        Ok(Type::Type(declared.name.clone(), args))
                     }
-                    Some(arity) => Err(Error::TypeArityMismatch(
+                    Some(declared) => Err(Error::TypeArityMismatch(
                         name.clone(),
-                        arity.arity(),
+                        declared.arity(),
                         args.len(),
                         tpe.span,
                     )),

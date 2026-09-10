@@ -32,6 +32,12 @@ pub enum ValueType {
 /// application of `Maybe` collapse to the same declaration-shaped type regardless of
 /// what was actually written, which is the defect `BUG-17` describes in full.
 ///
+/// `name` is the name the *declaration* uses, which is not always the name the
+/// lookup used: one union is inserted under every spelling an import makes
+/// available for it, so `Lib.Option` and `Option` are two keys onto one entry.
+/// `Type::from_parser_type` builds the canonical type out of this name rather than
+/// the written one, which is what keeps the two spellings unifiable.
+///
 /// `variables` is the declaration's own type variables, in the order the `type`
 /// line wrote them — its length is the arity a written application is checked
 /// against in `Type::from_parser_type`. The names themselves are not needed for
@@ -42,6 +48,7 @@ pub enum ValueType {
 /// same map.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeArity {
+    pub name: Name,
     pub variables: Vec<Name>,
 }
 
@@ -313,14 +320,26 @@ fn process_import(
                         );
                     }
                     parser::ExposedKind::Upper(type_name, parser::Privacy::Private) => {
-                        // Add the type without qualifier and without constructors (they
-                        // are private). This does not consult `interface.unions` at
-                        // all — a wrong name is fabricated rather than reported, and an
-                        // opaque type's real arity along with it — which is `BUG-16`,
-                        // not this one; its zero-arity `TypeArity` here is that same
-                        // pre-existing gap, carried over rather than widened.
-                        env.types
-                            .insert(type_name.clone(), TypeArity { variables: vec![] });
+                        // Add the type without qualifier and without constructors
+                        // (they are private), but with the declaration's own type
+                        // variables: an opaque `Option` is still `Option a`, and
+                        // every later application of it is measured against this
+                        // arity. A name the interface does not know falls back to
+                        // zero variables — unlike the `Public` arm below, this one
+                        // does not report the unknown name, which is `BUG-16`.
+                        let variables = interface
+                            .unions
+                            .get(type_name)
+                            .map(|union| union.variables.clone())
+                            .unwrap_or_default();
+
+                        env.types.insert(
+                            type_name.clone(),
+                            TypeArity {
+                                name: type_name.clone(),
+                                variables,
+                            },
+                        );
                     }
                     parser::ExposedKind::Upper(type_name, parser::Privacy::Public) => {
                         let union = interface.unions.get(type_name).ok_or_else(|| {
@@ -378,6 +397,7 @@ fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
     env.types.insert(
         qualify(union_name),
         TypeArity {
+            name: union_name.clone(),
             variables: variables.to_vec(),
         },
     );
@@ -564,8 +584,9 @@ impl RootEnvironment {
     // TODO Use insert_foreign_union_type (and rename to remove the foreign part)
     pub fn insert_union_type(&mut self, name: Name, union: UnionType) {
         self.types.insert(
-            name,
+            name.clone(),
             TypeArity {
+                name,
                 variables: union.variables,
             },
         );

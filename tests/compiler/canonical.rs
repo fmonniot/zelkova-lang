@@ -831,6 +831,88 @@ fn type_application_with_too_many_arguments_is_an_arity_error() {
     );
 }
 
+/// An *opaque* import — the type without its constructors — still carries the
+/// declaration's arity, so applying it to the argument it declares is not an error.
+///
+/// `import Maybe exposing (Maybe)` goes through the `Privacy::Private` arm of
+/// `process_import`, which is the only arm that does not read the union out of the
+/// interface. Recording zero variables there would make every later use of the name
+/// be measured against arity 0, and `Maybe a` — a perfectly ordinary annotation —
+/// would be rejected as an arity mismatch.
+///
+/// Mutation-checked by putting `TypeArity { name: type_name.clone(), variables:
+/// vec![] }` back in that arm: this test goes red with
+/// `TypeArityMismatch(Maybe, 0, 1)`.
+#[test]
+fn opaque_import_of_a_parameterised_type_keeps_its_arity() {
+    let (iface_name, iface) = maybe_interface();
+    let mut interfaces = HashMap::new();
+    interfaces.insert(iface_name, iface);
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        import Maybe exposing (Maybe)
+        f : Maybe a -> Maybe a
+        f m = m
+    "#};
+
+    let module = canonicalize_with_interfaces(source, &interfaces)
+        .expect("an opaque `Maybe` applied to one argument should canonicalize");
+
+    let maybe_a =
+        canonical::Type::Type("Maybe".into(), vec![canonical::Type::Variable("a".into())]);
+
+    match module.values.get(&"f".into()).unwrap() {
+        canonical::Value::TypedValue { tpe, .. } => assert_eq!(
+            *tpe,
+            canonical::Type::Arrow(Box::new(maybe_a.clone()), Box::new(maybe_a))
+        ),
+        other => panic!("expected a TypedValue, got {:?}", other),
+    }
+}
+
+/// A qualified and an unqualified spelling of one type are one type.
+///
+/// The environment inserts a union under every name an import makes available for
+/// it — `Maybe.Maybe` and `Maybe` here — and `Type::from_parser_type` builds the
+/// canonical head out of the *declaration's* name rather than the one written. Were
+/// it to keep the written name, `Maybe.Maybe Int` and `Maybe Int` would be two
+/// distinct types and would not unify downstream.
+///
+/// Mutation-checked by building `Type::Type(name.clone(), args)` from the written
+/// name instead of `declared.name`: this test goes red with a head of
+/// `Maybe.Maybe`.
+#[test]
+fn qualified_and_unqualified_spellings_canonicalize_to_one_head() {
+    let (iface_name, iface) = maybe_interface();
+    let mut interfaces = HashMap::new();
+    interfaces.insert(iface_name, iface);
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        import Maybe exposing (Maybe(..))
+        f : Maybe.Maybe Int -> Maybe Int
+        f m = m
+    "#};
+
+    let module = canonicalize_with_interfaces(source, &interfaces)
+        .expect("both spellings of `Maybe` should canonicalize");
+
+    let maybe_int = canonical::Type::Type(
+        "Maybe".into(),
+        vec![canonical::Type::Type("Int".into(), vec![])],
+    );
+
+    match module.values.get(&"f".into()).unwrap() {
+        canonical::Value::TypedValue { tpe, .. } => assert_eq!(
+            *tpe,
+            canonical::Type::Arrow(Box::new(maybe_int.clone()), Box::new(maybe_int)),
+            "the qualified spelling must normalize to the declaration's own name"
+        ),
+        other => panic!("expected a TypedValue, got {:?}", other),
+    }
+}
+
 // ── Extra: an annotation with no body points at the annotation ───────────────
 
 /// `ERR-3`: `NoBindings` renders a caret under the annotation it is about.
