@@ -4,10 +4,11 @@
 **Status:** live; 1 extended by [DEC-13](dec-13.md) decision 5, which adds the second
 boundary's half of the admission test.
 **Where the rule lives:**
-[JS interop — Which types may cross the boundary](../spec/interop.md#which-types-may-cross-the-boundary).
+[Foreign interoperability — Which types may cross the boundary](../spec/interop.md#which-types-may-cross-the-boundary).
 
-[JS interop](../spec/interop.md) had opened, since it was written, by saying the compiler
-"accepts only a subset of the Zelkova standard types" in a facade signature, and by conceding in
+[Foreign interoperability](../spec/interop.md) had opened, since it was written, by saying the
+compiler "accepts only a subset of the Zelkova standard types" in a facade signature, and by
+conceding in
 its own open questions that no subset had ever been named. The compiler enforced nothing, so the
 subset was in practice everything. Four questions had to be answered together, because the
 answer to each moves the others.

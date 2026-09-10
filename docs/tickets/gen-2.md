@@ -13,8 +13,9 @@ piece of output that can be written, tested and reviewed on its own, against one
 `module javascript` facade's call site. `std/core/src/Js/*.mjs` are the companions the emitted
 checks sit in front of.
 
-**Problem:** [JS interop](../spec/interop.md#which-types-may-cross-the-boundary) admits a type
-into a facade signature exactly when the compiler can emit a **predicate** for it — a piece of
+**Problem:** [Foreign interoperability](../spec/interop.md#which-types-may-cross-the-boundary)
+admits a type into a facade signature exactly when the compiler can emit a **predicate** for
+it — a piece of
 JavaScript deciding, from a value alone, whether that value belongs to that type — and says that
 every value a companion `.mjs` hands back is run through the predicate of the type its signature
 declares. Nothing emits one, because no code generation exists at all.

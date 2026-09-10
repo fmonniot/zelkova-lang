@@ -2,7 +2,7 @@
 
 **Settled:** 2026-09-08, by the language owner (`SPEC-15`).
 **Status:** live.
-**Where the rule lives:** [JS interop — An effectful facade](../spec/interop.md#an-effectful-facade),
+**Where the rule lives:** [Foreign interoperability — An effectful facade](../spec/interop.md#an-effectful-facade),
 [An `unsafe` facade](../spec/interop.md#an-unsafe-facade) and
 [Which types may cross](../spec/interop.md#which-types-may-cross-the-boundary),
 [Evaluation semantics — An effect that can fail](../spec/evaluation-semantics.md#an-effect-that-can-fail)

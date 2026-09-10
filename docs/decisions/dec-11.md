@@ -4,7 +4,7 @@
 **Status:** live; decision 5 is extended by [DEC-12](dec-12.md), which decides how a failure
 gets into the value.
 **Where the rule lives:** [Evaluation semantics — Effects](../spec/evaluation-semantics.md#effects),
-[JS interop — An effectful facade](../spec/interop.md#an-effectful-facade),
+[Foreign interoperability — An effectful facade](../spec/interop.md#an-effectful-facade),
 [Packages — Programs](../spec/packages.md#programs) and
 [What a test is](../spec/packages.md#what-a-test-is).
 

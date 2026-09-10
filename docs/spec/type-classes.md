@@ -647,9 +647,9 @@ type the constraint is discharged at — and a facade has no body to generate on
 companion's export is the whole implementation, so a constrained facade would have to serve
 every instance from that one foreign function, which could only tell them apart by inspecting
 arguments whose type its signature never named. That is dispatch on a type variable, which is
-the shape of the gap noted at the end of this section. A dictionary — an extra, invisible argument carrying a
-table of the class's operations — is the other way to implement a class, and it breaks the
-companion's **plain parameter list** more directly.
+the shape of the gap noted at the end of this section. A dictionary — an extra, invisible
+argument carrying a table of the class's operations — is the other way to implement a class, and
+it breaks the companion's **plain parameter list** more directly.
 
 So the constraint moves up one level. The facade stays monomorphic and is called only at types
 the code behind it can actually handle; the class, its instances, and the constraint live in

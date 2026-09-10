@@ -11,8 +11,8 @@ This is the **only** way out of Zelkova. There is no privileged escape hatch the
 library may use and a user's package may not: a standard-library module that needs a foreign
 primitive declares a facade in the same syntax any user package would.
 
-The idea is close to TypeScript's type definitions, but Zelkova is stricter about which types
-the functions can use: only things the boundary can be held to are let through.
+The idea is close to TypeScript's type definitions, with a stricter rule about which types a
+signature may name.
 
 A facade is only usable from inside the package that declares it. The module name is not
 exposed to any other package.
@@ -99,11 +99,9 @@ program](evaluation-semantics.md#when-a-program-aborts) out of an [`unsafe`](#an
 one, which has no result type to carry it.
 
 A facade has no body the compiler can read, so its annotation is enforced by the target rather
-than while compiling. Two of the
-[six forms a type expression can take](types.md#the-forms-of-a-type-expression) can be enforced
-by neither.
-
-The forms that can:
+than while compiling. Four of the
+[six forms a type expression can take](types.md#the-forms-of-a-type-expression) have both
+mechanisms:
 
 | Type | What its JavaScript predicate decides | What its WIT spelling is |
 |---|---|---|
@@ -133,10 +131,10 @@ luminance : (Int, Int, Int) -> Float
 JavaScript has one number type where Zelkova has two, and the `Int` predicate is what separates
 them. WIT has both and needs no separating.
 
-The two mechanisms cost different things, and a program can feel the difference. A predicate
-walks the whole value, so a facade taking a list of a thousand tuples checks a thousand tuples on
-the way in, once per crossing; the same facade on a WebAssembly target checks nothing at the
-call, because the interface was checked when the component loaded.
+The two mechanisms cost different things. A predicate walks the whole value, so a facade taking
+a list of a thousand tuples checks a thousand tuples on the way in, once per crossing; the same
+facade on a WebAssembly target checks nothing at the call, because the interface was checked
+when the component loaded.
 
 **Not implemented:** `String` has no [literal syntax](lexical-structure.md#strings) yet,
 [`()` is not recognised](types.md#the-unit-type) in either position, records have no brace token
@@ -226,7 +224,7 @@ than on the type, so both go red when [`LANG-54`](../tickets/lang-54.md) lands a
 
 **Not implemented:** a class constraint is rejected on the same grounds, `Comparable a => a`
 being a signature over `a`. A constrained function is specialised, and a facade has no body to
-specialise; the constraint lives in ordinary Zelkova above the monomorphic facade.
+specialise.
 [Type classes](type-classes.md#a-constrained-function-may-not-be-a-foreign-facade) is the
 chapter.
 
@@ -265,15 +263,14 @@ That companion throws when the file is missing, and it is a correct companion. T
 built on the Zelkova side, by the wrapper the compiler puts around the call: it catches what the
 companion throws, checks what the companion returns against `a`, and yields `Ok` for a value that
 passes, `Err (Threw ..)` for a failure the companion raised, and `Err (Malformed ..)` for a value
-that does not match. A signature therefore declares a `Result` that no companion ever produces.
+that does not match.
 
 What counts as raising a failure is the target's own word for it: a thrown exception or a
 rejected promise in JavaScript, [a trap](evaluation-semantics.md#when-a-program-aborts) in
 WebAssembly. Both arrive as `Err (Threw ..)`.
 
-The rules above are untouched. `a` is the type the companion really hands back, it is checked at
-the boundary like any other returned value, and it may be neither a type variable nor a function
-type.
+`a` is the type the companion really hands back: it is checked at the boundary like any other
+returned value, and it may be neither a type variable nor a function type.
 
 A companion whose result is not ready at once returns it the way its target returns a value
 later, and the check runs on the value that arrives. A result that never arrives is a `Task` that
@@ -348,8 +345,7 @@ the second [aborts the program](evaluation-semantics.md#when-a-program-aborts).
 
 **`unsafe` removes the `Task`, not the check.** The return value is held to its declared type
 exactly as any other crossing is, and a value that fails
-[aborts](evaluation-semantics.md#when-a-program-aborts) — an effectful facade has an `Err
-(Malformed ..)` to put it in and this one has nowhere.
+[aborts](evaluation-semantics.md#when-a-program-aborts).
 
 **Not implemented:** the block does not parse. `unsafe` is an ordinary identifier today, so
 `unsafe idiv : Int -> Int -> Int` reads as two names where the grammar expects one

@@ -9,8 +9,8 @@ signatures are rewritten, and that rewrite is part of this ticket.
 annotation; the `Error` enum in the same file. Then `std/core/src/Js/Basics.zel` and
 `std/core/src/Js/Utils.zel`, plus whatever in `std/core/src/Basics.zel` re-exports them.
 
-**Problem:** [JS interop](../spec/interop.md#which-types-may-cross-the-boundary) settles which
-types a `module javascript` facade signature may name. A type is admitted exactly when the
+**Problem:** [Foreign interoperability](../spec/interop.md#which-types-may-cross-the-boundary)
+settles which types a `module javascript` facade signature may name. A type is admitted exactly when the
 compiler can emit a predicate that decides, from a value alone, whether that value belongs to
 it — which admits the primitives, tuples, records, lists and union types applied to admitted
 types, and rejects the two forms that have no such predicate: a **type variable** and a
@@ -21,14 +21,16 @@ infix declarations, no type declarations, and every value carrying an annotation
 bindings — and then resolves the annotation with `Type::from_parser_type`, which accepts any type
 that names something in scope. Every type a normal module may write, a facade may write.
 
-Two blocks in that chapter are tagged `expect=ok` for exactly this reason, both in
+Two blocks in that chapter are tagged `expect=unimplemented` for exactly this reason, both in
 [What a facade signature may not name](../spec/interop.md#what-a-facade-signature-may-not-name)
 and covered by the one **Known gap:** paragraph that follows them and names this ticket:
 
 - `equal : a -> a -> Bool`, a facade over a bare type variable.
 - `count : (Int -> Bool) -> Int -> Int`, a facade taking a function.
 
-Both go **red** when this lands, and that **Known gap:** paragraph is deleted in the same diff.
+Both fail on the `foreign` modifier today rather than on the type, so [`LANG-54`](lang-54.md)
+turns them **red** by making them canonicalize cleanly. This ticket is what rejects them for the
+reason the chapter gives, and it deletes that **Known gap:** paragraph in the same diff.
 
 **Approach:**
 

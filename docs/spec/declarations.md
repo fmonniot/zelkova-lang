@@ -180,7 +180,7 @@ f : Flag
 
 A [foreign](interop.md) facade is the one place this does not hold: a
 `module foreign` module is annotations with no bodies, because the bodies are in the
-companion `.mjs` file, and having none is what makes it a facade.
+companion file, and having none is what makes it a facade.
 
 ## Clauses
 

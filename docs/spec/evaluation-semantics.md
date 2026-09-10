@@ -590,8 +590,8 @@ read : String -> Task (Result Failure String)
 
 That is the only place an effect enters the language. What the companion behind such a signature
 returns, and which types the signature may still name, is
-[Foreign interoperability](interop.md#an-effectful-facade)'s. Every other `Task` is built from those, so a
-package declares its own effects on the same terms `zelkova-core` declares its.
+[Foreign interoperability](interop.md#an-effectful-facade)'s. Every other `Task` is built from
+those, so a package declares its own effects on the same terms `zelkova-core` declares its.
 
 ### Sequencing
 
@@ -651,9 +651,9 @@ carrying the name of the export that returned it.
 
 So a facade declares a `Task (Result Failure a)` unless it is marked
 [`unsafe`](interop.md#an-unsafe-facade), a rule
-[Foreign interoperability](interop.md#an-effectful-facade) states in full. Running such a `Task` yields a
-value even when the JavaScript behind it breaks, so the two outcomes above are the two outcomes
-of running one.
+[Foreign interoperability](interop.md#an-effectful-facade) states in full. Running such a `Task`
+yields a value even when the code behind it breaks, so the two outcomes above are the two
+outcomes of running one.
 
 A failure belonging to the effect's own domain goes in the payload beside those. `read` above,
 reporting a missing file apart from a broken companion, is `String -> Task (Result Failure

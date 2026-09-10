@@ -79,7 +79,7 @@ directory, which is where [Foreign interoperability](interop.md) requires them t
 
 ```text
 src/
-  Js/
+  Core/
     Basics.zel     module foreign Core.Basics
     Basics.mjs     the JavaScript behind it
     Basics.wasm    the WebAssembly component behind it

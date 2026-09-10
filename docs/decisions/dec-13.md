@@ -4,8 +4,9 @@
 **Status:** live.
 **Where the rule lives:** [Foreign interoperability](../spec/interop.md), the whole chapter.
 
-[JS interop](../spec/interop.md) had, since it was written, described one boundary and named it
-in its own syntax: `module javascript`. Its open questions conceded that WebAssembly — the
+[Foreign interoperability](../spec/interop.md) had, since it was written, described one boundary
+and named it in its own syntax: `module javascript`. Its open questions conceded that
+WebAssembly — the
 project's eventual target, with JavaScript an intermediate one — had no equivalent declaration
 and that nobody had asked what one would look like. The question turned out not to be about
 WebAssembly at all.

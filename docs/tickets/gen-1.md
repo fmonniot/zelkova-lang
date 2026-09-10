@@ -55,8 +55,8 @@ Two decisions are inherited rather than made here. **The wrapper around an effec
 builds the `Result` its signature declares** — it catches what the companion throws, runs the
 predicate over what it returns, and yields `Ok`, `Err (Threw ..)` or `Err (Malformed ..)`. The
 companion itself returns a bare payload and never a `Result`
-([JS interop](../spec/interop.md#an-effectful-facade)), so the two sides of the boundary
-disagree about the type on purpose and this wrapper is where they are reconciled. The predicates
+([Foreign interoperability](../spec/interop.md#an-effectful-facade)), so the two sides of the
+boundary disagree about the type on purpose and this wrapper is where they are reconciled. The predicates
 themselves are [`GEN-2`](gen-2.md)'s; the wrapper that calls one and routes its answer is this
 ticket's, and it is the whole of what keeps a throwing `.mjs` from ending the program. A facade
 marked [`unsafe`](../spec/interop.md#an-unsafe-facade) gets no such wrapper — its companion is

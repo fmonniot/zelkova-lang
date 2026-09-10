@@ -14,9 +14,11 @@ parses as; `src/compiler/parser/mod.rs` — `FunType`, and `Module::from_declara
 Then all three of `std/core/src/Js/*.zel`.
 
 **Depends on:** nothing hard. [`LANG-9`](lang-9.md) gates *half* the acceptance below and not the
-other half — see step 4.
+other half — see step 4, and [`LANG-54`](lang-54.md) gates the retagging, every facade block in
+the spec naming the `foreign` modifier.
 
-**Problem:** [JS interop](../spec/interop.md) settles two rules the compiler has neither of.
+**Problem:** [Foreign interoperability](../spec/interop.md) settles two rules the compiler has
+neither of.
 
 A `module javascript` facade **declares an effect by default**: its result type must be
 `Task (Result Failure a)` ([An effectful facade](../spec/interop.md#an-effectful-facade)).
@@ -94,9 +96,10 @@ diff](../spec/conventions.md#a-spec-change-and-a-semantics-change-do-not-share-a
 **Acceptance:** `unsafe fdiv : Float -> Float -> Float` parses inside a `module javascript`
 header and is rejected outside one, and the flag is readable on the canonical declaration. All 45
 `std/core` facade signatures carry the word and `cargo run` prints `parsed 8 modules` and lists
-all eight. Four `expect=unimplemented` blocks go red and are retagged `expect=ok` in the same
-diff — the two `Js.Basics` blocks in
-[`interop.md`](../spec/interop.md) and `unsafe square` / `unsafe next` in
+all eight. Four `expect=unimplemented` blocks go red and are retagged `expect=ok` in the same diff, once
+[`LANG-54`](lang-54.md) has landed — each names the `foreign` modifier and fails on that first.
+They are the `Core.Prim` and `Core.Basics` blocks in [`interop.md`](../spec/interop.md) and
+`unsafe square` / `unsafe next` in
 [`evaluation-semantics.md`](../spec/evaluation-semantics.md) — and their **Not implemented:**
 paragraphs lose the clause naming this ticket. The three blocks that stay red are `LANG-9`'s.
 `cargo test --test spec` green.
