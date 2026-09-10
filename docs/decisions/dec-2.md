@@ -148,7 +148,10 @@ settles that a literal's type is its spelling — `1` is an `Int`, `1.5` is a `F
 decides before any constraint exists rather than by defaulting one. [Type
 classes](../spec/type-classes.md#numeric-literals) now says the opposite of decision 8's first
 clause and the same as its second: **nothing** in the language defaults, in every case and
-with no exception carved out for arithmetic. The visible consequence is that
+with no exception carved out for arithmetic. The alternative both rule out is a literal that
+stands for a value in any type with a `Number` instance: that spelling puts a conversion member
+on every such instance, and a call to it under every literal in every program — machinery, and
+invisible work at runtime, spread across the whole language. The visible consequence is that
 [`LANG-41`](../tickets/lang-41.md) left the type-class ticket dependency order — with no
 obligation to discharge, it can land at any point.
 
