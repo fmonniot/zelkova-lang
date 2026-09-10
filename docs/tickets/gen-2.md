@@ -13,7 +13,7 @@ piece of output that can be written, tested and reviewed on its own, against one
 `module javascript` facade's call site. `std/core/src/Js/*.mjs` are the companions the emitted
 checks sit in front of.
 
-**Problem:** [JS interop](../spec/js-interop.md#which-types-may-cross-the-boundary) admits a type
+**Problem:** [JS interop](../spec/interop.md#which-types-may-cross-the-boundary) admits a type
 into a facade signature exactly when the compiler can emit a **predicate** for it — a piece of
 JavaScript deciding, from a value alone, whether that value belongs to that type — and says that
 every value a companion `.mjs` hands back is run through the predicate of the type its signature
@@ -28,10 +28,10 @@ every phase downstream of the boundary is entitled to believe it.
 **Approach:** this ticket does not pick the details. What it has to settle:
 
 1. **Routing a failing check to the right destination.** This is no longer open — [Which types
-   may cross](../spec/js-interop.md#which-types-may-cross-the-boundary) settles it, and settles it
+   may cross](../spec/interop.md#which-types-may-cross-the-boundary) settles it, and settles it
    two different ways depending on the facade. Out of an effectful facade a failing check is
    `Err (Malformed ..)`, a value the wrapper this ticket emits builds and hands to the caller; out
-   of an [`unsafe`](../spec/js-interop.md#an-unsafe-facade) one it
+   of an [`unsafe`](../spec/interop.md#an-unsafe-facade) one it
    [aborts the program](../spec/evaluation-semantics.md#when-a-program-aborts), there being no
    result type to carry it. Both name the export whose companion returned the bad value, because
    the thing being reported is always a bug in a hand-written `.mjs`. Note that `unsafe` removes
@@ -46,7 +46,7 @@ every phase downstream of the boundary is entitled to believe it.
    `Char`, `String`, a tuple, a record, a list, and a union type — the last reading the `$` field
    against the declaration's constructor set and checking each argument against the predicate of
    the type that constructor declares for it. The union encoding is
-   [published in the chapter](../spec/js-interop.md#a-union-crosses-as-a-tagged-object) and this
+   [published in the chapter](../spec/interop.md#a-union-crosses-as-a-tagged-value) and this
    is the ticket that makes it true; the record and list encodings belong to
    [`SPEC-21`](spec-21.md) and [`SPEC-22`](spec-22.md) and to `GEN-1`, and this ticket inherits
    whatever they settle rather than deciding it.

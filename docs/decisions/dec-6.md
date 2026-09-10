@@ -1,11 +1,12 @@
 # DEC-6 · Which types may cross the JavaScript boundary
 
 **Settled:** 2026-09-06, by the language owner (`SPEC-18`).
-**Status:** live.
+**Status:** live; 1 extended by [DEC-13](dec-13.md) decision 5, which adds the second
+boundary's half of the admission test.
 **Where the rule lives:**
-[JS interop — Which types may cross the boundary](../spec/js-interop.md#which-types-may-cross-the-boundary).
+[JS interop — Which types may cross the boundary](../spec/interop.md#which-types-may-cross-the-boundary).
 
-[JS interop](../spec/js-interop.md) had opened, since it was written, by saying the compiler
+[JS interop](../spec/interop.md) had opened, since it was written, by saying the compiler
 "accepts only a subset of the Zelkova standard types" in a facade signature, and by conceding in
 its own open questions that no subset had ever been named. The compiler enforced nothing, so the
 subset was in practice everything. Four questions had to be answered together, because the
@@ -56,7 +57,7 @@ sentence this entry exists to repair.
 **Admit variables unrestricted.** The status quo, and rejected for the reason in decision 1.
 
 What makes rejection cheap is that the escape is already written down elsewhere. [Type
-classes](../spec/type-classes.md#a-constrained-function-may-not-be-a-javascript-facade) forbids a
+classes](../spec/type-classes.md#a-constrained-function-may-not-be-a-foreign-facade) forbids a
 constraint on a facade signature and gives the same remedy in the same words — a constrained
 function lives in ordinary Zelkova and calls a monomorphic facade underneath it. The constraint
 rule and this rule are one rule seen twice: a facade's signature names the types its JavaScript

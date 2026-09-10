@@ -38,7 +38,7 @@ one.
 1. Write `std/core/zelkova.toml`, naming the package `zelkova-core`, with
    `private-modules = []` and both dependency tables empty. Every module of a package is public unless listed, and
    the three `Js.*` facades need no listing: a `module javascript` facade is package-internal
-   by its own declaration ([`docs/spec/js-interop.md`](../spec/js-interop.md)).
+   by its own declaration ([`docs/spec/interop.md`](../spec/interop.md)).
 2. `compile_package` takes the *package* directory, reads and validates the manifest, and
    derives the source root as `<package>/src` before calling `load_package_sources`. A
    directory with no `zelkova.toml`, a malformed one, or a name that is not a legal package

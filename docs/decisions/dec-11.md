@@ -4,7 +4,7 @@
 **Status:** live; decision 5 is extended by [DEC-12](dec-12.md), which decides how a failure
 gets into the value.
 **Where the rule lives:** [Evaluation semantics — Effects](../spec/evaluation-semantics.md#effects),
-[JS interop — An effectful facade](../spec/js-interop.md#an-effectful-facade),
+[JS interop — An effectful facade](../spec/interop.md#an-effectful-facade),
 [Packages — Programs](../spec/packages.md#programs) and
 [What a test is](../spec/packages.md#what-a-test-is).
 
@@ -15,7 +15,7 @@ second and third are consequences of the first, which is why they were settled t
 Two rules already written down did most of the deciding, and any answer had to survive both. A
 class variable [stands for a complete type](../spec/type-classes.md#a-class-is-always-over-a-complete-type),
 so there is no `Monad` for an effect type to be an instance of. And a facade is
-[the only way into JavaScript](../spec/js-interop.md), with no privileged escape hatch the
+[the only way into JavaScript](../spec/interop.md), with no privileged escape hatch the
 standard library may use and a user's package may not — which rules out Elm's answer directly,
 since Elm's `Task` comes out of kernel code no user can write.
 
@@ -33,7 +33,7 @@ record, and every one of those needs a new form once sequencing is syntax rather
 
 ## 2 — A primitive effect is a facade whose result type is `Task a`
 
-[An effectful facade](../spec/js-interop.md#an-effectful-facade) is where an effect enters the
+[An effectful facade](../spec/interop.md#an-effectful-facade) is where an effect enters the
 language, and the only place it does. The companion returns the payload rather than a `Task`; the
 compiler builds the `Task` around the call, which is what keeps an impure companion reachable
 only through a value the runtime forces.
@@ -45,7 +45,7 @@ already draws.
 
 ## 3 — The admitted-type rules are untouched
 
-[Which types may cross](../spec/js-interop.md#which-types-may-cross-the-boundary) constrained the
+[Which types may cross](../spec/interop.md#which-types-may-cross-the-boundary) constrained the
 answer: whatever crosses has to be something a runtime predicate can decide, which rules out a
 bare type variable and a function type. Because a `Task` never crosses — the companion hands back
 an `a` and takes arguments of admitted types — an effectful facade is exactly as monomorphic as a

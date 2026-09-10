@@ -9,7 +9,7 @@ signatures are rewritten, and that rewrite is part of this ticket.
 annotation; the `Error` enum in the same file. Then `std/core/src/Js/Basics.zel` and
 `std/core/src/Js/Utils.zel`, plus whatever in `std/core/src/Basics.zel` re-exports them.
 
-**Problem:** [JS interop](../spec/js-interop.md#which-types-may-cross-the-boundary) settles which
+**Problem:** [JS interop](../spec/interop.md#which-types-may-cross-the-boundary) settles which
 types a `module javascript` facade signature may name. A type is admitted exactly when the
 compiler can emit a predicate that decides, from a value alone, whether that value belongs to
 it — which admits the primitives, tuples, records, lists and union types applied to admitted
@@ -22,7 +22,7 @@ bindings — and then resolves the annotation with `Type::from_parser_type`, whi
 that names something in scope. Every type a normal module may write, a facade may write.
 
 Two blocks in that chapter are tagged `expect=ok` for exactly this reason, both in
-[What a facade signature may not name](../spec/js-interop.md#what-a-facade-signature-may-not-name)
+[What a facade signature may not name](../spec/interop.md#what-a-facade-signature-may-not-name)
 and covered by the one **Known gap:** paragraph that follows them and names this ticket:
 
 - `equal : a -> a -> Bool`, a facade over a bare type variable.
@@ -79,7 +79,7 @@ you have seen it fail*).
 - **[`DEC-12`](../decisions/dec-12.md) decisions 1 and 7** add a rule about the *shape* of a
   facade's result, which is a different check from the admitted-types walk and belongs beside it.
   A facade declares `Task (Result Failure a)` unless its signature is marked
-  [`unsafe`](../spec/js-interop.md#an-unsafe-facade), so step 2 gains a case on the result after
+  [`unsafe`](../spec/interop.md#an-unsafe-facade), so step 2 gains a case on the result after
   the arrows are stripped: unmarked, the result is admitted only in that one shape and `a` is
   what the walk descends into, `Task` and the `Result` never crossing the boundary; marked, the
   result is walked as any other type. Both halves need
@@ -88,7 +88,7 @@ you have seen it fail*).
   be written. Land the type-variable and function-type halves without waiting; sequence this one
   after both.
 - **[`LANG-37`](lang-37.md)** adds constraint syntax. A facade may not carry a constraint either
-  ([What a facade signature may not name](../spec/js-interop.md#what-a-facade-signature-may-not-name));
+  ([What a facade signature may not name](../spec/interop.md#what-a-facade-signature-may-not-name));
   that is a separate rejection on a separate
   node and belongs with the ticket that makes the syntax parse.
 

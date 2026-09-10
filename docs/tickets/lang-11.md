@@ -86,7 +86,7 @@ annotation and the declaration it annotates. Don't settle it by accident in the
 implementation.
 
 A `module javascript` facade is annotations with no bodies at all
-([`docs/spec/js-interop.md`](../spec/js-interop.md)) and must keep working — whatever rule is
+([`docs/spec/interop.md`](../spec/interop.md)) and must keep working — whatever rule is
 written has to exempt it, or be phrased as "an annotation is followed by the declaration it
 annotates, if that declaration exists".
 

@@ -124,7 +124,7 @@ LANG-41  `Type::Number` retires; an integer literal is an `Int`   ← independen
 [`DEC-2` decision 7](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed)
 settles that a constrained function is specialised per instantiation and no dictionary exists
 at runtime — a constraint on code generation, which has not started. It is recorded in
-`docs/spec/type-classes.md` and `docs/spec/js-interop.md`, and [`GEN-1`](gen-1.md) inherits it
+`docs/spec/type-classes.md` and `docs/spec/interop.md`, and [`GEN-1`](gen-1.md) inherits it
 from there rather than it being filed twice.
 
 ## Recovering a closed ticket
@@ -218,7 +218,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-16 | task | — | closed 2026-09-08 | The spec makes one promise about space and does not say whether it makes others |
 | SPEC-17 | task | — | closed 2026-09-06 | Nothing says a `Float`-returning operation may not totalize with a zero, and one of them does |
 | SPEC-18 | task | — | closed 2026-09-06 | "A subset of the Zelkova standard types" names no subset, and the compiler enforces none |
-| [SPEC-19](spec-19.md) | task | — | open | `javascript` is the only interop modifier, and the WebAssembly equivalent is undesigned |
+| SPEC-19 | task | — | closed 2026-09-09 | `javascript` is the only interop modifier, and the WebAssembly equivalent is undesigned |
 | SPEC-20 | task | — | closed 2026-09-06 | A facade constant is called unsettled by the chapter and shipped by `std/core` |
 | SPEC-21 | task | — | closed 2026-09-07 | Records are part of the language and no chapter says what one looks like |
 | SPEC-22 | task | — | closed 2026-09-06 | Lists are part of the language and the chapter specifying them does not exist |

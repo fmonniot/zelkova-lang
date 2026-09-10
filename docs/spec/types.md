@@ -510,8 +510,8 @@ annotation and its declaration is not noticed either. When a name carries two an
 **last** silently wins: the third block above is checked against `Other`, not against `Size`
 ([`docs/tickets/lang-11.md`](../tickets/lang-11.md)).
 
-A [JS interop](js-interop.md) facade is the one place an annotation stands alone: a
-`module javascript` module is annotations with no bodies at all, and that is what makes it a
+A [foreign](interop.md) facade is the one place an annotation stands alone: a
+`module foreign` module is annotations with no bodies at all, and that is what makes it a
 facade.
 
 ### An annotation may span several lines

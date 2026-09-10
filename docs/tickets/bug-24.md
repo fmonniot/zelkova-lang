@@ -16,7 +16,7 @@ into these files yet.
 `__Debug_crash` and `__List_Cons` are defined in no file in the repository and imported by
 neither module. Both files carry a header saying they were copied from Elm's implementation as
 is; in Elm those names are placeholders a preprocessor substitutes, and Zelkova has no such
-step — `docs/spec/js-interop.md` says a companion is an ordinary ES module and the compiler
+step — `docs/spec/interop.md` says a companion is an ordinary ES module and the compiler
 never rewrites it.
 
 **Problem:** three defects, one root.

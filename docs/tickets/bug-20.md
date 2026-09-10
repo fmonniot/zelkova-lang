@@ -48,7 +48,7 @@ smaller =
 Nothing in the compiler stands between that program and `_Utils_cmp`. Type checking accepts
 it because the declared type genuinely does accept it, and code generation does not exist yet.
 There is now a facade-level rule to appeal to —
-[Which types may cross the boundary](../spec/js-interop.md#which-types-may-cross-the-boundary)
+[Which types may cross the boundary](../spec/interop.md#which-types-may-cross-the-boundary)
 rejects a bare type variable in a facade signature, so all six of these are inadmissible — but
 nothing enforces it: [`LANG-43`](lang-43.md) is that check, and rewriting these six into
 monomorphic facades is part of its scope. It does not close this ticket, whose acceptance is

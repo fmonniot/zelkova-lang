@@ -2,14 +2,14 @@
 
 **Settled:** 2026-09-08, by the language owner (`SPEC-15`).
 **Status:** live.
-**Where the rule lives:** [JS interop — An effectful facade](../spec/js-interop.md#an-effectful-facade),
-[An `unsafe` facade](../spec/js-interop.md#an-unsafe-facade) and
-[Which types may cross](../spec/js-interop.md#which-types-may-cross-the-boundary),
+**Where the rule lives:** [JS interop — An effectful facade](../spec/interop.md#an-effectful-facade),
+[An `unsafe` facade](../spec/interop.md#an-unsafe-facade) and
+[Which types may cross](../spec/interop.md#which-types-may-cross-the-boundary),
 [Evaluation semantics — An effect that can fail](../spec/evaluation-semantics.md#an-effect-that-can-fail)
 and [When a program aborts](../spec/evaluation-semantics.md#when-a-program-aborts).
 
 [DEC-11](dec-11.md) settled what an effect is and left the failure story as a contract: *a
-companion may not throw*, kept the way [purity](../spec/evaluation-semantics.md#purity-and-the-javascript-boundary)
+companion may not throw*, kept the way [purity](../spec/evaluation-semantics.md#purity-and-the-foreign-boundary)
 is kept, by the person who wrote the `.mjs`. The two are not alike, and the difference is what
 reopened the question. A companion that lies about purity has no runtime consequence — the
 program keeps running and *no meaning the language defines* is a complete answer, because nothing
@@ -70,7 +70,7 @@ one too; it just has not said where.
 
 ## 1 — A boundary failure is a value, and the author writes the type that holds it
 
-[An effectful facade](../spec/js-interop.md#an-effectful-facade). A facade's result type must be
+[An effectful facade](../spec/interop.md#an-effectful-facade). A facade's result type must be
 `Task (Result Failure a)`; any other `Task` is an error, and `a` is the only part its author
 chooses. The `Result` is still built by the compiler's wrapper — it catches what the companion
 throws and runs the predicate over what it returns — so a signature declares a `Result` no
@@ -121,7 +121,7 @@ words that putting them in every module's namespace costs more than the import l
 
 [When a program aborts](../spec/evaluation-semantics.md#when-a-program-aborts). The required
 result type in decision 1 is available to an effectful facade because it has somewhere to put an
-outcome. An [`unsafe`](../spec/js-interop.md#an-unsafe-facade) one does not: a `Result` in the
+outcome. An [`unsafe`](../spec/interop.md#an-unsafe-facade) one does not: a `Result` in the
 result of `unsafe and : Int -> Int -> Int` describes a different function, and most of the
 language's arithmetic is declared that way.
 
@@ -174,7 +174,7 @@ buys the same safety by construction instead.
 
 ## 7 — The trusted surface is a word, and the default is the safe one
 
-[An `unsafe` facade](../spec/js-interop.md#an-unsafe-facade). A facade declares an effect unless
+[An `unsafe` facade](../spec/interop.md#an-unsafe-facade). A facade declares an effect unless
 its signature says `unsafe`, and that word is the whole of what the language trusts rather than
 checks: its author asserts the companion is a function of its arguments and that it returns.
 

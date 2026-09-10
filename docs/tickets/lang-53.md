@@ -16,13 +16,13 @@ Then all three of `std/core/src/Js/*.zel`.
 **Depends on:** nothing hard. [`LANG-9`](lang-9.md) gates *half* the acceptance below and not the
 other half — see step 4.
 
-**Problem:** [JS interop](../spec/js-interop.md) settles two rules the compiler has neither of.
+**Problem:** [JS interop](../spec/interop.md) settles two rules the compiler has neither of.
 
 A `module javascript` facade **declares an effect by default**: its result type must be
-`Task (Result Failure a)` ([An effectful facade](../spec/js-interop.md#an-effectful-facade)).
+`Task (Result Failure a)` ([An effectful facade](../spec/interop.md#an-effectful-facade)).
 Writing **`unsafe`** before a signature instead declares a plain function, whose author asserts
 that the companion is pure and that it returns
-([An `unsafe` facade](../spec/js-interop.md#an-unsafe-facade)). The word is the language's only
+([An `unsafe` facade](../spec/interop.md#an-unsafe-facade)). The word is the language's only
 unchecked claim, and putting it on the declaration is what makes the trusted surface greppable —
 [`DEC-12`](../decisions/dec-12.md) is the argument.
 
@@ -96,7 +96,7 @@ header and is rejected outside one, and the flag is readable on the canonical de
 `std/core` facade signatures carry the word and `cargo run` prints `parsed 8 modules` and lists
 all eight. Four `expect=unimplemented` blocks go red and are retagged `expect=ok` in the same
 diff — the two `Js.Basics` blocks in
-[`js-interop.md`](../spec/js-interop.md) and `unsafe square` / `unsafe next` in
+[`interop.md`](../spec/interop.md) and `unsafe square` / `unsafe next` in
 [`evaluation-semantics.md`](../spec/evaluation-semantics.md) — and their **Not implemented:**
 paragraphs lose the clause naming this ticket. The three blocks that stay red are `LANG-9`'s.
 `cargo test --test spec` green.
