@@ -182,9 +182,10 @@ round trip on its first turn.
 >
 >    **No SHA and no PR number in that row** — this commit is written before either exists. The
 >    file path is the query key: `git log --diff-filter=D -- docs/tickets/<ID-LOWER>.md`
->    recovers it. Before deleting, promote anything worth keeping longer than the fix: into the
->    code as a doc comment where it explains behaviour, or into `CLAUDE.md`'s *Standing
->    invariants* where it is a rule. Then grep the repo for `<ID>` and repoint anything that
+>    recovers it. Before deleting, promote anything worth keeping longer than the fix — a doc
+>    comment at the code site first, then `docs/spec/` or `docs/decisions/`, and `CLAUDE.md`'s
+>    *Standing invariants* only if none of those would carry it (the promotion order is in
+>    `docs/tickets/README.md`). Then grep the repo for `<ID>` and repoint anything that
 >    linked to the ticket file at `README.md` — including comments in your own diff pointing at
 >    "future work `<ID>`" that your diff has just done.
 > 8. Commit with a message explaining *why*, not just *what*. Subject line: `<ID>: <summary>`.

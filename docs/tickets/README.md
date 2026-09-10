@@ -42,11 +42,15 @@ Two distinctions worth keeping straight when filing a new ticket:
 becomes the close date. A closed ticket keeps accreting implementation narrative that describes
 the tree as of the day it closed; the first change underneath it turns that into a confident
 description of code which no longer exists. Anything worth keeping longer than the fix is
-**promoted** before the ticket dies, to one of three places: into the code as a doc comment
-where it explains behaviour, into `CLAUDE.md`'s *Standing invariants* where it is a rule, or
-into [`docs/decisions/`](../decisions/README.md) where it is the argument for a choice rather
-than the choice itself. Two records of one decision means the unmaintained one is what someone
-eventually reads. A decision list in a closing ticket is cited as e.g. `DEC-2 decision 6` — an
+**promoted** before the ticket dies, and the destination is chosen in this order: into the code
+as a doc comment where it explains behaviour, into [`docs/spec/`](../spec/README.md) where it is
+a rule about the language, into [`docs/decisions/`](../decisions/README.md) where it is the
+argument for a choice rather than the choice itself, and into `CLAUDE.md`'s *Standing
+invariants* only when none of the three would carry it. `CLAUDE.md` comes last because it is the
+one destination that can be appended to without opening the thing it describes — it doubled in a
+fortnight that way — and a line added there means first checking that no existing line already
+covers it. Two records of one decision means the unmaintained one is what someone eventually
+reads. A decision list in a closing ticket is cited as e.g. `DEC-2 decision 6` — an
 entry is never deleted, so that citation keeps resolving.
 
 A tombstone row carries **no SHA and no PR number**: the commit that deletes a ticket file is a
