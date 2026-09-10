@@ -214,7 +214,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-12 | task | — | closed 2026-08-29 | Write the Type classes chapter, superseding Constrained type variables |
 | SPEC-13 | task | — | closed 2026-09-06 | Whether a pattern's negative literal is a token or a pattern production is unsettled, and two chapters answer it differently |
 | SPEC-14 | task | — | closed 2026-09-06 | Nothing specifies how a structural instance is derived, and equality needs it |
-| [SPEC-15](spec-15.md) | task | — | open | Nothing says what an effect is, so `main`'s type and what a test is are both undesigned |
+| SPEC-15 | task | — | closed 2026-09-08 | Nothing says what an effect is, so `main`'s type and what a test is are both undesigned |
 | SPEC-16 | task | — | closed 2026-09-08 | The spec makes one promise about space and does not say whether it makes others |
 | SPEC-17 | task | — | closed 2026-09-06 | Nothing says a `Float`-returning operation may not totalize with a zero, and one of them does |
 | SPEC-18 | task | — | closed 2026-09-06 | "A subset of the Zelkova standard types" names no subset, and the compiler enforces none |
@@ -279,6 +279,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-50](lang-50.md) | task | — | open | Field access `r.name` and the accessor `.name` do not parse |
 | [LANG-51](lang-51.md) | task | — | open | The typer has no record type, so nothing checks a field, an update or an accessor |
 | [LANG-52](lang-52.md) | task | — | open | Whitespace around a qualification dot is accepted, and records need it not to be |
+| [LANG-53](lang-53.md) | task | — | open | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |

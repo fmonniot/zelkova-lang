@@ -1,7 +1,7 @@
 # GEN-2 · Emit the boundary predicate a facade signature promises
 
 **Sizing:** medium. One predicate emitter per admitted type form, plus the call-site wiring that
-runs it, plus a decision about what a failing check does. Bigger if it is taken before
+runs it, plus the two destinations a failing check has. Bigger if it is taken before
 [`GEN-1`](gen-1.md) has settled how a value is represented, because half of this ticket *is* that
 representation read back.
 
@@ -27,10 +27,16 @@ every phase downstream of the boundary is entitled to believe it.
 
 **Approach:** this ticket does not pick the details. What it has to settle:
 
-1. **What a failing check does.** A thrown JavaScript error naming the facade, the parameter and
-   the type expected is the obvious answer and the only one available while the language has no
-   error type of its own. Whatever it is, it must be distinguishable from an ordinary runtime
-   fault, because the thing it reports is always a bug in a hand-written `.mjs`.
+1. **Routing a failing check to the right destination.** This is no longer open — [Which types
+   may cross](../spec/js-interop.md#which-types-may-cross-the-boundary) settles it, and settles it
+   two different ways depending on the facade. Out of an effectful facade a failing check is
+   `Err (Malformed ..)`, a value the wrapper this ticket emits builds and hands to the caller; out
+   of an [`unsafe`](../spec/js-interop.md#an-unsafe-facade) one it
+   [aborts the program](../spec/evaluation-semantics.md#when-a-program-aborts), there being no
+   result type to carry it. Both name the export whose companion returned the bad value, because
+   the thing being reported is always a bug in a hand-written `.mjs`. Note that `unsafe` removes
+   the `Task` and not the predicate, so this ticket emits a check for both kinds of facade and
+   only the destination differs.
 2. **Which direction is checked.** The chapter states the inbound direction — values a companion
    hands back. Whether an argument on its way *out* to JavaScript is also checked is a separate
    question: it is checked already, in the sense that the type checker proved it, so the case for

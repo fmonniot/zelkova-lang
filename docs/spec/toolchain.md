@@ -225,12 +225,15 @@ against the union of `dependencies` and `test-dependencies`
 ([Packages](packages.md#tests)). A test module may import the package's private modules, and
 nothing may import a test module.
 
-**Provisional:** running a package's tests compiles both roots and then runs whatever the runner
-finds in `tests/`. What it finds — an exposed value of a particular type, a naming convention, a
-declaration form the language does not have yet — is the open question at the foot of the
-[Packages chapter](packages.md#open-questions), and this section cannot be finished until it is
-answered ([`SPEC-15`](../tickets/spec-15.md)). What can be said now is what does not depend on that answer: a package's tests are run
-by that package, dependencies' tests are never run, and a failing test is a non-zero exit.
+Running a package's tests compiles both roots and then runs every test the package holds — every
+value a module under `tests/` exposes whose type is `Test`
+([Packages](packages.md#what-a-test-is)). A package's tests are run by that package, and a
+dependency's tests are never run: they are not compiled at all, since nothing outside a package
+reads its `tests/` root.
+
+**Provisional:** a run that had a failing test is a non-zero exit, and a run that could not
+compile either root is the same non-zero exit a failed build already is — a test that did not
+run is not a test that passed.
 
 **Not implemented:** there is no `tests/` root, no `test-dependencies`, and no runner
 ([`docs/tickets/lang-15.md`](../tickets/lang-15.md)).

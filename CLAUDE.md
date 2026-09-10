@@ -202,6 +202,24 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   rather than Elm's curried `F2`/`F3` wrappers. `Js/Basics`, `Js/Utils` and `Js/Bitwise` are
   the worked examples. Most of the `.ignored` modules under `std/core/src` still carry Elm's
   kernel imports verbatim; porting one means writing its facade, not resurrecting the kernel.
+  A facade that needs to *do* something rather than compute one — read a clock, a file, a
+  socket — declares its result type as `Task a`, and its companion is then the one export
+  released from the purity rule, and **that is now the default**: a facade declares an effect, its
+  result type **must** be `Task (Result Failure a)`, and no companion produces that `Result` —
+  the compiler's wrapper builds it, catching what the companion throws and running the boundary
+  predicate over what it returns. The exception costs a word. `unsafe` before a signature
+  declares a plain function instead, and is the author asserting the two things nothing checks:
+  that the companion is pure, and that it returns. It removes the `Task` and not the predicate.
+  So a facade cannot promise more by saying less, and **every abort a program's own code can
+  cause comes from a declaration carrying that word** — `std/core`'s arithmetic included, which
+  is what `Js.Basics` becomes. `unsafe` is available to any package on identical terms; there is
+  still no privileged hatch. Nothing implements any of it: `docs/spec/js-interop.md` is the rule,
+  `docs/spec/evaluation-semantics.md` what a `Task` is and what an abort is,
+  [`DEC-11`](docs/decisions/dec-11.md) the seven decisions behind both — including why sequencing
+  is a function rather than syntax, and why there is no monad class for a `Task` to be an
+  instance of — and [`DEC-12`](docs/decisions/dec-12.md) the seven behind the failure half, with
+  the survey of how four other languages answered it. [`LANG-53`](docs/tickets/lang-53.md) is the
+  keyword, [`LANG-43`](docs/tickets/lang-43.md) the check on an unmarked facade.
 - **A doc comment describes what the code at that site does** — not what you intended, and
   not what it used to do. An overstated comment is a real defect because it is what the next
   reader trusts. Prefer saying less over saying more than you verified.
@@ -238,7 +256,8 @@ interop via `module javascript` facades with companion `.mjs` files, `--` and `{
 comments.
 
 Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, the
-unit type, type aliases, and the `zelkova.toml` package manifest. **Multi-clause function
+unit type, type aliases, effects (`Task`, and the `main` and test discovery built on it), and
+the `zelkova.toml` package manifest. **Multi-clause function
 declarations** — a deliberate divergence from Elm — parse but are rejected by canonicalization
 (`Error::MultipleBindingsUnsupported`); `LANG-20` is the ticket. The standard library under
 `std/core/src/` carries `.ignored` files for modules that do not compile yet.

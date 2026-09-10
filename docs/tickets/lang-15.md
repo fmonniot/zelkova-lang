@@ -50,11 +50,9 @@ test and no way to depend on a library for it.
    appears in both, and resolve the union.
 
 **Not in this ticket: the runner.** What makes a declaration under `tests/` something a runner
-runs is an [open question in the chapter](../spec/packages.md#open-questions), owned by
-[SPEC-15](spec-15.md) — it waits on the
-same design `main`'s type waits on, since both are a value the outside world picks up and acts
-on. This ticket gets test modules compiled with the right things in scope, which is everything
-that does not depend on that answer, and
+runs is settled — [a value a module under `tests/` exposes whose type is
+`Test`](../spec/packages.md#what-a-test-is) — and building the thing that finds and runs them is
+not this ticket's. This ticket gets test modules compiled with the right things in scope, and
 [the toolchain appendix](../spec/toolchain.md#running-a-packages-tests) says the same from the
 other side.
 

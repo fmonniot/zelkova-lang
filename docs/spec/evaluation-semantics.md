@@ -27,10 +27,15 @@ somewhere earlier or somewhere else:
 | Applying a value that is not a function | Type checking |
 | Integer division by zero | [Defined below](#an-operation-with-no-answer) to be `0`, because no `Int` value means *no answer* |
 | A lookup, a parse, a conversion that can fail | The type: `Maybe a`, `Result e a` |
+| A companion that throws, or returns a value of the wrong shape | The `Task`'s payload: [`Result Failure a`](#an-effect-that-can-fail) |
 
 **Known gap:** coverage is not checked — the exhaustiveness phase inspects nothing and accepts
 every module — so a `case` missing a branch compiles today and would have no value to produce.
 [`LANG-19`](../tickets/lang-19.md) is the ticket.
+
+That is a claim about evaluating an expression. A whole program has one more outcome, because a
+program has a boundary and an expression does not: see [When a program
+aborts](#when-a-program-aborts).
 
 ## Evaluation is strict
 
@@ -521,44 +526,179 @@ twice gives the same value, and evaluating it does nothing else — nothing is w
 mutated or sent anywhere.
 
 A [`module javascript` facade](js-interop.md) is where that guarantee meets code the compiler
-did not produce and cannot inspect. **A facade's companion export must be a function of its
-arguments**: the same arguments give the same result, and calling it has no other consequence.
-A facade whose JavaScript reads a clock, keeps a counter, prints, or reaches the network breaks
-that rule, and a program using it has no meaning the language defines.
+did not produce and cannot inspect. A facade declares an effect by default, and its companion is
+under no obligation to be a function of anything: reading a clock, keeping a counter, printing
+and reaching the network are what it is for.
 
-```zel expect=ok
+**The word [`unsafe`](js-interop.md#an-unsafe-facade) is what claims otherwise.** A signature
+marked with it declares a function rather than an effect, and its author is asserting that the
+same arguments give the same result and that calling it has no other consequence.
+
+```zel expect=unimplemented
 module javascript Js.Math exposing (square)
 
-square : Float -> Float
+unsafe square : Float -> Float
 ```
 
-Nothing distinguishes that from a facade over an impure export:
+Nothing distinguishes that from the same word over an impure export:
 
-```zel expect=ok
+```zel expect=unimplemented
 module javascript Js.Random exposing (next)
 
-next : Int -> Int
+unsafe next : Int -> Int
 ```
 
-Both compile. The second is a broken program, and the rule it breaks is one only its author can
-keep.
+The second is a broken program, and the rule it breaks is one only its author can keep. What the
+word buys is not a check but a place to look: the assertions a program makes about JavaScript are
+the declarations carrying it, and a reader who wants to know what this language is trusting reads
+those.
 
-Purity is not the only rule that crosses this boundary. **A companion also owes the answers
+Purity is not the only rule an `unsafe` companion owes. **It also owes the answers
 [Numbers](#an-operation-with-no-answer) defines**: a `Float`-returning companion with no answer
 returns `nan`, an `Int`-returning one returns the value that section names, and a conversion
-returns a value the `Int` type can hold. Neither returns a stand-in a caller cannot tell from a
-real result. Most of the language's arithmetic is written as a facade, so a rule that stopped
-here would be a rule the language did not have — and it is unenforceable in exactly the way
-purity is, because a type annotation with no body is all the compiler ever sees.
+returns a value the `Int` type can hold. Nothing checks that either, for the reason nothing
+checks purity: a type annotation with no body is all the compiler ever sees.
 
-How a program *does* reach the outside world is not this boundary's job and is undesigned; see
-below.
+How a program *does* reach the outside world is the next section's.
 
-## Open questions
+## Effects
 
-- **How a program reaches the outside world.** Everything above describes a pure computation,
-  and a program that only computes is not much of a program. The
-  mechanism — what a value that describes an effect is, how one is run, how results come back —
-  is undesigned, and it is the same design that
-  [what type `main` must have](packages.md#open-questions) waits on
-  ([`SPEC-15`](../tickets/spec-15.md)).
+Everything above describes a computation. A program reaches the outside world by producing a
+**`Task`**: a value describing work, which the runtime performs.
+
+`Task` is a type `zelkova-core` declares and exposes without its constructors, so a `Task` is
+opaque everywhere but in core — nothing else builds one out of parts or takes one apart. A
+`Task a` describes work that produces an `a` when it is run.
+
+**Building a `Task` performs nothing.** An expression whose value is a `Task` is as pure as any
+other: evaluating it twice gives the same description twice, and neither evaluation reads a file
+or writes a byte. The work happens when a `Task` is [run](#running-a-task), so the guarantee
+above holds over a program with effects in it.
+
+### Where a `Task` comes from
+
+A primitive `Task` is declared by a [`module javascript` facade](js-interop.md) whose result
+type is one.
+
+```zel expect=unimplemented
+module javascript Js.File exposing (read)
+
+import Task exposing (Failure)
+
+read : String -> Task (Result Failure String)
+```
+
+That is the only place an effect enters the language. What the companion behind such a signature
+returns, and which types the signature may still name, is
+[JS interop](js-interop.md#an-effectful-facade)'s. Every other `Task` is built from those, so a
+package declares its own effects on the same terms `zelkova-core` declares its.
+
+### Sequencing
+
+`Task.andThen` runs one `Task` after another, and it is an ordinary function.
+
+```zel expect=fragment
+succeed : a -> Task a
+map : (a -> b) -> Task a -> Task b
+andThen : (a -> Task b) -> Task a -> Task b
+```
+
+`andThen f t` describes running `t`, handing its result to `f`, and running the `Task` `f`
+returns. None of the three is a member of a class: [a class is always over a complete
+type](type-classes.md#a-class-is-always-over-a-complete-type), and `Task` on its own is not one.
+
+Nothing about `Task` is built into the language beyond the name and
+[running one](#running-a-task). Core writes its sequencing the way any module writes a function
+over a type it declares, and which shape it picks is core's: a program outside core cannot
+observe the difference.
+
+### Running a `Task`
+
+A program hands the runtime one `Task`, and running the program is running that `Task`. The
+value it hands over is `main`, whose type [Packages](packages.md#programs) writes down. Nothing
+else runs one: a `Task` a program builds and never gives to the runtime describes work that
+never happens.
+
+A `Task` is a value, so [sharing](#sharing) reaches it like anything else — binding one to two
+names gives two ways to reach one description. Running that description twice performs its work
+twice.
+
+The effects of a `Task` happen in the order it sequences them: `andThen` runs the second only
+once the first has produced a value.
+
+### An effect that can fail
+
+`Task` takes one type parameter and carries no channel for an error. A failure an effect can
+produce is a value in its payload, which is where [every other failure the language
+admits](#two-outcomes) goes.
+
+Every effect can produce two of those values whatever else it produces, because a primitive
+effect is a call into JavaScript and such a call can break in two ways its caller did not ask
+for. `Task` declares them, and exposes them with their constructors — the type is matched on
+rather than held opaque:
+
+```zel expect=ok
+module Task exposing (Failure(..))
+
+type Failure
+  = Threw String
+  | Malformed String
+```
+
+`Threw` is a companion that threw, or whose promise rejected, carrying the host's description of
+what happened. `Malformed` is a companion that returned a value its declared type does not admit,
+carrying the name of the export that returned it.
+
+So a facade declares a `Task (Result Failure a)` unless it is marked
+[`unsafe`](js-interop.md#an-unsafe-facade), a rule
+[JS interop](js-interop.md#an-effectful-facade) states in full. Running such a `Task` yields a
+value even when the JavaScript behind it breaks, so the two outcomes above are the two outcomes
+of running one.
+
+A failure belonging to the effect's own domain goes in the payload beside those. `read` above,
+reporting a missing file apart from a broken companion, is `String -> Task (Result Failure
+(Result IoError String))`. The module that
+[publishes `read`](packages.md#what-a-package-exposes) outside its package is where the two
+`Result`s collapse into the one its dependents see.
+
+**Not implemented:** the `read` block under
+[Where a `Task` comes from](#where-a-task-comes-from) does not parse, a type argument having to be
+a bare name today ([`LANG-9`](../tickets/lang-9.md)). `zelkova-core` declares no `Task` and no
+`Failure`, no facade wrapper is generated, and nothing runs a program at all — the pipeline ends
+at type checking, so there is no runtime for a `Task` to be handed to
+([`GEN-1`](../tickets/gen-1.md)).
+
+**Known gap:** the `Failure` block above compiles, and should not: `String` names no type the
+build has, and an unresolved type name is invented rather than reported
+([`BUG-16`](../tickets/bug-16.md)). It goes red when `BUG-16` lands, and green again once
+`zelkova-core` declares `String`.
+
+## When a program aborts
+
+Evaluating an expression has [two outcomes](#two-outcomes). Running a program has a third: it
+can **abort**, stopping without producing a value and without running any more of itself.
+
+No Zelkova expression asks for one. The language has no keyword that aborts and none that
+catches one, so an abort is never a step a program takes — it is the runtime saying it can no
+longer keep the guarantees above. Three things cause one.
+
+**An [`unsafe`](js-interop.md#an-unsafe-facade) facade whose companion breaks its promise.** A
+companion declared as a function that throws, or that returns a value its declared type does not
+admit, leaves its caller owed a value that nothing produced. An effectful facade has somewhere to
+put that and an `unsafe` one has nowhere.
+
+So every abort a program's own code can cause is attributable to a declaration carrying that
+word.
+
+**Exhaustion.** No memory left to hold a value, or no stack left to enter a call. The second is
+reachable from Zelkova alone, by a recursion the [tail-call rule](#recursion-and-tail-calls) does
+not cover.
+
+**The host.** Whatever runs the program can stop it.
+
+An abort says what caused it, and one caused by a facade names the export whose companion broke.
+
+Only the first is a promise broken. The other two are the runtime running out of what it needs.
+
+**Not implemented:** nothing runs a program, so nothing aborts ([`GEN-1`](../tickets/gen-1.md)),
+and no predicate exists to fail ([`GEN-2`](../tickets/gen-2.md)).
