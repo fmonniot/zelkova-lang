@@ -18,7 +18,7 @@ section states the rule that a declaration's annotation may not be more general 
 can support ([LANG-12](lang-12.md)) — and its example compiles identically before and after
 that ticket lands, so the paragraph has to be deleted by hand rather than being forced red.
 `docs/spec/types.md`'s *Applying a type to arguments* section has the same problem for the
-annotation half of [BUG-17](bug-17.md): `f : Maybe Int` with `f = Just 'c'` type checks clean
+annotation half of [BUG-17](README.md): `f : Maybe Int` with `f = Just 'c'` type checks clean
 today, and nothing in the chapter can say so in a way that survives the fix.
 
 Every remaining planned chapter has type-level claims to make. *Expressions*, *Patterns* and
@@ -58,4 +58,4 @@ and reviewers to the second.
 typer, with a harness self-test beside the existing ones proving both directions — the right
 variant passes, a wrong variant fails. The `**Known gap:**` paragraphs in
 `docs/spec/types.md` named above are converted to tagged blocks, and the notes in
-[BUG-17](bug-17.md) and [LANG-12](lang-12.md) saying they must be deleted by hand are removed.
+[BUG-17](README.md) and [LANG-12](lang-12.md) saying they must be deleted by hand are removed.

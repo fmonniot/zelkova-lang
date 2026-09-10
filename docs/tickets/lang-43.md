@@ -71,7 +71,7 @@ you have seen it fail*).
   particular over-promise `BUG-20` describes — but the runtime half of that ticket, the `.mjs`
   rejecting a value it cannot compare, is untouched and is what its acceptance names. Expect to
   read `BUG-20` while doing step 4; do not mark it done.
-- **[`BUG-17`](bug-17.md)** caps what step 2 can check. A type application's arguments are
+- **[`BUG-17`](README.md)** caps what step 2 can check. A type application's arguments are
   discarded when its head resolves, so `Maybe (a -> a)` reaches the walk as a bare `Maybe` and
   its inadmissible argument is invisible. The walk is still correct for everything it can see;
   the union-argument half of the rule only becomes enforceable once `BUG-17` lands.

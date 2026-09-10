@@ -41,7 +41,7 @@ more (and need better test coverage)" sits directly above the application produc
 
 Note the workaround the grammar leaves open is a trap rather than a workaround: `type W a = W
 Maybe a` parses, and produces a constructor taking *two* arguments, `Maybe` (unapplied) and
-`a`. Nothing reports that today, for the separate reason in [BUG-17](bug-17.md).
+`a`. Nothing reports that today, for the separate reason in [BUG-17](README.md).
 
 Found while writing [`docs/spec/types.md`](../spec/types.md) (`SPEC-5`).
 
@@ -57,7 +57,7 @@ because `(Int, Char)` is then an ordinary atomic type that an arrow can follow.
 away with it. Its doc comment explains the current shape and must not outlive it —
 `CLAUDE.md`: *a doc comment describes what the code at that site does*.
 
-Sequence this against [BUG-17](bug-17.md) rather than merging them: this ticket makes nested
+Sequence this against [BUG-17](README.md) rather than merging them: this ticket makes nested
 arguments *writable*, and BUG-17 is what makes any argument mean anything. Landing this one
 first is fine — it adds no new wrong behaviour — but the two together are what make
 `f : Maybe (Maybe Int)` actually check.

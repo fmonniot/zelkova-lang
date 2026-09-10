@@ -182,7 +182,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-14](bug-14.md) | bug | medium | open | A top-level value with no type annotation never reaches the module's interface |
 | [BUG-15](bug-15.md) | bug | medium | open | An imported operator is unresolvable unless the function behind it is also in scope |
 | [BUG-16](bug-16.md) | bug | medium | open | An unresolved type name is invented rather than reported |
-| [BUG-17](bug-17.md) | bug | high | open | A type application's arguments are discarded when its head resolves |
+| BUG-17 | bug | high | closed 2026-09-10 | A type application's arguments are discarded when its head resolves |
 | [BUG-18](bug-18.md) | bug | medium | open | A variant that is not a constructor application is silently dropped |
 | [BUG-19](bug-19.md) | bug | medium | open | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
 | [BUG-20](bug-20.md) | bug | high | open | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |

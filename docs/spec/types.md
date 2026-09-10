@@ -11,11 +11,10 @@ bindings and `infix` declarations, and refers here for these two.
 
 **Not implemented:** `cargo test --test spec` runs each example through the
 parser and canonicalization and stops; it never invokes the type checker. So a claim about what
-the *type checker* does — the annotation rules in [An annotation is a promise](#an-annotation-is-a-promise),
-and half of what [Applying a type to arguments](#applying-a-type-to-arguments) says — is prose
-here rather than an executable example, and a block that ought to be a type error is tagged
-`expect=ok` because that is what the harness sees. Each such place says so. [`docs/tickets/test-2.md`](../tickets/test-2.md)
-is the ticket to close that hole.
+the *type checker* does — the annotation rules in [An annotation is a promise](#an-annotation-is-a-promise)
+— is prose here rather than an executable example, and a block that ought to be a type error is
+tagged `expect=ok` because that is what the harness sees. Each such place says so.
+[`docs/tickets/test-2.md`](../tickets/test-2.md) is the ticket to close that hole.
 
 ## The forms of a type expression
 
@@ -182,7 +181,7 @@ arguments.
 
 ### Arity is part of the application
 
-```zel expect=ok
+```zel expect=canonical-error:TypeArityMismatch
 module Example exposing (Maybe, bare)
 
 type Maybe a
@@ -193,7 +192,7 @@ bare : Maybe
 bare = Nothing
 ```
 
-```zel expect=ok
+```zel expect=canonical-error:TypeArityMismatch
 module Example exposing (Maybe, Size, tooMany)
 
 type Maybe a
@@ -206,12 +205,6 @@ type Size
 tooMany : Maybe Size Size
 tooMany = Nothing
 ```
-
-**Known gap:** both blocks should be rejected — `Maybe` takes exactly one argument, and the
-first supplies none while the second supplies two. Neither is checked, for the reason the next
-section gives ([`docs/tickets/bug-17.md`](../tickets/bug-17.md)). These two blocks are the
-red test that ticket lands against: nothing else in this chapter goes red when arguments start
-being counted.
 
 ### An applied type still means what it says
 
@@ -230,20 +223,6 @@ type Size
 sized : Maybe Size
 sized = Just Small
 ```
-
-**Known gap:** the argument is discarded. Canonicalization resolves the head `Maybe`, returns
-the type as the declaration stored it — `Maybe a` — and never looks at what was written after
-it ([`docs/tickets/bug-17.md`](../tickets/bug-17.md)). So `Maybe Size` and `Maybe Colour` are
-the same type as far as the compiler is concerned, and the annotation above stops constraining
-its body: replacing `Just Small` with a value of any other type still type checks. That is also
-why the two arity blocks above are accepted — once the arguments are gone there is nothing left
-to count.
-
-**This gap has no red test.** The block above is valid Zelkova and stays `expect=ok` across the
-fix; the wrong behaviour is a *missing* type error, and the spec harness never runs the type
-checker — [`docs/tickets/test-2.md`](../tickets/test-2.md) is what would make it one. Until
-that lands, this paragraph has to be deleted by hand when BUG-17 does. The arity blocks in the
-previous section do go red, which is what will bring someone back here.
 
 ## The function arrow
 

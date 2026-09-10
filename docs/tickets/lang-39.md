@@ -10,7 +10,7 @@ namespace, how an instance reaches another module, and which module is allowed t
 builds each interface and hands it to the next module.
 
 **Depends on:** [LANG-38](lang-38.md) for the declarations to exist at all;
-[BUG-16](bug-16.md) and [BUG-17](bug-17.md), both of which would quietly sabotage instance-head
+[BUG-16](bug-16.md) and [BUG-17](README.md), both of which would quietly sabotage instance-head
 resolution and are worth reading together with this ticket:
 
 - **BUG-17** — a type application's arguments are discarded when its head resolves, so

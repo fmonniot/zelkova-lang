@@ -690,11 +690,12 @@ fn module_using_imported_maybe() {
     "#};
     let module = canonicalize_with_interfaces(source, &interfaces).expect("should canonicalize");
 
-    // The imported `Maybe` interface stores the type as `Type::Type("Maybe", [])`
-    // (insert_foreign_union_type uses an empty param list).  The annotation
-    // `Maybe a` resolves via env.find_type → returns that stored value verbatim,
-    // ignoring the `a` parameter (a known simplification).
-    let maybe_t = canonical::Type::Type("Maybe".into(), vec![]);
+    // `Maybe`'s interface declares one type variable (`maybe_interface`'s `unions`
+    // entry), so `Maybe a` resolves to a one-argument application — `BUG-17` — with
+    // the written argument (`a`, the variable in this annotation) surviving rather
+    // than being replaced by the declaration's own.
+    let maybe_t =
+        canonical::Type::Type("Maybe".into(), vec![canonical::Type::Variable("a".into())]);
 
     let value = module.values.get(&"safeHead".into()).unwrap();
     let (patterns, body) = match value {
@@ -738,6 +739,96 @@ fn module_using_imported_maybe() {
         tpe: "Maybe".into(),
     };
     assert_eq!(branches[1].pattern, p_ctor(nothing_ctor, vec![]));
+}
+
+// ── Extra: a type application's arity is checked ──────────────────────────────
+//
+// `BUG-17`: once `Type::from_parser_type`'s `Some` arm applies the written
+// arguments instead of discarding them, there is something to count them against
+// — the declaration's own arity — and a mismatch is an error rather than silently
+// accepted.
+
+/// `Maybe` takes exactly one argument; writing none is rejected.
+///
+/// Mutation-checked by reverting the `Some` arm of `Type::from_parser_type` to
+/// `Ok(t.clone())` (the pre-fix behaviour, which returns the environment's stored
+/// `Maybe a` verbatim and never looks at `args`): this test goes red because
+/// `canonicalize_standalone` starts returning `Ok` again.
+#[test]
+fn type_application_with_too_few_arguments_is_an_arity_error() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Maybe a = Just a | Nothing
+        bare : Maybe
+        bare = Nothing
+    "#};
+
+    let errors =
+        canonicalize_standalone(source).expect_err("Maybe with no argument should be an error");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::TypeArityMismatch(name, declared, written, _) => {
+            assert_eq!(name.as_str(), "Maybe");
+            assert_eq!(*declared, 1, "Maybe declares one type variable");
+            assert_eq!(*written, 0, "bare : Maybe supplies none");
+        }
+        other => panic!("expected TypeArityMismatch, got {:?}", other),
+    }
+
+    let annotation = "bare : Maybe";
+    let start = source.find(annotation).expect("source declares `bare`") + "bare : ".len();
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + "Maybe".len()),
+        "the caret must sit under the application, not the whole annotation"
+    );
+}
+
+/// `Maybe` takes exactly one argument; writing two is rejected the same way as
+/// writing none.
+#[test]
+fn type_application_with_too_many_arguments_is_an_arity_error() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Maybe a = Just a | Nothing
+        type Size = Small
+        tooMany : Maybe Size Size
+        tooMany = Nothing
+    "#};
+
+    let errors = canonicalize_standalone(source)
+        .expect_err("Maybe applied to two arguments should be an error");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::TypeArityMismatch(name, declared, written, _) => {
+            assert_eq!(name.as_str(), "Maybe");
+            assert_eq!(*declared, 1, "Maybe declares one type variable");
+            assert_eq!(*written, 2, "Maybe Size Size supplies two");
+        }
+        other => panic!("expected TypeArityMismatch, got {:?}", other),
+    }
+
+    let application = "Maybe Size Size";
+    let start = source
+        .find(application)
+        .expect("source annotates `tooMany` with it");
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + application.len()),
+        "the caret must cover the whole application, both extra arguments included"
+    );
 }
 
 // ── Extra: an annotation with no body points at the annotation ───────────────

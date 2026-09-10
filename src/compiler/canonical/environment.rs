@@ -21,6 +21,36 @@ pub enum ValueType {
     Foreigns(Vec<(ModuleName, Option<SourceSpan>)>),
 }
 
+/// What the environment records for a resolvable type *name*, as opposed to a type
+/// expression built from one.
+///
+/// A `type Maybe a = …` declaration is a type *constructor*: applying it to
+/// arguments is what produces a `Type`, and `Maybe` on its own is not one — there is
+/// no such thing as the type `Maybe` with `a` left dangling. Storing the fully
+/// applied `Type::Type("Maybe", [Variable("a")])` and handing it back verbatim on
+/// every lookup, which is what this replaced, conflated the two: it made every
+/// application of `Maybe` collapse to the same declaration-shaped type regardless of
+/// what was actually written, which is the defect `BUG-17` describes in full.
+///
+/// `variables` is the declaration's own type variables, in the order the `type`
+/// line wrote them — its length is the arity a written application is checked
+/// against in `Type::from_parser_type`. The names themselves are not needed for
+/// that check (a union type has no body to substitute them into — see
+/// `TypeConstructor::type_parameters`, which each variant carries directly and
+/// already recorded independently), but keeping them rather than a bare count is
+/// what the entry would need were a form with a body — a type alias — to reuse this
+/// same map.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeArity {
+    pub variables: Vec<Name>,
+}
+
+impl TypeArity {
+    pub fn arity(&self) -> usize {
+        self.variables.len()
+    }
+}
+
 /// Environment represent the set of values/types available to a compilation unit.
 /// It is derived from previous successful units and is provisioned through a
 /// module imports.
@@ -29,7 +59,7 @@ pub enum ValueType {
 /// Environment in later phases. We still need one to translate the parser AST.
 /// The good news being, it can be local to the canonicalization function.
 pub trait Environment<'parent>: std::fmt::Debug {
-    fn find_type(&self, name: &Name) -> Option<&Type>;
+    fn find_type(&self, name: &Name) -> Option<&TypeArity>;
 
     fn module_name(&self) -> &ModuleName;
 
@@ -216,7 +246,13 @@ fn process_import(
     }
 
     for (union_name, union) in &interface.unions {
-        insert_foreign_union_type(env, Some(prefix), union_name, union.variants.iter());
+        insert_foreign_union_type(
+            env,
+            Some(prefix),
+            union_name,
+            &union.variables,
+            union.variants.iter(),
+        );
     }
 
     // TODO Infix ?
@@ -242,7 +278,13 @@ fn process_import(
 
             // We need to insert the type without any qualifier, including variants
             for (union_name, union) in &interface.unions {
-                insert_foreign_union_type(env, None, union_name, union.variants.iter());
+                insert_foreign_union_type(
+                    env,
+                    None,
+                    union_name,
+                    &union.variables,
+                    union.variants.iter(),
+                );
             }
         }
 
@@ -271,10 +313,14 @@ fn process_import(
                         );
                     }
                     parser::ExposedKind::Upper(type_name, parser::Privacy::Private) => {
-                        let tpe = Type::Type(type_name.clone(), vec![]);
-
-                        // Add the type without qualifier and without constructors (they are private)
-                        env.types.insert(type_name.clone(), tpe);
+                        // Add the type without qualifier and without constructors (they
+                        // are private). This does not consult `interface.unions` at
+                        // all — a wrong name is fabricated rather than reported, and an
+                        // opaque type's real arity along with it — which is `BUG-16`,
+                        // not this one; its zero-arity `TypeArity` here is that same
+                        // pre-existing gap, carried over rather than widened.
+                        env.types
+                            .insert(type_name.clone(), TypeArity { variables: vec![] });
                     }
                     parser::ExposedKind::Upper(type_name, parser::Privacy::Public) => {
                         let union = interface.unions.get(type_name).ok_or_else(|| {
@@ -283,7 +329,13 @@ fn process_import(
                             EnvError::UnionNotFound(type_name.clone(), exposed.span, suggestion)
                         })?;
 
-                        insert_foreign_union_type(env, None, type_name, union.variants.iter());
+                        insert_foreign_union_type(
+                            env,
+                            None,
+                            type_name,
+                            &union.variables,
+                            union.variants.iter(),
+                        );
                     }
                     parser::ExposedKind::Operator(variable_name) => {
                         let infix = interface.infixes.get(variable_name).ok_or_else(|| {
@@ -312,6 +364,7 @@ fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
     env: &mut RootEnvironment,
     qualifier: Option<&Name>,
     union_name: &Name,
+    variables: &[Name],
     variants: I,
 ) {
     // If there is a given qualifier use it, otherwise use the name as is
@@ -322,8 +375,12 @@ fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
             .unwrap_or(n.clone())
     };
 
-    env.types
-        .insert(qualify(union_name), Type::Type(union_name.clone(), vec![]));
+    env.types.insert(
+        qualify(union_name),
+        TypeArity {
+            variables: variables.to_vec(),
+        },
+    );
 
     for variant in variants {
         // Variant are not qualified, which means we have to alias/qualify them as needed
@@ -487,7 +544,7 @@ impl PhaseError for EnvError {
 pub struct RootEnvironment {
     module_name: ModuleName,
     infixes: HashMap<Name, Infix>,
-    types: HashMap<Name, Type>,
+    types: HashMap<Name, TypeArity>,
     constructors: HashMap<Name, TypeConstructor>,
     variables: HashMap<Name, ValueType>,
 }
@@ -506,13 +563,12 @@ impl RootEnvironment {
 
     // TODO Use insert_foreign_union_type (and rename to remove the foreign part)
     pub fn insert_union_type(&mut self, name: Name, union: UnionType) {
-        let args = union
-            .variables
-            .iter()
-            .map(|t| Type::Variable(t.clone()))
-            .collect();
-        let tpe = Type::Type(name.clone(), args);
-        self.types.insert(name.clone(), tpe);
+        self.types.insert(
+            name,
+            TypeArity {
+                variables: union.variables,
+            },
+        );
 
         for tctor in union.variants {
             self.constructors.insert(tctor.name.clone(), tctor.clone());
@@ -525,7 +581,7 @@ impl<'p> Environment<'p> for RootEnvironment {
         &self.module_name
     }
 
-    fn find_type(&self, name: &Name) -> Option<&Type> {
+    fn find_type(&self, name: &Name) -> Option<&TypeArity> {
         self.types.get(name)
     }
 
@@ -580,7 +636,7 @@ pub struct ScopedEnvironment<'root, 'parent> {
 }
 
 impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> {
-    fn find_type(&self, name: &Name) -> Option<&Type> {
+    fn find_type(&self, name: &Name) -> Option<&TypeArity> {
         self.parent.find_type(name)
     }
 
