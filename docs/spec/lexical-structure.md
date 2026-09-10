@@ -5,10 +5,8 @@ a **layout** pass inserts block markers by looking at where each line starts
 ([Layout](layout.md)); a **grammar** assembles tokens into declarations. This chapter is the
 first stage: what the characters of a file mean, before any structure is imposed on them.
 
-Zelkova takes its surface syntax from Elm, and this chapter is where that inheritance stops
-being a deferral. Every rule below is stated here in full. Where Zelkova and Elm differ, or
-where Elm never wrote a rule down, the text below is the answer — there is no other document
-to consult.
+Zelkova takes its surface syntax from Elm. Every rule below is stated here in full: where the
+two differ, and where Elm never wrote a rule down, this is the answer.
 
 ## Source text
 
@@ -52,11 +50,10 @@ f a =
 A **block comment** runs from `{-` to the matching `-}`. Block comments **nest**: an inner
 `{-` must be closed by its own `-}` before the outer comment can end. Nesting is what makes
 commenting out a region safe — a region that already contains a comment stays commented out
-as a whole, rather than ending early and leaving the tail of it as code.
+as a whole.
 
 A block comment ends exactly at its closing `-}`. Whatever follows on that line is ordinary
-source text. A block comment may appear anywhere a space may, which is what makes an inline
-one possible at all.
+source text. A block comment may appear anywhere a space may.
 
 ```zel expect=parse-error:UnrecognizedToken
 module Example exposing (f)
@@ -80,7 +77,6 @@ module Example exposing (f)
 **Known gap:** that block should be `expect=ok` too. Here the comment *is* recognised, being
 at the start of a line, but the closing `-}` discards the rest of the line along with itself,
 so `f =` never reaches the parser and the `1` beneath it is left with nothing to belong to.
-This is the worst of the three: source silently stops existing.
 
 ```zel expect=parse-error:IndentationError
 module Example exposing (f)
@@ -94,8 +90,7 @@ f = 1
 
 **Known gap:** that block should be `expect=ok`. Comments do not nest today, so the inner
 `-}` closes the whole comment; `still outer` is then read as source, and its three-space
-indentation is what the tokenizer complains about. The reported error is pinned here
-precisely because it is an accident of two other bugs, and should not survive their fix.
+indentation is what the tokenizer complains about.
 
 Reaching the end of a file inside a block comment is an error. A stray `{-` cannot delete
 the rest of a file without saying so.
@@ -108,13 +103,11 @@ f = 1
 ```
 
 **Known gap:** that block should be rejected. Today the tokenizer runs to end-of-file and
-stops, accepting the file — the silent deletion this rule exists to prevent. Also
-[`bug-13`](../tickets/bug-13.md).
+stops, accepting the file. Also [`bug-13`](../tickets/bug-13.md).
 
 A comment beginning `{-|` is an ordinary block comment. The convention that such a comment
 documents the declaration below it, and the `@docs` markup used inside the module-level one,
-belong to documentation tooling; the compiler discards them like any other comment and this
-specification says nothing further about them.
+belong to documentation tooling; the compiler discards them like any other comment.
 
 ```zel expect=ok
 module Example exposing (f)
@@ -133,17 +126,15 @@ of letters, digits, and underscores. Precisely: the first character is in Unicod
 category `Lu` or `Ll`; each subsequent character is in `Lu`, `Ll`, `Lt`, `Lm`, `Lo`, `Nd` or
 `Nl`, or is `_` (`U+005F`).
 
-The first letter is not a formality — it decides what kind of thing the identifier names:
+The first letter decides what kind of thing the identifier names:
 
 | First letter | Names |
 |---|---|
 | uppercase | a type, a type constructor, or a module |
 | lowercase | a value, a function, a function parameter, or a type variable |
 
-That is the whole reason the start rule is narrower than the continuation rule. A letter that
-has no case cannot begin an identifier, because there would be nothing for the language to
-read off it. Such letters are perfectly good *inside* a name, where nothing depends on their
-case.
+A letter that has no case cannot begin an identifier, because there would be nothing for the
+language to read off it. Such letters are perfectly good *inside* a name.
 
 ```zel expect=ok
 module Example exposing (Форма, aire)
@@ -199,8 +190,7 @@ it.
 pattern, and that is what it stays when it is written in front of a name: `_x` is two tokens,
 not one identifier.
 
-This matters more than it looks like it will, because in a function's parameter list two
-tokens are two parameters:
+In a function's parameter list, two tokens are two parameters:
 
 ```zel expect=canonical-error:BindingPatternsInvalidLen
 module Example exposing (Flag, f)
@@ -239,14 +229,13 @@ it, and an ordinary identifier everywhere else:
 | `derived` | the body of an [instance declaration](type-classes.md#an-instance-may-be-derived), and a [derivation](type-classes.md#a-class-says-how-it-is-derived) in a class body |
 | `unsafe` | before a signature in an [`unsafe` facade](interop.md#an-unsafe-facade) |
 
-The distinction is deliberate. These six read as ordinary vocabulary — a tree module wants
-`left` and `right`, and a program modelling another language will want `foreign` — and each sits
-where one token of context says which reading is meant, so reserving the word outright would
-take a useful name and give nothing back. `derived` and `unsafe` are the two that need the token
-*after* them rather than the one before: `derived` alone asks for an instance to be derived,
-`derived eq` opens the derivation of a member, and `derived = …` or `derived : …` is an ordinary
-binding or signature; `unsafe f : …` marks a facade signature where `unsafe : …` declares a
-constant of that name.
+These six read as ordinary vocabulary — a tree module wants `left` and `right`, and a program
+modelling another language will want `foreign` — and each sits where one token of context says
+which reading is meant, so reserving the word outright would take a useful name. `derived` and
+`unsafe` are the two that need the token *after* them rather than the one before: `derived`
+alone asks for an instance to be derived, `derived eq` opens the derivation of a member, and
+`derived = …` or `derived : …` is an ordinary binding or signature; `unsafe f : …` marks a
+facade signature where `unsafe : …` declares a constant of that name.
 
 ```zel expect=ok
 module Example exposing (left, right, non, foreign, derived, unsafe)
@@ -334,7 +323,7 @@ An integer literal is a run of ASCII digits, or `0x` followed by a run of ASCII 
 digits. There are no digit separators, and no leading `-`: negation is an operator, described
 below. A pattern may still write what reads as a negative integer — `-1` matches only that
 value — but the sign there belongs to the [pattern grammar](patterns.md#literal-patterns), not
-to this token: the token this section specifies is unsigned everywhere, patterns included.
+to this token.
 
 ```zel expect=ok
 module Example exposing (count)
@@ -355,8 +344,7 @@ a diagnostic.
 The language guarantees that every integer in `-2^31 .. 2^31 - 1` is representable on every
 target. Beyond that range the compilation target decides: the JavaScript backend is exact to
 `2^53`, and a future WebAssembly backend would use 64-bit two's-complement arithmetic with
-the wraparound that implies. A program that stays inside the guaranteed range means the same
-thing everywhere; one that does not is making a claim about its target.
+the wraparound that implies.
 
 ### Floats
 
@@ -382,7 +370,7 @@ currently parses as an application of `6.022` to an unresolvable `e23`.
 Requiring a digit on each side of the point is what keeps `.` usable as punctuation. What a
 float literal *denotes* — the binary64 value it rounds to, and what becomes of one whose value
 does not fit — is [Evaluation semantics](evaluation-semantics.md#numbers)'s rule, not this
-section's: this section governs only the token's spelling.
+section's.
 
 ```zel expect=ok
 module Example exposing (f)
@@ -499,8 +487,8 @@ infix left 6 (|) = f
 f a b = a
 ```
 
-Note that `-` is *not* reserved: it is an ordinary operator name, and `Basics` binds it to
-subtraction like any other.
+`-` is *not* reserved: it is an ordinary operator name, and `Basics` binds it to subtraction
+like any other.
 
 ### Prefix negation
 
@@ -557,10 +545,9 @@ f = { a = 1 }
 **Not implemented:** lists and records are part of the language and neither is implemented.
 Brackets are tokenized but no construct consumes them ([`LANG-44`](../tickets/lang-44.md),
 [`LANG-45`](../tickets/lang-45.md)); braces are not tokenized at all
-([`LANG-47`](../tickets/lang-47.md)). Their syntax is specified in the chapters on those
-constructs rather than here — this section claims only that the characters are spoken for and are
-not available as operator characters. [Lists](lists.md) and [Records](records.md) are those
-chapters.
+([`LANG-47`](../tickets/lang-47.md)). [Lists](lists.md) and [Records](records.md) specify
+their syntax; what this section fixes is that the characters are spoken for, and so unavailable
+as operator characters.
 
 ## Numeric literals the tokenizer cannot represent
 
@@ -571,5 +558,4 @@ too large for a 64-bit signed integer, a run of digits containing more than one 
 
 All four are ordinary syntax errors under the rules above and must be reported as such.
 [`docs/tickets/bug-12.md`](../tickets/bug-12.md) tracks them. They are described here rather
-than shown, because a panic aborts the whole run of `cargo test --test spec` and would take
-every other example in this directory with it.
+than shown: a panic aborts the whole run of `cargo test --test spec`.
