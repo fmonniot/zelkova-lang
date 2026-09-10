@@ -197,9 +197,12 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   error forever. Fixed by advancing past the tab and clearing the flag before returning,
   mirroring how the sibling `IndentationError` already recovers (`BUG-5`).
 - **Zelkova has no `Elm.Kernel.*`.** A std module that needs a JS primitive gets a
-  `module javascript Js.<Name>` facade — type annotations with no bodies, no infixes, no type
-  declarations — plus a companion `Js/<Name>.mjs` whose exports take a plain parameter list
-  rather than Elm's curried `F2`/`F3` wrappers. `Js/Basics`, `Js/Utils` and `Js/Bitwise` are
+  **facade** — type annotations with no bodies, no infixes, no type declarations — plus a
+  companion `<Name>.mjs` whose exports take a plain parameter list rather than Elm's curried
+  `F2`/`F3` wrappers. The modifier the spec gives a facade is `foreign`, naming a boundary and
+  not a backend, with one companion per compilation target (`.mjs`, `.wasm`); the compiler
+  spells it `module javascript` and admits the one boundary, which is
+  [`LANG-54`](docs/tickets/lang-54.md). `Js/Basics`, `Js/Utils` and `Js/Bitwise` are
   the worked examples. Most of the `.ignored` modules under `std/core/src` still carry Elm's
   kernel imports verbatim; porting one means writing its facade, not resurrecting the kernel.
   A facade that needs to *do* something rather than compute one — read a clock, a file, a
@@ -213,7 +216,7 @@ These outlive any single ticket. Each is here because breaking it produced a bad
   So a facade cannot promise more by saying less, and **every abort a program's own code can
   cause comes from a declaration carrying that word** — `std/core`'s arithmetic included, which
   is what `Js.Basics` becomes. `unsafe` is available to any package on identical terms; there is
-  still no privileged hatch. Nothing implements any of it: `docs/spec/js-interop.md` is the rule,
+  still no privileged hatch. Nothing implements any of it: `docs/spec/interop.md` is the rule,
   `docs/spec/evaluation-semantics.md` what a `Task` is and what an abort is,
   [`DEC-11`](docs/decisions/dec-11.md) the seven decisions behind both — including why sequencing
   is a function rather than syntax, and why there is no monad class for a `Task` to be an
@@ -252,7 +255,8 @@ place to look for anything beyond that split, including open design questions.
 
 Implemented: modules with `exposing`/`import`/`as`, union types, pattern matching via `case
 … of`, `if/then/else`, function declarations with annotations, infix declarations, tuples, JS
-interop via `module javascript` facades with companion `.mjs` files, `--` and `{- -}`
+interop via facades with companion `.mjs` files (spelled `module javascript`, where the spec
+says `foreign` — [`LANG-54`](docs/tickets/lang-54.md)), `--` and `{- -}`
 comments.
 
 Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, the
@@ -291,9 +295,9 @@ diffs outside that program:
   because `std/core` says how, and a program's own class is on identical terms. `derived` stays a
   **soft keyword** in both positions, separated from a member called `derived` by one token of
   lookahead, so it does not join the reserved words above; `LANG-38` parses both bodies.
-- **A `module javascript` facade signature may not carry a constraint**, which is what preserves
+- **A facade signature may not carry a constraint**, which is what preserves
   the plain-parameter-list guarantee
-  [`docs/spec/js-interop.md`](docs/spec/js-interop.md) makes.
+  [`docs/spec/interop.md`](docs/spec/interop.md) makes.
 - **A class dictionary is erased by specialisation before code generation**, never passed — a
   constraint the first codegen work inherits.
 - **A derivation's three bindings are inlined into the generated walk, never called** — the other
