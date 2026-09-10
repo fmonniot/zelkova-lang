@@ -1,12 +1,12 @@
 # Patterns
 
 A pattern is a shape written where a value will arrive. Matching a value against a pattern
-asks one question and answers two: does the value have this shape, and if it does, what are
-the names for its parts. `Circle n` matches a value built by `Circle` and binds `n` to what it
-was built from; `_` matches anything and binds nothing.
+asks whether the value has that shape and, if it does, what the names for its parts are.
+`Circle n` matches a value built by `Circle` and binds `n` to what it was built from; `_`
+matches anything and binds nothing.
 
 Pattern syntax is **closed**: the forms below are all of them, and no declaration adds
-another. That is the deep difference between a pattern and an expression: an expression is
+another. That is the difference between a pattern and an expression: an expression is
 made of names, and an operator in one is a name someone bound with an `infix` declaration, so
 what `a + b` means depends on what is in scope. A pattern looks up exactly one kind of name —
 a type constructor — and everything else about it is fixed by the grammar. A reader can
@@ -90,9 +90,9 @@ irrefutable only when its type has that one constructor and its arguments are th
 irrefutable.
 
 Both positions accept both kinds. The language requires the patterns in a position to
-**cover** the type between them — a `case` covers it with its branches, and a function
-declaration covers it with its clauses. Both are tried in the order written, so an earlier
-branch or clause wins over a later one that would also have matched:
+**cover** the type between them — a `case` with its branches, a function declaration with its
+clauses. Both are tried in the order written, so an earlier branch or clause wins over a later
+one that would also have matched:
 
 ```zel expect=canonical-error:MultipleBindingsUnsupported
 module Example exposing (Flag, invert)
@@ -112,7 +112,7 @@ compiler parses them and then reports that a name declared over more than one bi
 supported, so today a declaration has exactly one clause and any pattern that can fail has to
 go in a `case`. [`docs/tickets/lang-20.md`](../tickets/lang-20.md) is the ticket.
 
-Coverage is what makes this safe, and it is checked rather than assumed:
+Coverage is checked rather than assumed:
 
 ```zel expect=ok
 module Example exposing (Flag, ignore)
@@ -154,8 +154,9 @@ middle (Triple _ b _) =
   b
 ```
 
-Ignore fields have to use a wildcard cannot use a variable name preceded by an underscore.
-`_count` is not a legal pattern. See [Lexical structure](lexical-structure.md#the-underscore-is-not-a-letter).
+An ignored position has to use the wildcard and cannot use a variable name preceded by an
+underscore: `_count` is not a legal pattern. See
+[Lexical structure](lexical-structure.md#the-underscore-is-not-a-letter).
 
 ## Variable patterns
 
@@ -245,7 +246,7 @@ pick a a =
 ```
 
 `pick` takes two arguments and its body names `a`, which could mean either of them — there is
-no rule that picks one, so the declaration is rejected rather than resolved.
+no rule that picks one, so the declaration is rejected.
 
 **Known gap:** that block should be rejected too, and for the same reason as the one above:
 the two parameter patterns are exposed into the scope one after another, so the second `a`
@@ -284,10 +285,9 @@ literals covers one.
 A pattern may hold a **negative** number. The **pattern grammar** carries the sign, not the
 token underneath it: pattern syntax is closed, and `-` in an expression is a name bound by an
 `infix` declaration, which a pattern never looks up, so there is nothing available to apply it
-to. A leading `-` immediately before a literal pattern is consumed there, in the pattern
-production itself, rather than by the tokenizer — [Lexical
-structure](lexical-structure.md#integers) is where the integer token is specified, and that
-token never carries a sign, in a pattern or anywhere else.
+to. A leading `-` immediately before a literal pattern is consumed by the pattern production
+itself, not by the tokenizer — [Lexical structure](lexical-structure.md#integers) is where the
+integer token is specified, and that token never carries a sign, in a pattern or anywhere else.
 
 ```zel expect=unimplemented
 module Example exposing (Flag)
@@ -308,8 +308,8 @@ sign n =
 **Not implemented:** the grammar reaches for a pattern after the branch's opening and finds
 the `-`, so a signed literal is a syntax error.
 
-There is no boolean literal, and none is needed: `True` and `False` are ordinary constructors
-of an ordinary union type, so a boolean pattern is a constructor pattern like any other. See
+There is no boolean literal: `True` and `False` are ordinary constructors of an ordinary union
+type, so a boolean pattern is a constructor pattern like any other. See
 [Lexical structure](lexical-structure.md#reserved-words).
 
 ## Tuple patterns
@@ -353,8 +353,8 @@ declared with. It matches a value built by that constructor, and matches each ar
 against the pattern in that position.
 
 Whether the constructor's arguments may be written without parentheses depends on the
-position, and the rule follows from what juxtaposition means there. In a `case` branch the
-whole left-hand side is one pattern, so a constructor and its arguments read as one thing:
+position. In a `case` branch the whole left-hand side is one pattern, so a constructor and its
+arguments read as one thing:
 
 ```zel expect=ok
 module Example exposing (Count, Shape, width)
@@ -429,10 +429,9 @@ width Dot n =
   One
 ```
 
-That check belongs to the annotation rather than to the patterns, and
-[Types](types.md#the-annotation-and-the-declarations-parameters) is where it is specified. A
-declaration with no annotation has nothing to disagree with, so it takes however many
-parameters its head names — and dropping the parentheses there changes the declaration's arity.
+[Types](types.md#the-annotation-and-the-declarations-parameters) is where that check is
+specified. A declaration with no annotation has nothing to disagree with, so it takes however
+many parameters its head names — and dropping the parentheses there changes its arity.
 
 ### The arguments must be the ones it was declared with
 
@@ -521,9 +520,8 @@ f flag =
 ## Patterns nest
 
 Every pattern position takes a whole pattern, so patterns nest to any depth: a constructor
-argument may be a tuple, a tuple element may be a constructor pattern, and a constructor
-argument may be another constructor pattern. An applied constructor written as a sub-pattern
-is parenthesised.
+argument may be a tuple or another constructor pattern, and a tuple element may be a
+constructor pattern. An applied constructor written as a sub-pattern is parenthesised.
 
 **Known gap:** a constructor pattern may not appear inside another pattern at all, and a
 parenthesised one may not head a `case` branch. The grammar has one production for
@@ -606,8 +604,7 @@ sub-patterns bind their parts as usual and the name binds what they were taken f
 branch can inspect a value and pass it on without rebuilding it.
 
 `as` binds more loosely than everything else in a pattern: in `Rect w h as whole`, `whole`
-names the entire `Rect`, not `h`. An as-pattern written as a sub-pattern is parenthesised,
-which is what keeps that rule readable.
+names the entire `Rect`, not `h`. An as-pattern written as a sub-pattern is parenthesised.
 
 ```zel expect=unimplemented
 module Example exposing (Count, Shape, widen)
@@ -668,9 +665,8 @@ dropFirst xs =
       rest
 ```
 
-A bracketed list pattern is a different matter, because it fixes a length. No finite set of
-lengths covers a list, so a `case` built only out of those needs a variable or a wildcard
-branch to be complete:
+A bracketed list pattern fixes a length. No finite set of lengths covers a list, so a `case`
+built only out of those needs a variable or a wildcard branch to be complete:
 
 ```zel expect=unimplemented
 module Example exposing (Flag)
