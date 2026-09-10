@@ -2,16 +2,14 @@
 
 A **type expression** is the language Zelkova uses to talk about its own values. It appears in
 three places: to the right of the `:` in a type annotation, as the argument of a constructor in
-a `type` declaration, and inside another type expression. This chapter specifies that language
-in full — every form it has, how the forms nest, and what writing one down commits a program
-to.
+a `type` declaration, and inside another type expression.
 
-It also specifies the two declarations that are made of type expressions: the annotation
-`name : Type`, and the `type` declaration that introduces a new type. The neighbouring
-[Declarations](declarations.md) chapter covers value and function bindings and `infix`
-declarations, and refers here for these two.
+This chapter specifies that language, and the two declarations that are made of type
+expressions: the annotation `name : Type`, and the `type` declaration that introduces a new
+type. The neighbouring [Declarations](declarations.md) chapter covers value and function
+bindings and `infix` declarations, and refers here for these two.
 
-**Not implemented:**  `cargo test --test spec` runs each example through the
+**Not implemented:** `cargo test --test spec` runs each example through the
 parser and canonicalization and stops; it never invokes the type checker. So a claim about what
 the *type checker* does — the annotation rules in [An annotation is a promise](#an-annotation-is-a-promise),
 and half of what [Applying a type to arguments](#applying-a-type-to-arguments) says — is prose
@@ -32,8 +30,8 @@ There are six, and nothing else is a type:
 | A tuple | `(Colour, Colour)` | [below](#tuple-types) |
 | The unit type | `()` | [below](#the-unit-type) |
 
-Parentheses may be written around any type expression and mean grouping only. `(Colour)` is
-`Colour`; the parentheses have no effect and leave no trace.
+Parentheses may be written around any type expression and mean grouping only: `(Colour)` is
+`Colour`.
 
 ```zel expect=ok
 module Example exposing (Colour, red)
@@ -46,9 +44,9 @@ red = Red
 ```
 
 A list type needs no form of its own: it is written `List a`, an application like any other, and
-[Lists](lists.md#the-type) is where that and the rest of the construct are specified. A record
-type — `{ x : Celsius, y : Celsius }` — is a seventh form, and
-[Records](records.md#the-type) is where it and the rest of that construct are specified.
+[Lists](lists.md#the-type) specifies it with the rest of that construct. A record type —
+`{ x : Celsius, y : Celsius }` — is a seventh form, specified in
+[Records](records.md#the-type).
 
 ### Type names
 
@@ -103,9 +101,8 @@ first p =
   p
 ```
 
-Nothing distinguishes one lowercase spelling from another. `celsius` is a type variable in
-exactly the way `a` is — the length of the name carries no meaning, and a variable is never
-mistaken for a type whose name happens to be lowercase, because no type's name can be.
+Nothing distinguishes one lowercase spelling from another: `celsius` is a type variable in
+exactly the way `a` is, and the length of a name carries no meaning.
 
 ```zel expect=ok
 module Example exposing (identity)
@@ -129,17 +126,16 @@ lift x =
   x
 ```
 
-That is a deliberate limit and not an oversight. Allowing it would mean type variables ranging
-over type constructors as well as types, which needs a kind system — a large
-commitment the language is not ready for it yet. A variable always stands for a complete
-type. [Type classes](type-classes.md#a-class-is-always-over-a-complete-type) carries what that
-costs: a class is always over a complete type.
+Allowing it would mean type variables ranging over type constructors as well as types, which
+needs a kind system — a commitment the language is not ready for.
+[Type classes](type-classes.md#a-class-is-always-over-a-complete-type) carries what that limit
+costs.
 
 ## Applying a type to arguments
 
 A type declared with parameters is used by applying it to that many arguments, written after
 the name and separated by spaces. The number of arguments must equal the number of parameters
-the `type` declaration gave it: an application is not a partial one.
+the `type` declaration gave it.
 
 ```zel expect=ok
 module Example exposing (Maybe, nothing)
@@ -181,8 +177,8 @@ boxed = Box
 today — the grammar has no parenthesised form in argument position at all — so every nested
 type is rejected, including `type Tree a = Node (Tree a) (Tree a)`, the shape a recursive
 container is written in. [`docs/tickets/lang-9.md`](../tickets/lang-9.md) is the ticket. The
-workaround the grammar leaves open is a trap rather than a workaround: `Box Maybe a` parses, as
-`Box` applied to two arguments.
+workaround the grammar leaves open is a trap: `Box Maybe a` parses, as `Box` applied to two
+arguments.
 
 ### Arity is part of the application
 
@@ -219,8 +215,7 @@ being counted.
 
 ### An applied type still means what it says
 
-Applying `Maybe` to `Size` produces a type that is not the same as applying it to anything
-else. Two applications of one type name are the same type exactly when their arguments are.
+Two applications of one type name are the same type exactly when their arguments are.
 
 ```zel expect=ok
 module Example exposing (Maybe, Size, sized)
@@ -267,9 +262,8 @@ clamp a b =
   a
 ```
 
-That associativity is the one that makes the common case parenthesis-free, and it is why a
-function *argument* is the case that needs them. `(a -> b) -> c` is a function taking a
-function; without the parentheses it would be a function of two arguments.
+A function *argument* is the case that needs parentheses. `(a -> b) -> c` is a function taking a
+function; without them it would be a function of two arguments.
 
 ```zel expect=ok
 module Example exposing (Size, apply)
@@ -316,7 +310,7 @@ second p =
 
 **Two or three, and nothing else.** There is no one-element tuple — `(Colour)` is grouping, as
 [above](#the-forms-of-a-type-expression) — and no tuple of four or more. A four-element tuple is
-a *syntax* error, caught by the grammar, rather than a type error found later:
+a *syntax* error rather than a type error found later:
 
 ```zel expect=parse-error
 module Example exposing (Size, quad)
@@ -329,9 +323,8 @@ quad p =
   Small
 ```
 
-The limit is deliberate. A tuple of four is where a [record](records.md) belongs: past three
-elements, position stops being a usable way to say which field is which, and a record's field
-names is a better solution.
+A tuple of four is where a [record](records.md) belongs: past three elements, position stops
+being a usable way to say which field is which.
 
 The same limit applies to tuple *patterns* and tuple *expressions*, so no tuple of any other
 size is representable anywhere in the language.
@@ -346,8 +339,8 @@ nothingUseful = ()
 ```
 
 `()` is the type with exactly one value, and that value is also written `()`. It is what a
-function returns when it has nothing to say, and it is the argument of a function that takes
-nothing meaningful.
+function returns when it has nothing to say, and what a function takes when it needs nothing
+meaningful.
 
 **Not implemented:** `()` is not recognised in either position. In a type the grammar reaches
 for a type expression after the `(` and finds the `)`; in an expression the same happens. The
@@ -374,10 +367,10 @@ grow s =
 
 A declaration named in its module's [`exposing` list](modules.md#the-exposing-list) **must**
 carry an annotation. A declaration the module keeps to itself need not: it gets whatever type
-the checker infers for it, and is no less typed for the absence.
+the checker infers for it.
 
-The line the rule is drawn on is the module boundary, because that is where a type stops being
-the compiler's business and becomes a promise to someone else — the sense of *promise* the
+The rule is drawn at the module boundary because that is where a type stops being the
+compiler's business and becomes a promise to someone else — the sense of *promise* the
 [next section](#an-annotation-is-a-promise) is about.
 
 ```zel expect=ok
@@ -398,9 +391,8 @@ hidden =
 its neighbour.
 
 Because `exposing (..)` exposes everything a module declares, a module written that way must
-annotate **every** top-level declaration. That is the rule applied rather than an exception to
-it: `(..)` is a claim that the whole module is public. A module that wants unannotated helpers
-lists what it exposes.
+annotate **every** top-level declaration. A module that wants unannotated helpers lists what it
+exposes.
 
 ```zel expect=ok
 module Example exposing (Size, count)
@@ -451,9 +443,8 @@ harness stops before the type checker ([`docs/tickets/test-2.md`](../tickets/tes
 this block canonicalizes cleanly either way. The paragraph above has to be deleted by hand when
 the ticket lands.
 
-Going the other way is fine. An annotation *more* specific than the body would allow is an
-ordinary, useful thing to write — it is how a general function is given a narrower published
-type.
+An annotation *more* specific than the body would allow is ordinary and useful: it is how a
+general function is given a narrower published type.
 
 ### Where an annotation goes
 
@@ -511,8 +502,7 @@ annotation and its declaration is not noticed either. When a name carries two an
 ([`docs/tickets/lang-11.md`](../tickets/lang-11.md)).
 
 A [foreign](interop.md) facade is the one place an annotation stands alone: a
-`module foreign` module is annotations with no bodies at all, and that is what makes it a
-facade.
+`module foreign` module is annotations with no bodies at all.
 
 ### An annotation may span several lines
 
@@ -576,8 +566,7 @@ f a b =
   a
 ```
 
-A tuple or a parenthesised function counts as **one** parameter, which is the point of the
-parentheses:
+A tuple or a parenthesised function counts as **one** parameter:
 
 ```zel expect=ok
 module Example exposing (Size, f)
@@ -627,9 +616,8 @@ type Box A
 ```
 
 Each declaration introduces a genuinely new type. Two declarations of the same shape, in the
-same module or in different ones, are different types and are not interchangeable. A
-constructor may share its type's name; nothing is ambiguous, because one is a type and the
-other is a value.
+same module or in different ones, are different types. A constructor may share its type's name;
+nothing is ambiguous, because one is a type and the other is a value.
 
 ```zel expect=ok
 module Example exposing (Celsius)
@@ -741,10 +729,9 @@ not. A trailing `|` is ignored, and `type Empty =` declares a type with no const
 — something nothing can build, arrived at by accident rather than on purpose
 ([`docs/tickets/lang-10.md`](../tickets/lang-10.md)).
 
-The trailing-separator argument that won for an `exposing` list — where a trailing comma is
-[deliberately allowed](modules.md#the-exposing-list) so that appending a name touches one line
-— does not carry over here. A variant list is written with the separator *leading* each line,
-so appending a variant already touches exactly one line and a trailing `|` would buy nothing.
+A variant list is written with the separator *leading* each line, so appending a variant
+already touches exactly one line and a trailing `|` would buy nothing — which is why the
+trailing comma an [`exposing` list allows](modules.md#the-exposing-list) has no counterpart here.
 
 ## Type aliases
 
@@ -767,9 +754,8 @@ aliases (`Task.ignored`, `Array.ignored`) and the documentation comments in `May
 `Result.zel` use them in their examples, so this is a hole in the compiler rather than a
 question about the language.
 
-The transparency is the point and is worth stating separately from the syntax. `Pair` above is
-*not* a new type that happens to be a pair; it is `(Size, Size)`, spelled differently. A
-function annotated `Pair -> Size` accepts a `(Size, Size)` with no conversion, and a type error
-mentioning one may mention the other. Where a genuinely distinct type is wanted — one the
-compiler will keep apart from its representation — that is a `type` declaration with a single
-variant, and the difference between the two is the whole reason both exist.
+`Pair` above is *not* a new type that happens to be a pair; it is `(Size, Size)`, spelled
+differently. A function annotated `Pair -> Size` accepts a `(Size, Size)` with no conversion,
+and a type error mentioning one may mention the other. Where a genuinely distinct type is
+wanted — one the compiler will keep apart from its representation — that is a `type`
+declaration with a single variant.
