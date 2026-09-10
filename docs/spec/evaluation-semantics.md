@@ -551,23 +551,20 @@ unsafe next : Int -> Int
 The second is a broken program, and the rule it breaks is one only its author can keep. What the
 word buys is not a check but a place to look: the assertions a program makes about JavaScript are
 the declarations carrying it, and a reader who wants to know what this language is trusting reads
-those and nothing else.
+those.
 
 Purity is not the only rule an `unsafe` companion owes. **It also owes the answers
 [Numbers](#an-operation-with-no-answer) defines**: a `Float`-returning companion with no answer
 returns `nan`, an `Int`-returning one returns the value that section names, and a conversion
-returns a value the `Int` type can hold. Neither returns a stand-in a caller cannot tell from a
-real result. Most of the language's arithmetic is written as a facade, so a rule that stopped
-here would be a rule the language did not have — and it is unenforceable in exactly the way
-purity is, because a type annotation with no body is all the compiler ever sees.
+returns a value the `Int` type can hold. Nothing checks that either, for the reason nothing
+checks purity: a type annotation with no body is all the compiler ever sees.
 
 How a program *does* reach the outside world is the next section's.
 
 ## Effects
 
-Everything above describes a computation, and a computation on its own does nothing. A program
-reaches the outside world by producing a **`Task`**: a value describing work, which the runtime
-performs.
+Everything above describes a computation. A program reaches the outside world by producing a
+**`Task`**: a value describing work, which the runtime performs.
 
 `Task` is a type `zelkova-core` declares and exposes without its constructors, so a `Task` is
 opaque everywhere but in core — nothing else builds one out of parts or takes one apart. A
@@ -607,29 +604,13 @@ andThen : (a -> Task b) -> Task a -> Task b
 ```
 
 `andThen f t` describes running `t`, handing its result to `f`, and running the `Task` `f`
-returns. None of the three is a member of a class. A class over `Task` would need a variable
-ranging over type constructors, which [a class variable is
-not](type-classes.md#a-class-is-always-over-a-complete-type), so what the language offers is one
-concrete type and ordinary functions over it.
+returns. None of the three is a member of a class: [a class is always over a complete
+type](type-classes.md#a-class-is-always-over-a-complete-type), and `Task` on its own is not one.
 
 Nothing about `Task` is built into the language beyond the name and
 [running one](#running-a-task). Core writes its sequencing the way any module writes a function
-over a type it declares.
-
-```zel expect=fragment
-type Task a
-  = Task (() -> a)
-
-andThen f t =
-  Task (\_ ->
-    case t of
-      Task step ->
-        case f (step ()) of
-          Task next ->
-            next ())
-```
-
-Which shape core picks is core's, and a program outside it cannot observe the difference.
+over a type it declares, and which shape it picks is core's: a program outside core cannot
+observe the difference.
 
 ### Running a `Task`
 
@@ -666,9 +647,7 @@ type Failure
 
 `Threw` is a companion that threw, or whose promise rejected, carrying the host's description of
 what happened. `Malformed` is a companion that returned a value its declared type does not admit,
-carrying the name of the export that returned it. Separate constructors because the two have
-separate repairs: the first is JavaScript doing something its author did not plan for, the second
-a `.mjs` that disagrees with the signature above it.
+carrying the name of the export that returned it.
 
 So a facade declares a `Task (Result Failure a)` unless it is marked
 [`unsafe`](js-interop.md#an-unsafe-facade), a rule
@@ -706,23 +685,20 @@ longer keep the guarantees above. Three things cause one.
 **An [`unsafe`](js-interop.md#an-unsafe-facade) facade whose companion breaks its promise.** A
 companion declared as a function that throws, or that returns a value its declared type does not
 admit, leaves its caller owed a value that nothing produced. An effectful facade has somewhere to
-put that and an `unsafe` one has nowhere: a `Result` in the result of `unsafe and : Int -> Int ->
-Int` describes a different function, and most of the language's arithmetic is declared this way.
+put that and an `unsafe` one has nowhere.
 
 So every abort a program's own code can cause is attributable to a declaration carrying that
-word, which is the whole of what makes the cause findable.
+word.
 
 **Exhaustion.** No memory left to hold a value, or no stack left to enter a call. The second is
 reachable from Zelkova alone, by a recursion the [tail-call rule](#recursion-and-tail-calls) does
-not cover — a `case` scrutinee, an operand, or a call between two declarations rather than within
-one.
+not cover.
 
 **The host.** Whatever runs the program can stop it.
 
 An abort says what caused it, and one caused by a facade names the export whose companion broke.
 
-Only the first is a promise broken. The other two are the runtime running out of what it needs,
-and no rule in this chapter says how much of either a program uses.
+Only the first is a promise broken. The other two are the runtime running out of what it needs.
 
 **Not implemented:** nothing runs a program, so nothing aborts ([`GEN-1`](../tickets/gen-1.md)),
 and no predicate exists to fail ([`GEN-2`](../tickets/gen-2.md)).

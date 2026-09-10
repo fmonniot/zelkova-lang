@@ -95,14 +95,21 @@ waiting on a program's result, so a `main` of any other type names a value nobod
 
 ## 7 — A test is an exposed value of type `Test`
 
-[What a test is](../spec/packages.md#what-a-test-is). `Test` is a second type `zelkova-core`
-declares and exposes without its constructors; what a `Test` *holds* is core's and a test
-library's, not the language's.
+[What a test is](../spec/packages.md#what-a-test-is). `Test` is declared by `zelkova-test` and
+exposed without its constructors; what a `Test` *holds* is that package's, not the language's.
 
 **A naming convention** — an exposed value whose name begins with `test` — was the alternative
 that needs nothing from the type system, and it loses because nothing else in Zelkova is found by
 how a thing is spelled. **A declaration form the language does not have** was the third, and it
 buys nothing a type does not: a runner reads a module's interface either way.
+
+**`Test` declared by `zelkova-core`**, beside the `Task` this entry puts there, is where this
+decision first landed, and it is rejected. Core is a dependency of every package and is not
+written in `dependencies`, so that spelling puts `Test` in scope for every program that will
+never run one. Declaring it in a package reached through
+[`test-dependencies`](../spec/packages.md#test-dependencies) takes the restriction out of
+dependency resolution instead of out of a new rule about source roots, and leaves the runner a
+type only a package that asked for it can name.
 
 The asymmetry with `main` is deliberate and is the reason a type rather than a manifest field
 does the work here. A package has one entry point, so a field can name its module and a fixed name
@@ -120,8 +127,8 @@ lands.
 `Task` joins [the default imports](../spec/modules.md#the-default-imports) as
 `import Task exposing (Task)`, the shape `List` already has. The list exists so that the types
 appearing in ordinary annotations are always writable, and `main`'s is the one annotation every
-program has to write. `Test` does not join it: a package's test modules are a small part of it,
-and the type appears nowhere else.
+program has to write. `Test` is not on that list and could not be: it is drawn from
+`zelkova-core`'s modules, and `Test` is `zelkova-test`'s.
 
 ## What nothing checks
 

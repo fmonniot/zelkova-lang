@@ -307,7 +307,7 @@ package resolves to.
 ### `zelkova-core` is a dependency of every package
 
 Every module behaves as though it began with a fixed list of imports, drawn from `Basics`,
-`Maybe`, `Result`, `List`, `Char`, `String` and `Tuple` — the list is
+`Maybe`, `Result`, `List`, `Task`, `Char`, `String` and `Tuple` — the list is
 [in the Modules chapter](modules.md#the-default-imports). Those modules belong to
 `zelkova-core`, which is a dependency of every package and is not written in `dependencies`.
 Its version is the compiler's.
@@ -525,18 +525,17 @@ out of what the package ships.
 a test, and nothing else in the module is one: a test module may declare and expose helpers, and
 a helper whose type is not `Test` is never run.
 
-`Test` is a type `zelkova-core` declares and exposes without its constructors, the way
-[`Task`](evaluation-semantics.md#effects) is. It is not one of
-[the default imports](modules.md#the-default-imports), so a test module writes `import Test`.
+`Test` is a type `zelkova-test` declares and exposes without its constructors, and the rule
+above names that one. It reaches a test module through
+[`test-dependencies`](#test-dependencies) and nothing else, so a module under `src/` cannot
+name it at all; a test module writes `import Test`.
 
-A runner has the type to go on and nothing else. One `main` can be named by a manifest field
-and found by a fixed name; a package's tests run into the dozens, spread over as many modules as
-it likes, so there is no one name to fix and nowhere to write them all down. They are exposed
-because a runner reads a module's interface, and the `exposing` clause decides what is in one —
-even though nothing imports a test module.
+A runner has the type to go on and nothing else: no name is fixed and no manifest field lists
+them. A test is exposed even though nothing imports a test module, because a runner reads the
+module's interface and the `exposing` clause decides what is in one.
 
-What a `Test` holds — a name, a check, a group of other tests — belongs to `zelkova-core` and to
-whatever test library a package depends on. How a runner is invoked and what it reports is
+What a `Test` holds — a name, a check, a group of other tests — belongs to `zelkova-test` and to
+any library built on it. How a runner is invoked and what it reports is
 [the toolchain's](toolchain.md#running-a-packages-tests).
 
 ### `test-dependencies`
@@ -554,7 +553,7 @@ graph stays acyclic, at most one version of each package is in the build, only d
 dependencies are usable, and `zelkova.lock` records what was chosen for both.
 
 **Not implemented:** the compiler has one source root and no notion of a test at all
-([`docs/tickets/lang-15.md`](../tickets/lang-15.md)), and `zelkova-core` declares no `Test`.
+([`docs/tickets/lang-15.md`](../tickets/lang-15.md)), and there is no `zelkova-test` package.
 
 ## Programs
 
@@ -568,7 +567,7 @@ package, and a module can be a program's entry point without its name having to 
 
 **`main` must have type `Task ()`.** A
 [`Task`](evaluation-semantics.md#effects) describes work, and running the program is
-[running that one](evaluation-semantics.md#running-a-task): the runtime is handed the value
+[running it](evaluation-semantics.md#running-a-task): the runtime is handed the value
 `main` names and performs what it describes.
 
 ```zel expect=unimplemented
@@ -584,8 +583,7 @@ of any other type would name a value nobody reads.
 
 It also decides what a program does about a boundary failure. Every primitive effect carries a
 [`Result Failure`](evaluation-semantics.md#an-effect-that-can-fail) in its payload and `Task ()`
-carries no payload, so a program reaching `main` has said what to do with each of them — even
-where what it says is to ignore it.
+carries no payload, so a program reaching `main` has said what to do with each of them.
 
 A package can be both. `main` and `private-modules` are independent, so a program may also be
 depended on as a library, and the module holding `main` may be one of the private ones.
