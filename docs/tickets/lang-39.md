@@ -9,21 +9,22 @@ namespace, how an instance reaches another module, and which module is allowed t
 `src/compiler/dependencies.rs` — `ModuleWalker::check_in_order`, which is the driver that
 builds each interface and hands it to the next module.
 
-**Depends on:** [LANG-38](lang-38.md) for the declarations to exist at all;
-[BUG-16](bug-16.md) and [BUG-17](README.md), both of which would quietly sabotage instance-head
-resolution and are worth reading together with this ticket:
+**Depends on:** [LANG-38](lang-38.md) for the declarations to exist at all; and
+[BUG-16](bug-16.md), which would quietly sabotage instance-head resolution and is worth reading
+together with this ticket:
 
-- **BUG-17** — a type application's arguments are discarded when its head resolves, so
-  `instance Comparable (Maybe Int)` and `instance Comparable (Maybe Char)` would canonicalize to
-  the same head. Instance *lookup* is a match on the head, so this is not a cosmetic loss: it
-  makes two distinct instances indistinguishable, and the duplicate-instance check below would
-  then reject a legal program or accept an ambiguous one depending on which way it is written.
 - **BUG-16** — an unresolved type name is invented rather than reported, so
   `instance Comparable Widgt` would fabricate `Widgt` and declare an instance for a type that
   does not exist. The orphan rule then passes it, because the fabricated type has no declaring
   module to compare against.
 
-Neither is optional. Land both first.
+It is not optional. Land it first.
+
+BUG-17 was the second of that pair and is fixed. A type application's arguments used to be
+discarded when its head resolved, which would have made `instance Comparable (Maybe Int)` and
+`instance Comparable (Maybe Char)` canonicalize to the same head and so be indistinguishable to
+a lookup that matches on the head. Arguments now survive, and the duplicate-instance check
+below has two distinct heads to compare.
 
 **Decided (`SPEC-12`, by the language owner):** an `instance C T` declaration is legal in the
 module declaring `C`, and in the module declaring `T`'s head, and nowhere else.

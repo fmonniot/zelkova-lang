@@ -102,9 +102,9 @@ LANG-38  `class` / `instance` declarations, and a `where` block of members
   │        the chapter
   │
 LANG-39  resolution, the instance environment, and the orphan rule
-  │      ← BUG-17 and BUG-16 are HARD prerequisites. Both would sabotage
-  │        instance-head resolution silently: BUG-17 makes two instance
-  │        heads indistinguishable, BUG-16 invents a type for a misspelt one.
+  │      ← BUG-16 is a HARD prerequisite: it invents a type for a misspelt
+  │        instance head rather than reporting it. BUG-17, which made two
+  │        instance heads indistinguishable, is fixed.
   │
 LANG-40  the solver: obligations are collected, deferred and discharged
   │      ← LANG-12 is a HARD prerequisite. Without rigid annotation

@@ -206,6 +206,14 @@ tooMany : Maybe Size Size
 tooMany = Nothing
 ```
 
+**Partly checked:** the count is enforced wherever the name already resolves at the point the
+application is canonicalized — every annotation, and a `type` declaration's variant arguments
+when the head is imported. A variant argument naming a type declared in the *same* module is
+not: canonicalization builds all of a module's `type` declarations before recording any of
+them, so `type W a = W Maybe a` beside `type Maybe a = ...` is accepted, while the same shape
+over an imported `Maybe` is rejected. That is a gap in the compiler rather than a second rule,
+and it wants a ticket of its own.
+
 ### An applied type still means what it says
 
 Two applications of one type name are the same type exactly when their arguments are.
