@@ -124,7 +124,7 @@ LANG-41  `Type::Number` retires; an integer literal is an `Int`   ← independen
 [`DEC-2` decision 7](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed)
 settles that a constrained function is specialised per instantiation and no dictionary exists
 at runtime — a constraint on code generation, which has not started. It is recorded in
-`docs/spec/type-classes.md` and `docs/spec/js-interop.md`, and [`GEN-1`](gen-1.md) inherits it
+`docs/spec/type-classes.md` and `docs/spec/interop.md`, and [`GEN-1`](gen-1.md) inherits it
 from there rather than it being filed twice.
 
 ## Recovering a closed ticket
@@ -218,7 +218,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-16 | task | — | closed 2026-09-08 | The spec makes one promise about space and does not say whether it makes others |
 | SPEC-17 | task | — | closed 2026-09-06 | Nothing says a `Float`-returning operation may not totalize with a zero, and one of them does |
 | SPEC-18 | task | — | closed 2026-09-06 | "A subset of the Zelkova standard types" names no subset, and the compiler enforces none |
-| [SPEC-19](spec-19.md) | task | — | open | `javascript` is the only interop modifier, and the WebAssembly equivalent is undesigned |
+| SPEC-19 | task | — | closed 2026-09-09 | `javascript` is the only interop modifier, and the WebAssembly equivalent is undesigned |
 | SPEC-20 | task | — | closed 2026-09-06 | A facade constant is called unsettled by the chapter and shipped by `std/core` |
 | SPEC-21 | task | — | closed 2026-09-07 | Records are part of the language and no chapter says what one looks like |
 | SPEC-22 | task | — | closed 2026-09-06 | Lists are part of the language and the chapter specifying them does not exist |
@@ -228,7 +228,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-26 | task | — | closed 2026-09-06 | Design rationale has nowhere to live, so it is kept in three unrelated places or lost |
 | SPEC-27 | task | — | closed 2026-09-08 | A derivation's `combine` must be a monoid and nothing checks it, at any point |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
-| [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords |
+| [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by [LANG-54](lang-54.md) |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
 | [LANG-4](lang-4.md) | task | — | open | Prefix `-` is desugared to `0 - e`, so negating a `Float` mixes it with an `Int` literal |
 | [LANG-5](lang-5.md) | task | — | open | An `import` is accepted anywhere among the declarations |
@@ -280,6 +280,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-51](lang-51.md) | task | — | open | The typer has no record type, so nothing checks a field, an update or an accessor |
 | [LANG-52](lang-52.md) | task | — | open | Whitespace around a qualification dot is accepted, and records need it not to be |
 | [LANG-53](lang-53.md) | task | — | open | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
+| [LANG-54](lang-54.md) | task | — | open | The interop modifier is spelled `javascript`, naming a backend where the language names a boundary |
 | [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |

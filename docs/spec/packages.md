@@ -74,14 +74,15 @@ discarded ([`docs/tickets/lang-6.md`](../tickets/lang-6.md)). A file may declare
 name regardless of where it sits, so a lowercase directory is accepted today.
 
 A file whose name does not end in `.zel` is not a module and is not read. That is what
-allows a `module javascript` facade's companion `.mjs` file to sit next to it in the same
-directory, which is where [JS interop](js-interop.md) requires it to be:
+allows a `module foreign` facade's companion files to sit next to it in the same
+directory, which is where [Foreign interoperability](interop.md) requires them to be:
 
 ```text
 src/
-  Js/
-    Basics.zel     module javascript Js.Basics
+  Core/
+    Basics.zel     module foreign Core.Basics
     Basics.mjs     the JavaScript behind it
+    Basics.wasm    the WebAssembly component behind it
 ```
 
 ## The manifest
@@ -149,23 +150,23 @@ Every module of a package under `src/` is importable from outside it, except the
 `private-modules` names. Those are **package-internal**: importable from other modules of the
 same package and from nowhere else.
 
-A `module javascript` facade is never importable from outside, whatever the manifest says,
-because its guarantees are about a companion `.mjs` file that ships with the package that
-declares it — [JS interop](js-interop.md) is where that rule and its reasoning live. Listing
-a facade in `private-modules` changes nothing; the declaration itself is what makes it
-internal.
+A `module foreign` facade is never importable from outside, whatever the manifest says,
+because its guarantees are about a companion file that ships with the package that declares
+it — [Foreign interoperability](interop.md) is where that rule and its reasoning live.
+Listing a facade in `private-modules` changes nothing; the declaration itself is what makes
+it internal.
 
-A package offers JavaScript-backed values to its dependents by wrapping them: an ordinary
+A package offers foreign-backed values to its dependents by wrapping them: an ordinary
 module imports the facade and re-declares what it offers under the types it really handles.
 That module is public like any other, and it is where a signature the compiler cannot check
 becomes one it can. `zelkova-core` is the worked example — `Basics` is an ordinary module,
-and every value in it that JavaScript computes reaches its dependents through a declaration
-there rather than out of `Js.Basics`.
+and every value in it a companion computes reaches its dependents through a declaration
+there rather than out of the facade.
 
-```zel expect=ok
-module javascript Js.Widget exposing (measure)
+```zel expect=unimplemented
+module foreign Core.Widget exposing (measure)
 
-measure : a -> a
+measure : Int -> Int
 ```
 
 **Not implemented:** nothing consults `private-modules`, because nothing in the compiler

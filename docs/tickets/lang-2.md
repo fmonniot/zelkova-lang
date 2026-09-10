@@ -1,6 +1,8 @@
 # LANG-2 · `javascript` is reserved outright, unlike the other three soft keywords
 
-**Sizing:** small. One production.
+**Sizing:** small. One production — but see [`LANG-54`](lang-54.md), which subsumes this
+ticket by moving the modifier to `foreign`, leaving `javascript` an ordinary identifier in
+every position and nothing left to soften. Land that one and this closes with it.
 
 **Location:** `src/compiler/parser/grammar.lalrpop`, the `VarIdent` production — it lists
 `"left"`, `"right"` and `"non"` as alternatives under the comment *soft keywords are

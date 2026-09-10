@@ -4,7 +4,7 @@
 **Status:** live, with two exceptions recorded in [what has changed
 since](#what-has-changed-since) — decision 8 is superseded and decision 11 was overtaken.
 **Where the rule lives:** [Type classes](../spec/type-classes.md), and for decision 6 also
-[JS interop](../spec/js-interop.md).
+[Foreign interoperability](../spec/interop.md).
 
 Zelkova replaced the `number`/`comparable`/`appendable` spellings with type classes, and this
 is the session that decided what a class is. Eleven questions were settled together; each was
@@ -81,7 +81,7 @@ that argument in full.
 
 ## 6 — A `module javascript` facade signature may not carry a constraint
 
-The sharpest question `SPEC-11` left open. [JS interop](../spec/js-interop.md) promises a
+The sharpest question `SPEC-11` left open. [Foreign interoperability](../spec/interop.md) promises a
 companion `.mjs` export a **plain parameter list**, and a dictionary passed as a hidden
 argument is exactly the calling convention that file is promised it will never see. So the
 constraint lives one level up, in an ordinary Zelkova function, and the facade underneath it
@@ -101,7 +101,7 @@ instance Comparable Int where
 
 Codegen specialises each constrained function per instantiation; no dictionary is built or
 passed at runtime. There was no ticket for this when it was decided — code generation had not
-started — so it was recorded in the chapter and in `js-interop.md` as a constraint the first
+started — so it was recorded in the chapter and in `interop.md` as a constraint the first
 codegen ticket inherits, and [`GEN-1`](../tickets/gen-1.md) inherits it there.
 
 Two consequences the chapter states: whole-package compilation is assumed (there is no

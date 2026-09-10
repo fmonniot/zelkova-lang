@@ -235,12 +235,12 @@ it, and an ordinary identifier everywhere else:
 | Word | Keyword in |
 |---|---|
 | `left`, `right`, `non` | the associativity of an `infix` declaration |
-| `javascript` | the header of a [JS interop](js-interop.md) module |
+| `foreign` | the header of a [facade](interop.md) module |
 | `derived` | the body of an [instance declaration](type-classes.md#an-instance-may-be-derived), and a [derivation](type-classes.md#a-class-says-how-it-is-derived) in a class body |
-| `unsafe` | before a signature in an [`unsafe` facade](js-interop.md#an-unsafe-facade) |
+| `unsafe` | before a signature in an [`unsafe` facade](interop.md#an-unsafe-facade) |
 
 The distinction is deliberate. These six read as ordinary vocabulary — a tree module wants
-`left` and `right`, and a project targeting the browser will want `javascript` — and each sits
+`left` and `right`, and a program modelling another language will want `foreign` — and each sits
 where one token of context says which reading is meant, so reserving the word outright would
 take a useful name and give nothing back. `derived` and `unsafe` are the two that need the token
 *after* them rather than the one before: `derived` alone asks for an instance to be derived,
@@ -249,7 +249,7 @@ binding or signature; `unsafe f : …` marks a facade signature where `unsafe : 
 constant of that name.
 
 ```zel expect=ok
-module Example exposing (left, right, non, derived, unsafe)
+module Example exposing (left, right, non, foreign, derived, unsafe)
 
 left = 1
 
@@ -257,19 +257,24 @@ right = 2
 
 non = 3
 
-derived = 4
+foreign = 4
 
-unsafe = 5
+derived = 5
+
+unsafe = 6
 ```
 
-**Not implemented:** `derived` and `unsafe` are ordinary identifiers in every position today,
-because the declarations whose bodies they sit in do not parse at all — class and instance
-bodies for the first ([`LANG-38`](../tickets/lang-38.md)), a marked facade signature for the
-second ([`LANG-53`](../tickets/lang-53.md)). That block is green now and should stay green: what
-each word becomes is a keyword in a position it cannot currently occupy, not a name a program
-loses. It goes red if either is reserved outright as a shortcut, which is the choice
-[`LANG-53`](../tickets/lang-53.md) leaves open and the state
-[`LANG-2`](../tickets/lang-2.md) exists to undo for `javascript`.
+**Not implemented:** `foreign`, `derived` and `unsafe` are ordinary identifiers in every
+position today, because the construct each is a keyword in does not parse at all — a facade
+header spells its modifier `javascript` ([`LANG-54`](../tickets/lang-54.md)), class and
+instance bodies do not parse ([`LANG-38`](../tickets/lang-38.md)), and neither does a marked
+facade signature ([`LANG-53`](../tickets/lang-53.md)). That block is green now and should stay
+green: what each word becomes is a keyword in a position it cannot currently occupy, not a name
+a program loses. It goes red if any of the three is reserved outright as a shortcut, which is
+the choice [`LANG-53`](../tickets/lang-53.md) leaves open and the state
+[`LANG-2`](../tickets/lang-2.md) records for `javascript`.
+
+`javascript` is an ordinary identifier, and the word a facade header once took:
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing (f)
@@ -279,9 +284,11 @@ javascript = 1
 f = javascript
 ```
 
-**Known gap:** that block should be `expect=ok`. `javascript` is reserved outright today,
-unlike its three siblings, which is the inconsistency
-[`docs/tickets/lang-2.md`](../tickets/lang-2.md) resolves.
+**Known gap:** that block should be `expect=ok`. `javascript` is the facade modifier today and
+is reserved outright, taking a name from every program that models the language rather than
+compiles to it. [`LANG-54`](../tickets/lang-54.md) frees it by moving the modifier to
+`foreign`; [`LANG-2`](../tickets/lang-2.md) is the narrower reading, that the word be soft
+where it stands.
 
 `true` and `false` are **not** reserved. Zelkova has no boolean literal syntax: `Bool` is an
 ordinary union type and `True` and `False` are its constructors, resolved, imported and

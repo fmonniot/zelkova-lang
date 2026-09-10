@@ -178,9 +178,9 @@ type Flag
 f : Flag
 ```
 
-A [JS interop](js-interop.md) facade is the one place this does not hold: a
-`module javascript` module is annotations with no bodies, because the bodies are in the
-companion `.mjs` file, and having none is what makes it a facade.
+A [foreign](interop.md) facade is the one place this does not hold: a
+`module foreign` module is annotations with no bodies, because the bodies are in the
+companion file, and having none is what makes it a facade.
 
 ## Clauses
 
@@ -425,6 +425,6 @@ the module.
 not exist yet; see [Layout](layout.md#let--in) for what its declarations will be laid out
 against.
 
-A [`module javascript`](js-interop.md) facade is the one module that restricts the list: it
+A [`module foreign`](interop.md) facade is the one module that restricts the list: it
 may hold imports and annotations, and may not hold a binding, a type declaration or an
 `infix`.

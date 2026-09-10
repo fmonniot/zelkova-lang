@@ -80,7 +80,7 @@ is the point.
 | [Records](records.md) | The record type, building one, reading and updating a field, the accessor, record patterns, and why a record type names every field it has. |
 | [Name resolution and scoping](name-resolution.md) | The six namespaces, the scopes a name is looked up in, what shadows what, and what makes a reference ambiguous rather than merely unresolved. |
 | [Evaluation semantics](evaluation-semantics.md) | Strictness, purity, order of evaluation, which forms evaluate their subexpressions conditionally, what `==` means structurally, what a function value is, and what a `Task` is — the value that describes an effect. |
-| [JS interop](js-interop.md) | The `module javascript` facade: what such a signature may say, what its companion `.mjs` exports, the effectful form of it, and why it is the only way into JavaScript. |
+| [Foreign interoperability](interop.md) | The `module foreign` facade: what such a signature may say, what its companion exports on each target, the effectful form of it, and why it is the only way out of Zelkova. |
 | [Packages and source layout](packages.md) | The package directory, the `zelkova.toml` manifest, the two source roots, dependencies, what a package boundary means for visibility and for a module's name, the type `main` must have, and what makes a declaration a test. |
 | [Type classes](type-classes.md) | The `class` and `instance` declarations, how a constraint is written in an annotation, superclasses, where an instance may be declared, how a class says it can be derived and what a derived instance then computes, and the words this reserves. |
 

@@ -211,7 +211,7 @@ where the rule lives and the other links to it by anchor.
 
 Structure carries the same bias: **what a construct can do comes first, what it cannot comes
 after and shorter.** Separate sections that each say what is forbidden merge into one — the
-three prohibitions [JavaScript interop](js-interop.md#what-a-facade-signature-may-not-name)
+three prohibitions [Foreign interoperability](interop.md#what-a-facade-signature-may-not-name)
 makes about a facade signature are one section, and shorter than the three were. A chapter
 written before this section was recorded may
 still carry any of these; the `prose-pass` skill (`.claude/skills/`) is what takes them out, one

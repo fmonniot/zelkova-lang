@@ -56,7 +56,7 @@ export function round(n) { return Math.round(n) | 0 }
 
 They stop being `const` aliases for `Math`, which is the point: the wrap is the part the
 language requires and `Math` does not do. Note the three are also the reason
-[`docs/spec/js-interop.md`](../spec/js-interop.md)'s facade rules matter here — a companion is
+[`docs/spec/interop.md`](../spec/interop.md)'s facade rules matter here — a companion is
 an ordinary ES module and the compiler never rewrites what it returns, so nothing but this file
 can add the wrap.
 

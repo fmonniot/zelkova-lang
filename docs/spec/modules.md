@@ -758,8 +758,8 @@ the same reason, and it is on the list because [`main`](packages.md#programs) na
 annotation every program has to write.
 [`Failure`](evaluation-semantics.md#an-effect-that-can-fail) does not come with it: the modules
 naming that type are the ones declaring or consuming an
-[effectful facade](js-interop.md#an-effectful-facade), and a module that names it imports it. Writing any of these imports out explicitly is allowed
-and changes nothing.
+[effectful facade](interop.md#an-effectful-facade), and a module that names it imports it.
+Writing any of these imports out explicitly is allowed and changes nothing.
 
 **Known gap:** none of it exists. Every module resolves only what it declares and what it
 imports by hand, which is why `std/core`'s modules all begin with `import Basics`

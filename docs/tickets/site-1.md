@@ -77,6 +77,6 @@ page linking to both the rustdoc (still reachable, at whatever path it's mounted
 rendered spec; each spec chapter's `zel` blocks are visually tagged by their `expect=` value,
 verified by eye against at least one chapter that has a block of each tag currently in use
 (`docs/spec/lexical-structure.md` has `ok`, several `parse-error*` variants, and
-`unimplemented`; `docs/spec/js-interop.md` or `layout.md` for `fragment`, if either uses it —
+`unimplemented`; `docs/spec/interop.md` or `layout.md` for `fragment`, if either uses it —
 otherwise add one). No second `force_orphan` deploy step; a single `actions-gh-pages` step
 publishes the combined directory.

@@ -96,7 +96,7 @@ The same rule covers every other form that holds more than one subexpression: a 
 its elements left to right, an `if` evaluates its condition before either arm, and a `case`
 evaluates its scrutinee before any branch is tried.
 
-Because evaluation is [pure](#purity-and-the-javascript-boundary), the order is observable only
+Because evaluation is [pure](#purity-and-the-foreign-boundary), the order is observable only
 through non-termination: it settles which of two diverging subexpressions hangs the program.
 
 ## Conditional evaluation
@@ -519,23 +519,23 @@ wrap, so `round nan` is `nan` and `round 1.0e20` is `1.0e20` — neither of them
 `truncate` wraps. [`BUG-25`](../tickets/bug-25.md) is the ticket. No block holds it to account:
 all four conversions are in a JavaScript companion, which nothing in the test suite runs.
 
-## Purity and the JavaScript boundary
+## Purity and the foreign boundary
 
 **An expression's value depends only on the values of the names it mentions.** Evaluating it
 twice gives the same value, and evaluating it does nothing else — nothing is written, read,
 mutated or sent anywhere.
 
-A [`module javascript` facade](js-interop.md) is where that guarantee meets code the compiler
+A [`module foreign` facade](interop.md) is where that guarantee meets code the compiler
 did not produce and cannot inspect. A facade declares an effect by default, and its companion is
 under no obligation to be a function of anything: reading a clock, keeping a counter, printing
 and reaching the network are what it is for.
 
-**The word [`unsafe`](js-interop.md#an-unsafe-facade) is what claims otherwise.** A signature
+**The word [`unsafe`](interop.md#an-unsafe-facade) is what claims otherwise.** A signature
 marked with it declares a function rather than an effect, and its author is asserting that the
 same arguments give the same result and that calling it has no other consequence.
 
 ```zel expect=unimplemented
-module javascript Js.Math exposing (square)
+module foreign Core.Math exposing (square)
 
 unsafe square : Float -> Float
 ```
@@ -543,13 +543,13 @@ unsafe square : Float -> Float
 Nothing distinguishes that from the same word over an impure export:
 
 ```zel expect=unimplemented
-module javascript Js.Random exposing (next)
+module foreign Core.Random exposing (next)
 
 unsafe next : Int -> Int
 ```
 
 The second is a broken program, and the rule it breaks is one only its author can keep. What the
-word buys is not a check but a place to look: the assertions a program makes about JavaScript are
+word buys is not a check but a place to look: the assertions a program makes about foreign code are
 the declarations carrying it, and a reader who wants to know what this language is trusting reads
 those.
 
@@ -577,11 +577,11 @@ above holds over a program with effects in it.
 
 ### Where a `Task` comes from
 
-A primitive `Task` is declared by a [`module javascript` facade](js-interop.md) whose result
+A primitive `Task` is declared by a [`module foreign` facade](interop.md) whose result
 type is one.
 
 ```zel expect=unimplemented
-module javascript Js.File exposing (read)
+module foreign Core.File exposing (read)
 
 import Task exposing (Failure)
 
@@ -590,8 +590,8 @@ read : String -> Task (Result Failure String)
 
 That is the only place an effect enters the language. What the companion behind such a signature
 returns, and which types the signature may still name, is
-[JS interop](js-interop.md#an-effectful-facade)'s. Every other `Task` is built from those, so a
-package declares its own effects on the same terms `zelkova-core` declares its.
+[Foreign interoperability](interop.md#an-effectful-facade)'s. Every other `Task` is built from
+those, so a package declares its own effects on the same terms `zelkova-core` declares its.
 
 ### Sequencing
 
@@ -650,10 +650,10 @@ what happened. `Malformed` is a companion that returned a value its declared typ
 carrying the name of the export that returned it.
 
 So a facade declares a `Task (Result Failure a)` unless it is marked
-[`unsafe`](js-interop.md#an-unsafe-facade), a rule
-[JS interop](js-interop.md#an-effectful-facade) states in full. Running such a `Task` yields a
-value even when the JavaScript behind it breaks, so the two outcomes above are the two outcomes
-of running one.
+[`unsafe`](interop.md#an-unsafe-facade), a rule
+[Foreign interoperability](interop.md#an-effectful-facade) states in full. Running such a `Task`
+yields a value even when the code behind it breaks, so the two outcomes above are the two
+outcomes of running one.
 
 A failure belonging to the effect's own domain goes in the payload beside those. `read` above,
 reporting a missing file apart from a broken companion, is `String -> Task (Result Failure
@@ -682,7 +682,7 @@ No Zelkova expression asks for one. The language has no keyword that aborts and 
 catches one, so an abort is never a step a program takes — it is the runtime saying it can no
 longer keep the guarantees above. Three things cause one.
 
-**An [`unsafe`](js-interop.md#an-unsafe-facade) facade whose companion breaks its promise.** A
+**An [`unsafe`](interop.md#an-unsafe-facade) facade whose companion breaks its promise.** A
 companion declared as a function that throws, or that returns a value its declared type does not
 admit, leaves its caller owed a value that nothing produced. An effectful facade has somewhere to
 put that and an `unsafe` one has nowhere.

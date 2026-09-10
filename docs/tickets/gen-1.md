@@ -27,7 +27,7 @@ nothing holds it to that.
    directly or a new intermediate one is the first choice, and `check_module`'s existing comment
    asking the same question about the typer is the prior art.
 2. **How a function value is represented.** Zelkova's application is curried and
-   [`docs/spec/js-interop.md`](../spec/js-interop.md) promises that a `module javascript`
+   [`docs/spec/interop.md`](../spec/interop.md) promises that a `module javascript`
    companion's export takes a **plain parameter list**, not Elm's `F2`/`F3` wrappers. The
    generator therefore has to bridge the two at the facade boundary, and decide what it emits
    for a Zelkova function of two arguments applied to two arguments.
@@ -55,11 +55,11 @@ Two decisions are inherited rather than made here. **The wrapper around an effec
 builds the `Result` its signature declares** — it catches what the companion throws, runs the
 predicate over what it returns, and yields `Ok`, `Err (Threw ..)` or `Err (Malformed ..)`. The
 companion itself returns a bare payload and never a `Result`
-([JS interop](../spec/js-interop.md#an-effectful-facade)), so the two sides of the boundary
-disagree about the type on purpose and this wrapper is where they are reconciled. The predicates
+([Foreign interoperability](../spec/interop.md#an-effectful-facade)), so the two sides of the
+boundary disagree about the type on purpose and this wrapper is where they are reconciled. The predicates
 themselves are [`GEN-2`](gen-2.md)'s; the wrapper that calls one and routes its answer is this
 ticket's, and it is the whole of what keeps a throwing `.mjs` from ending the program. A facade
-marked [`unsafe`](../spec/js-interop.md#an-unsafe-facade) gets no such wrapper — its companion is
+marked [`unsafe`](../spec/interop.md#an-unsafe-facade) gets no such wrapper — its companion is
 called directly — and one that throws under it
 [aborts](../spec/evaluation-semantics.md#when-a-program-aborts). Which facades are which is
 [`LANG-53`](lang-53.md)'s flag to carry that far.
