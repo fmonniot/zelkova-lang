@@ -2,9 +2,8 @@
 
 A signature can say that a function takes any type at all, and it can say that a function takes
 exactly one. It has nothing to say in between, and *in between* is where most of the interesting
-functions live. `min` works for anything that can be ordered and for nothing else; `add` works
-for the two numeric types and not for a `Char`. Neither of those is "any type", and neither is
-one type.
+functions live: `min` works for anything that can be ordered and for nothing else, and `add` for
+the two numeric types.
 
 A **type class** is how Zelkova writes that middle. A class names a set of operations; a type
 joins the class by declaring an **instance** that implements them; and a signature says what it
@@ -62,10 +61,8 @@ compare : Comparable a => a -> a -> Order
 Declaring `Comparable` puts `compare` and `lt` into the module's value namespace, the way a
 `type` declaration puts its constructors there. There is no separate step that exports a member,
 and no qualified spelling that reaches "the class's `compare`" as distinct from the `compare`.
-There is one `compare`.
 
-A class has exactly one variable. A class over two types at once — a relation rather than a
-property — is not part of this design.
+A class has exactly one variable.
 
 ## Declaring an instance
 
@@ -93,13 +90,11 @@ instance Comparable Colour where
 ```
 
 An instance must implement **every** member of its class. A missing member is an error naming
-the member and the class, not a value that silently does not exist — the whole point of the
-constraint is that a caller may rely on the members being there.
+the member and the class: a constrained caller may rely on the members being there.
 
 An instance has no name and is never mentioned by one. It is not exposed, not imported, and
-never written in an `exposing` list. It is in scope wherever its class and its type are, which
-is what makes a constrained call mean the same thing in every module that can write it. How far
-"wherever" reaches is [the orphan rule](#where-an-instance-may-be-declared), below.
+never written in an `exposing` list. It is in scope wherever its class and its type are, and how
+far "wherever" reaches is [the orphan rule](#where-an-instance-may-be-declared), below.
 
 ```zel expect=ok
 module Example exposing (Thing)
@@ -187,8 +182,7 @@ declaration.
 `Position` is the declaration position of a constructor, and it is a type rather than a number:
 `std/core` declares it, gives it `Eq` and `Comparable` instances and a `positionIndex :
 Position -> Int`, and offers nothing else. A class that wants to order two constructors compares
-them; a class that wants to compute with them converts. What it may not do is arithmetic on a
-position by accident, which an `Int` in this position would allow and mean nothing by.
+them; a class that wants to compute with them converts.
 
 Two member shapes therefore cannot carry a derivation at all, and the reasons differ:
 
@@ -198,12 +192,12 @@ Two member shapes therefore cannot carry a derivation at all, and the reasons di
   the means.
 - **A member taking no `a`** — `bottom : a`, `allValues : List a` — asks the walk to run
   backwards and build a value from a description of the type's constructors. That description is
-  the thing this design does not have and is not going to grow.
+  the thing this design does not have.
 
 A class is derivable when **every** member carries a derivation, and the two forms mix freely
 across one class: each member takes the form its own signature admits. Covering some members and
 not the rest is an error naming the ones left out: an instance of such a class could only be half
-derived and half written, which is the mixture a `derived` body rules out.
+derived and half written.
 
 ### What a derived instance computes
 
@@ -285,8 +279,7 @@ With one value there are no two constructors to disagree, so the half of the wal
 them falls away and `differed` with it: `atConstructor` answers for *the* constructor, each
 argument is answered in turn, left to right, by the instance belonging to that argument's type,
 and `combine` folds those answers onto the constructor's own. Everything else holds as it does
-over two values — the walk never looks inside an argument, and reordering a type's variants
-changes what the member computes.
+[over two values](#what-a-derived-instance-computes).
 
 There is no `matched`, because the fold begins at `atConstructor`'s answer and is therefore never
 empty, not even for a constructor with no arguments. What `combine` is
@@ -295,8 +288,8 @@ empty, not even for a constructor with no arguments. What `combine` is
 ### What a derivation cannot render
 
 `toString : a -> String` has the signature a one-value derivation takes, so a class may carry one
-for it. What the walk produces is `RedGreen` where the reader wanted `Red Green`, and the three
-things standing between the two are the limit of the mechanism rather than gaps in it.
+for it. What the walk produces is `RedGreen` where the reader wanted `Red Green`, and three
+things stand between the two.
 
 1. **A constructor's name.** A `Position` orders constructors and converts to an `Int`. Neither
    yields `"Red"`.
@@ -314,9 +307,8 @@ the instance.
 
 A derivation is a **compile-time** step. The compiler reads the class's bindings and the type's
 shape and writes the member's definition out of them; what runs is that definition. Neither the
-walk nor the bindings exist at run time, and that is what sets them apart from every other
-binding in the language: a derivation's bindings are substituted into the generated definition at
-each step rather than called as functions.
+walk nor the bindings exist at run time: a derivation's bindings are substituted into the
+generated definition at each step rather than called as functions.
 
 Under [strict evaluation](evaluation-semantics.md#evaluation-is-strict) the difference is
 observable, and it is not one the compiler could make on its own. An argument is a value before
@@ -334,7 +326,7 @@ instead as `combine x y = and x y`, the ordinary function call, `Eq`'s derivatio
 every pair — the same answer, at the cost of the whole value — because
 [nothing short-circuits](evaluation-semantics.md#nothing-short-circuits) and `and` is a function
 like any other. Both spellings are legal and the compiler prefers neither. Which one a class
-writes is visible in the class's own declaration, which is the only place it should be.
+writes is visible in the class's own declaration.
 
 Inlining reaches only those bindings. Anything they *call* is an ordinary call, evaluated
 under the ordinary rules — so a `combine` whose short-circuiting hides behind a helper does not
@@ -423,9 +415,8 @@ instance Eq Entry where
 ```
 
 The instance is the claim that an `Entry` can be compared for equality, and the claim is false
-where it is written, which is why the error lands there rather than at some later use. A variant
-holding a **function** is the case no instance can rescue, since a function type
-[has no useful equality at all](evaluation-semantics.md#functions-are-not-comparable).
+where it is written. A variant holding a **function** is the case no instance can rescue, since a
+function type [has no useful equality at all](evaluation-semantics.md#functions-are-not-comparable).
 
 A superclass obligation is unchanged: a derived `Comparable Colour` is rejected unless an
 `Eq Colour` instance exists, derived in its turn or written out.
@@ -454,8 +445,7 @@ min x y =
 
 Read it as a precondition on the caller: *`min` works for any type `a`, provided `a` is
 `Comparable`*. A caller supplying a type with no `Comparable` instance is an error at the call
-site, pointing at the call — not at `min`, which is fine, and not at the instance, which does not
-exist.
+site, pointing at the call.
 
 Several constraints are parenthesised and comma-separated:
 
@@ -475,7 +465,7 @@ describe a b =
 
 `=>` may appear once, at the very front of an annotation, and nowhere else. A constraint is a
 statement about the declaration being annotated; it is not a piece of type syntax that can be
-nested inside a larger type, and there is no such thing as a constrained argument type.
+nested inside a larger type.
 
 ```zel expect=unimplemented
 module Example exposing (Size, f)
@@ -488,8 +478,7 @@ f x =
   Small
 ```
 
-The left of `=>` must be constraints. A type there is not a constraint, and the compiler says so
-rather than accepting it:
+The left of `=>` must be constraints; a type there is an error:
 
 ```zel expect=unimplemented
 module Example exposing (Size, f)
@@ -527,7 +516,7 @@ class Eq a => Comparable a where
   compare : a -> a -> Order
 ```
 
-Two things follow, and they pull in opposite directions.
+Two things follow.
 
 **An instance acquires an obligation.** `instance Comparable Colour` is rejected unless
 `instance Eq Colour` also exists. A type cannot be ordered without being comparable for equality
@@ -569,12 +558,12 @@ to declare it, and that collision is visible to whoever reads either file.
 
 The cost falls on the third party: if neither the class nor the type is yours, you cannot make
 the one an instance of the other, and the way out is a type of your own that wraps the one you
-wanted. That is the price of a call meaning one thing.
+wanted.
 
-A **package** boundary adds nothing to this rule and does not need to. Every module belongs
-to exactly one package ([Packages and source layout](packages.md)), so an instance can only be
-written by whoever owns the class's module or the type's module — which is to say by whoever
-ships one of those two packages. A third package that depends on both still cannot pair them.
+A **package** boundary adds nothing to this rule. Every module belongs to exactly one package
+([Packages and source layout](packages.md)), so an instance can only be written by whoever owns
+the class's module or the type's module — which is to say by whoever ships one of those two
+packages. A third package that depends on both still cannot pair them.
 
 ## A class is always over a complete type
 
@@ -613,11 +602,10 @@ x =
   1
 ```
 
-It is worth saying here because of what it means for classes: **nothing in the language
-defaults, and the compiler knows no class by name.** A constraint the solver cannot discharge
-is an error rather than a guess, in every case and with no exception carved out for arithmetic;
-there is no way to declare what a class falls back to, and no class the compiler treats
-differently from one a program declares itself. Not even
+**Nothing in the language defaults, and the compiler knows no class by name.** A constraint the
+solver cannot discharge is an error rather than a guess, in every case and with no exception
+carved out for arithmetic; there is no way to declare what a class falls back to, and no class
+the compiler treats differently from one a program declares itself. Not even
 [a derived instance](#a-class-says-how-it-is-derived) is an exception: what it computes is read
 off the class's own declaration.
 
@@ -646,10 +634,7 @@ A constrained function is **specialised** — the compiler generates one ordinar
 type the constraint is discharged at — and a facade has no body to generate one from. Its
 companion's export is the whole implementation, so a constrained facade would have to serve
 every instance from that one foreign function, which could only tell them apart by inspecting
-arguments whose type its signature never named. That is dispatch on a type variable, which is
-the shape of the gap noted at the end of this section. A dictionary — an extra, invisible
-argument carrying a table of the class's operations — is the other way to implement a class, and
-it breaks the companion's **plain parameter list** more directly.
+arguments whose type its signature never named — dispatch on a type variable.
 
 So the constraint moves up one level. The facade stays monomorphic and is called only at types
 the code behind it can actually handle; the class, its instances, and the constraint live in
@@ -668,10 +653,10 @@ instance Comparable Int where
 
 **Not implemented:** specialisation is a rule about code generation, and code generation has not
 started. When it exists, the generated JavaScript holds one ordinary function per instantiation
-and no table of operations is built or passed at runtime. Two consequences: a program is compiled as a whole rather than a module at a time, and a constrained
-function cannot call itself at a different type than it was called with. The second is already
-impossible — a class variable stands for a complete type, so there is no different type for it to
-recurse at.
+and no table of operations is built or passed at runtime. Two consequences: a program is compiled
+as a whole rather than a module at a time, and a constrained function cannot call itself at a
+different type than it was called with. The second is already impossible — a class variable
+stands for a complete type, so there is no different type for it to recurse at.
 
 **Known gap:** the comparison and append facades in `std/core` are declared over any type at all,
 and the JavaScript behind them assumes its arguments are numbers, strings or tuples; handed a
@@ -698,8 +683,7 @@ a keyword in a class body and in an instance body, an ordinary identifier in eve
 position, the name of a class's own member included. What tells the readings apart is the token
 after it: `derived` alone is [the request](#an-instance-may-be-derived), `derived eq` opens
 [a derivation](#a-class-says-how-it-is-derived) for the member `eq`, and `derived : …` or
-`derived = …` declares a member called `derived`. One token of lookahead settles it, so
-reserving a word a program has every right to want would buy nothing.
+`derived = …` declares a member called `derived`. One token of lookahead settles it.
 
 **Known gap:** none of those four reservations exists today, and each of these blocks goes red
 when the ticket naming it lands. `class` and `instance` as value names ([`LANG-38`](../tickets/lang-38.md)):
@@ -751,8 +735,7 @@ own alongside, and nothing about what a member means, or about which types have 
 built into the compiler.
 
 No name is an exception. `Number` is as ordinary as the other three: the compiler does not know
-it by name, knows no instance of it, and would behave identically if `std/core` declared it
-under another name or not at all (*[Numeric literals](#numeric-literals)*, above).
+it by name and knows no instance of it (*[Numeric literals](#numeric-literals)*, above).
 
 | Class | Members, roughly | What it constrains a variable to |
 |---|---|---|
@@ -763,24 +746,22 @@ under another name or not at all (*[Numeric literals](#numeric-literals)*, above
 
 `Comparable` has the one member, and the four ordering operators are ordinary functions
 constrained by it — `lt : Comparable a => a -> a -> Bool`, and so on — rather than members of
-it. That is not tidiness. A class is derivable only when *every* member is, and `lt` is not: a
-lexicographic `lt` cannot be folded out of the `lt` of each pair of arguments, because it has to
-know whether the pair before it was *equal*. `compare` can, so `Comparable` keeps `compare` and
-builds the rest on top.
+it. A class is derivable only when *every* member is, and `lt` is not: a lexicographic `lt`
+cannot be folded out of the `lt` of each pair of arguments, because it has to know whether the
+pair before it was *equal*. `compare` can, so `Comparable` keeps `compare` and builds the rest on
+top.
 
-Two of the four carry [derivations](#a-class-says-how-it-is-derived): `Eq` and `Comparable`, in
-the shape this chapter has already shown them. `Number` and `Appendable` carry none and could
-not — `add` and `append` return the class variable, which no walk over a value has a way to
-produce — and that is a fact about their signatures, not about their names. A program's own
-class is derivable on exactly the same terms as either.
+Two of the four carry [derivations](#a-class-says-how-it-is-derived): `Eq` and `Comparable`.
+`Number` and `Appendable` carry none and could not — `add` and `append` return the class
+variable, which no walk over a value has a way to produce. A program's own class is derivable on
+exactly the same terms as either.
 
 `std/core` also declares `Position`, the type a derivation
 [is handed for a constructor](#a-class-says-how-it-is-derived) — with an `Eq` instance, a
 `Comparable` instance and `positionIndex : Position -> Int`, and with no way to construct one. It
 is the one type here the compiler knows by name, because it has to give those parameters a type
 before any class has been read. That is a name for a *type*, which the compiler already has four
-of; it is not a name for a class, and [Numeric literals](#numeric-literals)'s claim is unweakened
-by it.
+of; it is not a name for a class.
 
 `Appendable` ranges over strings and [lists](lists.md). The compiler implements neither type —
 see the note on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).

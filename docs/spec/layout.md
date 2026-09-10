@@ -1,16 +1,13 @@
 # Layout — the offside rule
 
 Zelkova is indentation-sensitive: where a line starts decides which construct it belongs
-to, and there are no braces to fall back on. This chapter is the normative account of that
-rule, in full: what a line's leading whitespace may contain, and which construct a line
-belongs to given the column it starts on.
+to, and there are no braces to fall back on.
 
-Two kinds of thing can go wrong with a line, and the split matters when reading an error
-message. The leading whitespace may be malformed in its own right — an odd number of
-spaces, or a tab — in which case the error is about the whitespace and says so. Or the
-whitespace may be well-formed and the *column* wrong for the construct the line belongs
-to, in which case the error names the block that was broken: "the branches of a
-`case … of`", "the expression of a `case … of`".
+Two kinds of thing can go wrong with a line. The leading whitespace may be malformed in
+its own right — an odd number of spaces, or a tab — in which case the error is about the
+whitespace and says so. Or the whitespace may be well-formed and the *column* wrong for
+the construct the line belongs to, in which case the error names the block that was
+broken: "the branches of a `case … of`", "the expression of a `case … of`".
 
 An error message may also name `open block` or `close block`. Those are not tokens you can
 write. They are Zelkova's block structure made explicit so that a diagnostic has something
@@ -19,8 +16,7 @@ token missed.
 
 ## Indentation is measured in two-space levels
 
-Leading whitespace on a line must be an even number of spaces. One level is two spaces,
-and there are no half levels.
+Leading whitespace on a line must be an even number of spaces. One level is two spaces.
 
 ```zel expect=ok
 module Example exposing (describe)
@@ -49,10 +45,10 @@ f x =
 
 ## Tabs are legal only inside a comment
 
-A tab is an error anywhere in a source line except inside a comment. That is the whole
-rule: it does not matter whether the tab is indenting the line, separating two tokens, or
-sitting alone on a line that would otherwise be blank. Zelkova therefore takes no position
-on how wide a tab is, because no position in a program can depend on one.
+A tab is an error anywhere in a source line except inside a comment. It does not matter
+whether the tab is indenting the line, separating two tokens, or sitting alone on a line
+that would otherwise be blank. Zelkova therefore takes no position on how wide a tab is,
+because no position in a program can depend on one.
 
 A tab in a line's leading whitespace:
 
@@ -96,14 +92,13 @@ f x =
 
 ## A blank line is blank whatever spaces it holds
 
-A line holding only spaces is exempt from the even-width rule. A "blank" line carrying
-three spaces is still blank: it neither breaks the even-width rule nor closes any block.
+A line holding only spaces is blank whatever its width: it neither breaks the even-width
+rule nor closes any block.
 
 The blank line in the example below is not empty: it holds three spaces, which would be an
-odd-width indentation error on any line that had a token on it. That whitespace is
-load-bearing — it is what makes this block a test of the exemption rather than a
-restatement of the previous one, and stripping it (an editor "cleaning" trailing
-whitespace will) quietly turns this into an example that proves nothing.
+odd-width indentation error on any line that had a token on it. Stripping that whitespace,
+as an editor "cleaning" trailing whitespace will, turns the block into an example that
+proves nothing.
 
 ```zel expect=ok
 module Example exposing (f)
@@ -116,7 +111,7 @@ f x =
 
 The first **token** of a source file is the `module` keyword, and it sits in column 1. A
 comment may precede it — comments are consumed as part of the indentation scan, so they
-are invisible to this rule and a file may open with one:
+are invisible to this rule:
 
 ```zel expect=ok
 -- Comments before the header are fine.
@@ -127,8 +122,7 @@ f x =
 ```
 
 Whitespace before `module` is not. A leading space is invalid under this rule; a leading
-tab is invalid too, but as a tab (above) rather than under this rule — a different rule
-reaching the same verdict.
+tab is invalid too, but as a tab (above).
 
 The compiler does not enforce this rule as stated. An indented file holding a single
 declaration is accepted:
@@ -156,8 +150,7 @@ file must start at column 1". The diagnostic is bad in the way ERR-12 describes 
 lands on the later declaration and the message asks for `close block`, which the reader
 cannot write. It is tagged `expect=parse-error:UnexpectedToken`, naming that
 wrong-but-current error on purpose: when ERR-12 lands and the message becomes a real one,
-the block goes red, which is the point. The paragraph you are reading describes a
-diagnostic that will stop existing, and it should not be able to outlive it.
+the block goes red.
 
 ## Top-level declarations
 
@@ -176,9 +169,8 @@ second x =
   2
 ```
 
-Both halves of that are one fact seen from two sides, and one example pins both: a line
-written in column 1 where a continuation was meant closes the declaration, and the parser
-is then handed the end of a declaration whose body never arrived.
+A line written in column 1 where a continuation was meant closes the declaration, and the
+parser is then handed the end of a declaration whose body never arrived.
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing (f)
@@ -190,15 +182,13 @@ f x =
 There is no separator between declarations. Blank lines between them are conventional and
 carry no meaning.
 
-A declaration written as several clauses is no exception to any of this. Each clause begins in
-column 1 and so ends the one before it, exactly as the rule says; what makes them one
-declaration is that they share a name and stand together, which is
-[Declarations](declarations.md#the-clauses-stand-together)' rule rather than a layout one. See
-also [Patterns](patterns.md#a-pattern-that-can-fail-and-one-that-cannot).
+A declaration written as several clauses is no exception. Each clause begins in column 1
+and so ends the one before it; what makes them one declaration is that they share a name
+and stand together, which is [Declarations](declarations.md#the-clauses-stand-together)'
+rule rather than a layout one. See also
+[Patterns](patterns.md#a-pattern-that-can-fail-and-one-that-cannot).
 
 ## `case … of`
-
-This is where layout does its real work, and where most of the rules live.
 
 ### The scrutinee
 
@@ -224,7 +214,7 @@ describe f =
 
 When the block of branches opens, the first token after it sets the column that every
 branch in that block must start on. That column must be strictly deeper than the column of
-the `case` keyword itself: a branch level with `case`, or left of it, is not legal Zelkova.
+the `case` keyword itself.
 
 Branches may be written one per line:
 
@@ -256,9 +246,8 @@ describe f =
     Off -> 0
 ```
 
-A branch that starts **right** of it is equally an error. All branches of one `case … of`
-start on the same column; a deeper line that begins a new branch is a mistake, not a
-continuation of the branch above it:
+A branch that starts **right** of it is equally an error: a deeper line that begins a new
+branch is a mistake, not a continuation of the branch above it:
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing (describe)
@@ -276,9 +265,9 @@ describe f =
 **Known gap:** the compiler rejects that today, but for the wrong reason and with the wrong
 caret: layout has no rule for the deeper line, so it is absorbed into the previous branch's
 body and the grammar then trips on the second `->`.
-[`docs/tickets/err-11.md`](../tickets/err-11.md) tracks the diagnostic. As with the column-1
-rule above, the language's answer is unchanged by that ticket, and the block pins today's
-`UnexpectedToken` so this paragraph goes red along with it.
+[`docs/tickets/err-11.md`](../tickets/err-11.md) tracks the diagnostic. The language's
+answer is unchanged by that ticket, and the block pins today's `UnexpectedToken` so this
+paragraph goes red along with it.
 
 What the compiler does **not** enforce is the floor relative to `case` itself. It derives
 the branch block's minimum column from the enclosing block rather than from the `case`
@@ -299,7 +288,7 @@ describe f =
 
 **Known gap:** that file is invalid Zelkova; the `expect=ok` records what the compiler does,
 not what the language says. [`docs/tickets/bug-10.md`](../tickets/bug-10.md) tracks it, and
-this block goes red when it is fixed — which is the signal to come back and retag it.
+this block goes red when it is fixed.
 
 ### A branch body is deeper than its pattern
 
@@ -343,8 +332,7 @@ describe f =
 
 ### Nesting
 
-A `case … of` in a branch body follows the same rules relative to its own position, which
-is what makes the deeply-nested shapes in `std/core/src/Maybe.zel` legal:
+A `case … of` in a branch body follows the same rules relative to its own position:
 
 ```zel expect=ok
 module Example exposing (both)
@@ -383,12 +371,11 @@ f x =
 ```
 
 **Not implemented:** that example is tagged `expect=unimplemented`; it will go red the day
-`let` is implemented, which is the signal to come back and finish this section.
+`let` is implemented.
 
 **Not implemented:** the layout rules below are design intent, not something the compiler
 has ever checked. The bindings sit deeper than the `let`, and `in` closes the block. Two
-questions are **open**, and this chapter deliberately does not answer them — whether the
-bindings of a `let` form a block with the same column discipline as `case … of` branches, so
-that the first binding fixes the column for all of them; and whether `in` must align with
-its `let`. [`LANG-33`](../tickets/lang-33.md) answers both, as the first step of implementing
-`let … in`.
+questions are **open** — whether the bindings of a `let` form a block with the same column
+discipline as `case … of` branches, so that the first binding fixes the column for all of
+them; and whether `in` must align with its `let`. [`LANG-33`](../tickets/lang-33.md)
+answers both, as the first step of implementing `let … in`.

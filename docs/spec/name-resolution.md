@@ -41,8 +41,7 @@ boiling =
 ```
 
 `Celsius` is both a constructor of `Reading` and the name of a second type. The annotation
-`boiling : Reading` names a type and the body `Celsius` names a constructor; neither could have
-meant the other.
+`boiling : Reading` names a type and the body `Celsius` names a constructor.
 
 The one lowercase name that is not a value is a [type variable](#type-variables), which is not
 resolved against a namespace at all: it is bound by the declaration it appears in.
@@ -143,10 +142,9 @@ f label =
 
 `Widget.label` in that body still reaches the imported value, even though `label` alone means
 the parameter. A binding position binds bare names — a pattern has no way to write a dotted
-one — so nothing an inner scope does can change what a qualified name means. That makes it a
-reliable escape: it is the fix for a shadowed name and for an
-[ambiguous](#ambiguous-rather-than-unresolved) one, and it works without knowing what else is
-in scope.
+one — so nothing an inner scope does can change what a qualified name means. It is the fix for
+a shadowed name and for an [ambiguous](#ambiguous-rather-than-unresolved) one, and it works
+without knowing what else is in scope.
 
 ### A module has no prefix for itself
 
@@ -216,8 +214,7 @@ x =
 
 The rule holds for `exposing (..)`, which collides the same way a named entry does; the error
 is reported on the `import` line, there being no entry to point at. So a module gaining an
-export can break a file that imports it openly — the cost `(..)` already carries, and what it
-buys is that no name in a file is quietly two names.
+export can break a file that imports it openly.
 
 ```zel expect=ok package=clash
 module Other exposing (y)
@@ -333,9 +330,8 @@ x =
 ## Ambiguous rather than unresolved
 
 A name brought into scope unqualified by two different imports is not an error at either
-`import` line. It becomes one at each place the bare name is *written*, and only there, which
-is what lets a module import broadly and still be told precisely what went wrong. The report
-names both candidates, and the qualified spelling of either is the fix.
+`import` line. It becomes one at each place the bare name is *written*, and only there. The
+report names both candidates, and the qualified spelling of either is the fix.
 
 ```zel expect=ok package=ambiguous
 module Widget exposing (Size(..), label, one, add, (+))
@@ -391,8 +387,7 @@ x =
 ```
 
 The same rule holds in every namespace: two imports, one spelling, no reason to prefer either.
-A type and a constructor are ambiguous exactly as a value is, and `Widget.Size` and
-`Widget.Small` are the fixes.
+`Widget.Size` and `Widget.Small` are the fixes for a type and for a constructor.
 
 **Known gap:** ambiguity is detected for values only. A type, a constructor or an operator
 arriving from two imports is taken from whichever `import` line is written last, silently, so
@@ -412,7 +407,7 @@ y =
 
 An operator is the one case with no qualified spelling to fall back on —
 [`Widget.(+)` is not writable](modules.md#operators) — so the fix there is an edit to an
-`import` line: name what the file wants, rather than taking everything two modules have.
+`import` line: name what the file wants.
 
 ```zel expect=ok package=ambiguous
 module Third exposing (z)
@@ -429,15 +424,13 @@ z =
 
 Once ambiguity is an error, nothing about resolution depends on the order things are written
 in. [Declarations are unordered](declarations.md#declarations-are-unordered), and so are
-imports: reordering either never changes what a name in the file means. A file whose meaning
-turns on which of two lines came first is a file whose meaning cannot be read off the line in
-front of you.
+imports: reordering either never changes what a name in the file means.
 
 ## Type variables
 
 A [type variable](types.md#type-variables) is bound by the declaration it appears in, and by
-nothing outside it. No lowercase spelling is privileged — `a`, `number` and `comparable` are
-the same kind of name — so binding is all there is to say about where one means something.
+nothing outside it. No lowercase spelling is privileged: `a`, `number` and `comparable` are the
+same kind of name.
 
 In an annotation, every lowercase name is a variable of that annotation. Two annotations that
 happen to use the same letter share nothing:

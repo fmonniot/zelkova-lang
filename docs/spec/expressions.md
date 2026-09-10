@@ -4,9 +4,6 @@ An expression denotes a value. Every declaration's body is one, every argument t
 is one, and every branch of a `case` is one — there is no statement form anywhere in the
 language.
 
-That is what makes `if` require its `else`, and a `case` cover its type: a form that produced
-no value in some of its cases would not be an expression.
-
 ## The forms
 
 | Form | Written |
@@ -33,7 +30,7 @@ chapter.
 ## Literals
 
 A literal is an expression whose value is written out in full. The spelling of each is
-[Lexical structure](lexical-structure.md#literals)' subject; what a literal *means* is here.
+[Lexical structure](lexical-structure.md#literals)' subject.
 
 ### A literal's type is its spelling
 
@@ -54,12 +51,8 @@ An annotation cannot change that: a declaration annotated `Float` whose body is 
 error, and the fix is to write `1.0`. Arithmetic between the two is an error for the same
 reason.
 
-That strictness buys something: because a literal carries no constraint, nothing in the
-language defaults. There is no fallback rule for a reader to remember, and no class the
-compiler has to know by name. A literal that stood instead for a value in any type with a
-`Number` instance would put a conversion member on every such instance, and a call to it under
-every literal in every program — machinery, and invisible work at runtime, spread across the
-whole language.
+Because a literal carries no constraint, nothing in the language defaults: there is no fallback
+rule, and no class the compiler has to know by name.
 
 The cost lands in one place: inside a function constrained over a numeric class, a literal is
 already concrete, so it cannot be used at the constrained type:
@@ -103,8 +96,7 @@ greeting = "hello"
 A **variable** is a lowercase-initial name, optionally qualified by a module. A
 **constructor** is an uppercase-initial one, likewise qualifiable. Which module a name is
 looked up in, and what makes one ambiguous, is
-[Name resolution and scoping](name-resolution.md)' subject; this chapter needs only that both
-are expressions.
+[Name resolution and scoping](name-resolution.md)' subject.
 
 ```zel expect=ok
 module Example exposing (Shape, area, corners)
@@ -155,7 +147,7 @@ twice f x =
 
 **Application binds tighter than every other form.** An argument is therefore an *atomic*
 expression — a literal, a name, a parenthesised expression, or a tuple — and anything else has
-to be parenthesised. `f (f x)` above is not decoration: `f f x` would be `(f f) x`.
+to be parenthesised. `f (f x)` above needs its parentheses: `f f x` would be `(f f) x`.
 
 The same rule is why `if` and `case` need parentheses in argument position. `g if c then a
 else b` cannot be read as applying `g` to a conditional, because `g` claims `if` as its
@@ -205,9 +197,8 @@ triple a b c = (a, b, c)
 nested a b = ((a, b), b)
 ```
 
-A tuple has two or three elements only — see [Tuple types](types.md#tuple-types),
-which carries the reasoning. Four elements is a *syntax* error, caught before
-anything has to count them:
+A tuple has two or three elements only — see [Tuple types](types.md#tuple-types), which
+carries the reasoning. Four elements is a *syntax* error:
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing (f)
@@ -305,8 +296,8 @@ that could tell ([`TEST-2`](../tickets/test-2.md)) — so it pins the syntax onl
 ### Equal precedence, disagreeing associativity
 
 Two operators of the same precedence whose associativities disagree have no unambiguous
-grouping, and an expression that mixes them without parentheses is a syntax error. `non` is
-the case worth naming: an operator declared `non` does not chain with itself at all.
+grouping, and an expression that mixes them without parentheses is a syntax error. An operator
+declared `non` does not chain with itself at all.
 
 ```zel expect=ok
 module Example exposing ((==), eq, chain)
@@ -324,15 +315,13 @@ chain a b c =
 `a == (b == c)`. It is the one consequence of [`BUG-22`](../tickets/bug-22.md) a block can
 hold to account: fixing precedence makes this a parse error, and `expect=ok` goes red.
 
-Requiring the parentheses is what makes `non` mean something. Falling back to left-grouping
-would let `a == b == c` compile as `(a == b) == c` — comparing a boolean against `c` — which
-is a reading nobody intends and which the spelling gives no hint of.
+Falling back to left-grouping would let `a == b == c` compile as `(a == b) == c`, comparing a
+boolean against `c`.
 
 ### Prefix negation
 
-A `-` with no left operand available is **prefix negation** rather than subtraction. That is
-one rule and it has no exceptions, which means it reads off the text alone and never off the
-spacing.
+A `-` with no left operand available is **prefix negation** rather than subtraction. That rule
+has no exceptions: it reads off the text alone and never off the spacing.
 
 At the start of an expression there is no left operand, so `-` negates:
 
@@ -386,13 +375,12 @@ f g n =
   g -n
 ```
 
-The trap is real: reading `g -n` as an application would make meaning turn on spacing alone,
-which the rule above never does. Write `g (-n)` when an argument is what is meant.
+Reading `g -n` as an application would make meaning turn on spacing alone. Write `g (-n)` when
+an argument is what is meant.
 
 There is likewise no negative literal: `-1` is negation applied to the literal `1`. A
 [pattern](patterns.md#literal-patterns) carries its sign on the literal instead, because
-pattern syntax is closed and never looks an operator up — so the same three characters mean
-two different things in the two positions, deliberately.
+pattern syntax is closed and never looks an operator up.
 
 ## `if … then … else`
 
@@ -411,7 +399,7 @@ f c = if c then On
 ```
 
 Both arms are ordinary expressions, so an `else if` chain is nesting rather than a form of its
-own, and needs no separate rule:
+own:
 
 ```zel expect=ok
 module Example exposing (Flag, classify)
@@ -450,11 +438,10 @@ g c =
       On
 ```
 
-Extending rightward is the whole of the rule. An `if` used as an operator's right operand
-swallows everything after it, so `1 + if c then a else b` is `1 + (if c then a else b)` and
-never anything else — and, by the same rule, an `if` on the *left* of an operator swallows the
-operator too. `if c then 1 else 2 + 3` is `if c then 1 else (2 + 3)`, so parentheses are the
-only way to make an `if` a left operand.
+An `if` extends rightward as far as it can. Used as an operator's right operand it swallows
+everything after it, so `1 + if c then a else b` is `1 + (if c then a else b)`; by the same
+rule, an `if` on the *left* of an operator swallows the operator too. `if c then 1 else 2 + 3`
+is `if c then 1 else (2 + 3)`, so parentheses are the only way to make an `if` a left operand.
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing ((+), add, f)
@@ -646,8 +633,8 @@ f =
 ```
 
 A lambda's body extends as far to the right as it can, so `\x -> f x y` is `\x -> (f x y)` and
-a lambda used as an argument is parenthesised like any other non-atomic expression. A lambda can
-not span multiple lines, and a dedicated function must be used instead.
+a lambda used as an argument is parenthesised like any other non-atomic expression. A lambda
+cannot span multiple lines.
 
 ## Forms the compiler does not have
 

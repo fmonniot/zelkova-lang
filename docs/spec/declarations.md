@@ -45,10 +45,8 @@ invert flag =
 ```
 
 A value and a function are the same form, told apart only by whether any parameters were
-written. There is no keyword marking one or the other, and nothing in the language treats
-`origin` and `invert` differently for having been written with zero parameters and one. What a
-name is bound to is a question about its type, and the type is [written down
-separately](types.md#type-annotations).
+written, and no keyword marks one or the other. What a name is bound to is a question about its
+type, and the type is [written down separately](types.md#type-annotations).
 
 The body is an [expression](expressions.md), and it may be written on the same line as the
 `=` or on following lines, which must then be indented:
@@ -88,14 +86,13 @@ module Example exposing (add)
 
 An operator has no body of its own to bind. It is a name standing for a function that was
 declared the ordinary way, and the [`infix` declaration](#infix-declarations) below is what
-connects the two. Keeping the two separate is what lets an importing module name the operator
-without the function, which is [Modules](modules.md#operators)' subject.
+connects the two.
 
 ### Declarations are unordered
 
 The declarations of a module are all in scope throughout it, so a binding may name one written
-below it, and two bindings may name each other. Nothing has to be declared before it is used,
-and reordering a file's declarations never changes what it means.
+below it, and two bindings may name each other. Reordering a file's declarations never changes
+what it means.
 
 ```zel expect=ok
 module Example exposing (Flag, first)
@@ -110,9 +107,6 @@ first =
 second =
   On
 ```
-
-Mutual recursion depends on it: two top-level functions can name each other because neither
-has to come first.
 
 ### Parameters
 
@@ -178,9 +172,8 @@ type Flag
 f : Flag
 ```
 
-A [foreign](interop.md) facade is the one place this does not hold: a
-`module foreign` module is annotations with no bodies, because the bodies are in the
-companion file, and having none is what makes it a facade.
+A [foreign](interop.md) facade is the one place this does not hold: a `module foreign` module
+is annotations with no bodies, because the bodies are in the companion file.
 
 ## Clauses
 
@@ -207,7 +200,6 @@ can fail has to go in a `case`.
 of the construct: the clauses are tried in the order written, they must cover the type between
 them, and they are one binding position each.
 
-A declaration with one clause is the ordinary case rather than a degenerate multi-clause one.
 The rules on a binding's name, its parameters and its body are all rules about a clause, and
 each holds whether a declaration has one clause or several.
 
@@ -227,15 +219,13 @@ f On = Off
 f Off On = On
 ```
 
-This holds with or without an annotation, and it is checked against the clauses themselves
-rather than against the annotation — which is why the block above is rejected although it has
-nothing to disagree with.
+The check is against the clauses themselves rather than against the annotation, so the block
+above is rejected although it has no annotation to disagree with.
 
 ### The clauses stand together
 
 A declaration's clauses are consecutive: nothing may come between them but blank lines and
-comments. A clause written apart from its siblings is not a late addition to that declaration
-— it is an error.
+comments. A clause written apart from its siblings is an error.
 
 ```zel expect=canonical-error:MultipleBindingsUnsupported
 module Example exposing (Flag, invert)
@@ -260,10 +250,8 @@ one clause at all. Clauses are gathered by name from anywhere in the module, so 
 are supported the block above would be accepted
 ([`docs/tickets/lang-26.md`](../tickets/lang-26.md)).
 
-Order among the clauses decides which one is tried first, so a clause is not something a
-reader can afford to find by searching. Requiring them to stand together is what makes a
-declaration a thing one can read: its name appears once, in one place, with every case it
-handles beneath it.
+Order among the clauses decides which one is tried first, so a clause is not something a reader
+can afford to find by searching.
 
 ## `infix` declarations
 
@@ -304,9 +292,9 @@ add a b =
   a
 ```
 
-Neither part may be left out. There is no default associativity and no default precedence,
-because an operator missing one would group differently in every expression that mixed it with
-a different neighbour, and the reader would have to know a convention the source never states.
+Neither part may be left out: there is no default associativity and no default precedence. An
+operator missing one would group differently in every expression that mixed it with a different
+neighbour.
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing ((+), add)
@@ -323,8 +311,7 @@ What each associativity does to an expression is
 ### Precedence is 0 through 9
 
 A precedence is a single decimal digit: `0` binds loosest, `9` tightest. Ten levels is enough
-to place every operator a program declares against the ones it imports, and holding the whole
-range to one character is what lets a table of operators be read down its columns.
+to place every operator a program declares against the ones it imports.
 
 ```zel expect=ok
 module Example exposing ((^), pow)
@@ -418,8 +405,7 @@ at 7 ([`docs/tickets/lang-27.md`](../tickets/lang-27.md)).
 
 ## Where a declaration may appear
 
-At the top level of a module, and nowhere else. A declaration's enclosing construct is always
-the module.
+At the top level of a module, and nowhere else.
 
 **Not implemented:** `let … in` introduces bindings local to an expression. The construct does
 not exist yet; see [Layout](layout.md#let--in) for what its declarations will be laid out
