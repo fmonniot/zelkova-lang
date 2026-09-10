@@ -5,8 +5,7 @@ a **layout** pass inserts block markers by looking at where each line starts
 ([Layout](layout.md)); a **grammar** assembles tokens into declarations. This chapter is the
 first stage: what the characters of a file mean, before any structure is imposed on them.
 
-Zelkova takes its surface syntax from Elm. Every rule below is stated here in full: where the
-two differ, and where Elm never wrote a rule down, this is the answer.
+Zelkova takes its surface syntax from Elm. Every rule below is stated here in full.
 
 ## Source text
 
