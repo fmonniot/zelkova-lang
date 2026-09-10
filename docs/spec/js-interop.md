@@ -248,9 +248,7 @@ it](packages.md#what-a-package-exposes). A package offers an effect to its depen
 offers any other JavaScript-backed value: an ordinary module imports the facade and re-declares
 what it offers.
 
-**`Task` may appear only as the whole of a result type.** Not as an argument; and not nested
-inside another type, since `(Task Int, Task Int)` describes no single piece of work for the
-wrapper to build.
+**`Task` may appear only as the whole of a result type.** Not as an argument; and not nested inside another type.
 
 **A failure the caller is meant to tell apart from a broken companion goes in the payload.**
 `Failure` reports that the JavaScript broke and says nothing about what the effect was for. A
