@@ -3,12 +3,11 @@
 Every Zelkova source file is exactly one module, and every module is exactly one source
 file. A module names itself, says which of its declarations the rest of the world may
 see, and names the other modules it draws on. Those three things are the module header
-and the `import` declarations under it, and they are what this chapter specifies.
+and the `import` declarations under it.
 
 There is no other unit of encapsulation. Zelkova has no nested modules, no namespaces
-within a file, and no way to reopen a module from somewhere else — which means the
-questions "where does this name come from" and "who is allowed to use this" both have
-answers a reader can find by looking at the top of one file.
+within a file, and no way to reopen a module from somewhere else — so "where does this
+name come from" and "who is allowed to use this" are both answered at the top of one file.
 
 ## The module header
 
@@ -179,10 +178,9 @@ module Widget exposing (label,)
 label = 1
 ```
 
-This is a deliberate divergence — most languages of this family reject it — and it is
-here for one reason: a one-name-per-line `exposing` list is the normal way to write a
-long one, and with no trailing comma every addition to the end of such a list touches
-two lines instead of one.
+This is a deliberate divergence — most languages of this family reject it. A
+one-name-per-line `exposing` list is the normal way to write a long one, and with no
+trailing comma every addition to the end of such a list touches two lines instead of one.
 
 `(..)` is all or nothing. It cannot be combined with named entries:
 
@@ -196,8 +194,7 @@ label = 1
 
 Every entry in a module's own `exposing` list names one of that module's declarations.
 A module may not re-export something it imported: a name that reaches other modules
-through `Widget` is a name `Widget` declared, which is what keeps "where does this come
-from" answerable by reading one header.
+through `Widget` is a name `Widget` declared.
 
 **Known gap:** the first and the last of the three blocks below should both be rejected —
 the first exposes a name nothing declares, the last exposes one it only imported. Today
@@ -231,8 +228,7 @@ import Widget exposing (label)
 ### Exposing is what other modules can see
 
 A module's `exposing` list is the complete list of what any other module may reach,
-qualified or not. A declaration left out of it is private to the module: invisible to
-every importer, under every spelling.
+qualified or not. A declaration left out of it is private to the module.
 
 **Known gap:** it is not enforced. `Module::to_interface` builds the view other modules
 import against out of every top-level declaration, ignoring the `exposing` list entirely,
@@ -266,8 +262,8 @@ cross the boundary. A top-level declaration written without a type annotation is
 when the module's interface is built, so importers cannot see it at all, and the
 diagnostic they get says the name does not exist rather than saying why
 ([`docs/tickets/bug-14.md`](../tickets/bug-14.md)). Annotating `label` in the first block
-below makes the second compile. Note that the first block is not valid Zelkova either way:
-an exposed declaration [must be annotated](types.md#an-exposed-declaration-must-be-annotated),
+below makes the second compile. The first block is not valid Zelkova either way: an
+exposed declaration [must be annotated](types.md#an-exposed-declaration-must-be-annotated),
 and enforcing that rule is what removes this gap — the error moves to the declaration that
 failed to describe itself, instead of landing on the importer.
 
@@ -295,8 +291,8 @@ import <ModuleName> [as <Alias>] [exposing (<list>)]
 ```
 
 The order is fixed: the module name, then `as`, then `exposing`. Writing them the other
-way round is a syntax error rather than a tolerated variation, so there is one shape for
-an `import` line and a reader scanning a column of them is never re-reading one:
+way round is a syntax error, so there is one shape for an `import` line and a reader
+scanning a column of them is never re-reading one:
 
 ```zel expect=parse-error:UnexpectedToken
 module Main exposing (x)
@@ -342,8 +338,7 @@ x = Widget.label
 
 An alias **replaces** the module's own name rather than adding to it. After
 `import Widget as W`, `W.label` resolves and `Widget.label` does not — there is one
-spelling for one module in one file, and a reader never has to check whether two
-prefixes mean the same thing:
+spelling for one module in one file:
 
 ```zel expect=ok package=alias
 module Widget exposing (Size, label)
@@ -377,8 +372,7 @@ y = Widget.label
 **Not implemented:** every `import` in a file sits between the module header and the
 first other declaration. An import after a value, type or `infix` declaration is a syntax
 error. The list of what a module depends on is a property of the module rather than of
-the point it is written at, and putting it in one place at the top is what lets a reader
-find it without reading the file.
+the point it is written at.
 
 **Known gap:** the grammar treats `import` as an ordinary top-level declaration and
 accepts one anywhere among the others, which is what the second block below shows
@@ -547,8 +541,7 @@ An operator has no qualified spelling: `Widget.(+)` is a syntax error, and `Widg
 not a qualified operator either — it is the constructor `Widget` and an operator named
 `.+`. So an operator entry in an import's `exposing` list is the only way to use one from
 another module. Naming the operator is enough on its own: the function that its `infix`
-declaration points at need not be in scope, and the operator means the same thing either
-way.
+declaration points at need not be in scope.
 
 **Known gap:** it does depend on that function being in scope today. An operator is
 resolved by looking up the name its `infix` declaration gives, unqualified, in the
@@ -595,8 +588,7 @@ y = one + one
 
 A name brought in unqualified by two different imports is not an error at the `import`
 line — it becomes one at each place it is *used*, and only there. Importing two modules
-that both expose `label` is fine right up until something writes `label`, which is what
-lets a module import broadly and still be told precisely what went wrong.
+that both expose `label` is fine right up until something writes `label`.
 
 ```zel expect=ok package=ambiguous
 module Widget exposing (Size, label)
@@ -633,8 +625,7 @@ the general rule lives, including what shadows what.
 
 A module may be imported at most once in a file, an alias may name at most one module,
 and an alias may not collide with the name of another imported module. Each of the three
-would otherwise let one prefix mean two things at once, and the reader has no way to see
-that from the line in front of them.
+would otherwise let one prefix mean two things at once.
 
 **Not implemented:** none of the three is checked at the `import` line
 ([`docs/tickets/lang-7.md`](../tickets/lang-7.md)), and the two that quietly succeed are
