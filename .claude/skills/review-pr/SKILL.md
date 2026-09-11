@@ -128,6 +128,14 @@ Single message, multiple `Agent` calls. For each:
 > and `gh pr view <PR> --repo fmonniot/zelkova-lang --json headRefName,headRefOid` for the head
 > SHA needed for inline comments.
 >
+> Check `gh pr diff <PR> --repo fmonniot/zelkova-lang --name-only` for paths under `docs/spec/`
+> or `docs/decisions/`. Ticket work regularly edits a spec chapter to fix a gap it found, and
+> that prose is held to the same bar as everything else in the diff. If any such path is
+> touched, read `docs/spec/conventions.md` in full before reviewing those files — it is the
+> ruleset, not just the `expect=` vocabulary table — and run `cargo test --test spec` in your
+> worktree, which is the authoritative check for every example, anchor and relative link under
+> both trees.
+>
 > **What this project is.** Zelkova is a compiler for an Elm-like language, written in Rust as a
 > learning project. It has no users, no network surface, no untrusted input — its input is
 > `.zel` source files the author wrote. A security finding is almost never the right frame here;
@@ -148,6 +156,19 @@ Single message, multiple `Agent` calls. For each:
 > - **A `grammar.lalrpop` change without its `parser` AST and `canonical` conversion
 >   counterparts.** These three must move together; split across commits, the tree either does
 >   not build or silently drops a construct.
+> - **Spec or decision prose that deviates from `docs/spec/conventions.md`, wherever the diff
+>   touches `docs/spec/` or `docs/decisions/`.** Check it against: the `expect=` tag on every
+>   fenced ` ```zel ` block, and whether it's the right tag for the claim being made; the three
+>   load-bearing lead-ins — **Known gap:**, **Not implemented:**, **Provisional:** — used only
+>   where they belong and never reworded; the wording rules in *The words a chapter uses*
+>   (`must`/`cannot`/`may not`/`is an error` for a rule, `should` reserved for the compiler
+>   being at fault, never RFC-2119 style guidance); and the patterns *The sentences a chapter
+>   does not need* forbids — throat-clearing openers, decorative negation tails
+>   (`rather than`/`not as`/`instead of`), self-restating closers, commentary on the document,
+>   reassurance after a cost, defensive justification, repeated templates, duplicated
+>   conclusions across sections. A chapter edit that fixes the compiler behaviour it documents
+>   in the same diff is `[blocking]` on its own account — *A spec change and a semantics change
+>   do not share a diff* forbids exactly that, independent of whether the fix itself is correct.
 > - **Tests that pin nothing.** Ask, per new test: if I reverted the one line that constitutes
 >   the fix, would this test go red? An assertion of `is_err()` where the point was *which*
 >   error is raised, an assertion that holds trivially because of ordering elsewhere, one the

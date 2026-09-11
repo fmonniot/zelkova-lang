@@ -140,6 +140,15 @@ round trip on its first turn.
 > 3. Explore the relevant files and confirm the current state before editing. The ticket was
 >    written at some point in the past and the tree has moved since; if what you find
 >    contradicts the ticket, say so in the PR body rather than quietly working around it.
+>
+>    If the fix changes behaviour a spec chapter already describes — a block tagged
+>    `expect=parse-error:Reason` or similar, pinning the *current* wrong error, or prose under a
+>    **Known gap:** or **Not implemented:** paragraph — that block goes red once you fix it.
+>    Read `docs/spec/conventions.md`'s *Tag every claim the chapter makes* section and update
+>    that chapter's prose to describe the new behaviour, in the same commit. Only the prose
+>    describing today's diagnostic changes; the rule itself does not — `docs/spec/` is the
+>    normative record of what the language *is*, and a spec change belongs there only when the
+>    ticket is actually about the language, not as a side effect of a compiler fix.
 > 4. Implement it, scoped to `<ID>`. If you find a second, unrelated problem on the way, do not
 >    fix it — note it in your final report so it can be filed as its own ticket. Widening the
 >    diff is the failure mode this ticket system exists to prevent.
