@@ -303,3 +303,4 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |
 | [TEST-3](test-3.md) | task | — | open | A `.mjs` companion's test file has no harness in CI, and no documented way to discover it |
+| [TEST-4](test-4.md) | task | — | open | A facade's `.mjs` companion test lives in the compiler repo, not in the package that ships the companion |
