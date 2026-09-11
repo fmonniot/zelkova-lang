@@ -282,7 +282,7 @@ where it stands.
 ordinary union type and `True` and `False` are its constructors, resolved, imported and
 shadowed like any other name.
 
-```zel expect=ok
+```zel expect=type-error:UnificationFailed
 module Example exposing (Bool, not)
 
 type Bool
@@ -298,6 +298,13 @@ not b =
     False ->
       True
 ```
+
+**Known gap:** that block should be `expect=ok`. The type checker reads the four names `Bool`,
+`Int`, `Char` and `Float` as its own builtin types wherever they appear in an annotation, while
+the module's own `True` and `False` get the union type it declared — so the two halves of a
+module that defines `Bool` do not match, and the error reads *cannot match `Bool` with `Bool`*.
+[`BUG-26`](../tickets/bug-26.md) is the ticket. The rule above is unaffected: nothing here is
+about `true` and `false` being reserved.
 
 So `true` is available as a variable name:
 

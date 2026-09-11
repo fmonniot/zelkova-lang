@@ -38,8 +38,8 @@ its body needs from its scope, and says nothing about whether two such values, b
 same partial application, are one value or two — committing to "one" would be a real
 strengthening of that section, and this decision leaves it unmade.
 
-Nothing outside this decision checks either half of it: the spec harness compiles and
-canonicalizes modules and observes nothing about a running program's memory, and
-[`TEST-2`](../tickets/test-2.md) is the ticket for the runtime that would let it. Whether a code
-generator honours the sharing promise is [`GEN-1`](../tickets/gen-1.md)'s problem, on the same
-terms as every other rule this directory hands it unenforced today.
+Nothing outside this decision checks either half of it: the spec harness type checks the
+modules it reads and observes nothing about a running program's memory, and no program runs at
+all until there is a code generator. Whether one honours the sharing promise is
+[`GEN-1`](../tickets/gen-1.md)'s problem, on the same terms as every other rule this directory
+hands it unenforced today.

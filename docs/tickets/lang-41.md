@@ -60,7 +60,9 @@ deleting the variant and the spelling with it.
 grammar would accept as a type variable, which is the assertion ERR-13 asked for, surviving
 into this ticket. `cargo run` still prints `parsed 8 modules` and lists all eight as checked.
 
-**This gap has no red test behind it.** The spec harness stops at canonicalization
-([TEST-2](test-2.md)), so the `**Known gap:**` paragraph in
+**This gap has no red test behind it.** No block demonstrates the acceptance, so the
+`**Known gap:**` paragraph in
 [`docs/spec/expressions.md`](../spec/expressions.md)'s *A literal's type is its spelling*
-section is not held to account by any block and has to be deleted by hand when this lands.
+section has to be deleted by hand when this lands. The harness runs the type checker, so a
+block annotated `Float` with a body of `1` and tagged `expect=ok` would go red on the day this
+ticket lands — adding one is a cheaper acceptance than remembering the paragraph.

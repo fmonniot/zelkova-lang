@@ -9,13 +9,6 @@ expressions: the annotation `name : Type`, and the `type` declaration that intro
 type. The neighbouring [Declarations](declarations.md) chapter covers value and function
 bindings and `infix` declarations, and refers here for these two.
 
-**Not implemented:** `cargo test --test spec` runs each example through the
-parser and canonicalization and stops; it never invokes the type checker. So a claim about what
-the *type checker* does — the annotation rules in [An annotation is a promise](#an-annotation-is-a-promise)
-— is prose here rather than an executable example, and a block that ought to be a type error is
-tagged `expect=ok` because that is what the harness sees. Each such place says so.
-[`docs/tickets/test-2.md`](../tickets/test-2.md) is the ticket to close that hole.
-
 ## The forms of a type expression
 
 There are six, and nothing else is a type:
@@ -93,11 +86,11 @@ universally quantified over the declaration it appears in: a variable in an anno
 *the caller chooses*, and the declaration must work for every choice.
 
 ```zel expect=ok
-module Example exposing (first)
+module Example exposing (constant)
 
-first : (a, b) -> a
-first p =
-  p
+constant : a -> b -> a
+constant x y =
+  x
 ```
 
 Nothing distinguishes one lowercase spelling from another: `celsius` is a type variable in
@@ -229,6 +222,26 @@ type Size
 
 sized : Maybe Size
 sized = Just Small
+```
+
+So `Maybe Size` and `Maybe Other` are two types, and one does not stand in for the other. The
+arguments are what separates them: the head is the same name in both.
+
+```zel expect=type-error:UnificationFailed
+module Example exposing (Maybe, Size, Other, mismatched)
+
+type Maybe a
+  = Just a
+  | Nothing
+
+type Size
+  = Small
+
+type Other
+  = First
+
+mismatched : Maybe Size
+mismatched = Just First
 ```
 
 ## The function arrow
@@ -421,13 +434,9 @@ f x =
 **Known gap:** that block should be rejected and is accepted. The annotation's type variables
 become ordinary unification variables, so `a` is quietly solved to `Size` and the type the
 compiler works with is not the one written in the file
-([`docs/tickets/lang-12.md`](../tickets/lang-12.md)).
-
-**This gap has no red test**, for the same reason as the one under
-[An applied type still means what it says](#an-applied-type-still-means-what-it-says): the
-harness stops before the type checker ([`docs/tickets/test-2.md`](../tickets/test-2.md)), and
-this block canonicalizes cleanly either way. The paragraph above has to be deleted by hand when
-the ticket lands.
+([`docs/tickets/lang-12.md`](../tickets/lang-12.md)). Its `expect=ok` tag is what the type
+checker does today: the block goes red the day that ticket lands, and this paragraph goes with
+it.
 
 An annotation *more* specific than the body would allow is ordinary and useful: it is how a
 general function is given a narrower published type.
@@ -466,7 +475,7 @@ spaced : Size
 spaced = Small
 ```
 
-```zel expect=ok
+```zel expect=type-error:UnificationFailed
 module Example exposing (Size, Other, ambiguous)
 
 type Size
@@ -480,11 +489,14 @@ ambiguous : Other
 ambiguous = Small
 ```
 
-**Known gap:** all three blocks should be rejected and all three are accepted. Declarations are
-grouped by name into a map with their order thrown away, so an annotation may sit anywhere
-among the top-level declarations — and, position being gone entirely, a blank line between an
-annotation and its declaration is not noticed either. When a name carries two annotations the
-**last** silently wins: the third block above is checked against `Other`, not against `Size`
+**Known gap:** all three blocks should be rejected here, and the rule none of them breaks is
+the one the compiler enforces. Declarations are grouped by name into a map with their order
+thrown away, so an annotation may sit anywhere among the top-level declarations — and,
+position being gone entirely, a blank line between an annotation and its declaration is not
+noticed either. The first two blocks are accepted outright. The third is rejected, but for the
+wrong reason: when a name carries two annotations the **last** silently wins, so `ambiguous` is
+checked against `Other`, the body `Small` disagrees with it, and what the reader sees is a type
+mismatch rather than a repeated annotation
 ([`docs/tickets/lang-11.md`](../tickets/lang-11.md)).
 
 A [foreign](interop.md) facade is the one place an annotation stands alone: a

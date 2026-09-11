@@ -36,8 +36,9 @@ notices — which is the failure mode this directory exists to prevent: document
 nothing checks drifts from the code it describes, silently and indefinitely.
 
 A tag says what the compiler is expected to do with the block: compile it, reject it in the
-parser, reject it in canonicalization, or fail because the construct does not exist yet. An
-untagged block is a hard test failure rather than a silent skip.
+parser, reject it in canonicalization, reject it in the type checker, or fail because the
+construct does not exist yet. An untagged block is a hard test failure rather than a silent
+skip.
 [Conventions](conventions.md#the-expect-vocabulary) has the full vocabulary, along with the
 `package=` label that lets one chapter compile two modules together.
 

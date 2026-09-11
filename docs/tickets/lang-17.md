@@ -33,10 +33,10 @@ fails to resolve for an unrelated reason, which is the closest thing to a diagno
 Found while writing [`docs/spec/patterns.md`](../spec/patterns.md) (`SPEC-7`).
 
 **Approach:** check in `Pattern::from_parser`, not in the typer. Canonicalization already has
-the resolved `TypeConstructor` and therefore `type_parameters.len()` in hand, and it is the
-phase whose errors the spec harness can hold to account — a check that lives only in the typer
-leaves the chapter's block green, because `tests/spec.rs` stops at canonicalization
-([TEST-2](test-2.md)).
+the resolved `TypeConstructor` and therefore `type_parameters.len()` in hand, so the check
+needs nothing the typer would have to be taught. Either phase can be held to account by the
+spec harness — `expect=canonical-error:` and `expect=type-error:` both exist — so pin whichever
+one it lands in.
 
 Add a `canonical::Error` variant carrying the constructor's `QualName`, the expected and given
 counts, and the pattern's `NodeSpan` — which already covers the constructor and its arguments.

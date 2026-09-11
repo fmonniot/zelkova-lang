@@ -111,11 +111,10 @@ LANG-40  the solver: obligations are collected, deferred and discharged
   │        variables a constrained declaration proves `Comparable Int`
   │        and publishes `Comparable a` — strictly weaker than its own
   │        signature, and nothing downstream notices.
-  │      ← TEST-2 gates this one specifically, not the chapter: nothing
-  │        about a class parses yet, so today's spec examples are all
-  │        `expect=unimplemented`. They want `expect=type-error` once
-  │        LANG-40 lands, and the spec harness stops at canonicalization
-  │        until TEST-2 extends it.
+  │      ← the spec harness runs the type checker (TEST-2), so the
+  │        chapter's examples — all `expect=unimplemented` today, since
+  │        nothing about a class parses — can be retagged
+  │        `expect=type-error` as this lands.
   │
   └── LANG-42  `std/core` declares Eq, Comparable, Number, Appendable
                  ← needs LANG-41, which is independent of this order
@@ -191,6 +190,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-23](bug-23.md) | bug | medium | open | An `else` does not close a `case` block, so a `case` in a `then` arm is a layout error |
 | [BUG-24](bug-24.md) | bug | medium | open | Two `.mjs` companions call helpers no file defines, so `modBy 0` and comparing functions are `ReferenceError`s |
 | [BUG-25](bug-25.md) | bug | medium | open | Three of the four `Float -> Int` conversions never wrap, so `round nan` and `round 1.0e20` are not `Int`s |
+| [BUG-26](bug-26.md) | bug | medium | open | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -300,4 +300,4 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TIDY-6 | task | — | closed 2026-08-26 | Stale doc comment on `canonical_type_to_typer_type` |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
-| [TEST-2](test-2.md) | task | — | open | The spec harness stops at canonicalization, so no chapter can pin a type error |
+| TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |

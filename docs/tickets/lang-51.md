@@ -38,11 +38,11 @@ it is used at is known, and to report an error naming the accessor when nothing 
 means the accessor's constraint is solved late rather than being an ordinary equation. `Origin`
 and `Reason` gain a case for it, so the caret lands on the accessor.
 
-**No red block, and that is the point of saying so.** The spec harness stops at canonicalization
-([`TEST-2`](test-2.md)), so every block this ticket makes correct is already green after
-[`LANG-48`](lang-48.md) and [`LANG-50`](lang-50.md) land. The **Known gap:** paragraphs those two
-tickets attach — on the order-insensitivity block and the field-adding update — have nothing
-holding them to account and must be **deleted by hand** when this lands. Grep
+**The blocks this makes correct are held to account, as long as they are tagged `expect=ok`.**
+The spec harness type checks every `expect=ok` block, so a block that ought to be a type error
+and is not one goes red the day this ticket lands. The **Known gap:** paragraphs
+[`LANG-48`](lang-48.md) and [`LANG-50`](lang-50.md) attach — on the order-insensitivity block
+and the field-adding update — are what that red block asks you to delete. Grep
 [Records](../spec/records.md) for `LANG-51` before closing.
 
 **Acceptance:** `tests/typer.rs` cases for a record's inferred type, for the two spellings of one

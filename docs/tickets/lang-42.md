@@ -89,5 +89,5 @@ lists all eight as checked. `docs/tickets/bug-20.md` is deleted and its row tomb
 The blocks in `docs/spec/type-classes.md` showing a constrained standard-library signature go
 from `expect=unimplemented` to `expect=ok`, and their
 `**Not implemented:**` paragraphs are deleted. If that chapter has not been written when this
-ticket lands, say so in the PR rather than skipping the clause: it means `TEST-2` and `SPEC-12`
-fell behind the compiler work and the mechanism has shipped unspecified.
+ticket lands, say so in the PR rather than skipping the clause: it means the chapter fell
+behind the compiler work and the mechanism has shipped unspecified.

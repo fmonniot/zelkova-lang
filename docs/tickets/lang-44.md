@@ -49,9 +49,9 @@ test module assert the resulting `ExpressionKind` nesting, and a canonicalizatio
 the `Cons`/`Nil` chain rather than only that it succeeded. The three `expect=unimplemented`
 blocks in [Lists](../spec/lists.md#list-literals) go red — that tag's whole job — and are
 retagged `expect=ok`; so does the `mixed` block in
-[The type](../spec/lists.md#the-type), which becomes an `expect=ok` carrying a **Known gap:**
-paragraph naming [`TEST-2`](test-2.md), because the type error that ought to reject it is past
-where the spec harness stops. The `[1, 2,]` block is already `expect=parse-error` and stays
+[The type](../spec/lists.md#the-type), which becomes an `expect=type-error` — the harness runs
+the type checker, so the error that ought to reject it is one the block can pin. The `[1, 2,]`
+block is already `expect=parse-error` and stays
 green; its **Not implemented:** paragraph is what changes, because after this the block is
 rejected for the reason it illustrates.
 

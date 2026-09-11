@@ -42,8 +42,8 @@ under the record.
 **Acceptance:** every `expect=unimplemented` block in [Records](../spec/records.md) that shows a
 record type, a record or an update goes red — that tag's whole job — and is retagged `expect=ok`,
 except those [Records](../spec/records.md#a-record-type-is-a-set-of-fields) marks as rejected by
-the typer, which become `expect=ok` carrying a **Known gap:** naming [`LANG-51`](lang-51.md) and
-[`TEST-2`](test-2.md). A repeated label is a `canonical-error:` block. The trailing-comma block in
+the typer, which become `expect=ok` carrying a **Known gap:** naming [`LANG-51`](lang-51.md).
+A repeated label is a `canonical-error:` block. The trailing-comma block in
 [Building a record](../spec/records.md#building-a-record) stays `expect=parse-error` and its
 **Not implemented:** paragraph goes, because after this it is rejected at the comma it
 illustrates. Parser tests assert the `TypeKind`/`ExpressionKind` shape, not only that it parsed.
