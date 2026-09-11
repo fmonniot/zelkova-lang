@@ -131,10 +131,11 @@ question would be a large decision taken as a side effect of a small one; and it
 released program with precisely the undefined behaviour this rule exists to remove, at the one
 moment it is least observable.
 
-So every value entering Zelkova from a companion is checked. `BUG-20` was the case that motivated
-both halves of this entry: `_Utils_cmp`, handed a value of a user union type, used to read three
-fields that are not there and return a comparison of nothing against nothing, before it was made
-to fail loudly instead. That it can be *called* that way at all is decision 2's business, and
+So every value entering Zelkova from a companion is checked. [`BUG-20`](../tickets/bug-20.md) is
+the case that motivates both halves of this entry: `_Utils_cmp`, handed a value of a user union
+type, read three fields that are not there and returned a comparison of nothing against nothing,
+until it was made to refuse such a value instead. That it can still be *called* that way is
+decision 2's business, and
 [`LANG-43`](../tickets/lang-43.md)'s to fix; what decision 4 adds is the other end — a companion
 returning a value its declared type does not describe is caught where it crosses rather than
 believed by everything downstream. The work is [`GEN-2`](../tickets/gen-2.md), a sibling of

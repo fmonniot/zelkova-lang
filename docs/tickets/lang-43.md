@@ -64,12 +64,13 @@ you have seen it fail*).
 
 **Interactions:**
 
-- **`BUG-20`** was the worked consequence of the gap this closes: `Js.Utils`'s six comparison and
-  append facades declaring a type their JavaScript cannot honour. It closed on its runtime half
-  alone — `_Utils_cmp` and `append` now fail loudly on a value they cannot compare or append,
-  rather than returning nonsense — and this ticket is the other half, rejecting the same six
-  signatures for admitting a bare type variable in the first place. Expect to read its closing
-  diff while doing step 4.
+- **[`BUG-20`](bug-20.md)** is the worked consequence of the gap this closes, and this ticket does
+  not close it. `BUG-20` is `Js.Utils`'s six comparison and append facades declaring a type their
+  JavaScript cannot honour, and its acceptance is about `_Utils_cmp` and `append` failing loudly
+  rather than returning nonsense. Step 4 above rewrites those signatures, which removes the
+  particular over-promise `BUG-20` describes — but the runtime half of that ticket, the `.mjs`
+  rejecting a value it cannot compare, is untouched and is what its acceptance names. Expect to
+  read `BUG-20` while doing step 4; do not mark it done.
 - **`BUG-17`** used to cap what step 2 could check and is fixed. A type application's arguments
   were discarded when its head resolved, so an argument reached the walk as nothing at all and
   an inadmissible one was invisible. Arguments now survive canonicalization, so the
