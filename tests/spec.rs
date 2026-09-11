@@ -1978,12 +1978,91 @@ fn unimplemented_block_that_compiles_is_a_failure() {
     let block = only_block("unimplemented_block_that_compiles.md");
     assert_eq!(block.expect, Ok(Expect::Unimplemented));
     match evaluate(&block) {
-        Verdict::Fail(_) => {}
+        Verdict::Fail(reason) => assert!(
+            reason.contains("compiled cleanly"),
+            "the failure has to claim the whole pipeline, not just the two phases \
+             that used to run — got {:?}",
+            reason
+        ),
         _ => panic!(
             "an `expect=unimplemented` block that compiles cleanly must fail, \
              not pass silently"
         ),
     }
+}
+
+/// A failure in the **typer** satisfies `expect=unimplemented`, the same way a failure
+/// in the parser or in canonicalization does.
+///
+/// This is a deliberate broadening and it has a cost worth naming, which is why it gets
+/// a test of its own rather than riding on a chapter block. Before `TEST-2` the tag went
+/// red the moment its construct parsed and canonicalized; it now stays green if the
+/// block is rejected anywhere, including for a type error unrelated to the feature the
+/// chapter says is missing. `BUG-26` is a live example of such an incidental error, and
+/// the day `LANG-48` lands a `records.md` block carrying one would stay green as
+/// `unimplemented` instead of announcing that records arrived.
+///
+/// It is still the right reading: `expect=ok` now means "and type checks", so the tag
+/// that is its negation has to mean "and is not rejected by the typer either", or a
+/// block would exist that satisfies neither. What keeps the cost bounded is that the
+/// harness prints the error it observed on every expected failure, so the phase and the
+/// reason are in the run output for a reviewer to eyeball against the chapter's claim.
+///
+/// Pins: `tests/fixtures/spec/type_error_unification.md`, retagged `expect=unimplemented`
+/// in memory — its module canonicalizes cleanly and only the typer rejects it, so it
+/// reaches this branch and nothing earlier. Neutralised by making `evaluate`'s
+/// `Expect::Unimplemented` arm report `Verdict::Fail` on a type error rather than
+/// `Verdict::Pass` — which is what it did before `TEST-2`: with that change this goes
+/// red. Restored afterwards.
+#[test]
+fn unimplemented_block_may_fail_in_the_typer() {
+    let mut block = only_block("type_error_unification.md");
+    block.expect = Ok(Expect::Unimplemented);
+    match evaluate(&block) {
+        Verdict::Pass => {}
+        Verdict::Fail(reason) => panic!(
+            "a block only the typer rejects must satisfy `expect=unimplemented`, \
+             got {:?}",
+            reason
+        ),
+        Verdict::Fragment => panic!("`expect=unimplemented` is not a fragment"),
+    }
+}
+
+/// The same, inside a `package=` group: `evaluate_group` reads the typer's verdict from
+/// its own `type_failures` map rather than from `check_in_order`'s errors, so it needs
+/// its own branch and its own test.
+///
+/// Pins: `tests/fixtures/spec/package_group_type_error.md` with `Widget` retagged
+/// `expect=unimplemented` in memory. `Widget` canonicalizes, publishes its interface and
+/// fails only the typer; `Main` imports it and must stay green, which is what separates
+/// this from the single-block case. Neutralised by deleting the
+/// `(Expect::Unimplemented, None) if !type_errors.is_empty()` arm, leaving the group to
+/// fall through to the "compiled cleanly" failure: with that change `Widget`'s verdict
+/// goes red. Restored afterwards.
+#[test]
+fn unimplemented_inside_a_group_may_fail_in_the_typer() {
+    let content = read_fixture("package_group_type_error.md");
+    let mut blocks = extract_zel_blocks(&content, "package_group_type_error.md");
+    assert_eq!(blocks.len(), 2, "fixture should hold two zel blocks");
+    blocks[0].expect = Ok(Expect::Unimplemented);
+
+    let group: Vec<&Block> = blocks.iter().collect();
+    let verdicts = evaluate_group(&group);
+
+    match &verdicts[0] {
+        Verdict::Pass => {}
+        Verdict::Fail(reason) => panic!(
+            "a group member only the typer rejects must satisfy \
+             `expect=unimplemented`, got {:?}",
+            reason
+        ),
+        Verdict::Fragment => panic!("`expect=unimplemented` is not a fragment"),
+    }
+    assert!(
+        matches!(&verdicts[1], Verdict::Pass),
+        "the importer must be unaffected by how its dependency is tagged"
+    );
 }
 
 /// A `package=` group is compiled as one package, and each block is judged on its own
