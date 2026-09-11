@@ -285,19 +285,13 @@ poly a b c =
   a * b + c
 ```
 
-**Known gap:** precedence and associativity are recorded and then ignored. Every operator
-application groups rightward regardless of what was declared, so `poly` above is compiled as
-`a * (b + c)`. [`BUG-22`](../tickets/bug-22.md) is the ticket. That block passes either way — grouping changes
-which value an expression has, and nothing here evaluates anything — so it pins the syntax
-only.
-
 ### Equal precedence, disagreeing associativity
 
 Two operators of the same precedence whose associativities disagree have no unambiguous
 grouping, and an expression that mixes them without parentheses is a syntax error. An operator
 declared `non` does not chain with itself at all.
 
-```zel expect=ok
+```zel expect=canonical-error:AmbiguousOperatorPrecedence
 module Example exposing ((==), eq, chain)
 
 infix non 4 (==) = eq
@@ -308,10 +302,6 @@ eq a b =
 chain a b c =
   a == b == c
 ```
-
-**Known gap:** that declaration should be rejected, and today it is accepted as
-`a == (b == c)`. It is the one consequence of [`BUG-22`](../tickets/bug-22.md) a block can
-hold to account: fixing precedence makes this a parse error, and `expect=ok` goes red.
 
 Falling back to left-grouping would let `a == b == c` compile as `(a == b) == c`, comparing a
 boolean against `c`.

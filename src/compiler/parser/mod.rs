@@ -380,8 +380,15 @@ pub struct UnionType {
 pub struct Infix {
     pub operator: Name,
     pub associativity: Associativity,
-    /// Precedence rules the order in which part of the expression are parsed
-    /// (in absence of parenthesis). The higher precedence will be parsed first.
+    /// The operator's declared precedence, exactly as written after `infix`.
+    ///
+    /// The parser does nothing with this beyond carrying it forward — `InfixExpr`
+    /// has no operator table to consult, since an operator's declaration may live
+    /// in another module not yet canonicalized (see [`ExpressionKind::InfixChain`]).
+    /// Canonicalization is where a higher precedence ends up binding tighter
+    /// (grouped first), by re-associating a flat run of operators against this
+    /// field once every operator in it has resolved through the infix
+    /// environment.
     pub precedence: u8,
     pub function_name: Name,
     /// Where the whole `infix … = …` declaration was written.
@@ -509,6 +516,20 @@ pub enum ExpressionKind {
     Tuple(Tuple<Expression>),
     Case(Box<Expression>, Vec<CaseBranch>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
+    /// A run of infix operator applications, exactly as the grammar saw them —
+    /// `a * b + c` is `InfixChain(a, [(*, _, b), (+, _, c)])`, not a tree.
+    ///
+    /// The grammar has no operator table: an operator's `infix` declaration may
+    /// live in another module, resolved only once canonicalization has that
+    /// module's `Interface` in hand, so `InfixExpr` cannot decide precedence or
+    /// associativity while parsing. It hands this flat sequence to
+    /// canonicalization instead — each tuple is one operator's name, the span it
+    /// was written at (which an invented `Application` node takes, the same way
+    /// the previous right-recursive rewrite did), and the operand to its right —
+    /// and canonicalization re-associates it into nested `Application` nodes
+    /// once it has resolved every operator through the infix environment. See
+    /// `canonical::Expression::from_parser`'s `InfixChain` arm.
+    InfixChain(Box<Expression>, Vec<(Name, NodeSpan, Expression)>),
 }
 
 impl Expression {

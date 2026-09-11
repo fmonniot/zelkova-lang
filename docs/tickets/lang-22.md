@@ -40,11 +40,12 @@ extending rightward past an operator that could have continued the chain — and
 wanted resolution is the greedy one in both cases: the `if` swallows everything to its right,
 which is what the chapter specifies.
 
-This interacts with [BUG-22](bug-22.md), which replaces the whole `InfixExpr` shape with a flat
-node re-associated in canonicalization. If BUG-22 is picked up first, this ticket collapses
-into deciding what that flat node's operands are; if this one goes first, the widened operand
-carries over. Neither ordering is wrong, but doing them in the same change is easier than doing
-them in either order.
+[BUG-22](README.md) landed first: `InfixExpr` now parses a flat run of operator applications
+(`ExpressionKind::InfixChain`), re-associated into nested `Application` nodes during
+canonicalization, rather than the right-recursive `<lhs: AppExpr> <op: SpannedOp> <rhs:
+InfixExpr>` this ticket was written against. This ticket now collapses into widening what that
+flat node's *operands* are: each is still an `AppExpr`, so the same three forms — prefix
+negation, `if`, `case` — remain unreachable as one.
 
 **Acceptance:** the four spellings above parse (the `case` one only once
 [LANG-21](lang-21.md) has landed too — say so if it has not), with tests in the parser's own

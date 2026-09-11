@@ -194,32 +194,29 @@ InfixExpr = {
 
     // TODO LambdaExpr which take AppExpr as a branch and replace AppExpr in Expr
 
-    <l:@L> <lhs: AppExpr> <op: SpannedOp> <rhs: InfixExpr> <r:@R> => {
-        // TODO Might need a custom node here, to be able to establish
-        // the correct application order in a next pass (once we have all
-        // infix rules).
-        //
-        // `a + b` is rewritten here into `((+) a) b`, and neither `Application` is
-        // anything the user typed. They are still given a span rather than
-        // `NodeSpan::none()`, so a diagnostic about the rewritten expression lands
-        // somewhere real: the outer application covers the whole `a + b`, which is
-        // what the user wrote, and the invented `Variable` and the inner application
-        // — the two nodes that exist only because of the operator — take the
-        // operator's own span.
-        let (op_name, op_span) = op;
+    // A flat run of operator applications, exactly as written: `a + b - c` becomes
+    // `InfixChain(a, [(+, _, b), (-, _, c)])`, not a tree. There is no operator
+    // table in scope here — an operator's `infix` declaration may live in another
+    // module, resolved only once canonicalization has that module's `Interface`
+    // in hand — so this production cannot decide precedence or associativity.
+    // Canonicalization re-associates the flat run into nested `Application` nodes
+    // once it has resolved every operator through the infix environment; see
+    // `canonical::Expression::from_parser`'s `InfixChain` arm.
+    <l:@L> <first: AppExpr> <rest: (<SpannedOp> <AppExpr>)+> <r:@R> => {
+        // `l`/`r` cover the whole run, from `first` to the last operand — what the
+        // user actually wrote — which is also where a re-association error should
+        // point when it names the whole ambiguous expression. Each operator keeps
+        // its own span from `SpannedOp` rather than `NodeSpan::none()`, so the
+        // `Application` nodes canonicalization invents from it can take that span
+        // in turn, the same way the previous right-recursive rewrite did.
+        let rest = rest
+            .into_iter()
+            .map(|((op_name, op_span), operand)| (op_name, op_span, operand))
+            .collect();
 
         Expression::new(
             NodeSpan::new(l, r),
-            ExpressionKind::Application(
-                Box::new(Expression::new(
-                    op_span,
-                    ExpressionKind::Application(
-                        Box::new(Expression::new(op_span, ExpressionKind::Variable(op_name))),
-                        Box::new(lhs),
-                    ),
-                )),
-                Box::new(rhs),
-            ),
+            ExpressionKind::InfixChain(Box::new(first), rest),
         )
     }
 }

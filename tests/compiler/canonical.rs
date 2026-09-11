@@ -1143,3 +1143,177 @@ fn unresolved_import_exposed_value_suggests_a_near_miss() {
         labels[0].message
     );
 }
+
+// ── Scenario 12: Infix re-association (BUG-22) ───────────────────────────────
+//
+// `InfixExpr` parses a flat run of operator applications (`a * b + c` is one
+// node, not a tree); canonicalization re-associates it into nested
+// `Application` nodes using each operator's declared precedence and
+// associativity. The precedences and associativities below mirror
+// `Basics.zel`'s own: `*` at 7 binds tighter than `+`/`-` at 6, `+`/`-` are
+// `infix left`, `++` is `infix right`, `==` is `infix non`.
+
+/// A trimmed-down view of a canonicalized infix expression, asserting nesting
+/// only — an operator's own identity (which top-level value it resolves to) is
+/// unrelated to what BUG-22 fixes, which is grouping. `Op` recognizes the
+/// `Apply(Apply(operator, lhs), rhs)` shape re-association builds for one
+/// step; `Var` is a `VarLocal` leaf — every operand in these tests is a bare
+/// function parameter.
+#[derive(Debug, PartialEq)]
+enum Shape {
+    Var(String),
+    Op(String, Box<Shape>, Box<Shape>),
+}
+
+fn infix_shape(e: &canonical::Expression) -> Shape {
+    match &e.kind {
+        canonical::ExpressionKind::VarLocal(n) => Shape::Var(n.to_string()),
+        canonical::ExpressionKind::Apply(f, rhs) => match &f.kind {
+            canonical::ExpressionKind::Apply(op, lhs) => {
+                let op_name = match &op.kind {
+                    canonical::ExpressionKind::VarTopLevel(q) => q.unqualified_name().to_string(),
+                    canonical::ExpressionKind::VarLocal(n) => n.to_string(),
+                    other => panic!(
+                        "expected the operator to resolve to a value, got {:?}",
+                        other
+                    ),
+                };
+                Shape::Op(op_name, Box::new(infix_shape(lhs)), Box::new(infix_shape(rhs)))
+            }
+            other => panic!(
+                "expected a partial application (the operator applied to its left operand), got {:?}",
+                other
+            ),
+        },
+        other => panic!("expected a variable or an infix application, got {:?}", other),
+    }
+}
+
+fn op(name: &str, lhs: Shape, rhs: Shape) -> Shape {
+    Shape::Op(name.to_string(), Box::new(lhs), Box::new(rhs))
+}
+
+fn var(name: &str) -> Shape {
+    Shape::Var(name.to_string())
+}
+
+/// Canonicalizes `chain a b c = <chain_body>` against the `infix` declarations
+/// in `preamble`, and returns the re-associated shape of `chain`'s body.
+fn infix_chain_shape(preamble: &str, chain_body: &str) -> Shape {
+    let source = format!(
+        "module Test exposing (..)\n{}\nchain a b c =\n  {}\n",
+        preamble, chain_body
+    );
+    let module = canonicalize_standalone(&source).expect("should canonicalize");
+    let body = match module.values.get(&"chain".into()).unwrap() {
+        canonical::Value::Value { body, .. } => body,
+        other => panic!("expected an untyped Value, got {:?}", other),
+    };
+    infix_shape(body)
+}
+
+/// `+`/`-` at precedence 6, `*` at precedence 7, all `infix left` — matching
+/// `Basics.zel`.
+const ADD_SUB_MUL: &str = indoc::indoc! {r#"
+    infix left 6 (+) = add
+    infix left 6 (-) = sub
+    infix left 7 (*) = mul
+
+    add a b = a
+    sub a b = a
+    mul a b = a
+"#};
+
+#[test]
+fn higher_precedence_groups_first() {
+    // `*` (7) binds tighter than `+` (6): `a * b + c` is `(a * b) + c`, not
+    // `a * (b + c)` — the exact grouping `BUG-22` describes as wrong.
+    //
+    // Mutation-checked: making `reassociate_infix_chain`'s "strictly lower
+    // precedence" arm (`next_op.infix.precedence < op.infix.precedence`)
+    // return `Some(0)` instead of `None` — folding `+` into `*`'s right operand
+    // regardless, the pre-fix behaviour — turned this red, producing
+    // `a * (b + c)`.
+    assert_eq!(
+        infix_chain_shape(ADD_SUB_MUL, "a * b + c"),
+        op("+", op("*", var("a"), var("b")), var("c")),
+    );
+}
+
+#[test]
+fn lower_precedence_on_the_left_still_yields_to_the_higher_one_on_the_right() {
+    // The same table, mixed the other way: `a + b * c` is `a + (b * c)`, not
+    // `(a + b) * c`. `higher_precedence_groups_first` alone cannot catch a
+    // mutation that always folds left-to-right — that mutation happens to
+    // produce the right shape for `a * b + c` — so this is the one that does.
+    //
+    // Mutation-checked: forcing `reassociate_infix_chain`'s inner loop to
+    // always `break` (never recurse into a tighter-binding `rhs`) turned this
+    // red, producing `(a + b) * c` instead.
+    assert_eq!(
+        infix_chain_shape(ADD_SUB_MUL, "a + b * c"),
+        op("+", var("a"), op("*", var("b"), var("c"))),
+    );
+}
+
+#[test]
+fn infix_left_groups_leftward() {
+    // `-` is `infix left`: `a - b - c` is `(a - b) - c`, not `a - (b - c)`.
+    //
+    // Mutation-checked: changing the `(Left, Left)` arm of the equal-precedence
+    // match to return `Some(op.infix.precedence)` (the `(Right, Right)`
+    // treatment) instead of `None` turned this red, producing `a - (b - c)`.
+    assert_eq!(
+        infix_chain_shape(ADD_SUB_MUL, "a - b - c"),
+        op("-", op("-", var("a"), var("b")), var("c")),
+    );
+}
+
+#[test]
+fn infix_right_groups_rightward() {
+    // `++` is `infix right`: `a ++ b ++ c` is `a ++ (b ++ c)`, not
+    // `(a ++ b) ++ c`.
+    //
+    // Mutation-checked: changing the `(Right, Right)` arm to return `None` (the
+    // `(Left, Left)` treatment) turned this red, producing `(a ++ b) ++ c`.
+    let preamble = indoc::indoc! {r#"
+        infix right 5 (++) = append
+
+        append a b = a
+    "#};
+    assert_eq!(
+        infix_chain_shape(preamble, "a ++ b ++ c"),
+        op("++", var("a"), op("++", var("b"), var("c"))),
+    );
+}
+
+#[test]
+fn infix_non_chained_with_itself_is_an_ambiguous_precedence_error() {
+    // `==` is `infix non`: two of them in a row, `a == b == c`, has no
+    // unambiguous grouping and is rejected rather than guessed at.
+    //
+    // Mutation-checked: adding a `(Associativity::None, Associativity::None) =>
+    // None` arm ahead of the catch-all (falling back to `(Left, Left)`'s
+    // "just fold left" treatment) turned this green when it should stay red —
+    // confirming the catch-all, not a missing case, is what rejects this.
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        infix non 4 (==) = eq
+
+        eq a b = a
+
+        chain a b c =
+          a == b == c
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("should reject");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+    match &errors[0] {
+        canonical::Error::AmbiguousOperatorPrecedence(left, _, right, _, _) => {
+            assert_eq!(left, &zelkova_lang::compiler::name::Name::from("=="));
+            assert_eq!(right, &zelkova_lang::compiler::name::Name::from("=="));
+        }
+        other => panic!("expected AmbiguousOperatorPrecedence, got {:?}", other),
+    }
+}

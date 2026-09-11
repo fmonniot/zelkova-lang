@@ -102,6 +102,21 @@ pub trait Environment<'parent>: std::fmt::Debug {
 
     fn local_infix_exists(&self, name: &Name) -> bool;
 
+    /// The `Infix` an operator resolves to from this scope — its declared
+    /// precedence, associativity and where it was declared — or `None` when no
+    /// `infix` declaration for it is in scope.
+    ///
+    /// Canonicalization's infix re-association is the only caller
+    /// (`resolve_infix_operator` in `canonical/mod.rs`): it needs this ahead of
+    /// resolving the operator as a value, to decide how a flat run of operator
+    /// applications (`ExpressionKind::InfixChain`) nests into `Application`
+    /// nodes. An operator symbol can only ever resolve as a value through this
+    /// same `infixes` map (`find_value`'s redirect below), so a lookup that
+    /// fails here fails identically for `find_value` — `resolve_infix_operator`
+    /// reports that with the same `VariableNotFound` a plain unresolvable
+    /// variable would get.
+    fn find_infix(&self, name: &Name) -> Option<&Infix>;
+
     #[allow(dead_code)]
     fn insert_local_value(&mut self, name: &Name);
 
@@ -632,6 +647,10 @@ impl<'p> Environment<'p> for RootEnvironment {
         self.infixes.contains_key(name)
     }
 
+    fn find_infix(&self, name: &Name) -> Option<&Infix> {
+        self.infixes.get(name)
+    }
+
     // TODO Return error if name already exists
     // Use import_foreign_value ?
     fn insert_local_value(&mut self, name: &Name) {
@@ -687,6 +706,10 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
 
     fn local_infix_exists(&self, name: &Name) -> bool {
         self.parent.local_infix_exists(name)
+    }
+
+    fn find_infix(&self, name: &Name) -> Option<&Infix> {
+        self.parent.find_infix(name)
     }
 
     // TODO Return error if name already exists
