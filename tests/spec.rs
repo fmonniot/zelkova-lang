@@ -12,7 +12,21 @@
 //! authors — keep the two in step. Chapters are written against it independently of
 //! this file:
 //!
-//! - `zel expect=ok` — parses and canonicalizes with no errors.
+//! - `zel expect=ok` — parses, canonicalizes and type checks with no errors. The typer
+//!   is part of it deliberately (`TEST-2`): a block that canonicalizes and then
+//!   contradicts its own annotation is not an example of anything the language allows,
+//!   and leaving it green meant a chapter's **Known gap:** about the type checker had
+//!   to be deleted by hand on the day its ticket landed instead of going red on its
+//!   own. What the tag does *not* promise is that every declaration was checked:
+//!   [`typer::type_check`] skips silently — a bare `continue`, not an error — any
+//!   declaration whose function head holds a constructor or tuple pattern, any body
+//!   reaching a `VarForeign` or an expression form its term language does not model,
+//!   any `ErrorKind::UnboundVariable`, and any `binding_javascript` module whole. Its
+//!   own doc comment is the account of why. Across `docs/spec/` that is roughly one
+//!   declaration in ten, so a green `expect=ok` block may still hold an annotation its
+//!   body contradicts — `docs/spec/conventions.md`'s row carries the same caveat for
+//!   chapter authors. Exhaustiveness is not run at all — it is a stub that accepts
+//!   every module.
 //! - `zel expect=parse-error` — fails in the parser (tokenizer, layout or grammar).
 //!   Which error is not pinned.
 //! - `zel expect=parse-error:Reason` — the same, but the reason must match one of the
@@ -26,12 +40,20 @@
 //! - `zel expect=canonical-error:VariantName` — parses, then canonicalization returns
 //!   a `Vec<canonical::Error>` containing at least one error of that variant.
 //!   `VariantName` is matched against the real `canonical::Error` variant names.
+//! - `zel expect=type-error` — parses and canonicalizes, then `typer::type_check`
+//!   returns at least one error. Which one is not pinned.
+//! - `zel expect=type-error:Kind` — the same, and the kind must match one of the names
+//!   [`error_kind_names`] returns, which are the real `typer::ErrorKind` variant names.
+//!   A block whose *earlier* phases reject it fails either tag rather than satisfying
+//!   it: the point of a separate tag is that the chapter names the phase that decides
+//!   the rule it is claiming.
 //! - `zel expect=unimplemented` — must fail somewhere in parse-or-canonicalize, but
 //!   deliberately does not pin which error: pinning would wire tokenizer/grammar
 //!   internals into a prose document, and the tag's whole job is to go red the day
 //!   the feature lands. On an expected failure the harness prints the actual error
 //!   observed, so a human reviewing a chapter can eyeball that it failed for the
-//!   intended reason.
+//!   intended reason. The typer counts as somewhere, for the reason `expect=ok`
+//!   includes it: a block no phase rejects is the one thing this tag rules out.
 //! - `zel expect=dependency-error` — the block's *group* (see below) fails before any
 //!   module is canonicalized, because its imports have no valid order: a cycle. It is
 //!   the one expectation that belongs to a group rather than to a module, so every
@@ -41,9 +63,10 @@
 //!   of a run.
 //!
 //! A block may also carry `package=<label>`. Blocks sharing one label, within one
-//! chapter, are one package: they are parsed together, ordered by their imports, and
-//! canonicalized in that order against each other's `Interface`s — which is how a
-//! chapter shows two modules at once (`SPEC-3`, settling the question
+//! chapter, are one package: they are parsed together, ordered by their imports,
+//! canonicalized in that order against each other's `Interface`s and then type checked
+//! in the same order — which is how a chapter shows two modules at once (`SPEC-3`,
+//! settling the question
 //! `docs/spec/conventions.md` records). Each block keeps its **own** `expect=`, so an
 //! example can show one module compiling and its importer failing. A block with no
 //! `package=` is a package of one, compiled with no interfaces at all, exactly as
@@ -101,6 +124,7 @@ use zelkova_lang::compiler::dependencies::ModuleWalker;
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser;
 use zelkova_lang::compiler::parser::tokenizer::TokenizerErrorType;
+use zelkova_lang::compiler::typer;
 use zelkova_lang::compiler::Interface;
 
 mod support;
@@ -122,6 +146,13 @@ enum Expect {
     /// improves, so the sentence describing the old behaviour cannot outlive it.
     ParseError(Option<String>),
     CanonicalError(String),
+    /// `None` claims only that the type checker rejected the block. `Some(kind)` also
+    /// pins *which* [`typer::ErrorKind`] it raised, against the names in
+    /// [`error_kind_names`].
+    ///
+    /// The bare form is for a chapter that claims only "this is a type error"; pin the
+    /// kind when the prose names the diagnostic the reader will see.
+    TypeError(Option<String>),
     Unimplemented,
     /// The group this block belongs to has no valid module order — its imports form
     /// a cycle — so nothing in it is canonicalized at all. Group-wide by nature:
@@ -199,6 +230,7 @@ fn parse_expect(value: &str) -> Result<Expect, String> {
     match value {
         "ok" => Ok(Expect::Ok),
         "parse-error" => Ok(Expect::ParseError(None)),
+        "type-error" => Ok(Expect::TypeError(None)),
         "unimplemented" => Ok(Expect::Unimplemented),
         "dependency-error" => Ok(Expect::DependencyError),
         "fragment" => Ok(Expect::Fragment),
@@ -216,6 +248,14 @@ fn parse_expect(value: &str) -> Result<Expect, String> {
                 Err("`canonical-error:` names no variant".to_string())
             } else {
                 Ok(Expect::CanonicalError(variant.to_string()))
+            }
+        }
+        _ if value.starts_with("type-error:") => {
+            let kind = &value["type-error:".len()..];
+            if kind.is_empty() {
+                Err("`type-error:` names no kind".to_string())
+            } else {
+                Ok(Expect::TypeError(Some(kind.to_string())))
             }
         }
         other => Err(format!("unrecognised `expect={}`", other)),
@@ -323,6 +363,40 @@ fn parse(source: &str) -> Result<parser::Module, parser::Error> {
 fn canonicalize(module: &parser::Module) -> Result<canonical::Module, Vec<canonical::Error>> {
     let interfaces = std::collections::HashMap::new();
     canonical::canonicalize(&test_package(), &interfaces, module)
+}
+
+/// The phases are called one at a time rather than through
+/// [`check_module`](zelkova_lang::compiler::check_module), and that is a deliberate
+/// cost: `check_module` collapses every phase into one `CompilationError`, and the
+/// `expect=canonical-error:` / `expect=type-error:` distinction the tags exist to draw
+/// would have to be recovered from it by matching on the variant anyway. Calling the
+/// phases directly means this file knows the pipeline's shape — canonicalize, then type
+/// check — which is the price of keeping the two tags apart.
+/// Exhaustiveness is deliberately not run: it is a stub that accepts every module, so
+/// running it would only let a future chapter tag a block against a phase that inspects
+/// nothing.
+fn type_check(module: &canonical::Module) -> Result<(), Vec<typer::Error>> {
+    typer::type_check(module)
+}
+
+/// The `typer::ErrorKind` names present in `errors`.
+///
+/// Written as an explicit match over the real enum, for the reason [`variant_names`] is:
+/// a new `ErrorKind` variant fails this file to compile rather than silently becoming a
+/// name no chapter can ever match. There is no grouping variant to flatten — a
+/// `typer::Error` carries exactly one kind, and [`typer::type_check`] hands back at most
+/// one `Error` per declaration it *rejected*. A declaration it could not check at all is
+/// skipped silently and contributes no error, so an empty list is not evidence that every
+/// declaration was looked at; see this file's module documentation.
+fn error_kind_names(errors: &[typer::Error]) -> Vec<&'static str> {
+    errors
+        .iter()
+        .map(|e| match e.kind {
+            typer::ErrorKind::UnificationFailed { .. } => "UnificationFailed",
+            typer::ErrorKind::CircularType { .. } => "CircularType",
+            typer::ErrorKind::UnboundVariable { .. } => "UnboundVariable",
+        })
+        .collect()
 }
 
 /// The two phase names an `expect=parse-error:<reason>` tag may pin instead of naming
@@ -440,6 +514,43 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
     errors.iter().flat_map(one).collect()
 }
 
+/// How an `expect=type-error[:Kind]` tag is written, for a failure message.
+fn type_error_label(wanted: &Option<String>) -> String {
+    match wanted {
+        None => "expect=type-error".to_string(),
+        Some(kind) => format!("expect=type-error:{}", kind),
+    }
+}
+
+/// Judge one `expect=type-error[:Kind]` block against what the typer actually returned.
+///
+/// `errors` is empty when the module type checked. Shared by [`evaluate`] and
+/// [`evaluate_group`] so a block means the same thing inside a `package=` group as
+/// outside one.
+fn judge_type_error(wanted: &Option<String>, errors: &[typer::Error]) -> Verdict {
+    if errors.is_empty() {
+        return Verdict::Fail(format!(
+            "expected `{}`, but the module type checked with no errors",
+            type_error_label(wanted)
+        ));
+    }
+
+    match wanted {
+        None => Verdict::Pass,
+        Some(wanted) => {
+            let found = error_kind_names(errors);
+            if found.contains(&wanted.as_str()) {
+                Verdict::Pass
+            } else {
+                Verdict::Fail(format!(
+                    "expected a type error of kind `{}`, got {:?} ({:?})",
+                    wanted, found, errors
+                ))
+            }
+        }
+    }
+}
+
 /// Run one block's source through the phases its `expect` tag implies.
 fn evaluate(block: &Block) -> Verdict {
     let expect = match &block.expect {
@@ -462,7 +573,31 @@ fn evaluate(block: &Block) -> Verdict {
                     "expected `ok`, but canonicalization failed: {:?}",
                     errors
                 )),
-                Ok(_) => Verdict::Pass,
+                Ok(canonical) => match type_check(&canonical) {
+                    Err(errors) => Verdict::Fail(format!(
+                        "expected `ok`, but type checking failed: {:?}",
+                        errors
+                    )),
+                    Ok(()) => Verdict::Pass,
+                },
+            },
+        },
+        Expect::TypeError(wanted) => match parse(&block.source) {
+            Err(e) => Verdict::Fail(format!(
+                "expected `{}`, but the parser rejected it before the typer ran: {:?}",
+                type_error_label(wanted),
+                e
+            )),
+            Ok(module) => match canonicalize(&module) {
+                Err(errors) => Verdict::Fail(format!(
+                    "expected `{}`, but canonicalization rejected it before the typer \
+                     ran: {:?}",
+                    type_error_label(wanted),
+                    errors
+                )),
+                Ok(canonical) => {
+                    judge_type_error(wanted, &type_check(&canonical).err().unwrap_or_default())
+                }
             },
         },
         Expect::ParseError(wanted) => match parse(&block.source) {
@@ -527,11 +662,20 @@ fn evaluate(block: &Block) -> Verdict {
                     );
                     Verdict::Pass
                 }
-                Ok(_) => Verdict::Fail(
-                    "expected `unimplemented`, but the block parsed and canonicalized \
-                     successfully — this feature looks implemented now; update the chapter"
-                        .to_string(),
-                ),
+                Ok(canonical) => match type_check(&canonical) {
+                    Err(errors) => {
+                        println!(
+                            "{}:{} (expect=unimplemented) failed in the typer, as expected: {:?}",
+                            block.file, block.line, errors
+                        );
+                        Verdict::Pass
+                    }
+                    Ok(()) => Verdict::Fail(
+                        "expected `unimplemented`, but the block compiled cleanly — this \
+                         feature looks implemented now; update the chapter"
+                            .to_string(),
+                    ),
+                },
             },
         },
     }
@@ -668,7 +812,7 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
     };
 
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
-    let (_checked, failures) = walker.check_in_order(
+    let (checked, failures) = walker.check_in_order(
         &test_package(),
         &mut interfaces,
         &module_files,
@@ -676,16 +820,51 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
     );
     let failures: HashMap<Name, Vec<canonical::Error>> = failures.into_iter().collect();
 
+    // The typer runs per module, over the modules that canonicalized, in the order
+    // `check_in_order` produced them — the same dependency order canonicalization used.
+    //
+    // A module whose *type* check fails still published its `Interface` above, because
+    // `check_in_order` built that interface out of the canonical module and the typer
+    // does not touch it: an interface carries declared signatures, and those are what
+    // canonicalization already validated. So a group can show one module failing the
+    // typer and its importer still resolving every name it imports, which is what a
+    // chapter demonstrating a type error inside a two-module example needs. The typer
+    // reads one module at a time (`typer::type_check` takes no interfaces), so the
+    // order is bookkeeping rather than a dependency here.
+    let type_failures: HashMap<Name, Vec<typer::Error>> = checked
+        .iter()
+        .filter_map(|m| {
+            type_check(m)
+                .err()
+                .map(|errors| (m.name.name().clone(), errors))
+        })
+        .collect();
+
     blocks
         .iter()
         .zip(&expects)
         .zip(&modules)
         .map(|((block, expect), module)| {
             let errors = failures.get(&module.name);
+            let type_errors = type_failures
+                .get(&module.name)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
             match (expect, errors) {
-                (Expect::Ok, None) => Verdict::Pass,
+                (Expect::Ok, None) if type_errors.is_empty() => Verdict::Pass,
+                (Expect::Ok, None) => Verdict::Fail(format!(
+                    "expected `ok`, but type checking failed: {:?}",
+                    type_errors
+                )),
                 (Expect::Ok, Some(errors)) => Verdict::Fail(format!(
                     "expected `ok`, but canonicalization failed: {:?}",
+                    errors
+                )),
+                (Expect::TypeError(wanted), None) => judge_type_error(wanted, type_errors),
+                (Expect::TypeError(wanted), Some(errors)) => Verdict::Fail(format!(
+                    "expected `{}`, but canonicalization rejected it before the typer \
+                     ran: {:?}",
+                    type_error_label(wanted),
                     errors
                 )),
                 (Expect::CanonicalError(wanted), None) => Verdict::Fail(format!(
@@ -712,9 +891,16 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
                     );
                     Verdict::Pass
                 }
+                (Expect::Unimplemented, None) if !type_errors.is_empty() => {
+                    println!(
+                        "{}:{} (expect=unimplemented) failed in the typer, as expected: {:?}",
+                        block.file, block.line, type_errors
+                    );
+                    Verdict::Pass
+                }
                 (Expect::Unimplemented, None) => Verdict::Fail(
-                    "expected `unimplemented`, but the block parsed and canonicalized \
-                     successfully — this feature looks implemented now; update the chapter"
+                    "expected `unimplemented`, but the block compiled cleanly — this \
+                     feature looks implemented now; update the chapter"
                         .to_string(),
                 ),
                 (Expect::DependencyError, _) => Verdict::Fail(
@@ -735,6 +921,7 @@ fn expect_label(block: &Block) -> String {
         Ok(Expect::ParseError(None)) => "expect=parse-error".to_string(),
         Ok(Expect::ParseError(Some(r))) => format!("expect=parse-error:{}", r),
         Ok(Expect::CanonicalError(v)) => format!("expect=canonical-error:{}", v),
+        Ok(Expect::TypeError(wanted)) => type_error_label(wanted),
         Ok(Expect::Unimplemented) => "expect=unimplemented".to_string(),
         Ok(Expect::DependencyError) => "expect=dependency-error".to_string(),
         Ok(Expect::Fragment) => "expect=fragment".to_string(),
@@ -1559,6 +1746,174 @@ fn canonical_error_wrong_variant_is_a_failure() {
     }
 }
 
+/// `expect=type-error:Kind` passes when the typer raises that kind, and fails when it
+/// raises a different one — the whole point of pinning a kind rather than writing the
+/// bare tag.
+///
+/// Pins: `tests/fixtures/spec/type_error_unification.md`, whose module canonicalizes
+/// cleanly and whose body hands an integer back where its annotation promised a `Size`.
+/// The wrong-kind direction retags the same block `CircularType` in memory, which is a
+/// real `ErrorKind` the typer can raise and did not raise here. Neutralised two ways,
+/// each turning one half of this test red on its own: dropping the
+/// `found.contains(&wanted.as_str())` check in `judge_type_error` (the mismatched kind
+/// reports `Pass`, and the second half goes red), and having `evaluate`'s
+/// `Expect::TypeError` arm skip the `type_check` call and judge against no errors at
+/// all (the first half goes red). Restored afterwards.
+#[test]
+fn type_error_of_the_wrong_kind_is_a_failure() {
+    let block = only_block("type_error_unification.md");
+    assert_eq!(
+        block.expect,
+        Ok(Expect::TypeError(Some("UnificationFailed".to_string())))
+    );
+    assert!(
+        matches!(evaluate(&block), Verdict::Pass),
+        "the fixture's annotation and body really do disagree, so the pinned kind passes"
+    );
+
+    let mut wrong = only_block("type_error_unification.md");
+    wrong.expect = Ok(Expect::TypeError(Some("CircularType".to_string())));
+    match evaluate(&wrong) {
+        Verdict::Fail(reason) => {
+            assert!(
+                reason.contains("CircularType"),
+                "failure message should name what was wanted, got {:?}",
+                reason
+            );
+            assert!(
+                reason.contains("UnificationFailed"),
+                "failure message should name what was actually found, got {:?}",
+                reason
+            );
+        }
+        _ => panic!("a type error of the wrong kind must fail, not pass"),
+    }
+}
+
+/// A bare `expect=type-error` claims only that the typer rejected the block, and accepts
+/// whichever kind it raised — the counterpart of
+/// [`bare_parse_error_does_not_pin_the_reason`].
+///
+/// Neutralised by the same change as the first half of
+/// [`type_error_of_the_wrong_kind_is_a_failure`]: have `evaluate`'s `Expect::TypeError`
+/// arm judge against no errors rather than calling `type_check`, and this goes red.
+/// Restored afterwards.
+#[test]
+fn bare_type_error_does_not_pin_the_kind() {
+    let mut block = only_block("type_error_unification.md");
+    block.expect = Ok(Expect::TypeError(None));
+    assert!(
+        matches!(evaluate(&block), Verdict::Pass),
+        "a bare type-error must accept any rejection by the typer"
+    );
+}
+
+/// `expect=type-error` on a block that type checks is a failure, and so is one the
+/// *earlier* phases rejected — a tag naming the typer must not be satisfiable by a
+/// module the typer never saw.
+///
+/// The second half is what keeps `canonical-error:` and `type-error:` apart. Without it
+/// the two tags would be interchangeable on any module that fails early, and a chapter
+/// could claim a type-level rule while demonstrating a name that does not resolve.
+///
+/// Pins: `unimplemented_block_that_compiles.md`, an ordinary compiling module, and
+/// `ok_block_fails_to_compile.md`, which fails canonicalization on an undefined
+/// variable. Neutralised by having `evaluate`'s `Expect::TypeError` arm treat a
+/// canonicalization failure as the expected outcome — i.e. judging against `errors` from
+/// whichever phase produced them: with that change the second half goes red. Restored
+/// afterwards.
+#[test]
+fn type_error_needs_the_typer_to_be_the_phase_that_failed() {
+    let mut clean = only_block("unimplemented_block_that_compiles.md");
+    clean.expect = Ok(Expect::TypeError(None));
+    match evaluate(&clean) {
+        Verdict::Fail(reason) => assert!(
+            reason.contains("type checked with no errors"),
+            "the failure should say the module type checked, got {:?}",
+            reason
+        ),
+        _ => panic!("`type-error` on a module that type checks must fail"),
+    }
+
+    let mut early = only_block("ok_block_fails_to_compile.md");
+    early.expect = Ok(Expect::TypeError(Some("UnificationFailed".to_string())));
+    match evaluate(&early) {
+        Verdict::Fail(reason) => assert!(
+            reason.contains("before the typer ran"),
+            "the failure should say the typer never ran, got {:?}",
+            reason
+        ),
+        _ => panic!("`type-error` on a module canonicalization rejects must fail"),
+    }
+}
+
+/// `expect=ok` means the block type checks too, not only that it canonicalizes.
+///
+/// This is what makes a `**Known gap:**` about the type checker go red on the day its
+/// ticket lands, instead of having to be deleted by hand — `LANG-12`'s block in
+/// `docs/spec/types.md` is the case the tightening was made for.
+///
+/// Pins: the same fixture as [`type_error_of_the_wrong_kind_is_a_failure`], retagged
+/// `expect=ok` in memory, because the property under test is that canonicalizing
+/// cleanly is no longer enough. Neutralised by returning `Verdict::Pass` from
+/// `evaluate`'s `Expect::Ok` arm as soon as `canonicalize` succeeds, which is what that
+/// arm did before this test existed: with that change this goes red. Restored
+/// afterwards.
+#[test]
+fn ok_block_that_fails_the_typer_is_a_failure() {
+    let mut block = only_block("type_error_unification.md");
+    block.expect = Ok(Expect::Ok);
+    match evaluate(&block) {
+        Verdict::Fail(reason) => assert!(
+            reason.contains("type checking failed"),
+            "the failure should say which phase rejected it, got {:?}",
+            reason
+        ),
+        _ => panic!("an `expect=ok` block that fails the typer must fail"),
+    }
+}
+
+/// A module that fails the type checker still publishes its `Interface` to the rest of
+/// its `package=` group.
+///
+/// The alternative — withholding the interface — would make every importer of a
+/// type-error example fail canonicalization on names that resolve perfectly well, so a
+/// chapter could not show a type error in one module of a group and a working importer
+/// beside it. An interface is built from the canonical module, and the typer does not
+/// touch it.
+///
+/// Pins: `tests/fixtures/spec/package_group_type_error.md`, whose `Widget` fails the
+/// typer and whose `Main` imports `Widget.Size` and `Widget.small`. Neutralised by
+/// making the group's type check gate the interface — folding the typer into
+/// `canonicalize_tagged`, so a type failure returns `Err` and `check_in_order` never
+/// inserts the interface: with that change `Main` no longer resolves `Widget` and the
+/// importer's assertion below goes red. `Widget`'s own verdict goes red with it, since
+/// under that design its type error is reported as a canonicalization failure and stops
+/// matching its tag — which is the second thing wrong with it. Restored afterwards.
+#[test]
+fn a_type_error_does_not_withhold_the_modules_interface() {
+    let content = read_fixture("package_group_type_error.md");
+    let blocks = extract_zel_blocks(&content, "package_group_type_error.md");
+    assert_eq!(blocks.len(), 2, "fixture should hold two zel blocks");
+
+    let group: Vec<&Block> = blocks.iter().collect();
+    let verdicts = evaluate_group(&group);
+
+    match &verdicts[1] {
+        Verdict::Pass => {}
+        Verdict::Fail(reason) => panic!(
+            "the importer must still resolve against the failed module's interface, \
+             got {:?}",
+            reason
+        ),
+        Verdict::Fragment => panic!("neither block is a fragment"),
+    }
+    assert!(
+        matches!(verdicts[0], Verdict::Pass),
+        "the module with the type error must pass its `type-error` tag"
+    );
+}
+
 /// `expect=parse-error:<reason>` must check the reason, not just that the parse failed.
 ///
 /// This is what lets a chapter describe a *known-bad* diagnostic in prose and be forced
@@ -1623,12 +1978,91 @@ fn unimplemented_block_that_compiles_is_a_failure() {
     let block = only_block("unimplemented_block_that_compiles.md");
     assert_eq!(block.expect, Ok(Expect::Unimplemented));
     match evaluate(&block) {
-        Verdict::Fail(_) => {}
+        Verdict::Fail(reason) => assert!(
+            reason.contains("compiled cleanly"),
+            "the failure has to claim the whole pipeline, not just the two phases \
+             that used to run — got {:?}",
+            reason
+        ),
         _ => panic!(
             "an `expect=unimplemented` block that compiles cleanly must fail, \
              not pass silently"
         ),
     }
+}
+
+/// A failure in the **typer** satisfies `expect=unimplemented`, the same way a failure
+/// in the parser or in canonicalization does.
+///
+/// This is a deliberate broadening and it has a cost worth naming, which is why it gets
+/// a test of its own rather than riding on a chapter block. Before `TEST-2` the tag went
+/// red the moment its construct parsed and canonicalized; it now stays green if the
+/// block is rejected anywhere, including for a type error unrelated to the feature the
+/// chapter says is missing. `BUG-26` is a live example of such an incidental error, and
+/// the day `LANG-48` lands a `records.md` block carrying one would stay green as
+/// `unimplemented` instead of announcing that records arrived.
+///
+/// It is still the right reading: `expect=ok` now means "and type checks", so the tag
+/// that is its negation has to mean "and is not rejected by the typer either", or a
+/// block would exist that satisfies neither. What keeps the cost bounded is that the
+/// harness prints the error it observed on every expected failure, so the phase and the
+/// reason are in the run output for a reviewer to eyeball against the chapter's claim.
+///
+/// Pins: `tests/fixtures/spec/type_error_unification.md`, retagged `expect=unimplemented`
+/// in memory — its module canonicalizes cleanly and only the typer rejects it, so it
+/// reaches this branch and nothing earlier. Neutralised by making `evaluate`'s
+/// `Expect::Unimplemented` arm report `Verdict::Fail` on a type error rather than
+/// `Verdict::Pass` — which is what it did before `TEST-2`: with that change this goes
+/// red. Restored afterwards.
+#[test]
+fn unimplemented_block_may_fail_in_the_typer() {
+    let mut block = only_block("type_error_unification.md");
+    block.expect = Ok(Expect::Unimplemented);
+    match evaluate(&block) {
+        Verdict::Pass => {}
+        Verdict::Fail(reason) => panic!(
+            "a block only the typer rejects must satisfy `expect=unimplemented`, \
+             got {:?}",
+            reason
+        ),
+        Verdict::Fragment => panic!("`expect=unimplemented` is not a fragment"),
+    }
+}
+
+/// The same, inside a `package=` group: `evaluate_group` reads the typer's verdict from
+/// its own `type_failures` map rather than from `check_in_order`'s errors, so it needs
+/// its own branch and its own test.
+///
+/// Pins: `tests/fixtures/spec/package_group_type_error.md` with `Widget` retagged
+/// `expect=unimplemented` in memory. `Widget` canonicalizes, publishes its interface and
+/// fails only the typer; `Main` imports it and must stay green, which is what separates
+/// this from the single-block case. Neutralised by deleting the
+/// `(Expect::Unimplemented, None) if !type_errors.is_empty()` arm, leaving the group to
+/// fall through to the "compiled cleanly" failure: with that change `Widget`'s verdict
+/// goes red. Restored afterwards.
+#[test]
+fn unimplemented_inside_a_group_may_fail_in_the_typer() {
+    let content = read_fixture("package_group_type_error.md");
+    let mut blocks = extract_zel_blocks(&content, "package_group_type_error.md");
+    assert_eq!(blocks.len(), 2, "fixture should hold two zel blocks");
+    blocks[0].expect = Ok(Expect::Unimplemented);
+
+    let group: Vec<&Block> = blocks.iter().collect();
+    let verdicts = evaluate_group(&group);
+
+    match &verdicts[0] {
+        Verdict::Pass => {}
+        Verdict::Fail(reason) => panic!(
+            "a group member only the typer rejects must satisfy \
+             `expect=unimplemented`, got {:?}",
+            reason
+        ),
+        Verdict::Fragment => panic!("`expect=unimplemented` is not a fragment"),
+    }
+    assert!(
+        matches!(&verdicts[1], Verdict::Pass),
+        "the importer must be unaffected by how its dependency is tagged"
+    );
 }
 
 /// A `package=` group is compiled as one package, and each block is judged on its own

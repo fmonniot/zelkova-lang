@@ -49,8 +49,8 @@ the code.
 
 *From the inferred type, in the typer.* Complete, no annotation needed, but the typer has no
 notion of an infix declaration and does not resolve operator names at all today, so this
-placement needs that plumbing first and inherits [TEST-2](test-2.md) for pinning the result
-in the spec.
+placement needs that plumbing first. Either phase can be pinned in the spec:
+`expect=canonical-error:` and `expect=type-error:` both exist.
 
 Whichever lands, an operator's arity check is close to [LANG-23](lang-23.md) — an operator
 usable as a value needs its type on the same terms — and worth looking at together.
@@ -59,7 +59,7 @@ usable as a value needs its type on the same terms — and worth looking at toge
 [`docs/spec/declarations.md`](../spec/declarations.md) gains a block showing an operator whose
 function takes fewer than two arguments, and that block is **red** before the fix — tagged
 `expect=canonical-error:` with the new variant if the check lands in canonicalization, or
-`expect=type-error:` (which needs [TEST-2](test-2.md) first) if it lands in the typer. The
+`expect=type-error:` if it lands in the typer. The
 **Not implemented:** paragraph beneath it is deleted. A `tests/compiler/canonical.rs` case —
 or `tests/typer.rs`, following the placement — asserting the error on the nullary example
 above, seen to fail before the fix.

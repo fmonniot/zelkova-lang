@@ -46,9 +46,9 @@ support. And `CLAUDE.md`'s *A pass that emitted an error must not report success
 `exhaustiveness::check` returns `Result<_, Vec<Error>>` so that one uncovered `case` does not
 hide the next.
 
-**Note — this gap has no red test behind it.** `tests/spec.rs` stops at canonicalization
-([TEST-2](test-2.md)) and exhaustiveness runs after the typer, so the chapter's block stays
-`expect=ok` and green when this lands. Its `**Known gap:**` paragraph has to be deleted by
+**Note — this gap has no red test behind it.** `tests/spec.rs` stops at the type checker and
+never runs `exhaustiveness::check`, so the chapter's block stays `expect=ok` and green when
+this lands. Its `**Known gap:**` paragraph has to be deleted by
 hand as part of this ticket; nothing will fail to remind you.
 
 **Acceptance:** the example above is rejected with `Error::NonExhaustiveMatch`, pointing at

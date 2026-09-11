@@ -69,8 +69,8 @@ what make an annotation's context a thing the body is held to.
 `f : a -> a` with `f x = x` still checks — tests in `tests/typer.rs`. `cargo run` still prints
 `parsed 8 modules` and lists all eight as checked.
 
-**This gap has no red test behind it.** The spec harness stops at canonicalization and never
-runs the typer, so the block in [`docs/spec/types.md`](../spec/types.md)'s *An annotation is a
-promise* section canonicalizes cleanly both before and after this fix and its `expect=ok` tag
-stays green. Delete the `**Known gap:**` paragraph by hand as part of this ticket.
-[TEST-2](test-2.md) is what would make it a red test instead.
+**The spec block for this goes red on its own.** `expect=ok` means the block type checks, so
+the one in [`docs/spec/types.md`](../spec/types.md)'s *An annotation is a promise* section —
+`f : a -> a` with a body of `Small` — fails the moment the annotation's variables become rigid.
+Retag it `expect=type-error:` with whatever kind the new error carries, and delete the
+`**Known gap:**` paragraph beside it.

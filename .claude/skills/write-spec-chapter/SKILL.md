@@ -284,6 +284,18 @@ broken for one commit of history.
 - **Blocks canonicalize with no interfaces.** An `expect=ok` block must declare every name it
   references. `Int`, `Float`, `Bool`, `List`, `Maybe` are *not* in scope — declare a local
   type instead. This is the single most common reason a correct-looking example fails.
+- **An `expect=ok` block also type checks**, so its body has to honour its annotation. Name a
+  locally declared type anything but `Bool`, `Int`, `Char` or `Float`: the typer reads those
+  four spellings as its own builtins wherever an annotation uses them, so a module declaring
+  one cannot annotate anything with it (`BUG-26`).
+- **Green does not mean every declaration was checked.** The typer skips silently what it
+  cannot translate: a constructor or tuple pattern in a function head, a body reaching a
+  foreign value or a form it does not model, a name the module does not itself bind, a
+  `module foreign` block whole. Most of `docs/spec/patterns.md` is in that class — a
+  `first (Pair a b) = a` example passes `expect=ok` with any annotation at all. Do not read a
+  green block as evidence that the compiler agrees with a type-level claim you are making; if
+  the chapter is claiming one, write the example with bare-variable parameters so the typer
+  actually reaches it.
 - **An `infix` declaration's function must exist in the same block**, or canonicalization
   reports `InfixReferenceInvalidValue`. Operators are not built in: to use one in an example,
   declare it.

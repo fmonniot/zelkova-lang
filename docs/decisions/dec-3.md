@@ -66,5 +66,5 @@ verified.
 **Anything outside a chapter's markdown.** The harness reads prose. It does not check that a
 **Known gap:** paragraph is still true, only that the ticket it names still exists; a gap that
 was fixed without closing its ticket stays documented as open. The `expect=` tag on the block
-beside it is what covers that case, and it covers it only as far as canonicalization
-([`TEST-2`](../tickets/test-2.md)).
+beside it is what covers that case, and it covers it as far as the type checker — no further,
+so a claim about evaluation or about code generation has nothing behind it.

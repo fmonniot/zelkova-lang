@@ -132,7 +132,7 @@ signature that describes a restriction the language cannot express.
 
 ## 11 — `TEST-2` gates the chapter and nothing else
 
-[`TEST-2`](../tickets/test-2.md) adds `expect=type-error` and `expect=type-error:Variant` to
+`TEST-2` adds `expect=type-error` and `expect=type-error:Variant` to
 the spec harness; it does **not** tighten `expect=ok` to mean "and type checks". It was placed
 as a prerequisite of the chapter, on the reasoning that every claim a class mechanism makes is
 a type-level claim, and as a prerequisite of none of the type-class tickets.
@@ -155,11 +155,15 @@ invisible work at runtime, spread across the whole language. The visible consequ
 [`LANG-41`](../tickets/lang-41.md) left the type-class ticket dependency order — with no
 obligation to discharge, it can land at any point.
 
-**Decision 11 was overtaken.** `TEST-2` turned out not to gate the chapter either: nothing
-about a class parses, so all eleven of the chapter's class-and-constraint blocks are
-`expect=unimplemented`, which the harness checks perfectly well. `TEST-2` becomes load-bearing
-when [`LANG-40`](../tickets/lang-40.md) lands and those blocks start wanting
-`expect=type-error`. Its narrower half — that it does not tighten `expect=ok` — is unchanged.
+**Decision 11 was overtaken, both halves of it.** `TEST-2` turned out not to gate the chapter:
+nothing about a class parses, so all eleven of the chapter's class-and-constraint blocks are
+`expect=unimplemented`, which the harness checks perfectly well. It becomes load-bearing when
+[`LANG-40`](../tickets/lang-40.md) lands and those blocks start wanting `expect=type-error`.
+And when it landed it *did* tighten `expect=ok` to mean "and type checks", against what this
+decision assumed. What the narrower half was protecting against — a wave of retagging — came
+to four blocks out of 330, and every one of the four was worth knowing about: an unreported
+compiler bug ([`BUG-26`](../tickets/bug-26.md)), an example that was never a well-typed program
+at all, and two blocks demonstrating a type-level claim their tag could not reach.
 
 **Decision 2 was extended, not overturned.** `SPEC-14` settled two further body forms, both
 now in the chapter: an instance body may be the single word

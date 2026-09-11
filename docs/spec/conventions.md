@@ -17,11 +17,13 @@ skip. When you add an example, tag it.
 
 | Tag | Meaning |
 |---|---|
-| `expect=ok` | Parses and canonicalizes with no errors. |
+| `expect=ok` | Parses, canonicalizes and type checks with no errors. The typer checks the declarations it can translate and skips the rest silently: a constructor or tuple pattern in a function head, a body reaching a [foreign](interop.md) value or an expression form the term language does not model, a name the module does not itself bind, and a `module foreign` block whole. So the tag promises that every declaration the typer *reached* honours its annotation, not that it reached every declaration — roughly one in ten across today's chapters is skipped. Exhaustiveness is not run at all: it is a stub that accepts every module. |
 | `expect=parse-error` | Fails somewhere in the parser (tokenizer, layout or grammar). Which specific error is not pinned. Use when the chapter claims only that the source is rejected. |
 | `expect=parse-error:Reason` | The same, and the reason must match. `Reason` is either the phase (`Tokenizer`, `Layout`) or one of the eleven specific errors — `CharNotClosedError`, `StringError`, `UnicodeError`, `IndentationError`, `TabError` and `UnrecognizedToken` from the tokenizer; `LayoutError` from layout; `InvalidToken`, `UnexpectedEOF`, `UnexpectedToken` and `ExtraToken` from the grammar — matched against the real enums in `src/compiler/parser/`. Use whenever the chapter's prose describes the error the reader will see. |
 | `expect=canonical-error:VariantName` | Parses, then canonicalization returns a `Vec<canonical::Error>` containing at least one error of variant `VariantName` — matched against the real variant names in `src/compiler/canonical/mod.rs`'s `Error` enum. |
-| `expect=unimplemented` | Must fail somewhere in parse-or-canonicalize, but deliberately does not pin *which* error: pinning would wire tokenizer/grammar internals into a prose document, and the tag's whole job is to go red the day the feature is actually implemented. On an expected failure the test run prints the error it observed, so a reviewer can eyeball that the block failed for the reason the chapter intends. |
+| `expect=type-error` | Parses and canonicalizes, and then the type checker returns at least one error. Which one is not pinned. Use when the chapter claims only that the declaration is a type error. |
+| `expect=type-error:Kind` | The same, and the kind must match — `Kind` is one of the variant names of `ErrorKind` in `src/compiler/typer/mod.rs`, matched against the real enum. Use whenever the chapter's prose describes the error the reader will see. A block the parser or canonicalization rejects fails both of these tags rather than satisfying them: the tag names the phase that decides the rule being claimed. |
+| `expect=unimplemented` | Must fail somewhere in parse, canonicalize or type check, but deliberately does not pin *which* error: pinning would wire tokenizer/grammar internals into a prose document, and the tag's whole job is to go red the day the feature is actually implemented. On an expected failure the test run prints the error it observed, so a reviewer can eyeball that the block failed for the reason the chapter intends. |
 | `expect=dependency-error` | The block's *package* (see below) has no valid module order — its imports form a cycle — so nothing in it is canonicalized at all. The one expectation that belongs to a group rather than to a module: every block of the package carries it, or none does. |
 | `expect=fragment` | An illustrative fragment, deliberately not executed. The only opt-out, and it must be written explicitly — there is no implicit skip. |
 
@@ -39,10 +41,16 @@ at all. A block may also carry a second tag, `package=<label>`, beside its `expe
 info string reading ```` ```zel expect=ok package=alias ````.
 
 Blocks sharing one label, **within one chapter**, are one package. They are parsed
-together, ordered by their imports, and canonicalized in that order against each other's
-`Interface`s — which is how a chapter shows two modules at once. Each block keeps its
-own `expect=`, so an example can show one module compiling and its importer failing, and
-the failure is reported on the importer's line rather than on the group.
+together, ordered by their imports, canonicalized in that order against each other's
+`Interface`s, and then type checked in the same order — which is how a chapter shows two
+modules at once. Each block keeps its own `expect=`, so an example can show one module
+compiling and its importer failing, and the failure is reported on the importer's line
+rather than on the group.
+
+A module that fails the **type** checker still publishes its interface to the rest of the
+group, so an importer of it goes on resolving every name it imports. An interface carries
+declared signatures and canonicalization is what validated them; withholding it would
+turn a type error in one block into a wave of unresolved names in the next.
 
 `SPEC-3` settled this, for the *Modules, exposing and imports* chapter, which cannot be
 written one module at a time. Three alternatives were considered and rejected: adjacent
@@ -164,8 +172,9 @@ tell a guarantee from guidance, and a chapter has no guidance in it to tell apar
 sections of [name resolution](name-resolution.md) and [packages](packages.md) state theirs in
 prose alone, and a rule is no weaker for it. What holds is the converse: where a block *is*
 the demonstration of a rejection claim, it carries a rejection tag — `expect=parse-error`,
-`expect=parse-error:Reason`, `expect=canonical-error:Variant`, `expect=unimplemented` or
-`expect=dependency-error` — and not `expect=ok`.
+`expect=parse-error:Reason`, `expect=canonical-error:Variant`, `expect=type-error`,
+`expect=type-error:Kind`, `expect=unimplemented` or `expect=dependency-error` — and not
+`expect=ok`.
 
 The exception is the case the lead-ins exist for, and it is common: an `expect=ok` block sits
 under a rejection claim in most chapters, and every one of those blocks has a **Known gap:**

@@ -72,9 +72,7 @@ and a class that wants numeric constants declares them as members.
 
 **Known gap:** the type checker gives an integer literal an internal type that unifies with
 `Int` *and* `Float`, so a declaration annotated `Float` with a body of `1` is accepted today.
-[`LANG-41`](../tickets/lang-41.md) is the ticket. No block here holds it to account: the spec
-harness stops at canonicalization and never runs the type checker
-([`TEST-2`](../tickets/test-2.md)).
+[`LANG-41`](../tickets/lang-41.md) is the ticket. No block here holds it to account.
 
 ### There is no boolean literal
 
@@ -176,7 +174,7 @@ f g c = g (if c then On else Off)
 Nothing in the grammar restricts what may be applied. Applying a value that is not a function
 is a type error rather than a syntax error:
 
-```zel expect=ok
+```zel expect=type-error:UnificationFailed
 module Example exposing (f)
 
 f = 1 2
@@ -289,9 +287,9 @@ poly a b c =
 
 **Known gap:** precedence and associativity are recorded and then ignored. Every operator
 application groups rightward regardless of what was declared, so `poly` above is compiled as
-`a * (b + c)`. [`BUG-22`](../tickets/bug-22.md) is the ticket. That block passes either way —
-grouping changes which value an expression has, and the spec harness stops before the phase
-that could tell ([`TEST-2`](../tickets/test-2.md)) — so it pins the syntax only.
+`a * (b + c)`. [`BUG-22`](../tickets/bug-22.md) is the ticket. That block passes either way — grouping changes
+which value an expression has, and nothing here evaluates anything — so it pins the syntax
+only.
 
 ### Equal precedence, disagreeing associativity
 

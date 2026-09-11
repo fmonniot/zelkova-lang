@@ -71,7 +71,7 @@ It costs nothing while no class exists, but a backend that starts by passing
 dictionaries is one that has to be unpicked when [`LANG-40`](lang-40.md) lands.
 
 **Not in this ticket:** teaching the spec harness to check what a block *computes*.
-[`TEST-2`](test-2.md) is the equivalent for type errors and stops at the typer; an
+`TEST-2` was the equivalent for type errors and stopped at the typer; an
 `expect=evaluates-to` tag needs a generator and a runtime to exist first, and is a follow-up.
 
 **Acceptance:** `cargo run` emits JavaScript for `std/core/src`'s eight modules, and a test in

@@ -30,8 +30,7 @@ mixed =
 
 **Not implemented:** brackets are not consumed by any production, so that block is a syntax
 error today rather than the type error it is ([`LANG-44`](../tickets/lang-44.md)). When lists
-land it parses and canonicalizes, and the type checker is what rejects it — which the harness
-running these examples does not reach ([`TEST-2`](../tickets/test-2.md)).
+land it parses and canonicalizes, and the type checker is what rejects it.
 
 ## What a list is
 

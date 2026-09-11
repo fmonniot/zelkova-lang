@@ -62,9 +62,9 @@ would describe the compiler wrongly rather than describe the language rightly.
 a non-numeric annotation, asserting the new spelling. No message anywhere renders a type using
 a spelling the grammar would accept as a type variable.
 
-**This gap has no red test behind it.** The spec harness stops at canonicalization
-([TEST-2](test-2.md)), so no chapter exercises a type error at all; the paragraph describing
-this is a `**Known gap:**` in
+**This gap has no red test behind it.** The spec harness runs the type checker now, but it
+pins the *kind* of error a block raises and never its message — which is the whole of what this
+ticket changes. The paragraph describing it is a `**Known gap:**` in
 [`docs/spec/expressions.md`](../spec/expressions.md)'s *A literal's type is its spelling*
 section, and it has to be deleted by hand when [LANG-41](lang-41.md) lands.
 [`LANG-41`](lang-41.md) supersedes this ticket by deleting `Type::Number` outright. Whether

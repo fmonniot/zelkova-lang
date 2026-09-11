@@ -67,6 +67,5 @@ with its `**Known gap:**` paragraph deleted.
 **The precedence half of this gap has no red test.** Grouping changes which value an
 expression has, and nothing else: the `poly` block in that chapter's *Precedence and
 associativity* section canonicalizes identically before and after this ticket, so its
-`**Known gap:**` paragraph has to be deleted by hand. The spec harness stops at
-canonicalization ([TEST-2](test-2.md)), and even with the type checker wired in, `a * b + c`
-and `a * (b + c)` have the same type.
+`**Known gap:**` paragraph has to be deleted by hand. The spec harness runs the type checker
+and no further, and `a * b + c` and `a * (b + c)` have the same type.
