@@ -189,8 +189,55 @@ AppExpr = {
 // `Op` on its own.
 SpannedOp: (Name, NodeSpan) = <l:@L> <o: Op> <r:@R> => (o, NodeSpan::new(l, r));
 
-InfixExpr = {
+// What can stand to the left of an operator: an application, or a prefix negation
+// of one.
+//
+// Negation is recognised *here*, at the operand, rather than over a whole `Expr`,
+// and that placement is what makes it bind tighter than every infix operator:
+// `-a + b` is `(-a) + b`, because the negation is one operand of the run that `+`
+// then groups. Writing it over `Expr` instead — which is where it used to sit —
+// let a leading `-` swallow the entire run to its right, so `-a + b` canonicalized
+// as `-(a + b)`, a different value, and it did so *outside* the re-association pass
+// that `BUG-22` added. See the *Prefix negation* section of `docs/spec/expressions.md`.
+//
+// The right operand of an operator is deliberately still an `AppExpr`: `a - -b`
+// stays a parse error, which is `LANG-22` and not this production's business.
+OperandExpr: Expression = {
     AppExpr,
+
+    <l:@L> "-" <m:@R> <e: OperandExpr> => {
+        // Prefix negation desugars to `0 - e`: neither the `-` variable nor the `0`
+        // is in the user's text. Rather than leaving them span-less, both take the
+        // span of the `-` token — the one piece of source the desugaring is about —
+        // while the two applications, which stand for the whole expression, take it.
+        //
+        // The `-` is the ordinary subtraction operator, resolved through the infix
+        // environment like any other `Variable`; only *where* it is applied is
+        // decided here.
+        let minus = NodeSpan::new(l, m);
+        // The end comes from `e` rather than an `@R` after it, so that a parenthesised
+        // operand reports the position its own production computed. See
+        // `NodeSpan::to_end_of`.
+        let whole = NodeSpan::to_end_of(l, e.span);
+
+        Expression::new(
+            whole,
+            ExpressionKind::Application(
+                Box::new(Expression::new(
+                    whole,
+                    ExpressionKind::Application(
+                        Box::new(Expression::new(minus, ExpressionKind::Variable(Name::new("-")))),
+                        Box::new(Expression::new(minus, ExpressionKind::Lit(Literal::Int(0)))),
+                    ),
+                )),
+                Box::new(e),
+            ),
+        )
+    },
+}
+
+InfixExpr = {
+    OperandExpr,
 
     // TODO LambdaExpr which take AppExpr as a branch and replace AppExpr in Expr
 
@@ -202,7 +249,7 @@ InfixExpr = {
     // Canonicalization re-associates the flat run into nested `Application` nodes
     // once it has resolved every operator through the infix environment; see
     // `canonical::Expression::from_parser`'s `InfixChain` arm.
-    <l:@L> <first: AppExpr> <rest: (<SpannedOp> <AppExpr>)+> <r:@R> => {
+    <l:@L> <first: OperandExpr> <rest: (<SpannedOp> <AppExpr>)+> <r:@R> => {
         // `l`/`r` cover the whole run, from `first` to the last operand — what the
         // user actually wrote — which is also where a re-association error should
         // point when it names the whole ambiguous expression. Each operator keeps
@@ -276,30 +323,11 @@ CaseBranch: CaseBranch = {
 Expr = {
     InfixExpr,
 
-    <l:@L> "-" <m:@R> <e: Expr> => {
-        // Prefix negation desugars to `0 - e`: neither the `-` variable nor the `0`
-        // is in the user's text. Rather than leaving them span-less, both take the
-        // span of the `-` token — the one piece of source the desugaring is about —
-        // while the two applications, which stand for the whole expression, take it.
-        let minus = NodeSpan::new(l, m);
-        // The end comes from `e`, not from an `@R` after it: `e` may be a `case`,
-        // whose production ends by consuming a layout token. See `NodeSpan::to_end_of`.
-        let whole = NodeSpan::to_end_of(l, e.span);
-
-        Expression::new(
-            whole,
-            ExpressionKind::Application(
-                Box::new(Expression::new(
-                    whole,
-                    ExpressionKind::Application(
-                        Box::new(Expression::new(minus, ExpressionKind::Variable(Name::new("-")))),
-                        Box::new(Expression::new(minus, ExpressionKind::Lit(Literal::Int(0)))),
-                    ),
-                )),
-                Box::new(e),
-            ),
-        )
-    },
+    // Prefix negation is not here: it is an operand of `InfixExpr` (see
+    // `OperandExpr`), so that it binds tighter than every infix operator instead of
+    // swallowing the run to its right. One consequence is that `-` directly in front
+    // of an `if` or a `case` no longer parses — `-(if c then a else b)` does — which
+    // matches what an argument in the same position already required.
 
     // The end comes from `if_false` rather than an `@R` after it — see
     // `NodeSpan::to_end_of`, and the `case` production below for the token that

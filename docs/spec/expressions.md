@@ -388,6 +388,30 @@ f g n =
 Reading `g -n` as an application would make meaning turn on spacing alone. Write `g (-n)` when
 an argument is what is meant.
 
+Negation takes exactly the operand in front of it, and binds tighter than every operator
+however that operator is declared. `-a + b` is `(-a) + b` and `-a * b` is `(-a) * b`; a
+negation that is meant to cover more is written with parentheses, as `-(a + b)`.
+
+```zel expect=ok
+module Example exposing ((-), (+), sub, add, f)
+
+infix left 6 (-) = sub
+
+infix left 6 (+) = add
+
+sub a b =
+  a
+
+add a b =
+  a
+
+f a b =
+  -a + b
+```
+
+That block pins the syntax only — both groupings type the same, and nothing here evaluates
+anything. `tests/compiler/canonical.rs` is where the grouping itself is pinned.
+
 There is likewise no negative literal: `-1` is negation applied to the literal `1`. A
 [pattern](patterns.md#literal-patterns) carries its sign on the literal instead, because
 pattern syntax is closed and never looks an operator up.
