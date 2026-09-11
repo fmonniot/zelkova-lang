@@ -287,9 +287,10 @@ poly a b c =
 
 ### Equal precedence, disagreeing associativity
 
-Two operators of the same precedence whose associativities disagree have no unambiguous
-grouping, and an expression that mixes them without parentheses is a syntax error. An operator
-declared `non` does not chain with itself at all.
+Two operators of the same precedence group an expression only when they agree how — both
+`left` or both `right`. Anything else has no unambiguous grouping, and an expression that
+mixes the two without parentheses is rejected. A `left` against a `right` disagrees. An
+operator declared `non` agrees with nothing at all, itself included:
 
 ```zel expect=canonical-error:AmbiguousOperatorPrecedence
 module Example exposing ((==), eq, chain)
@@ -305,6 +306,27 @@ chain a b c =
 
 Falling back to left-grouping would let `a == b == c` compile as `(a == b) == c`, comparing a
 boolean against `c`.
+
+Two *different* `non` operators of the same precedence are rejected for the same reason. They
+do not disagree — neither offers to group the other — and there is no grouping left to fall
+back on:
+
+```zel expect=canonical-error:AmbiguousOperatorPrecedence
+module Example exposing ((<), (>), lt, gt, chain)
+
+infix non 4 (<) = lt
+
+infix non 4 (>) = gt
+
+lt a b =
+  a
+
+gt a b =
+  a
+
+chain a b c =
+  a < b > c
+```
 
 ### Prefix negation
 

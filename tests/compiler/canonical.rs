@@ -1307,13 +1307,94 @@ fn infix_non_chained_with_itself_is_an_ambiguous_precedence_error() {
           a == b == c
     "#};
 
+    assert_ambiguous_pair(source, "==", "==");
+}
+
+/// Canonicalizes `source`, and asserts it was rejected with exactly one
+/// `AmbiguousOperatorPrecedence` naming `left` and `right` in that order.
+fn assert_ambiguous_pair(source: &str, left: &str, right: &str) {
     let errors = canonicalize_standalone(source).expect_err("should reject");
     assert_eq!(errors.len(), 1, "got {:?}", errors);
     match &errors[0] {
-        canonical::Error::AmbiguousOperatorPrecedence(left, _, right, _, _) => {
-            assert_eq!(left, &zelkova_lang::compiler::name::Name::from("=="));
-            assert_eq!(right, &zelkova_lang::compiler::name::Name::from("=="));
+        canonical::Error::AmbiguousOperatorPrecedence(l, r, _) => {
+            assert_eq!(l.name, zelkova_lang::compiler::name::Name::from(left));
+            assert_eq!(r.name, zelkova_lang::compiler::name::Name::from(right));
         }
         other => panic!("expected AmbiguousOperatorPrecedence, got {:?}", other),
     }
+}
+
+#[test]
+fn infix_left_against_infix_right_at_equal_precedence_is_rejected() {
+    // The case the *Equal precedence, disagreeing associativity* rule is
+    // actually named after, and the one reachable from `Basics`: `<<` is
+    // `infix left 9` and `>>` is `infix right 9`, so `a << b >> c` groups
+    // neither way and is rejected rather than guessed at.
+    //
+    // This is a different arm of the catch-all from
+    // `infix_non_chained_with_itself_is_an_ambiguous_precedence_error`, which
+    // only reaches `(None, None)`. Mutation-checked: adding an
+    // `(Associativity::Left, Associativity::Right) => None` arm ahead of the
+    // catch-all — the "fold left and carry on" guess — turned this red while
+    // leaving the `infix non` test green, which is exactly the mutation the
+    // `non` test alone cannot see.
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        infix left 9 (<<) = composeL
+
+        infix right 9 (>>) = composeR
+
+        composeL a b = a
+
+        composeR a b = a
+
+        chain a b c =
+          a << b >> c
+    "#};
+
+    assert_ambiguous_pair(source, "<<", ">>");
+}
+
+#[test]
+fn two_different_infix_non_operators_are_rejected_and_say_why() {
+    // `Basics` declares `<`, `>`, `==`, `/=`, `<=` and `>=` all at `infix non
+    // 4`, so `a < b > c` is the everyday way to reach this error — two
+    // *different* operators that agree completely (neither chains) rather than
+    // disagreeing about which side groups first.
+    //
+    // Mutation-checked on the message: restoring the single `left != right`
+    // branch ("have the same precedence but disagree on which side groups
+    // first") turned the message assertion red.
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        infix non 4 (<) = lt
+
+        infix non 4 (>) = gt
+
+        lt a b = a
+
+        gt a b = a
+
+        chain a b c =
+          a < b > c
+    "#};
+
+    use zelkova_lang::compiler::PhaseError;
+
+    assert_ambiguous_pair(source, "<", ">");
+
+    let errors = canonicalize_standalone(source).expect_err("should reject");
+    let message = errors[0].message();
+    assert!(
+        message.contains("both declared `infix non`"),
+        "the message must say neither operator chains, not that they disagree; got {:?}",
+        message
+    );
+    assert!(
+        !message.contains("disagree"),
+        "`<` and `>` do not disagree — both are `infix non`; got {:?}",
+        message
+    );
 }

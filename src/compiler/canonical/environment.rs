@@ -21,6 +21,71 @@ pub enum ValueType {
     Foreigns(Vec<(ModuleName, Option<SourceSpan>)>),
 }
 
+/// An operator's `infix` declaration as the environment holds it: what it declares,
+/// and where that declaration was written.
+///
+/// The two halves are separate because [`Infix::span`] on its own is not enough to
+/// underline: an infix reaches this environment either from the module under check
+/// or cloned out of an imported module's [`Interface`], and in the second case the
+/// span is a byte range in the *exporting* module's file. `declaration` is what
+/// records which of the two it was — see [`InfixDeclaration`].
+#[derive(Debug, Clone)]
+pub struct InfixEntry {
+    pub infix: Infix,
+    pub declaration: InfixDeclaration,
+}
+
+/// Where an operator's `infix` declaration was written, to the extent
+/// canonicalization can say — the three cases a [`SpanLabel`] under it has to
+/// distinguish.
+///
+/// A phase only ever sees one module and never learns which file it was read from,
+/// so a label about the module under check leaves `SpanLabel::file` as `None` and
+/// the driver fills it in at render time. A label about an *imported* operator
+/// cannot do that: its span belongs to
+/// the exporting module's file, and rendering it against the importing one
+/// underlines unrelated text. That is what [`SourceSpan`] and `SpanLabel::file`
+/// were built for (`ERR-5`), and this enum is what picks between them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum InfixDeclaration {
+    /// Declared by the module under check. Its span is a byte range in the file
+    /// the diagnostic is already being rendered against.
+    InThisModule(NodeSpan),
+    /// Declared by an imported module whose [`Interface`] knew both the span and
+    /// the file it was written in.
+    InImportedModule(SourceSpan),
+    /// Declared by an imported module whose [`Interface`] could not say which file
+    /// it came from — a hand-built one, or one built before its file was known
+    /// (see [`Interface::source_span`]). There is nothing honest to underline, so
+    /// a diagnostic renders no label rather than one against the wrong file.
+    Unknown,
+}
+
+impl InfixDeclaration {
+    /// A secondary label under this declaration, when there is one to point at.
+    ///
+    /// `None` covers both the unknown case and a [`NodeSpan`] with no position
+    /// behind it — a label at byte 0 of the module under check is worse than no
+    /// label at all.
+    pub fn label(&self, message: String) -> Option<SpanLabel> {
+        match self {
+            InfixDeclaration::InThisModule(span) => span.span().map(|span| SpanLabel {
+                span,
+                message,
+                primary: false,
+                file: None,
+            }),
+            InfixDeclaration::InImportedModule(source) => Some(SpanLabel {
+                span: source.span,
+                message,
+                primary: false,
+                file: Some(source.file),
+            }),
+            InfixDeclaration::Unknown => None,
+        }
+    }
+}
+
 /// What the environment records for a resolvable type *name*, as opposed to a type
 /// expression built from one.
 ///
@@ -102,9 +167,9 @@ pub trait Environment<'parent>: std::fmt::Debug {
 
     fn local_infix_exists(&self, name: &Name) -> bool;
 
-    /// The `Infix` an operator resolves to from this scope — its declared
-    /// precedence, associativity and where it was declared — or `None` when no
-    /// `infix` declaration for it is in scope.
+    /// The [`InfixEntry`] an operator resolves to from this scope — its declared
+    /// precedence and associativity, plus which module declared it and where —
+    /// or `None` when no `infix` declaration for it is in scope.
     ///
     /// Canonicalization's infix re-association is the only caller
     /// (`resolve_infix_operator` in `canonical/mod.rs`): it needs this ahead of
@@ -115,7 +180,7 @@ pub trait Environment<'parent>: std::fmt::Debug {
     /// fails here fails identically for `find_value` — `resolve_infix_operator`
     /// reports that with the same `VariableNotFound` a plain unresolvable
     /// variable would get.
-    fn find_infix(&self, name: &Name) -> Option<&Infix>;
+    fn find_infix(&self, name: &Name) -> Option<&InfixEntry>;
 
     #[allow(dead_code)]
     fn insert_local_value(&mut self, name: &Name);
@@ -295,7 +360,8 @@ fn process_import(
             }
 
             for (op_name, infix) in &interface.infixes {
-                env.infixes.insert(op_name.clone(), infix.clone());
+                env.infixes
+                    .insert(op_name.clone(), imported_infix(interface, infix));
             }
 
             // We need to insert the type without any qualifier, including variants
@@ -378,7 +444,8 @@ fn process_import(
                             EnvError::InfixNotFound(variable_name.clone(), exposed.span, suggestion)
                         })?;
 
-                        env.infixes.insert(variable_name.clone(), infix.clone());
+                        env.infixes
+                            .insert(variable_name.clone(), imported_infix(interface, infix));
                         // How do we represent infixes ?
                         // When do we do rewrite them ?
                     }
@@ -392,6 +459,25 @@ fn process_import(
     };
 
     Ok(())
+}
+
+/// An [`InfixEntry`] for an operator taken out of an imported module's
+/// [`Interface`], carrying the file that interface was read from so a diagnostic
+/// about it underlines the *exporting* module's source and not the importing one's.
+///
+/// `Interface::source_span` declines when either half is missing, and
+/// [`InfixDeclaration::Unknown`] is that answer: the label is dropped rather than
+/// rendered against the wrong file.
+fn imported_infix(interface: &Interface, infix: &Infix) -> InfixEntry {
+    let declaration = match interface.source_span(infix.span) {
+        Some(source) => InfixDeclaration::InImportedModule(source),
+        None => InfixDeclaration::Unknown,
+    };
+
+    InfixEntry {
+        infix: infix.clone(),
+        declaration,
+    }
 }
 
 fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
@@ -578,7 +664,7 @@ impl PhaseError for EnvError {
 #[derive(Debug)]
 pub struct RootEnvironment {
     module_name: ModuleName,
-    infixes: HashMap<Name, Infix>,
+    infixes: HashMap<Name, InfixEntry>,
     types: HashMap<Name, TypeArity>,
     constructors: HashMap<Name, TypeConstructor>,
     variables: HashMap<Name, ValueType>,
@@ -587,7 +673,9 @@ pub struct RootEnvironment {
 impl RootEnvironment {
     // TODO Do we need a local/foreign distinction for infixes ? (or in general ?)
     pub fn insert_local_infix(&mut self, name: Name, infix: Infix) {
-        self.infixes.insert(name, infix);
+        let declaration = InfixDeclaration::InThisModule(infix.span);
+
+        self.infixes.insert(name, InfixEntry { infix, declaration });
     }
 
     // TODO Use insert_foreign_value (and rename to remove the foreign part)
@@ -623,8 +711,8 @@ impl<'p> Environment<'p> for RootEnvironment {
 
     fn find_value(&self, name: &Name) -> Option<&ValueType> {
         // TODO Not a principled change. Will require a bit more thought :)
-        let name = if let Some(infix) = self.infixes.get(name) {
-            &infix.function_name
+        let name = if let Some(entry) = self.infixes.get(name) {
+            &entry.infix.function_name
         } else {
             name
         };
@@ -647,7 +735,7 @@ impl<'p> Environment<'p> for RootEnvironment {
         self.infixes.contains_key(name)
     }
 
-    fn find_infix(&self, name: &Name) -> Option<&Infix> {
+    fn find_infix(&self, name: &Name) -> Option<&InfixEntry> {
         self.infixes.get(name)
     }
 
@@ -708,7 +796,7 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
         self.parent.local_infix_exists(name)
     }
 
-    fn find_infix(&self, name: &Name) -> Option<&Infix> {
+    fn find_infix(&self, name: &Name) -> Option<&InfixEntry> {
         self.parent.find_infix(name)
     }
 

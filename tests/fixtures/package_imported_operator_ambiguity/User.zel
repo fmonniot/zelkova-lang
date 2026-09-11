@@ -1,0 +1,8 @@
+module User exposing (..)
+
+import Ops exposing (..)
+
+
+chain : Int -> Int -> Int -> Int
+chain a b c =
+  a < b > c
