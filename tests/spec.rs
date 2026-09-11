@@ -17,7 +17,16 @@
 //!   contradicts its own annotation is not an example of anything the language allows,
 //!   and leaving it green meant a chapter's **Known gap:** about the type checker had
 //!   to be deleted by hand on the day its ticket landed instead of going red on its
-//!   own. Exhaustiveness is not run — it is a stub that accepts every module.
+//!   own. What the tag does *not* promise is that every declaration was checked:
+//!   [`typer::type_check`] skips silently — a bare `continue`, not an error — any
+//!   declaration whose function head holds a constructor or tuple pattern, any body
+//!   reaching a `VarForeign` or an expression form its term language does not model,
+//!   any `ErrorKind::UnboundVariable`, and any `binding_javascript` module whole. Its
+//!   own doc comment is the account of why. Across `docs/spec/` that is roughly one
+//!   declaration in ten, so a green `expect=ok` block may still hold an annotation its
+//!   body contradicts — `docs/spec/conventions.md`'s row carries the same caveat for
+//!   chapter authors. Exhaustiveness is not run at all — it is a stub that accepts
+//!   every module.
 //! - `zel expect=parse-error` — fails in the parser (tokenizer, layout or grammar).
 //!   Which error is not pinned.
 //! - `zel expect=parse-error:Reason` — the same, but the reason must match one of the
@@ -375,8 +384,10 @@ fn type_check(module: &canonical::Module) -> Result<(), Vec<typer::Error>> {
 /// Written as an explicit match over the real enum, for the reason [`variant_names`] is:
 /// a new `ErrorKind` variant fails this file to compile rather than silently becoming a
 /// name no chapter can ever match. There is no grouping variant to flatten — a
-/// `typer::Error` carries exactly one kind, and [`typer::type_check`] hands back one
-/// `Error` per declaration it could not check.
+/// `typer::Error` carries exactly one kind, and [`typer::type_check`] hands back at most
+/// one `Error` per declaration it *rejected*. A declaration it could not check at all is
+/// skipped silently and contributes no error, so an empty list is not evidence that every
+/// declaration was looked at; see this file's module documentation.
 fn error_kind_names(errors: &[typer::Error]) -> Vec<&'static str> {
     errors
         .iter()
