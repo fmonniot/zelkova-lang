@@ -1,10 +1,18 @@
-// Tests for std/core/src/Js/Utils.mjs, the JavaScript companion behind the
-// Js.Utils facade (Js/Utils.zel). There is no other harness covering the .mjs
-// companions — this repo's tests are otherwise all Rust, exercised through
-// `cargo test`, which never loads a .mjs — so this one runs on Node's own
-// built-in test runner and needs no dependency:
+// The JavaScript checks over std/core/src/Js/Utils.mjs, the companion behind
+// the Js.Utils facade (Js/Utils.zel).
 //
-//   node --test 'tests/js/*.test.mjs'
+// Where this file sits is docs/spec/interop.md's "Testing a companion": a
+// companion's test is a facade under the package's own tests/ root, carrying
+// one companion per target. The facade half — tests/Js/UtilsChecks.zel,
+// declaring each check as `Task (Result Failure ())` — is not written, because
+// `foreign` does not parse and there is no runner to find a `Test`. The path
+// is the final one and the harness is the interim one (DEC-14 decision 4), so
+// the checks below are registered with Node's own test runner rather than
+// exported from this module, and Node is pointed at them directly:
+//
+//   node --test 'std/core/tests/**/*.mjs'
+//
+// Rewriting them as plain exports is what lands with the facade half.
 //
 // `lt`/`le`/`gt`/`ge`/`compare` and `append` are declared `a -> a -> ...`
 // (BUG-20), a type their JavaScript cannot honour: handed a value of a
@@ -25,12 +33,15 @@
 // Values are shaped the way docs/spec/interop.md says they cross to
 // JavaScript, or the way this file's own constructors build them, since code
 // generation does not exist yet to produce either from real Zelkova source.
+// Utils.mjs is imported as a module of the target rather than reached through
+// its facade, which is what lets these ask what it does with a value Js.Utils
+// would have refused to pass it.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     compare, lt, le, gt, ge, append,
-} from '../../std/core/src/Js/Utils.mjs';
+} from '../../src/Js/Utils.mjs';
 
 // A stand-in for `Colour = Red | Blue`, encoded as
 // docs/spec/interop.md#a-union-crosses-as-a-tagged-value specifies.
