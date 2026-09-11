@@ -1,6 +1,6 @@
 ---
 name: fix-pr-comments
-description: Triage the review comments on a GitHub PR (inline, review-level, and issue-level) by severity, implement the blocking and should-fix ones, reply to the rest, resolve merge conflicts with main, run cargo fmt/clippy, push, and resolve the threads. Use when the user says "fix the comments on PR #N", "address the review", or asks to act on reviewer feedback for one or more PRs.
+description: Triage the review comments on a GitHub PR (inline, review-level, and issue-level) by severity, implement blocking findings unconditionally, judge should-fix/note findings for relevance and either implement, decline, or file a follow-up ticket, resolve merge conflicts with main, run cargo fmt/clippy, push, and resolve the threads. Use when the user says "fix the comments on PR #N", "address the review", or asks to act on reviewer feedback for one or more PRs.
 argument-hint: <TICKET-ID -> PR-M> [...] [--model sonnet|opus|fable|haiku]
 ---
 
@@ -38,14 +38,16 @@ gh api repos/fmonniot/zelkova-lang/issues/<PR>/comments --paginate --jq '.[] | {
 **Severity is the input that decides what gets built.** `review-pr` tags every inline finding
 `[blocking]`, `[should-fix]` or `[note]`. Sort them:
 
-- `[blocking]` and `[should-fix]` → **implement**.
-- `[note]` → **reply, do not implement.** These are observations, imprecise prose and design
-  opinions. Implementing them is how a 1-commit ticket becomes a 20-commit PR, and each
-  rewritten doc comment becomes the next round's surface to find fault with.
+- `[blocking]` → **implement, unconditionally.** No judgment call at this tier — a blocking
+  finding ships fixed or the PR doesn't merge.
+- `[should-fix]` and `[note]` → **candidates, not instructions.** The spawned agent judges each
+  one for relevance and correctness against the actual code before deciding whether to
+  implement it, decline it, or defer it with a ticket — see Step 2. This orchestrator-level pass
+  is just for the headcount and the model pick below, not the final call.
 - **Untagged** (an older review, or a reviewer that skipped the convention) → judge it against
   the same bar: does merging as-is ship a defect, or leave a clause of the ticket's Acceptance
-  unmet? If yes, treat as `[should-fix]`. If it is about wording, a cross-reference, or "worth
-  considering", treat as `[note]`.
+  unmet? If yes, treat as a `[should-fix]` candidate. If it is about wording, a cross-reference,
+  or "worth considering", treat as a `[note]` candidate.
 
 If the review summary opens with `**APPROVED**` and carries no `[blocking]` findings, **do not
 spawn anything** — tell the user the PR is ready to merge and stop. Running a fix pass over an
@@ -53,7 +55,8 @@ approved review is how the loop fails to terminate.
 
 Report the triage before spawning, so a `[note]` you are about to skip can be promoted by hand:
 
-> PR #NNN: 1 blocking, 2 should-fix, 3 notes. Implementing 3, replying to 3.
+> PR #NNN: 1 blocking, 2 should-fix, 3 notes. 1 implemented unconditionally; the agent will
+> judge the other 5 and implement, decline, or ticket each.
 
 ### Then pick the model
 
@@ -107,12 +110,25 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 >
 >    **Triage before you write anything.** Each inline finding is tagged with its severity as
 >    the first characters of its body:
->    - `[blocking]`, `[should-fix]` → implement it.
->    - `[note]` → **do not implement.** Reply saying you read it and why it is not being
->      actioned (or that you agree and it is worth a follow-up ticket). A `[note]` is an
->      observation, not an instruction. You are not being graded on how many you close.
->    - untagged → same bar: a defect or an unmet ticket-Acceptance clause is `[should-fix]`;
->      wording, cross-references and "worth considering" are `[note]`.
+>    - `[blocking]` → implement it. No judgment call — this tier is never declined or deferred.
+>    - `[should-fix]` and `[note]` → **judge each one before acting.** Read it against the
+>      actual code it points at — a reviewer can be wrong, out of date, or right about something
+>      that isn't this PR's job. Three outcomes:
+>      - **Relevant, worth doing now** → implement it.
+>      - **Not relevant** (misreading, already true, doesn't hold up, or out of scope for what
+>        the ticket's Acceptance actually requires) → do not implement it. Reply with the
+>        specific reason. No ticket — there's nothing to track.
+>      - **Relevant, but not for this PR** (a real defect or genuine improvement that's out of
+>        scope, low priority, or needs design this PR shouldn't grow to absorb) → do not
+>        implement it. File it with the `create-ticket` skill instead
+>        (`Skill({skill: "create-ticket", args: "..."})`), grounded in the actual code the way
+>        that skill requires, then reply with the new ticket ID.
+>      You are not graded on how many threads you close with code. A correctly-declined comment
+>      with a one-line reason, or a correctly-deferred one with a ticket attached, is as good an
+>      outcome as an implemented one — and better than a commit nobody needed.
+>    - untagged → same bar: a defect or an unmet ticket-Acceptance clause is judged like
+>      `[should-fix]`; wording, cross-references and "worth considering" are judged like
+>      `[note]`.
 >
 >    **Comments that reverse an earlier decision on this PR are not implemented.** Fetch the
 >    replies too (`in_reply_to_id != null`) — they record what previous rounds decided. If a
@@ -158,10 +174,10 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 > 6. Reply to **every** comment, implemented or not:
 >    - **Implemented** — the short commit SHA that addressed it and a one-line description; if
 >      you diverged from the suggestion, say why.
->    - **`[note]`, not implemented** — one line saying you read it and why it isn't being
->      actioned ("agreed but out of scope for this PR", "the comment is accurate as written, see
->      X", "worth a follow-up ticket — not filing one unprompted"). A short honest decline is a
->      better outcome than a commit nobody asked for.
+>    - **Declined, not relevant** — the specific reason it doesn't apply (misreading, already
+>      true, out of scope for the ticket's Acceptance, or simply incorrect).
+>    - **Deferred, ticket filed** — the ticket ID `create-ticket` produced and a one-line summary
+>      of why it's deferred rather than done here.
 >    - **Disputed** (reverses an earlier round's decision) — quote the earlier instruction and
 >      its SHA, state that the two rounds disagree, say you are leaving it for the user.
 >
@@ -170,7 +186,8 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 >      (the `/replies` endpoint 404s — use `in_reply_to` on the comments endpoint).
 >    - Review-level / issue-level: `gh api repos/fmonniot/zelkova-lang/issues/<PR>/comments -X POST -f body="<reply>"`
 >      (no `in_reply_to` concept — the reply is a new top-level comment).
-> 7. Resolve the inline threads you implemented or declined. **Leave disputed threads open** — an
+> 7. Resolve the inline threads you implemented, declined, or deferred with a ticket. **Leave
+>    disputed threads open** — an
 >    unresolved thread is the signal the user needs to arbitrate, and resolving it hides the
 >    disagreement. GraphQL only, no REST endpoint:
 >    ```bash
@@ -190,8 +207,8 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 > 8. Check CI: `gh pr checks <PR>`. Fix any failures in their own commit, then push again.
 >
 > Report back: commits made, whether the merge had conflicts, final `gh pr checks` state, how
-> many threads you resolved, and — listed explicitly — which comments you declined and which you
-> disputed.
+> many threads you resolved, and — listed explicitly — which comments you declined, which you
+> deferred (with their ticket IDs), and which you disputed.
 
 ## Step 3 — Report the launch immediately
 
@@ -221,12 +238,14 @@ Confirm in the worktree: `git -C "$WT" ...` then `cargo fmt --all --check` and
 
 ## Step 5 — Report
 
-| Ticket | PR | Model | Commits | Implemented / declined / disputed | Conflicts resolved? | CI | Threads resolved |
-|---|---|---|---|---|---|---|---|
-| AST-1 | #NNN | opus | 3 | 3 / 3 / 1 | yes | passing | 6/7 |
+| Ticket | PR | Model | Commits | Implemented / declined / deferred / disputed | Tickets filed | Conflicts resolved? | CI | Threads resolved |
+|---|---|---|---|---|---|---|---|---|
+| AST-1 | #NNN | opus | 3 | 2 / 2 / 1 / 1 | 1 | yes | passing | 6/7 |
 
-Spell out any disputed item in prose under the table — which finding, which earlier decision it
-contradicts, and the two SHAs. That is the one thing here the user actually has to decide.
+Spell out any deferred or disputed item in prose under the table: for a deferred one, the
+finding and the ticket ID it produced; for a disputed one, which finding, which earlier decision
+it contradicts, and the two SHAs. Disputed items are the one thing here the user actually has to
+decide; deferred ones are for the user's awareness of what's now tracked outside this PR.
 
 ## Notes
 
@@ -234,10 +253,11 @@ contradicts, and the two SHAs. That is the one thing here the user actually has 
   dedicated worktree.
 - **Group fixes into a few coherent commits**, not one per comment. Explain any divergence from
   a reviewer's exact suggestion in the reply rather than silently doing something else.
-- **Not every comment is an instruction.** `[note]` findings get a reply and no commit. Closing
-  every thread with code is how a 6-comment review becomes a 16-commit diff, which is then the
-  surface the next review round examines.
-- **A declined `[note]` worth acting on later is a `create-ticket` candidate.** Say so in the
-  reply; don't file one unprompted, and don't grow this PR to cover it.
+- **Not every comment is an instruction.** `[should-fix]` and `[note]` findings are judged, not
+  auto-implemented — see Step 2. Closing every thread with code is how a 6-comment review
+  becomes a 16-commit diff, which is then the surface the next review round examines.
+- **A relevant finding that isn't for this PR gets a ticket, filed on the spot** via
+  `create-ticket` — not a reply promising one later. Don't grow this PR to cover it; do reply
+  with the ticket ID so the finding stays traceable instead of dying in a closed PR thread.
 - **Leave the worktree in place** after pushing — remove it only once the PR is merged or
   closed, and even then only if asked (`git worktree remove <path>`).

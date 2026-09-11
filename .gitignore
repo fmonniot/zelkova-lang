@@ -4,6 +4,3 @@
 # (worktrees, memory, local settings, session state).
 .claude/*
 !.claude/skills
-
-# Local help to remember in which order to tackle tickets
-docs/ticket-ordering*
