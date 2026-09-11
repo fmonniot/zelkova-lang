@@ -1110,6 +1110,96 @@ fn ambiguous_import_labels_point_into_each_defining_module() {
     );
 }
 
+// ── Test 22b: an ambiguous operator pair points at the declaring module ─────
+
+/// `BUG-22`: `AmbiguousOperatorPrecedence`'s "declared here" labels have to land
+/// in the module that wrote the `infix` declaration, which is usually not the
+/// module being checked.
+///
+/// An operator's declaration is very often imported — `Basics` declares every one
+/// the standard library uses — and `canonical::Infix::span` is then a byte range
+/// in the *exporting* module's file. A `SpanLabel` built with `file: None` means
+/// "the module under check", so such a label underlines whatever text happens to
+/// sit at those bytes in the importing module: in this fixture, `User.zel`'s
+/// `import` line and the head of `chain`.
+///
+/// `Ops.zel` declares `<` and `>` both `infix non 4`, `User.zel` imports them
+/// unqualified and writes `a < b > c`. Mutation-checked by replacing
+/// `InfixDeclaration::InImportedModule`'s arm in
+/// `InfixDeclaration::label` with the `file: None` the code had before: the
+/// error, its message and all three labels survive that, and only the `file_id`
+/// assertions below go red.
+#[test]
+fn ambiguous_imported_operators_are_labeled_in_their_own_module() {
+    let root = fixture_package("package_imported_operator_ambiguity");
+    assert_eq!(module_names(&root), vec!["Ops.zel", "User.zel"]);
+
+    let ops_source = std::fs::read_to_string(root.join("Ops.zel")).expect("fixture is readable");
+    let lt_decl = ops_source
+        .find("infix non 4 (<)")
+        .expect("Ops declares `<`");
+    let gt_decl = ops_source
+        .find("infix non 4 (>)")
+        .expect("Ops declares `>`");
+
+    let error = compile_package(&root).expect_err("an ambiguous operator pair must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    match unwrap_in_file(&errors[0]) {
+        CompilationError::Canonical(canonical_errors, module) => {
+            assert_eq!(module, &Name::from("User"));
+            assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
+        }
+        other => panic!("expected a Canonical error, got {:?}", other),
+    }
+
+    let diagnostic = errors[0].as_diagnostic();
+
+    let primary = diagnostic
+        .labels
+        .iter()
+        .find(|l| l.style == LabelStyle::Primary)
+        .expect("expected a primary label under the ambiguous expression");
+    let secondary: Vec<_> = diagnostic
+        .labels
+        .iter()
+        .filter(|l| l.style == LabelStyle::Secondary)
+        .collect();
+
+    assert_eq!(
+        secondary.len(),
+        2,
+        "expected one `declared here` label per operator, got {:?}",
+        diagnostic.labels
+    );
+
+    // The point of the test: both declarations were written in `Ops.zel`, so
+    // neither label belongs in `User.zel` where the primary caret sits.
+    assert_eq!(
+        secondary[0].file_id, secondary[1].file_id,
+        "both operators are declared in the same module, so both labels share a file"
+    );
+    assert_ne!(
+        secondary[0].file_id, primary.file_id,
+        "a `declared here` label must sit in the declaring module, not the one under check"
+    );
+
+    // And it underlines the `infix` declaration itself rather than whatever byte
+    // range happens to line up.
+    let starts: Vec<_> = secondary.iter().map(|l| l.range.start).collect();
+    assert!(
+        starts.contains(&lt_decl) && starts.contains(&gt_decl),
+        "expected labels at {:?} and {:?}, got {:?}",
+        lt_decl,
+        gt_decl,
+        starts
+    );
+}
+
 // ── Test 23: a cross-module label does not need the checked module's file ────
 
 /// A label that carries its own file renders even when the diagnostic has none.

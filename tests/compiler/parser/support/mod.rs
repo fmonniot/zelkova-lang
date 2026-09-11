@@ -95,6 +95,18 @@ pub fn expr_app(f: Box<Expression>, arg: Box<Expression>) -> Expression {
     Expression::bare(ExpressionKind::Application(f, arg))
 }
 
+/// A flat run of operator applications — see `ExpressionKind::InfixChain`.
+/// Each pair is one operator and the operand to its right; the operator's own
+/// span is `no_span()` like everything else a hand-built literal carries,
+/// since `NodeSpan`'s blind `PartialEq` makes it compare equal to whatever the
+/// parser actually computed.
+pub fn expr_infix_chain(first: Box<Expression>, rest: Vec<(Name, Expression)>) -> Expression {
+    Expression::bare(ExpressionKind::InfixChain(
+        first,
+        rest.into_iter().map(|(op, e)| (op, no_span(), e)).collect(),
+    ))
+}
+
 pub fn expr_tuple(tuple: Tuple<Expression>) -> Expression {
     Expression::bare(ExpressionKind::Tuple(tuple))
 }

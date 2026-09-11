@@ -76,9 +76,11 @@ test_parse_ok!(
     ))
 );
 
-// This will probably change once we have to intregrate infix
-// configuration, because here we don't know yet how to build
-// the application expression.
+// The grammar has no operator table (an operator's `infix` declaration may
+// live in another module), so `2 + 3` parses to a flat `InfixChain` rather
+// than a nested `Application` — canonicalization re-associates it once the
+// infix environment is in hand. See `ExpressionKind::InfixChain` and
+// `canonical::reassociate_infix_chain`.
 test_parse_ok!(
     operator_application,
     r#"
@@ -86,15 +88,25 @@ test_parse_ok!(
 
     main = 2 + 3
     "#,
-    module(expr_app(
-        // map: (a -> b) -> a -> b
-        // first application result in: a -> b
-        // second application result in: b
-        Box::new(expr_app(
-            Box::new(expr_var("+".into())),
-            Box::new(expr_lit(Literal::Int(2))),
-        )),
-        Box::new(expr_lit(Literal::Int(3))),
+    module(expr_infix_chain(
+        Box::new(expr_lit(Literal::Int(2))),
+        vec![(name("+"), expr_lit(Literal::Int(3)))],
+    ))
+);
+
+test_parse_ok!(
+    operator_application_chain,
+    r#"
+    module Main exposing (..)
+
+    main = 2 + 3 * 4
+    "#,
+    module(expr_infix_chain(
+        Box::new(expr_lit(Literal::Int(2))),
+        vec![
+            (name("+"), expr_lit(Literal::Int(3))),
+            (name("*"), expr_lit(Literal::Int(4))),
+        ],
     ))
 );
 

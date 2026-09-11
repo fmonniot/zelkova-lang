@@ -497,6 +497,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             ExportNotFound(..) => vec!["ExportNotFound"],
             EnvironmentErrors(..) => vec!["EnvironmentErrors"],
             InfixReferenceInvalidValue(..) => vec!["InfixReferenceInvalidValue"],
+            AmbiguousOperatorPrecedence(..) => vec!["AmbiguousOperatorPrecedence"],
             BindingPatternsInvalidLen(..) => vec!["BindingPatternsInvalidLen"],
             NoBindings(..) => vec!["NoBindings"],
             VariableNotFound(..) => vec!["VariableNotFound"],

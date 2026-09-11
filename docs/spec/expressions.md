@@ -285,19 +285,14 @@ poly a b c =
   a * b + c
 ```
 
-**Known gap:** precedence and associativity are recorded and then ignored. Every operator
-application groups rightward regardless of what was declared, so `poly` above is compiled as
-`a * (b + c)`. [`BUG-22`](../tickets/bug-22.md) is the ticket. That block passes either way — grouping changes
-which value an expression has, and nothing here evaluates anything — so it pins the syntax
-only.
-
 ### Equal precedence, disagreeing associativity
 
-Two operators of the same precedence whose associativities disagree have no unambiguous
-grouping, and an expression that mixes them without parentheses is a syntax error. An operator
-declared `non` does not chain with itself at all.
+Two operators of the same precedence group an expression only when they agree how — both
+`left` or both `right`. Anything else has no unambiguous grouping, and an expression that
+mixes the two without parentheses is rejected. A `left` against a `right` disagrees. An
+operator declared `non` agrees with nothing at all, itself included:
 
-```zel expect=ok
+```zel expect=canonical-error:AmbiguousOperatorPrecedence
 module Example exposing ((==), eq, chain)
 
 infix non 4 (==) = eq
@@ -309,12 +304,29 @@ chain a b c =
   a == b == c
 ```
 
-**Known gap:** that declaration should be rejected, and today it is accepted as
-`a == (b == c)`. It is the one consequence of [`BUG-22`](../tickets/bug-22.md) a block can
-hold to account: fixing precedence makes this a parse error, and `expect=ok` goes red.
-
 Falling back to left-grouping would let `a == b == c` compile as `(a == b) == c`, comparing a
 boolean against `c`.
+
+Two *different* `non` operators of the same precedence are rejected for the same reason. They
+do not disagree — neither offers to group the other — and there is no grouping left to fall
+back on:
+
+```zel expect=canonical-error:AmbiguousOperatorPrecedence
+module Example exposing ((<), (>), lt, gt, chain)
+
+infix non 4 (<) = lt
+
+infix non 4 (>) = gt
+
+lt a b =
+  a
+
+gt a b =
+  a
+
+chain a b c =
+  a < b > c
+```
 
 ### Prefix negation
 
@@ -375,6 +387,30 @@ f g n =
 
 Reading `g -n` as an application would make meaning turn on spacing alone. Write `g (-n)` when
 an argument is what is meant.
+
+Negation takes exactly the operand in front of it, and binds tighter than every operator
+however that operator is declared. `-a + b` is `(-a) + b` and `-a * b` is `(-a) * b`; a
+negation that is meant to cover more is written with parentheses, as `-(a + b)`.
+
+```zel expect=ok
+module Example exposing ((-), (+), sub, add, f)
+
+infix left 6 (-) = sub
+
+infix left 6 (+) = add
+
+sub a b =
+  a
+
+add a b =
+  a
+
+f a b =
+  -a + b
+```
+
+That block pins the syntax only — both groupings type the same, and nothing here evaluates
+anything. `tests/compiler/canonical.rs` is where the grouping itself is pinned.
 
 There is likewise no negative literal: `-1` is negation applied to the literal `1`. A
 [pattern](patterns.md#literal-patterns) carries its sign on the literal instead, because

@@ -23,6 +23,9 @@ use log::{debug, trace};
 use std::collections::HashMap;
 
 mod environment;
+/// Part of [`Error::AmbiguousOperatorPrecedence`]'s public shape, so it is
+/// re-exported alongside the error rather than left behind a private module.
+pub use environment::InfixDeclaration;
 use environment::{
     new_environment, suggest_name, EnvError, Environment, RootEnvironment, ValueType,
 };
@@ -517,6 +520,23 @@ impl Expression {
 
                 ExpressionKind::Apply(Box::new(a), Box::new(b))
             }
+            parser::ExpressionKind::InfixChain(first, rest) => {
+                let first = Expression::from_parser(first, env)?;
+
+                let rest = rest
+                    .iter()
+                    .map(|(op_name, op_span, operand)| {
+                        let op = resolve_infix_operator(op_name, *op_span, env)?;
+                        let operand = Expression::from_parser(operand, env)?;
+                        Ok((op, operand))
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?;
+
+                let mut rest = rest.into_iter().peekable();
+                let reassociated = reassociate_infix_chain(first, &mut rest, 0)?;
+
+                reassociated.kind
+            }
             parser::ExpressionKind::Tuple(tuple) => {
                 ExpressionKind::Tuple(tuple.try_map(|e| Expression::from_parser(e, env))?)
             }
@@ -555,6 +575,174 @@ impl Expression {
     }
 }
 
+/// One operator of an `ExpressionKind::InfixChain`, resolved against the infix
+/// environment: its own `Infix` (precedence, associativity, and where it was
+/// declared) alongside the canonical `Expression` it resolves to as a value —
+/// `VarLocal`, `VarTopLevel` or `VarForeign`, whichever `find_value` reports for
+/// its `function_name`, exactly as a plain reference to the operator would
+/// resolve. `reassociate_infix_chain` consults `infix` to decide how to nest,
+/// and `span` and `expr` to build the invented `Application` nodes.
+struct ResolvedInfixOp {
+    name: Name,
+    /// Where the operator itself was written — not its `infix` declaration.
+    span: NodeSpan,
+    expr: Expression,
+    infix: Infix,
+    /// Where the `infix` declaration was written, and in which module's file —
+    /// the operator may well have been declared by an imported module, in which
+    /// case `infix.span` is a byte range in *that* module's source. See
+    /// [`InfixDeclaration`].
+    declaration: InfixDeclaration,
+}
+
+/// Resolves one operator of an `InfixChain` the same way a bare reference to it
+/// would resolve as a value, plus the `Infix` re-association needs.
+///
+/// An operator symbol only ever reaches `self.variables` through the `infixes`
+/// redirect in `RootEnvironment::find_value` — nothing else can insert a key
+/// spelled like an operator, since a function's own name always comes from
+/// `VarIdent`, a distinct token from `Op`. So `find_infix` failing here is
+/// exactly the case a plain `Variable` reference to the same name would fail
+/// `find_value` on, and gets the same `VariableNotFound` a reader would expect.
+fn resolve_infix_operator(
+    name: &Name,
+    span: NodeSpan,
+    env: &dyn Environment,
+) -> Result<ResolvedInfixOp, Error> {
+    let entry = env.find_infix(name).cloned().ok_or_else(|| {
+        let suggestion = suggest_name(name, env.value_names().into_iter());
+        Error::VariableNotFound(env.module_name().qualify_name(name), span, suggestion)
+    })?;
+
+    // Resolved the same way a written `Variable(name)` would be — through the
+    // `Variable` arm of `Expression::from_parser` — so the operator picks up
+    // exactly the `VarLocal`/`VarTopLevel`/`VarForeign` shape a plain reference
+    // to it would.
+    let synthetic = parser::Expression::new(span, parser::ExpressionKind::Variable(name.clone()));
+    let expr = Expression::from_parser(&synthetic, env)?;
+
+    Ok(ResolvedInfixOp {
+        name: name.clone(),
+        span,
+        expr,
+        infix: entry.infix,
+        declaration: entry.declaration,
+    })
+}
+
+/// Re-associates a flat run of operator applications into a tree of
+/// `Application` nodes, in one pass over the operators — no operator or operand
+/// is visited twice — using precedence climbing (a standard algorithm; see e.g.
+/// https://en.wikipedia.org/wiki/Operator-precedence_parser#Precedence_climbing_method).
+///
+/// `min_prec` is the lowest precedence this call is willing to fold into `lhs`;
+/// the outer, top-level call passes 0, admitting every operator. A recursive
+/// call raises it to bind only the tighter operators that belong on the right
+/// of the operator being folded — `op.infix.precedence + 1` for strictly higher
+/// precedence, or `op.infix.precedence` itself when the next operator ties and
+/// both associate right, which is what lets a right-associative run keep
+/// folding at the same level (`a <| b <| c` → `a <| (b <| c)`).
+///
+/// Two adjacent operators of equal precedence are rejected rather than guessed
+/// at unless they agree — both `left` (fold `lhs`, the usual case) or both
+/// `right` (recurse into `rhs`). Anything else — a `left` against a `right`, or
+/// either against an `infix non` operator, including one against itself — is
+/// `Error::AmbiguousOperatorPrecedence`: nothing here says which one should
+/// bind first, and guessing would silently pick a grouping the user did not
+/// write.
+fn reassociate_infix_chain(
+    mut lhs: Expression,
+    rest: &mut std::iter::Peekable<impl Iterator<Item = (ResolvedInfixOp, Expression)>>,
+    min_prec: u8,
+) -> Result<Expression, Error> {
+    while let Some((op, mut rhs)) = rest.next_if(|(op, _)| op.infix.precedence >= min_prec) {
+        loop {
+            let next_min = match rest.peek() {
+                None => None,
+                Some((next_op, _)) => {
+                    if next_op.infix.precedence > op.infix.precedence {
+                        Some(op.infix.precedence + 1)
+                    } else if next_op.infix.precedence == op.infix.precedence {
+                        match (op.infix.associativity, next_op.infix.associativity) {
+                            (Associativity::Left, Associativity::Left) => None,
+                            (Associativity::Right, Associativity::Right) => {
+                                Some(op.infix.precedence)
+                            }
+                            _ => {
+                                return Err(Error::AmbiguousOperatorPrecedence(
+                                    AmbiguousOperator::new(&op),
+                                    AmbiguousOperator::new(next_op),
+                                    op.span.merge(next_op.span),
+                                ))
+                            }
+                        }
+                    } else {
+                        None
+                    }
+                }
+            };
+
+            match next_min {
+                Some(min) => rhs = reassociate_infix_chain(rhs, rest, min)?,
+                None => break,
+            }
+        }
+
+        lhs = apply_infix(op, lhs, rhs);
+    }
+
+    Ok(lhs)
+}
+
+/// Builds the two `Application` nodes one step of infix re-association adds,
+/// following the same span convention the grammar's right-recursive rewrite
+/// used before this: the partial application of the operator to `lhs` — a node
+/// with nothing in the user's text of its own — takes the operator's own span,
+/// and the outer application, which stands for `lhs op rhs` as the user wrote
+/// it, spans from wherever `lhs` starts to wherever `rhs` ends.
+fn apply_infix(op: ResolvedInfixOp, lhs: Expression, rhs: Expression) -> Expression {
+    let span = lhs.span.merge(rhs.span);
+
+    let partial = Expression::new(
+        op.span,
+        ExpressionKind::Apply(Box::new(op.expr), Box::new(lhs)),
+    );
+
+    Expression::new(
+        span,
+        ExpressionKind::Apply(Box::new(partial), Box::new(rhs)),
+    )
+}
+
+/// One side of an [`Error::AmbiguousOperatorPrecedence`]: the operator as the user
+/// spelled it, how its `infix` declaration said it associates, and where that
+/// declaration was written.
+///
+/// `associativity` is carried rather than re-derived because the message depends on
+/// it — an `infix non` operator does not chain at all, where a `left` against a
+/// `right` is a choice the user can make with parentheses — and the error outlives
+/// the environment the declaration was looked up in.
+#[derive(Debug)]
+pub struct AmbiguousOperator {
+    pub name: Name,
+    pub associativity: Associativity,
+    pub declaration: InfixDeclaration,
+}
+
+impl AmbiguousOperator {
+    fn new(op: &ResolvedInfixOp) -> Self {
+        AmbiguousOperator {
+            name: op.name.clone(),
+            associativity: op.infix.associativity,
+            declaration: op.declaration,
+        }
+    }
+
+    fn is_non_associative(&self) -> bool {
+        self.associativity == Associativity::None
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct CaseBranch {
     pub pattern: Pattern,
@@ -588,6 +776,18 @@ pub enum Error {
     EnvironmentErrors(Vec<EnvError>),
     /// (infix, function), and where the `infix` declaration was written
     InfixReferenceInvalidValue(Name, Name, NodeSpan),
+    /// Infix re-association (`reassociate_infix_chain`) found two adjacent
+    /// operators of equal precedence that do not agree how to group: the left
+    /// one, the right one, and the ambiguous pair's own span — from the left
+    /// operator through the right one.
+    ///
+    /// Three shapes reach this, and [`PhaseError::message`] says which:
+    /// `left.name == right.name` is one `infix non` operator chained with
+    /// itself (`a == b == c`); either side being `infix non` against a
+    /// different operator is a non-associative operator that does not chain at
+    /// all (`a < b > c`); and a `left` against a `right` is the genuine
+    /// disagreement about which side groups first (`a << b >> c`).
+    AmbiguousOperatorPrecedence(AmbiguousOperator, AmbiguousOperator, NodeSpan),
     BindingPatternsInvalidLen(NodeSpan),
     /// A declaration with a type annotation and no body, and where the annotation
     /// was written — which is the only part of it there is to point at.
@@ -662,6 +862,41 @@ impl PhaseError for Error {
                 "the infix operator `{}` is declared as `{}`, which is not a value declared in this module",
                 infix, function
             ),
+            Error::AmbiguousOperatorPrecedence(left, right, _) => {
+                // Three shapes, and the everyday one is the middle: `Basics`
+                // declares six operators `infix non 4`, so `a < b > c` reaches
+                // here with two *different* operators that do not disagree about
+                // anything — both say they do not chain. Calling that a
+                // disagreement about which side groups first would name a reason
+                // that is not the reason.
+                if left.name == right.name {
+                    format!(
+                        "`{}` is declared `infix non`, so it cannot be chained with itself without parentheses to say which application comes first",
+                        left.name
+                    )
+                } else if left.is_non_associative() && right.is_non_associative() {
+                    format!(
+                        "`{}` and `{}` are both declared `infix non` at the same precedence, so neither groups the other and this needs parentheses",
+                        left.name, right.name
+                    )
+                } else if left.is_non_associative() || right.is_non_associative() {
+                    let (non, other) = if left.is_non_associative() {
+                        (&left.name, &right.name)
+                    } else {
+                        (&right.name, &left.name)
+                    };
+
+                    format!(
+                        "`{}` is declared `infix non`, so it does not chain with `{}` at the same precedence without parentheses",
+                        non, other
+                    )
+                } else {
+                    format!(
+                        "`{}` and `{}` have the same precedence but disagree on which side groups first, so this needs parentheses to say which one applies first",
+                        left.name, right.name
+                    )
+                }
+            }
             Error::BindingPatternsInvalidLen(_) => {
                 "the arguments of this declaration do not line up with its type annotation"
                     .to_owned()
@@ -753,6 +988,35 @@ impl PhaseError for Error {
                 &format!("`{}` is not declared anywhere in this module", name),
             ),
             Error::InfixReferenceInvalidValue(_, _, span) => primary(span, "declared here"),
+            // The two "declared here" labels go through `InfixDeclaration`, which
+            // is what knows whether the declaration is in the module under check
+            // or in an imported one. An operator's `infix` declaration is very
+            // often not local — `Basics` declares every one the standard library
+            // uses — and `Infix::span` is then a byte range in *that* module's
+            // file, so a label built with `file: None` would underline unrelated
+            // text in the importing module (`ERR-5` is the mechanism that avoids
+            // it).
+            Error::AmbiguousOperatorPrecedence(left, right, span) => {
+                let mut labels = primary(span, "ambiguous without parentheses");
+
+                labels.extend(
+                    left.declaration
+                        .label(format!("`{}` declared here", left.name)),
+                );
+
+                // Both sides naming the same operator is the `infix non`
+                // self-conflict — they point at the very same declaration, so a
+                // second label there would only repeat the first one.
+                if left.name != right.name {
+                    labels.extend(
+                        right
+                            .declaration
+                            .label(format!("`{}` declared here", right.name)),
+                    );
+                }
+
+                labels
+            }
             // The four that name an identifier: the caret sits under the name the
             // user wrote, which is the whole point of spanning expressions and
             // patterns rather than only declarations. `VariableNotFound` and
