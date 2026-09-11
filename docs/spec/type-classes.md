@@ -659,9 +659,9 @@ different type than it was called with. The second is already impossible — a c
 stands for a complete type, so there is no different type for it to recurse at.
 
 **Known gap:** the comparison and append facades in `std/core` are declared over any type at all,
-and the JavaScript behind them assumes its arguments are numbers, strings or tuples; handed a
-value of a user union type it reads fields that are not there.
-[`BUG-20`](../tickets/bug-20.md) tracks it. Those signatures are already inadmissible — a facade
+and the JavaScript behind them handles only numbers, strings and tuples; handed a value of a user
+union type it throws rather than reading fields that are not there, but the call still
+type-checks. [`BUG-20`](../tickets/bug-20.md) tracks it. Those signatures are already inadmissible — a facade
 is monomorphic — and [`LANG-43`](../tickets/lang-43.md) is the check that rejects them.
 
 ## The words this reserves

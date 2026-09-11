@@ -17,8 +17,8 @@ declared type has always been `a -> a -> Bool` — but the spellings read as a r
 hid it. `SPEC-11` rewrote them to `a` because that is what they mean, which makes the
 over-promise structural rather than notational, and this ticket is the record of it.
 
-The JavaScript underneath cannot honour that type. `_Utils_cmp` compares a non-object with
-`<`, and otherwise assumes the value is a tuple, reading `.a`, `.b` and `.c` off it:
+The JavaScript underneath cannot honour that type. `_Utils_cmp` used to compare a non-object
+with `<`, and otherwise assume the value is a tuple, reading `.a`, `.b` and `.c` off it:
 
 ```js
 function _Utils_cmp(x, y, ord) {
@@ -29,9 +29,11 @@ function _Utils_cmp(x, y, ord) {
 }
 ```
 
-Handed a value of a user union type — an object that is not a tuple — it recurses into three
-`undefined` fields and returns a comparison of nothing against nothing. `append` is the same
-shape: it branches on `typeof xs === 'string'` and otherwise treats both arguments as lists.
+Handed a value of a user union type — an object that is not a tuple — it recursed into three
+`undefined` fields and returned a comparison of nothing against nothing. `append` was the same
+shape: it branched on `typeof xs === 'string'` and otherwise treated both arguments as lists.
+That half is now fixed; see **Status** below. What is not fixed is the declared type, which is
+what lets such a call be written at all.
 
 So this checks clean and means nothing:
 
@@ -69,6 +71,24 @@ Do the first and leave the ticket open, or wait for the second — but do not le
 on the grounds that codegen has not started, because the ticket that starts codegen will not
 be looking here.
 
-**Acceptance:** `_Utils_cmp` and `append` fail loudly on a value they cannot compare or
-concatenate, with a test in whatever harness covers the `.mjs` files by then. `cargo run`
-still prints `parsed 8 modules` and lists all eight as checked.
+**Status — the first is done and this ticket stays open for the second.**
+`std/core/src/Js/Utils.mjs` now admits only what it can actually read: `_Utils_cmp` takes an
+ordered primitive or an object shaped like one of the two tuple encodings that file's own
+constructors build, and throws on anything else — a union value, a record, an array, a
+function, `null` — naming what it was handed. `append` keeps the String case and throws
+elsewhere, naming lists as not implemented. `tests/js/Utils.test.mjs` is the repository's first
+JavaScript harness and pins all of it; run it with `node --test 'tests/js/*.test.mjs'`.
+
+Two things that guard deliberately does *not* settle. It reads the object tuple encoding this
+file was copied with, while
+[Which types may cross the boundary](../spec/interop.md#which-types-may-cross-the-boundary)
+says a tuple crosses as an array; [`GEN-2`](gen-2.md) is what chooses, and until it does, an
+array is a value `_Utils_cmp` cannot compare and is rejected as one. And it is a runtime
+failure, not a compile-time one — which is the half below that remains.
+
+**Acceptance:** *(the first clause is met — see Status.)* `_Utils_cmp` and `append` fail loudly
+on a value they cannot compare or concatenate, with a test in whatever harness covers the `.mjs`
+files by then. `cargo run` still prints `parsed 8 modules` and lists all eight as checked. What
+remains is the type half: the six signatures carry a real constraint, so `min Red Blue` is a
+type error rather than a runtime throw. [`LANG-42`](lang-42.md) is that work and closes this
+ticket.
