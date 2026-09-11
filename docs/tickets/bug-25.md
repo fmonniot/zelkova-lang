@@ -71,9 +71,10 @@ an `Int`* is deleted. `cargo run` still prints `parsed 8 modules` and lists all 
 **Note — this ticket has no red test behind it**, for the same reason
 [`BUG-24`](bug-24.md) does not: `cargo test` never loads a `.mjs` file, so no spec block goes red
 when the fix lands and none goes red while it is outstanding. [`BUG-20`](bug-20.md) added the
-repository's first JavaScript harness — `tests/js/Utils.test.mjs`, run with
-`node --test 'tests/js/*.test.mjs'` — but it covers `Js/Utils.mjs` only, and this ticket changes
-`Js/Basics.mjs`. Write `tests/js/Basics.test.mjs` alongside the fix; until it exists the check is
-reading the four exports. `BUG-24` is the sibling defect in the same file, on
+repository's first JavaScript harness — `std/core/tests/Js/UtilsChecks.mjs`, run with
+`node --test 'std/core/tests/**/*.mjs'` — but it covers `Js/Utils.mjs` only, and this ticket
+changes `Js/Basics.mjs`. Write `std/core/tests/Js/BasicsChecks.mjs` alongside the fix, which is
+where [*Testing a companion*](../spec/interop.md#testing-a-companion) puts it; until it exists
+the check is reading the four exports. `BUG-24` is the sibling defect in the same file, on
 the arithmetic side rather than the conversion side; the two are independent and can land in
 either order.

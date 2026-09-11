@@ -74,7 +74,9 @@ defines.
 `cargo run` still prints `parsed 8 modules` and lists all eight as checked.
 
 **Note — this ticket has no red test behind it.** [`BUG-20`](bug-20.md) added the repository's
-first JavaScript harness — `tests/js/Utils.test.mjs`, run with `node --test 'tests/js/*.test.mjs'`
-— but it covers `Js/Utils.mjs` only, and nothing yet covers the `Js/Basics.mjs` functions this
-ticket changes. Write `tests/js/Basics.test.mjs` alongside the fix; until it exists the check is
-the `grep` above, run by hand.
+first JavaScript harness — `std/core/tests/Js/UtilsChecks.mjs`, run with
+`node --test 'std/core/tests/**/*.mjs'` — but it covers `Js/Utils.mjs` only, and nothing yet
+covers the `Js/Basics.mjs` functions this ticket changes. Write
+`std/core/tests/Js/BasicsChecks.mjs` alongside the fix, which is where
+[*Testing a companion*](../spec/interop.md#testing-a-companion) puts it; until it exists the
+check is the `grep` above, run by hand.
