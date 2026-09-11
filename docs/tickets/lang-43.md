@@ -71,10 +71,13 @@ you have seen it fail*).
   particular over-promise `BUG-20` describes — but the runtime half of that ticket, the `.mjs`
   rejecting a value it cannot compare, is untouched and is what its acceptance names. Expect to
   read `BUG-20` while doing step 4; do not mark it done.
-- **[`BUG-17`](bug-17.md)** caps what step 2 can check. A type application's arguments are
-  discarded when its head resolves, so `Maybe (a -> a)` reaches the walk as a bare `Maybe` and
-  its inadmissible argument is invisible. The walk is still correct for everything it can see;
-  the union-argument half of the rule only becomes enforceable once `BUG-17` lands.
+- **`BUG-17`** used to cap what step 2 could check and is fixed. A type application's arguments
+  were discarded when its head resolved, so an argument reached the walk as nothing at all and
+  an inadmissible one was invisible. Arguments now survive canonicalization, so the
+  union-argument half of the rule is enforceable and step 2's recursion into `Type::Type`'s
+  arguments has something to recurse into. What still bounds it is
+  [`LANG-9`](lang-9.md): a parenthesised argument does not parse, so `Maybe (a -> a)` cannot be
+  written yet — the walk is ready for it before the grammar is.
 - **[`BUG-16`](bug-16.md)** means an unresolved type name is invented rather than reported, so a
   facade naming a type that does not exist passes this check as an admitted `Type::Type`. That is
   `BUG-16`'s to fix, not this ticket's, and neither blocks the other.

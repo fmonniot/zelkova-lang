@@ -17,9 +17,12 @@ That is not a hypothetical shortfall. `docs/spec/types.md`'s *An annotation is a
 section states the rule that a declaration's annotation may not be more general than its body
 can support ([LANG-12](lang-12.md)) — and its example compiles identically before and after
 that ticket lands, so the paragraph has to be deleted by hand rather than being forced red.
-`docs/spec/types.md`'s *Applying a type to arguments* section has the same problem for the
-annotation half of [BUG-17](bug-17.md): `f : Maybe Int` with `f = Just 'c'` type checks clean
-today, and nothing in the chapter can say so in a way that survives the fix.
+`docs/spec/types.md`'s *Applying a type to arguments* section has the same problem for its *An
+applied type still means what it says* claim — two applications of one type name are the same
+type exactly when their arguments are. That is a type-checker claim, and its block is
+`expect=ok` whether or not the checker honours it. BUG-17, which made the arguments survive
+canonicalization at all, is fixed and is pinned by `tests/typer.rs` instead; the chapter still
+cannot say it.
 
 Every remaining planned chapter has type-level claims to make. *Expressions*, *Patterns* and
 *Evaluation semantics* all do, and each will hit this the moment it is written.
@@ -56,6 +59,7 @@ and reviewers to the second.
 **Acceptance:** a fixture under `tests/fixtures/spec/` whose block is tagged
 `expect=type-error:UnificationFailed` and whose source canonicalizes cleanly but fails the
 typer, with a harness self-test beside the existing ones proving both directions — the right
-variant passes, a wrong variant fails. The `**Known gap:**` paragraphs in
-`docs/spec/types.md` named above are converted to tagged blocks, and the notes in
-[BUG-17](bug-17.md) and [LANG-12](lang-12.md) saying they must be deleted by hand are removed.
+variant passes, a wrong variant fails. The `**Known gap:**` paragraph in `docs/spec/types.md`'s
+*An annotation is a promise* is converted to a tagged block, the *An applied type still means
+what it says* claim named above gains one of its own, and the note in [LANG-12](lang-12.md)
+saying the paragraph must be deleted by hand is removed.

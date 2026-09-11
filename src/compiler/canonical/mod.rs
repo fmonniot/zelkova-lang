@@ -185,18 +185,33 @@ impl Type {
     /// `Type` holds no span at all, and what `ERR-5` built instead.
     fn from_parser_type(env: &dyn Environment, tpe: &parser::Type) -> Result<Type, Error> {
         match &tpe.kind {
-            parser::TypeKind::Unqualified(name, vars) => match env.find_type(name) {
-                Some(t) => Ok(t.clone()),
-                None => {
-                    let types = vars
-                        .iter()
-                        .map(|t| Type::from_parser_type(env, t))
-                        .collect::<Result<Vec<_>, Error>>()?;
+            parser::TypeKind::Unqualified(name, vars) => {
+                let args = vars
+                    .iter()
+                    .map(|t| Type::from_parser_type(env, t))
+                    .collect::<Result<Vec<_>, Error>>()?;
 
-                    // TODO Insert back into Environment ?
-                    Ok(Type::Type(name.clone(), types))
+                match env.find_type(name) {
+                    // `name` resolves to a declared type: `args` is what was
+                    // written after it, and has to match the declaration's own
+                    // arity (`BUG-17`) — nothing else here re-derives that check.
+                    // The head is the *declaration's* name, not the one written:
+                    // `Lib.Option` and `Option` are two spellings of one entry, and
+                    // normalizing here is what lets the two unify downstream.
+                    Some(declared) if declared.arity() == args.len() => {
+                        Ok(Type::Type(declared.name.clone(), args))
+                    }
+                    Some(declared) => Err(Error::TypeArityMismatch(
+                        name.clone(),
+                        declared.arity(),
+                        args.len(),
+                        tpe.span,
+                    )),
+                    // `name` resolves to nothing: BUG-16 is the ticket for reporting
+                    // this instead of fabricating a type for it.
+                    None => Ok(Type::Type(name.clone(), args)),
                 }
-            },
+            }
             parser::TypeKind::Arrow(t1, t2) => Ok(Type::Arrow(
                 Box::new(Type::from_parser_type(env, t1)?),
                 Box::new(Type::from_parser_type(env, t2)?),
@@ -611,6 +626,11 @@ pub enum Error {
     /// A function was declared with multiple bindings (multi-clause definitions),
     /// which the compiler does not support yet.
     MultipleBindingsUnsupported(Name, NodeSpan),
+    /// A type name applied to the wrong number of arguments: the name, its
+    /// declaration's own arity, the number of arguments actually written, and
+    /// `tpe.span` — the whole application, so the caret covers every argument
+    /// along with the name (`BUG-17`).
+    TypeArityMismatch(Name, usize, usize, NodeSpan),
 
     // Binding module
     InfixDeclared(Name, NodeSpan),
@@ -669,6 +689,12 @@ impl PhaseError for Error {
             Error::MultipleBindingsUnsupported(name, _) => format!(
                 "`{}` is declared over several bindings, which is not supported yet",
                 name
+            ),
+            Error::TypeArityMismatch(name, declared, written, _) => format!(
+                "`{}` takes {}, but is applied to {} here",
+                name,
+                type_argument_count(*declared),
+                type_argument_count(*written)
             ),
             Error::InfixDeclared(name, _) => format!(
                 "a `module javascript` facade cannot declare an infix operator, but declares `{}`",
@@ -760,6 +786,15 @@ impl PhaseError for Error {
             Error::BindingPatternsInvalidLen(span) => primary(span, "declared here"),
             Error::NoBindings(span) => primary(span, "this annotation has no body"),
             Error::MultipleBindingsUnsupported(_, span) => primary(span, "declared here"),
+            Error::TypeArityMismatch(name, declared, written, span) => primary(
+                span,
+                &format!(
+                    "`{}` takes {}, this application has {}",
+                    name,
+                    type_argument_count(*declared),
+                    type_argument_count(*written)
+                ),
+            ),
             Error::InfixDeclared(_, span) => primary(span, "declared here"),
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
             Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
@@ -808,6 +843,16 @@ fn suggestion_suffix(suggestion: &Option<Name>) -> String {
     match suggestion {
         Some(name) => format!(" — did you mean `{}`?", name),
         None => String::new(),
+    }
+}
+
+/// "1 type argument" or "N type arguments" — the two counts an
+/// `Error::TypeArityMismatch` message quotes.
+fn type_argument_count(n: usize) -> String {
+    if n == 1 {
+        "1 type argument".to_owned()
+    } else {
+        format!("{} type arguments", n)
     }
 }
 

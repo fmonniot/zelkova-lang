@@ -434,6 +434,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             InfixDeclared(..) => vec!["InfixDeclared"],
             TypeDeclared(..) => vec!["TypeDeclared"],
             NoTypeInBinding(..) => vec!["NoTypeInBinding"],
+            TypeArityMismatch(..) => vec!["TypeArityMismatch"],
         }
     }
     errors.iter().flat_map(one).collect()

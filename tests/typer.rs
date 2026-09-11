@@ -371,6 +371,54 @@ fn constructor_usage_just_42() {
     assert!(run(source).is_ok(), "Just 42 : Maybe Int should type-check");
 }
 
+/// `BUG-17`'s acceptance case, the positive half: `Maybe Int`'s written argument
+/// now survives canonicalization, so a body that agrees with it — `Just 1`, an
+/// `Int` — still type-checks. Layer 1 (`tests/compiler/canonical.rs`) can only see
+/// that the argument survives; this layer is what can tell that the annotation
+/// actually constrains, because unification is what would reject a disagreement.
+#[test]
+fn type_application_argument_accepts_an_agreeing_body() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Maybe a = Just a | Nothing
+        f : Maybe Int
+        f = Just 1
+    "#};
+    assert!(run(source).is_ok(), "Just 1 : Maybe Int should type-check");
+}
+
+/// `BUG-17`'s acceptance case, the negative half: before the fix, `Maybe Int`
+/// canonicalized to `Maybe a` — the declaration's own type variable, not `Int` —
+/// so this module type-checked with no error at all (verified by probing the
+/// pre-fix tree). `Just 'c'` disagreeing with the `Int` actually written is what a
+/// green run of `type_application_argument_accepts_an_agreeing_body` above cannot
+/// distinguish from "the annotation was ignored entirely" — this is the test that
+/// can.
+///
+/// Mutation-checked by reverting `Type::from_parser_type`'s `Some` arm to return
+/// the environment's stored type verbatim instead of applying `args`: this test
+/// goes green as `run(source).is_ok()` (no error), same as the pre-fix probe.
+#[test]
+fn type_application_argument_rejects_a_disagreeing_body() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Maybe a = Just a | Nothing
+        f : Maybe Int
+        f = Just 'c'
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        error.message(),
+        "cannot match `Int` with `Char`",
+        "the annotation's `Int` argument should be what the body's `Char` disagrees with"
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_of(source, "'c'"), range_of(source, "f : Maybe Int")]
+    );
+}
+
 // ── Case expression: branches must return same type ───────────────────────────
 
 /// Both branches of a `case` must have the same type.
