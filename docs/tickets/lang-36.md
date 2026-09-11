@@ -51,7 +51,7 @@ the unmaintained one is what someone eventually reads.
 Two neighbours are already correct and should not be swept in. `eq`'s *first* note — that
 equality is structural on tuples and user-defined union types — is what the language says
 structural instances compute, so it stays. And the `(+)`-family comments about `a` not being the
-restriction it looks like are [`BUG-20`](bug-20.md)'s and
+restriction it looks like are `BUG-20`'s and
 [`docs/spec/type-classes.md`](../spec/type-classes.md)'s subject, not this ticket's.
 
 **Note — this ticket has no red test behind it.** Every claim it corrects is in a doc comment,

@@ -11,9 +11,9 @@ signatures, and the `infix` declarations aliasing them; `std/core/src/Js/Utils.z
 
 **Depends on:** [LANG-40](lang-40.md) and [LANG-41](lang-41.md).
 
-**Closes:** [BUG-20](bug-20.md), and for the right reason. That ticket says the fix is in two
-halves — make the runtime say so, and make the type say so — and that only the first was
-available at the time. This is the second.
+**Closes:** nothing new. `BUG-20` already closed, on its runtime half alone — that ticket said the
+fix was in two halves, make the runtime say so and make the type say so, and that only the first
+was available at the time. This ticket is the second half it deferred to the class mechanism.
 
 **Decided (`SPEC-12`, by the language owner):** four classes, `Eq` a superclass of
 `Comparable`, and a `module javascript` facade signature may not carry a constraint.
@@ -74,17 +74,18 @@ ticket to be the first pass over them and expect it to find more than it was loo
    conversion is implicit and wrong; with instances it becomes an explicit `orderOf` per
    instance, which needs writing and needs the `.mjs` to keep returning what it says it does.
 
-4. **The `.mjs` files.** BUG-20's first half — make the runtime reject what it cannot handle —
-   is still worth doing here even though the types now prevent it, because the facades are the
+4. **The `.mjs` files.** `BUG-20` already made `_Utils_cmp` and `append` reject a value they
+   cannot handle instead of returning nonsense — keep those guards rather than removing them once
+   the types prevent a well-typed caller from tripping them, because the facades are the
    package's boundary and a boundary that trusts its caller is one bad codegen away from the
    original bug.
 
 **Acceptance:** `min Red Blue`, on a user union type with no `Comparable` instance, is a type
-error — the program `SPEC-11`'s chapter and BUG-20 both use as their worked example, and the
+error — the program `SPEC-11`'s chapter and `BUG-20` both use as their worked example, and the
 single check this ticket exists for. `eq` applied to a function value is a type error rather
 than a runtime crash. Tests in `tests/typer.rs` for both, plus `tests/pipeline.rs` coverage
 that the real `std/core` modules still check. `cargo run` still prints `parsed 8 modules` and
-lists all eight as checked. `docs/tickets/bug-20.md` is deleted and its row tombstoned.
+lists all eight as checked.
 
 The blocks in `docs/spec/type-classes.md` showing a constrained standard-library signature go
 from `expect=unimplemented` to `expect=ok`, and their

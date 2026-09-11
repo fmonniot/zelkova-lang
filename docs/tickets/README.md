@@ -184,7 +184,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-17 | bug | high | closed 2026-09-10 | A type application's arguments are discarded when its head resolves |
 | [BUG-18](bug-18.md) | bug | medium | open | A variant that is not a constructor application is silently dropped |
 | [BUG-19](bug-19.md) | bug | medium | open | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
-| [BUG-20](bug-20.md) | bug | high | open | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |
+| BUG-20 | bug | high | closed 2026-09-10 | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |
 | [BUG-21](bug-21.md) | bug | medium | open | Every error from the source-directory walk is discarded, so a missing package root compiles as success |
 | [BUG-22](bug-22.md) | bug | high | open | An operator's declared precedence and associativity are recorded and then ignored |
 | [BUG-23](bug-23.md) | bug | medium | open | An `else` does not close a `case` block, so a `case` in a `then` arm is a layout error |

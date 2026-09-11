@@ -29,6 +29,10 @@ a genuine pass/fail smoke test: any error, any module missing from the checked l
 failure or a panic is a regression you introduced. `tests/pipeline.rs::stdlib_package_compiles`
 pins the same thing as a test.
 
+A `.mjs` companion file has no Rust harness — `cargo test` never loads one. Where a companion has
+a `<Name>.test.mjs` sibling (`std/core/src/Js/Utils.test.mjs` is the first), run it with Node's
+built-in test runner: `node --test std/core/src/Js/Utils.test.mjs`. Not wired into CI yet.
+
 Note that `.github/workflows/rust.yml` marks the `fmt` and `clippy` jobs `continue-on-error:
 true`, so **CI does not actually gate on them**. Run both locally; a red clippy will not be
 caught for you.

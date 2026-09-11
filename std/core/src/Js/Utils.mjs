@@ -69,9 +69,29 @@ export function notEqual(x, y) { return !eq(x, y) }
 // Code in Generate/JavaScript.hs, Basics.js, and List.js depends on
 // the particular integer values assigned to LT, EQ, and GT.
 
+// A union constructor's value carries the name of its constructor in a `$`
+// field (docs/spec/interop.md#a-union-crosses-as-a-tagged-value); a tuple
+// built by _Utils_Tuple2/_Utils_Tuple3 never does. `lt`/`le`/`gt`/`ge`/
+// `compare` and `append` are declared over a bare type variable (BUG-20),
+// so nothing stops them being handed a union value — and since a union's
+// constructor arguments are stored in the same `a`/`b`/`c` fields a tuple
+// uses, reading it as a tuple would silently compare or append fields that
+// mean nothing. This tells the two apart so that case can fail loudly
+// instead.
+function _Utils_isTagged(v) {
+    return typeof v === 'object' && v !== null && '$' in v;
+}
+
 function _Utils_cmp(x, y, ord) {
-    if (typeof x !== 'object') {
+    if (typeof x !== 'object' || x === null) {
         return x === y ? /*EQ*/ 0 : x < y ? /*LT*/ -1 : /*GT*/ 1;
+    }
+
+    if (_Utils_isTagged(x) || _Utils_isTagged(y)) {
+        throw new Error(
+            'compare: can only compare numbers, chars, strings and tuples of ' +
+            'these, but was given a value of a user-defined type'
+        );
     }
 
     return (ord = _Utils_cmp(x.a, y.a))
@@ -96,11 +116,26 @@ export function ge(a, b) {  return _Utils_cmp(a, b) >= 0 }
 
 export function append(xs, ys) {
     // append Strings
-    if (typeof xs === 'string') {
+    if (typeof xs === 'string' || typeof ys === 'string') {
+        if (typeof xs !== 'string' || typeof ys !== 'string') {
+            throw new Error(
+                'append: expected two Strings, but was given a String and a value of another type'
+            );
+        }
         return xs + ys;
     }
 
     // append Lists
+    if (
+        typeof xs !== 'object' || xs === null || _Utils_isTagged(xs) ||
+        typeof ys !== 'object' || ys === null || _Utils_isTagged(ys)
+    ) {
+        throw new Error(
+            'append: can only append two Strings or two Lists, but was given a ' +
+            'value of a user-defined type'
+        );
+    }
+
     if (!xs.b) {
         return ys;
     }

@@ -57,11 +57,10 @@ left in either file.
   calling a name that does not exist, so the failure says which feature is absent instead of
   looking like a typo.
 
-[`BUG-20`](bug-20.md) covers a different defect in the same two functions — that their declared
-types accept values their JavaScript cannot handle — and its first bullet asks them to fail
-loudly rather than return nonsense. That is compatible with this ticket and not the same work:
-this one is about identifiers that resolve to nothing, and about two arithmetic results the
-language now defines.
+`BUG-20` covered a different defect in the same two functions — that their declared types accept
+values their JavaScript cannot handle — and closed by making them fail loudly rather than return
+nonsense. That was compatible with this ticket and not the same work: this one is about
+identifiers that resolve to nothing, and about two arithmetic results the language now defines.
 
 **Acceptance:** neither `.mjs` file mentions `__Debug_crash` or `__List_Cons`;
 `grep -rn '__Debug_crash\|__List_Cons' std/` finds nothing. `modBy 0 n`, `remainderBy 0 n` and
@@ -69,7 +68,7 @@ language now defines.
 [`docs/spec/evaluation-semantics.md`](../spec/evaluation-semantics.md)'s *Numbers* is deleted.
 `cargo run` still prints `parsed 8 modules` and lists all eight as checked.
 
-**Note — this ticket has no red test behind it**, and cannot have one until something runs the
-`.mjs` files. The repository has no JavaScript harness, and `cargo test` never loads them. A
-test arrives with whatever harness [`BUG-20`](bug-20.md)'s acceptance also waits on; until then
-the check is the `grep` above, run by hand.
+**Note — this ticket has no red test behind it.** `BUG-20` added the repository's first
+JavaScript harness — `std/core/src/Js/Utils.test.mjs`, run via `node --test` — but it covers
+only `Js/Utils.mjs`; nothing yet covers the `Js/Basics.mjs` functions this ticket changes. Until
+a sibling test file exists for `Js/Basics.mjs`, the check is the `grep` above, run by hand.
