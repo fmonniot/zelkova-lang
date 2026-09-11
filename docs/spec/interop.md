@@ -393,9 +393,9 @@ no body, which a facade already accepts.
 
 ## Testing a companion
 
-A companion is target code, and so is what tests it: a JavaScript assertion about a JavaScript
-function. That test reaches Zelkova the way any other foreign code does — as a facade — and it
-sits under [`tests/`](packages.md#tests), the root a dependent never compiles.
+A companion is target code, and so is its test: a JavaScript assertion about a JavaScript
+function. It reaches Zelkova the way any other foreign code does — as a facade — and sits under
+[`tests/`](packages.md#tests), the root a dependent never compiles.
 
 ```text
 src/
@@ -412,7 +412,7 @@ tests/
 ```
 
 Everything [a facade is](#a-facade-names-a-boundary-not-a-backend) holds of one under `tests/`:
-signatures and no bodies, one companion per target, and
+signatures and no bodies, one companion per target,
 [the admitted types](#which-types-may-cross-the-boundary) in every position, and the same error
 when the target being built has no companion. The
 [two roots share one set of module names](packages.md#source-roots), so a facade that checks
@@ -422,8 +422,7 @@ when the target being built has no companion. The
 assertion is a failure the companion raised, and [the wrapper](#an-effectful-facade) around an
 effectful call turns that into `Err (Threw ..)`, which the module above reports as a failing
 test. The same assertion behind an `unsafe` signature
-[aborts the program](evaluation-semantics.md#when-a-program-aborts), ending the run instead of
-failing one test.
+[aborts the program](evaluation-semantics.md#when-a-program-aborts) instead of failing one test.
 
 ```zel expect=unimplemented
 module foreign Core.PrimChecks exposing
@@ -438,7 +437,7 @@ idivRefusesAFraction : Task (Result Failure ())
 ```
 
 Each is a [facade constant naming a `Task`](#facade-constants), so its JavaScript companion
-exports a function, and the target's own assertion library is what raises:
+exports a function, and the target's own assertion library raises:
 
 ```js
 import assert from "node:assert/strict";
