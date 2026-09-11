@@ -303,8 +303,7 @@ not b =
 `Int`, `Char` and `Float` as its own builtin types wherever they appear in an annotation, while
 the module's own `True` and `False` get the union type it declared — so the two halves of a
 module that defines `Bool` do not match, and the error reads *cannot match `Bool` with `Bool`*.
-[`BUG-26`](../tickets/bug-26.md) is the ticket. The rule above is unaffected: nothing here is
-about `true` and `false` being reserved.
+[`BUG-26`](../tickets/bug-26.md) is the ticket.
 
 So `true` is available as a variable name:
 
