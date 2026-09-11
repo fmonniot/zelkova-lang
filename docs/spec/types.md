@@ -489,15 +489,14 @@ ambiguous : Other
 ambiguous = Small
 ```
 
-**Known gap:** all three blocks should be rejected here, and the rule none of them breaks is
-the one the compiler enforces. Declarations are grouped by name into a map with their order
-thrown away, so an annotation may sit anywhere among the top-level declarations — and,
-position being gone entirely, a blank line between an annotation and its declaration is not
-noticed either. The first two blocks are accepted outright. The third is rejected, but for the
-wrong reason: when a name carries two annotations the **last** silently wins, so `ambiguous` is
-checked against `Other`, the body `Small` disagrees with it, and what the reader sees is a type
-mismatch rather than a repeated annotation
-([`docs/tickets/lang-11.md`](../tickets/lang-11.md)).
+**Known gap:** all three blocks should be rejected here, and not one of them is rejected for the
+rule it breaks. Declarations are grouped by name into a map with their order thrown away, so an
+annotation may sit anywhere among the top-level declarations — and, position being gone
+entirely, a blank line between an annotation and its declaration is not noticed either. The
+first two blocks are accepted outright. The third is rejected, but for the wrong reason: when a
+name carries two annotations the **last** silently wins, so `ambiguous` is checked against
+`Other`, the body `Small` disagrees with it, and what the reader sees is a type mismatch rather
+than a repeated annotation ([`docs/tickets/lang-11.md`](../tickets/lang-11.md)).
 
 A [foreign](interop.md) facade is the one place an annotation stands alone: a
 `module foreign` module is annotations with no bodies at all.
