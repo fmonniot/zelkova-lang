@@ -44,9 +44,10 @@ names — `Flag`, say — makes the same module check. The match is on the name 
 `Char` and `Float` have the same defect; `Bool` is the one a program hits first, because it is
 the only one of the four the language expects a module to declare.
 
-`std/core/src/` does not fail today only because `Basics`' boolean functions are `Js.Utils`
-facade values, whose bodies `value_to_term_and_annotation` cannot express and therefore skips
-entirely. The first hand-written `Bool` function in `std/core` hits this.
+`std/core/src/` does not fail today only because `Basics`' boolean functions are `Js.Basics`
+facade values — `not`, `and`, `or` and `xor` at `std/core/src/Basics.zel:466-513` — whose
+bodies `value_to_term_and_annotation` cannot express and therefore skips entirely. The first
+hand-written `Bool` function in `std/core` hits this.
 
 Found while extending the spec harness to run the type checker (`TEST-2`);
 [`docs/spec/lexical-structure.md`](../spec/lexical-structure.md)'s *Reserved words* section

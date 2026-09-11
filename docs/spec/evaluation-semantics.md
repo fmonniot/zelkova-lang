@@ -7,8 +7,8 @@ it is **pure**: evaluating an expression produces a value and has no other conse
 
 **Not implemented:** nothing in the compiler evaluates a Zelkova program. The pipeline ends at
 type checking and code generation has not started, so every rule below is one the compiler
-neither enforces nor implements. Without an evaluator the blocks are checked for syntax and
-nothing else, so a block tagged `expect=ok` says nothing about what it computes.
+neither enforces nor implements. An `expect=ok` block here is a program the type checker
+accepted, and nothing runs it — so nothing holds it to the value a rule below says it has.
 [`GEN-1`](../tickets/gen-1.md) is the ticket.
 
 ## Two outcomes

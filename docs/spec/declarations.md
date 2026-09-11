@@ -376,8 +376,8 @@ parameters, names one, or names none — all three are ways of writing a functio
 
 **Not implemented:** the `infix` declaration is accepted whatever the function's type, and so
 is every use of the operator, so a function of the wrong shape is caught nowhere
-([`docs/tickets/lang-28.md`](../tickets/lang-28.md)). No block above pins this: nothing rejects
-the declaration in any phase, so every way of writing it is `expect=ok` today.
+([`docs/tickets/lang-28.md`](../tickets/lang-28.md)). No block above pins this, because no
+phase rejects the declaration.
 
 ### An operator has one `infix` declaration
 
