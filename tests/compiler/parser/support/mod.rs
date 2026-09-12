@@ -49,7 +49,44 @@ macro_rules! test_parse_ok {
     };
 }
 
-// TODO test_parse_error(source, error) -> macro (test_name, source, error)
+/// The counterpart of `test_parse_ok!` for sources which must *not* parse:
+/// run `source` through `parser::parse` and return the layout error it
+/// produced, together with the byte range of the rendered diagnostic's primary
+/// label. Panics (test failure) if parsing succeeds, or fails with anything
+/// other than `Error::Layout`.
+///
+/// The range is returned alongside the error because `NodeSpan`'s `PartialEq`
+/// is blind (see its doc comment and `CLAUDE.md`'s *Standing invariants*), so
+/// the diagnostic's label is the only thing that actually pins *where* an
+/// error points.
+pub fn layout_error(source: &str) -> (layout::LayoutError, std::ops::Range<usize>) {
+    use codespan_reporting::files::SimpleFile;
+
+    let file = SimpleFile::new("test".to_owned(), source.to_owned());
+
+    let err = match parse(&file) {
+        Ok(module) => panic!(
+            "expected a layout error, but parsing succeeded: {:?}",
+            module
+        ),
+        Err(err) => err,
+    };
+
+    let layout_err = match &err {
+        Error::Layout(layout_err) => layout_err.clone(),
+        other => panic!("expected a layout error, got {:?}", other),
+    };
+
+    let range = err
+        .diagnostic(())
+        .labels
+        .first()
+        .expect("layout error diagnostic has no primary label")
+        .range
+        .clone();
+
+    (layout_err, range)
+}
 
 // AST constructor as simple functions
 
