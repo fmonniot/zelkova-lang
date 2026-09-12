@@ -60,15 +60,20 @@ impl Error {
                             ])
                     }
                     TokenizerErrorType::CharNotClosedError(Some(_)) => {
+                        // `span.start` is the opening quote and `span.end` is
+                        // where the closing quote was expected (tokenizer.rs,
+                        // the `CharNotClosedError(Some(_))` arm), and both are
+                        // single `BytePos`es, so `one_byte_at` widens each into
+                        // a visible one-byte range the same way `InvalidToken`
+                        // and `UnexpectedEOF` do (`BUG-7`).
                         let open = err.error.span.start;
                         let close = err.error.span.end;
                         diag.with_message("char sequence opened but never closed")
                             .with_labels(vec![
-                                Label::primary(name, open.to_range())
+                                Label::primary(name, one_byte_at(close))
                                     .with_message("We were expecting a single quote here"),
-                                Label::secondary(name, close.to_range())
+                                Label::secondary(name, one_byte_at(open))
                                     .with_message("For the opening quote here")
-
                             ])
                     }
                     // String literals are not implemented in the language yet, so
@@ -418,6 +423,52 @@ mod tests {
         assert_prose_message(&diagnostic, "this string literal could not be read");
         assert_points_at_source(&diagnostic);
         assert_eq!(diagnostic.labels[0].range, 3..9);
+    }
+
+    /// `CharNotClosedError(Some(_))` carries the opening quote's position as
+    /// `span.start` and the position where a closing quote was expected as
+    /// `span.end` (tokenizer.rs, the `(Some(v), Some(closing))` arm), which
+    /// the `'aa` tokenizer test pins at `BytePos(0)..BytePos(2)`. Both labels
+    /// must render as visible one-byte ranges, and the label at the opening
+    /// position has to be the one that talks about the opening quote.
+    ///
+    /// Verified to fail two ways (`BUG-7`): reverting `one_byte_at` back to
+    /// `.to_range()` turns both ranges zero-width and reddens
+    /// `assert_points_at_source`; swapping the two `.with_message` calls back
+    /// puts "we were expecting a single quote here" on the opening-quote
+    /// label, which reddens the `opening_label` assertion below.
+    #[test]
+    fn char_not_closed_with_extra_char_labels_open_and_expected_close() {
+        let error = Error::Tokenizer(TokenizerError {
+            error: spanned(
+                BytePos(0),
+                BytePos(2),
+                TokenizerErrorType::CharNotClosedError(Some('a')),
+            ),
+        });
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "char sequence opened but never closed");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels.len(), 2);
+
+        let opening_label = diagnostic
+            .labels
+            .iter()
+            .find(|label| label.range == (0..1))
+            .expect("no label at the opening quote (byte 0)");
+        assert_eq!(opening_label.message, "For the opening quote here");
+
+        let expected_close_label = diagnostic
+            .labels
+            .iter()
+            .find(|label| label.range == (2..3))
+            .expect("no label at the expected closing quote (byte 2)");
+        assert_eq!(
+            expected_close_label.message,
+            "We were expecting a single quote here"
+        );
     }
 
     /// Same as `tokenizer_string_error_renders`, for the sibling variant.
