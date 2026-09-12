@@ -390,3 +390,84 @@ it happens once, lazily, or at any particular point relative to the rest of the 
 **Not implemented:** the block fails on its modifier ([`LANG-54`](../tickets/lang-54.md)), which
 is the whole of what stands between it and compiling: a constant signature is an annotation with
 no body, which a facade already accepts.
+
+## Testing a companion
+
+A companion is target code, and so is its test: a JavaScript assertion about a JavaScript
+function. It reaches Zelkova the way any other foreign code does — as a facade — and sits under
+[`tests/`](packages.md#tests), the root a dependent never compiles.
+
+```text
+src/
+  Core/
+    Prim.zel        module foreign Core.Prim
+    Prim.mjs
+    Prim.wasm
+tests/
+  Core/
+    PrimChecks.zel  module foreign Core.PrimChecks
+    PrimChecks.mjs
+    PrimChecks.wasm
+    PrimTest.zel    the Test values a runner finds
+```
+
+Everything [a facade is](#a-facade-names-a-boundary-not-a-backend) holds of one under `tests/`:
+signatures and no bodies, one companion per target,
+[the admitted types](#which-types-may-cross-the-boundary) in every position, and the same error
+when the target being built has no companion. The
+[two roots share one set of module names](packages.md#source-roots), so a facade that checks
+`Core.Prim` takes a different name.
+
+**A test facade declares an effect, and is never [`unsafe`](#an-unsafe-facade).** A failed
+assertion is a failure the companion raised, and [the wrapper](#an-effectful-facade) around an
+effectful call turns that into `Err (Threw ..)`, which the module above reports as a failing
+test. The same assertion behind an `unsafe` signature
+[aborts the program](evaluation-semantics.md#when-a-program-aborts) instead of failing one test.
+
+```zel expect=unimplemented
+module foreign Core.PrimChecks exposing
+  ( idivTruncates
+  , idivRefusesAFraction
+  )
+
+import Task exposing (Failure)
+
+idivTruncates : Task (Result Failure ())
+idivRefusesAFraction : Task (Result Failure ())
+```
+
+Each is a [facade constant naming a `Task`](#facade-constants), so its JavaScript companion
+exports a function, and the target's own assertion library raises:
+
+```js
+import assert from "node:assert/strict";
+import { idiv } from "../../src/Core/Prim.mjs";
+
+export function idivTruncates() {
+  assert.equal(idiv(7, 2), 3);
+}
+
+export function idivRefusesAFraction() {
+  assert.throws(() => idiv(7.5, 2));
+}
+```
+
+**A test companion may import the companion it checks as a module of the target**, which is what
+the second export above does: `Core.Prim` is reached as a `.mjs` file, with no boundary between
+them. A value crossing a boundary is checked against the type its signature declares, so a test
+written *above* `Core.Prim` can hand `idiv` only what `Int` admits. What a companion does with a
+value outside that set is a question only the target can ask it.
+
+A runner finds [a value of type `Test` a module under `tests/`
+exposes](packages.md#what-a-test-is), so `Core.PrimTest` imports the facade and exposes one per
+check.
+
+**Not implemented:** none of this runs. The `zel` block fails on its modifier
+([`LANG-54`](../tickets/lang-54.md)) and on the parentheses in its result type
+([`LANG-9`](../tickets/lang-9.md)), and [`()` is not recognised](types.md#the-unit-type) in
+either position. A package has one source root and no notion of a test
+([`LANG-15`](../tickets/lang-15.md)), nothing declares `Task` or `Failure`, no wrapper is
+generated around an effectful call ([`GEN-1`](../tickets/gen-1.md),
+[`GEN-2`](../tickets/gen-2.md)), and there is no runner to find a `Test`. Until there is, a
+companion test under `tests/` is a `.mjs` file that the target's own test runner is pointed at
+directly, and the facade half of the pair is not written yet.

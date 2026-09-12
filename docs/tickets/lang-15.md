@@ -61,8 +61,9 @@ other side.
 `src/` module imports a `tests/` module fails on an unresolved module; a package declaring one
 module name under both roots fails naming both files; and a manifest listing one package name
 in both dependency maps is rejected. `cargo run` must still print `parsed 8 modules`, list all
-eight as checked, and exit 0 — `std/core` has no `tests/` directory, and its absence must not
-be an error.
+eight as checked, and exit 0 — `std/core/tests/` holds one `.mjs` companion and no `.zel`, so
+walking it finds no modules, and finding none must not be an error. Neither must a `tests/`
+that is absent outright.
 
 **No block in `docs/spec/packages.md` goes red when this lands.** A source root is not source
 text and neither is a manifest field, so nothing the harness can run observes either. The

@@ -113,3 +113,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-11](dec-11.md) | What a value describing an effect is: seven decisions | live; 5 extended by DEC-12 |
 | [DEC-12](dec-12.md) | What a broken companion does: a survey and seven decisions | live |
 | [DEC-13](dec-13.md) | A facade names a boundary, not a backend: seven decisions | live |
+| [DEC-14](dec-14.md) | A companion's test is a facade under `tests/`: four decisions | live |
