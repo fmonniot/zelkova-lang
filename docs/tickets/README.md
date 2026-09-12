@@ -192,6 +192,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-25](bug-25.md) | bug | medium | open | Three of the four `Float -> Int` conversions never wrap, so `round nan` and `round 1.0e20` are not `Int`s |
 | [BUG-26](bug-26.md) | bug | medium | open | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
 | [BUG-27](bug-27.md) | bug | medium | open | A canonicalized infix operator is qualified under its own symbol, not the function its `infix` declaration names |
+| [BUG-28](bug-28.md) | bug | low | open | The `Tokenizer` never terminates on an unterminated character literal |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
