@@ -176,7 +176,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-9](bug-9.md) | bug | medium | open | A module's `exposing` list is computed and then never consulted |
 | [BUG-10](bug-10.md) | bug | low | open | A `case` branch level with, or left of, the `case` keyword is accepted |
 | BUG-11 | bug | low | closed 2026-09-11 | The `Tokenizer` never terminates on a tab outside leading whitespace |
-| [BUG-12](bug-12.md) | bug | medium | open | Four `unwrap()`s on user input panic the compiler instead of reporting a syntax error |
+| BUG-12 | bug | medium | closed 2026-09-12 | Four `unwrap()`s on user input panic the compiler instead of reporting a syntax error |
 | [BUG-13](bug-13.md) | bug | medium | open | Block comments are lexed only at the start of a line, swallow the rest of their closing line, do not nest, and are accepted unterminated |
 | [BUG-14](bug-14.md) | bug | medium | open | A top-level value with no type annotation never reaches the module's interface |
 | [BUG-15](bug-15.md) | bug | medium | open | An imported operator is unresolvable unless the function behind it is also in scope |
@@ -233,6 +233,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-25 | task | — | closed 2026-09-08 | A derivation walks two values, so the classes worth deriving most cannot be |
 | SPEC-26 | task | — | closed 2026-09-06 | Design rationale has nowhere to live, so it is kept in three unrelated places or lost |
 | SPEC-27 | task | — | closed 2026-09-08 | A derivation's `combine` must be a monoid and nothing checks it, at any point |
+| [SPEC-28](spec-28.md) | task | — | open | Two chapters disagree on `Int`'s range, and the tokenizer enforces a third bound |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | [LANG-2](lang-2.md) | task | — | open | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by [LANG-54](lang-54.md) |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |

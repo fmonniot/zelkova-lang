@@ -239,6 +239,34 @@ test_parse_ok!(
     }
 );
 
+/// `infix`'s precedence is stored in a `u8`, so a value above 255 does not fit. The
+/// grammar reports `parser::Error::InfixPrecedenceOutOfRange` rather than panicking
+/// inside the `Infix` production's `u8::try_from(p).unwrap()` (`BUG-12`).
+///
+/// Verified to fail — a panic, not a red assertion — by reverting the `Infix`
+/// production in `grammar.lalrpop` to that unwrap.
+#[test]
+fn infix_precedence_over_255_is_an_error() {
+    use codespan_reporting::files::SimpleFile;
+
+    let source = indoc::indoc! {r#"
+    module Maybe exposing (..)
+
+    infix left 300 (<|) = apL
+    "#}
+    .to_string();
+    let file = SimpleFile::new("infix_precedence_over_255_is_an_error".to_owned(), source);
+
+    let error = parser::parse(&file).expect_err("a precedence of 300 should be rejected");
+
+    match error {
+        parser::Error::InfixPrecedenceOutOfRange { precedence } => {
+            assert_eq!(precedence.value, 300);
+        }
+        other => panic!("expected InfixPrecedenceOutOfRange, got {:?}", other),
+    }
+}
+
 // spans
 
 /// `ERR-3`: the one parser test that pins a position rather than a shape.

@@ -24,6 +24,14 @@ pub enum Error {
     ExtraToken {
         token: Spanned<BytePos, Token>,
     },
+    /// An `infix` declaration's precedence does not fit in a `u8` — `infix left 300
+    /// (op) = f`. The grammar's `Infix` production parses the precedence as the
+    /// tokenizer's `"integer"` (an `i64`) and narrows it, so this is a distinct
+    /// variant from every `TokenizerErrorType`: the literal itself tokenized fine,
+    /// and the grammar is what rejects it (`BUG-12`).
+    InfixPrecedenceOutOfRange {
+        precedence: Spanned<BytePos, i64>,
+    },
 }
 
 impl Error {
@@ -108,6 +116,25 @@ impl Error {
                         .with_labels(vec![Label::primary(name, err.error.span.to_range())
                             .with_message(format!("Unrecognized token {} found", tok))])
                     }
+                    TokenizerErrorType::IntegerOverflow => diag
+                        .with_message("this integer is too large")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message("this literal does not fit in a 64-bit signed integer")])
+                        .with_notes(vec![
+                            "an integer literal must fit in a 64-bit signed integer; Zelkova guarantees every integer in -2^31 .. 2^31 - 1 is representable on every target".to_owned()
+                        ]),
+                    TokenizerErrorType::MultipleDecimalPoints => diag
+                        .with_message("a number has one decimal point")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message("this literal has more than one `.`")]),
+                    TokenizerErrorType::NonAsciiDigit { digit } => diag
+                        .with_message("a numeric literal is written with the digits 0-9")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message(format!("`{}` is not one of the digits 0-9", digit))]),
+                    TokenizerErrorType::MalformedNumber => diag
+                        .with_message("this is not a number")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message("this literal cannot be read as an integer or a float")]),
                 }
             }
 
@@ -153,6 +180,17 @@ impl Error {
                 .with_message("the module continues past its end")
                 .with_labels(vec![Label::primary(name, non_empty(token.span.to_range()))
                     .with_message("this token comes after the module was complete")]),
+
+            Error::InfixPrecedenceOutOfRange { precedence } => Diagnostic::error()
+                .with_message("this infix declaration's precedence is out of range")
+                .with_labels(vec![Label::primary(name, non_empty(precedence.span.to_range()))
+                    .with_message(format!(
+                        "{} does not fit between 0 and 255",
+                        precedence.value
+                    ))])
+                .with_notes(vec![
+                    "Zelkova represents an operator's precedence as one byte, so it must be between 0 and 255".to_owned()
+                ]),
         }
     }
 }
@@ -477,5 +515,23 @@ mod tests {
         );
         assert_points_at_source(&diagnostic);
         assert_eq!(diagnostic.labels[0].range, 2..8);
+    }
+
+    /// `MalformedNumber` is the one diagnostic in `consume_number`'s three that no source
+    /// can reach — it is there for a buffer the accumulation loop should never have built
+    /// — so this is the only thing keeping it renderable. Same shape as
+    /// `tokenizer_string_error_renders`, for the same reason. Verified to fail by
+    /// replacing its arm with `todo!()`.
+    #[test]
+    fn tokenizer_malformed_number_renders() {
+        let error = Error::Tokenizer(TokenizerError {
+            error: spanned(BytePos(4), BytePos(9), TokenizerErrorType::MalformedNumber),
+        });
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "this is not a number");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels[0].range, 4..9);
     }
 }

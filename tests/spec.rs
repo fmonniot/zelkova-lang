@@ -205,11 +205,16 @@ const PARSE_ERROR_SPECIFICS: &[&str] = &[
     "IndentationError",
     "TabError",
     "UnrecognizedToken",
+    "IntegerOverflow",
+    "MultipleDecimalPoints",
+    "NonAsciiDigit",
+    "MalformedNumber",
     "LayoutError",
     "InvalidToken",
     "UnexpectedEOF",
     "UnexpectedToken",
     "ExtraToken",
+    "InfixPrecedenceOutOfRange",
 ];
 
 /// Every name an `expect=parse-error:<reason>` tag may pin, phases and specific errors
@@ -242,6 +247,10 @@ fn parse_error_reasons(error: &parser::Error) -> Vec<&'static str> {
                 TokenizerErrorType::IndentationError => "IndentationError",
                 TokenizerErrorType::TabError => "TabError",
                 TokenizerErrorType::UnrecognizedToken { .. } => "UnrecognizedToken",
+                TokenizerErrorType::IntegerOverflow => "IntegerOverflow",
+                TokenizerErrorType::MultipleDecimalPoints => "MultipleDecimalPoints",
+                TokenizerErrorType::NonAsciiDigit { .. } => "NonAsciiDigit",
+                TokenizerErrorType::MalformedNumber => "MalformedNumber",
             };
             vec!["Tokenizer", specific]
         }
@@ -250,6 +259,7 @@ fn parse_error_reasons(error: &parser::Error) -> Vec<&'static str> {
         parser::Error::UnexpectedEOF { .. } => vec!["UnexpectedEOF"],
         parser::Error::UnexpectedToken { .. } => vec!["UnexpectedToken"],
         parser::Error::ExtraToken { .. } => vec!["ExtraToken"],
+        parser::Error::InfixPrecedenceOutOfRange { .. } => vec!["InfixPrecedenceOutOfRange"],
     };
 
     // A name the match can produce but the constants above do not list is a name
@@ -2153,11 +2163,11 @@ fn a_vocabulary_disagreement_is_a_failure() {
 
 /// The count `conventions.md` writes out in words is checked against the real one.
 ///
-/// The row says "one of the eleven specific errors", which is a claim about the same
+/// The row says "one of the sixteen specific errors", which is a claim about the same
 /// vocabulary the names are and is one added variant away from being wrong.
 ///
 /// Pins: the real row, compared against a `specifics` list one name short, so the
-/// expected word becomes `ten` and the row still says `eleven`. Neutralised by deleting
+/// expected word becomes `fifteen` and the row still says `sixteen`. Neutralised by deleting
 /// the `NUMBER_WORDS` match at the foot of `vocabulary_failures`: with that change the
 /// short list produces no failure at all and this goes red. Restored afterwards.
 #[test]

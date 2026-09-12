@@ -325,10 +325,20 @@ pow a b =
 **Known gap:** that block should be rejected — `10` is not a precedence. Any non-negative
 integer up to 255 is accepted today ([`docs/tickets/lang-24.md`](../tickets/lang-24.md)).
 
-**Known gap:** a precedence above 255 is worse than accepted — it aborts the compiler, because
-the parser narrows the integer it read to a `u8` and unwraps the result
-([`docs/tickets/bug-12.md`](../tickets/bug-12.md)). The case is described here rather than
-shown because a panicking example would take every other chapter's examples down with it.
+A precedence of `300` is rejected:
+
+```zel expect=parse-error:InfixPrecedenceOutOfRange
+module Example exposing ((^), pow)
+
+infix left 300 (^) = pow
+
+pow a b =
+  a
+```
+
+**Known gap:** that block should be rejected as a non-digit precedence; the error it gets today
+names the range 0 to 255 instead, because the parser narrows the literal to a byte
+([`docs/tickets/lang-24.md`](../tickets/lang-24.md)).
 
 A negative precedence is not a small precedence but a syntax error, since `-` is an
 [operator](expressions.md#prefix-negation) and not part of the literal that follows it:
