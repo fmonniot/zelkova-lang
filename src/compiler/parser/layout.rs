@@ -67,11 +67,24 @@ pub fn layout<I: Iterator<Item = Result<Spanned<Position, Token>, Error>>>(
 /// enough that this stays true.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Context {
-    /// Context for the expression a pattern matching will match on
-    CaseExpression,
+    /// Context for the expression a pattern matching will match on. Carries
+    /// the column of the `case` keyword itself. When this context is popped
+    /// on seeing `of`, that column is stashed in `Layout::case_of_column` so
+    /// the branch block can later check its own column against it: the
+    /// branch block's minimum column is required to sit strictly right of
+    /// `case`'s own (`BUG-10`).
+    CaseExpression(usize),
 
     /// Context for the block containing the different matches of a catch/of
-    /// A case block minimum indentation is set by the first token after the block is opened
+    /// A case block minimum indentation is set by the first token after the block is opened.
+    ///
+    /// The `case` keyword's own column is *not* carried here — unlike
+    /// `CaseExpression`, adding a field to this variant would grow `Context`
+    /// (it is already the largest variant at 16 bytes, and `Context` embeds
+    /// several layers down into `CompilationError`, where clippy's
+    /// `result_large_err` starts complaining). The BUG-10 check that needs
+    /// that column instead reads it straight off `Layout::case_of_column` in
+    /// the arm below, one call after `Context::CaseExpression` hands it there.
     CaseBlock(Option<usize>),
 
     /// Context for a branch in a case/of expression.
@@ -91,7 +104,7 @@ impl Context {
     /// belongs to.
     pub fn description(&self) -> &'static str {
         match self {
-            Context::CaseExpression => "the expression of a `case … of`",
+            Context::CaseExpression(_) => "the expression of a `case … of`",
             Context::CaseBlock(_) => "the branches of a `case … of`",
             Context::CaseBranch => "the body of a `case … of` branch",
             Context::Let => "a `let` block",
@@ -186,6 +199,19 @@ struct Layout<I> {
     /// This is what makes the `FusedIterator` impl below sound.
     /// See `Iterator::next`.
     finished: bool,
+    /// The column of the `case` keyword whose `CaseExpression` context was
+    /// just popped by seeing `of`, set aside until the first token of the
+    /// matching `CaseBlock` needs to check its own column against it
+    /// (`BUG-10`; see the `(_, Context::CaseBlock(c @ None))` arm). It is not
+    /// carried on `Context::CaseBlock` itself to avoid growing that type —
+    /// see the variant's doc comment.
+    ///
+    /// A single slot, rather than a stack, is enough even for a `case`
+    /// nested in another's scrutinee: the token stream between an `of` and
+    /// its block's first real token can only be that block's own content
+    /// (the synthetic `OpenBlock`), so a second `case … of` cannot have its
+    /// `of` popped before the first one's floor has been read and cleared.
+    case_of_column: Option<usize>,
 }
 
 impl<I> Layout<I>
@@ -199,6 +225,7 @@ where
             contexts: Contexts::new(),
             reprocess_tokens: vec![],
             finished: false,
+            case_of_column: None,
         }
     }
 
@@ -264,9 +291,10 @@ where
         // First, we check if we have a closing token with an associated context.
         // If we do, let's remove the context and return the token
         match (&token.value, &mut offside.context) {
-            (Token::Of, Context::CaseExpression) => {
+            (Token::Of, Context::CaseExpression(case_col)) => {
                 let Span { start, end } = token.span;
 
+                self.case_of_column = Some(*case_col);
                 self.contexts.pop();
                 self.reprocess_tokens.push(token);
                 return Ok(spanned(start, end, Token::CloseBlock));
@@ -274,8 +302,40 @@ where
             (Token::OpenBlock, Context::CaseBlock(None)) => (),
             (_, Context::CaseBlock(c @ None)) => {
                 // Here we are seeing the first token after opening the block, and
-                // this token set the minimum indentation for the block.
-                c.replace(token.start().column);
+                // this token sets the minimum indentation for the block — unless
+                // it does not clear the `case` keyword's own column, in which case
+                // the block is invalid (BUG-10): a branch level with, or left of,
+                // `case` reads as belonging to something enclosing it.
+                //
+                // `case_of_column` was set when the matching `CaseExpression` was
+                // popped by `of`, several tokens ago (the synthetic `OpenBlock`
+                // sits in between); it is `take`n rather than peeked because
+                // this is the one and only time this block needs it. It is only
+                // ever absent for a malformed `of` with no preceding `case`, in
+                // which case the check below degrades to "column 0 or more" —
+                // i.e. it never fires — rather than rejecting every column.
+                let case_col = self.case_of_column.take().unwrap_or(0);
+                let column = token.start().column;
+
+                if column <= case_col {
+                    // `indent` reports `case_col + 1` — the floor this error is
+                    // actually about — rather than `offside.indent`, which
+                    // stays enclosing-derived (see the `Token::Of` push arm
+                    // below) and would report the block's unrelated
+                    // implicit-close threshold instead.
+                    let error_offside = Offside {
+                        context: Context::CaseBlock(None),
+                        indent: case_col + 1,
+                        line: offside.line,
+                    };
+                    return Err(LayoutError::LayoutError {
+                        offside: error_offside,
+                        token,
+                    }
+                    .into());
+                }
+
+                c.replace(column);
             }
             (Token::In, Context::Let) => {
                 // TODO akin to of/case above, we might have to create a let/in block
@@ -376,7 +436,7 @@ where
         match (&token.value, &offside.context) {
             (Token::Case, _) => {
                 self.contexts.push(Offside {
-                    context: Context::CaseExpression,
+                    context: Context::CaseExpression(token.start().column),
                     indent: token.start().column + 1,
                     line: token.start().line,
                 });
@@ -384,6 +444,20 @@ where
                     .push(spanned(*token.end(), *token.end(), Token::OpenBlock));
             }
             (Token::Of, _) => {
+                // `case_of_column`, set by the matching `Context::CaseExpression`
+                // pop above, is deliberately left alone here: it is read (and
+                // cleared) by the BUG-10 check in the `(_, Context::CaseBlock(c
+                // @ None))` arm above, once this block's first real token
+                // arrives. Consuming it here instead would lose it before that
+                // check ever runs.
+                //
+                // `indent` stays derived from the enclosing block, exactly as
+                // before this ticket: it is what step 2's implicit-close check
+                // and `Offside::min_indent`'s fallback key on, and deriving it
+                // from `case_of_column` instead made a dedent back to `case`'s
+                // own column read as *closing* the block rather than
+                // *violating* it, which broke
+                // `layout_error_reports_the_case_block_minimum_indentation`.
                 self.contexts.push(Offside {
                     context: Context::CaseBlock(None),
                     indent: offside.indent + 1,
