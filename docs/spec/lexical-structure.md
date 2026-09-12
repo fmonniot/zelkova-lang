@@ -554,7 +554,7 @@ Brackets are tokenized but no construct consumes them ([`LANG-44`](../tickets/la
 their syntax; what this section fixes is that the characters are spoken for, and so unavailable
 as operator characters.
 
-## Numeric literals the tokenizer cannot represent
+## Numeric literals that are rejected
 
 An integer literal too large for a 64-bit signed integer is rejected, rather than silently
 wrapping or truncating:
@@ -565,8 +565,13 @@ module Example exposing (f)
 f = 99999999999999999999
 ```
 
-A numeric literal may contain at most one `.`; a second one ends the literal in an error
-rather than being read as a separate token:
+**Known gap:** the bound that block crosses should be [`Int`'s range](#integers). The error it
+gets today names a 64-bit signed integer instead, because the tokenizer carries a literal's
+value in an `i64` — a width no rule here sets — and *Integers* and [Evaluation
+semantics](evaluation-semantics.md#numbers) do not currently agree on what `Int`'s range is
+([`docs/tickets/spec-28.md`](../tickets/spec-28.md)).
+
+A numeric literal may contain at most one `.`; a second one ends the literal in an error:
 
 ```zel expect=parse-error:MultipleDecimalPoints
 module Example exposing (f)
@@ -584,13 +589,5 @@ module Example exposing (f)
 f = 1١
 ```
 
-An `infix` declaration's precedence is stored in one byte, so it must be between 0 and 255:
-
-```zel expect=parse-error:InfixPrecedenceOutOfRange
-module Example exposing ((|+|), combine)
-
-infix left 300 (|+|) = combine
-
-combine a b =
-  a
-```
+An `infix` declaration's precedence is a numeric literal too, and the range it may take is
+[Declarations](declarations.md#precedence-is-0-through-9)' rule rather than this chapter's.

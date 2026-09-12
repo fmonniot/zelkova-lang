@@ -14,7 +14,7 @@ accepts any integer literal the tokenizer produced and narrows it to a `u8`, so 
 10 (^) = pow` and `infix left 255 (^) = pow` both compile.
 
 Above 255 the narrowing is rejected with `parser::Error::InfixPrecedenceOutOfRange` — that was
-[`BUG-12`](README.md), now closed, and the `=>?` fallible action it added to the `Infix`
+`BUG-12`, now closed, and the `=>?` fallible action it added to the `Infix`
 production is the mechanism this ticket reuses.
 
 **Approach:** validate the literal in the `Infix` production and return a user error for
