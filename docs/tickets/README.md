@@ -286,7 +286,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-52](lang-52.md) | task | — | open | Whitespace around a qualification dot is accepted, and records need it not to be |
 | [LANG-53](lang-53.md) | task | — | open | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | [LANG-54](lang-54.md) | task | — | open | The interop modifier is spelled `javascript`, naming a backend where the language names a boundary |
-| [SITE-1](site-1.md) | task | — | open | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
+| SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |

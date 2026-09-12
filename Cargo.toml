@@ -1,3 +1,6 @@
+[workspace]
+members = ["tools/spec-doc", "tools/spec-site"]
+
 [package]
 name = "zelkova-lang"
 version = "0.1.0"
@@ -20,3 +23,4 @@ petgraph = "0.8"
 
 [dev-dependencies]
 indoc = "2.0"
+spec-doc = { path = "tools/spec-doc" }

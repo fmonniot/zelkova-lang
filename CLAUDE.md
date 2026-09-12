@@ -17,12 +17,17 @@ maintains is the one the next reader trusts.
 ## Commands
 
 ```sh
-cargo test                     # full suite: unit tests + tests/
+cargo test --workspace         # full suite: unit tests + tests/ + the tools/ crates'
 cargo build
 cargo run                      # compiles std/core/src/ — the de-facto smoke test
+cargo run -p spec-site -- --out site   # renders the site locally; open site/index.html
 cargo fmt --all
-cargo clippy --all-features
+cargo clippy --workspace --all-features
 ```
+
+Bare `cargo test` runs only the compiler's own tests and silently skips `tools/spec-site`'s —
+use `--workspace`. `tools/spec-doc` carries no tests of its own; its logic is exercised through
+`tests/spec.rs`, which depends on it.
 
 `cargo run` prints `parsed 8 modules`, then lists all eight as checked, and **exits 0**. It is
 a genuine pass/fail smoke test: any error, any module missing from the checked list, a parse
@@ -53,6 +58,10 @@ Three directories, each with an index to read before touching it:
 - [`docs/decisions/`](docs/decisions/README.md) — *why* a rule is what it is, and what it was
   chosen over. Not normative, but its links and anchors are checked by the same binary. A
   chapter states its rule without arguing against the alternatives; the argument lives here.
+
+The published site — the landing page, the rendered spec, and the rustdoc, deployed from
+`.github/workflows/rustdoc.yml` — is built by [`tools/spec-site/`](tools/spec-site/src/main.rs),
+which shares its `expect=` scanner with `tests/spec.rs` via `tools/spec-doc/`.
 
 Do not leave a `TODO` comment in code for anything worth a ticket. A comment in a file nobody
 opens is not a record. (The codebase still has plenty of pre-existing ones; don't add more.)

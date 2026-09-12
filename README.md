@@ -55,9 +55,12 @@ The language itself is specified under [`docs/spec/`](docs/spec/README.md), one 
 per file, starting from that directory's index. It is normative — it describes
 Zelkova as designed, not just what the compiler happens to accept today — and every
 code example in it is checked against the compiler by `cargo test --test spec`, so a
-chapter that drifts from the compiler is a red test rather than a stale sentence.
+chapter that drifts from the compiler is a red test rather than a stale sentence. It
+is published, alongside a landing page and the rendered rustdoc, at
+[francois.monniot.eu/zelkova-lang/](https://francois.monniot.eu/zelkova-lang/).
 
-`cargo doc` documents the compiler's own Rust, not the language; `docs/tickets/` is
-the compiler's work log, not documentation for someone writing Zelkova.
+`cargo doc` documents the compiler's own Rust, not the language — that's the rustdoc
+published above. `docs/tickets/` is the compiler's work log, not documentation for
+someone writing Zelkova, and stays unpublished; read it on GitHub.
 
 - [Greg Wilson has some idea of what a community need](https://third-bit.com/2020/09/01/what-every-community-needs.html), maybe we can use some of them.
