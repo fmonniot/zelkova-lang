@@ -171,7 +171,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-4 | bug | medium | closed 2026-08-25 | The `Layout` iterator never terminates after a `LayoutError` |
 | BUG-5 | bug | medium | closed 2026-08-26 | The `Tokenizer` never terminates on a tab used for indentation |
 | BUG-6 | bug | medium | closed 2026-08-27 | Rendering a parse error panics for four of `parser::Error`'s five variants |
-| [BUG-7](bug-7.md) | bug | low | open | The unclosed-char diagnostic draws two invisible carets, and swaps their messages |
+| BUG-7 | bug | low | closed 2026-09-11 | The unclosed-char diagnostic draws two invisible carets, and swaps their messages |
 | [BUG-8](bug-8.md) | bug | medium | open | `do_exports` never checks that an exposed value or type actually exists |
 | [BUG-9](bug-9.md) | bug | medium | open | A module's `exposing` list is computed and then never consulted |
 | [BUG-10](bug-10.md) | bug | low | open | A `case` branch level with, or left of, the `case` keyword is accepted |
@@ -300,6 +300,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TIDY-4 | task | — | closed 2026-08-25 | Test-module doc comments still describe the type checker as a stub |
 | TIDY-5 | task | — | closed 2026-08-25 | Fix all outstanding `cargo clippy` warnings |
 | TIDY-6 | task | — | closed 2026-08-26 | Stale doc comment on `canonical_type_to_typer_type` |
+| [TIDY-7](tidy-7.md) | task | — | open | Four label/diagnostic messages in `Error::Tokenizer`'s match are still capitalized |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |

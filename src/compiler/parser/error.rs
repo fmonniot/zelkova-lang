@@ -41,15 +41,6 @@ impl Error {
                     .to_owned()])
             }
             Error::Tokenizer(err) => {
-                /*
-                CharNotClosedError:
-                let err = Diagnostic::error()
-                    .with_message("my message")
-                    .with_labels(vec![
-                        Label::primary((), 2..2).with_message("expected quote here"),
-                        Label::secondary((), 0..0).with_message("for char started here")
-                    ]);
-                */
                 let diag = Diagnostic::error();
                 match err.error.value {
                     TokenizerErrorType::CharNotClosedError(None) => {
@@ -60,15 +51,21 @@ impl Error {
                             ])
                     }
                     TokenizerErrorType::CharNotClosedError(Some(_)) => {
+                        // `span.start` is the opening quote and `span.end` falls
+                        // inside the character sitting where the closing quote
+                        // should have been (tokenizer.rs, the
+                        // `CharNotClosedError(Some(_))` arm). Both are single
+                        // `BytePos`es, so `one_byte_at` widens each into a
+                        // visible one-byte range the same way `InvalidToken` and
+                        // `UnexpectedEOF` do (`BUG-7`).
                         let open = err.error.span.start;
                         let close = err.error.span.end;
                         diag.with_message("char sequence opened but never closed")
                             .with_labels(vec![
-                                Label::primary(name, open.to_range())
-                                    .with_message("We were expecting a single quote here"),
-                                Label::secondary(name, close.to_range())
-                                    .with_message("For the opening quote here")
-
+                                Label::primary(name, one_byte_at(close))
+                                    .with_message("we were expecting a single quote here"),
+                                Label::secondary(name, one_byte_at(open))
+                                    .with_message("for the opening quote here")
                             ])
                     }
                     // String literals are not implemented in the language yet, so
@@ -418,6 +415,49 @@ mod tests {
         assert_prose_message(&diagnostic, "this string literal could not be read");
         assert_points_at_source(&diagnostic);
         assert_eq!(diagnostic.labels[0].range, 3..9);
+    }
+
+    /// The error comes from the tokenizer rather than being built here, so the
+    /// byte offsets below are the ones `tokenizer.rs` actually emits: for `'ab`
+    /// its `(Some(v), Some(closing))` arm spans the opening quote at byte 0 to
+    /// byte 2, where the `b` sits in the closing quote's place. Both labels
+    /// must render as visible one-byte ranges, and the label at the opening
+    /// position has to be the one that talks about the opening quote.
+    ///
+    /// Verified to fail two ways (`BUG-7`): reverting `one_byte_at` back to
+    /// `.to_range()` turns both ranges zero-width and reddens
+    /// `assert_points_at_source`; swapping the two `.with_message` calls back
+    /// puts "we were expecting a single quote here" on the opening-quote
+    /// label, which reddens the `opening_label` assertion below.
+    #[test]
+    fn char_not_closed_with_extra_char_labels_open_and_expected_close() {
+        let error: Error = crate::compiler::parser::tokenizer::make_tokenizer("'ab")
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("expected the source to fail the tokenizer")
+            .into();
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "char sequence opened but never closed");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels.len(), 2);
+
+        let opening_label = diagnostic
+            .labels
+            .iter()
+            .find(|label| label.range == (0..1))
+            .expect("no label at the opening quote (byte 0)");
+        assert_eq!(opening_label.message, "for the opening quote here");
+
+        let expected_close_label = diagnostic
+            .labels
+            .iter()
+            .find(|label| label.range == (2..3))
+            .expect("no label at the expected closing quote (byte 2)");
+        assert_eq!(
+            expected_close_label.message,
+            "we were expecting a single quote here"
+        );
     }
 
     /// Same as `tokenizer_string_error_renders`, for the sibling variant.
