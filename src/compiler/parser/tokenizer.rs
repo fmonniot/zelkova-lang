@@ -634,11 +634,21 @@ where
                     self.next_char().unwrap(); // let's skip over whitespace and new lines
                 }
                 '\t' => {
+                    // Mirrors the `Some('\t')` arm of `handle_indentation` (BUG-5): the span
+                    // is read from `self.position` before advancing, and `next_char` consumes
+                    // the tab so the next poll finds a different character instead of
+                    // re-entering this same arm forever (BUG-11). Unlike that sibling arm,
+                    // this one never needs to touch `at_line_start` — it only runs once
+                    // `handle_indentation` has already cleared the flag for the current line.
+                    let start = self.position.absolute;
+                    self.next_char();
+                    let end = self.position.absolute;
+
                     return Err(TokenizerError::new(
-                        self.position.absolute,
-                        self.position.absolute + '\t'.len_utf8() as u32,
+                        start,
+                        end,
                         TokenizerErrorType::TabError,
-                    ))
+                    ));
                 }
                 c if self.is_identifier_start(c) => {
                     let identifier = self.consume_identifier()?;
@@ -1104,6 +1114,92 @@ mod tests {
         assert_eq!(
             tokenize("map  f"),
             vec![ident_token("map"), ident_token("f")]
+        );
+    }
+
+    /// A consumer which keeps polling past a `TabError` raised by a tab *after* the first
+    /// non-whitespace character of a line — the main-loop `'\t'` arm of `consume_char`, not
+    /// the indentation one — must not see that same error again, and iteration has to
+    /// terminate (`BUG-11`). Before the fix, that arm returned without consuming the tab or
+    /// advancing `self.position`, so every subsequent poll re-entered the same arm on the
+    /// same character and produced a byte-identical `TabError` forever — the same shape
+    /// `BUG-5` fixed for `handle_indentation`'s sibling arm, but that fix did not touch this
+    /// one.
+    ///
+    /// Like `tab_indentation_does_not_hang` above, this polls explicitly instead of using
+    /// `collect::<Result<Vec<_>, _>>()`, which short-circuits on the first `Err` and so cannot
+    /// observe repetition — `refuse_tab_in_expression` below predates this fix and did not
+    /// catch it for exactly that reason.
+    ///
+    /// Verified to fail by reverting the fix (returning immediately from the main-loop
+    /// `'\t'` arm without advancing, as before): the loop below then hits `CAP` without the
+    /// iterator ever terminating, and all of the trailing items are the identical `TabError`
+    /// at `BytePos(9)..BytePos(10)`.
+    #[test]
+    fn tab_after_first_character_does_not_hang() {
+        const CAP: usize = 20;
+
+        let mut iter = make_tokenizer("f x =\n  1\t+ 2\n");
+        let mut items = Vec::with_capacity(CAP);
+
+        for _ in 0..CAP {
+            match iter.next() {
+                Some(item) => items.push(item),
+                None => break,
+            }
+        }
+
+        assert!(
+            items.len() < CAP,
+            "the iterator did not terminate within {} items: {:?}",
+            CAP,
+            items
+        );
+
+        // No two consecutive items may be the same TabError repeated.
+        for pair in items.windows(2) {
+            if let (Err(e1), Err(e2)) = (&pair[0], &pair[1]) {
+                assert_ne!(
+                    e1, e2,
+                    "the identical TabError was observed twice in a row: {:?}",
+                    e1
+                );
+            }
+        }
+
+        // Exactly one TabError should be raised, for the one tab in the source; tokenization
+        // should then move on and produce the rest of the line.
+        let errors: Vec<_> = items.iter().filter(|item| item.is_err()).collect();
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected exactly one error, got {:?}",
+            items
+        );
+        assert_eq!(
+            errors[0],
+            &Err(TokenizerError::new(
+                BytePos(9),
+                BytePos(10),
+                TokenizerErrorType::TabError
+            ))
+        );
+
+        let values: Vec<_> = items
+            .iter()
+            .filter_map(|item| item.as_ref().ok())
+            .map(|s| &s.value)
+            .collect();
+        assert_eq!(
+            values,
+            vec![
+                &ident_token("f"),
+                &ident_token("x"),
+                &Token::Equal,
+                &int_token(1),
+                &Token::Operator("+".to_string()),
+                &int_token(2),
+            ]
         );
     }
 
