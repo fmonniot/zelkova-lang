@@ -34,10 +34,10 @@ digit after the point is what keeps `.` usable as punctuation, and the spec says
 `is_identifier_continuation` alone: `Lt` stays a legal continuation character, and the spec's
 example pins that.
 
-For (2), `BUG-12` already rewrote `consume_number`'s accumulation loop to stop
-at a second `.` and to use `is_ascii_digit`, so this is one more condition on top of that
-rewrite rather than a second pass over the loop: require a digit immediately after the first
-`.`, the same way the loop already requires one before it.
+For (2), `BUG-12` already rewrote `consume_number`'s accumulation loop to stop at a second
+`.` and to use `is_ascii_digit`, so this is one more condition on top of that rewrite
+rather than a second pass over the loop: require a digit immediately after the first `.`,
+the same way the loop already requires one before it.
 
 **Acceptance:** `ǅoo = 1` is rejected with an error naming the character, and `xǅoo = 1` still
 compiles. `f = 1.` is rejected; `f = 1.0` still compiles. Each seen to fail before the fix.
