@@ -78,13 +78,10 @@ pub enum Context {
     /// Context for the block containing the different matches of a catch/of
     /// A case block minimum indentation is set by the first token after the block is opened.
     ///
-    /// The `case` keyword's own column is *not* carried here — unlike
-    /// `CaseExpression`, adding a field to this variant would grow `Context`
-    /// (it is already the largest variant at 16 bytes, and `Context` embeds
-    /// several layers down into `CompilationError`, where clippy's
-    /// `result_large_err` starts complaining). The BUG-10 check that needs
-    /// that column instead reads it straight off `Layout::case_of_column` in
-    /// the arm below, one call after `Context::CaseExpression` hands it there.
+    /// The `case` keyword's own column lives in `Layout::case_of_column`
+    /// rather than on this variant: widening `CaseBlock` by a `usize` pushes
+    /// `Context` to 32 bytes and `CompilationError`, which embeds it several
+    /// layers down, past clippy's 128-byte `result_large_err` default.
     CaseBlock(Option<usize>),
 
     /// Context for a branch in a case/of expression.
@@ -317,7 +314,13 @@ where
                 let case_col = self.case_of_column.take().unwrap_or(0);
                 let column = token.start().column;
 
-                if column <= case_col {
+                // A token at or left of `offside.indent` was going to close this
+                // block in step 2 below, which means it is not a branch at all —
+                // it is whatever follows a `case … of` that never got one. Let it
+                // through so the grammar reports the missing branches against the
+                // `CloseBlock`, instead of blaming the next top level declaration
+                // for a misindented branch it never wrote.
+                if column > offside.indent && column <= case_col {
                     // `indent` reports `case_col + 1` — the floor this error is
                     // actually about — rather than `offside.indent`, which
                     // stays enclosing-derived (see the `Token::Of` push arm
@@ -445,19 +448,14 @@ where
             }
             (Token::Of, _) => {
                 // `case_of_column`, set by the matching `Context::CaseExpression`
-                // pop above, is deliberately left alone here: it is read (and
-                // cleared) by the BUG-10 check in the `(_, Context::CaseBlock(c
-                // @ None))` arm above, once this block's first real token
-                // arrives. Consuming it here instead would lose it before that
-                // check ever runs.
+                // pop above, is left set here on purpose: the BUG-10 check in the
+                // `(_, Context::CaseBlock(c @ None))` arm reads and clears it when
+                // this block's first real token arrives.
                 //
-                // `indent` stays derived from the enclosing block, exactly as
-                // before this ticket: it is what step 2's implicit-close check
-                // and `Offside::min_indent`'s fallback key on, and deriving it
-                // from `case_of_column` instead made a dedent back to `case`'s
-                // own column read as *closing* the block rather than
-                // *violating* it, which broke
-                // `layout_error_reports_the_case_block_minimum_indentation`.
+                // `indent` is derived from the enclosing block rather than from
+                // `case`'s column, because it is the threshold step 2's implicit
+                // close keys on: a dedent back to the enclosing block's level has
+                // to *close* this block, not merely violate it.
                 self.contexts.push(Offside {
                     context: Context::CaseBlock(None),
                     indent: offside.indent + 1,
