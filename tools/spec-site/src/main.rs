@@ -44,10 +44,10 @@ fn main() -> ExitCode {
 
     // `tools/spec-site` sits two levels under the repo root.
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest_dir
-        .parent()
-        .and_then(Path::parent)
-        .expect("CARGO_MANIFEST_DIR is tools/spec-site under the repo root");
+    let Some(repo_root) = manifest_dir.parent().and_then(Path::parent) else {
+        eprintln!("spec-site: CARGO_MANIFEST_DIR is not two levels under the repo root");
+        return ExitCode::FAILURE;
+    };
 
     match build_site(
         &repo_root.join("docs/spec"),
@@ -101,7 +101,7 @@ fn build_site(spec_dir: &Path, assets_dir: &Path, out_dir: &Path) -> Result<(), 
     for path in &chapters {
         let stem = path
             .file_stem()
-            .expect("a `.md` file has a stem")
+            .ok_or_else(|| format!("{}: a `.md` file has no stem", path.display()))?
             .to_string_lossy()
             .into_owned();
         let label = format!("docs/spec/{}.md", stem);
