@@ -25,8 +25,9 @@ cargo fmt --all
 cargo clippy --workspace --all-features
 ```
 
-Bare `cargo test` runs only the compiler's own tests and silently skips `tools/spec-doc` and
-`tools/spec-site`'s — use `--workspace`.
+Bare `cargo test` runs only the compiler's own tests and silently skips `tools/spec-site`'s —
+use `--workspace`. `tools/spec-doc` carries no tests of its own; its logic is exercised through
+`tests/spec.rs`, which depends on it.
 
 `cargo run` prints `parsed 8 modules`, then lists all eight as checked, and **exits 0**. It is
 a genuine pass/fail smoke test: any error, any module missing from the checked list, a parse
