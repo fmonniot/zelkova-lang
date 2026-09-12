@@ -22,12 +22,22 @@ jobs:
         components: rust-src
 
     - name: Build Documentation
-      run: cargo doc --all --no-deps
+      run: cargo doc -p zelkova-lang --no-deps
+
+    - name: Render the site
+      run: cargo run -p spec-site -- --out site
+
+    - name: Mount the rustdoc
+      # `site/api/index.html` already exists (the renderer's meta-refresh redirect), so
+      # this has to merge into it rather than nest a `doc/` subdirectory inside it —
+      # `cp -r target/doc site/api` would do the latter, since `site/api` already
+      # exists as a directory by the time this step runs.
+      run: cp -r target/doc/. site/api/
 
     - name: Deploy Docs
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_branch: gh-pages
-        publish_dir: ./target/doc
+        publish_dir: ./site
         force_orphan: true

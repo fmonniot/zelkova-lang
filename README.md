@@ -58,6 +58,8 @@ code example in it is checked against the compiler by `cargo test --test spec`, 
 chapter that drifts from the compiler is a red test rather than a stale sentence.
 
 `cargo doc` documents the compiler's own Rust, not the language; `docs/tickets/` is
-the compiler's work log, not documentation for someone writing Zelkova.
+the compiler's work log, not documentation for someone writing Zelkova. Both are
+published, alongside a landing page, at
+[francois.monniot.eu/zelkova-lang/](https://francois.monniot.eu/zelkova-lang/).
 
 - [Greg Wilson has some idea of what a community need](https://third-bit.com/2020/09/01/what-every-community-needs.html), maybe we can use some of them.
