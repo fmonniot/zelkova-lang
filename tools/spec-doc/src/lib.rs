@@ -267,12 +267,27 @@ pub fn slugify(header: &str) -> String {
     slug
 }
 
-/// The anchors `content`'s headers define, in document order.
+/// One markdown header found in a chapter: its nesting level, its anchor (by the same
+/// rule [`header_anchors`] uses), and its display text with the inline markup a header
+/// may carry — a backtick span, so far the only kind seen in a chapter heading —
+/// stripped, so a page building a table of contents from this does not have to parse
+/// markdown itself.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Header {
+    /// 1-6, the number of `#` the header line opened with.
+    pub level: u8,
+    pub text: String,
+    pub anchor: String,
+}
+
+/// Every header `content` defines, in document order, each with the anchor
+/// [`header_anchors`] would give it.
 ///
 /// A repeated header does not shadow the one before it: GitHub appends `-1`, `-2`, …
 /// to the second and later spellings, so both are addressable and a link to the bare
 /// slug reaches the first.
-pub fn header_anchors(content: &str) -> Vec<String> {
+pub fn headers(content: &str) -> Vec<Header> {
+    let mut result: Vec<Header> = Vec::new();
     let mut anchors: Vec<String> = Vec::new();
     for (_, line) in prose_lines(content) {
         let trimmed = line.trim_start();
@@ -280,14 +295,36 @@ pub fn header_anchors(content: &str) -> Vec<String> {
         if hashes == 0 || hashes > 6 || !trimmed[hashes..].starts_with(' ') {
             continue;
         }
-        let base = slugify(trimmed[hashes..].trim());
+        let text = trimmed[hashes..].trim();
+        let base = slugify(text);
         let mut anchor = base.clone();
         let mut repeat = 0;
         while anchors.contains(&anchor) {
             repeat += 1;
             anchor = format!("{}-{}", base, repeat);
         }
-        anchors.push(anchor);
+        anchors.push(anchor.clone());
+        result.push(Header {
+            level: hashes as u8,
+            text: strip_inline_markup(text),
+            anchor,
+        });
     }
-    anchors
+    result
+}
+
+/// Drop the backtick and asterisk characters a chapter heading uses for a code span
+/// or bold text — the only two kinds of inline markup a `docs/spec/` heading carries
+/// today — leaving the words a table of contents should show.
+fn strip_inline_markup(text: &str) -> String {
+    text.chars().filter(|&c| c != '`' && c != '*').collect()
+}
+
+/// The anchors `content`'s headers define, in document order.
+///
+/// A repeated header does not shadow the one before it: GitHub appends `-1`, `-2`, …
+/// to the second and later spellings, so both are addressable and a link to the bare
+/// slug reaches the first.
+pub fn header_anchors(content: &str) -> Vec<String> {
+    headers(content).into_iter().map(|h| h.anchor).collect()
 }

@@ -186,7 +186,7 @@ fn render_zel_block(block: &Block) -> String {
     html
 }
 
-fn escape_html(text: &str) -> String {
+pub(crate) fn escape_html(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
         match c {
