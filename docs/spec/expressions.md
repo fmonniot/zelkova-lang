@@ -563,11 +563,11 @@ type Flag
 
 f g v =
   g (case v of
-    On ->
-      Off
+      On ->
+        Off
 
-    Off ->
-      On)
+      Off ->
+        On)
 ```
 
 **Known gap:** that should be `expect=ok`. A `case` cannot be parenthesised at all today, in

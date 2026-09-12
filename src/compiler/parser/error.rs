@@ -387,6 +387,40 @@ mod tests {
         );
     }
 
+    /// A branch level with `case` is rejected against `case`'s own column plus
+    /// one (`BUG-10`), not against the branch block's `Offside::indent`, which
+    /// is the enclosing-derived threshold step 2's implicit close keys on (2
+    /// here). Only the rendered message distinguishes the two, so it is pinned
+    /// verbatim. Verified to fail by building the error's `Offside` with
+    /// `indent: offside.indent` instead of `case_col + 1` in
+    /// `layout.rs`'s `(_, Context::CaseBlock(c @ None))` arm: the label then
+    /// reads "requires column 2 or more", which the token at column 3 already
+    /// satisfies.
+    #[test]
+    fn layout_error_reports_the_case_keyword_column_as_the_branch_floor() {
+        let error = layout_error(indoc! {"
+            f x =
+              case x of
+              A -> 1
+        "});
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "this line is not indented far enough");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(
+            diagnostic.labels[0].message,
+            "this token starts at column 3, but its block requires column 4 or more"
+        );
+        assert_eq!(
+            diagnostic.notes,
+            vec![
+                "the block it belongs to (the branches of a `case … of`) starts on line 2"
+                    .to_string()
+            ]
+        );
+    }
+
     /// `UnexpectedEOF` only knows a single byte position, and
     /// `BytePos::to_range` is zero-width. Verified to fail by restoring the
     /// `e => todo!()` catch-all (panic), and again — once handled — by having

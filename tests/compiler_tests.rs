@@ -4,6 +4,7 @@ mod compiler {
         mod support;
 
         mod expressions;
+        mod layout;
         mod modules;
         mod types;
     }

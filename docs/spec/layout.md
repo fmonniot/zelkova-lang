@@ -269,11 +269,10 @@ body and the grammar then trips on the second `->`.
 answer is unchanged by that ticket, and the block pins today's `UnexpectedToken` so this
 paragraph goes red along with it.
 
-What the compiler does **not** enforce is the floor relative to `case` itself. It derives
-the branch block's minimum column from the enclosing block rather than from the `case`
-keyword, so branches level with `case` — or left of it — are accepted today:
+Even where a branch satisfies the enclosing block's own indentation, sitting level with
+`case` — or left of it — is an error:
 
-```zel expect=ok
+```zel expect=parse-error:LayoutError
 module Example exposing (describe)
 
 type Flag
@@ -286,9 +285,21 @@ describe f =
   Off -> 0
 ```
 
-**Known gap:** that file is invalid Zelkova; the `expect=ok` records what the compiler does,
-not what the language says. [`docs/tickets/bug-10.md`](../tickets/bug-10.md) tracks it, and
-this block goes red when it is fixed.
+A `case` written on the same line as the `=` that introduces the body puts the column its
+branches must clear deep inside the line rather than at its start, so they have to follow it
+there:
+
+```zel expect=ok
+module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f = case f of
+              On -> 1
+              Off -> 0
+```
 
 ### A branch body is deeper than its pattern
 
