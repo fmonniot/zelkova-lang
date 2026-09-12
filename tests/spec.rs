@@ -208,6 +208,7 @@ const PARSE_ERROR_SPECIFICS: &[&str] = &[
     "IntegerOverflow",
     "MultipleDecimalPoints",
     "NonAsciiDigit",
+    "MalformedNumber",
     "LayoutError",
     "InvalidToken",
     "UnexpectedEOF",
@@ -249,6 +250,7 @@ fn parse_error_reasons(error: &parser::Error) -> Vec<&'static str> {
                 TokenizerErrorType::IntegerOverflow => "IntegerOverflow",
                 TokenizerErrorType::MultipleDecimalPoints => "MultipleDecimalPoints",
                 TokenizerErrorType::NonAsciiDigit { .. } => "NonAsciiDigit",
+                TokenizerErrorType::MalformedNumber => "MalformedNumber",
             };
             vec!["Tokenizer", specific]
         }
@@ -2161,11 +2163,11 @@ fn a_vocabulary_disagreement_is_a_failure() {
 
 /// The count `conventions.md` writes out in words is checked against the real one.
 ///
-/// The row says "one of the fifteen specific errors", which is a claim about the same
+/// The row says "one of the sixteen specific errors", which is a claim about the same
 /// vocabulary the names are and is one added variant away from being wrong.
 ///
 /// Pins: the real row, compared against a `specifics` list one name short, so the
-/// expected word becomes `fourteen` and the row still says `fifteen`. Neutralised by deleting
+/// expected word becomes `fifteen` and the row still says `sixteen`. Neutralised by deleting
 /// the `NUMBER_WORDS` match at the foot of `vocabulary_failures`: with that change the
 /// short list produces no failure at all and this goes red. Restored afterwards.
 #[test]

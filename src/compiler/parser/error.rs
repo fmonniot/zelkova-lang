@@ -121,7 +121,7 @@ impl Error {
                         .with_labels(vec![Label::primary(name, err.error.span.to_range())
                             .with_message("this literal does not fit in a 64-bit signed integer")])
                         .with_notes(vec![
-                            "Zelkova guarantees every integer in -2^31 .. 2^31 - 1 is representable on every target".to_owned()
+                            "an integer literal must fit in a 64-bit signed integer; Zelkova guarantees -2^31 .. 2^31 - 1 on every target and leaves the rest to the compilation target".to_owned()
                         ]),
                     TokenizerErrorType::MultipleDecimalPoints => diag
                         .with_message("a number has one decimal point")
@@ -131,6 +131,10 @@ impl Error {
                         .with_message("a numeric literal is written with the digits 0-9")
                         .with_labels(vec![Label::primary(name, err.error.span.to_range())
                             .with_message(format!("`{}` is not one of the digits 0-9", digit))]),
+                    TokenizerErrorType::MalformedNumber => diag
+                        .with_message("this is not a number")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message("this literal cannot be read as an integer or a float")]),
                 }
             }
 
@@ -511,5 +515,23 @@ mod tests {
         );
         assert_points_at_source(&diagnostic);
         assert_eq!(diagnostic.labels[0].range, 2..8);
+    }
+
+    /// `MalformedNumber` is the one diagnostic in `consume_number`'s three that no source
+    /// can reach — it is there for a buffer the accumulation loop should never have built
+    /// — so this is the only thing keeping it renderable. Same shape as
+    /// `tokenizer_string_error_renders`, for the same reason. Verified to fail by
+    /// replacing its arm with `todo!()`.
+    #[test]
+    fn tokenizer_malformed_number_renders() {
+        let error = Error::Tokenizer(TokenizerError {
+            error: spanned(BytePos(4), BytePos(9), TokenizerErrorType::MalformedNumber),
+        });
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "this is not a number");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels[0].range, 4..9);
     }
 }
