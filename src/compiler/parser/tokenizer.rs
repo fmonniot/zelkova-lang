@@ -638,8 +638,15 @@ where
                     // is read from `self.position` before advancing, and `next_char` consumes
                     // the tab so the next poll finds a different character instead of
                     // re-entering this same arm forever (BUG-11). Unlike that sibling arm,
-                    // this one never needs to touch `at_line_start` — it only runs once
-                    // `handle_indentation` has already cleared the flag for the current line.
+                    // this one leaves `at_line_start` alone, because it is only ever reached
+                    // with the flag already false. `handle_indentation` does not clear the
+                    // flag on every exit — its `None` (EOF) case and its `Some('-')` and
+                    // `Some('{')` breaks all return with it still set — but each of those
+                    // leaves the iterator on `None`, `-` or `{` rather than on a tab, and
+                    // while the flag is set `process_next_tokens` re-enters
+                    // `handle_indentation` before every `consume_char`, so a tab further along
+                    // such a line meets that arm instead. A tab reaches this arm only once the
+                    // "first real character" arm has cleared the flag.
                     let start = self.position.absolute;
                     self.next_char();
                     let end = self.position.absolute;
