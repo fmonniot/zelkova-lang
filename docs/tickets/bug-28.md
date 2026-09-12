@@ -70,11 +70,12 @@ error.
 **Whichever is chosen, check the span before changing it.** Both arms compute their `end` from
 character widths rather than reading `self.position` after advancing, which is the pattern the
 tab arms deliberately moved away from. Switching to two observed positions is the consistent
-thing to do, but it would change the reported span, and [BUG-7](bug-7.md) is written against
-the current one: it reasons that `start` is the opening quote and `end` is where the closing
-quote should have been, and its acceptance pins `'aa` at `BytePos(0)..BytePos(2)`. Land these
-in either order, but if the span moves, re-read BUG-7 rather than assuming its description
-still holds. The `literal_char` test pins all three spans today and would need updating too.
+thing to do, but it would change the reported span, and there is now a reader of that span:
+`src/compiler/parser/error.rs`'s `CharNotClosedError(Some(_))` arm renders `span.start` as the
+opening quote and `span.end` as where the closing quote should have been, and says so in a
+comment citing this arm by name (BUG-7, closed 2026-09-11). Move the span only together with
+that comment and the label placement it justifies. `literal_char` in `tokenizer.rs` pins all
+three spans today and would need updating too.
 
 **Acceptance:** a test in `tokenizer.rs`'s `mod tests`, using the drain-and-inspect helper the
 two `*_does_not_hang` tests share, that polls each of `'`, `'a` and `'ab` past the first error
