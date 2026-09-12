@@ -269,9 +269,8 @@ body and the grammar then trips on the second `->`.
 answer is unchanged by that ticket, and the block pins today's `UnexpectedToken` so this
 paragraph goes red along with it.
 
-The floor is relative to `case` itself, not to whatever block encloses the `case … of`.
-A branch level with `case` — or left of it — is rejected, even where it would otherwise
-satisfy the enclosing block's own indentation:
+Even where a branch satisfies the enclosing block's own indentation, sitting level with
+`case` — or left of it — is an error:
 
 ```zel expect=parse-error:LayoutError
 module Example exposing (describe)
@@ -284,6 +283,21 @@ describe f =
   case f of
   On -> 1
   Off -> 0
+```
+
+A `case` written on the same line as the `=` that introduces the body puts that floor deep
+inside the line rather than at its start, so its branches have to follow it there:
+
+```zel expect=ok
+module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f = case f of
+              On -> 1
+              Off -> 0
 ```
 
 ### A branch body is deeper than its pattern
