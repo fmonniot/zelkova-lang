@@ -285,8 +285,9 @@ describe f =
   Off -> 0
 ```
 
-A `case` written on the same line as the `=` that introduces the body puts that floor deep
-inside the line rather than at its start, so its branches have to follow it there:
+A `case` written on the same line as the `=` that introduces the body puts the column its
+branches must clear deep inside the line rather than at its start, so they have to follow it
+there:
 
 ```zel expect=ok
 module Example exposing (describe)
