@@ -41,15 +41,6 @@ impl Error {
                     .to_owned()])
             }
             Error::Tokenizer(err) => {
-                /*
-                CharNotClosedError:
-                let err = Diagnostic::error()
-                    .with_message("my message")
-                    .with_labels(vec![
-                        Label::primary((), 2..2).with_message("expected quote here"),
-                        Label::secondary((), 0..0).with_message("for char started here")
-                    ]);
-                */
                 let diag = Diagnostic::error();
                 match err.error.value {
                     TokenizerErrorType::CharNotClosedError(None) => {
@@ -60,20 +51,21 @@ impl Error {
                             ])
                     }
                     TokenizerErrorType::CharNotClosedError(Some(_)) => {
-                        // `span.start` is the opening quote and `span.end` is
-                        // where the closing quote was expected (tokenizer.rs,
-                        // the `CharNotClosedError(Some(_))` arm), and both are
-                        // single `BytePos`es, so `one_byte_at` widens each into
-                        // a visible one-byte range the same way `InvalidToken`
-                        // and `UnexpectedEOF` do (`BUG-7`).
+                        // `span.start` is the opening quote and `span.end` falls
+                        // inside the character sitting where the closing quote
+                        // should have been (tokenizer.rs, the
+                        // `CharNotClosedError(Some(_))` arm). Both are single
+                        // `BytePos`es, so `one_byte_at` widens each into a
+                        // visible one-byte range the same way `InvalidToken` and
+                        // `UnexpectedEOF` do (`BUG-7`).
                         let open = err.error.span.start;
                         let close = err.error.span.end;
                         diag.with_message("char sequence opened but never closed")
                             .with_labels(vec![
                                 Label::primary(name, one_byte_at(close))
-                                    .with_message("We were expecting a single quote here"),
+                                    .with_message("we were expecting a single quote here"),
                                 Label::secondary(name, one_byte_at(open))
-                                    .with_message("For the opening quote here")
+                                    .with_message("for the opening quote here")
                             ])
                     }
                     // String literals are not implemented in the language yet, so
@@ -455,7 +447,7 @@ mod tests {
             .iter()
             .find(|label| label.range == (0..1))
             .expect("no label at the opening quote (byte 0)");
-        assert_eq!(opening_label.message, "For the opening quote here");
+        assert_eq!(opening_label.message, "for the opening quote here");
 
         let expected_close_label = diagnostic
             .labels
@@ -464,7 +456,7 @@ mod tests {
             .expect("no label at the expected closing quote (byte 2)");
         assert_eq!(
             expected_close_label.message,
-            "We were expecting a single quote here"
+            "we were expecting a single quote here"
         );
     }
 
