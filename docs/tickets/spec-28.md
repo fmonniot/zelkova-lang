@@ -68,7 +68,7 @@ decision out of that PR.
    gap:** at it instead of at this ticket. If the answer makes the current behaviour correct,
    that paragraph is deleted and the block stands on its own.
 
-**Acceptance:** `grep -n "2^31" docs/spec/` finds the range stated in one chapter; the other
+**Acceptance:** `grep -rnF "2^31" docs/spec/` finds the range stated in one chapter; the other
 links to it. *Integers* says what an out-of-range integer literal does. The **Known gap:**
 paragraph in *Numeric literals that are rejected* either cites a `LANG-` ticket for the
 compiler's remaining divergence or is gone. `cargo test --test spec` is green — it reads every
