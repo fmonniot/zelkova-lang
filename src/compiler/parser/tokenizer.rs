@@ -831,8 +831,8 @@ where
 mod tests {
 
     use super::{
-        make_tokenizer, spanned, NewlineCollapser, Position, Token, TokenizerError,
-        TokenizerErrorType,
+        make_tokenizer, spanned, NewlineCollapser, Position, Result as TokenizerResult, Spanned,
+        Token, TokenizerError, TokenizerErrorType,
     };
     use crate::compiler::position::BytePos;
     use indoc::indoc;
@@ -853,6 +853,66 @@ mod tests {
     fn tokenize(source: &str) -> Vec<Token> {
         make_tokenizer(source)
             .map(|x| x.expect("no error in tokenize").value)
+            .collect()
+    }
+
+    /// Poll `source`'s tokenizer at most `cap` times — stopping early if the iterator
+    /// terminates — and return everything it yielded, having first checked the two things
+    /// a non-termination regression is about: that the iterator *stopped* inside the cap,
+    /// and that it never handed back the same error twice in a row.
+    ///
+    /// This is what the `*_does_not_hang` tests below use instead of
+    /// `collect::<Result<Vec<_>, _>>()`, which short-circuits on the first `Err` and so can
+    /// never observe a repeat — exactly why `invalid_indentation` and
+    /// `refuse_tab_in_expression`, which do collect, missed `BUG-5` and `BUG-11`.
+    ///
+    /// Both assertions live here rather than in the callers because a caller that forgot
+    /// either one would still pass while the defect was present.
+    fn drain_capped(source: &str, cap: usize) -> Vec<TokenizerResult<Spanned<Position, Token>>> {
+        let mut iter = make_tokenizer(source);
+        let mut items = Vec::with_capacity(cap);
+
+        for _ in 0..cap {
+            match iter.next() {
+                Some(item) => items.push(item),
+                None => break,
+            }
+        }
+
+        assert!(
+            items.len() < cap,
+            "the iterator did not terminate within {} items: {:?}",
+            cap,
+            items
+        );
+
+        for pair in items.windows(2) {
+            if let (Err(e1), Err(e2)) = (&pair[0], &pair[1]) {
+                assert_ne!(
+                    e1, e2,
+                    "the identical error was observed twice in a row: {:?}",
+                    e1
+                );
+            }
+        }
+
+        items
+    }
+
+    /// The errors among a [`drain_capped`] result, in order.
+    fn errors_of(items: &[TokenizerResult<Spanned<Position, Token>>]) -> Vec<&TokenizerError> {
+        items
+            .iter()
+            .filter_map(|item| item.as_ref().err())
+            .collect()
+    }
+
+    /// The tokens among a [`drain_capped`] result, in order.
+    fn tokens_of(items: &[TokenizerResult<Spanned<Position, Token>>]) -> Vec<&Token> {
+        items
+            .iter()
+            .filter_map(|item| item.as_ref().ok())
+            .map(|s| &s.value)
             .collect()
     }
 
@@ -1008,50 +1068,20 @@ mod tests {
     /// `at_line_start`, so every subsequent poll re-entered the same arm on
     /// the same character and produced a byte-identical `TabError` forever.
     ///
-    /// This uses an explicit polling cap rather than `collect::<Result<Vec<_>,
-    /// _>>()`, which short-circuits on the first `Err` and so cannot observe
-    /// repetition — that is exactly why the pre-existing `invalid_indentation`
-    /// test above did not catch this.
+    /// [`drain_capped`] carries the termination checks and says why polling
+    /// explicitly is the only way to see this class of defect at all.
     ///
     /// Verified to fail by reverting the fix (returning immediately from the
-    /// `Some('\t')` arm without advancing, as before): the loop below then
-    /// hits `CAP` without the iterator ever terminating, and all of the
+    /// `Some('\t')` arm without advancing, as before): `drain_capped` then
+    /// hits its cap without the iterator ever terminating, and all of the
     /// trailing items are the identical `TabError` at `BytePos(2)..BytePos(3)`.
     #[test]
     fn tab_indentation_does_not_hang() {
-        const CAP: usize = 10;
-
-        let mut iter = make_tokenizer("a\n\tb\n");
-        let mut items = Vec::with_capacity(CAP);
-
-        for _ in 0..CAP {
-            match iter.next() {
-                Some(item) => items.push(item),
-                None => break,
-            }
-        }
-
-        assert!(
-            items.len() < CAP,
-            "the iterator did not terminate within {} items: {:?}",
-            CAP,
-            items
-        );
-
-        // No two consecutive items may be the same TabError repeated.
-        for pair in items.windows(2) {
-            if let (Err(e1), Err(e2)) = (&pair[0], &pair[1]) {
-                assert_ne!(
-                    e1, e2,
-                    "the identical TabError was observed twice in a row: {:?}",
-                    e1
-                );
-            }
-        }
+        let items = drain_capped("a\n\tb\n", 10);
 
         // Exactly one TabError should be raised, for the one tab-indented line;
         // tokenization should then move on and produce `b`.
-        let errors: Vec<_> = items.iter().filter(|item| item.is_err()).collect();
+        let errors = errors_of(&items);
         assert_eq!(
             errors.len(),
             1,
@@ -1060,19 +1090,13 @@ mod tests {
         );
         assert_eq!(
             errors[0],
-            &Err(TokenizerError::new(
-                BytePos(2),
-                BytePos(3),
-                TokenizerErrorType::TabError
-            ))
+            &TokenizerError::new(BytePos(2), BytePos(3), TokenizerErrorType::TabError)
         );
 
-        let values: Vec<_> = items
-            .iter()
-            .filter_map(|item| item.as_ref().ok())
-            .map(|s| &s.value)
-            .collect();
-        assert_eq!(values, vec![&ident_token("a"), &ident_token("b")]);
+        assert_eq!(
+            tokens_of(&items),
+            vec![&ident_token("a"), &ident_token("b")]
+        );
     }
 
     #[test]
@@ -1133,50 +1157,21 @@ mod tests {
     /// `BUG-5` fixed for `handle_indentation`'s sibling arm, but that fix did not touch this
     /// one.
     ///
-    /// Like `tab_indentation_does_not_hang` above, this polls explicitly instead of using
-    /// `collect::<Result<Vec<_>, _>>()`, which short-circuits on the first `Err` and so cannot
-    /// observe repetition — `refuse_tab_in_expression` below predates this fix and did not
-    /// catch it for exactly that reason.
+    /// Like `tab_indentation_does_not_hang` above, this goes through [`drain_capped`] rather
+    /// than `collect::<Result<Vec<_>, _>>()` — `refuse_tab_in_expression` below predates this
+    /// fix and did not catch it for exactly the reason that helper's doc comment gives.
     ///
     /// Verified to fail by reverting the fix (returning immediately from the main-loop
-    /// `'\t'` arm without advancing, as before): the loop below then hits `CAP` without the
+    /// `'\t'` arm without advancing, as before): `drain_capped` then hits its cap without the
     /// iterator ever terminating, and all of the trailing items are the identical `TabError`
     /// at `BytePos(9)..BytePos(10)`.
     #[test]
     fn tab_after_first_character_does_not_hang() {
-        const CAP: usize = 20;
-
-        let mut iter = make_tokenizer("f x =\n  1\t+ 2\n");
-        let mut items = Vec::with_capacity(CAP);
-
-        for _ in 0..CAP {
-            match iter.next() {
-                Some(item) => items.push(item),
-                None => break,
-            }
-        }
-
-        assert!(
-            items.len() < CAP,
-            "the iterator did not terminate within {} items: {:?}",
-            CAP,
-            items
-        );
-
-        // No two consecutive items may be the same TabError repeated.
-        for pair in items.windows(2) {
-            if let (Err(e1), Err(e2)) = (&pair[0], &pair[1]) {
-                assert_ne!(
-                    e1, e2,
-                    "the identical TabError was observed twice in a row: {:?}",
-                    e1
-                );
-            }
-        }
+        let items = drain_capped("f x =\n  1\t+ 2\n", 20);
 
         // Exactly one TabError should be raised, for the one tab in the source; tokenization
         // should then move on and produce the rest of the line.
-        let errors: Vec<_> = items.iter().filter(|item| item.is_err()).collect();
+        let errors = errors_of(&items);
         assert_eq!(
             errors.len(),
             1,
@@ -1185,20 +1180,11 @@ mod tests {
         );
         assert_eq!(
             errors[0],
-            &Err(TokenizerError::new(
-                BytePos(9),
-                BytePos(10),
-                TokenizerErrorType::TabError
-            ))
+            &TokenizerError::new(BytePos(9), BytePos(10), TokenizerErrorType::TabError)
         );
 
-        let values: Vec<_> = items
-            .iter()
-            .filter_map(|item| item.as_ref().ok())
-            .map(|s| &s.value)
-            .collect();
         assert_eq!(
-            values,
+            tokens_of(&items),
             vec![
                 &ident_token("f"),
                 &ident_token("x"),
