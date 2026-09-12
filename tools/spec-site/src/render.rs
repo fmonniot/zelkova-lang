@@ -18,7 +18,7 @@ const GITHUB_BLOB_BASE: &str = "https://github.com/fmonniot/zelkova-lang/blob/ma
 /// is. Either is a hard failure — a silently-unstyled block is the drift this crate
 /// exists to prevent.
 #[derive(Debug)]
-pub struct RenderError(pub String);
+pub(crate) struct RenderError(pub(crate) String);
 
 impl fmt::Display for RenderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -31,7 +31,7 @@ impl fmt::Display for RenderError {
 ///
 /// `label` is the chapter's display name, used only in a [`RenderError`] to say which
 /// file a bad block came from.
-pub fn render_chapter(label: &str, content: &str) -> Result<String, RenderError> {
+pub(crate) fn render_chapter(label: &str, content: &str) -> Result<String, RenderError> {
     let anchors = header_anchors(content);
     let zel_blocks = extract_zel_blocks(content, label);
 
@@ -50,10 +50,25 @@ pub fn render_chapter(label: &str, content: &str) -> Result<String, RenderError>
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
 
+    let mut source: Vec<Event> = Parser::new_ext(content, options).collect();
+    let heading_count = source
+        .iter()
+        .filter(|event| matches!(event, Event::Start(Tag::Heading { .. })))
+        .count();
+    if heading_count != anchors.len() {
+        return Err(RenderError(format!(
+            "{}: pulldown-cmark found {} heading(s) but the shared scanner found {} — the \
+             two disagree about where a header is",
+            label,
+            heading_count,
+            anchors.len()
+        )));
+    }
+
     let mut anchor_iter = anchors.into_iter();
     let mut block_iter = zel_blocks.into_iter();
     let mut events: Vec<Event> = Vec::new();
-    let mut source = Parser::new_ext(content, options);
+    let mut source = source.drain(..);
 
     while let Some(event) = source.next() {
         match event {
@@ -322,6 +337,29 @@ mod tests {
         }
     }
 
+    /// A `package=` chip renders alongside the `expect=` tag, carrying the scanner's
+    /// label rather than a hand-written one.
+    #[test]
+    fn package_chip_renders_the_scanners_label() {
+        let html = render("```zel expect=ok package=widgets\nmodule Main exposing (..)\n```\n");
+        assert!(
+            html.contains("<span class=\"zel-package\">package=widgets</span>"),
+            "got: {}",
+            html
+        );
+    }
+
+    /// `escape_html` neutralises the three characters that would otherwise be read as
+    /// markup by the browser, and leaves everything else — including `"`, since the
+    /// only sink is element text, never an attribute — untouched.
+    #[test]
+    fn escape_html_escapes_ampersand_and_angle_brackets_but_not_quotes() {
+        assert_eq!(
+            escape_html("a -> b <| c |> d & \"e\""),
+            "a -&gt; b &lt;| c |&gt; d &amp; \"e\""
+        );
+    }
+
     /// A header renders the `id` `header_anchors` would give it — `let … in` among the
     /// cases, because it is the one that slugs to two hyphens rather than one.
     #[test]
@@ -430,5 +468,30 @@ mod tests {
         assert!(!html.contains("zel-block"), "got: {}", html);
         assert!(html.contains("<pre><code"), "got: {}", html);
         assert!(html.contains("echo hello"), "got: {}", html);
+    }
+
+    /// A setext heading is a heading `pulldown-cmark` emits but `header_anchors` (ATX-only)
+    /// never sees, desynchronising the anchor zip. This must be a hard failure rather than
+    /// the setext heading silently wearing the next ATX heading's anchor.
+    ///
+    /// Pins: the source below has one setext heading (uncounted by the scanner) and one ATX
+    /// heading (counted). Neutralised by replacing the heading-count guard's `!=` with
+    /// `false` (so the mismatch is never checked): with that change this test goes red
+    /// because `render_chapter` instead returns `Ok` with the setext heading wearing the
+    /// ATX heading's anchor. Restored afterwards.
+    #[test]
+    fn setext_heading_desync_is_a_hard_failure() {
+        let source = "A setext heading\n================\n\nprose\n\n## Later heading\n\nmore\n";
+        let err = render_chapter("chapter.md", source).expect_err("should fail to render");
+        assert!(
+            err.0.contains("chapter.md"),
+            "error should name the file, got: {}",
+            err.0
+        );
+        assert!(
+            err.0.contains("2 heading") && err.0.contains("1"),
+            "error should name both counts, got: {}",
+            err.0
+        );
     }
 }
