@@ -556,11 +556,41 @@ as operator characters.
 
 ## Numeric literals the tokenizer cannot represent
 
-Three inputs make the tokenizer panic today rather than report an error: an integer literal
-too large for a 64-bit signed integer, a run of digits containing more than one `.`
-(`1.2.3`), and a numeric literal continuing into a non-ASCII digit (`1١`). A fourth, an
-`infix` precedence above 255, panics in the grammar.
+An integer literal too large for a 64-bit signed integer is rejected, rather than silently
+wrapping or truncating:
 
-All four are ordinary syntax errors under the rules above and must be reported as such.
-[`docs/tickets/bug-12.md`](../tickets/bug-12.md) tracks them. They are described here rather
-than shown: a panic aborts the whole run of `cargo test --test spec`.
+```zel expect=parse-error:IntegerOverflow
+module Example exposing (f)
+
+f = 99999999999999999999
+```
+
+A numeric literal may contain at most one `.`; a second one ends the literal in an error
+rather than being read as a separate token:
+
+```zel expect=parse-error:MultipleDecimalPoints
+module Example exposing (f)
+
+f = 1.2.3
+```
+
+A numeric literal may not continue into a non-ASCII digit. `1١` looks, to a human, like two
+digits in a row — the second is `١`, `U+0661 ARABIC-INDIC DIGIT ONE` — but only the ASCII
+digits `0`-`9` are recognised:
+
+```zel expect=parse-error:NonAsciiDigit
+module Example exposing (f)
+
+f = 1١
+```
+
+An `infix` declaration's precedence is stored in one byte, so it must be between 0 and 255:
+
+```zel expect=parse-error:InfixPrecedenceOutOfRange
+module Example exposing ((|+|), combine)
+
+infix left 300 (|+|) = combine
+
+combine a b =
+  a
+```

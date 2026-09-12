@@ -1,10 +1,11 @@
-use crate::compiler::position::{BytePos, NodeSpan};
+use crate::compiler::position::{spanned, BytePos, NodeSpan};
 use crate::compiler::parser::tokenizer::Token;
 use crate::compiler::parser::error::Error;
 use crate::compiler::parser::*;
 use crate::compiler::name::Name;
 use crate::compiler::tuple::Tuple;
 use std::convert::TryFrom;
+use lalrpop_util::ParseError;
 
 grammar;
 
@@ -501,17 +502,25 @@ Associativity: Associativity = {
 }
 
 Infix: Infix = {
-    <l:@L> "infix" <a:Associativity> <p:"integer"> "(" <o:Op> ")" "=" <n:VarIdent> <r:@R> => {
-        // TODO don't panic once we have a way to collect errors
-        let precedence = u8::try_from(p).unwrap();
+    <l:@L> "infix" <a:Associativity> <pl:@L> <p:"integer"> <pr:@R> "(" <o:Op> ")" "=" <n:VarIdent> <r:@R> =>? {
+        // The tokenizer reads the precedence as an ordinary "integer" (an `i64`),
+        // so a value that does not fit in the `u8` `Infix::precedence` requires is
+        // a grammar-level error rather than a tokenizer one — the literal itself
+        // tokenized fine. Surfaced through `ParseError::User` the same way a
+        // tokenizer error reaches the parser (`BUG-12`).
+        let precedence = u8::try_from(p).map_err(|_| ParseError::User {
+            error: Error::InfixPrecedenceOutOfRange {
+                precedence: spanned(pl, pr, p),
+            },
+        })?;
 
-        Infix {
+        Ok(Infix {
             operator: o,
             associativity: a,
             precedence,
             function_name: n,
             span: NodeSpan::new(l, r)
-        }
+        })
     }
 }
 

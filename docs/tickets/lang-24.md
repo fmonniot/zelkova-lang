@@ -3,7 +3,7 @@
 **Sizing:** small.
 
 **Location:** `src/compiler/parser/grammar.lalrpop`, the `Infix` production —
-`let precedence = u8::try_from(p).unwrap();`. The value is carried as a `u8` from there
+`let precedence = u8::try_from(p).map_err(...)`. The value is carried as a `u8` from there
 through `parser::Infix`, `canonical::Infix` and `Interface::infixes`.
 
 **Decided by:** [`docs/spec/declarations.md`](../spec/declarations.md)'s *Precedence is 0
@@ -13,17 +13,16 @@ through 9*.
 accepts any integer literal the tokenizer produced and narrows it to a `u8`, so `infix left
 10 (^) = pow` and `infix left 255 (^) = pow` both compile.
 
-Above 255 the narrowing panics rather than accepting — that half is
-[`BUG-12`](bug-12.md)'s, which already lists this `unwrap()` as the fourth of its four. The
-two overlap on one line of the grammar and are worth landing together: `BUG-12` needs the
-production to be able to return an error at all, and this ticket is the check that error
-then reports.
+Above 255 the narrowing is rejected with `parser::Error::InfixPrecedenceOutOfRange` — that was
+[`BUG-12`](README.md), now closed, and the `=>?` fallible action it added to the `Infix`
+production is the mechanism this ticket reuses.
 
 **Approach:** validate the literal in the `Infix` production and return a user error for
-anything outside `0..=9`, using whichever mechanism `BUG-12` establishes for reaching
-`ParseError::User` from a LALRPOP action — the grammar already declares `type Error = Error`.
-Report the range in the message, since a reader who wrote `10` needs to be told what the
-ceiling is rather than that `10` is wrong.
+anything outside `0..=9`, using the same `ParseError::User` path `BUG-12` established —
+`u8::try_from(p).map_err(|_| ParseError::User { error: Error::InfixPrecedenceOutOfRange { .. } })?`
+inside the `=>?` action. Either extend that variant to also cover `0..=9` or add a sibling one;
+report the range in the message either way, since a reader who wrote `10` needs to be told
+what the ceiling is rather than that `10` is wrong.
 
 The narrowed type can then be tightened or left alone; `u8` is a fine carrier for `0..=9`,
 and a newtype is only worth it if something else starts depending on the range.

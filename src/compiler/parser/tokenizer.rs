@@ -147,7 +147,28 @@ pub enum TokenizerErrorType {
     UnicodeError, // TODO String literal
     IndentationError,
     TabError,
-    UnrecognizedToken { tok: char },
+    UnrecognizedToken {
+        tok: char,
+    },
+    /// A run of ASCII digits parsed as an integer literal (`consume_number`) does not
+    /// fit in an `i64`. `docs/spec/lexical-structure.md`'s *Integers* section is the
+    /// guarantee this enforces: every integer in `-2^31 .. 2^31 - 1` is representable
+    /// on every target, and the tokenizer — which holds an `i64` — is what can enforce
+    /// that bound today (`BUG-12`).
+    IntegerOverflow,
+    /// A numeric literal (`consume_number`) contains a second `.` — `1.2.3` — which no
+    /// float grammar accepts. Raised as soon as the second point is seen, rather than
+    /// handed to `f64::from_str` on a buffer no error message could describe precisely
+    /// (`BUG-12`).
+    MultipleDecimalPoints,
+    /// A numeric literal (`consume_number`) continues with a Unicode numeric character
+    /// that is not an ASCII digit — an Arabic-Indic digit such as `١`, say. `char::is_numeric`
+    /// is true for such characters, so without this check they get folded into the
+    /// literal's buffer and `i64`/`f64::from_str` rejects it as invalid rather than out
+    /// of range (`BUG-12`).
+    NonAsciiDigit {
+        digit: char,
+    },
 }
 
 /// Represent a standard `Result` scoped to a `TokenizerError`
@@ -547,7 +568,7 @@ where
             // Something else
             match c {
                 '0'..='9' => {
-                    let number = self.consume_number();
+                    let number = self.consume_number()?;
                     self.processed_tokens.push(number);
                 }
                 '(' => {
@@ -763,7 +784,18 @@ where
         spanned(start_pos, end_pos, tok)
     }
 
-    fn consume_number(&mut self) -> Spanned<Position, Token> {
+    /// Consume a numeric literal — a run of ASCII digits, optionally containing one
+    /// `.` — and turn it into an `Integer` or `Float` token.
+    ///
+    /// The accumulation loop only ever puts ASCII digits and at most one `.` into
+    /// `buf`, so `f64::from_str` cannot fail on it (Rust's float grammar accepts any
+    /// such string, trailing `.` included — see the "Known gap" on `1.` in
+    /// `docs/spec/lexical-structure.md`). `i64::from_str` still can, on sheer
+    /// magnitude, which is the one case this hands back as an error rather than a
+    /// token. Before this tightened the loop to `is_ascii_digit`, `char::is_numeric`
+    /// let a second `.` or a non-ASCII numeric character (an Arabic-Indic digit, say)
+    /// into `buf`, and the two `from_str` calls at the end panicked on it (`BUG-12`).
+    fn consume_number(&mut self) -> Result<Spanned<Position, Token>> {
         trace!(
             "consume_number: lookahead={:?}, position={:?}",
             self.lookahead,
@@ -776,12 +808,38 @@ where
 
         while let Some(c) = self.lookahead.0 {
             // looping over the iterator until we find a char which isn't
-            // a number or a dot.
-            if c.is_numeric() {
+            // an ASCII digit or a dot.
+            if c.is_ascii_digit() {
                 buf.push(c);
             } else if c == '.' {
+                if is_float {
+                    // A second decimal point: `1.2.3` is not a number under any
+                    // reading, so we stop right here instead of accumulating
+                    // further digits into a buffer that would only fail later
+                    // with no way to explain why.
+                    self.next_char().unwrap();
+                    return Err(TokenizerError::new(
+                        start_pos.absolute,
+                        self.position.absolute,
+                        TokenizerErrorType::MultipleDecimalPoints,
+                    ));
+                }
                 is_float = true;
                 buf.push(c);
+            } else if c.is_numeric() {
+                // A Unicode numeric character that isn't an ASCII digit: it reads,
+                // to a human, like a continuation of the literal, but neither
+                // `i64::from_str` nor `f64::from_str` will accept it. Consume it so
+                // the span covers the whole malformed literal, then report it
+                // instead of letting the loop stop here and leave this character to
+                // be rejected later as an unrelated unrecognized token.
+                let digit = c;
+                self.next_char().unwrap();
+                return Err(TokenizerError::new(
+                    start_pos.absolute,
+                    self.position.absolute,
+                    TokenizerErrorType::NonAsciiDigit { digit },
+                ));
             } else {
                 break; // Not a number, we are done
             }
@@ -794,15 +852,33 @@ where
 
         let token = if is_float {
             Token::Float {
-                value: f64::from_str(&buf).unwrap(),
-            } //
+                // `buf` only ever holds ASCII digits and at most one `.`, which
+                // Rust's float grammar always accepts (see the doc comment above),
+                // so `unwrap_or` here is a defensive fallback rather than a real
+                // error path: if that invariant is ever loosened, a value too large
+                // to represent becomes infinity, which is the target's call to make
+                // (`docs/spec/lexical-structure.md`'s *Floats* section), not the
+                // tokenizer's.
+                value: f64::from_str(&buf).unwrap_or(f64::INFINITY),
+            }
         } else {
-            Token::Integer {
-                value: i64::from_str(&buf).unwrap(),
+            match i64::from_str(&buf) {
+                Ok(value) => Token::Integer { value },
+                Err(_) => {
+                    // The only way `i64::from_str` can still fail on a buffer of
+                    // pure ASCII digits is magnitude: more digits than an `i64` can
+                    // hold. `docs/spec/lexical-structure.md`'s *Integers* section is
+                    // the guarantee this enforces.
+                    return Err(TokenizerError::new(
+                        start_pos.absolute,
+                        end_pos.absolute,
+                        TokenizerErrorType::IntegerOverflow,
+                    ));
+                }
             }
         };
 
-        spanned(start_pos, end_pos, token)
+        Ok(spanned(start_pos, end_pos, token))
     }
 }
 
@@ -963,6 +1039,63 @@ mod tests {
         // Float
         assert_eq!(tokenize("42.99"), vec![float_token(42.99)]);
         assert_eq!(tokenize("2.0"), vec![float_token(2.0)]);
+    }
+
+    /// An integer literal too large for an `i64` is a `TokenizerErrorType::IntegerOverflow`
+    /// rather than a `ParseIntError { kind: PosOverflow }` panic (`BUG-12`). The span covers
+    /// the whole 20-digit literal.
+    ///
+    /// Verified to fail (panic, not a red assertion) by reverting `consume_number` to
+    /// `i64::from_str(&buf).unwrap()`.
+    #[test]
+    fn integer_literal_too_large_is_an_error() {
+        assert_eq!(
+            make_tokenizer("99999999999999999999").collect::<Result<Vec<_>, _>>(),
+            Err(TokenizerError::new(
+                BytePos(0),
+                BytePos(20),
+                TokenizerErrorType::IntegerOverflow
+            ))
+        );
+    }
+
+    /// A numeric literal with a second `.` is a `TokenizerErrorType::MultipleDecimalPoints`
+    /// rather than a `ParseFloatError { kind: Invalid }` panic (`BUG-12`). The span covers
+    /// `1.2.`, up to and including the offending second point — the tokenizer stops
+    /// accumulating right there rather than reading on into `3`.
+    ///
+    /// Verified to fail (panic) by reverting the accumulation loop's `'.'` arm to push
+    /// every `.` into `buf` unconditionally, as before.
+    #[test]
+    fn second_decimal_point_is_an_error() {
+        assert_eq!(
+            make_tokenizer("1.2.3").collect::<Result<Vec<_>, _>>(),
+            Err(TokenizerError::new(
+                BytePos(0),
+                BytePos(4),
+                TokenizerErrorType::MultipleDecimalPoints
+            ))
+        );
+    }
+
+    /// A numeric literal continuing into a Unicode digit that is not ASCII — here `١`,
+    /// `U+0661 ARABIC-INDIC DIGIT ONE`, two bytes in UTF-8 — is a
+    /// `TokenizerErrorType::NonAsciiDigit` rather than a `ParseIntError { kind: InvalidDigit
+    /// }` panic (`BUG-12`), because `char::is_numeric` is true for it. The span covers
+    /// both characters of `1١`.
+    ///
+    /// Verified to fail (panic) by reverting the accumulation loop's digit check from
+    /// `is_ascii_digit` back to `is_numeric`.
+    #[test]
+    fn non_ascii_digit_is_an_error() {
+        assert_eq!(
+            make_tokenizer("1\u{0661}").collect::<Result<Vec<_>, _>>(),
+            Err(TokenizerError::new(
+                BytePos(0),
+                BytePos(3),
+                TokenizerErrorType::NonAsciiDigit { digit: '\u{0661}' }
+            ))
+        );
     }
 
     #[test]
