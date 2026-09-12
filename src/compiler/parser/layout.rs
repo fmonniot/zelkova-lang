@@ -80,8 +80,9 @@ pub enum Context {
     ///
     /// The `case` keyword's own column lives in `Layout::case_of_column`
     /// rather than on this variant: widening `CaseBlock` by a `usize` pushes
-    /// `Context` to 32 bytes and `CompilationError`, which embeds it several
-    /// layers down, past clippy's 128-byte `result_large_err` default.
+    /// `Context` from 16 to 24 bytes, and `CompilationError` — which embeds it
+    /// several layers down — from 120 to 128, where clippy's `result_large_err`
+    /// default starts complaining.
     CaseBlock(Option<usize>),
 
     /// Context for a branch in a case/of expression.
@@ -314,12 +315,19 @@ where
                 let case_col = self.case_of_column.take().unwrap_or(0);
                 let column = token.start().column;
 
-                // A token at or left of `offside.indent` was going to close this
-                // block in step 2 below, which means it is not a branch at all —
-                // it is whatever follows a `case … of` that never got one. Let it
-                // through so the grammar reports the missing branches against the
-                // `CloseBlock`, instead of blaming the next top level declaration
-                // for a misindented branch it never wrote.
+                // A token at or left of `offside.indent` closes this block in
+                // step 2 below; letting it through here is what allows that
+                // close to happen, so the grammar reports the missing branches
+                // against the `CloseBlock` instead of this arm blaming the
+                // closing token for a misindented branch it never wrote.
+                //
+                // The price is reach: since `offside.indent` is the enclosing
+                // block's indent plus one, the check below only ever fires for a
+                // `case` whose own column is strictly greater than that — and
+                // for anything shallower, a branch really written level with its
+                // `case` is left to the grammar too, whether or not it was meant
+                // as a branch. A `case` nested directly under an enclosing
+                // branch is the common shape that falls out this way.
                 if column > offside.indent && column <= case_col {
                     // `indent` reports `case_col + 1` — the floor this error is
                     // actually about — rather than `offside.indent`, which
