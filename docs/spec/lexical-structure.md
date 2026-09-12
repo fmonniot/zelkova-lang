@@ -567,8 +567,7 @@ f = 99999999999999999999
 
 **Known gap:** the bound that block crosses should be [`Int`'s range](#integers). The error it
 gets today names a 64-bit signed integer instead, because the tokenizer carries a literal's
-value in an `i64` — a width no rule here sets — and *Integers* and [Evaluation
-semantics](evaluation-semantics.md#numbers) do not currently agree on what `Int`'s range is
+value in an `i64` — a width no rule here sets
 ([`docs/tickets/spec-28.md`](../tickets/spec-28.md)).
 
 A numeric literal may contain at most one `.`; a second one ends the literal in an error:

@@ -121,7 +121,7 @@ impl Error {
                         .with_labels(vec![Label::primary(name, err.error.span.to_range())
                             .with_message("this literal does not fit in a 64-bit signed integer")])
                         .with_notes(vec![
-                            "an integer literal must fit in a 64-bit signed integer; Zelkova guarantees -2^31 .. 2^31 - 1 on every target and leaves the rest to the compilation target".to_owned()
+                            "an integer literal must fit in a 64-bit signed integer; Zelkova guarantees every integer in -2^31 .. 2^31 - 1 is representable on every target".to_owned()
                         ]),
                     TokenizerErrorType::MultipleDecimalPoints => diag
                         .with_message("a number has one decimal point")
