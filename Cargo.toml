@@ -1,5 +1,5 @@
 [workspace]
-members = ["tools/spec-doc"]
+members = ["tools/spec-doc", "tools/spec-site"]
 
 [package]
 name = "zelkova-lang"

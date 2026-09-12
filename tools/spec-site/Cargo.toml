@@ -1,0 +1,8 @@
+[package]
+name = "spec-site"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+spec-doc = { path = "../spec-doc" }
+pulldown-cmark = "0.13.4"
