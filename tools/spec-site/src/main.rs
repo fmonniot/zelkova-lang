@@ -97,19 +97,66 @@ fn build_site(spec_dir: &Path, assets_dir: &Path, out_dir: &Path) -> Result<(), 
             .into_owned();
         let label = format!("docs/spec/{}.md", stem);
         let content = fs::read_to_string(path).map_err(io_err(format!("reading {}", label)))?;
-        let html = render::render_chapter(&label, &content).map_err(|e| e.to_string())?;
+        let body = render::render_chapter(&label, &content).map_err(|e| e.to_string())?;
 
         let out_name = if stem == "README" {
             "index".to_string()
         } else {
-            stem
+            stem.clone()
         };
+        let page = chapter_page(&titleize(&stem), &body);
         fs::write(
             out_dir.join("spec").join(format!("{}.html", out_name)),
-            html,
+            page,
         )
         .map_err(io_err(format!("writing site/spec/{}.html", out_name)))?;
     }
 
     Ok(())
+}
+
+/// A chapter's file stem, as a title: `type-classes` becomes `Type classes`, and the
+/// index page's own stem, `README`, becomes `Specification`.
+fn titleize(stem: &str) -> String {
+    if stem == "README" {
+        return "Specification".to_string();
+    }
+    let mut words = stem.split('-');
+    let mut title = String::new();
+    if let Some(first) = words.next() {
+        let mut chars = first.chars();
+        if let Some(c) = chars.next() {
+            title.extend(c.to_uppercase());
+        }
+        title.push_str(chars.as_str());
+    }
+    for word in words {
+        title.push(' ');
+        title.push_str(word);
+    }
+    title
+}
+
+/// Wrap one chapter's rendered body in the page shell every chapter shares: a link
+/// back to the site, the shared stylesheet, and a `<title>` naming the chapter.
+fn chapter_page(title: &str, body: &str) -> String {
+    format!(
+        "<!DOCTYPE html>\n\
+         <html lang=\"en\">\n\
+         <head>\n\
+         <meta charset=\"utf-8\">\n\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
+         <title>{title} — Zelkova specification</title>\n\
+         <link rel=\"stylesheet\" href=\"../style.css\">\n\
+         </head>\n\
+         <body>\n\
+         <nav class=\"site-nav\"><a href=\"../\">Zelkova</a> / <a href=\"./\">Specification</a></nav>\n\
+         <main class=\"chapter\">\n\
+         {body}\n\
+         </main>\n\
+         </body>\n\
+         </html>\n",
+        title = title,
+        body = body,
+    )
 }

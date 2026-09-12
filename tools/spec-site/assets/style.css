@@ -1,1 +1,189 @@
-/* placeholder, replaced by the real stylesheet in a follow-up commit */
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #5a5a5a;
+  --border: #d8d8d8;
+  --link: #1a5fb4;
+  --code-bg: #f4f4f4;
+  --accepted-fg: #1e7b34;
+  --accepted-bg: #eaf7ee;
+  --rejected-fg: #b3261e;
+  --rejected-bg: #fbeceb;
+  --pending-fg: #9a6300;
+  --pending-bg: #fdf3e0;
+  --unchecked-fg: #5a5a5a;
+  --unchecked-bg: #f4f4f4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c;
+    --fg: #e8e8e8;
+    --muted: #a0a0a0;
+    --border: #3a3d42;
+    --link: #7cb0ff;
+    --code-bg: #1e2126;
+    --accepted-fg: #5fd67f;
+    --accepted-bg: #16281c;
+    --rejected-fg: #ff8b85;
+    --rejected-bg: #2c1a19;
+    --pending-fg: #e3b660;
+    --pending-bg: #2b2313;
+    --unchecked-fg: #a0a0a0;
+    --unchecked-bg: #1e2126;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+}
+
+code, pre, kbd {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+a {
+  color: var(--link);
+}
+
+.site-nav {
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+main.landing,
+main.chapter {
+  max-width: 72ch;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+main.landing h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.tagline {
+  color: var(--muted);
+  font-size: 1.15rem;
+}
+
+.landing-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 2rem;
+  font-size: 1.05rem;
+}
+
+main.chapter h1 {
+  font-size: 2rem;
+}
+
+main.chapter h1,
+main.chapter h2,
+main.chapter h3 {
+  scroll-margin-top: 1rem;
+}
+
+main.chapter table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.5rem 0;
+}
+
+main.chapter th,
+main.chapter td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+main.chapter pre {
+  background: var(--code-bg);
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  border-radius: 4px;
+  margin: 1rem 0;
+}
+
+main.chapter :not(pre) > code {
+  background: var(--code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+.zel-block {
+  margin: 1.25rem 0;
+  border-left: 4px solid var(--border);
+  border-radius: 0 4px 4px 0;
+  overflow: hidden;
+}
+
+.zel-block pre {
+  margin: 0;
+  border-radius: 0;
+}
+
+.zel-block-tags {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.zel-tag,
+.zel-package {
+  padding: 0.05rem 0.45rem;
+  border-radius: 3px;
+}
+
+.zel-package {
+  background: var(--unchecked-bg);
+  color: var(--muted);
+}
+
+.expect-accepted {
+  border-left-color: var(--accepted-fg);
+}
+.expect-accepted .zel-tag {
+  background: var(--accepted-bg);
+  color: var(--accepted-fg);
+}
+
+.expect-rejected {
+  border-left-color: var(--rejected-fg);
+}
+.expect-rejected .zel-tag {
+  background: var(--rejected-bg);
+  color: var(--rejected-fg);
+}
+
+.expect-pending {
+  border-left-color: var(--pending-fg);
+}
+.expect-pending .zel-tag {
+  background: var(--pending-bg);
+  color: var(--pending-fg);
+}
+
+.expect-unchecked {
+  border-left-style: dashed;
+  border-left-color: var(--unchecked-fg);
+}
+.expect-unchecked .zel-tag {
+  background: var(--unchecked-bg);
+  color: var(--unchecked-fg);
+}
