@@ -300,6 +300,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TIDY-4 | task | — | closed 2026-08-25 | Test-module doc comments still describe the type checker as a stub |
 | TIDY-5 | task | — | closed 2026-08-25 | Fix all outstanding `cargo clippy` warnings |
 | TIDY-6 | task | — | closed 2026-08-26 | Stale doc comment on `canonical_type_to_typer_type` |
+| [TIDY-7](tidy-7.md) | task | — | open | Four label/diagnostic messages in `Error::Tokenizer`'s match are still capitalized |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |
