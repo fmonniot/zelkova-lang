@@ -425,10 +425,10 @@ mod tests {
         assert_eq!(diagnostic.labels[0].range, 3..9);
     }
 
-    /// `CharNotClosedError(Some(_))` carries the opening quote's position as
-    /// `span.start` and the position where a closing quote was expected as
-    /// `span.end` (tokenizer.rs, the `(Some(v), Some(closing))` arm), which
-    /// the `'aa` tokenizer test pins at `BytePos(0)..BytePos(2)`. Both labels
+    /// The error comes from the tokenizer rather than being built here, so the
+    /// byte offsets below are the ones `tokenizer.rs` actually emits: for `'ab`
+    /// its `(Some(v), Some(closing))` arm spans the opening quote at byte 0 to
+    /// byte 2, where the `b` sits in the closing quote's place. Both labels
     /// must render as visible one-byte ranges, and the label at the opening
     /// position has to be the one that talks about the opening quote.
     ///
@@ -439,13 +439,10 @@ mod tests {
     /// label, which reddens the `opening_label` assertion below.
     #[test]
     fn char_not_closed_with_extra_char_labels_open_and_expected_close() {
-        let error = Error::Tokenizer(TokenizerError {
-            error: spanned(
-                BytePos(0),
-                BytePos(2),
-                TokenizerErrorType::CharNotClosedError(Some('a')),
-            ),
-        });
+        let error: Error = crate::compiler::parser::tokenizer::make_tokenizer("'ab")
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("expected the source to fail the tokenizer")
+            .into();
 
         let diagnostic = error.diagnostic(());
 
