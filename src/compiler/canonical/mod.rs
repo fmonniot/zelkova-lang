@@ -1627,6 +1627,12 @@ fn do_types(
         // and each is a declaration the user wrote that has no meaning, not a variant
         // this pass may leave out. Skipping one deletes a constructor from the
         // declaration and reports nothing, which was `BUG-18`.
+        //
+        // The `collect` below short-circuits on the first `Err`, so only the first bad
+        // variant in a single `type` declaration is reported — `type T = c | (Int,
+        // Int)` names only `c`. The enclosing `collect_accumulate` still reports the
+        // next `type` declaration independently, matching what the `Unqualified` arm
+        // already did for `from_parser_type`.
         let variants = tpe
             .variants
             .iter()

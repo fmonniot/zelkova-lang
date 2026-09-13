@@ -646,6 +646,16 @@ type Colour
   = red
 ```
 
+A type variable is a lowercase name too, so a variable the declaration itself binds is rejected
+the same way when it appears in variant position instead of as an argument:
+
+```zel expect=canonical-error:InvalidVariant
+module Example exposing (Bad)
+
+type Bad a
+  = a
+```
+
 A tuple type in variant position is rejected:
 
 ```zel expect=canonical-error:InvalidVariant
@@ -659,8 +669,8 @@ type Pair
 ```
 
 A function type is rejected, and the rejection covers the constructor written to the left of
-the arrow: `Wrap Size -> Size` is a single function type whose argument is `Wrap Size`, so the
-declaration holds no variant at all.
+the arrow: `Wrap Size -> Size` is a single function type whose argument is `Wrap Size`, so
+`Wrap` sits inside the rejected form rather than existing as a variant beside it.
 
 ```zel expect=canonical-error:InvalidVariant
 module Example exposing (Size, Wrapper)
