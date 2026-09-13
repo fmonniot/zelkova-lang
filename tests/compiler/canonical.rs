@@ -114,6 +114,7 @@ fn typed_identity_function() {
     assert_eq!(
         module.values.get(&"identity".into()).unwrap(),
         &canonical::Value::TypedValue {
+            marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
             name: "identity".into(),
@@ -143,6 +144,7 @@ fn function_multiple_parameters() {
     assert_eq!(
         module.values.get(&"add".into()).unwrap(),
         &canonical::Value::TypedValue {
+            marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
             name: "add".into(),
@@ -200,6 +202,7 @@ fn union_type_definition_and_constructor() {
     assert_eq!(
         module.values.get(&"favorite".into()).unwrap(),
         &canonical::Value::TypedValue {
+            marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
             name: "favorite".into(),
@@ -308,6 +311,7 @@ fn if_then_else_expression() {
     assert_eq!(
         module.values.get(&"max".into()).unwrap(),
         &canonical::Value::TypedValue {
+            marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
             name: "max".into(),
@@ -541,6 +545,7 @@ fn foreign_facade_module() {
     assert_eq!(
         module.values.get(&"add".into()).unwrap(),
         &canonical::Value::TypedValue {
+            marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
             name: "add".into(),
@@ -622,6 +627,7 @@ fn tuple_of_two_canonicalizes() {
     assert_eq!(
         module.values.get(&"pair".into()).unwrap(),
         &canonical::Value::TypedValue {
+            marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
             name: "pair".into(),
@@ -653,6 +659,7 @@ fn tuple_of_three_canonicalizes() {
     assert_eq!(
         module.values.get(&"triple".into()).unwrap(),
         &canonical::Value::TypedValue {
+            marked_unsafe: false,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
             name: "triple".into(),
@@ -1837,4 +1844,95 @@ fn constructor_applications_remain_valid_variants() {
         .map(|v| v.name.as_str().to_owned())
         .collect();
     assert_eq!(names, vec!["Just".to_owned(), "Nothing".to_owned()]);
+}
+
+// ── Scenario 13: `unsafe` on a facade signature ──────────────────────────────
+
+/// The modifier survives the parser and canonicalization, landing on the value
+/// the facade declares.
+///
+/// Verified to fail by pinning `marked_unsafe: false` at the facade branch's
+/// `Value::TypedValue` in `canonical/mod.rs`.
+#[test]
+fn unsafe_facade_signature_is_marked() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (idiv, fdiv)
+        unsafe idiv : Int -> Int -> Int
+        fdiv : Int -> Int -> Int
+    "#};
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    let marked = |name: &str| match module.values.get(&name.into()) {
+        Some(canonical::Value::TypedValue { marked_unsafe, .. }) => *marked_unsafe,
+        other => panic!("expected a TypedValue for `{}`, got {:?}", name, other),
+    };
+
+    assert!(marked("idiv"), "`unsafe idiv` declares a plain function");
+    assert!(
+        !marked("fdiv"),
+        "an unmarked signature declares the effect a facade declares by default"
+    );
+}
+
+/// The word only means something in front of a facade signature, so one written
+/// on an ordinary declaration is rejected rather than ignored. The caret starts
+/// on `unsafe` itself, which is why `FunType`'s span is taken from the modifier.
+///
+/// Verified to fail by deleting the `!source.binding_foreign` guard in
+/// `canonicalize`: the module then canonicalizes cleanly and `expect_err` panics.
+#[test]
+fn unsafe_outside_a_facade_is_error() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (twice)
+        unsafe twice : Int -> Int
+        twice x = x
+    "#};
+
+    let errors = canonicalize_standalone(source)
+        .expect_err("`unsafe` outside a `module foreign` facade must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::UnsafeOutsideFacade(name, _) => assert_eq!(name.as_str(), "twice"),
+        other => panic!("expected UnsafeOutsideFacade, got {:?}", other),
+    }
+
+    let annotation = "unsafe twice : Int -> Int";
+    let start = source.find(annotation).expect("source has the annotation");
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + annotation.len()),
+        "the caret must start on the `unsafe` that is being rejected"
+    );
+}
+
+/// `unsafe : Int` names a facade constant; it is not a modifier with its name
+/// missing, and it is not rejected as a stray `unsafe`.
+///
+/// Verified to fail by making `FunType`'s `"unsafe" ":" Type` alternative set
+/// `marked_unsafe: true`, which turns the value into a marked one.
+#[test]
+fn unsafe_is_a_facade_constant_name() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (unsafe)
+        unsafe : Int
+    "#};
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    match module.values.get(&"unsafe".into()) {
+        Some(canonical::Value::TypedValue {
+            name,
+            marked_unsafe,
+            ..
+        }) => {
+            assert_eq!(name.as_str(), "unsafe");
+            assert!(!marked_unsafe, "the word is the constant's name here");
+        }
+        other => panic!("expected a TypedValue for `unsafe`, got {:?}", other),
+    }
 }

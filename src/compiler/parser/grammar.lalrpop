@@ -59,6 +59,7 @@ extern {
         "right" => Token::Right,
         "non"   => Token::Non,
         "foreign" => Token::Foreign,
+        "unsafe" => Token::Unsafe,
     }
 }
 
@@ -90,19 +91,38 @@ Pipe<T>: Vec<T> = {
 // identities. Some accept the qualified (e.g. variable in expression) while
 // some don't (e.g. type variables).
 
-VarIdent: Name = {
+// Every lowercase name except `unsafe`. Split out of `VarIdent` below purely for
+// the declaration productions: `FunBinding` and `FunType` are the one place where
+// an `unsafe` in name position and an `unsafe` modifier are both possible, and an
+// LALR(1) parser cannot decide between them after reducing the word to a name (the
+// token that separates `unsafe f : T` from `unsafe f = e` is two ahead). Keeping
+// `unsafe` out of this nonterminal lets those two productions spell the word out
+// as a terminal instead, which moves the decision to a shift the parser can make.
+PlainVarIdent: Name = {
     // A soft keyword is a keyword in exactly one position and an ordinary lowercase
-    // identifier everywhere else, so every token the lexer's soft-keyword table
-    // produces is re-admitted here: `left`/`right`/`non` away from an `infix`
-    // declaration's associativity, `foreign` away from a module header. Adding a word
-    // to that table without adding it here takes the name out of the language in
-    // every position instead of just the one.
+    // identifier everywhere else, so every token the lexer's soft-keyword table needs
+    // an arm somewhere in `VarIdent`'s closure: `left`/`right`/`non` away from an
+    // `infix` declaration's associativity, and `foreign` away from a module header,
+    // are re-admitted right here. `unsafe`'s arm lives one level up, in `VarIdent`
+    // itself, because its keyword position is a declaration head — exactly the case
+    // `PlainVarIdent` exists to carve out. Adding a word to the soft-keyword table
+    // without giving it an arm anywhere in `VarIdent`'s closure takes the name out of
+    // the language in every position instead of just the one.
     "left" => Name::new("left"),
     "right" => Name::new("right"),
     "non" => Name::new("non"),
     "foreign" => Name::new("foreign"),
 
     <"lo_ident"> => Name::new(<>),
+};
+
+VarIdent: Name = {
+    <PlainVarIdent>,
+
+    // `unsafe` is a keyword only immediately before the name of a facade
+    // signature, which is `FunType`'s business alone; everywhere a lowercase name
+    // may appear it is that name.
+    "unsafe" => Name::new("unsafe"),
 };
 
 QualVarIdent: Name = {
@@ -426,8 +446,30 @@ Type: Type = {
 // `Decl` wrapper. `Decl`'s alternatives are `"open block" <X> "close block"` and the
 // layout pass emits those block tokens zero-width, so a span taken at that level
 // would start wherever the block opened rather than at the user's first character.
-FunType: FunType = <l:@L> <name:VarIdent> ":" <tpe:Type> <r:@R> => {
-    FunType { name, tpe, span: NodeSpan::new(l, r) }
+// Three readings of a leading `unsafe`, which is why this is three productions and
+// not one with an optional token in front. Written as `<m:"unsafe"?> <name:VarIdent>`
+// it would not build: `unsafe` is also an ordinary name (`VarIdent` admits it), so
+// on seeing the word the parser would have to choose between reducing it to the
+// signature's own name and shifting it as the modifier, and what settles that —
+// the `:` of `unsafe f : T` against the `=` of `unsafe f = e` — is two tokens
+// further on than LALR(1) can look. Spelling the modifier as a terminal in front of
+// `PlainVarIdent`-based alternatives leaves the parser a plain shift instead.
+//
+// `span` covers the modifier when there is one, so a diagnostic about a misplaced
+// `unsafe` has the word under its caret.
+FunType: FunType = {
+    <l:@L> <name:PlainVarIdent> ":" <tpe:Type> <r:@R> =>
+        FunType { name, tpe, marked_unsafe: false, span: NodeSpan::new(l, r) },
+
+    // `unsafe : T` — a facade constant of that name, not a modifier with nothing
+    // after it.
+    <l:@L> "unsafe" ":" <tpe:Type> <r:@R> =>
+        FunType { name: Name::new("unsafe"), tpe, marked_unsafe: false, span: NodeSpan::new(l, r) },
+
+    // `unsafe f : T`. `VarIdent` rather than `PlainVarIdent`, so that the name
+    // being marked may itself be `unsafe`.
+    <l:@L> "unsafe" <name:VarIdent> ":" <tpe:Type> <r:@R> =>
+        FunType { name, tpe, marked_unsafe: true, span: NodeSpan::new(l, r) },
 };
 
 // The inner `@L` starts the `Match`: the patterns and the body, without the name
@@ -437,19 +479,17 @@ FunType: FunType = <l:@L> <name:VarIdent> ":" <tpe:Type> <r:@R> => {
 // Both ends come from `expr` rather than from an `@R` after it: a `case` body ends
 // by consuming a layout token, so an `@R` there is not the end of the declaration.
 // See `NodeSpan::to_end_of`.
-FunBinding: FunBinding = <l:@L> <name:VarIdent> <ml:@L> <patterns: DeclPattern*> "=" <expr:Expr> => {
-    let span = NodeSpan::to_end_of(l, expr.span);
-    let match_span = NodeSpan::to_end_of(ml, expr.span);
+//
+// `PlainVarIdent` plus a spelled-out `"unsafe"` alternative rather than `VarIdent`,
+// for the reason `FunType` above gives: a binding whose name is `unsafe` has to be
+// reachable without the parser reducing the word to a name in a state where the
+// modifier is still possible.
+FunBinding: FunBinding = {
+    <l:@L> <name:PlainVarIdent> <ml:@L> <patterns: DeclPattern*> "=" <expr:Expr> =>
+        FunBinding::assemble(name, l, ml, patterns, expr),
 
-    FunBinding {
-        name,
-        pattern: Match {
-            patterns,
-            body: expr,
-            span: match_span
-        },
-        span
-    }
+    <l:@L> "unsafe" <ml:@L> <patterns: DeclPattern*> "=" <expr:Expr> =>
+        FunBinding::assemble(Name::new("unsafe"), l, ml, patterns, expr),
 };
 
 Exposed: Exposed = {

@@ -188,6 +188,7 @@ impl Module {
 
         let functions = functions.into_iter().map(|(name, decls)| {
             let mut tpe = None;
+            let mut marked_unsafe = false;
             let mut bindings = vec![];
             // The declarations that make one function were parsed independently, so
             // the function's span is the union of theirs: the annotation merged with
@@ -209,13 +210,14 @@ impl Module {
                     Declaration::FunctionType(t) => {
                         span = span.merge(t.span);
                         annotation_span = t.span;
+                        marked_unsafe = t.marked_unsafe;
                         tpe.replace(t.tpe);
                     }
                     _ => panic!("Invalid kind of declaration used in functions, report this error ({:?})", d),
                 }
             }
 
-            Function { name, tpe, bindings, span, annotation_span }
+            Function { name, tpe, marked_unsafe, bindings, span, annotation_span }
         }).collect::<Vec<_>>();
 
         Module {
@@ -249,6 +251,11 @@ impl Module {
 pub struct Function {
     pub name: Name,
     pub tpe: Option<Type>,
+    /// True when this function's annotation was written `unsafe name : Type`.
+    ///
+    /// Read off the [`FunType`] that contributed the annotation, so a function
+    /// with no annotation is never marked. See [`FunType::marked_unsafe`].
+    pub marked_unsafe: bool,
     pub bindings: Vec<Match>,
     /// The annotation and every binding, merged into one span.
     ///
@@ -363,7 +370,15 @@ pub struct Import {
 pub struct FunType {
     pub name: Name,
     pub tpe: Type,
-    /// Where the annotation — `name : Type` — was written.
+    /// True when the annotation was written `unsafe name : Type`.
+    ///
+    /// The word only means something on a [facade](../../../docs/spec/interop.md)
+    /// signature, where it declares a plain function instead of the effect a
+    /// facade declares by default. The grammar accepts it on any annotation, and
+    /// canonicalization is what rejects one outside a `module foreign` header.
+    pub marked_unsafe: bool,
+    /// Where the annotation — `unsafe name : Type`, modifier included — was
+    /// written.
     pub span: NodeSpan,
 }
 
@@ -439,6 +454,36 @@ pub struct FunBinding {
     pub pattern: Match,
     /// Where this one binding — patterns and body — was written.
     pub span: NodeSpan,
+}
+
+impl FunBinding {
+    /// Build a binding out of the pieces the grammar captured.
+    ///
+    /// The grammar has one production per way of spelling the name — an ordinary
+    /// lowercase name, or the soft keyword `unsafe` used as one — and this is the
+    /// body they share. `l` is the start of the name, `ml` the start of the
+    /// patterns; both ends come from the expression rather than an `@R`, for the
+    /// reason `FunBinding`'s productions in `grammar.lalrpop` set out.
+    fn assemble(
+        name: Name,
+        l: crate::compiler::position::BytePos,
+        ml: crate::compiler::position::BytePos,
+        patterns: Vec<Pattern>,
+        expr: Expression,
+    ) -> FunBinding {
+        let span = NodeSpan::to_end_of(l, expr.span);
+        let match_span = NodeSpan::to_end_of(ml, expr.span);
+
+        FunBinding {
+            name,
+            pattern: Match {
+                patterns,
+                body: expr,
+                span: match_span,
+            },
+            span,
+        }
+    }
 }
 
 /// The match structure is composed of a serie of patterns and an associated expression

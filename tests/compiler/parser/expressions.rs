@@ -13,6 +13,7 @@ fn module(body: Expression) -> Module {
         functions: vec![Function {
             name: name("main"),
             tpe: None,
+            marked_unsafe: false,
             bindings: vec![Match {
                 patterns: vec![],
                 body,

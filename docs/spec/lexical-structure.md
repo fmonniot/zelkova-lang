@@ -225,7 +225,8 @@ which reading is meant, so reserving the word outright would take a useful name.
 `unsafe` are the two that need the token *after* them rather than the one before: `derived`
 alone asks for an instance to be derived, `derived eq` opens the derivation of a member, and
 `derived = …` or `derived : …` is an ordinary binding or signature; `unsafe f : …` marks a
-facade signature where `unsafe : …` declares a constant of that name.
+facade signature where `unsafe : …` declares a constant of that name. The other five are
+keywords only in the position listed against them, and ordinary identifiers everywhere else:
 
 ```zel expect=ok
 module Example exposing ()
@@ -243,13 +244,8 @@ derived = 5
 unsafe = 6
 ```
 
-**Not implemented:** `derived` and `unsafe` are ordinary identifiers in every position today,
-because the construct each is a keyword in does not parse at all — class and instance bodies do
-not parse ([`LANG-38`](../tickets/lang-38.md)), and neither does a marked facade signature
-([`LANG-53`](../tickets/lang-53.md)). That block is green now and should stay green: what each
-word becomes is a keyword in a position it cannot currently occupy, not a name a program loses.
-It goes red if either is reserved outright as a shortcut, which is the choice
-[`LANG-53`](../tickets/lang-53.md) leaves open.
+**Not implemented:** `derived` is an ordinary identifier in every position today, because class
+and instance bodies do not parse at all ([`LANG-38`](../tickets/lang-38.md)).
 
 No other word is reserved — not even ones a reader arriving from another language might expect,
 such as `match` (pattern matching's usual keyword) or `await` (an effect's usual one):

@@ -25,6 +25,7 @@ fn module_function_type(tpe: Type) -> Module {
         functions: vec![Function {
             name: "main".into(),
             tpe: Some(tpe),
+            marked_unsafe: false,
             bindings: vec![],
             span: no_span(),
             annotation_span: no_span(),

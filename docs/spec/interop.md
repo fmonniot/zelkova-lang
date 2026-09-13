@@ -23,7 +23,7 @@ A facade declares an **effect** unless it says otherwise. Its result type is
 `Task` and leaves a plain function type, which its author promises is pure and total
 ([An `unsafe` facade](#an-unsafe-facade)).
 
-```zel expect=unimplemented
+```zel expect=ok
 module foreign Core.Prim exposing
   ( fdiv
   , idiv
@@ -36,8 +36,9 @@ unsafe idiv : Int -> Int -> Int
 Two signatures rather than one, because a facade names the types the code behind it really
 handles: the division behind `fdiv` divides, the one behind `idiv` truncates.
 
-**Not implemented:** `unsafe` is an ordinary identifier today, so neither signature above
-parses ([`LANG-53`](../tickets/lang-53.md)).
+**Not implemented:** nothing holds an unmarked facade to the result type
+[An effectful facade](#an-effectful-facade) requires, so a facade that omits `unsafe` is read as
+if it carried it ([`LANG-43`](../tickets/lang-43.md)).
 
 ## A facade names a boundary, not a backend
 
@@ -320,7 +321,7 @@ nothing is checked at either boundary ([`GEN-1`](../tickets/gen-1.md),
 then any [admitted type](#which-types-may-cross-the-boundary), the `Task` and its `Result` are
 gone, and no wrapper stands between the caller and the companion.
 
-```zel expect=unimplemented
+```zel expect=ok
 module foreign Core.Basics exposing (idiv)
 
 unsafe idiv : Int -> Int -> Int
@@ -344,10 +345,10 @@ the second [aborts the program](evaluation-semantics.md#when-a-program-aborts).
 exactly as any other crossing is, and a value that fails
 [aborts](evaluation-semantics.md#when-a-program-aborts).
 
-**Not implemented:** the block does not parse. `unsafe` is an ordinary identifier today, so
-`unsafe idiv : Int -> Int -> Int` reads as two names where the grammar expects one
-([`LANG-53`](../tickets/lang-53.md)), and nothing holds an unmarked facade to a `Task` result
-either.
+**Not implemented:** the word is read and acted on nowhere. Nothing holds an unmarked facade to
+a `Task` result ([`LANG-43`](../tickets/lang-43.md)), so the two shapes declare the same thing
+today; and no wrapper is generated for either, because code generation has not started
+([`GEN-1`](../tickets/gen-1.md)).
 
 ## Facade constants
 

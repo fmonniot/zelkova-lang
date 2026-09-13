@@ -11,13 +11,13 @@ will contains the actual implementation of this module.
 -}
 
 
-equal : a -> a -> Bool
-notEqual : a -> a -> Bool
+unsafe equal : a -> a -> Bool
+unsafe notEqual : a -> a -> Bool
 
-lt: a -> a -> Bool
-le: a -> a -> Bool
-gt: a -> a -> Bool
-ge: a -> a -> Bool
-compare: a -> a -> Int
+unsafe lt: a -> a -> Bool
+unsafe le: a -> a -> Bool
+unsafe gt: a -> a -> Bool
+unsafe ge: a -> a -> Bool
+unsafe compare: a -> a -> Int
 
-append : a -> a -> a
+unsafe append : a -> a -> a

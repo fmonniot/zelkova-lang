@@ -308,6 +308,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             InfixDeclared(..) => vec!["InfixDeclared"],
             TypeDeclared(..) => vec!["TypeDeclared"],
             NoTypeInBinding(..) => vec!["NoTypeInBinding"],
+            UnsafeOutsideFacade(..) => vec!["UnsafeOutsideFacade"],
             TypeArityMismatch(..) => vec!["TypeArityMismatch"],
             InvalidVariant(..) => vec!["InvalidVariant"],
         }

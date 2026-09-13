@@ -55,10 +55,17 @@ pub enum Token {
     In,
 
     // Soft keywords
+    //
+    // Each is a keyword in exactly one position and an ordinary lowercase
+    // identifier everywhere else. The lexer does not know the position, so it
+    // always produces the distinct token and the grammar re-admits it as a name
+    // wherever the keyword reading does not apply — see `VarIdent` in
+    // `grammar.lalrpop`, which is the other half of every word listed here.
     Left,
     Right,
     Non,
     Foreign,
+    Unsafe,
 
     // Layout
     OpenBlock,
@@ -92,6 +99,7 @@ fn keyword(s: &str) -> Option<Token> {
         "right" => Some(Token::Right),
         "non" => Some(Token::Non),
         "foreign" => Some(Token::Foreign),
+        "unsafe" => Some(Token::Unsafe),
 
         _ => None,
     }
