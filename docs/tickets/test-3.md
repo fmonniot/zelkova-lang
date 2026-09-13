@@ -26,8 +26,8 @@ This also leaves the convention undiscoverable from the one place a session is t
 about the JavaScript side. A reader who does not already know `UtilsChecks.mjs` exists has no
 prompt to look for it — `cargo test` passing looks like "everything is checked."
 
-[`BUG-24`](bug-24.md) and [`BUG-25`](bug-25.md) both fix `Js/Basics.mjs`, and both say explicitly
-that they have no red test until a sibling `BasicsChecks.mjs` exists — so this gap is not only
+[`BUG-24`](README.md) and [`BUG-25`](bug-25.md) both fix `Js/Basics.mjs`, and both said
+they had no red test until a sibling `BasicsChecks.mjs` existed — so this gap is not only
 about the one file `BUG-20` covered; it is about what any test file for a `.mjs` companion is
 checked by, once written.
 

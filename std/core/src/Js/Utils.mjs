@@ -21,7 +21,11 @@ function _Utils_eqHelp(x, y, depth, stack) {
     }
 
     if (typeof x !== 'object' || x === null || y === null) {
-        typeof x === 'function' && __Debug_crash(5);
+        // `Eq` has no instance for a function type, so this path is
+        // unreachable from well-typed source (`Js.Utils.equal` is declared
+        // `a -> a -> Bool` today and accepts anything, which is BUG-20's
+        // concern, not this one). Two functions are simply unequal rather
+        // than a reason to invent a failure mode equality does not have.
         return false;
     }
 

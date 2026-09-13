@@ -48,8 +48,8 @@ nothing holds it to that.
 Rules from [`evaluation-semantics.md`](../spec/evaluation-semantics.md) that constrain the
 output rather than the design, and that a first version has to honour or say it does not:
 subexpressions evaluate left to right; both operands of `&&` and `||` are evaluated; `Int` is
-32-bit and wraps; `n // 0`, `modBy 0 n` and `remainderBy 0 n` are `0` (today
-[`BUG-24`](bug-24.md)); equality is structural and comparing functions is not allowed.
+32-bit and wraps; `n // 0`, `modBy 0 n` and `remainderBy 0 n` are `0`
+([`BUG-24`](README.md)); equality is structural and comparing functions is not allowed.
 
 Two decisions are inherited rather than made here. **The wrapper around an effectful facade
 builds the `Result` its signature declares** — it catches what the companion throws, runs the

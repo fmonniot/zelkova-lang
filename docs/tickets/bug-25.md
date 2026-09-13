@@ -69,7 +69,7 @@ The **Known gap:** paragraph in
 an `Int`* is deleted. `cargo run` still prints `parsed 8 modules` and lists all eight as checked.
 
 **Note — this ticket has no red test behind it**, for the same reason
-[`BUG-24`](bug-24.md) does not: `cargo test` never loads a `.mjs` file, so no spec block goes red
+[`BUG-24`](README.md) did not before it closed: `cargo test` never loads a `.mjs` file, so no spec block goes red
 when the fix lands and none goes red while it is outstanding. [`BUG-20`](bug-20.md) added the
 repository's first JavaScript harness — `std/core/tests/Js/UtilsChecks.mjs`, run with
 `node --test 'std/core/tests/**/*.mjs'` — but it covers `Js/Utils.mjs` only, and this ticket
