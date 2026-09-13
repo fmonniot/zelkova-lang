@@ -1,6 +1,6 @@
 ---
 name: fix-pr-comments
-description: Triage the review comments on a GitHub PR (inline, review-level, and issue-level) by severity, implement blocking findings unconditionally, judge should-fix/note findings for relevance and either implement, decline, or file a follow-up ticket, resolve merge conflicts with main, run cargo fmt/clippy, push, and resolve the threads. Use when the user says "fix the comments on PR #N", "address the review", or asks to act on reviewer feedback for one or more PRs.
+description: Triage the review comments on a GitHub PR (inline, review-level, and issue-level) by severity, implement blocking findings unconditionally, judge should-fix/note findings for relevance and either implement, decline, or file a follow-up ticket — implementing on a PR's first fix round and ticketing rather than implementing from the second round on — resolve merge conflicts with main, run cargo fmt/clippy, push, and resolve the threads. Use when the user says "fix the comments on PR #N", "address the review", or asks to act on reviewer feedback for one or more PRs.
 argument-hint: <TICKET-ID -> PR-M> [...] [--model sonnet|opus|fable|haiku] [--deep|--cheap]
 ---
 
@@ -38,28 +38,54 @@ gh api repos/fmonniot/zelkova-lang/pulls/<PR>/reviews --paginate --jq '.[] | sel
 gh api repos/fmonniot/zelkova-lang/issues/<PR>/comments --paginate --jq '.[] | {body}'
 ```
 
+### Determine the round
+
+Before sorting by severity, check whether a `fix-pr-comments` pass already ran on this PR —
+it changes what "relevant, worth doing" means below. The signal is this skill's own reply
+format, which nothing else produces:
+
+```bash
+gh api repos/fmonniot/zelkova-lang/pulls/<PR>/comments --paginate --jq '.[] | select(.body | test("^(Implemented|Declined|Deferred, ticket filed|Disputed):")) | .id'
+gh api repos/fmonniot/zelkova-lang/issues/<PR>/comments --paginate --jq '.[] | select(.body | test("^(Implemented|Declined|Deferred, ticket filed|Disputed):")) | .id'
+```
+
+Any hit means a fix has already been addressed on this PR before — this is **round 2+**. No hits
+means **round 1**. There is nothing to maintain between runs; the round is recovered fresh from
+GitHub state every time.
+
 **Severity is the input that decides what gets built.** `review-pr` tags every inline finding
 `[blocking]`, `[should-fix]` or `[note]`. Sort them:
 
 - `[blocking]` → **implement, unconditionally.** No judgment call at this tier — a blocking
-  finding ships fixed or the PR doesn't merge.
+  finding ships fixed or the PR doesn't merge, on every round.
 - `[should-fix]` and `[note]` → **candidates, not instructions.** The spawned agent judges each
-  one for relevance and correctness against the actual code before deciding whether to
-  implement it, decline it, or defer it with a ticket — see Step 2. This orchestrator-level pass
-  is just for the headcount and the model pick below, not the final call.
+  one for relevance and correctness against the actual code, then declines it, tickets it, or
+  implements it — see Step 2. Whether "worth doing" becomes code or a ticket depends on the
+  round: implemented on round 1, ticketed from round 2 on, so the PR stops re-opening for a
+  fresh round of implementation every time a reviewer finds one more thing. This
+  orchestrator-level pass is just for the headcount and the model pick below, not the final call.
 - **Untagged** (an older review, or a reviewer that skipped the convention) → judge it against
   the same bar: does merging as-is ship a defect, or leave a clause of the ticket's Acceptance
   unmet? If yes, treat as a `[should-fix]` candidate. If it is about wording, a cross-reference,
   or "worth considering", treat as a `[note]` candidate.
 
-If the review summary opens with `**APPROVED**` and carries no `[blocking]` findings, **do not
-spawn anything** — tell the user the PR is ready to merge and stop. Running a fix pass over an
-approved review is how the loop fails to terminate.
+Approval is no longer a reason to skip on its own: an approved review can still carry
+`[should-fix]` or `[note]` comments worth acting on — a tightened wording, a code comment that
+will otherwise rot unaddressed — and round 1 should catch those rather than let them evaporate
+because the PR was already green. **Skip spawning only when there is nothing to triage** — every
+comment is a pure acknowledgement ("LGTM", "+1"), or there are no comments at all. In that case
+tell the user the PR is ready to merge and stop.
 
 Report the triage before spawning, so a `[note]` you are about to skip can be promoted by hand:
 
-> PR #NNN: 1 blocking, 2 should-fix, 3 notes. 1 implemented unconditionally; the agent will
-> judge the other 5 and implement, decline, or ticket each.
+> PR #NNN: round 1, 1 blocking, 2 should-fix, 3 notes. 1 implemented unconditionally; the agent
+> will judge the other 5 and implement, decline, or ticket each.
+
+or, once a prior pass is detected:
+
+> PR #NNN: round 2 (a prior fix-pr-comments pass is already on this PR), 1 blocking, 2
+> should-fix. 1 implemented unconditionally; anything the agent judges worth doing from the
+> other 2 gets ticketed rather than implemented here.
 
 ### Then pick the tier
 
@@ -107,6 +133,10 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 > `git -C <WT>`. Never touch `<REPO_ROOT>` itself (the user's own working copy). Leave the
 > worktree in place when done.
 >
+> This is **round <N>** of fixes on this PR — <round 1: no prior fix-pr-comments pass detected /
+> round 2+: a prior pass already ran>. It changes how a `[should-fix]`/`[note]` finding you judge
+> as worth doing gets handled below.
+>
 > A review has been posted on https://github.com/fmonniot/zelkova-lang/pull/<PR>. Address the
 > actionable items — see the triage rule below, which decides what "actionable" means. Commit
 > the changes, resolve any merge conflict with `origin/main`, run `cargo fmt` and clippy, push,
@@ -130,7 +160,13 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 >    - `[should-fix]` and `[note]` → **judge each one before acting.** Read it against the
 >      actual code it points at — a reviewer can be wrong, out of date, or right about something
 >      that isn't this PR's job. Three outcomes:
->      - **Relevant, worth doing now** → implement it.
+>      - **Relevant, worth doing now** → what happens next depends on the round you were told at
+>        the top of this prompt:
+>        - **Round 1** → implement it.
+>        - **Round 2+** → do not implement it. File it with `create-ticket` instead, exactly like
+>          the "not for this PR" case below, and say so in your reply: this PR already had one
+>          fix round, so new implementation goes to a ticket rather than reopening it.
+>          `[blocking]` findings are unaffected by this — always implemented, every round.
 >      - **Not relevant** (misreading, already true, doesn't hold up, or out of scope for what
 >        the ticket's Acceptance actually requires) → do not implement it. Reply with the
 >        specific reason. No ticket — there's nothing to track.
@@ -193,7 +229,8 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 >    - **Declined, not relevant** — the specific reason it doesn't apply (misreading, already
 >      true, out of scope for the ticket's Acceptance, or simply incorrect).
 >    - **Deferred, ticket filed** — the ticket ID `create-ticket` produced and a one-line summary
->      of why it's deferred rather than done here.
+>      of why it's deferred rather than done here (out of scope for this PR, or — on round 2+ —
+>      worth doing but past the point where this PR should keep growing).
 >    - **Disputed** (reverses an earlier round's decision) — quote the earlier instruction and
 >      its SHA, state that the two rounds disagree, say you are leaving it for the user.
 >
@@ -267,9 +304,9 @@ Confirm in the worktree: `git -C "$WT" ...` then `cargo fmt --all --check` and
 
 ## Step 5 — Report
 
-| Ticket | PR | Model (why) | Commits | Implemented / declined / deferred / disputed | Tickets filed | Conflicts resolved? | CI | Threads resolved |
-|---|---|---|---|---|---|---|---|---|
-| AST-1 | #NNN | sonnet (standard) | 3 | 2 / 2 / 1 / 1 | 1 | yes | passing | 6/7 |
+| Ticket | PR | Round | Model (why) | Commits | Implemented / declined / deferred / disputed | Tickets filed | Conflicts resolved? | CI | Threads resolved |
+|---|---|---|---|---|---|---|---|---|---|
+| AST-1 | #NNN | 1 | sonnet (standard) | 3 | 2 / 2 / 1 / 1 | 1 | yes | passing | 6/7 |
 
 Spell out any deferred or disputed item in prose under the table: for a deferred one, the
 finding and the ticket ID it produced; for a disputed one, which finding, which earlier decision
@@ -285,6 +322,10 @@ decide; deferred ones are for the user's awareness of what's now tracked outside
 - **Not every comment is an instruction.** `[should-fix]` and `[note]` findings are judged, not
   auto-implemented — see Step 2. Closing every thread with code is how a 6-comment review
   becomes a 16-commit diff, which is then the surface the next review round examines.
+- **From round 2 on, even a "worth doing" finding becomes a ticket, not more code in this PR.**
+  See Step 0's round detection. This is what keeps a PR from re-opening indefinitely as
+  reviewers keep finding one more thing — `[blocking]` findings are the only ones still
+  implemented past round 1.
 - **A relevant finding that isn't for this PR gets a ticket, filed on the spot** via
   `create-ticket` — not a reply promising one later. Don't grow this PR to cover it; do reply
   with the ticket ID so the finding stays traceable instead of dying in a closed PR thread.
