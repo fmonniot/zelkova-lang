@@ -251,14 +251,17 @@ word becomes is a keyword in a position it cannot currently occupy, not a name a
 It goes red if either is reserved outright as a shortcut, which is the choice
 [`LANG-53`](../tickets/lang-53.md) leaves open.
 
-No other word is reserved:
+No other word is reserved — not even ones a reader arriving from another language might expect,
+such as `match` (pattern matching's usual keyword) or `await` (an effect's usual one):
 
 ```zel expect=ok
 module Example exposing ()
 
-javascript = 1
+match = 1
 
-f = javascript
+await = 2
+
+f = match
 ```
 
 `true` and `false` are **not** reserved. Zelkova has no boolean literal syntax: `Bool` is an

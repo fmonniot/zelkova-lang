@@ -5,8 +5,8 @@ ASTs, and 45 signatures rewritten in `std/core`. It is medium rather than small 
 `CLAUDE.md`'s *A grammar change is never a one-file change* applies, and because the soft-keyword
 half has a real choice in it (step 1 below).
 
-**Location:** `src/compiler/parser/tokenizer.rs` — the keyword table at `"javascript" =>
-Some(Token::Javascript)`; `src/compiler/parser/grammar.lalrpop` — the token map, and the
+**Location:** `src/compiler/parser/tokenizer.rs` — the keyword table at `"foreign" =>
+Some(Token::Foreign)`; `src/compiler/parser/grammar.lalrpop` — the token map, and the
 `FunType` production (`<name:VarIdent> ":" <tpe:Type>`), which is what a facade declaration
 parses as; `src/compiler/parser/mod.rs` — `FunType`, and `Module::from_declarations` where
 `binding_foreign` is already derived from the module modifier;
