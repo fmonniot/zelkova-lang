@@ -116,7 +116,7 @@ carries that rule and its consequences — and it applies to imported names exac
 a module's own declarations:
 
 ```zel expect=ok package=shadow
-module Widget exposing (Size, label)
+module Widget exposing (Size(..), label)
 
 type Size
   = Small
@@ -185,7 +185,7 @@ alike. Both blocks below are accepted, and in each of them the imported name is 
 anything saying so ([`docs/tickets/lang-29.md`](../tickets/lang-29.md)).
 
 ```zel expect=ok package=clash
-module Widget exposing (Size, label)
+module Widget exposing (Size(..), label)
 
 type Size
   = Small

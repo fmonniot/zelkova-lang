@@ -142,6 +142,28 @@ pub struct Interface {
     //aliases: HashMap<Name, >
     /// infixes is a map from the operator symbol to its information
     pub infixes: HashMap<Name, canonical::Infix>,
+    /// The type of an exposed infix's own backing function, keyed by that
+    /// function's unqualified name — populated only when the function is *not*
+    /// separately present in [`values`](Self::values), i.e. the header exposes
+    /// the operator but not the function by name (`infix left 6 (+) = add`,
+    /// header exposing `(+)` and not `add`, is `std/core`'s own shape for every
+    /// operator it declares).
+    ///
+    /// `process_import`'s `Exposing::Open` arm is the only reader: an
+    /// `exposing (..)` import brings every exposed infix into scope, and
+    /// `RootEnvironment::find_value`'s redirect (`BUG-15`) resolves a use of the
+    /// operator by looking up its backing function *unqualified* in the
+    /// importer's own scope. Before the `exposing (...)` header was enforced
+    /// (`BUG-9`), `values` held every declaration unconditionally and that
+    /// lookup always had something to find; filtering `values` down to what the
+    /// header actually exposes took that away whenever the function itself
+    /// wasn't separately named, breaking every operator in `Basics.zel`. This
+    /// map restores exactly that reachability and nothing more: it is never
+    /// consulted by the qualified-prefix loop or by an explicit
+    /// `exposing (add)` naming the function itself, so a function that backs an
+    /// exposed operator still cannot be imported *by its own name* unless the
+    /// header says so too.
+    pub infix_functions: HashMap<Name, (NodeSpan, canonical::Type)>,
     /// The file this interface's module was read from, when the caller knows it.
     ///
     /// It is what makes a diagnostic about an imported name able to underline that

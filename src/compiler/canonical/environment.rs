@@ -364,6 +364,23 @@ fn process_import(
                     .insert(op_name.clone(), imported_infix(interface, infix));
             }
 
+            // An exposed operator's backing function must resolve unqualified
+            // too, even when it is not itself named in `Basics`' own header —
+            // see `Interface::infix_functions`'s doc comment. Skipped whenever
+            // the function is already being inserted above via `interface.values`
+            // (both hold the name only in the disjoint case, so this never
+            // duplicates an entry `insert_foreign_value` would otherwise read as
+            // an ambiguous import).
+            for (fn_name, (node_span, tpe)) in &interface.infix_functions {
+                insert_foreign_value(
+                    env,
+                    fn_name.clone(),
+                    tpe.clone(),
+                    interface.source_span(*node_span),
+                    &interface.module_name,
+                );
+            }
+
             // We need to insert the type without any qualifier, including variants
             for (union_name, union) in &interface.unions {
                 insert_foreign_union_type(
@@ -950,6 +967,7 @@ mod tests {
             values,
             unions,
             infixes: HashMap::new(),
+            infix_functions: HashMap::new(),
             file: None,
         };
 
@@ -1299,6 +1317,7 @@ mod tests {
             values: HashMap::new(),
             unions: HashMap::new(),
             infixes,
+            infix_functions: HashMap::new(),
             file: None,
         };
 

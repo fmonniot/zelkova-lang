@@ -55,7 +55,9 @@ never declared as a value, and one where it is never declared as a type — each
 `Error::ExportNotFound(_, ExportType::Value | ExportType::UnionPublic | ExportType::UnionPrivate, _)`
 is raised with the exposed name's own span (not the whole header).
 
-**Related:** [BUG-9](bug-9.md), found alongside this one, is a larger gap in the same area —
-the `Exports` this function computes is not consulted anywhere once built, so today no
-`exposing` list actually restricts what an importer can see. Fixing *this* ticket makes a
-module's own header self-consistent regardless of `BUG-9`'s outcome; it does not depend on it.
+**Related:** `BUG-9`, found alongside this one and since closed, was the larger gap
+in the same area — the `Exports` this function computes was not consulted anywhere once built,
+so no `exposing` list restricted what an importer could see. `Module::to_interface` reads it
+now, which is what gives the value this function computes a consumer; it does not add the
+existence check, because a header entry naming nothing was never in `Module::values` to be
+filtered out of the interface in the first place. This ticket does not depend on that one.

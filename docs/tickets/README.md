@@ -173,7 +173,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-6 | bug | medium | closed 2026-08-27 | Rendering a parse error panics for four of `parser::Error`'s five variants |
 | BUG-7 | bug | low | closed 2026-09-11 | The unclosed-char diagnostic draws two invisible carets, and swaps their messages |
 | [BUG-8](bug-8.md) | bug | medium | open | `do_exports` never checks that an exposed value or type actually exists |
-| [BUG-9](bug-9.md) | bug | medium | open | A module's `exposing` list is computed and then never consulted |
+| BUG-9 | bug | medium | closed 2026-09-12 | A module's `exposing` list is computed and then never consulted |
 | BUG-10 | bug | low | closed 2026-09-12 | A `case` branch level with, or left of, the `case` keyword is accepted |
 | BUG-11 | bug | low | closed 2026-09-11 | The `Tokenizer` never terminates on a tab outside leading whitespace |
 | BUG-12 | bug | medium | closed 2026-09-12 | Four `unwrap()`s on user input panic the compiler instead of reporting a syntax error |
@@ -194,6 +194,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-27](bug-27.md) | bug | medium | open | A canonicalized infix operator is qualified under its own symbol, not the function its `infix` declaration names |
 | [BUG-28](bug-28.md) | bug | low | open | The `Tokenizer` never terminates on an unterminated character literal |
 | [BUG-29](bug-29.md) | bug | medium | open | A top-level declaration whose first token is not at column 1 fails to parse |
+| [BUG-30](bug-30.md) | bug | medium | open | An `Upper(..)` import entry does not check the type was exposed transparently |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |

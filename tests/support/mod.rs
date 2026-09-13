@@ -115,6 +115,7 @@ pub fn maybe_interface() -> (Name, Interface) {
         values,
         unions,
         infixes: HashMap::new(),
+        infix_functions: HashMap::new(),
         file: None,
     };
 
