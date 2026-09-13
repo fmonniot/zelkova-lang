@@ -1,0 +1,17 @@
+-- A stand-in for `std/core`'s `Basics`, holding just enough to write `1 + 2`.
+--
+-- A package compiles on its own, so the default imports resolve
+-- against the modules this package ships. That is why the fixture carries its
+-- own `Basics` rather than reaching for the real one.
+module Basics exposing (Int, (+), add)
+
+
+type Int = Int
+
+
+infix left 6 (+) = add
+
+
+add : Int -> Int -> Int
+add a b =
+  a

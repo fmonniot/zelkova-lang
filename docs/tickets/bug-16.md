@@ -64,8 +64,9 @@ span (`ERR-3`) so the caret lands under the name. Two things to check before ass
 mechanical: type *variables* arrive as `TypeKind::Variable` and must keep resolving to
 nothing; and `std/core/src/` must still compile, which it will only once the modules it uses
 genuinely have their types in scope. If it does not, say so rather than working around it —
-that is [LANG-8](lang-8.md)'s default imports being needed first, and the two should be
-sequenced rather than merged.
+that is the [default imports](../spec/modules.md#the-default-imports) being needed first
+(`LANG-8`, closed — see [the index](README.md)), and the two should be sequenced rather
+than merged.
 
 **Acceptance:** `import Widget exposing (Missing)`, where `Widget` declares no `Missing`,
 fails with `EnvError::UnionNotFound` — a test beside the existing `UnionNotFound` coverage in

@@ -328,6 +328,66 @@ fn build_cycle(
     }
 }
 
+/// Put the [default imports](crate::compiler::default_imports) into the import
+/// graph, so a module that never wrote `import Basics` is still checked after it.
+///
+/// Canonicalization resolves an implicit import against an `Interface` that already
+/// exists, and nothing but this graph decides which module is checked first — so
+/// without these edges whether `1 + 2` resolved would come down to the order the
+/// source files happened to load in.
+///
+/// Two entries are skipped, and both are the reason this is not simply "an edge per
+/// module per default":
+///
+/// - a module **named** on the list gets none, because `Basics` cannot import
+///   itself and `Maybe`/`Result` would import each other
+///   ([`default_imports::is_default`]);
+/// - an edge whose target already depends on the importer is dropped, because
+///   adding it would close a loop. `Basics` imports the `Js.Basics` facade, so
+///   `Js.Basics` does not implicitly import `Basics` back.
+///
+/// The second test is made against the graph *as built so far* rather than against
+/// the written imports alone, so no addition here can introduce a cycle that was
+/// not already written in the source. `tarjan_scc` below still reports one that
+/// was.
+///
+/// Both skips agree with [`default_imports::implicit_imports`], which drops the
+/// same import for its own reason — a dropped edge means the target is checked
+/// *later*, so its interface is not available when the importer is canonicalized.
+///
+/// Modules are visited in name order: the result must not depend on the order
+/// `load_package_sources` walked the directory in.
+fn add_default_import_edges(graph: &mut DiGraph<&Module, ()>, names: &HashMap<&Name, NodeIndex>) {
+    let mut importers: Vec<(&Name, NodeIndex)> =
+        names.iter().map(|(&name, &idx)| (name, idx)).collect();
+    importers.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
+
+    for (module_name, module_idx) in importers {
+        if crate::compiler::default_imports::is_default(module_name) {
+            continue;
+        }
+
+        for default in crate::compiler::default_imports::DEFAULT_IMPORTS {
+            let target = default.name();
+            let Some(&target_idx) = names.get(&target) else {
+                continue;
+            };
+
+            // A written import already carries the edge, and replaces the implicit
+            // import anyway.
+            if graph[module_idx].imports.iter().any(|i| i.name == target) {
+                continue;
+            }
+
+            if petgraph::algo::has_path_connecting(&*graph, target_idx, module_idx, None) {
+                continue;
+            }
+
+            graph.add_edge(module_idx, target_idx, ());
+        }
+    }
+}
+
 impl<'a> ModuleWalker<'a> {
     /// `module_files` is how a cycle's edges learn which file each `import` was
     /// written in (`CycleEdge::file`) — this is driver code, the same as
@@ -365,6 +425,8 @@ impl<'a> ModuleWalker<'a> {
                 graph.add_edge(*m_idx, *dep, ());
             }
         }
+
+        add_default_import_edges(&mut graph, &names);
 
         // Find the strongly connected graphs (scc), if there are more than one node per scc
         // it means there is a circular dependency.
@@ -845,6 +907,52 @@ mod tests {
                 notes
             );
         });
+    }
+
+    /// `LANG-8`: a module that never wrote `import Basics` is still checked after
+    /// `Basics`, because an implicit import can only resolve against an
+    /// `Interface` that already exists.
+    ///
+    /// `Main` is declared *first*, which is what makes this discriminating: with
+    /// no edge between the two, `tarjan_scc` hands back the isolated nodes in
+    /// declaration order and `Main` would be checked first. Mutation-checked by
+    /// dropping the `add_default_import_edges` call in `ModuleWalker::new`, which
+    /// flips the expected order.
+    #[test]
+    fn a_default_import_orders_the_module_it_names_first() {
+        let main = module("Main", vec![]);
+        let basics = module("Basics", vec![]);
+
+        let modules = vec![main, basics];
+        let module_files = HashMap::new();
+
+        let walker = ModuleWalker::new(&modules, &module_files).expect("no cycle here");
+
+        assert_walker_processed_order(walker, vec!["Basics", "Main"]);
+    }
+
+    /// `LANG-8`: the modules a default import is *built from* do not receive it.
+    ///
+    /// This is `std/core`'s own shape — `Basics` imports the `Js.Basics` facade —
+    /// and an unconditional implicit edge from `Js.Basics` back to `Basics` would
+    /// make the standard library a dependency cycle. `add_default_import_edges`
+    /// drops an edge whose target already depends on the importer, so the written
+    /// direction is the only one and `Js.Basics` is checked first.
+    ///
+    /// Mutation-checked by dropping the `has_path_connecting` guard: this becomes
+    /// `Err(CycleDetected(..))` and `expect` panics.
+    #[test]
+    fn a_default_import_does_not_close_a_loop_onto_its_own_dependency() {
+        let basics = module("Basics", vec!["Js.Basics"]);
+        let js_basics = module("Js.Basics", vec![]);
+
+        let modules = vec![basics, js_basics];
+        let module_files = HashMap::new();
+
+        let walker = ModuleWalker::new(&modules, &module_files)
+            .expect("the standard library's own shape is not a cycle");
+
+        assert_walker_processed_order(walker, vec!["Js.Basics", "Basics"]);
     }
 
     #[test]

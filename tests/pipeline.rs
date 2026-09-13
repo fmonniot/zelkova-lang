@@ -1945,3 +1945,157 @@ fn compile_package_reports_a_missing_root() {
         message
     );
 }
+
+// ── Test 29: the default imports reach a module that wrote none ─────────────
+
+/// Every checked module of the fixture package, in the order they were checked.
+///
+/// `compile_package` reports its modules to stderr and hands back only `Ok(())`,
+/// so a test that has to look *inside* a checked module drives the walker with the
+/// real `check_module` instead — the same seam
+/// `check_in_order_keeps_passing_siblings_with_the_real_checker` uses.
+fn check_fixture(name: &str) -> Vec<canonical::Module> {
+    let root = fixture_package(name);
+    let sources = load_package_sources(&root)
+        .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
+    let modules: Vec<parser::Module> = sources
+        .iter()
+        .map(|(_, file)| {
+            parser::parse(file.file())
+                .unwrap_or_else(|e| panic!("parse error in {:?}: {:?}", file.file().name(), e))
+        })
+        .collect();
+
+    let module_files = HashMap::new();
+    let walker =
+        ModuleWalker::new(&modules, &module_files).expect("no dependency cycle in the fixture");
+    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
+    let (checked, _errors) = walker.check_in_order(
+        &test_package(),
+        &mut interfaces,
+        &module_files,
+        check_module,
+    );
+
+    checked
+}
+
+/// One declaration of one checked module, or a panic naming what went missing.
+///
+/// The failures `check_in_order` produced are deliberately dropped rather than
+/// asserted empty: the fixture below holds two modules making two different claims,
+/// and a shared "every module checked" assertion would make each of them go red
+/// whenever the *other* one broke. A module that failed to check is simply absent
+/// here, which is a failure of the test that asked for it and of no other.
+fn checked_value<'a>(
+    modules: &'a [canonical::Module],
+    module: &str,
+    value: &str,
+) -> &'a canonical::Value {
+    modules
+        .iter()
+        .find(|m| m.name.name() == &Name::from(module))
+        .unwrap_or_else(|| panic!("`{}` should have checked, and did not", module))
+        .values
+        .get(&Name::from(value))
+        .unwrap_or_else(|| panic!("`{}` declares `{}`", module, value))
+}
+
+/// Every imported name the expression tree under `value` resolved to, fully
+/// qualified — `Basics.add` for a `+` that came from `Basics`.
+///
+/// `ExpressionKind::VarForeign` is what canonicalization builds for a name found
+/// through an import, and it carries the *declaring* module, so this is what tells
+/// "`+` resolved" apart from "`+` resolved to the right module". An operator keeps
+/// its own spelling here rather than its `infix` declaration's backing function:
+/// `find_value` redirects through `infixes` to look the value up, and
+/// `Expression::from_parser` then qualifies the name that was written.
+fn foreign_names(value: &canonical::Value) -> Vec<String> {
+    fn walk(expr: &canonical::Expression, out: &mut Vec<String>) {
+        match &expr.kind {
+            canonical::ExpressionKind::VarForeign(qual, _) => out.push(qual.to_name().to_string()),
+            canonical::ExpressionKind::Apply(f, arg) => {
+                walk(f, out);
+                walk(arg, out);
+            }
+            _ => (),
+        }
+    }
+
+    let body = match value {
+        canonical::Value::Value { body, .. } => body,
+        canonical::Value::TypedValue { body, .. } => body,
+    };
+    let mut out = Vec::new();
+    walk(body, &mut out);
+    out
+}
+
+/// `LANG-8`: a module that writes no `import` at all still resolves `+`, and
+/// resolves it to `Basics`.
+///
+/// `Implicit.zel` in the fixture is three lines and none of them is an `import`,
+/// so `+` can only have arrived through the default import list. Asserting on the
+/// `VarForeign` rather than on `is_ok()` is the difference between "it compiled"
+/// and "it compiled because `Basics` was in scope": a module that resolved `+`
+/// some other way would satisfy the first and not the second.
+///
+/// Mutation-checked by dropping the `implicit` half of `new_environment`'s import
+/// loop: `Implicit` then fails with a `VariableNotFound` for `+` and never reaches
+/// `checked`, so `checked_value` panics.
+#[test]
+fn default_imports_resolve_without_an_import_line() {
+    let root = fixture_package("package_default_imports");
+    assert_eq!(
+        module_names(&root),
+        vec!["Basics.zel", "Explicit.zel", "Implicit.zel"]
+    );
+
+    let source = std::fs::read_to_string(root.join("Implicit.zel")).expect("fixture is readable");
+    assert!(
+        !source.contains("import"),
+        "the point of this fixture is that `Implicit.zel` writes no import: {:?}",
+        source
+    );
+
+    let checked = check_fixture("package_default_imports");
+    let x = checked_value(&checked, "Implicit", "x");
+
+    assert_eq!(
+        foreign_names(x),
+        vec!["Basics.+".to_string()],
+        "`+` must resolve through `Basics`"
+    );
+}
+
+// ── Test 30: writing a default import out changes nothing ───────────────────
+
+/// `LANG-8`: an explicit `import Basics exposing (..)` still compiles.
+///
+/// The implicit import goes through `process_import` exactly as a written one
+/// does, and `insert_foreign_value` turns a second registration of a name into
+/// `ValueType::Foreigns` — which is `AmbiguousVariables` at every *use*. So a
+/// module that writes the default import out is the case that would break, and
+/// `Explicit.zel` writes `1 + 2` so that it breaks loudly rather than quietly.
+///
+/// Mutation-checked by dropping the `written.iter().any(..)` filter in
+/// `default_imports::implicit_imports`: `Basics` is then registered twice, `Explicit`
+/// fails with `AmbiguousVariables` on `+` and never reaches `checked`, while
+/// `default_imports_resolve_without_an_import_line` above stays green — which is
+/// why `check_fixture` does not assert the package compiled as a whole.
+#[test]
+fn an_explicit_default_import_still_compiles() {
+    let checked = check_fixture("package_default_imports");
+    let y = checked_value(&checked, "Explicit", "y");
+
+    assert_eq!(
+        foreign_names(y),
+        vec!["Basics.+".to_string()],
+        "a written default import must resolve the same way the implicit one does"
+    );
+
+    assert!(
+        compile_package(&fixture_package("package_default_imports")).is_ok(),
+        "the fixture package must compile as a whole"
+    );
+}
