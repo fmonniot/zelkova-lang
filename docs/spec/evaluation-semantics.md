@@ -509,11 +509,6 @@ answer*, so the conversion returns one that means something else. A program hold
 is unsure of tests it with `isNaN` or `isInfinite` before converting, as a program holding a
 divisor tests the divisor.
 
-**Known gap:** `round`, `floor` and `ceiling` return their JavaScript `Math` result with no
-wrap, so `round nan` is `nan` and `round 1.0e20` is `1.0e20` — neither of them an `Int`. Only
-`truncate` wraps. [`BUG-25`](../tickets/bug-25.md) is the ticket. No block holds it to account:
-all four conversions are in a JavaScript companion, which nothing in the test suite runs.
-
 ## Purity and the foreign boundary
 
 **An expression's value depends only on the values of the names it mentions.** Evaluating it

@@ -45,9 +45,15 @@ export function toFloat(x) { return x }
 export function truncate(n) { return n | 0 }
 export function isInfinite(n) { return n === Infinity || n === -Infinity }
 
-export const ceiling = Math.ceil;
-export const floor = Math.floor;
-export const round = Math.round;
+// docs/spec/evaluation-semantics.md#converting-a-float-to-an-int defines a
+// conversion to `Int` as rounding and then wrapping into 32 bits, with `nan`
+// and both infinities landing on 0. `Math.ceil`/`Math.floor`/`Math.round`
+// hand back a JavaScript number with none of that, so the `| 0` here is the
+// wrap `truncate` already gets from `n | 0` doing double duty as both the
+// rounding and the wrap.
+export function ceiling(n) { return Math.ceil(n) | 0 }
+export function floor(n) { return Math.floor(n) | 0 }
+export function round(n) { return Math.round(n) | 0 }
 export const sqrt = Math.sqrt;
 export const log = Math.log;
 export const isNotANumber = isNaN;
