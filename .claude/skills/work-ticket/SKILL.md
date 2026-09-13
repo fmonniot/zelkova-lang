@@ -161,6 +161,15 @@ round trip on its first turn.
 >    describing today's diagnostic changes; the rule itself does not — `docs/spec/` is the
 >    normative record of what the language *is*, and a spec change belongs there only when the
 >    ticket is actually about the language, not as a side effect of a compiler fix.
+>
+>    **State the rule, not the fix.** Rewriting a `Known gap:` paragraph is the single easiest
+>    place to smuggle project history into a chapter — "rejected here, rather than silently
+>    dropped and left for the importer to discover as a name that does not exist" reads fine but
+>    narrates the bug this ticket just closed instead of the language as it now is.
+>    `docs/spec/conventions.md`'s *A chapter says what the language is* section forbids exactly
+>    this, ticket reference or not. Write the sentence that would be true and unremarkable if the
+>    bug had never existed, and cut a closing `rather than …`/`not …` clause whenever it exists
+>    only to contrast with what used to happen.
 > 4. Implement it, scoped to `<ID>`. If you find a second, unrelated problem on the way, do not
 >    fix it — note it in your final report so it can be filed as its own ticket. Widening the
 >    diff is the failure mode this ticket system exists to prevent.
