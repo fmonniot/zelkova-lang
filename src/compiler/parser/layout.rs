@@ -348,6 +348,47 @@ where
 
                 c.replace(column);
             }
+            (Token::Else, Context::CaseBlock(Some(min))) if token.start().column < *min => {
+                // `else` closes a `CaseBlock` when it sits strictly left of the
+                // column every branch pattern is required to start at (`min`) —
+                // i.e. it cannot be read as the start of another branch, which
+                // would land exactly on `min`, not left of it (`BUG-23`).
+                //
+                // This has to be a column check, not a bare-token one. An
+                // earlier version of this fix popped on `Token::Else`
+                // unconditionally, on the reasoning that `else` "cannot appear
+                // inside an unclosed `case` branch for any other reason" — but
+                // it can: a branch's body can itself be a multi-line `if …
+                // then … else`, and `if`/`then`/`else` push no context of
+                // their own (see this file's module doc comment), so the
+                // *first* `Else` seen while a `CaseBranch`/`CaseBlock` is open
+                // may belong to that nested `if` rather than to whatever
+                // encloses the `case`. Such an `else` is indented to at least
+                // the branch body's own column, i.e. at or right of `min`, so
+                // the `< *min` guard leaves it alone and the ordinary
+                // indentation rule (`min_indent_required` below) accepts it as
+                // part of the branch body instead of popping anything.
+                //
+                // `Context::CaseBranch` is deliberately not matched by this
+                // arm at all, unlike the version it replaces. Its `.indent`
+                // already equals its `min_indent()` (`CaseBlock` is the one
+                // context where the two differ — see its doc comment for why),
+                // so step 2's ordinary implicit close just below already
+                // closes a `CaseBranch` exactly when a token — `else` included
+                // — dedents out of its body, with no shallow/deep gap for a
+                // nested `if`'s `else` to be misread through. This arm exists
+                // only for the gap that's specific to `CaseBlock`.
+                //
+                // `CaseBlock(None)` — a `case` with no branches yet — is left
+                // out on purpose: that shape is already a grammar error
+                // (`CaseBranch+` requires at least one), and leaving it alone
+                // keeps this fix scoped to the block `else` can legally follow.
+                let Span { start, end } = token.span;
+
+                self.contexts.pop();
+                self.reprocess_tokens.push(token);
+                return Ok(spanned(start, end, Token::CloseBlock));
+            }
             (Token::In, Context::Let) => {
                 // TODO akin to of/case above, we might have to create a let/in block
                 // to let the parser know when the let part ended. Not sure yet.
@@ -887,6 +928,243 @@ mod tests {
                 Token::CloseBlock,
                 Token::CloseBlock,
                 Token::CloseBlock,
+            ],
+        )
+    }
+
+    /// `BUG-23`: a `case` in the `then` arm of an `if` is closed by its `else`,
+    /// however shallow the `CaseBlock`'s own `.indent` field turns out to be —
+    /// the mirror of the `top_level_case_expression` test above, but with the
+    /// case's *last* branch followed by `else` rather than by an implicit
+    /// dedent to end of input.
+    ///
+    /// This is a layout-only rendering of the ticket's example:
+    ///
+    /// ```zel
+    /// f c v =
+    ///   if c then
+    ///     case v of
+    ///       On ->
+    ///         Off
+    ///
+    ///       Off ->
+    ///         On
+    ///   else
+    ///     On
+    /// ```
+    ///
+    /// Both `CloseBlock`s right before `Else` matter: one for the second
+    /// branch's body (`CaseBranch`), one for the branch list itself
+    /// (`CaseBlock`) — `else` has to unwind both, not just the innermost.
+    ///
+    /// Verified to fail by changing the `(Token::Else, Context::CaseBlock(Some(min)))`
+    /// arm's guard from `token.start().column < *min` to `false`: layout then falls
+    /// through to the ordinary indentation check, which reports a `LayoutError` on
+    /// `Else` instead of yielding it.
+    #[test]
+    fn else_closes_case_block_opened_in_a_then_arm() {
+        test_layout_without_error(
+            vec![
+                ident_token("f"),
+                ident_token("c"),
+                ident_token("v"),
+                Token::Equal,
+                newline(),
+                indent(),
+                Token::If,
+                ident_token("c"),
+                Token::Then,
+                newline(),
+                indent(),
+                indent(),
+                Token::Case,
+                ident_token("v"),
+                Token::Of,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("On"),
+                Token::Arrow,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("Off"),
+                newline(),
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("Off"),
+                Token::Arrow,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("On"),
+                newline(),
+                indent(),
+                Token::Else,
+                newline(),
+                indent(),
+                indent(),
+                ident_token("On"),
+                newline(),
+            ],
+            vec![
+                Token::OpenBlock,
+                ident_token("f"),
+                ident_token("c"),
+                ident_token("v"),
+                Token::Equal,
+                Token::If,
+                ident_token("c"),
+                Token::Then,
+                Token::Case,
+                Token::OpenBlock,
+                ident_token("v"),
+                Token::CloseBlock,
+                Token::Of,
+                Token::OpenBlock,
+                ident_token("On"),
+                Token::Arrow,
+                Token::OpenBlock,
+                ident_token("Off"),
+                Token::CloseBlock,
+                ident_token("Off"),
+                Token::Arrow,
+                Token::OpenBlock,
+                ident_token("On"),
+                Token::CloseBlock, // closes the second branch's body (CaseBranch)
+                Token::CloseBlock, // closes the branch list (CaseBlock)
+                Token::Else,
+                ident_token("On"),
+                Token::CloseBlock,
+            ],
+        )
+    }
+
+    /// Regression for the review finding on `BUG-23`'s first fix: a `case`
+    /// branch whose body is itself a multi-line `if … then … else` must stay
+    /// open across that nested `if`'s `else` — the inverse shape of
+    /// `else_closes_case_block_opened_in_a_then_arm` above, where the `case`
+    /// is inside the `then` arm rather than the `if` being inside a branch.
+    ///
+    /// ```zel
+    /// f v w =
+    ///   case v of
+    ///     On ->
+    ///       if w then
+    ///         Off
+    ///       else
+    ///         On
+    ///
+    ///     Off ->
+    ///       On
+    /// ```
+    ///
+    /// The unconditional first fix popped `CaseBranch`/`CaseBlock` on seeing
+    /// any `Else`, so this `else` — which belongs to the nested `if`, not to
+    /// anything enclosing the `case` — closed the branch prematurely and the
+    /// rest of the branch's body (`On`) came out as a dangling token instead
+    /// of staying nested. The column-based version leaves this `else` alone:
+    /// it sits at the same column as the branch's own body content, deeper
+    /// than the column a real next branch pattern would need to dedent to.
+    ///
+    /// Verified to fail by reverting the `if token.start().column < *min`
+    /// guard back to an unconditional match on `(Token::Else,
+    /// Context::CaseBlock(Some(_)) | Context::CaseBranch)`: with that
+    /// version, the `Else` here pops `CaseBranch` immediately and the
+    /// expected `CloseBlock` before it never appears; `On` (the branch's
+    /// second constructor pattern) and the nested `if`'s own `else`/`On`
+    /// then diverge from what's asserted below.
+    #[test]
+    fn nested_if_else_inside_case_branch_does_not_close_case_block() {
+        test_layout_without_error(
+            vec![
+                ident_token("f"),
+                ident_token("v"),
+                ident_token("w"),
+                Token::Equal,
+                newline(),
+                indent(),
+                Token::Case,
+                ident_token("v"),
+                Token::Of,
+                newline(),
+                indent(),
+                indent(),
+                ident_token("On"),
+                Token::Arrow,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                Token::If,
+                ident_token("w"),
+                Token::Then,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("Off"),
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                Token::Else,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("On"),
+                newline(),
+                newline(),
+                indent(),
+                indent(),
+                ident_token("Off"),
+                Token::Arrow,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("On"),
+                newline(),
+            ],
+            vec![
+                Token::OpenBlock,
+                ident_token("f"),
+                ident_token("v"),
+                ident_token("w"),
+                Token::Equal,
+                Token::Case,
+                Token::OpenBlock,
+                ident_token("v"),
+                Token::CloseBlock,
+                Token::Of,
+                Token::OpenBlock,
+                ident_token("On"),
+                Token::Arrow,
+                Token::OpenBlock,
+                Token::If,
+                ident_token("w"),
+                Token::Then,
+                ident_token("Off"),
+                Token::Else,
+                ident_token("On"),
+                Token::CloseBlock, // closes the first branch's body (CaseBranch) — triggered by the next pattern, not by `else`
+                ident_token("Off"),
+                Token::Arrow,
+                Token::OpenBlock,
+                ident_token("On"),
+                Token::CloseBlock, // closes the second branch's body (CaseBranch)
+                Token::CloseBlock, // closes the branch list (CaseBlock)
+                Token::CloseBlock, // closes the top level declaration
             ],
         )
     }

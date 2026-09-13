@@ -41,8 +41,10 @@ Found while writing [`docs/spec/expressions.md`](../spec/expressions.md) (`SPEC-
 **Approach:** the fix is in the layout pass rather than the grammar: a `)` (and a `,`) at a
 column deeper than the enclosing `CaseBlock`'s must close that block before the token is
 emitted, the way a shallower line already does. That is the same class of question as
-[BUG-23](bug-23.md) — which token closes an open block — and the two are worth reading
-together, though neither is a prerequisite for the other.
+[BUG-23](README.md) — which token closes an open block — and the two were worth reading
+together, though neither was a prerequisite for the other. BUG-23 closed by making `else`
+close a `CaseBlock`/`CaseBranch` unconditionally, rather than by column; this ticket's `)`
+and `,` still need their own answer to the same question.
 
 Check the span arithmetic while there. The `case` production takes its end from the branches
 rather than from an `@R`, with a long comment explaining that an `@R` past `CaseBranch+` would

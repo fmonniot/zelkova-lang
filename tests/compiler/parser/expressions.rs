@@ -137,6 +137,80 @@ test_parse_ok!(
     ))
 );
 
+// `BUG-23`: a `case` in the `then` arm of an `if` is closed by its `else`.
+// Before the fix, the layout pass never emitted the `CloseBlock`s this needs
+// (see `else_closes_case_block_opened_in_a_then_arm` in `layout.rs`'s own
+// tests) and this source was rejected with a `LayoutError` on `Else` instead
+// of parsing to the `If` node below.
+test_parse_ok!(
+    case_in_then_arm_closed_by_else,
+    r#"
+    module Main exposing (..)
+
+    main =
+      if v then
+        case v of
+          On ->
+            Off
+
+          Off ->
+            On
+      else
+        On
+    "#,
+    module(expr_if(
+        Box::new(expr_var(name("v"))),
+        Box::new(expr_case(
+            Box::new(expr_var(name("v"))),
+            vec![
+                case_branch(pattern_ctor(name("On")), expr_ctor(name("Off"))),
+                case_branch(pattern_ctor(name("Off")), expr_ctor(name("On"))),
+            ],
+        )),
+        Box::new(expr_ctor(name("On"))),
+    ))
+);
+
+// Regression for a review finding on `BUG-23`'s first fix: the mirror shape
+// of `case_in_then_arm_closed_by_else` above, where the `if` is nested
+// *inside* a `case` branch's body instead of the `case` being nested inside
+// the `if`'s `then` arm. The nested `if`'s own `else` must not be mistaken
+// for something that closes the enclosing `case`'s branch — see
+// `nested_if_else_inside_case_branch_does_not_close_case_block` in
+// `layout.rs`'s own tests for the layout-only account of why the first,
+// unconditional fix got this wrong.
+test_parse_ok!(
+    case_branch_with_nested_if_else_not_closed_by_inner_else,
+    r#"
+    module Main exposing (..)
+
+    main =
+      case v of
+        On ->
+          if w then
+            Off
+          else
+            On
+
+        Off ->
+          On
+    "#,
+    module(expr_case(
+        Box::new(expr_var(name("v"))),
+        vec![
+            case_branch(
+                pattern_ctor(name("On")),
+                expr_if(
+                    Box::new(expr_var(name("w"))),
+                    Box::new(expr_ctor(name("Off"))),
+                    Box::new(expr_ctor(name("On"))),
+                ),
+            ),
+            case_branch(pattern_ctor(name("Off")), expr_ctor(name("On"))),
+        ],
+    ))
+);
+
 test_parse_ok!(
     if_else_if_else,
     r#"

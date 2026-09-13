@@ -579,7 +579,7 @@ an argument, a tuple element, an operator operand, or another `case`'s scrutinee
 A `case` in the `then` arm of an `if` ends where the `else` begins, the same as any other
 block that a following keyword closes:
 
-```zel expect=parse-error:LayoutError
+```zel expect=ok
 module Example exposing (Flag, f)
 
 type Flag
@@ -597,11 +597,6 @@ f c v =
   else
     On
 ```
-
-**Known gap:** that should be `expect=ok`. The `else` does not close the branch block, so a
-`case` in a `then` arm is followed by a layout error whatever the `else` is indented to — which
-makes the `then` arm the one position a `case` cannot occupy even though the `else` arm can.
-[`BUG-23`](../tickets/bug-23.md) is the ticket.
 
 ## `let … in`
 
