@@ -240,6 +240,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-26 | task | — | closed 2026-09-06 | Design rationale has nowhere to live, so it is kept in three unrelated places or lost |
 | SPEC-27 | task | — | closed 2026-09-08 | A derivation's `combine` must be a monoid and nothing checks it, at any point |
 | [SPEC-28](spec-28.md) | task | — | open | Two chapters disagree on `Int`'s range, and the tokenizer enforces a third bound |
+| [SPEC-29](spec-29.md) | task | — | open | `unsafe` marks 45 `std/core` signatures and none of the chapter's own examples |
+| [SPEC-30](spec-30.md) | task | — | open | `unsafe` outside a facade is rejected, and no chapter says so |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
