@@ -483,7 +483,12 @@ Import:Import = {
     }
 }
 
-// TODO Restrict variants: they aren't full fledge types (only the constructor part)
+// Variants are parsed as full types, which is wider than a variant may be — a
+// variant is a constructor name and its arguments, and nothing else. What narrows
+// it is `do_types` in `canonical/mod.rs`, which rejects every other `TypeKind`
+// with an `Error::InvalidVariant`. Giving `Union` its own `Variant` production
+// would make those a parse error instead, at the cost of the tailored message
+// canonicalization can write (`BUG-18` weighed the two).
 Union: UnionType = {
     <l:@L> "type" <name: TypeIdent> <type_arguments: VarIdent*> "=" <variants: Pipe<Type>> <r:@R> => {
         UnionType {

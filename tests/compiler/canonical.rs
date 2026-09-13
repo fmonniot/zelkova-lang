@@ -1663,3 +1663,178 @@ fn repeated_prefix_negation_nests() {
         op("+", neg(neg(var("a"))), var("b")),
     );
 }
+
+// ── A variant is a constructor name and its arguments ─────────────────────────
+//
+// `BUG-18`: the grammar parses a `type` declaration's variants with the general
+// `Type` production, so a tuple, an arrow or a bare name all reach `do_types`.
+// Every one of the four tests below asserts on the `InvalidVariantKind` and on
+// the caret's range, because "it is an error" is the cheap half of the claim —
+// the message the user reads and the text it underlines are the other half.
+//
+// All four are mutation-checked the same way: put the pre-fix `filter_map` back
+// in `do_types` — the one that kept `TypeKind::Unqualified` and answered `None`
+// for everything else — and each goes red on `expect_err`, because the
+// declaration canonicalizes with the variant gone. The fifth test guards the
+// complement, so it needs the opposite mutation; its own comment says which.
+
+/// The span a single-variant declaration's variant occupies in `source`, as the
+/// byte range a label under it must have.
+fn variant_range(source: &str, variant: &str) -> std::ops::Range<usize> {
+    let start = source
+        .find(variant)
+        .unwrap_or_else(|| panic!("source should contain `{}`", variant));
+    start..(start + variant.len())
+}
+
+/// The one label an `InvalidVariant` renders, for a source with exactly one error.
+fn only_invalid_variant_label(errors: &[canonical::Error]) -> zelkova_lang::compiler::SpanLabel {
+    use zelkova_lang::compiler::PhaseError;
+
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    labels.into_iter().next().unwrap()
+}
+
+/// A lowercase name in variant position — the mistyped constructor — is rejected,
+/// and says that a constructor name is capitalised.
+#[test]
+fn lowercase_name_in_variant_position_is_rejected() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Colour
+          = red
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("`red` is not a constructor name");
+
+    match &errors[0] {
+        canonical::Error::InvalidVariant(canonical::InvalidVariantKind::LowercaseName(n), _) => {
+            assert_eq!(n.as_str(), "red")
+        }
+        other => panic!("expected InvalidVariant(LowercaseName), got {:?}", other),
+    }
+
+    assert!(
+        errors[0].message().contains("uppercase"),
+        "a lowercase name deserves the capitalisation message, got {:?}",
+        errors[0].message()
+    );
+
+    assert_eq!(
+        only_invalid_variant_label(&errors).span.to_range(),
+        variant_range(source, "red"),
+        "the caret must sit under the variant, not the whole declaration"
+    );
+}
+
+/// A type variable in variant position is the same failure as any other lowercase
+/// name, even when the declaration does bind that variable.
+#[test]
+fn type_variable_in_variant_position_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Bad a
+          = a
+    "#};
+
+    let errors =
+        canonicalize_standalone(source).expect_err("`a` is a type variable, not a variant");
+
+    match &errors[0] {
+        canonical::Error::InvalidVariant(canonical::InvalidVariantKind::LowercaseName(n), _) => {
+            assert_eq!(n.as_str(), "a")
+        }
+        other => panic!("expected InvalidVariant(LowercaseName), got {:?}", other),
+    }
+
+    // `a` alone appears in `type Bad a` first, so the search anchors on the `=`.
+    let start = source.find("= a").expect("source declares `Bad`") + "= ".len();
+    assert_eq!(
+        only_invalid_variant_label(&errors).span.to_range(),
+        start..(start + "a".len()),
+        "the caret must sit under the variant"
+    );
+}
+
+/// A tuple type in variant position is rejected, with the caret over the
+/// parenthesised type.
+#[test]
+fn tuple_in_variant_position_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Pair
+          = (Int, Int)
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("a tuple is not a variant");
+
+    match &errors[0] {
+        canonical::Error::InvalidVariant(canonical::InvalidVariantKind::Tuple, _) => (),
+        other => panic!("expected InvalidVariant(Tuple), got {:?}", other),
+    }
+
+    assert_eq!(
+        only_invalid_variant_label(&errors).span.to_range(),
+        variant_range(source, "(Int, Int)"),
+        "the caret must cover the whole tuple"
+    );
+}
+
+/// A function type in variant position is rejected, and the caret covers the
+/// constructor on the arrow's left too: `Wrap Int -> Int` is one `Arrow` node with
+/// `Wrap Int` as its left operand, so there is no variant here to keep.
+#[test]
+fn function_type_in_variant_position_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Wrapper
+          = Wrap Int -> Int
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("an arrow is not a variant");
+
+    match &errors[0] {
+        canonical::Error::InvalidVariant(canonical::InvalidVariantKind::Arrow, _) => (),
+        other => panic!("expected InvalidVariant(Arrow), got {:?}", other),
+    }
+
+    assert_eq!(
+        only_invalid_variant_label(&errors).span.to_range(),
+        variant_range(source, "Wrap Int -> Int"),
+        "the caret must cover the whole function type, `Wrap` included"
+    );
+}
+
+/// A declaration whose variants are constructor applications still canonicalizes:
+/// the check rejects the other shapes and leaves this one alone.
+///
+/// Mutation-checked in the other direction from the four above — the pre-fix
+/// `filter_map` keeps this green. Making the `TypeKind::Unqualified` arm of
+/// `do_types` return an `InvalidVariant` too turns it red on `Just`.
+#[test]
+fn constructor_applications_remain_valid_variants() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Maybe a
+          = Just a
+          | Nothing
+    "#};
+
+    let module =
+        canonicalize_standalone(source).expect("constructor applications are valid variants");
+
+    let union = module
+        .types
+        .get(&"Maybe".into())
+        .expect("Maybe should be declared");
+    let names: Vec<_> = union
+        .variants
+        .iter()
+        .map(|v| v.name.as_str().to_owned())
+        .collect();
+    assert_eq!(names, vec!["Just".to_owned(), "Nothing".to_owned()]);
+}
