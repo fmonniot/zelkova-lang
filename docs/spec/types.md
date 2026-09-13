@@ -521,7 +521,7 @@ combine a b =
 The conventional way to break a long signature is one argument per line, with each continuation
 line starting with the arrow:
 
-```zel expect=parse-error:IndentationError
+```zel expect=ok
 module Example exposing (Size, combine)
 
 type Size
@@ -533,13 +533,6 @@ combine : Size
 combine a b =
   a
 ```
-
-**Known gap:** that block should be `expect=ok`. A line whose first token starts with `-`
-leaves the tokenizer believing it is still scanning leading whitespace, so the spaces *after*
-the `->` are measured against the two-space indentation rule and an odd number of them is
-reported as an indentation error. Whether the line is accepted therefore depends on the parity
-of a space run in the middle of it — `  ->Size` and `  ->  Size` both pass.
-[`docs/tickets/bug-19.md`](../tickets/bug-19.md) is the ticket.
 
 ### The annotation and the declaration's parameters
 
