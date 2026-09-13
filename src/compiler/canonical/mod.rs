@@ -1298,6 +1298,15 @@ pub fn canonicalize(
             errors.extend(e);
         }
 
+        // Register each binding as a top-level value before resolving any of
+        // them, the same as the non-`javascript` branch below — otherwise
+        // `do_exports`'s existence check (`BUG-8`) would reject a facade
+        // exposing its own declared binding, since nothing would have told
+        // `env` the binding exists.
+        for f in source.functions.iter() {
+            env.insert_top_level_value(f.name.clone());
+        }
+
         // Iterate on values
         let iter = source.functions.iter().map(|function| {
             // Make sure there is no binding
@@ -1586,9 +1595,13 @@ fn do_infixes(
     collect_accumulate(iter)
 }
 
-// `BUG-8`: only the `Operator` arm below checks that the exposed name actually
-// exists — a `Lower` or `Upper` name in a module's own `exposing (...)` header is
-// accepted unconditionally even when nothing by that name is declared.
+// Every arm below checks that the name it names actually resolves in `env`
+// before accepting it — a `Lower`/`Upper`/`Operator` name in a module's own
+// `exposing (...)` header that nothing declares is `Error::ExportNotFound`
+// rather than silently accepted (`BUG-8`). `Upper`'s two arms differ only in
+// which `ExportType` they report on success: `Privacy` governs whether the
+// type's constructors are exposed, not whether the type itself exists, so
+// both check existence with `find_type` the same way.
 fn do_exports(
     source_exposing: &parser::Exposing,
     env: &dyn Environment,
@@ -1597,12 +1610,42 @@ fn do_exports(
         parser::Exposing::Open => Ok(Exports::Everything),
         parser::Exposing::Explicit(exposed) => {
             let specifics = exposed.iter().map(|exposed| match &exposed.kind {
-                parser::ExposedKind::Lower(name) => Ok((name.clone(), ExportType::Value)),
+                parser::ExposedKind::Lower(name) => {
+                    if env.find_value(name).is_some() {
+                        Ok((name.clone(), ExportType::Value))
+                    } else {
+                        Err(Error::ExportNotFound(
+                            name.clone(),
+                            ExportType::Value,
+                            exposed.span,
+                        ))
+                    }
+                }
+                // Privacy governs whether the type's constructors are exposed,
+                // not whether the type itself exists — both arms check
+                // existence the same way, and only the `ExportType` they
+                // report on success differs.
                 parser::ExposedKind::Upper(name, parser::Privacy::Public) => {
-                    Ok((name.clone(), ExportType::UnionPublic))
+                    if env.find_type(name).is_some() {
+                        Ok((name.clone(), ExportType::UnionPublic))
+                    } else {
+                        Err(Error::ExportNotFound(
+                            name.clone(),
+                            ExportType::UnionPublic,
+                            exposed.span,
+                        ))
+                    }
                 }
                 parser::ExposedKind::Upper(name, parser::Privacy::Private) => {
-                    Ok((name.clone(), ExportType::UnionPrivate))
+                    if env.find_type(name).is_some() {
+                        Ok((name.clone(), ExportType::UnionPrivate))
+                    } else {
+                        Err(Error::ExportNotFound(
+                            name.clone(),
+                            ExportType::UnionPrivate,
+                            exposed.span,
+                        ))
+                    }
                 }
                 parser::ExposedKind::Operator(name) => {
                     if env.local_infix_exists(name) {
