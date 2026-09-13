@@ -1,4 +1,4 @@
-module javascript Js.Bitwise exposing
+module foreign Js.Bitwise exposing
   ( and, or, xor, complement
   , shiftLeftBy, shiftRightBy, shiftRightZfBy
   )

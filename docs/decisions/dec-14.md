@@ -98,8 +98,7 @@ settles how a companion is found and emitted.
 ## 4 — The layout is adopted before anything can run it
 
 Nothing above runs: `tests/` is not a root the compiler knows
-([`LANG-15`](../tickets/lang-15.md)), `foreign` is not a word the grammar knows
-([`LANG-54`](../tickets/lang-54.md)), no wrapper is generated around an effectful call
+([`LANG-15`](../tickets/lang-15.md)), no wrapper is generated around an effectful call
 ([`GEN-1`](../tickets/gen-1.md)), and there is no `zelkova-test` and no runner.
 
 The alternative was to place the file where decision 1's runner-up put it and move it when the

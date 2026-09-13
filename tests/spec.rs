@@ -21,7 +21,7 @@
 //!   [`typer::type_check`] skips silently — a bare `continue`, not an error — any
 //!   declaration whose function head holds a constructor or tuple pattern, any body
 //!   reaching a `VarForeign` or an expression form its term language does not model,
-//!   any `ErrorKind::UnboundVariable`, and any `binding_javascript` module whole. Its
+//!   any `ErrorKind::UnboundVariable`, and any `binding_foreign` module whole. Its
 //!   own doc comment is the account of why. Across `docs/spec/` that is roughly one
 //!   declaration in ten, so a green `expect=ok` block may still hold an annotation its
 //!   body contradicts — `docs/spec/conventions.md`'s row carries the same caveat for

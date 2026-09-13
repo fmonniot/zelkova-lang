@@ -5,7 +5,7 @@ use zelkova_lang::compiler::parser::*;
 fn module_custom_type(tpe: UnionType) -> Module {
     Module {
         name: name("Main"),
-        binding_javascript: false,
+        binding_foreign: false,
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![],
@@ -17,7 +17,7 @@ fn module_custom_type(tpe: UnionType) -> Module {
 fn module_function_type(tpe: Type) -> Module {
     Module {
         name: name("Main"),
-        binding_javascript: false,
+        binding_foreign: false,
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![],

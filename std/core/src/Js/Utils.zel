@@ -1,4 +1,4 @@
-module javascript Js.Utils exposing
+module foreign Js.Utils exposing
   ( equal, notEqual
   , lt, le, gt, ge, compare, append
   )

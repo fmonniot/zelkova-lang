@@ -525,17 +525,17 @@ fn open_exposing_with_unannotated_declaration_is_error() {
     }
 }
 
-// ── Scenario 8: JS binding module ────────────────────────────────────────────
+// ── Scenario 8: `module foreign` facade ──────────────────────────────────────
 
 #[test]
-fn javascript_binding_module() {
+fn foreign_facade_module() {
     let source = indoc::indoc! {r#"
-        module javascript Test exposing (add)
+        module foreign Test exposing (add)
         add : Int -> Int -> Int
     "#};
     let module = canonicalize_standalone(source).expect("should canonicalize");
 
-    // JS binding values get a placeholder body of Bool(true) (see TODO in
+    // A facade's values get a placeholder body of Bool(true) (see TODO in
     // canonical/mod.rs — the compiler doesn't yet have a dedicated binding
     // expression variant).
     assert_eq!(

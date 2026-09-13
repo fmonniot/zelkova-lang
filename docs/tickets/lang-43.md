@@ -4,13 +4,13 @@
 variant; what makes it medium is that landing it stops `std/core` compiling until twelve
 signatures are rewritten, and that rewrite is part of this ticket.
 
-**Location:** `src/compiler/canonical/mod.rs` — the `if source.binding_javascript` branch of
+**Location:** `src/compiler/canonical/mod.rs` — the `if source.binding_foreign` branch of
 `canonicalize`, at the `Type::from_parser_type(&env, tpe)?` call that resolves a facade's
 annotation; the `Error` enum in the same file. Then `std/core/src/Js/Basics.zel` and
 `std/core/src/Js/Utils.zel`, plus whatever in `std/core/src/Basics.zel` re-exports them.
 
 **Problem:** [Foreign interoperability](../spec/interop.md#which-types-may-cross-the-boundary)
-settles which types a `module javascript` facade signature may name. A type is admitted exactly when the
+settles which types a `module foreign` facade signature may name. A type is admitted exactly when the
 compiler can emit a predicate that decides, from a value alone, whether that value belongs to
 it — which admits the primitives, tuples, records, lists and union types applied to admitted
 types, and rejects the two forms that have no such predicate: a **type variable** and a
@@ -28,9 +28,9 @@ and covered by the one **Known gap:** paragraph that follows them and names this
 - `equal : a -> a -> Bool`, a facade over a bare type variable.
 - `count : (Int -> Bool) -> Int -> Int`, a facade taking a function.
 
-Both fail on the `foreign` modifier today rather than on the type, so [`LANG-54`](lang-54.md)
-turns them **red** by making them canonicalize cleanly. This ticket is what rejects them for the
-reason the chapter gives, and it deletes that **Known gap:** paragraph in the same diff.
+Both canonicalize cleanly today, so both blocks are **red** on their `expect=unimplemented`
+tag. This ticket is what rejects them for the reason the chapter gives, and it deletes that
+**Known gap:** paragraph in the same diff.
 
 **Approach:**
 
@@ -101,7 +101,7 @@ you have seen it fail*).
 implemented there, because a spec change and a semantics change do not share a diff
 ([conventions](../spec/conventions.md#a-spec-change-and-a-semantics-change-do-not-share-a-diff)).
 
-**Acceptance:** a `module javascript` facade whose signature names a type variable or a function
+**Acceptance:** a `module foreign` facade whose signature names a type variable or a function
 type is rejected with a diagnostic whose caret sits under that annotation. The two `expect=ok`
 blocks named above are retagged and their **Known gap:** paragraph deleted, and `cargo test
 --test spec` is green. `cargo run` prints `parsed 8 modules` and lists all eight.

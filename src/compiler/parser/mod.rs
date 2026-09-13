@@ -147,7 +147,7 @@ impl Type {
 #[derive(Debug, PartialEq)]
 pub struct Module {
     pub name: Name,
-    pub binding_javascript: bool,
+    pub binding_foreign: bool,
     pub exposing: Exposing,
     pub imports: Vec<Import>,
     pub infixes: Vec<Infix>,
@@ -162,7 +162,7 @@ impl Module {
         exposing: Exposing,
         declarations: Vec<Declaration>,
     ) -> Module {
-        let binding_javascript = matches!(modifier, Some(tokenizer::Token::Javascript));
+        let binding_foreign = matches!(modifier, Some(tokenizer::Token::Foreign));
 
         let mut imports = vec![];
         let mut types = vec![];
@@ -192,7 +192,7 @@ impl Module {
             // The declarations that make one function were parsed independently, so
             // the function's span is the union of theirs: the annotation merged with
             // every binding. `merge` tolerates a missing half, which is what an
-            // annotation with no body (a `module javascript` facade) needs.
+            // annotation with no body (a `module foreign` facade) needs.
             let mut span = NodeSpan::none();
             // The annotation on its own, kept beside the merged span because a type
             // error points at the annotation to say where the expected type came from.
@@ -220,7 +220,7 @@ impl Module {
 
         Module {
             name,
-            binding_javascript,
+            binding_foreign,
             exposing,
             imports,
             infixes,

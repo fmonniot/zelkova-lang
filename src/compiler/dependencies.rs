@@ -477,7 +477,7 @@ mod tests {
 
         Module {
             name: Name::new(name),
-            binding_javascript: false,
+            binding_foreign: false,
             exposing: Exposing::Open,
             imports,
             infixes: vec![],
@@ -512,7 +512,7 @@ mod tests {
             infixes: HashMap::new(),
             types: HashMap::new(),
             values: HashMap::new(),
-            binding_javascript: false,
+            binding_foreign: false,
         }
     }
 

@@ -36,9 +36,8 @@ unsafe idiv : Int -> Int -> Int
 Two signatures rather than one, because a facade names the types the code behind it really
 handles: the division behind `fdiv` divides, the one behind `idiv` truncates.
 
-**Not implemented:** `foreign` is not a word the grammar knows. The modifier is spelled
-`javascript` today ([`LANG-54`](../tickets/lang-54.md)), so every block below that declares a
-facade fails to parse on its header.
+**Not implemented:** `unsafe` is an ordinary identifier today, so neither signature above
+parses ([`LANG-53`](../tickets/lang-53.md)).
 
 ## A facade names a boundary, not a backend
 
@@ -118,7 +117,7 @@ mechanisms:
 
 A signature may name any of those, in any position an argument or a result may take.
 
-```zel expect=unimplemented
+```zel expect=ok
 module foreign Core.Colour exposing
   ( rgb
   , luminance
@@ -159,7 +158,7 @@ predicate of the type that constructor declares for it.
 In WebAssembly it is a `variant` with one case per constructor, named after it, carrying that
 constructor's arguments as its payload — a `tuple` of them where there is more than one.
 
-```zel expect=ok
+```zel expect=ok package=union
 module Palette exposing (Swatch(..))
 
 type Swatch
@@ -167,7 +166,7 @@ type Swatch
   | Rgb Int Int Int
 ```
 
-```zel expect=unimplemented
+```zel expect=ok package=union
 module foreign Core.Palette exposing
   ( toHex
   )
@@ -218,9 +217,8 @@ count : (Int -> Bool) -> Int -> Int
 **Known gap:** neither signature is admitted — `equal` names a type variable, `count` takes a
 function — and nothing rejects either. A facade annotation is resolved exactly as any other
 annotation is, so every type a normal module may write, a facade may write.
-[`LANG-43`](../tickets/lang-43.md) is the check. Both blocks fail on the modifier today rather
-than on the type, so both go red when [`LANG-54`](../tickets/lang-54.md) lands and stay red until
-`LANG-43` follows it.
+Both blocks carry the rejection tag the rule calls for, and both are red until
+[`LANG-43`](../tickets/lang-43.md) adds the check.
 
 **Not implemented:** a class constraint is rejected on the same grounds, `Comparable a => a`
 being a signature over `a`. A constrained function is specialised, and a facade has no body to
@@ -309,13 +307,13 @@ inside another type.
 (Result IoError String))` — two `Result`s, collapsed into one by the module that
 [publishes `read`](packages.md#what-a-package-exposes) to other packages.
 
-**Not implemented:** neither block above parses, on two counts. A type argument must be a bare
-name today, so the parentheses in `Task (Result Failure String)` are a syntax error
+**Not implemented:** neither block above parses. A type argument must be a bare name today, so
+the parentheses in `Task (Result Failure String)` are a syntax error
 ([`LANG-9`](../tickets/lang-9.md)) — the same gap that rejects `Maybe (Maybe Int)` and every
-other nested type — and the modifier is [`LANG-54`](../tickets/lang-54.md)'s. Nothing declares
-`Task` or `Failure` either, no wrapper is generated, and nothing is checked at either boundary
-([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)); no check holds a facade to the
-result type above, which is [`LANG-43`](../tickets/lang-43.md)'s.
+other nested type. Nothing declares `Task` or `Failure` either, no wrapper is generated, and
+nothing is checked at either boundary ([`GEN-1`](../tickets/gen-1.md),
+[`GEN-2`](../tickets/gen-2.md)); no check holds a facade to the result type above, which is
+[`LANG-43`](../tickets/lang-43.md)'s.
 
 ## An `unsafe` facade
 
@@ -349,14 +347,14 @@ exactly as any other crossing is, and a value that fails
 
 **Not implemented:** the block does not parse. `unsafe` is an ordinary identifier today, so
 `unsafe idiv : Int -> Int -> Int` reads as two names where the grammar expects one
-([`LANG-53`](../tickets/lang-53.md)), the modifier is [`LANG-54`](../tickets/lang-54.md)'s, and
-nothing holds an unmarked facade to a `Task` result either.
+([`LANG-53`](../tickets/lang-53.md)), and nothing holds an unmarked facade to a `Task` result
+either.
 
 ## Facade constants
 
 A facade signature may also declare a constant — a type with no arrow, taking no arguments.
 
-```zel expect=unimplemented
+```zel expect=ok
 module foreign Core.Basics exposing
   ( pi
   , e
@@ -386,10 +384,6 @@ A facade constant has no Zelkova body to place in that order: it names a foreign
 directly, so it is evaluated on whatever schedule the target gives that — when the `.mjs` module
 exporting it is evaluated, or when the component's export is called — and nothing here promises
 it happens once, lazily, or at any particular point relative to the rest of the program.
-
-**Not implemented:** the block fails on its modifier ([`LANG-54`](../tickets/lang-54.md)), which
-is the whole of what stands between it and compiling: a constant signature is an annotation with
-no body, which a facade already accepts.
 
 ## Testing a companion
 
@@ -462,9 +456,8 @@ A runner finds [a value of type `Test` a module under `tests/`
 exposes](packages.md#what-a-test-is), so `Core.PrimTest` imports the facade and exposes one per
 check.
 
-**Not implemented:** none of this runs. The `zel` block fails on its modifier
-([`LANG-54`](../tickets/lang-54.md)) and on the parentheses in its result type
-([`LANG-9`](../tickets/lang-9.md)), and [`()` is not recognised](types.md#the-unit-type) in
+**Not implemented:** none of this runs. The `zel` block fails on the parentheses in its result
+type ([`LANG-9`](../tickets/lang-9.md)), and [`()` is not recognised](types.md#the-unit-type) in
 either position. A package has one source root and no notion of a test
 ([`LANG-15`](../tickets/lang-15.md)), nothing declares `Task` or `Failure`, no wrapper is
 generated around an effectful call ([`GEN-1`](../tickets/gen-1.md),

@@ -5,7 +5,7 @@ use zelkova_lang::compiler::tuple::Tuple;
 fn module(body: Expression) -> Module {
     Module {
         name: name("Main"),
-        binding_javascript: false,
+        binding_foreign: false,
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![],

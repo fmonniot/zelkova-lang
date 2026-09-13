@@ -9,13 +9,12 @@ half has a real choice in it (step 1 below).
 Some(Token::Javascript)`; `src/compiler/parser/grammar.lalrpop` — the token map, and the
 `FunType` production (`<name:VarIdent> ":" <tpe:Type>`), which is what a facade declaration
 parses as; `src/compiler/parser/mod.rs` — `FunType`, and `Module::from_declarations` where
-`binding_javascript` is already derived from the module modifier;
-`src/compiler/canonical/mod.rs` — the `if source.binding_javascript` branch of `canonicalize`.
+`binding_foreign` is already derived from the module modifier;
+`src/compiler/canonical/mod.rs` — the `if source.binding_foreign` branch of `canonicalize`.
 Then all three of `std/core/src/Js/*.zel`.
 
 **Depends on:** nothing hard. [`LANG-9`](lang-9.md) gates *half* the acceptance below and not the
-other half — see step 4, and [`LANG-54`](lang-54.md) gates the retagging, every facade block in
-the spec naming the `foreign` modifier.
+other half — see step 4.
 
 **Problem:** [Foreign interoperability](../spec/interop.md) settles two rules the compiler has
 neither of.
@@ -44,12 +43,10 @@ is the shape the chapter now rejects.
    keyword — a keyword before a name in a facade signature, an ordinary identifier everywhere
    else, so `unsafe : Int` stays a facade constant of that name and `unsafe f : Int` is the
    modifier. Two ways to get there:
-   - **Reserve it outright**, the way `javascript` is really handled today (`tokenizer.rs`
-     returns `Token::Javascript` unconditionally, and `lexical-structure.md` carries a
-     **Known gap:** saying so). Half a day, and it takes a plausible identifier out of the
-     language — and adds a second word to the inconsistency [`LANG-2`](lang-2.md) exists to
-     undo, rather than clearing it. The `expect=ok` block in that chapter listing the soft
-     keywords as ordinary names goes red if this route is taken.
+   - **Reserve it outright**, so `tokenizer.rs` returns a distinct token for it in every
+     position. Half a day, and it takes a plausible identifier out of the language. The
+     `expect=ok` block in `lexical-structure.md` listing the soft keywords as ordinary names
+     goes red if this route is taken.
    - **Make it genuinely soft**, which needs the tokenizer to keep emitting
      `LowerIdentifier("unsafe")` and the grammar to distinguish the two readings on the token
      *after* it. `derived` has the same shape and is also unimplemented, so there is no prior art
@@ -93,11 +90,10 @@ facade default and needed a word for the exception. Specified but not implemente
 [a spec change and a semantics change do not share a
 diff](../spec/conventions.md#a-spec-change-and-a-semantics-change-do-not-share-a-diff).
 
-**Acceptance:** `unsafe fdiv : Float -> Float -> Float` parses inside a `module javascript`
+**Acceptance:** `unsafe fdiv : Float -> Float -> Float` parses inside a `module foreign`
 header and is rejected outside one, and the flag is readable on the canonical declaration. All 45
 `std/core` facade signatures carry the word and `cargo run` prints `parsed 8 modules` and lists
-all eight. Four `expect=unimplemented` blocks go red and are retagged `expect=ok` in the same diff, once
-[`LANG-54`](lang-54.md) has landed — each names the `foreign` modifier and fails on that first.
+all eight. Four `expect=unimplemented` blocks go red and are retagged `expect=ok` in the same diff.
 They are the `Core.Prim` and `Core.Basics` blocks in [`interop.md`](../spec/interop.md) and
 `unsafe square` / `unsafe next` in
 [`evaluation-semantics.md`](../spec/evaluation-semantics.md) — and their **Not implemented:**
