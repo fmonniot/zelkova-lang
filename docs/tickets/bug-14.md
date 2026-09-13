@@ -76,10 +76,10 @@ Under option 1 the check belongs where the `exposing` list is already walked —
 (`canonical/mod.rs`), which is the one place that knows both what a module exposes and what it
 declared, and already returns into a `Vec<canonical::Error>`. It wants a new `Error` variant
 naming the declaration, with the caret under the name in the `exposing` list (`parser::Exposed`
-carries a span — `ERR-9`) and a secondary label on the unannotated declaration itself. Note
-[BUG-8](bug-8.md) is a defect in that same function and is worth reading first: `do_exports`
-does not today check that an exposed `Lower` name exists at all, so the walk this check hangs
-off is one that has to be written either way.
+carries a span — `ERR-9`) and a secondary label on the unannotated declaration itself.
+[BUG-8](README.md) closed a related defect in that same function: `do_exports` now checks that
+an exposed `Lower`/`Upper` name exists at all, so the walk this check hangs off already exists
+to build on.
 
 `std/core/src/` costs nothing here: checked while the rule was decided, every value exposed by
 each of the eight compiling modules already carries an annotation, so none of them becomes an

@@ -197,13 +197,11 @@ A module may not re-export something it imported: a name that reaches other modu
 through `Widget` is a name `Widget` declared.
 
 **Known gap:** the last of the three blocks below should also be rejected — it exposes a
-name it only imported, not one it declared itself. `do_exports` (`canonical/mod.rs`) checks
-that a `Lower` or `Upper` entry resolves to something in scope, the same way it already did
-for an operator entry, so the first block below — a name nothing declares — is now an
-error. That check does not yet distinguish a local declaration from an imported one, though:
-the same lookup answers both, so a name an `import ... exposing (...)` brought in reads
-exactly like one the module wrote itself, and the last block is tagged for what it still
-does.
+name it only imported, not one it declared itself. A name nothing declares at all is now an
+error, the same way an undeclared operator entry already was. But a name an
+`import ... exposing (...)` brought in still reads exactly like one the module wrote itself,
+so the last block is tagged for what it still does
+([`docs/tickets/bug-31.md`](../tickets/bug-31.md)).
 
 ```zel expect=canonical-error:ExportNotFound
 module Widget exposing (missing)
