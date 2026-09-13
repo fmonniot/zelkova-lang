@@ -54,17 +54,11 @@ as a whole.
 A block comment ends exactly at its closing `-}`. Whatever follows on that line is ordinary
 source text. A block comment may appear anywhere a space may.
 
-```zel expect=parse-error:UnrecognizedToken
+```zel expect=ok
 module Example exposing (f)
 
 f = {- a note -} 1
 ```
-
-**Known gap:** that block should be `expect=ok` — it is valid Zelkova. Block comments are
-recognised today only in a line's leading whitespace, so the `{` here is not read as opening
-a comment at all and the tokenizer rejects it as an unrecognised character.
-[`docs/tickets/bug-13.md`](../tickets/bug-13.md) tracks this and the two below, which are the
-same defect seen from other angles.
 
 ```zel expect=parse-error:UnexpectedToken
 module Example exposing (f)
@@ -73,11 +67,15 @@ module Example exposing (f)
   1
 ```
 
-**Known gap:** that block should be `expect=ok` too. Here the comment *is* recognised, being
-at the start of a line, but the closing `-}` discards the rest of the line along with itself,
-so `f =` never reaches the parser and the `1` beneath it is left with nothing to belong to.
+**Known gap:** that block should be `expect=ok`. The comment itself is read correctly — it is
+recognised at the start of the line, ends at its own `-}`, and does not swallow the `f =` that
+follows — but the declaration is then rejected anyway, for a reason that has nothing to do with
+comments: a top-level declaration whose first token is not at column 1 fails to parse, and here
+that first token (`f`) sits after the comment rather than at column 1. The same rejection
+reproduces with no comment involved at all — a plain, correctly 2-space-indented `  f = 1` fails
+identically. [`docs/tickets/bug-29.md`](../tickets/bug-29.md) tracks it.
 
-```zel expect=parse-error:IndentationError
+```zel expect=ok
 module Example exposing (f)
 
 {- outer
@@ -87,22 +85,15 @@ module Example exposing (f)
 f = 1
 ```
 
-**Known gap:** that block should be `expect=ok`. Comments do not nest today, so the inner
-`-}` closes the whole comment; `still outer` is then read as source, and its three-space
-indentation is what the tokenizer complains about.
-
 Reaching the end of a file inside a block comment is an error. A stray `{-` cannot delete
 the rest of a file without saying so.
 
-```zel expect=ok
+```zel expect=parse-error:UnclosedBlockComment
 module Example exposing (f)
 
 f = 1
 {- oops, never closed
 ```
-
-**Known gap:** that block should be rejected. Today the tokenizer runs to end-of-file and
-stops, accepting the file. Also [`bug-13`](../tickets/bug-13.md).
 
 A comment beginning `{-|` is an ordinary block comment. The convention that such a comment
 documents the declaration below it, and the `@docs` markup used inside the module-level one,

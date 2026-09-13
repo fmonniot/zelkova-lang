@@ -56,8 +56,9 @@ Nothing about the language distinguishes those three. Only the parity of a run o
 the middle of a line does, which is the rule this code was applying to the wrong text.
 
 The `Some('{')` arm has the identical shape. It has no observable consequence today only
-because `{` is not a token the tokenizer knows — see [BUG-13](bug-13.md) — so fix both arms
-together rather than leaving one to surface when block comments are.
+because a lone `{` not opening a `{-` comment is still not a token the tokenizer knows — see
+[BUG-13](README.md) — so fix both arms together rather than leaving one to surface if that
+ever changes.
 
 Found while writing [`docs/spec/types.md`](../spec/types.md) (`SPEC-5`), whose *An annotation
 may span several lines* section carries the tagged block.
