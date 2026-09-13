@@ -653,3 +653,167 @@ fn tuple_pattern_span_covers_the_parentheses() {
         })
     );
 }
+
+// `unsafe`, the soft keyword before a facade signature
+//
+// Three readings share the word, and the grammar tells them apart by the token
+// *after* it. Each of the three is pinned below, because the LALR(1) factoring
+// that makes them distinguishable (see `FunType`/`FunBinding` in
+// `grammar.lalrpop`) is easy to write in a way that silently loses one.
+
+// `unsafe f : T` — the modifier, marking the signature of `f`.
+//
+// Verified to fail by making the marked production set `marked_unsafe: false`.
+test_parse_ok!(
+    unsafe_marks_a_facade_signature,
+    r#"
+    module foreign Prim exposing ( idiv )
+
+    unsafe idiv : Int -> Int
+    "#,
+    Module {
+        name: name("Prim"),
+        binding_foreign: true,
+        exposing: Exposing::Explicit(vec![Exposed::bare(ExposedKind::Lower(name("idiv")))]),
+        imports: vec![],
+        infixes: vec![],
+        types: vec![],
+        functions: vec![Function {
+            name: name("idiv"),
+            tpe: Some(type_arrow(
+                type_unqualified(name("Int")),
+                type_unqualified(name("Int")),
+            )),
+            marked_unsafe: true,
+            bindings: vec![],
+            span: no_span(),
+            annotation_span: no_span(),
+        }],
+    }
+);
+
+// `unsafe : T` — a signature for a value *named* `unsafe`, not a modifier with
+// nothing after it.
+//
+// Verified to fail by deleting the `"unsafe" ":" Type` alternative from
+// `FunType`, which makes this a parse error.
+test_parse_ok!(
+    unsafe_alone_is_a_name,
+    r#"
+    module foreign Prim exposing ( unsafe )
+
+    unsafe : Int
+    "#,
+    Module {
+        name: name("Prim"),
+        binding_foreign: true,
+        exposing: Exposing::Explicit(vec![Exposed::bare(ExposedKind::Lower(name("unsafe")))]),
+        imports: vec![],
+        infixes: vec![],
+        types: vec![],
+        functions: vec![Function {
+            name: name("unsafe"),
+            tpe: Some(type_unqualified(name("Int"))),
+            marked_unsafe: false,
+            bindings: vec![],
+            span: no_span(),
+            annotation_span: no_span(),
+        }],
+    }
+);
+
+// `unsafe = …` — an ordinary binding of that name, which is what
+// [Reserved words](../../../docs/spec/lexical-structure.md#reserved-words)
+// promises a soft keyword leaves available.
+//
+// Verified to fail by deleting the `"unsafe"`-led alternative from `FunBinding`.
+test_parse_ok!(
+    unsafe_is_an_ordinary_binding_name,
+    r#"
+    module Main exposing (..)
+
+    unsafe = 6
+    "#,
+    Module {
+        name: name("Main"),
+        binding_foreign: false,
+        exposing: Exposing::Open,
+        imports: vec![],
+        infixes: vec![],
+        types: vec![],
+        functions: vec![Function {
+            name: name("unsafe"),
+            tpe: None,
+            marked_unsafe: false,
+            bindings: vec![Match {
+                patterns: vec![],
+                body: expr_lit(Literal::Int(6)),
+                span: no_span(),
+            }],
+            span: no_span(),
+            annotation_span: no_span(),
+        }],
+    }
+);
+
+// And it still takes parameters: `unsafe x = x` is a one-argument function of
+// that name, not a modifier over a nameless signature. This is the reading the
+// modifier is closest to stealing — the two differ only at the `=` against the
+// `:`, three tokens in.
+//
+// Verified to fail by passing `Vec::new()` in place of `patterns` in
+// `FunBinding`'s `"unsafe"` alternative.
+test_parse_ok!(
+    unsafe_is_an_ordinary_function_name,
+    r#"
+    module Main exposing (..)
+
+    unsafe x = x
+    "#,
+    Module {
+        name: name("Main"),
+        binding_foreign: false,
+        exposing: Exposing::Open,
+        imports: vec![],
+        infixes: vec![],
+        types: vec![],
+        functions: vec![Function {
+            name: name("unsafe"),
+            tpe: None,
+            marked_unsafe: false,
+            bindings: vec![Match {
+                patterns: vec![Pattern::new(no_span(), PatternKind::Variable(name("x")))],
+                body: expr_var(name("x")),
+                span: no_span(),
+            }],
+            span: no_span(),
+            annotation_span: no_span(),
+        }],
+    }
+);
+
+/// Away from that one position the word is a name like any other: a parameter
+/// pattern, an expression, a type variable. `VarIdent` is what re-admits it, and
+/// the declaration productions above are careful not to be the only place it can
+/// be spelled.
+///
+/// Verified to fail by removing `"unsafe" => Name::new("unsafe")` from `VarIdent`.
+#[test]
+fn unsafe_is_an_identifier_away_from_a_signature() {
+    use codespan_reporting::files::SimpleFile;
+
+    let source = indoc::indoc! {r#"
+    module Example exposing ( f )
+
+    f : unsafe -> unsafe
+
+    f unsafe = unsafe
+    "#}
+    .to_string();
+    let file = SimpleFile::new(
+        "unsafe_is_an_identifier_away_from_a_signature".to_owned(),
+        source,
+    );
+
+    parser::parse(&file).expect("`unsafe` is an ordinary identifier here");
+}

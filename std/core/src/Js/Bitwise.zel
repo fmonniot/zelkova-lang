@@ -11,11 +11,11 @@ will contains the actual implementation of this module.
 -}
 
 
-and : Int -> Int -> Int
-or : Int -> Int -> Int
-xor : Int -> Int -> Int
-complement : Int -> Int
+unsafe and : Int -> Int -> Int
+unsafe or : Int -> Int -> Int
+unsafe xor : Int -> Int -> Int
+unsafe complement : Int -> Int
 
-shiftLeftBy : Int -> Int -> Int
-shiftRightBy : Int -> Int -> Int
-shiftRightZfBy : Int -> Int -> Int
+unsafe shiftLeftBy : Int -> Int -> Int
+unsafe shiftRightBy : Int -> Int -> Int
+unsafe shiftRightZfBy : Int -> Int -> Int

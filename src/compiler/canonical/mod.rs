@@ -384,6 +384,15 @@ pub enum Value {
         patterns: Vec<(Pattern, Type)>,
         body: Expression,
         tpe: Type,
+        /// True when the annotation was written `unsafe name : Type`.
+        ///
+        /// The word is only meaningful on a facade signature, where it declares a
+        /// plain function in place of the effect a facade declares by default —
+        /// see [Foreign interoperability](../../../docs/spec/interop.md). Only a
+        /// module whose `binding_foreign` is set can carry it: [`canonicalize`]
+        /// reports [`Error::UnsafeOutsideFacade`] for one written anywhere else,
+        /// so this is `false` on every value of an ordinary module.
+        marked_unsafe: bool,
         /// Where the declaration was written, annotation and body together.
         span: NodeSpan,
         /// Where the `name : Type` annotation alone was written.
@@ -981,6 +990,16 @@ pub enum Error {
     InfixDeclared(Name, NodeSpan),
     TypeDeclared(Name, NodeSpan),
     NoTypeInBinding(Name, NodeSpan),
+    /// An annotation outside a `module foreign` facade was marked `unsafe`: the
+    /// name it annotates, and the annotation's span — which the grammar takes
+    /// from the modifier, so the caret starts on the word itself.
+    ///
+    /// `unsafe` asserts something about the companion behind a facade signature
+    /// (`LANG-53`, [`DEC-12`](../../../docs/decisions/dec-12.md)). There is no
+    /// companion behind an ordinary declaration for it to be a claim about, and
+    /// accepting the word there would make it mean nothing in half the places it
+    /// can be written.
+    UnsafeOutsideFacade(Name, NodeSpan),
 
     // Utility error
     Many(Vec<Error>),
@@ -1126,6 +1145,10 @@ impl PhaseError for Error {
             ),
             Error::NoTypeInBinding(name, _) => format!(
                 "`{}` has no type annotation, and a `module foreign` facade is annotations only",
+                name
+            ),
+            Error::UnsafeOutsideFacade(name, _) => format!(
+                "`{}` is marked `unsafe`, which only a signature in a `module foreign` facade may be",
                 name
             ),
             Error::Many(errors) => match errors.as_slice() {
@@ -1282,6 +1305,7 @@ impl PhaseError for Error {
             Error::InfixDeclared(_, span) => primary(span, "declared here"),
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
             Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
+            Error::UnsafeOutsideFacade(_, span) => primary(span, "marked `unsafe` here"),
             // A group has no position of its own; the errors it swallowed do.
             Error::EnvironmentErrors(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
             Error::Many(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
@@ -1291,6 +1315,10 @@ impl PhaseError for Error {
 
     fn notes(&self) -> Vec<String> {
         match self {
+            Error::UnsafeOutsideFacade(..) => vec![
+                "`unsafe` asserts that the companion behind a facade signature is a function of its arguments and that it returns"
+                    .to_owned(),
+            ],
             Error::AmbiguousVariables(_, candidates, _)
             | Error::AmbiguousVariants(_, candidates, _) => {
                 vec![format!(
@@ -1376,6 +1404,22 @@ pub fn canonicalize(
     let mut env =
         new_environment(&name, interfaces, &source.imports).map_err(|e| vec![e.into()])?;
 
+    // `unsafe` is a claim about the companion standing behind a facade signature,
+    // so it has nothing to say on a declaration with a body above it. The grammar
+    // accepts the word on any annotation — it has no way to know the module's
+    // header — which leaves this as the only place that can reject one. Reported
+    // for every marked declaration, then canonicalization carries on, so a module
+    // with a stray `unsafe` still reports whatever else is wrong with it.
+    if !source.binding_foreign {
+        errors.extend(
+            source
+                .functions
+                .iter()
+                .filter(|f| f.marked_unsafe)
+                .map(|f| Error::UnsafeOutsideFacade(f.name.clone(), f.annotation_span)),
+        );
+    }
+
     let (infixes, types, values) = if source.binding_foreign {
         // A `module foreign` facade runs a parallel canonicalization process as the constraints are a bit different:
         // - Only functions without bindings are authorized.
@@ -1437,6 +1481,7 @@ pub fn canonicalize(
                 // stand-in has nothing to point at (see the TODO above).
                 body: Expression::bare(ExpressionKind::Bool(true)),
                 tpe,
+                marked_unsafe: function.marked_unsafe,
                 span: function.span,
                 annotation_span: function.annotation_span,
             };
@@ -1591,6 +1636,10 @@ fn do_values(
                         patterns,
                         body,
                         tpe,
+                        // `do_values` only runs for a module that is not a facade,
+                        // and `canonicalize` has already rejected a marked
+                        // annotation there.
+                        marked_unsafe: false,
                         span: function.span,
                         annotation_span: function.annotation_span,
                     },

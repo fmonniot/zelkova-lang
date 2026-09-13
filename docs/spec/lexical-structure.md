@@ -243,13 +243,11 @@ derived = 5
 unsafe = 6
 ```
 
-**Not implemented:** `derived` and `unsafe` are ordinary identifiers in every position today,
-because the construct each is a keyword in does not parse at all — class and instance bodies do
-not parse ([`LANG-38`](../tickets/lang-38.md)), and neither does a marked facade signature
-([`LANG-53`](../tickets/lang-53.md)). That block is green now and should stay green: what each
-word becomes is a keyword in a position it cannot currently occupy, not a name a program loses.
-It goes red if either is reserved outright as a shortcut, which is the choice
-[`LANG-53`](../tickets/lang-53.md) leaves open.
+**Not implemented:** `derived` is an ordinary identifier in every position today, because class
+and instance bodies do not parse at all ([`LANG-38`](../tickets/lang-38.md)). The other five are
+keywords in the position listed against them and names everywhere else, which is what the block
+above pins: a soft keyword costs a program no name, and reserving one outright to save the
+grammar the work turns that block red.
 
 No other word is reserved — not even ones a reader arriving from another language might expect,
 such as `match` (pattern matching's usual keyword) or `await` (an effect's usual one):

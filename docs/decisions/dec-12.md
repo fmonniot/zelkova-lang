@@ -215,10 +215,12 @@ bare name today, so `Task (Result Failure String)` is a syntax error and three b
 two chapters are tagged `expect=unimplemented` for that reason. The shape check itself is
 [`LANG-43`](../tickets/lang-43.md)'s and inherits the same sequencing.
 
-Decision 7 is unwritable too, for a separate reason and on a separate ticket:
-[`LANG-53`](../tickets/lang-53.md) is the `unsafe` keyword, which nothing tokenizes, and the four
-remaining `expect=unimplemented` blocks are its. Every facade in `std/core` is an unmarked one
-today, asserting purity by saying nothing — the state this decision exists to end.
+Decision 7 is writable: `unsafe` is a soft keyword the grammar reads in front of a facade
+signature, and every facade in `std/core` now carries it. Nothing acts on the word yet, because
+the two things it chooses between — the wrapper an effectful facade gets and the bare call an
+`unsafe` one gets — are both [`GEN-1`](../tickets/gen-1.md)'s, and the check that an unmarked
+facade declares the result type decision 1 requires is
+[`LANG-43`](../tickets/lang-43.md)'s.
 
 ## Sources
 

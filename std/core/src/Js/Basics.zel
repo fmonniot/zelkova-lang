@@ -15,38 +15,38 @@ will contains the actual implementation of this module.
 -}
 
 
-add : a -> a -> a
-sub : a -> a -> a
-mul : a -> a -> a
-fdiv : Float -> Float -> Float
-idiv : Int -> Int -> Int
-pow : a -> a -> a
+unsafe add : a -> a -> a
+unsafe sub : a -> a -> a
+unsafe mul : a -> a -> a
+unsafe fdiv : Float -> Float -> Float
+unsafe idiv : Int -> Int -> Int
+unsafe pow : a -> a -> a
 
-toFloat : Int -> Float
-round : Float -> Int
-floor : Float -> Int
-ceiling : Float -> Int
-truncate : Float -> Int
+unsafe toFloat : Int -> Float
+unsafe round : Float -> Int
+unsafe floor : Float -> Int
+unsafe ceiling : Float -> Int
+unsafe truncate : Float -> Int
 
-not : Bool -> Bool
-and : Bool -> Bool -> Bool
-or : Bool -> Bool -> Bool
-xor : Bool -> Bool -> Bool
+unsafe not : Bool -> Bool
+unsafe and : Bool -> Bool -> Bool
+unsafe or : Bool -> Bool -> Bool
+unsafe xor : Bool -> Bool -> Bool
 
-modBy : Int -> Int -> Int
-remainderBy : Int -> Int -> Int
-sqrt : Float -> Float
-log : Float -> Float
-e : Float
+unsafe modBy : Int -> Int -> Int
+unsafe remainderBy : Int -> Int -> Int
+unsafe sqrt : Float -> Float
+unsafe log : Float -> Float
+unsafe e : Float
 
-pi : Float
-cos : Float -> Float
-sin : Float -> Float
-tan : Float -> Float
-acos : Float -> Float
-asin : Float -> Float
-atan : Float -> Float
-atan2 : Float -> Float -> Float
+unsafe pi : Float
+unsafe cos : Float -> Float
+unsafe sin : Float -> Float
+unsafe tan : Float -> Float
+unsafe acos : Float -> Float
+unsafe asin : Float -> Float
+unsafe atan : Float -> Float
+unsafe atan2 : Float -> Float -> Float
 
-isNotANumber : Float -> Bool
-isInfinite : Float -> Bool
+unsafe isNotANumber : Float -> Bool
+unsafe isInfinite : Float -> Bool

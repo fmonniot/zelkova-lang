@@ -529,7 +529,7 @@ and reaching the network are what it is for.
 marked with it declares a function rather than an effect, and its author is asserting that the
 same arguments give the same result and that calling it has no other consequence.
 
-```zel expect=unimplemented
+```zel expect=ok
 module foreign Core.Math exposing (square)
 
 unsafe square : Float -> Float
@@ -537,7 +537,7 @@ unsafe square : Float -> Float
 
 Nothing distinguishes that from the same word over an impure export:
 
-```zel expect=unimplemented
+```zel expect=ok
 module foreign Core.Random exposing (next)
 
 unsafe next : Int -> Int

@@ -87,11 +87,11 @@ you have seen it fail*).
   [`unsafe`](../spec/interop.md#an-unsafe-facade), so step 2 gains a case on the result after
   the arrows are stripped: unmarked, the result is admitted only in that one shape and `a` is
   what the walk descends into, `Task` and the `Result` never crossing the boundary; marked, the
-  result is walked as any other type. Both halves need
-  [`LANG-53`](lang-53.md) for the flag and [`LANG-9`](lang-9.md) for the form — a type argument
-  must be a bare name today, so `Task (Result Failure String)` does not parse and no fixture can
-  be written. Land the type-variable and function-type halves without waiting; sequence this one
-  after both.
+  result is walked as any other type. The flag is on the canonical declaration already —
+  `Value::TypedValue`'s `marked_unsafe` — but both halves still need [`LANG-9`](lang-9.md) for
+  the form: a type argument must be a bare name today, so `Task (Result Failure String)` does not
+  parse and no fixture can be written. Land the type-variable and function-type halves without
+  waiting; sequence this one after it.
 - **[`LANG-37`](lang-37.md)** adds constraint syntax. A facade may not carry a constraint either
   ([What a facade signature may not name](../spec/interop.md#what-a-facade-signature-may-not-name));
   that is a separate rejection on a separate

@@ -61,8 +61,9 @@ themselves are [`GEN-2`](gen-2.md)'s; the wrapper that calls one and routes its 
 ticket's, and it is the whole of what keeps a throwing `.mjs` from ending the program. A facade
 marked [`unsafe`](../spec/interop.md#an-unsafe-facade) gets no such wrapper — its companion is
 called directly — and one that throws under it
-[aborts](../spec/evaluation-semantics.md#when-a-program-aborts). Which facades are which is
-[`LANG-53`](lang-53.md)'s flag to carry that far.
+[aborts](../spec/evaluation-semantics.md#when-a-program-aborts). Which facades are which is on
+the canonical declaration already: `Value::TypedValue`'s `marked_unsafe`, which nothing downstream
+reads yet.
 
 **A class dictionary is erased by specialisation and never passed** — stated by
 [`docs/spec/type-classes.md`](../spec/type-classes.md) and argued in
