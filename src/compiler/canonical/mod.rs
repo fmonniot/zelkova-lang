@@ -66,21 +66,71 @@ impl Module {
     /// test that hand-builds an interface — passes `None`, and
     /// [`Interface::source_span`](super::Interface::source_span) then declines to
     /// build a cross-module label rather than building one at the wrong place.
+    ///
+    /// # What the `exposing (...)` header removes here
+    ///
+    /// This is the only place a module's own [`Exports`] is read, and reading it
+    /// here is what makes a declaration left out of the header private (`BUG-9`).
+    /// `self.values`, `self.types` and `self.infixes` stay complete — the typer,
+    /// exhaustiveness and every later phase run against the whole
+    /// [`Module`](Self), because a private declaration is still callable from
+    /// inside the module that wrote it. Only this external view is trimmed, and
+    /// only by three rules:
+    ///
+    /// - a value reaches the interface when the header exposes its name as
+    ///   [`ExportType::Value`], on top of the pre-existing requirement that it
+    ///   carry a type annotation (`Value::TypedValue`; an unannotated one is
+    ///   dropped regardless, which is `BUG-14`);
+    /// - an infix reaches it when the header exposes the operator;
+    /// - a union type reaches it when the header names it either way, but a
+    ///   `Size` entry ([`ExportType::UnionPrivate`]) hands over the declaration
+    ///   with its `variants` emptied. That is the opaque type: importers still
+    ///   get the name and its type variables — [`Interface::unions`] is where
+    ///   `process_import`'s `Privacy::Private` arm reads the arity from — and no
+    ///   constructor to build or match one with.
+    ///
+    /// [`Exports::Everything`] — a `exposing (..)` header — exposes every
+    /// declaration with every constructor, so nothing is dropped in that case.
     pub fn to_interface(&self, file: Option<SourceFileId>) -> super::Interface {
         let values = self
             .values
             .iter()
+            .filter(|(name, _)| self.exports.exposes(name, &ExportType::Value))
             .filter_map(|(name, value)| match value {
                 Value::Value { .. } => None,
                 Value::TypedValue { tpe, span, .. } => Some((name.clone(), (*span, tpe.clone()))),
             })
             .collect();
 
+        let unions = self
+            .types
+            .iter()
+            .filter_map(|(name, union)| match self.exports.union_visibility(name) {
+                UnionVisibility::Hidden => None,
+                UnionVisibility::Transparent => Some((name.clone(), union.clone())),
+                UnionVisibility::Opaque => Some((
+                    name.clone(),
+                    UnionType {
+                        variables: union.variables.clone(),
+                        variants: Vec::new(),
+                        span: union.span,
+                    },
+                )),
+            })
+            .collect();
+
+        let infixes = self
+            .infixes
+            .iter()
+            .filter(|(name, _)| self.exports.exposes(name, &ExportType::Infix))
+            .map(|(name, infix)| (name.clone(), infix.clone()))
+            .collect();
+
         super::Interface {
             module_name: self.name.clone(),
             values,
-            unions: self.types.clone(),
-            infixes: self.infixes.clone(),
+            unions,
+            infixes,
             file,
         }
     }
@@ -91,6 +141,49 @@ pub enum Exports {
     Everything,
     /// Non qualified name to its export type
     Specifics(HashMap<Name, ExportType>),
+}
+
+impl Exports {
+    /// Whether the `exposing (...)` header exposes `name` *as* `kind`.
+    ///
+    /// The kind is part of the question rather than a detail of the answer
+    /// because the three namespaces a module exports into are separate: a
+    /// header naming `map` exposes the value `map`, and says nothing about an
+    /// operator or a type that happened to share the spelling. Union types ask
+    /// [`union_visibility`](Self::union_visibility) instead, which has a third
+    /// answer for the opaque case.
+    fn exposes(&self, name: &Name, kind: &ExportType) -> bool {
+        match self {
+            Exports::Everything => true,
+            Exports::Specifics(specifics) => specifics.get(name) == Some(kind),
+        }
+    }
+
+    /// How far a union type declared in this module crosses the module boundary.
+    fn union_visibility(&self, name: &Name) -> UnionVisibility {
+        match self {
+            Exports::Everything => UnionVisibility::Transparent,
+            Exports::Specifics(specifics) => match specifics.get(name) {
+                Some(ExportType::UnionPublic) => UnionVisibility::Transparent,
+                Some(ExportType::UnionPrivate) => UnionVisibility::Opaque,
+                Some(ExportType::Value) | Some(ExportType::Infix) | None => UnionVisibility::Hidden,
+            },
+        }
+    }
+}
+
+/// The three answers [`Exports::union_visibility`] can give for one of the
+/// module's own union types, in the order a reader of an `exposing (...)` list
+/// meets them: no entry at all, a bare `Size` entry, a `Size(..)` entry.
+#[derive(Debug)]
+enum UnionVisibility {
+    /// Not in the header: other modules cannot name the type at all.
+    Hidden,
+    /// `Size` — the type's name and arity cross the boundary, its constructors
+    /// do not.
+    Opaque,
+    /// `Size(..)` — the declaration crosses whole, constructors included.
+    Transparent,
 }
 
 #[derive(Debug, PartialEq)]

@@ -46,8 +46,10 @@ a missing line.
 
 Found while writing [`docs/spec/modules.md`](../spec/modules.md) (`SPEC-3`), whose
 *Exposing is what other modules can see* section carries the `**Known gap:**` block. Related
-but independent: [BUG-9](bug-9.md) is the same function leaking what it should hide, this is
-it hiding what it should publish. Either can land first.
+but independent: [BUG-9](README.md) — since closed — was the same function leaking what it
+should hide, this is it hiding what it should publish. Its fix added an `exposing`-list filter
+beside the `TypedValue` one this ticket is about; the two are separate conditions on the same
+iterator.
 
 **Decided (`SPEC-5`, by the language owner):** option 1 below. A declaration named in its
 module's `exposing` list must carry a type annotation; a private declaration need not. Because

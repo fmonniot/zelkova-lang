@@ -230,11 +230,6 @@ import Widget exposing (label)
 A module's `exposing` list is the complete list of what any other module may reach,
 qualified or not. A declaration left out of it is private to the module.
 
-**Known gap:** it is not enforced. `Module::to_interface` builds the view other modules
-import against out of every top-level declaration, ignoring the `exposing` list entirely,
-so nothing is private today — [`docs/tickets/bug-9.md`](../tickets/bug-9.md). The
-importing block below should fail to resolve `Widget.hidden`.
-
 ```zel expect=ok package=privacy
 module Widget exposing (Size, label)
 
@@ -248,7 +243,7 @@ hidden : Size
 hidden = Small
 ```
 
-```zel expect=ok package=privacy
+```zel expect=canonical-error:VariableNotFound package=privacy
 module Main exposing (x)
 
 import Widget
@@ -256,6 +251,9 @@ import Widget
 x : Widget.Size
 x = Widget.hidden
 ```
+
+Privacy is a property of the boundary: `hidden` is an ordinary value inside `Widget` and
+`label` may call it, and the list decides who else can.
 
 **Known gap:** the reverse also happens — a value the module *does* expose can fail to
 cross the boundary. A top-level declaration written without a type annotation is dropped

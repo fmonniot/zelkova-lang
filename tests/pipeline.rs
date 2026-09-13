@@ -1427,9 +1427,7 @@ fn missing_exposed_import_name_labels_the_name_alone() {
 /// whether it exists. An undeclared infix is therefore the one case that can
 /// exercise `Error::ExportNotFound`'s span; a `Lower`/`Upper` version of this test
 /// would pass today for the wrong reason (no check ever runs) rather than the right
-/// one. See `BUG-9` too — `Module::exports` is computed here and never consulted by
-/// `to_interface`, which is why the sibling test's `Lib.zel` genuinely exporting
-/// `value` is not actually what makes it pass.
+/// one.
 ///
 /// Mutation-checked two ways, each red on its own: making the `Exposed`
 /// productions in `grammar.lalrpop` emit `NodeSpan::none()`, and reverting
@@ -1476,5 +1474,284 @@ fn export_not_found_labels_the_exposed_name_alone() {
         start..(start + operator.len()),
         "the caret must sit under `{}` alone, not the `module` header around it",
         operator
+    );
+}
+
+// ── Test 27: an `exposing` list is the whole of what other modules reach ─────
+//
+// `BUG-9`: `Module::to_interface` built the view other modules import against
+// out of every top-level declaration and never read `Module::exports`, so a
+// module's own `exposing (...)` header restricted nothing once the module had
+// been checked. These tests all drive the real path — `check_module`, then
+// `to_interface`, then `check_module` again on the importer — because a
+// hand-built `Interface` would sidestep the only place the filtering happens.
+
+/// One module's source checked into an `Interface`, and a second checked against
+/// it. `Lib` compiling is a precondition rather than part of what is asserted,
+/// so a failure there panics instead of returning.
+fn check_importer(lib: &str, main: &str) -> Result<(), CompilationError> {
+    let pkg = test_package();
+    let lib_module = check_module(&pkg, &HashMap::new(), &parse_source(lib))
+        .unwrap_or_else(|e| panic!("the exporting module should compile: {:?}", e));
+
+    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
+    interfaces.insert(
+        lib_module.name.name().clone(),
+        lib_module.to_interface(None),
+    );
+
+    check_module(&pkg, &interfaces, &parse_source(main)).map(|_| ())
+}
+
+/// A module exposing three of its five declarations: a value, an opaque type and
+/// a transparent one. `hidden` and `Secret` are the two nothing outside `Lib`
+/// may reach, and `Opaque`'s constructor `Wrapped` is the third.
+///
+/// `Opaque` takes a type variable on purpose. `process_import`'s
+/// `Privacy::Private` arm invents a zero-variable type when the interface does
+/// not know the name (`BUG-16`), so a nullary opaque type would let an importer
+/// write the annotation either way and no assertion below could tell the
+/// interface carrying the type from the import fabricating it. With an arity of
+/// one, `Opaque Int` only resolves when the real declaration crossed.
+fn privacy_lib() -> &'static str {
+    indoc::indoc! {r#"
+        module Lib exposing (visible, Opaque, Clear(..))
+        type Opaque a = Wrapped a
+        type Clear = Plain
+        type Secret = Kept
+        visible : Opaque Int
+        visible = Wrapped 1
+        hidden : Opaque Int
+        hidden = Wrapped 1
+    "#}
+}
+
+/// The one canonicalization error a `check_module` failure is expected to be,
+/// with its rendered message — the `EnvError` variants are private to
+/// `canonical::environment`, so the message is how a test names which one fired.
+fn only_canonical_error(error: &CompilationError) -> String {
+    use zelkova_lang::compiler::PhaseError;
+
+    match error {
+        CompilationError::Canonical(errors, module) => {
+            assert_eq!(module, &Name::from("Main"));
+            assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+            errors[0].message()
+        }
+        other => panic!("expected a Canonical error, got {:?}", other),
+    }
+}
+
+/// A value the exporting module declares but does not expose cannot be named in
+/// an import's `exposing` list.
+///
+/// Mutation-checked by dropping the `exports.exposes(..)` filter from
+/// `to_interface`'s `values`, which makes this import resolve and the test go
+/// red.
+#[test]
+fn unexposed_value_is_not_importable() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (hidden)
+        answer = 1
+    "#};
+
+    let error = check_importer(privacy_lib(), main).expect_err("`hidden` is not exposed by `Lib`");
+
+    assert_eq!(
+        only_canonical_error(&error),
+        "the imported module does not expose a value named `hidden`"
+    );
+}
+
+/// Nor reached through the qualified spelling, which is the half `exposing` has
+/// to cover to mean anything: every import brings the exported names into scope
+/// under the module's own prefix whether or not the `import` line lists them.
+///
+/// Mutation-checked the same way as `unexposed_value_is_not_importable`.
+///
+/// The name in the message reads `Main.Lib.hidden` because
+/// `Error::VariableNotFound` qualifies whatever failed to resolve with the module
+/// that was being checked, and `Lib.hidden` is already a qualified spelling —
+/// unrelated to this ticket, and asserted as it is rather than worked around.
+#[test]
+fn unexposed_value_is_not_reachable_qualified() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib
+        answer : Lib.Opaque Int
+        answer = Lib.hidden
+    "#};
+
+    let error =
+        check_importer(privacy_lib(), main).expect_err("`Lib.hidden` is not exposed by `Lib`");
+
+    assert_eq!(
+        only_canonical_error(&error),
+        "cannot find a value named `Main.Lib.hidden`"
+    );
+}
+
+/// The positive control: what `Lib` does expose still crosses, unqualified and
+/// qualified alike. Without this the two tests above would also pass on an
+/// interface that exported nothing at all.
+///
+/// Mutation-checked by making `Exports::exposes` answer `false` for every
+/// `Specifics` header, which is that over-reach; five tests here go red, this one
+/// among them.
+#[test]
+fn exposed_value_still_imports() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (visible)
+        unqualified : Lib.Opaque Int
+        unqualified = visible
+        qualified : Lib.Opaque Int
+        qualified = Lib.visible
+    "#};
+
+    assert!(
+        check_importer(privacy_lib(), main).is_ok(),
+        "`visible` is exposed by `Lib` and must still resolve both ways"
+    );
+}
+
+/// A type left out of the header is not a type other modules have.
+///
+/// Mutation-checked by making `union_visibility` answer `Transparent` for a name
+/// with no entry, which puts `Secret` back in the interface.
+#[test]
+fn unexposed_type_is_not_importable() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (Secret(..))
+        answer = 1
+    "#};
+
+    let error = check_importer(privacy_lib(), main).expect_err("`Secret` is not exposed by `Lib`");
+
+    assert_eq!(
+        only_canonical_error(&error),
+        "the imported module does not expose a type named `Secret`"
+    );
+}
+
+/// A bare `Opaque` entry in the header is not the same as leaving it out: the
+/// type still crosses, with its arity, and only its constructors are withheld.
+/// This is the `ExportType::UnionPrivate` half of the filter, and the one a
+/// "hide everything not exposed" reading of the header would get wrong.
+///
+/// Mutation-checked two ways, each red on its own: collapsing
+/// `union_visibility`'s `Opaque` answer into `Hidden`, which drops `Lib.Opaque`
+/// from the interface and leaves the unqualified `Opaque Int` at the wrong arity;
+/// and collapsing it into `Transparent`, which stops emptying `variants` and lets
+/// `Wrapped` through.
+#[test]
+fn opaquely_exposed_type_crosses_without_its_constructors() {
+    let uses_the_type = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (Opaque)
+        keep : Opaque Int -> Opaque Int
+        keep x = x
+        keepQualified : Lib.Opaque Int -> Lib.Opaque Int
+        keepQualified x = x
+    "#};
+
+    assert!(
+        check_importer(privacy_lib(), uses_the_type).is_ok(),
+        "an opaque export is still a type importers can name, at its declared arity"
+    );
+
+    // The constructor is reached through the *qualified* spelling, and that is
+    // the whole point of the block: an `import Lib exposing (Opaque)` line
+    // withholds constructors on the import side too, so an unqualified `Wrapped`
+    // would fail whether or not `to_interface` had emptied `variants` — the test
+    // would pass without the fix. A bare `import Lib` asks for everything `Lib`
+    // exports under its own prefix, so `Lib.Wrapped` resolving or not is a
+    // question only the interface answers.
+    let uses_a_constructor = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib
+        answer : Lib.Opaque Int
+        answer = Lib.Wrapped 1
+    "#};
+
+    let error = check_importer(privacy_lib(), uses_a_constructor)
+        .expect_err("`Lib` exposes `Opaque` without its constructors");
+
+    assert_eq!(
+        only_canonical_error(&error),
+        "cannot find a type constructor named `Main.Lib.Wrapped`"
+    );
+}
+
+/// And a `Clear(..)` entry hands over the constructors, so the two forms are
+/// told apart rather than both being read as opaque.
+///
+/// Mutation-checked by collapsing `union_visibility`'s `Transparent` answer for
+/// `ExportType::UnionPublic` into `Opaque`.
+#[test]
+fn transparently_exposed_type_carries_its_constructors() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (Clear(..))
+        answer : Clear
+        answer = Plain
+    "#};
+
+    assert!(
+        check_importer(privacy_lib(), main).is_ok(),
+        "`Clear(..)` exposes `Plain` too"
+    );
+}
+
+/// Operators are filtered by the same header. `Lib` below declares two of them
+/// and exposes one, so an import naming the other is an unresolved entry rather
+/// than a working operator.
+///
+/// Both halves are asserted because the exposed half is what shows the filter
+/// keyed on the operator's own entry: `(<+>)` crosses only because the header
+/// lists it. `plus` is exposed alongside it because an imported operator is
+/// resolved through the unqualified name its `infix` declaration points at,
+/// which is `BUG-15` and not this ticket's to fix.
+///
+/// Mutation-checked by dropping the `exports.exposes(..)` filter from
+/// `to_interface`'s `infixes`.
+#[test]
+fn unexposed_operator_is_not_importable() {
+    let lib = indoc::indoc! {r#"
+        module Lib exposing (plus, (<+>))
+        infix left 6 (<+>) = plus
+        infix left 6 (<->) = minus
+        plus : Int -> Int -> Int
+        plus a b = a
+        minus : Int -> Int -> Int
+        minus a b = a
+    "#};
+
+    let exposed = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (plus, (<+>))
+        answer : Int
+        answer = 1 <+> 2
+    "#};
+
+    assert!(
+        check_importer(lib, exposed).is_ok(),
+        "`(<+>)` is exposed by `Lib` and must still resolve"
+    );
+
+    let unexposed = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (plus, (<->))
+        answer : Int
+        answer = 1 <-> 2
+    "#};
+
+    let error = check_importer(lib, unexposed).expect_err("`(<->)` is not exposed by `Lib`");
+
+    assert_eq!(
+        only_canonical_error(&error),
+        "the imported module does not expose an infix operator named `<->`"
     );
 }
