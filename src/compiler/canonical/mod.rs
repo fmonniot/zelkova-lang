@@ -971,6 +971,11 @@ pub enum Error {
     /// `tpe.span` — the whole application, so the caret covers every argument
     /// along with the name (`BUG-17`).
     TypeArityMismatch(Name, usize, usize, NodeSpan),
+    /// Something other than a constructor name and its arguments written in a
+    /// `type` declaration's variant position: what was written there, and that
+    /// variant's own span rather than the declaration's, so the caret sits under
+    /// the offending variant alone (`BUG-18`).
+    InvalidVariant(InvalidVariantKind, NodeSpan),
 
     // Binding module
     InfixDeclared(Name, NodeSpan),
@@ -979,6 +984,28 @@ pub enum Error {
 
     // Utility error
     Many(Vec<Error>),
+}
+
+/// What was written where a `type` declaration expected a variant — see
+/// [`Error::InvalidVariant`].
+///
+/// A variant is a constructor name followed by zero or more type arguments, and
+/// nothing else. The grammar does not enforce that: it parses a variant list with
+/// the general `Type` production, so every shape a type expression can take reaches
+/// [`do_types`]. This enum names the three that are not a variant, one per remaining
+/// [`parser::TypeKind`], so each can say what it is in the words of the source.
+#[derive(Debug, PartialEq, Clone)]
+pub enum InvalidVariantKind {
+    /// A name beginning with a lowercase letter, which the grammar reads as a type
+    /// variable — `type Colour = red`, and a mistyped constructor name along with
+    /// it. Carries the name so the message can quote it.
+    LowercaseName(Name),
+    /// A tuple type — `type Pair = (Int, Int)`.
+    Tuple,
+    /// A function type — `type Wrapper = Wrap Int -> Int`. The arrow is the *whole*
+    /// variant rather than a suffix of it, `Wrap Int` being its left operand, so
+    /// there is no constructor here to keep either.
+    Arrow,
 }
 
 /// Canonicalization errors name source constructs — a value, a type, an operator —
@@ -1075,6 +1102,20 @@ impl PhaseError for Error {
                 type_argument_count(*declared),
                 type_argument_count(*written)
             ),
+            Error::InvalidVariant(kind, _) => match kind {
+                InvalidVariantKind::LowercaseName(name) => format!(
+                    "`{}` is not a constructor name: a constructor name begins with an uppercase letter",
+                    name
+                ),
+                InvalidVariantKind::Tuple => {
+                    "a variant is a constructor name followed by its arguments, and this one is a tuple type"
+                        .to_owned()
+                }
+                InvalidVariantKind::Arrow => {
+                    "a variant is a constructor name followed by its arguments, and this one is a function type"
+                        .to_owned()
+                }
+            },
             Error::InfixDeclared(name, _) => format!(
                 "a `module javascript` facade cannot declare an infix operator, but declares `{}`",
                 name
@@ -1229,6 +1270,14 @@ impl PhaseError for Error {
                     type_argument_count(*declared),
                     type_argument_count(*written)
                 ),
+            ),
+            Error::InvalidVariant(kind, span) => primary(
+                span,
+                match kind {
+                    InvalidVariantKind::LowercaseName(_) => "this begins with a lowercase letter",
+                    InvalidVariantKind::Tuple => "a tuple type, written where a variant belongs",
+                    InvalidVariantKind::Arrow => "a function type, written where a variant belongs",
+                },
             ),
             Error::InfixDeclared(_, span) => primary(span, "declared here"),
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
@@ -1572,29 +1621,46 @@ fn do_types(
 
         trace!("do_types(in:{:?})", tpe);
 
-        // variants are represented as parser::Type::Unqualified. Other types
-        // can be safely ignored in this context.
-
+        // A variant is a constructor name and its arguments, which the parser spells
+        // `TypeKind::Unqualified`. It is the grammar's general `Type` production that
+        // parses a variant list, though, so the three other kinds arrive here too —
+        // and each is a declaration the user wrote that has no meaning, not a variant
+        // this pass may leave out. Skipping one deletes a constructor from the
+        // declaration and reports nothing, which was `BUG-18`.
+        //
+        // The `collect` below short-circuits on the first `Err`, so only the first bad
+        // variant in a single `type` declaration is reported — `type T = c | (Int,
+        // Int)` names only `c`. The enclosing `collect_accumulate` still reports the
+        // next `type` declaration independently, matching what the `Unqualified` arm
+        // already did for `from_parser_type`.
         let variants = tpe
             .variants
             .iter()
-            .filter_map(|t| match &t.kind {
+            .map(|t| match &t.kind {
                 // TODO It might actually make more sense to put Type::from_parser_type
                 // on `Environment`.
-                parser::TypeKind::Unqualified(name, vars) => Some((name, vars)),
-                _ => None,
-            })
-            .map(|(name, vars)| {
-                let type_parameters = vars
-                    .iter()
-                    .map(|t| Type::from_parser_type(env, t))
-                    .collect::<Result<Vec<_>, Error>>()?;
+                parser::TypeKind::Unqualified(name, vars) => {
+                    let type_parameters = vars
+                        .iter()
+                        .map(|t| Type::from_parser_type(env, t))
+                        .collect::<Result<Vec<_>, Error>>()?;
 
-                Ok(TypeConstructor {
-                    name: name.clone(),
-                    type_parameters,
-                    tpe: tpe_name.clone(),
-                })
+                    Ok(TypeConstructor {
+                        name: name.clone(),
+                        type_parameters,
+                        tpe: tpe_name.clone(),
+                    })
+                }
+                parser::TypeKind::Variable(name) => Err(Error::InvalidVariant(
+                    InvalidVariantKind::LowercaseName(name.clone()),
+                    t.span,
+                )),
+                parser::TypeKind::Tuple(_) => {
+                    Err(Error::InvalidVariant(InvalidVariantKind::Tuple, t.span))
+                }
+                parser::TypeKind::Arrow(_, _) => {
+                    Err(Error::InvalidVariant(InvalidVariantKind::Arrow, t.span))
+                }
             })
             .collect::<Result<Vec<_>, Error>>()?;
 

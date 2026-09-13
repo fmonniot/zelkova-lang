@@ -635,14 +635,30 @@ A variant is a constructor name followed by zero or more type arguments. That is
 form: a variant is not a type expression, and a tuple, an arrow, or a bare type variable in
 variant position is not a variant.
 
-```zel expect=ok
+A constructor name begins with an uppercase letter, so a lowercase name in variant position is
+rejected. This is the shape a mistyped constructor name takes, and the error points at the
+variant itself:
+
+```zel expect=canonical-error:InvalidVariant
 module Example exposing (Colour)
 
 type Colour
   = red
 ```
 
-```zel expect=ok
+A type variable is a lowercase name too, so a variable the declaration itself binds is rejected
+the same way when it appears in variant position instead of as an argument:
+
+```zel expect=canonical-error:InvalidVariant
+module Example exposing (Bad)
+
+type Bad a
+  = a
+```
+
+A tuple type in variant position is rejected:
+
+```zel expect=canonical-error:InvalidVariant
 module Example exposing (Size, Pair)
 
 type Size
@@ -652,7 +668,11 @@ type Pair
   = (Size, Size)
 ```
 
-```zel expect=ok
+A function type is rejected, and the rejection covers the constructor written to the left of
+the arrow: `Wrap Size -> Size` is a single function type whose argument is `Wrap Size`, so
+`Wrap` sits inside the rejected form rather than existing as a variant beside it.
+
+```zel expect=canonical-error:InvalidVariant
 module Example exposing (Size, Wrapper)
 
 type Size
@@ -661,14 +681,6 @@ type Size
 type Wrapper
   = Wrap Size -> Size
 ```
-
-**Known gap:** all three should be rejected and all three are accepted — with the variant
-**silently deleted**. The grammar parses a variant as a full type expression and
-canonicalization then keeps only the ones that happen to be a constructor application,
-discarding the rest without a word ([`docs/tickets/bug-18.md`](../tickets/bug-18.md)). Each
-block above declares a type with *zero* variants. The first is the one most likely to be
-written by accident — a mistyped constructor name — and its only symptom is that every later
-mention of the constructor fails to resolve, pointing anywhere but here.
 
 A variant's arguments are type expressions under the same rules as anywhere else, including
 the parenthesisation limit in [Applying a type to arguments](#applying-a-type-to-arguments):

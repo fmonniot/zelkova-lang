@@ -157,7 +157,8 @@ same treatment.
    is [LANG-39](lang-39.md); this ticket only has to get them across the boundary without
    dropping anything. `CLAUDE.md`'s invariant is explicit that silently dropping a construct
    during canonicalization is the failure mode the same-commit rule exists to prevent, and
-   [BUG-18](bug-18.md) is what it looks like when it happens.
+   `BUG-18` — a `type` declaration's variants, closed; see [the index](README.md) — is what it
+   looks like when it happens.
 
 **Acceptance:** the two declarations at the top of this ticket parse, with tests in the parser's
 own test module asserting the member list and the superclass context. A layout test asserts the

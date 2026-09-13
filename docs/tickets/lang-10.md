@@ -59,8 +59,8 @@ blocks must be retagged with whatever it actually says rather than with a guess.
 
 Note this is a grammar change: `CLAUDE.md`'s *A grammar change is never a one-file change*
 applies, though the parser AST's `UnionType.variants` stays a `Vec<Type>` and
-`canonical/mod.rs`'s `do_types` needs no change for this ticket. (It needs one for
-[BUG-18](bug-18.md), which is a different defect in the same declaration.)
+`canonical/mod.rs`'s `do_types` needs no change for this ticket. (It already rejects a variant
+that is not a constructor application — `BUG-18`, closed; see [the index](README.md).)
 
 **Acceptance:** `type T =` and `type B = X |` are both parse errors; `type C = X | Y` and a
 single-variant `type D = X` still compile. Tests in the parser's own test module. `cargo run`

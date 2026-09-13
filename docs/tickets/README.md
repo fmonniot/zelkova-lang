@@ -182,7 +182,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-15](bug-15.md) | bug | medium | open | An imported operator is unresolvable unless the function behind it is also in scope |
 | [BUG-16](bug-16.md) | bug | medium | open | An unresolved type name is invented rather than reported |
 | BUG-17 | bug | high | closed 2026-09-10 | A type application's arguments are discarded when its head resolves |
-| [BUG-18](bug-18.md) | bug | medium | open | A variant that is not a constructor application is silently dropped |
+| BUG-18 | bug | medium | closed 2026-09-13 | A variant that is not a constructor application is silently dropped |
 | BUG-19 | bug | medium | closed 2026-09-12 | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
 | [BUG-20](bug-20.md) | bug | high | open | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |
 | BUG-21 | bug | medium | closed 2026-09-13 | Every error from the source-directory walk is discarded, so a missing package root compiles as success |
@@ -198,6 +198,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-31](bug-31.md) | bug | medium | open | `do_exports` accepts a `Lower`/`Upper` name that resolves only through an import |
 | [BUG-32](bug-32.md) | bug | medium | open | An exposed infix's unannotated backing function is silently dropped from the interface |
 | [BUG-33](bug-33.md) | bug | low | open | `SourceFileError::notes()` dumps `io::Error`'s `Debug` form instead of its `Display` form |
+| [BUG-34](bug-34.md) | bug | low | open | A failed sub-pass in `canonicalize` reports as if it found nothing, cascading into spurious errors from every later pass that depended on it |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
