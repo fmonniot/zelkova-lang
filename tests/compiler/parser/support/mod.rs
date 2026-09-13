@@ -156,6 +156,31 @@ pub fn expr_if(
     Expression::bare(ExpressionKind::If(pred, if_true, if_false))
 }
 
+/// An upper-case identifier in expression position — a union constructor
+/// applied to no arguments, such as the `On` and `Off` a `case` branch's body
+/// is written as in the tests around `BUG-23`.
+pub fn expr_ctor(name: Name) -> Expression {
+    Expression::bare(ExpressionKind::TypeConstructor(name))
+}
+
+pub fn expr_case(scrutinee: Box<Expression>, branches: Vec<CaseBranch>) -> Expression {
+    Expression::bare(ExpressionKind::Case(scrutinee, branches))
+}
+
+/// A constructor pattern with no sub-patterns, such as a `case` branch's `On`
+/// or `Off`.
+pub fn pattern_ctor(name: Name) -> Pattern {
+    Pattern::bare(PatternKind::Constructor(name, vec![]))
+}
+
+pub fn case_branch(pattern: Pattern, expression: Expression) -> CaseBranch {
+    CaseBranch {
+        pattern,
+        expression,
+        span: no_span(),
+    }
+}
+
 /// The span a hand-built AST literal gets: none.
 ///
 /// A literal written in a test cannot know the byte offsets the tokenizer computed,

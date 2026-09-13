@@ -348,6 +348,36 @@ where
 
                 c.replace(column);
             }
+            (Token::Else, Context::CaseBlock(Some(_)) | Context::CaseBranch) => {
+                // `else` closes any `CaseBlock`/`CaseBranch` still open beneath it,
+                // unconditionally — not because its column crosses one of their
+                // thresholds, but because `Token::Else` itself can only legally
+                // appear once the `then` arm it belongs to is over (`BUG-23`).
+                //
+                // Column can't do this job here: a `case` in a `then` arm has no
+                // enclosing `if` block for `CaseBlock`'s `.indent` field to be
+                // derived from (layout has no notion of `if` at all), so that
+                // field ends up derived from whatever encloses the *`if`*
+                // instead. `else` can land strictly between that shallow
+                // threshold and the block's real minimum column — deeper than
+                // the former, shallower than the latter — where step 2's
+                // ordinary implicit close below never fires and step "second"'s
+                // indentation check reports a `LayoutError` instead. Popping
+                // unconditionally on the token, rather than on where it sits,
+                // sidesteps that: `else` cannot appear inside an unclosed `case`
+                // branch for any other reason, so there is no legal input this
+                // arm could be closing prematurely.
+                //
+                // `CaseBlock(None)` — a `case` with no branches yet — is left
+                // out on purpose: that shape is already a grammar error
+                // (`CaseBranch+` requires at least one), and leaving it alone
+                // keeps this fix scoped to the block `else` can legally follow.
+                let Span { start, end } = token.span;
+
+                self.contexts.pop();
+                self.reprocess_tokens.push(token);
+                return Ok(spanned(start, end, Token::CloseBlock));
+            }
             (Token::In, Context::Let) => {
                 // TODO akin to of/case above, we might have to create a let/in block
                 // to let the parser know when the let part ended. Not sure yet.
@@ -886,6 +916,121 @@ mod tests {
                 ident_token("Nothing"),
                 Token::CloseBlock,
                 Token::CloseBlock,
+                Token::CloseBlock,
+            ],
+        )
+    }
+
+    /// `BUG-23`: a `case` in the `then` arm of an `if` is closed by its `else`,
+    /// however shallow the `CaseBlock`'s own `.indent` field turns out to be —
+    /// the mirror of the `top_level_case_expression` test above, but with the
+    /// case's *last* branch followed by `else` rather than by an implicit
+    /// dedent to end of input.
+    ///
+    /// This is a layout-only rendering of the ticket's example:
+    ///
+    /// ```zel
+    /// f c v =
+    ///   if c then
+    ///     case v of
+    ///       On ->
+    ///         Off
+    ///
+    ///       Off ->
+    ///         On
+    ///   else
+    ///     On
+    /// ```
+    ///
+    /// Both `CloseBlock`s right before `Else` matter: one for the second
+    /// branch's body (`CaseBranch`), one for the branch list itself
+    /// (`CaseBlock`) — `else` has to unwind both, not just the innermost.
+    ///
+    /// Verified to fail by reverting the `(Token::Else, Context::CaseBlock(Some(_))
+    /// | Context::CaseBranch)` arm added for this ticket: layout then falls through
+    /// to the ordinary indentation check, which reports a `LayoutError` on `Else`
+    /// instead of yielding it.
+    #[test]
+    fn else_closes_case_block_opened_in_a_then_arm() {
+        test_layout_without_error(
+            vec![
+                ident_token("f"),
+                ident_token("c"),
+                ident_token("v"),
+                Token::Equal,
+                newline(),
+                indent(),
+                Token::If,
+                ident_token("c"),
+                Token::Then,
+                newline(),
+                indent(),
+                indent(),
+                Token::Case,
+                ident_token("v"),
+                Token::Of,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("On"),
+                Token::Arrow,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("Off"),
+                newline(),
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("Off"),
+                Token::Arrow,
+                newline(),
+                indent(),
+                indent(),
+                indent(),
+                indent(),
+                ident_token("On"),
+                newline(),
+                indent(),
+                Token::Else,
+                newline(),
+                indent(),
+                indent(),
+                ident_token("On"),
+                newline(),
+            ],
+            vec![
+                Token::OpenBlock,
+                ident_token("f"),
+                ident_token("c"),
+                ident_token("v"),
+                Token::Equal,
+                Token::If,
+                ident_token("c"),
+                Token::Then,
+                Token::Case,
+                Token::OpenBlock,
+                ident_token("v"),
+                Token::CloseBlock,
+                Token::Of,
+                Token::OpenBlock,
+                ident_token("On"),
+                Token::Arrow,
+                Token::OpenBlock,
+                ident_token("Off"),
+                Token::CloseBlock,
+                ident_token("Off"),
+                Token::Arrow,
+                Token::OpenBlock,
+                ident_token("On"),
+                Token::CloseBlock, // closes the second branch's body (CaseBranch)
+                Token::CloseBlock, // closes the branch list (CaseBlock)
+                Token::Else,
+                ident_token("On"),
                 Token::CloseBlock,
             ],
         )

@@ -137,6 +137,40 @@ test_parse_ok!(
     ))
 );
 
+// `BUG-23`: a `case` in the `then` arm of an `if` is closed by its `else`.
+// Before the fix, the layout pass never emitted the `CloseBlock`s this needs
+// (see `else_closes_case_block_opened_in_a_then_arm` in `layout.rs`'s own
+// tests) and this source was rejected with a `LayoutError` on `Else` instead
+// of parsing to the `If` node below.
+test_parse_ok!(
+    case_in_then_arm_closed_by_else,
+    r#"
+    module Main exposing (..)
+
+    main =
+      if v then
+        case v of
+          On ->
+            Off
+
+          Off ->
+            On
+      else
+        On
+    "#,
+    module(expr_if(
+        Box::new(expr_var(name("v"))),
+        Box::new(expr_case(
+            Box::new(expr_var(name("v"))),
+            vec![
+                case_branch(pattern_ctor(name("On")), expr_ctor(name("Off"))),
+                case_branch(pattern_ctor(name("Off")), expr_ctor(name("On"))),
+            ],
+        )),
+        Box::new(expr_ctor(name("On"))),
+    ))
+);
+
 test_parse_ok!(
     if_else_if_else,
     r#"
