@@ -1217,13 +1217,6 @@ fn infix_chain_shape(preamble: &str, chain_body: &str) -> Shape {
 }
 
 /// The same, for a body that has to be written on the declaration's own line.
-///
-/// `handle_indentation` breaks on a leading `-` without clearing `at_line_start`,
-/// so an indented line whose first token is `-` has the spaces *after* that token
-/// measured as indentation: `\n  - -a` is an `IndentationError` from the tokenizer
-/// before the grammar ever sees it. That is `BUG-19`, a tokenizer defect unrelated
-/// to re-association and older than `BUG-22`, so the one test that needs a leading
-/// `-` in front of another `-` keeps the body on one line to stay clear of it.
 fn infix_chain_shape_one_line(preamble: &str, chain_body: &str) -> Shape {
     let source = format!(
         "module Test exposing (..)\n{}\nchain a b c = {}\n",
