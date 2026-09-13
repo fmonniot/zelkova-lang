@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Type classes — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-type-classes" class="sidebar-toggle-input">
+<label for="sidebar-toggle-type-classes" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html" class="current">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#declaring-a-class">Declaring a class</a></li>
+<li><a href="#declaring-an-instance">Declaring an instance</a></li>
+<li class="nested"><a href="#an-instance-may-be-derived">An instance may be derived</a></li>
+<li class="nested"><a href="#a-class-says-how-it-is-derived">A class says how it is derived</a></li>
+<li class="nested"><a href="#what-a-derived-instance-computes">What a derived instance computes</a></li>
+<li class="nested"><a href="#a-derivation-over-one-value">A derivation over one value</a></li>
+<li class="nested"><a href="#what-a-derivation-cannot-render">What a derivation cannot render</a></li>
+<li class="nested"><a href="#the-bindings-are-inlined-not-called">The bindings are inlined, not called</a></li>
+<li class="nested"><a href="#what-a-derivation-is-trusted-to-keep">What a derivation is trusted to keep</a></li>
+<li class="nested"><a href="#what-a-derived-instance-requires">What a derived instance requires</a></li>
+<li><a href="#constraining-an-annotation">Constraining an annotation</a></li>
+<li class="nested"><a href="#a-constraint-belongs-to-a-signature-not-to-a-type">A constraint belongs to a signature, not to a type</a></li>
+<li><a href="#superclasses">Superclasses</a></li>
+<li><a href="#where-an-instance-may-be-declared">Where an instance may be declared</a></li>
+<li><a href="#a-class-is-always-over-a-complete-type">A class is always over a complete type</a></li>
+<li><a href="#numeric-literals">Numeric literals</a></li>
+<li><a href="#a-constrained-function-may-not-be-a-foreign-facade">A constrained function may not be a foreign facade</a></li>
+<li><a href="#the-words-this-reserves">The words this reserves</a></li>
+<li><a href="#what-the-standard-library-declares">What the standard library declares</a></li>
+<li><a href="#open-questions">Open questions</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="type-classes">Type classes</h1>
+<p>A signature can say that a function takes any type at all, and it can say that a function takes
+exactly one. It has nothing to say in between, and <em>in between</em> is where most of the interesting
+functions live: <code>min</code> works for anything that can be ordered and for nothing else, and <code>add</code> for
+the two numeric types.</p>
+<p>A <strong>type class</strong> is how Zelkova writes that middle. A class names a set of operations; a type
+joins the class by declaring an <strong>instance</strong> that implements them; and a signature says what it
+needs by naming the class in front of the type it constrains.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Order, Comparable)
+
+type Order
+  = LT
+  | EQ
+  | GT
+
+class Comparable a where
+  compare : a -&gt; a -&gt; Order</code></pre></div>
+<p><strong>Not implemented:</strong> the compiler has none of this, and none of it parses. Every block here
+showing a class, an instance or a constraint is tagged <code>expect=unimplemented</code> for that reason,
+and each goes red the day the construct it shows starts working. The type-class ticket program in
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/README.md"><code>docs/tickets/README.md</code></a> is the implementation, in the order it has to
+land.</p>
+<h2 id="declaring-a-class">Declaring a class</h2>
+<p>A class declaration is the keyword <code>class</code>, the class's name, one type variable, <code>where</code>, and an
+indented block of <strong>member signatures</strong> — one per line, each an ordinary <code>name : Type</code>.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Order, Comparable)
+
+type Order
+  = LT
+  | EQ
+  | GT
+
+class Comparable a where
+  compare : a -&gt; a -&gt; Order
+  lt : a -&gt; a -&gt; Bool</code></pre></div>
+<p>The variable in the head — <code>a</code> above — is the <strong>class variable</strong>. It is bound by the class, and
+it is the thing every instance chooses. Inside a member's signature it stands for whichever type
+the instance is for; outside, it is what the constraint constrains.</p>
+<p>A member is an ordinary value. <code>compare</code> is callable by name, from anywhere the class is in
+scope, and its type outside the class is its member signature with the class's own constraint in
+front:</p>
+<div class="zel-block expect-unchecked"><div class="zel-block-tags"><span class="zel-tag">expect=fragment</span></div><pre><code>-- given the class above, `compare` has this type everywhere else
+compare : Comparable a =&gt; a -&gt; a -&gt; Order</code></pre></div>
+<p>Declaring <code>Comparable</code> puts <code>compare</code> and <code>lt</code> into the module's value namespace, the way a
+<code>type</code> declaration puts its constructors there. There is no separate step that exports a member,
+and no qualified spelling that reaches "the class's <code>compare</code>" as distinct from the <code>compare</code>.</p>
+<p>A class has exactly one variable.</p>
+<h2 id="declaring-an-instance">Declaring an instance</h2>
+<p>An instance declaration is the keyword <code>instance</code>, the class's name, the type joining it,
+<code>where</code>, and an indented block of <strong>member bindings</strong>: one ordinary function declaration per
+member, with no type annotations, because the class already gave each its type.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Colour)
+
+type Colour
+  = Red
+  | Blue
+
+type Order
+  = LT
+  | EQ
+  | GT
+
+instance Comparable Colour where
+  compare a b =
+    EQ
+  lt a b =
+    False</code></pre></div>
+<p>An instance must implement <strong>every</strong> member of its class. A missing member is an error naming
+the member and the class: a constrained caller may rely on the members being there.</p>
+<p>An instance has no name and is never mentioned by one. It is not exposed, not imported, and
+never written in an <code>exposing</code> list. It is in scope wherever its class and its type are, and how
+far "wherever" reaches is <a href="#where-an-instance-may-be-declared">the orphan rule</a>, below.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Thing)
+
+type Thing
+  = Comparable
+  | Colour
+  | EQ
+
+instance Comparable Colour where
+  compare a b =
+    EQ</code></pre></div>
+<p><strong>Known gap:</strong> an <code>instance</code> declaration is not rejected today. It is <em>accepted as something
+else</em>. <code>instance</code> is an ordinary lowercase identifier, so the parser reads the line as a function
+declaration named <code>instance</code> whose parameters are <code>Comparable</code>, <code>Colour</code>, <code>where</code>, <code>compare</code>, <code>a</code>
+and <code>b</code> — and when those names happen to resolve. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-38.md"><code>LANG-38</code></a> is the ticket,
+and this block goes red when it lands.</p>
+<h3 id="an-instance-may-be-derived">An instance may be derived</h3>
+<p>An instance may ask for the definition its type's shape already implies rather than write it.
+Its body is the single word <code>derived</code>:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Colour)
+
+type Colour
+  = Red
+  | Green
+  | Blue
+
+instance Eq Colour where
+  derived</code></pre></div>
+<p>It is an ordinary instance declaration in every other respect.</p>
+<p><code>derived</code> is the <strong>whole</strong> body: an instance is either derived or written out, never a mixture.
+A derivation defines every member of the class at once, out of one description of the type's
+shape.</p>
+<h3 id="a-class-says-how-it-is-derived">A class says how it is derived</h3>
+<p>What a derivation can see is the <strong>shape</strong> of a value — which constructor, in what position, with
+what arguments — and shape alone says nothing about what an answer to a member means. A class
+that may be derived is one whose own declaration supplies that half, in ordinary Zelkova.</p>
+<p>A member signature may be followed by a <strong>derivation</strong>: the word <code>derived</code>, the member it is for,
+and the bindings that member's signature calls for.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Eq)
+
+class Eq a where
+  eq : a -&gt; a -&gt; Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True -&gt;
+          y
+
+        False -&gt;
+          False</code></pre></div>
+<p><code>matched</code> is the answer when the walk finds nothing to tell the two values apart. <code>differed</code> is
+the answer when the two values are of different constructors, and receives the <strong>position</strong> each
+constructor is declared at, counting from zero. <code>combine</code> folds the answers from the parts into
+the answer for the whole. None of the three mentions the class variable, so all three stand for
+every type that derives the class.</p>
+<p>A member's signature decides whether it may carry a derivation, and which one. The derivation
+above walks <strong>two</strong> values and needs <code>a -&gt; a -&gt; R</code>, with the class variable absent from <code>R</code>: two
+values to walk in step, and an answer that is not itself of the type being walked. <code>matched</code> is
+then an <code>R</code>, <code>differed</code> a <code>Position -&gt; Position -&gt; R</code>, and <code>combine</code> an <code>R -&gt; R -&gt; R</code>. A member
+at <code>a -&gt; R</code> carries <a href="#a-derivation-over-one-value">a derivation over one value</a>, which is the
+same walk with two bindings in place of three. Any other signature is an error at the class
+declaration.</p>
+<p><code>Position</code> is the declaration position of a constructor, and it is a type rather than a number:
+<code>std/core</code> declares it, gives it <code>Eq</code> and <code>Comparable</code> instances and a <code>positionIndex : Position -&gt; Int</code>, and offers nothing else. A class that wants to order two constructors compares
+them; a class that wants to compute with them converts.</p>
+<p>Two member shapes therefore cannot carry a derivation at all, and the reasons differ:</p>
+<ul>
+<li><strong>A member returning <code>a</code></strong> — the shape <code>add</code> and <code>append</code> have in
+<a href="#what-the-standard-library-declares">what the standard library declares</a> — would ask the walk
+for a third value of the type it is walking, and nothing a class says about itself can lend it
+the means.</li>
+<li><strong>A member taking no <code>a</code></strong> — <code>bottom : a</code>, <code>allValues : List a</code> — asks the walk to run
+backwards and build a value from a description of the type's constructors. That description is
+the thing this design does not have.</li>
+</ul>
+<p>A class is derivable when <strong>every</strong> member carries a derivation, and the two forms mix freely
+across one class: each member takes the form its own signature admits. Covering some members and
+not the rest is an error naming the ones left out: an instance of such a class could only be half
+derived and half written.</p>
+<h3 id="what-a-derived-instance-computes">What a derived instance computes</h3>
+<p>The derivation walks the two values in step, and every answer it collects comes from an instance.</p>
+<ul>
+<li><strong>The constructors first.</strong> When the two values have different constructors, <code>differed</code> answers
+and the walk stops. There is nothing further to compare: two different constructors need not
+take the same number of arguments, nor arguments of the same types, so no pair of arguments
+lines up. <code>differed</code> is handed one <strong>position</strong> per value — where that value's constructor is
+declared, counting from zero — and what it makes of the two is the class's own business.
+Because positions follow the order the variants are written in, and not, say, the alphabetical
+order of their names, reordering a type's variants changes what a derived member computes.</li>
+<li><strong>Then the arguments,</strong> when the constructors agree: each pair in turn, left to right, through
+the instance belonging to <em>that argument's</em> type.</li>
+<li><strong><code>combine</code> folds those answers</strong> into one, in that order, ending at <code>matched</code>.</li>
+</ul>
+<p>The walk never looks inside an argument. It hands each pair to the instance that argument's type
+declares and takes whatever that instance answers, so a type keeps its own definition of a member
+wherever it appears inside a derived one.</p>
+<p><code>Eq</code>'s three definitions and <code>Comparable</code>'s are that one walk with different answers filled into
+it. <code>Eq</code>'s turn it into
+<a href="evaluation-semantics.html#what-structural-equality-computes">structural equality</a>: <code>differed</code>
+discards the positions to answer <code>False</code> outright, <code>combine</code> carries a single unequal pair of
+arguments out to the answer, and <code>matched</code> makes a constructor with no arguments equal to itself.</p>
+<p><code>Comparable</code>'s three turn it into a lexicographic ordering — different constructors ordered by
+the positions they are declared at, so <code>Red</code> is less than <code>Green</code> in the <code>Colour</code> type above;
+two of the same constructor by their arguments, left to right, the first unequal pair deciding:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Comparable)
+
+type Order
+  = LT
+  | EQ
+  | GT
+
+class Comparable a where
+  compare : a -&gt; a -&gt; Order
+
+  derived compare
+    matched = EQ
+    differed i j =
+      compare i j
+
+    combine x y =
+      case x of
+        EQ -&gt;
+          y
+
+        _ -&gt;
+          x</code></pre></div>
+<h3 id="a-derivation-over-one-value">A derivation over one value</h3>
+<p>A derivation for a member at <code>a -&gt; R</code> walks <strong>one</strong> value, and asks the class for two bindings
+rather than three.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Hashable)
+
+class Hashable a where
+  hash : a -&gt; Int
+
+  derived hash
+    atConstructor p =
+      positionIndex p
+
+    combine x y =
+      add x y</code></pre></div>
+<p><code>atConstructor</code> is the answer for the constructor the value is of, and receives the position that
+constructor is declared at.</p>
+<p>With one value there are no two constructors to disagree, so the half of the walk that compares
+them falls away and <code>differed</code> with it: <code>atConstructor</code> answers for <em>the</em> constructor, each
+argument is answered in turn, left to right, by the instance belonging to that argument's type,
+and <code>combine</code> folds those answers onto the constructor's own. Everything else holds as it does
+<a href="#what-a-derived-instance-computes">over two values</a>.</p>
+<p>There is no <code>matched</code>, because the fold begins at <code>atConstructor</code>'s answer and is therefore never
+empty, not even for a constructor with no arguments. What <code>combine</code> is
+<a href="#what-a-derivation-is-trusted-to-keep">trusted to keep</a> is associativity alone.</p>
+<h3 id="what-a-derivation-cannot-render">What a derivation cannot render</h3>
+<p><code>toString : a -&gt; String</code> has the signature a one-value derivation takes, so a class may carry one
+for it. What the walk produces is <code>RedGreen</code> where the reader wanted <code>Red Green</code>, and three
+things stand between the two.</p>
+<ol>
+<li><strong>A constructor's name.</strong> A <code>Position</code> orders constructors and converts to an <code>Int</code>. Neither
+yields <code>"Red"</code>.</li>
+<li><strong>Parenthesisation</strong>, which is context handed <em>downwards</em> into the arguments. A walk that
+folds answers upwards has no downward channel, so an argument cannot be told that it is being
+rendered somewhere brackets are wanted around it.</li>
+<li><strong>Which argument is the first</strong>, so that a separator goes between two answers and not before
+the leftmost. <code>combine</code> is handed two answers and cannot tell where in the fold it sits.</li>
+</ol>
+<p>Rendering a value needs a mechanism that reads constructor names, or a compiler primitive that
+reads a value's representation. Zelkova has neither, and a program that wants a rendering writes
+the instance.</p>
+<h3 id="the-bindings-are-inlined-not-called">The bindings are inlined, not called</h3>
+<p>A derivation is a <strong>compile-time</strong> step. The compiler reads the class's bindings and the type's
+shape and writes the member's definition out of them; what runs is that definition. Neither the
+walk nor the bindings exist at run time: a derivation's bindings are substituted into the
+generated definition at each step rather than called as functions.</p>
+<p>Under <a href="evaluation-semantics.html#evaluation-is-strict">strict evaluation</a> the difference is
+observable, and it is not one the compiler could make on its own. An argument is a value before
+the function it is passed to is entered, so were <code>combine</code> an ordinary call,
+<code>combine (eq a1 b1) (combine (eq a2 b2) matched)</code> would compare every pair of arguments in the
+whole value before the outermost <code>combine</code> ran — including every pair after the one that already
+settled the answer. Substituted, the same three definitions sit inside the walk, where
+<a href="evaluation-semantics.html#conditional-evaluation"><code>case</code> evaluates one branch and not the other</a>
+like any other <code>case</code> in the language.</p>
+<p>So <strong>a class decides its own short-circuiting, by what it writes</strong>. <code>Eq</code>'s <code>combine</code> above is a
+<code>case</code> on its first argument, so a derived <code>eq</code> stops at the first unequal pair and never looks
+at the rest of the value; <code>Comparable</code>'s stops at the first answer other than <code>EQ</code>. Written
+instead as <code>combine x y = and x y</code>, the ordinary function call, <code>Eq</code>'s derivation would compare
+every pair — the same answer, at the cost of the whole value — because
+<a href="evaluation-semantics.html#nothing-short-circuits">nothing short-circuits</a> and <code>and</code> is a function
+like any other. Both spellings are legal and the compiler prefers neither. Which one a class
+writes is visible in the class's own declaration.</p>
+<p>Inlining reaches only those bindings. Anything they <em>call</em> is an ordinary call, evaluated
+under the ordinary rules — so a <code>combine</code> whose short-circuiting hides behind a helper does not
+get it back.</p>
+<h3 id="what-a-derivation-is-trusted-to-keep">What a derivation is trusted to keep</h3>
+<p><code>combine</code> is a fold, and a fold has a shape the answers must not notice: <strong><code>combine</code> has to be
+associative, and a two-value derivation's <code>matched</code> an identity on both sides.</strong></p>
+<div class="zel-block expect-unchecked"><div class="zel-block-tags"><span class="zel-tag">expect=fragment</span></div><pre><code>combine (combine x y) z  =  combine x (combine y z)
+
+combine matched x        =  x
+combine x matched        =  x</code></pre></div>
+<p>A <a href="#a-derivation-over-one-value">one-value derivation</a> owes the associativity and not the
+identity. Its fold starts at <code>atConstructor</code>'s answer and never at an empty one, so there is
+nothing for an identity to stand in for.</p>
+<p>Keeping the law is what makes a derived member's answer a property of the value rather than of
+the walk: how many arguments a constructor happens to have, and how the walk groups their
+answers, cannot change it.</p>
+<p><strong>Nothing checks this.</strong> The law is about values of a type the compiler is not reading, and the
+language has no way to state it, so a derivation that breaks it compiles and computes whatever
+the fold order gives it. Breaches come in two shapes.</p>
+<p>The first is <strong>an answer whose meaning depends on how many things were combined</strong>: an average, a
+ratio, a proportion of the arguments that matched. The same idea counted rather than averaged
+(<code>matched = 0</code>, <code>differed _ _ = 1</code>, <code>combine = add</code>) is a monoid, and the walk gets it right for
+a constructor of any size.</p>
+<p>The second is <strong>an answer that weights each part by where the fold reached it</strong>, and it is what
+the usual way of mixing a hash does: <code>combine x y = add (mul 31 x) y</code> multiplies its left answer
+once more for every <code>combine</code> closing over it, so the same parts grouped differently mix to
+different numbers. A hash keeps the law by mixing with an operation grouping cannot see —
+<code>Bitwise.xor</code>, or the plain <code>add</code> above.</p>
+<p><strong>Nothing will check it either.</strong> Establishing the law before a program runs means reading what
+a derivation's answers mean, which is the one thing this mechanism does not do, so the law is
+permanently the class author's to keep (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/decisions/dec-10.md">DEC-10</a>).</p>
+<h3 id="what-a-derived-instance-requires">What a derived instance requires</h3>
+<p>Every argument of every variant needs an instance of the class being derived, and nothing else
+does. In particular a class owes no <code>Position</code> instance for the positions <code>differed</code> and
+<code>atConstructor</code> receive: what a class makes of them is written in its own bindings.</p>
+<p>Where an argument's type is a variable, the requirement becomes a <strong>constraint on the derived
+instance</strong>, inferred rather than written:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Box)
+
+type Box a
+  = Box a
+
+instance Eq (Box a) where
+  derived</code></pre></div><div class="zel-block expect-unchecked"><div class="zel-block-tags"><span class="zel-tag">expect=fragment</span></div><pre><code>-- the instance that declaration yields
+Eq a =&gt; Eq (Box a)</code></pre></div>
+<p>Two <code>Box</code>es are equal when their contents are, which is only a definition of equality once the
+contents have one. A parameter no variant uses carries no constraint.</p>
+<p>Where the argument's type is concrete, the requirement is checked at the declaration, and an
+argument whose type has no instance is an error there, naming the variant and the type:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Key, Entry)
+
+type Key
+  = Key
+
+type Entry
+  = Entry Key
+
+instance Eq Entry where
+  derived</code></pre></div>
+<p>The instance is the claim that an <code>Entry</code> can be compared for equality, and the claim is false
+where it is written. A variant holding a <strong>function</strong> is the case no instance can rescue, since a
+function type <a href="evaluation-semantics.html#functions-are-not-comparable">has no useful equality at all</a>.</p>
+<p>A superclass obligation is unchanged: a derived <code>Comparable Colour</code> is rejected unless an
+<code>Eq Colour</code> instance exists, derived in its turn or written out.</p>
+<p>And the class must be one that says how it is derived. <code>derived</code> under a class whose declaration
+carries no derivation is an error naming the class — not because the compiler holds a list of the
+classes that do, but because the declaration the instance names has nothing in it to run.</p>
+<h2 id="constraining-an-annotation">Constraining an annotation</h2>
+<p>A constraint is written in front of the type, separated from it by <code>=&gt;</code>. It names a class and
+the variable that class applies to.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Order, min)
+
+type Order
+  = LT
+  | EQ
+  | GT
+
+min : Comparable a =&gt; a -&gt; a -&gt; a
+min x y =
+  x</code></pre></div>
+<p>Read it as a precondition on the caller: <em><code>min</code> works for any type <code>a</code>, provided <code>a</code> is
+<code>Comparable</code></em>. A caller supplying a type with no <code>Comparable</code> instance is an error at the call
+site, pointing at the call.</p>
+<p>Several constraints are parenthesised and comma-separated:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Bit, describe)
+
+type Bit
+  = Zero
+  | One
+
+describe : (Comparable k, Eq v) =&gt; k -&gt; v -&gt; Bit
+describe a b =
+  Zero</code></pre></div>
+<h3 id="a-constraint-belongs-to-a-signature-not-to-a-type">A constraint belongs to a signature, not to a type</h3>
+<p><code>=&gt;</code> may appear once, at the very front of an annotation, and nowhere else. A constraint is a
+statement about the declaration being annotated; it is not a piece of type syntax that can be
+nested inside a larger type.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Size, f)
+
+type Size
+  = Small
+
+f : Size -&gt; (Comparable a =&gt; a)
+f x =
+  Small</code></pre></div>
+<p>The left of <code>=&gt;</code> must be constraints; a type there is an error:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Size, f)
+
+type Size
+  = Small
+
+f : Size -&gt; Size =&gt; Size -&gt; Size
+f x =
+  x</code></pre></div>
+<p><code>Size -&gt; Size</code> is a perfectly good type, and <code>(Comparable k, Eq v)</code> is — read as a type — a
+perfectly good two-tuple. Nothing about the tokens distinguishes a constraint list from a type,
+so a constrained annotation is read as a type first and checked to be constraint-shaped
+afterwards, and this is the error that check produces.</p>
+<h2 id="superclasses">Superclasses</h2>
+<p>A class may require another. <code>Comparable</code> needs equality, so it is declared with <code>Eq</code> in front
+of its own head, in the same <code>=&gt;</code> notation a signature uses:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Order, Eq, Comparable)
+
+type Order
+  = LT
+  | EQ
+  | GT
+
+class Eq a where
+  eq : a -&gt; a -&gt; Bool
+
+class Eq a =&gt; Comparable a where
+  compare : a -&gt; a -&gt; Order</code></pre></div>
+<p>Two things follow.</p>
+<p><strong>An instance acquires an obligation.</strong> <code>instance Comparable Colour</code> is rejected unless
+<code>instance Eq Colour</code> also exists. A type cannot be ordered without being comparable for equality
+first, and the declaration is where that is enforced.</p>
+<p><strong>A signature loses one.</strong> A function constrained by <code>Comparable a</code> may use <code>eq</code> as well as
+<code>compare</code>, without naming <code>Eq</code>. The superclass is implied by the subclass, so
+<code>Comparable a =&gt; …</code> is the whole precondition and <code>(Eq a, Comparable a) =&gt; …</code> says nothing more.</p>
+<h2 id="where-an-instance-may-be-declared">Where an instance may be declared</h2>
+<p>An <code>instance C T</code> declaration is legal in <strong>the module that declares <code>C</code></strong>, and in <strong>the module
+that declares <code>T</code></strong>, and nowhere else.</p>
+<p>An instance in any third module is rejected:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module App exposing (Main)
+
+type Main
+  = Main
+
+instance Comparable Colour where
+  compare a b =
+    EQ</code></pre></div>
+<p>The rule exists because an instance is the one thing that crosses a module boundary without
+being named. Everything else — a value, a type, an operator — arrives because an importer wrote
+it down, so two modules disagreeing about a name is a question the importer can settle. An
+instance arrives unasked, and it has to: a constrained call must mean the same thing in every
+module that can write it, so an instance cannot wait to be imported.</p>
+<p>Given that, two instances of one class for one type would make the meaning of a call depend on
+what else happened to be linked into the program — which is not a question any source file can
+answer. Tying an instance to the class's module or the type's module makes a duplicate
+impossible to write accidentally: the only way to produce one is for both of those two modules
+to declare it, and that collision is visible to whoever reads either file.</p>
+<p>The cost falls on the third party: if neither the class nor the type is yours, you cannot make
+the one an instance of the other, and the way out is a type of your own that wraps the one you
+wanted.</p>
+<p>A <strong>package</strong> boundary adds nothing to this rule. Every module belongs to exactly one package
+(<a href="packages.html">Packages and source layout</a>), so an instance can only be written by whoever owns
+the class's module or the type's module — which is to say by whoever ships one of those two
+packages. A third package that depends on both still cannot pair them.</p>
+<h2 id="a-class-is-always-over-a-complete-type">A class is always over a complete type</h2>
+<p>A type variable stands for a complete type and is never applied — that is the rule
+<a href="types.html#type-variables">Types</a> already states, and a class mechanism does not relax it. A class
+variable is a type variable, so a class is always over a complete type.</p>
+<p>So classes whose variable stands for a <em>type constructor</em> cannot be written. There is no
+<code>Functor</code>, no <code>Monad</code>, no class over "a thing that takes one type argument".</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Box)
+
+type Box a
+  = Box a
+
+class Functor f where
+  map : (a -&gt; b) -&gt; f a -&gt; f b</code></pre></div>
+<p>That block fails today because <code>class</code> does not parse, and it will still be rejected when it
+does, because <code>f a</code> is not a type — it applies a variable. Allowing it would need variables
+ranging over type constructors as well as types, which is what a kind system is for, and Zelkova
+does not have one.</p>
+<h2 id="numeric-literals">Numeric literals</h2>
+<p>A numeric literal carries no constraint. Its type is decided by how it is spelled — <code>1</code> is an
+<code>Int</code>, <code>1.5</code> is a <code>Float</code> — and <a href="expressions.html#a-literals-type-is-its-spelling">Expressions</a>
+is where that rule lives.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (x)
+
+x =
+  1</code></pre></div>
+<p><strong>Nothing in the language defaults, and the compiler knows no class by name.</strong> A constraint the
+solver cannot discharge is an error rather than a guess, in every case and with no exception
+carved out for arithmetic; there is no way to declare what a class falls back to, and no class
+the compiler treats differently from one a program declares itself. Not even
+<a href="#a-class-says-how-it-is-derived">a derived instance</a> is an exception: what it computes is read
+off the class's own declaration.</p>
+<p>The price is paid inside a constrained function, where a literal is already concrete and so
+cannot be used at the constrained type — <code>double x = mul x 2</code> under <code>Number a =&gt; a -&gt; a</code>
+forces <code>a</code> to be <code>Int</code>. A class that wants numeric constants declares them as members, the way
+it declares everything else.</p>
+<h2 id="a-constrained-function-may-not-be-a-foreign-facade">A constrained function may not be a foreign facade</h2>
+<p>A <code>module foreign</code> facade declares signatures with no bodies, backed by a companion
+file. None of those signatures may carry a constraint.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Cmp exposing (compare)
+
+compare : Comparable a =&gt; a -&gt; a -&gt; Int</code></pre></div>
+<p>The reason is a rule in <a href="interop.html#what-a-facade-signature-may-not-name">Foreign
+interoperability</a>: a facade signature names
+the types the code behind it really handles, so a facade is monomorphic. <code>Comparable a =&gt; a</code>
+is still a signature over <code>a</code>.</p>
+<p>A constrained function is <strong>specialised</strong> — the compiler generates one ordinary function per
+type the constraint is discharged at — and a facade has no body to generate one from. Its
+companion's export is the whole implementation, so a constrained facade would have to serve
+every instance from that one foreign function, which could only tell them apart by inspecting
+arguments whose type its signature never named — dispatch on a type variable.</p>
+<p>So the constraint moves up one level. The facade stays monomorphic and is called only at types
+the code behind it can actually handle; the class, its instances, and the constraint live in
+ordinary Zelkova above it:</p>
+<div class="zel-block expect-unchecked"><div class="zel-block-tags"><span class="zel-tag">expect=fragment</span></div><pre><code>-- Core/Utils.zel — no constraint, and one signature per type it really supports
+compareInt : Int -&gt; Int -&gt; Int
+compareChar : Char -&gt; Char -&gt; Int
+
+-- Basics.zel — the constraint lives here
+instance Comparable Int where
+  compare a b =
+    orderOf (Js.Utils.compareInt a b)</code></pre></div>
+<p><strong>Not implemented:</strong> specialisation is a rule about code generation, and code generation has not
+started. When it exists, the generated JavaScript holds one ordinary function per instantiation
+and no table of operations is built or passed at runtime. Two consequences: a program is compiled
+as a whole rather than a module at a time, and a constrained function cannot call itself at a
+different type than it was called with. The second is already impossible — a class variable
+stands for a complete type, so there is no different type for it to recurse at.</p>
+<p><strong>Known gap:</strong> the comparison and append facades in <code>std/core</code> are declared over any type at all,
+and the JavaScript behind them handles only numbers, strings and tuples; handed a value of a user
+union type it throws rather than reading fields that are not there, but the call still
+type-checks. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-20.md"><code>BUG-20</code></a> tracks it. Those signatures are already inadmissible — a facade
+is monomorphic — and <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-43.md"><code>LANG-43</code></a> is the check that rejects them.</p>
+<h2 id="the-words-this-reserves">The words this reserves</h2>
+<p><code>class</code> and <code>instance</code> are reserved words, usable nowhere but at the start of the declarations
+they introduce. <code>where</code> is reserved in two narrower senses: it opens a class or instance body,
+and it may not be a type variable. Everywhere a <em>value</em> is named — a declaration, a parameter,
+an <code>exposing</code> entry — <code>where</code> stays an ordinary identifier. <code>class</code> and <code>instance</code> share the
+start of a line with a function declaration, so nothing tells the two apart unless those words
+are reserved; <code>where</code> needs only its one type-variable position excluded.</p>
+<p><code>=&gt;</code> is a token of the language rather than a name, so it cannot be declared as an operator.</p>
+<p>A class's own name reserves nothing either. <code>Comparable</code> is an ordinary uppercase name that a
+module declares, no different from a type.</p>
+<p><code>derived</code> reserves nothing either. It is a <a href="lexical-structure.html#reserved-words">soft keyword</a> —
+a keyword in a class body and in an instance body, an ordinary identifier in every other
+position, the name of a class's own member included. What tells the readings apart is the token
+after it: <code>derived</code> alone is <a href="#an-instance-may-be-derived">the request</a>, <code>derived eq</code> opens
+<a href="#a-class-says-how-it-is-derived">a derivation</a> for the member <code>eq</code>, and <code>derived : …</code> or
+<code>derived = …</code> declares a member called <code>derived</code>. One token of lookahead settles it.</p>
+<p><strong>Known gap:</strong> none of those four reservations exists today, and each of these blocks goes red
+when the ticket naming it lands. <code>class</code> and <code>instance</code> as value names (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-38.md"><code>LANG-38</code></a>):</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (class, instance)
+
+type Size
+  = Small
+
+class : Size
+class =
+  Small
+
+instance : Size
+instance =
+  Small</code></pre></div>
+<p><code>where</code> as a type variable, the one <code>where</code> position the language excludes
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-38.md"><code>LANG-38</code></a>):</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Box)
+
+type Box where
+  = Box where</code></pre></div>
+<p>And <code>=&gt;</code> as a user-defined infix operator (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-37.md"><code>LANG-37</code></a>):</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (both)
+
+type Size
+  = Small
+
+infix left 5 (=&gt;) = both
+
+both : Size -&gt; Size -&gt; Size
+both a b =
+  a</code></pre></div>
+<h2 id="what-the-standard-library-declares">What the standard library declares</h2>
+<p>Four classes, and they are ordinary declarations in ordinary modules. A program may declare its
+own alongside, and nothing about what a member means, or about which types have instances, is
+built into the compiler.</p>
+<p>No name is an exception. <code>Number</code> is as ordinary as the other three: the compiler does not know
+it by name and knows no instance of it (<em><a href="#numeric-literals">Numeric literals</a></em>, above).</p>
+<table><thead><tr><th>Class</th><th>Members, roughly</th><th>What it constrains a variable to</th></tr></thead><tbody>
+<tr><td><code>Eq</code></td><td><code>eq</code>, <code>neq</code></td><td>types that can be compared for equality</td></tr>
+<tr><td><code>Comparable</code> (superclass <code>Eq</code>)</td><td><code>compare</code></td><td>types that are ordered</td></tr>
+<tr><td><code>Number</code></td><td><code>add</code>, <code>sub</code>, <code>mul</code>, and the rest of the arithmetic</td><td>the numeric types</td></tr>
+<tr><td><code>Appendable</code></td><td><code>append</code></td><td>types <code>++</code> joins</td></tr>
+</tbody></table>
+<p><code>Comparable</code> has the one member, and the four ordering operators are ordinary functions
+constrained by it — <code>lt : Comparable a =&gt; a -&gt; a -&gt; Bool</code>, and so on — rather than members of
+it. A class is derivable only when <em>every</em> member is, and <code>lt</code> is not: a lexicographic <code>lt</code>
+cannot be folded out of the <code>lt</code> of each pair of arguments, because it has to know whether the
+pair before it was <em>equal</em>. <code>compare</code> can, so <code>Comparable</code> keeps <code>compare</code> and builds the rest on
+top.</p>
+<p>Two of the four carry <a href="#a-class-says-how-it-is-derived">derivations</a>: <code>Eq</code> and <code>Comparable</code>.
+<code>Number</code> and <code>Appendable</code> carry none and could not — <code>add</code> and <code>append</code> return the class
+variable, which no walk over a value has a way to produce. A program's own class is derivable on
+exactly the same terms as either.</p>
+<p><code>std/core</code> also declares <code>Position</code>, the type a derivation
+<a href="#a-class-says-how-it-is-derived">is handed for a constructor</a> — with an <code>Eq</code> instance, a
+<code>Comparable</code> instance and <code>positionIndex : Position -&gt; Int</code>, and with no way to construct one. It
+is the one type here the compiler knows by name, because it has to give those parameters a type
+before any class has been read. That is a name for a <em>type</em>, which the compiler already has four
+of; it is not a name for a class.</p>
+<p><code>Appendable</code> ranges over strings and <a href="lists.html">lists</a>. The compiler implements neither type —
+see the note on brackets and quotes in <a href="lexical-structure.html#punctuation">Lexical structure</a>.</p>
+<p><strong>Not implemented:</strong> <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-42.md"><code>LANG-42</code></a> is the pass that declares them. A
+constrained function cannot be a single-line re-export of a JavaScript facade, which is what most
+of these are in <code>std/core</code> — its body has to choose an instance.</p>
+<h2 id="open-questions">Open questions</h2>
+<ul>
+<li><strong>What lists add.</strong> Having them makes an n-ary <code>combine : List R -&gt; R</code> writable, which would
+let a class see how many answers it is folding and retire
+<a href="#what-a-derivation-is-trusted-to-keep">the law above</a> by making the fold the class's to
+perform rather than the walk's. Which of the two shapes <code>combine</code> takes is unsettled, and is
+not a reason to hold this design. Records reach the mechanism too and are settled:
+<a href="records.html#records-and-derivation">a record is walked field by field in label order</a>, with the
+bindings a class already supplies.</li>
+</ul>
+
+</main>
+</div>
+</body>
+</html>

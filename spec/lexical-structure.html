@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lexical structure — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-lexical-structure" class="sidebar-toggle-input">
+<label for="sidebar-toggle-lexical-structure" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html" class="current">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#source-text">Source text</a></li>
+<li><a href="#comments">Comments</a></li>
+<li><a href="#identifiers">Identifiers</a></li>
+<li class="nested"><a href="#the-underscore-is-not-a-letter">The underscore is not a letter</a></li>
+<li><a href="#reserved-words">Reserved words</a></li>
+<li><a href="#literals">Literals</a></li>
+<li class="nested"><a href="#integers">Integers</a></li>
+<li class="nested"><a href="#floats">Floats</a></li>
+<li class="nested"><a href="#characters">Characters</a></li>
+<li class="nested"><a href="#strings">Strings</a></li>
+<li><a href="#operators">Operators</a></li>
+<li class="nested"><a href="#prefix-negation">Prefix negation</a></li>
+<li><a href="#punctuation">Punctuation</a></li>
+<li><a href="#numeric-literals-that-are-rejected">Numeric literals that are rejected</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="lexical-structure">Lexical structure</h1>
+<p>A Zelkova source file is read in three stages. A <strong>tokenizer</strong> turns characters into tokens;
+a <strong>layout</strong> pass inserts block markers by looking at where each line starts
+(<a href="layout.html">Layout</a>); a <strong>grammar</strong> assembles tokens into declarations. This chapter is the
+first stage: what the characters of a file mean, before any structure is imposed on them.</p>
+<p>Zelkova takes its surface syntax from Elm. Every rule below is stated here in full.</p>
+<h2 id="source-text">Source text</h2>
+<p>A source file is Unicode text, encoded as UTF-8, in a file whose name ends in <code>.zel</code>.</p>
+<p>A line ends at a line feed (<code>U+000A</code>). A carriage return immediately followed by a line feed
+(<code>U+000D U+000A</code>) is one line ending and means exactly the same thing, so a file written on
+Windows and the same file written on Unix tokenize identically. A carriage return anywhere
+else is not valid source text.</p>
+<p>The space (<code>U+0020</code>) is the only whitespace character Zelkova recognises. It separates
+tokens, and in a line's leading run it is what <a href="layout.html">Layout</a> measures. A horizontal tab
+is invalid anywhere outside a comment — that is Layout's rule, and the reasoning is there.</p>
+<p>Tokens are formed by <strong>maximal munch</strong>: at each point the tokenizer takes the longest run of
+characters that can form a token. This is why <code>1.5</code> is one float rather than <code>1</code>, <code>.</code>, <code>5</code>,
+and why <code>&lt;=</code> is one operator rather than <code>&lt;</code> followed by <code>=</code>. Two tokens that would otherwise
+run together are separated by a space.</p>
+<h2 id="comments">Comments</h2>
+<p>A <strong>line comment</strong> starts at <code>--</code> and runs to the end of the line.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (f)
+
+-- a line comment
+f = 1</code></pre></div>
+<p>Because <code>--</code> always starts a comment, no operator can contain two consecutive hyphens, and
+<code>a--a</code> is the single token <code>a</code> followed by a comment rather than anything arithmetic:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (f)
+
+f a =
+  a--a</code></pre></div>
+<p>A <strong>block comment</strong> runs from <code>{-</code> to the matching <code>-}</code>. Block comments <strong>nest</strong>: an inner
+<code>{-</code> must be closed by its own <code>-}</code> before the outer comment can end. Nesting is what makes
+commenting out a region safe — a region that already contains a comment stays commented out
+as a whole.</p>
+<p>A block comment ends exactly at its closing <code>-}</code>. Whatever follows on that line is ordinary
+source text. A block comment may appear anywhere a space may.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (f)
+
+f = {- a note -} 1</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (f)
+
+{- a note -} f =
+  1</code></pre></div>
+<p><strong>Known gap:</strong> that block should be <code>expect=ok</code>. The comment itself is read correctly — it is
+recognised at the start of the line, ends at its own <code>-}</code>, and does not swallow the <code>f =</code> that
+follows — but the declaration is then rejected anyway, for a reason that has nothing to do with
+comments: a top-level declaration whose first token is not at column 1 fails to parse, and here
+that first token (<code>f</code>) sits after the comment rather than at column 1. The same rejection
+reproduces with no comment involved at all — a plain, correctly 2-space-indented <code>  f = 1</code> fails
+identically. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-29.md"><code>docs/tickets/bug-29.md</code></a> tracks it.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (f)
+
+{- outer
+   {- inner -}
+   still outer
+-}
+f = 1</code></pre></div>
+<p>Reaching the end of a file inside a block comment is an error. A stray <code>{-</code> cannot delete
+the rest of a file without saying so.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnclosedBlockComment</span></div><pre><code>module Example exposing (f)
+
+f = 1
+{- oops, never closed</code></pre></div>
+<p>A comment beginning <code>{-|</code> is an ordinary block comment. The convention that such a comment
+documents the declaration below it, and the <code>@docs</code> markup used inside the module-level one,
+belong to documentation tooling; the compiler discards them like any other comment.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (f)
+
+{-| Documentation for f. -}
+f = 1</code></pre></div>
+<p>Tabs are legal inside a comment of either kind, and only there. See
+<a href="layout.html#tabs-are-legal-only-inside-a-comment">Layout</a>.</p>
+<h2 id="identifiers">Identifiers</h2>
+<p>An identifier begins with an <strong>uppercase or lowercase letter</strong> and continues with any number
+of letters, digits, and underscores. Precisely: the first character is in Unicode general
+category <code>Lu</code> or <code>Ll</code>; each subsequent character is in <code>Lu</code>, <code>Ll</code>, <code>Lt</code>, <code>Lm</code>, <code>Lo</code>, <code>Nd</code> or
+<code>Nl</code>, or is <code>_</code> (<code>U+005F</code>).</p>
+<p>The first letter decides what kind of thing the identifier names:</p>
+<table><thead><tr><th>First letter</th><th>Names</th></tr></thead><tbody>
+<tr><td>uppercase</td><td>a type, a type constructor, or a module</td></tr>
+<tr><td>lowercase</td><td>a value, a function, a function parameter, or a type variable</td></tr>
+</tbody></table>
+<p>A letter that has no case cannot begin an identifier, because there would be nothing for the
+language to read off it. Such letters are perfectly good <em>inside</em> a name.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Форма, aire)
+
+type Форма
+  = Ronde
+
+aire côté =
+  côté</code></pre></div>
+<p><code>Форма</code> begins with a Cyrillic capital, so it names a type; <code>aire</code> and <code>côté</code> begin with
+lowercase letters, so they name a function and its parameter. A name may mix scripts freely
+after its first character:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (f)
+
+fデータ = 1
+
+f = fデータ</code></pre></div>
+<p>A name may not <em>begin</em> with an uncased letter:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnrecognizedToken</span></div><pre><code>module Example exposing (f)
+
+f x =
+  データ</code></pre></div>
+<p>Titlecase letters (<code>Lt</code> — <code>ǅ</code>, <code>ǈ</code>, <code>ǋ</code>, <code>ǲ</code>) are a third case, and Zelkova reads only two.
+They may not begin an identifier either, for the same reason, and are ordinary continuation
+characters.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (f)
+
+ǅoo = 1
+
+f = ǅoo</code></pre></div>
+<p><strong>Known gap:</strong> that block should be rejected. Today an identifier may begin with any cased
+letter, titlecase included, and a titlecase-initial name is classified as <em>lowercase</em> — so
+<code>ǅoo</code> is accepted and names a value. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-3.md"><code>docs/tickets/lang-3.md</code></a> tracks
+it.</p>
+<h3 id="the-underscore-is-not-a-letter">The underscore is not a letter</h3>
+<p><code>_</code> may appear inside an identifier but may not begin one. On its own it is the wildcard
+pattern, and that is what it stays when it is written in front of a name: <code>_x</code> is two tokens,
+not one identifier.</p>
+<p>In a function's parameter list, two tokens are two parameters:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:BindingPatternsInvalidLen</span></div><pre><code>module Example exposing (Flag, f)
+
+type Flag
+  = On
+
+f : Flag -&gt; Flag
+f _x =
+  On</code></pre></div>
+<p>The annotation promises one argument. <code>f _x</code> supplies two patterns — a wildcard and a
+variable named <code>x</code> — and the mismatch is what the compiler reports. Zelkova has no convention
+by which a leading underscore marks a parameter as deliberately unused; write <code>_</code> for that.</p>
+<h2 id="reserved-words">Reserved words</h2>
+<p>Thirteen words are reserved and may never be used as identifiers:</p>
+<pre><code>as     case   else   exposing   if     import   in
+infix  let    module of         then   type
+</code></pre>
+<p><code>let</code> and <code>in</code> are reserved although the construct that uses them is not implemented; see
+<a href="layout.html#let--in">Layout</a>.</p>
+<p>Six further words are <strong>soft keywords</strong>. Each is a keyword only in the position listed against
+it, and an ordinary identifier everywhere else:</p>
+<table><thead><tr><th>Word</th><th>Keyword in</th></tr></thead><tbody>
+<tr><td><code>left</code>, <code>right</code>, <code>non</code></td><td>the associativity of an <code>infix</code> declaration</td></tr>
+<tr><td><code>foreign</code></td><td>the header of a <a href="interop.html">facade</a> module</td></tr>
+<tr><td><code>derived</code></td><td>the body of an <a href="type-classes.html#an-instance-may-be-derived">instance declaration</a>, and a <a href="type-classes.html#a-class-says-how-it-is-derived">derivation</a> in a class body</td></tr>
+<tr><td><code>unsafe</code></td><td>before a signature in an <a href="interop.html#an-unsafe-facade"><code>unsafe</code> facade</a></td></tr>
+</tbody></table>
+<p>These six read as ordinary vocabulary — a tree module wants <code>left</code> and <code>right</code>, and a program
+modelling another language will want <code>foreign</code> — and each sits where one token of context says
+which reading is meant, so reserving the word outright would take a useful name. <code>derived</code> and
+<code>unsafe</code> are the two that need the token <em>after</em> them rather than the one before: <code>derived</code>
+alone asks for an instance to be derived, <code>derived eq</code> opens the derivation of a member, and
+<code>derived = …</code> or <code>derived : …</code> is an ordinary binding or signature; <code>unsafe f : …</code> marks a
+facade signature where <code>unsafe : …</code> declares a constant of that name.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (left, right, non, foreign, derived, unsafe)
+
+left = 1
+
+right = 2
+
+non = 3
+
+foreign = 4
+
+derived = 5
+
+unsafe = 6</code></pre></div>
+<p><strong>Not implemented:</strong> <code>foreign</code>, <code>derived</code> and <code>unsafe</code> are ordinary identifiers in every
+position today, because the construct each is a keyword in does not parse at all — a facade
+header spells its modifier <code>javascript</code> (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-54.md"><code>LANG-54</code></a>), class and
+instance bodies do not parse (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-38.md"><code>LANG-38</code></a>), and neither does a marked
+facade signature (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-53.md"><code>LANG-53</code></a>). That block is green now and should stay
+green: what each word becomes is a keyword in a position it cannot currently occupy, not a name
+a program loses. It goes red if any of the three is reserved outright as a shortcut, which is
+the choice <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-53.md"><code>LANG-53</code></a> leaves open and the state
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-2.md"><code>LANG-2</code></a> records for <code>javascript</code>.</p>
+<p><code>javascript</code> is an ordinary identifier, and the word a facade header once took:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (f)
+
+javascript = 1
+
+f = javascript</code></pre></div>
+<p><strong>Known gap:</strong> that block should be <code>expect=ok</code>. <code>javascript</code> is the facade modifier today and
+is reserved outright, taking a name from every program that models the language rather than
+compiles to it. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-54.md"><code>LANG-54</code></a> frees it by moving the modifier to
+<code>foreign</code>; <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-2.md"><code>LANG-2</code></a> is the narrower reading, that the word be soft
+where it stands.</p>
+<p><code>true</code> and <code>false</code> are <strong>not</strong> reserved. Zelkova has no boolean literal syntax: <code>Bool</code> is an
+ordinary union type and <code>True</code> and <code>False</code> are its constructors, resolved, imported and
+shadowed like any other name.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=type-error:UnificationFailed</span></div><pre><code>module Example exposing (Bool, not)
+
+type Bool
+  = True
+  | False
+
+not : Bool -&gt; Bool
+not b =
+  case b of
+    True -&gt;
+      False
+
+    False -&gt;
+      True</code></pre></div>
+<p><strong>Known gap:</strong> that block should be <code>expect=ok</code>. The type checker reads the four names <code>Bool</code>,
+<code>Int</code>, <code>Char</code> and <code>Float</code> as its own builtin types wherever they appear in an annotation, while
+the module's own <code>True</code> and <code>False</code> get the union type it declared — so the two halves of a
+module that defines <code>Bool</code> do not match, and the error reads <em>cannot match <code>Bool</code> with <code>Bool</code></em>.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-26.md"><code>BUG-26</code></a> is the ticket.</p>
+<p>So <code>true</code> is available as a variable name:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (f)
+
+true = 1
+
+f = true</code></pre></div>
+<p><strong>Known gap:</strong> that block should be <code>expect=ok</code>. <code>true</code> and <code>false</code> are currently reserved
+words that produce boolean literals, so <code>Bool</code> exists twice over — once as the keywords and
+once as <code>Basics</code>' union type. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-1.md"><code>docs/tickets/lang-1.md</code></a> removes the
+keywords.</p>
+<h2 id="literals">Literals</h2>
+<h3 id="integers">Integers</h3>
+<p>An integer literal is a run of ASCII digits, or <code>0x</code> followed by a run of ASCII hexadecimal
+digits. There are no digit separators, and no leading <code>-</code>: negation is an operator, described
+below. A pattern may still write what reads as a negative integer — <code>-1</code> matches only that
+value — but the sign there belongs to the <a href="patterns.html#literal-patterns">pattern grammar</a>, not
+to this token.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (count)
+
+count = 42</code></pre></div><div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (mask)
+
+mask = 0xFF</code></pre></div>
+<p><strong>Not implemented:</strong> hexadecimal literals are not recognised. <code>0xFF</code> is currently read as the
+literal <code>0</code> applied to a variable named <code>xFF</code>, which then fails to resolve — an accident, not
+a diagnostic.</p>
+<p>The language guarantees that every integer in <code>-2^31 .. 2^31 - 1</code> is representable on every
+target. Beyond that range the compilation target decides: the JavaScript backend is exact to
+<code>2^53</code>, and a future WebAssembly backend would use 64-bit two's-complement arithmetic with
+the wraparound that implies.</p>
+<h3 id="floats">Floats</h3>
+<p>A float literal is a run of digits, a <code>.</code>, and a further run of digits — <strong>at least one digit
+on each side</strong> — optionally followed by an exponent: <code>e</code> or <code>E</code>, an optional <code>+</code> or <code>-</code>, and
+a run of digits. An exponent may also follow a bare run of digits with no <code>.</code> at all.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (ratio)
+
+ratio = 3.14</code></pre></div><div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (avogadro)
+
+avogadro = 6.022e23</code></pre></div>
+<p><strong>Not implemented:</strong> exponents are not recognised. As with hexadecimal above, <code>6.022e23</code>
+currently parses as an application of <code>6.022</code> to an unresolvable <code>e23</code>.</p>
+<p>Requiring a digit on each side of the point is what keeps <code>.</code> usable as punctuation. What a
+float literal <em>denotes</em> — the binary64 value it rounds to, and what becomes of one whose value
+does not fit — is <a href="evaluation-semantics.html#numbers">Evaluation semantics</a>'s rule, not this
+section's.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (f)
+
+f = 1.</code></pre></div>
+<p><strong>Known gap:</strong> that block should be rejected — <code>1.</code> has no digit after the point. The
+tokenizer accepts a trailing point today. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-3.md"><code>docs/tickets/lang-3.md</code></a>
+tracks it, along with the titlecase rule above.</p>
+<h3 id="characters">Characters</h3>
+<p>A character literal is a single character between single quotes. The character may be written
+directly, or as one of these escape sequences:</p>
+<table><thead><tr><th>Escape</th><th>Means</th></tr></thead><tbody>
+<tr><td><code>\n</code></td><td>line feed</td></tr>
+<tr><td><code>\r</code></td><td>carriage return</td></tr>
+<tr><td><code>\t</code></td><td>horizontal tab</td></tr>
+<tr><td><code>\\</code></td><td>backslash</td></tr>
+<tr><td><code>\'</code></td><td>single quote</td></tr>
+<tr><td><code>\"</code></td><td>double quote</td></tr>
+<tr><td><code>\u{H…}</code></td><td>the character with the given hexadecimal code point</td></tr>
+</tbody></table>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (letter)
+
+letter = 'a'</code></pre></div><div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (newline)
+
+newline = '\n'</code></pre></div>
+<p><strong>Not implemented:</strong> no escape sequence is recognised. A character literal must currently hold
+exactly one character between the quotes, so <code>'\n'</code> is rejected as an unclosed literal.</p>
+<p>A character literal holds one Unicode code point. <code>'\u{1F600}'</code> is a single character.</p>
+<h3 id="strings">Strings</h3>
+<p>A string literal is a run of characters between double quotes, using the same escapes as
+character literals. It may not contain an unescaped line ending.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (greeting)
+
+greeting = "hello"</code></pre></div>
+<p>A <strong>multi-line string</strong> is delimited by <code>"""</code> and may contain line endings and unescaped
+double quotes. The same escapes apply.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (poem)
+
+poem =
+  """
+  one
+  two
+  """</code></pre></div>
+<p><strong>Not implemented:</strong> neither form is recognised; <code>"</code> is not a token the tokenizer knows.</p>
+<h2 id="operators">Operators</h2>
+<p>An operator is a run of one or more of these characters:</p>
+<pre><code>! # $ % &amp; * + - . / &lt; = &gt; ? @ \ ^ | ~ :
+</code></pre>
+<p>Operators are subject to maximal munch like every other token, so <code>a&lt;=b</code> is <code>a</code>, <code>&lt;=</code>, <code>b</code>,
+and an operator only ends where a character outside that set begins. Two consecutive hyphens
+start a comment, so no operator may contain <code>--</code>.</p>
+<p>Six spellings are punctuation rather than operator names, and may not be declared or
+redefined:</p>
+<table><thead><tr><th>Spelling</th><th>Means</th></tr></thead><tbody>
+<tr><td><code>=</code></td><td>binds a declaration to its body</td></tr>
+<tr><td><code>:</code></td><td>introduces a type annotation</td></tr>
+<tr><td><code>|</code></td><td>separates the variants of a <code>type</code> declaration</td></tr>
+<tr><td><code>-&gt;</code></td><td>a function type, and a <code>case</code> branch</td></tr>
+<tr><td><code>.</code></td><td>separates the parts of a qualified name</td></tr>
+<tr><td><code>..</code></td><td>"everything", in an <code>exposing</code> list</td></tr>
+</tbody></table>
+<p>Every other spelling is available. An operator has no meaning of its own: it is a name, bound
+by an <code>infix</code> declaration to an ordinary function, and its precedence and associativity are
+declared there rather than built in.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing ((|+|), combine)
+
+infix left 6 (|+|) = combine
+
+combine a b =
+  a</code></pre></div>
+<p>A reserved spelling cannot be given one:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing ((|), f)
+
+infix left 6 (|) = f
+
+f a b = a</code></pre></div>
+<p><code>-</code> is <em>not</em> reserved: it is an ordinary operator name, and <code>Basics</code> binds it to subtraction
+like any other.</p>
+<h3 id="prefix-negation">Prefix negation</h3>
+<p>A <code>-</code> written directly before an expression, where no left operand is available, is <strong>prefix
+negation</strong>: <code>-e</code> means the negation of <code>e</code>, and has the type of <code>e</code>, which must be a numeric
+one. It is not subtraction against an implied zero, and nothing about it is special-cased to
+literals — <code>-x</code> negates the variable <code>x</code>, and <code>-1</code> negates the literal <code>1</code> rather than being a
+literal of its own. A <a href="patterns.html#literal-patterns">pattern</a> carries a sign differently. Where
+a <code>-</code> has a left operand and where it does not is
+<a href="expressions.html#prefix-negation">Expressions</a>' subject.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (opposite)
+
+infix left 6 (-) = sub
+
+sub a b =
+  a
+
+opposite n =
+  -n</code></pre></div>
+<p><strong>Known gap:</strong> prefix negation is currently desugared to <code>0 - e</code>, with <code>0</code> always an <em>integer</em>
+literal, so <code>-3.14</code> is a subtraction that mixes an <code>Int</code> with a <code>Float</code>. The block above passes
+either way — it pins the syntax, which is unchanged — and
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-4.md"><code>docs/tickets/lang-4.md</code></a> tracks the meaning.</p>
+<h2 id="punctuation">Punctuation</h2>
+<p>Beyond the six reserved operator spellings above, these characters are tokens in their own
+right:</p>
+<table><thead><tr><th>Token</th><th>Used for</th></tr></thead><tbody>
+<tr><td><code>(</code> <code>)</code></td><td>grouping, tuples, and naming an operator</td></tr>
+<tr><td><code>,</code></td><td>separating tuple elements and <code>exposing</code> entries</td></tr>
+<tr><td><code>_</code></td><td>the wildcard pattern</td></tr>
+<tr><td><code>[</code> <code>]</code></td><td>list literals</td></tr>
+<tr><td><code>{</code> <code>}</code></td><td>records</td></tr>
+</tbody></table>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (f)
+
+f = [1, 2]</code></pre></div><div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (f)
+
+f = { a = 1 }</code></pre></div>
+<p><strong>Not implemented:</strong> lists and records are part of the language and neither is implemented.
+Brackets are tokenized but no construct consumes them (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-44.md"><code>LANG-44</code></a>,
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-45.md"><code>LANG-45</code></a>); braces are not tokenized at all
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>). <a href="lists.html">Lists</a> and <a href="records.html">Records</a> specify
+their syntax; what this section fixes is that the characters are spoken for, and so unavailable
+as operator characters.</p>
+<h2 id="numeric-literals-that-are-rejected">Numeric literals that are rejected</h2>
+<p>An integer literal too large for a 64-bit signed integer is rejected, rather than silently
+wrapping or truncating:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:IntegerOverflow</span></div><pre><code>module Example exposing (f)
+
+f = 99999999999999999999</code></pre></div>
+<p><strong>Known gap:</strong> the bound that block crosses should be <a href="#integers"><code>Int</code>'s range</a>. The error it
+gets today names a 64-bit signed integer instead, because the tokenizer carries a literal's
+value in an <code>i64</code> — a width no rule here sets
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/spec-28.md"><code>docs/tickets/spec-28.md</code></a>).</p>
+<p>A numeric literal may contain at most one <code>.</code>; a second one ends the literal in an error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:MultipleDecimalPoints</span></div><pre><code>module Example exposing (f)
+
+f = 1.2.3</code></pre></div>
+<p>A numeric literal may not continue into a non-ASCII digit. <code>1١</code> looks, to a human, like two
+digits in a row — the second is <code>١</code>, <code>U+0661 ARABIC-INDIC DIGIT ONE</code> — but only the ASCII
+digits <code>0</code>-<code>9</code> are recognised:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:NonAsciiDigit</span></div><pre><code>module Example exposing (f)
+
+f = 1١</code></pre></div>
+<p>An <code>infix</code> declaration's precedence is a numeric literal too, and the range it may take is
+<a href="declarations.html#precedence-is-0-through-9">Declarations</a>' rule rather than this chapter's.</p>
+
+</main>
+</div>
+</body>
+</html>

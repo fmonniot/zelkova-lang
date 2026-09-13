@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patterns — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-patterns" class="sidebar-toggle-input">
+<label for="sidebar-toggle-patterns" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html" class="current">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#the-forms">The forms</a></li>
+<li><a href="#where-a-pattern-may-appear">Where a pattern may appear</a></li>
+<li><a href="#a-pattern-that-can-fail-and-one-that-cannot">A pattern that can fail, and one that cannot</a></li>
+<li><a href="#the-wildcard">The wildcard</a></li>
+<li><a href="#variable-patterns">Variable patterns</a></li>
+<li><a href="#a-pattern-binds-each-name-once">A pattern binds each name once</a></li>
+<li><a href="#literal-patterns">Literal patterns</a></li>
+<li><a href="#tuple-patterns">Tuple patterns</a></li>
+<li><a href="#constructor-patterns">Constructor patterns</a></li>
+<li class="nested"><a href="#the-arguments-must-be-the-ones-it-was-declared-with">The arguments must be the ones it was declared with</a></li>
+<li class="nested"><a href="#qualified-constructors">Qualified constructors</a></li>
+<li><a href="#patterns-nest">Patterns nest</a></li>
+<li><a href="#as-patterns">As-patterns</a></li>
+<li><a href="#list-patterns">List patterns</a></li>
+<li><a href="#the-unit-pattern">The unit pattern</a></li>
+<li><a href="#record-patterns">Record patterns</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="patterns">Patterns</h1>
+<p>A pattern is a shape written where a value will arrive. Matching a value against a pattern
+asks whether the value has that shape and, if it does, what the names for its parts are.
+<code>Circle n</code> matches a value built by <code>Circle</code> and binds <code>n</code> to what it was built from; <code>_</code>
+matches anything and binds nothing.</p>
+<p>Pattern syntax is <strong>closed</strong>: the forms below are all of them, and no declaration adds
+another. That is the difference between a pattern and an expression: an expression is
+made of names, and an operator in one is a name someone bound with an <code>infix</code> declaration, so
+what <code>a + b</code> means depends on what is in scope. A pattern looks up exactly one kind of name —
+a type constructor — and everything else about it is fixed by the grammar. A reader can
+therefore tell what a pattern matches by looking at it, without knowing which module it is in.</p>
+<h2 id="the-forms">The forms</h2>
+<table><thead><tr><th>Form</th><th>Written</th><th>Matches</th></tr></thead><tbody>
+<tr><td><a href="#the-wildcard">wildcard</a></td><td><code>_</code></td><td>any value, binding nothing</td></tr>
+<tr><td><a href="#variable-patterns">variable</a></td><td><code>count</code></td><td>any value, binding it under that name</td></tr>
+<tr><td><a href="#literal-patterns">literal</a></td><td><code>0</code>, <code>1.5</code>, <code>'x'</code>, <code>"ok"</code></td><td>a value equal to that literal</td></tr>
+<tr><td><a href="#tuple-patterns">tuple</a></td><td><code>(a, b)</code>, <code>(a, b, c)</code></td><td>a tuple of that arity, each element against its own pattern</td></tr>
+<tr><td><a href="#constructor-patterns">constructor</a></td><td><code>Dot</code>, <code>Circle n</code>, <code>S.Dot</code></td><td>a value built by that constructor, each argument against its own pattern</td></tr>
+<tr><td><a href="#as-patterns">as-pattern</a></td><td><code>Circle n as whole</code></td><td>whatever its left side matches, also binding the whole value</td></tr>
+<tr><td><a href="#list-patterns">list</a></td><td><code>[]</code>, <code>[a, b]</code></td><td>a list of exactly that length</td></tr>
+<tr><td><a href="#list-patterns">cons</a></td><td><code>first :: rest</code></td><td>a non-empty list, split into its first element and the rest</td></tr>
+<tr><td><a href="#the-unit-pattern">unit</a></td><td><code>()</code></td><td>the one value of the unit type</td></tr>
+<tr><td><a href="#record-patterns">record</a></td><td><code>{ x = p }</code>, <code>{ x }</code></td><td>a record, each named field against its own pattern</td></tr>
+</tbody></table>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Count, Shape, describe)
+
+type Count
+  = One
+  | Many
+
+type Shape
+  = Dot
+  | Circle Count
+
+describe : Shape -&gt; Count
+describe shape =
+  case shape of
+    Dot -&gt;
+      One
+
+    Circle n -&gt;
+      n</code></pre></div>
+<h2 id="where-a-pattern-may-appear">Where a pattern may appear</h2>
+<p>A pattern appears in two places: as a parameter in a function declaration's head, and as the
+left-hand side of a <code>case</code> branch.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, Pair, first, invert)
+
+type Flag
+  = On
+  | Off
+
+type Pair
+  = Pair Flag Flag
+
+first : Pair -&gt; Flag
+first (Pair a b) =
+  a
+
+invert : Flag -&gt; Flag
+invert flag =
+  case flag of
+    On -&gt;
+      Off
+
+    Off -&gt;
+      On</code></pre></div>
+<p><strong>Not implemented:</strong> a pattern will also stand on the left of a <code>let</code> binding and as a
+lambda's parameter. Neither construct exists yet; see <a href="layout.html#let--in">Layout</a>.</p>
+<h2 id="a-pattern-that-can-fail-and-one-that-cannot">A pattern that can fail, and one that cannot</h2>
+<p>A pattern is <strong>irrefutable</strong> when every value of the type it is written against matches it,
+and <strong>refutable</strong> otherwise. The wildcard and a variable are always irrefutable. A tuple
+pattern is irrefutable exactly when all of its elements are. A literal pattern is always
+refutable, and so is every list pattern, the cons form included. A constructor pattern is
+irrefutable only when its type has that one constructor and its arguments are themselves
+irrefutable.</p>
+<p>Both positions accept both kinds. The language requires the patterns in a position to
+<strong>cover</strong> the type between them — a <code>case</code> with its branches, a function declaration with its
+clauses. Both are tried in the order written, so an earlier branch or clause wins over a later
+one that would also have matched:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:MultipleBindingsUnsupported</span></div><pre><code>module Example exposing (Flag, invert)
+
+type Flag
+  = On
+  | Off
+
+invert : Flag -&gt; Flag
+invert On = Off
+invert Off = On</code></pre></div>
+<p><strong>Not implemented:</strong> a declaration may be written as several clauses, one per line, each with
+its own patterns and its own body. Every clause names the same number of parameters. The
+compiler parses them and then reports that a name declared over more than one binding is not
+supported, so today a declaration has exactly one clause and any pattern that can fail has to
+go in a <code>case</code>. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-20.md"><code>docs/tickets/lang-20.md</code></a> is the ticket.</p>
+<p>Coverage is checked rather than assumed:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, ignore)
+
+type Flag
+  = On
+  | Off
+
+ignore : Flag -&gt; Flag
+ignore flag =
+  case flag of
+    On -&gt;
+      Off</code></pre></div>
+<p><strong>Known gap:</strong> that block should be rejected — the <code>case</code> has no branch for <code>Off</code>, so
+<code>ignore Off</code> has no value to produce. Nothing checks coverage today: the exhaustiveness phase
+inspects nothing and accepts every module.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-19.md"><code>docs/tickets/lang-19.md</code></a> is the ticket.</p>
+<h2 id="the-wildcard">The wildcard</h2>
+<p><code>_</code> matches any value and binds nothing. It is the way to say that a position is deliberately
+ignored, and it may be written as many times in one pattern as there are positions to ignore —
+it introduces no name, so two of them cannot collide.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, Triple, middle)
+
+type Flag
+  = On
+  | Off
+
+type Triple
+  = Triple Flag Flag Flag
+
+middle : Triple -&gt; Flag
+middle (Triple _ b _) =
+  b</code></pre></div>
+<p>An ignored position has to use the wildcard and cannot use a variable name preceded by an
+underscore: <code>_count</code> is not a legal pattern. See
+<a href="lexical-structure.html#the-underscore-is-not-a-letter">Lexical structure</a>.</p>
+<h2 id="variable-patterns">Variable patterns</h2>
+<p>A lowercase-initial identifier matches any value and binds it under that name, for the body it
+belongs to and no further. A <code>case</code> branch's bindings are visible in that branch's expression
+alone:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span></div><pre><code>module Example exposing (Flag, f, g)
+
+type Flag
+  = On
+  | Off
+
+f : Flag -&gt; Flag
+f flag =
+  case flag of
+    inner -&gt;
+      -- legal: `inner` is the branch that bound it
+      inner
+
+g : Flag
+g =
+  -- rejected: the branch above ended, and its bindings ended with it
+  inner</code></pre></div>
+<p>A pattern variable shadows anything of the same name from an enclosing scope, including a
+top-level declaration in the same module:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, count, f)
+
+type Flag
+  = On
+  | Off
+
+count : Flag
+count =
+  On
+
+f : Flag -&gt; Flag
+f count =
+  count</code></pre></div>
+<h2 id="a-pattern-binds-each-name-once">A pattern binds each name once</h2>
+<p>Every variable in one pattern position is distinct. Repeating a name is an error rather than a
+demand that the two values be equal — a pattern describes a shape, and equality is a question
+about values that a body asks with an operator.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, Pair, same)
+
+type Flag
+  = On
+  | Off
+
+type Pair
+  = Pair Flag Flag
+
+same : Pair -&gt; Flag
+same (Pair a a) =
+  a</code></pre></div>
+<p><strong>Known gap:</strong> that block should be rejected. Canonicalization inserts each of a pattern's
+variables into the branch's scope in turn, so the second <code>a</code> silently replaces the first and
+the body sees the second field. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-18.md"><code>docs/tickets/lang-18.md</code></a> is the
+ticket.</p>
+<p>The rule spans a whole <strong>clause</strong>, not one pattern. A declaration's parameters are separate
+patterns but one binding position between them, so repeating a name across two parameters is
+the same error:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, pick)
+
+type Flag
+  = On
+  | Off
+
+pick : Flag -&gt; Flag -&gt; Flag
+pick a a =
+  a</code></pre></div>
+<p><code>pick</code> takes two arguments and its body names <code>a</code>, which could mean either of them — there is
+no rule that picks one, so the declaration is rejected.</p>
+<p><strong>Known gap:</strong> that block should be rejected too, and for the same reason as the one above:
+the two parameter patterns are exposed into the scope one after another, so the second <code>a</code>
+replaces the first and the body sees the second argument.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-18.md"><code>docs/tickets/lang-18.md</code></a> covers both.</p>
+<h2 id="literal-patterns">Literal patterns</h2>
+<p>Any literal (integer, float, character or string) matches a value equal to it. The literal is
+written exactly as it is in an expression; see
+<a href="lexical-structure.html#literals">Lexical structure</a> for what each may contain.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag)
+
+type Flag
+  = On
+  | Off
+
+isVowel c =
+  case c of
+    'a' -&gt;
+      On
+
+    'e' -&gt;
+      On
+
+    _ -&gt;
+      Off</code></pre></div>
+<p>A literal pattern is refutable, so it needs a branch after it that covers the rest of the
+type — which for a literal type means a wildcard or a variable, since no finite list of
+literals covers one.</p>
+<p>A pattern may hold a <strong>negative</strong> number. The <strong>pattern grammar</strong> carries the sign, not the
+token underneath it: pattern syntax is closed, and <code>-</code> in an expression is a name bound by an
+<code>infix</code> declaration, which a pattern never looks up, so there is nothing available to apply it
+to. A leading <code>-</code> immediately before a literal pattern is consumed by the pattern production
+itself, not by the tokenizer — <a href="lexical-structure.html#integers">Lexical structure</a> is where the
+integer token is specified, and that token never carries a sign, in a pattern or anywhere else.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Flag)
+
+type Flag
+  = On
+  | Off
+
+sign n =
+  case n of
+    -1 -&gt;
+      On
+
+    _ -&gt;
+      Off</code></pre></div>
+<p><strong>Not implemented:</strong> the grammar reaches for a pattern after the branch's opening and finds
+the <code>-</code>, so a signed literal is a syntax error.</p>
+<p>There is no boolean literal: <code>True</code> and <code>False</code> are ordinary constructors of an ordinary union
+type, so a boolean pattern is a constructor pattern like any other. See
+<a href="lexical-structure.html#reserved-words">Lexical structure</a>.</p>
+<h2 id="tuple-patterns">Tuple patterns</h2>
+<p>A tuple pattern has two or three elements, matching the tuple types the language has and no
+others. Each element is a pattern of its own.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, swap)
+
+type Flag
+  = On
+  | Off
+
+swap : (Flag, Flag) -&gt; (Flag, Flag)
+swap (a, b) =
+  (b, a)</code></pre></div>
+<p>The two-or-three limit and the reasoning behind it are in <a href="types.html#tuple-types">Types</a>; it
+holds in pattern position exactly as it does in type position, so a four-element tuple pattern
+is a syntax error rather than a type error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (Flag)
+
+type Flag
+  = On
+  | Off
+
+first (a, b, c, d) =
+  a</code></pre></div>
+<p>Parentheses with one pattern inside are grouping and not a tuple of one — <code>(p)</code> is <code>p</code>.</p>
+<h2 id="constructor-patterns">Constructor patterns</h2>
+<p>A constructor pattern names a type constructor and gives one pattern per argument it was
+declared with. It matches a value built by that constructor, and matches each argument
+against the pattern in that position.</p>
+<p>Whether the constructor's arguments may be written without parentheses depends on the
+position. In a <code>case</code> branch the whole left-hand side is one pattern, so a constructor and its
+arguments read as one thing:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Count, Shape, width)
+
+type Count
+  = One
+  | Many
+
+type Shape
+  = Dot
+  | Rect Count Count
+
+width : Shape -&gt; Count
+width shape =
+  case shape of
+    Rect w h -&gt;
+      w
+
+    Dot -&gt;
+      One</code></pre></div>
+<p>In a function declaration's head, juxtaposition already separates one parameter from the
+next, so an applied constructor must be parenthesised:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Count, Boxed, unbox)
+
+type Count
+  = One
+  | Many
+
+type Boxed
+  = Boxed Count
+
+unbox : Boxed -&gt; Count
+unbox (Boxed n) =
+  n</code></pre></div>
+<p>A constructor with no arguments needs no parentheses there, because there is nothing for
+juxtaposition to be ambiguous about:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Unit, identity)
+
+type Unit
+  = Unit
+
+identity : Unit -&gt; Unit
+identity Unit =
+  Unit</code></pre></div>
+<p>Dropping the parentheses means <code>width Dot n</code> below is a well-formed head of <strong>two</strong>
+parameters: a nullary constructor pattern and a variable. Nothing about the patterns
+is wrong; what rejects it is the annotation, which promises one parameter:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:BindingPatternsInvalidLen</span></div><pre><code>module Example exposing (Count, Shape, width)
+
+type Count
+  = One
+  | Many
+
+type Shape
+  = Dot
+  | Rect Count Count
+
+width : Shape -&gt; Count
+width Dot n =
+  One</code></pre></div>
+<p><a href="types.html#the-annotation-and-the-declarations-parameters">Types</a> is where that check is
+specified. A declaration with no annotation has nothing to disagree with, so it takes however
+many parameters its head names — and dropping the parentheses there changes its arity.</p>
+<h3 id="the-arguments-must-be-the-ones-it-was-declared-with">The arguments must be the ones it was declared with</h3>
+<p>A constructor pattern must supply exactly as many argument patterns as the <code>type</code> declaration
+gave that constructor.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Count, Shape, width)
+
+type Count
+  = One
+  | Many
+
+type Shape
+  = Dot
+  | Rect Count Count
+
+width : Shape -&gt; Count
+width shape =
+  case shape of
+    Rect w -&gt;
+      w
+
+    Dot -&gt;
+      One</code></pre></div>
+<p><strong>Known gap:</strong> that block should be rejected — <code>Rect</code> has two arguments and the pattern gives
+one. No phase checks: canonicalization resolves the constructor without counting, and the type
+checker pairs argument patterns with declared parameter types by zipping the two lists, which
+stops at the shorter. A pattern with too many arguments is accepted the same way, and the
+extra ones bind nothing. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-17.md"><code>docs/tickets/lang-17.md</code></a> is the ticket.</p>
+<h3 id="qualified-constructors">Qualified constructors</h3>
+<p>A constructor pattern may name its constructor qualified, under the module's name or under
+the alias the <code>import</code> gave it. The rule is the one every name follows; see
+<a href="modules.html#imports">Modules</a>.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=qualified</span></div><pre><code>module Shape exposing (Count(..), Shape(..))
+
+type Count
+  = One
+  | Many
+
+type Shape
+  = Dot
+  | Circle Count</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=qualified</span></div><pre><code>module Main exposing (describe)
+
+import Shape as S
+
+describe : S.Shape -&gt; S.Count
+describe shape =
+  case shape of
+    S.Circle n -&gt;
+      n
+
+    S.Dot -&gt;
+      S.One</code></pre></div>
+<p>A constructor that is not in scope is reported as such, with the caret under the name:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariantNotFound</span></div><pre><code>module Example exposing (Flag, f)
+
+type Flag
+  = On
+  | Off
+
+f : Flag -&gt; Flag
+f flag =
+  case flag of
+    Onn -&gt;
+      Off
+
+    _ -&gt;
+      On</code></pre></div>
+<h2 id="patterns-nest">Patterns nest</h2>
+<p>Every pattern position takes a whole pattern, so patterns nest to any depth: a constructor
+argument may be a tuple or another constructor pattern, and a tuple element may be a
+constructor pattern. An applied constructor written as a sub-pattern is parenthesised.</p>
+<p><strong>Known gap:</strong> a constructor pattern may not appear inside another pattern at all, and a
+parenthesised one may not head a <code>case</code> branch. The grammar has one production for
+sub-patterns and it has no constructor alternative, which also means the parenthesised form
+does not admit one. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-16.md"><code>docs/tickets/lang-16.md</code></a> is the ticket, and each
+of the three blocks below is an <code>expect=ok</code> once it lands.</p>
+<p>A nullary constructor as a tuple element:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (Flag, both)
+
+type Flag
+  = On
+  | Off
+
+both : (Flag, Flag) -&gt; Flag
+both pair =
+  case pair of
+    (On, On) -&gt;
+      On
+
+    _ -&gt;
+      Off</code></pre></div>
+<p>An applied constructor as a constructor's argument:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (Count, Shape, Wrapper, inner)
+
+type Count
+  = One
+  | Many
+
+type Shape
+  = Dot
+  | Circle Count
+
+type Wrapper
+  = Wrapper Shape
+
+inner : Wrapper -&gt; Count
+inner w =
+  case w of
+    Wrapper (Circle n) -&gt;
+      n
+
+    _ -&gt;
+      One</code></pre></div>
+<p>A parenthesised constructor pattern at the head of a <code>case</code> branch:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (Count, Shape, describe)
+
+type Count
+  = One
+  | Many
+
+type Shape
+  = Dot
+  | Circle Count
+
+describe : Shape -&gt; Count
+describe shape =
+  case shape of
+    (Circle n) -&gt;
+      n
+
+    Dot -&gt;
+      One</code></pre></div>
+<h2 id="as-patterns">As-patterns</h2>
+<p>A pattern may be given a name for the whole value it matched, written <code>pattern as name</code>. The
+sub-patterns bind their parts as usual and the name binds what they were taken from, so a
+branch can inspect a value and pass it on without rebuilding it.</p>
+<p><code>as</code> binds more loosely than everything else in a pattern: in <code>Rect w h as whole</code>, <code>whole</code>
+names the entire <code>Rect</code>, not <code>h</code>. An as-pattern written as a sub-pattern is parenthesised.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Count, Shape, widen)
+
+type Count
+  = One
+  | Many
+
+type Shape
+  = Dot
+  | Rect Count Count
+
+widen : Shape -&gt; Shape
+widen shape =
+  case shape of
+    Rect w h as whole -&gt;
+      whole
+
+    Dot -&gt;
+      Dot</code></pre></div>
+<p><strong>Not implemented:</strong> <code>as</code> is a reserved word but the grammar accepts it only in an <code>import</code>,
+so a pattern using it is a syntax error.</p>
+<h2 id="list-patterns">List patterns</h2>
+<p>A list pattern is a bracketed sequence of patterns and matches a list of exactly that length,
+element by element. <code>[]</code> matches the empty list, <code>[a]</code> a list of one, <code>[a, b]</code> a list of two.</p>
+<p>A <strong>cons pattern</strong>, <code>first :: rest</code>, matches a list of one element or more: it binds the first
+element to the pattern on the left and the rest of the list — possibly empty — to the pattern
+on the right. Both sides are whole patterns, so <code>a :: b :: rest</code> matches a list of two or more,
+and <code>Circle n :: rest</code> matches on the first element's shape.</p>
+<p><code>::</code> here is a form of the grammar and not a name — in an <em>expression</em> it is an ordinary
+operator, and <a href="lists.html#the-cons-operator">Lists</a> is where the two halves are set beside each
+other. Pattern syntax is closed, so a pattern never looks up an operator: <code>::</code> separates a head
+from a tail the way <code>,</code> separates tuple elements, and it means that regardless of what is in
+scope.</p>
+<p>Both forms are the constructor patterns of the two-variant type
+<a href="lists.html#what-a-list-is">Lists</a> declares — <code>[]</code> is the empty one, <code>first :: rest</code> the other —
+which is where their coverage below comes from.</p>
+<p><code>[]</code> and a cons pattern cover the list type between them, because every list is either empty
+or has a first element. A <code>case</code> written out of the two is complete and needs no wildcard:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (dropFirst)
+
+dropFirst xs =
+  case xs of
+    [] -&gt;
+      xs
+
+    _ :: rest -&gt;
+      rest</code></pre></div>
+<p>A bracketed list pattern fixes a length. No finite set of lengths covers a list, so a <code>case</code>
+built only out of those needs a variable or a wildcard branch to be complete:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Flag)
+
+type Flag
+  = On
+  | Off
+
+firstOf xs =
+  case xs of
+    [] -&gt;
+      Off
+
+    [only] -&gt;
+      only
+
+    _ -&gt;
+      On</code></pre></div>
+<p><strong>Not implemented:</strong> lists are not implemented in any position. Brackets are tokenized and
+<code>::</code> tokenizes as an ordinary operator, but no pattern production consumes either
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-45.md"><code>LANG-45</code></a>); see
+<a href="lexical-structure.html#punctuation">Lexical structure</a>.</p>
+<h2 id="the-unit-pattern">The unit pattern</h2>
+<p><code>()</code> matches the one value of the unit type, and binds nothing. It differs from <code>_</code> in the
+same position by saying which type is being ignored.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Flag, always)
+
+type Flag
+  = On
+  | Off
+
+always : () -&gt; Flag
+always () =
+  On</code></pre></div>
+<p><strong>Not implemented:</strong> <code>()</code> is not recognised in a pattern, a type or an expression; see
+<a href="types.html#the-unit-type">Types</a>.</p>
+<h2 id="record-patterns">Record patterns</h2>
+<p>A record pattern names fields rather than positions. Each entry is <code>label = pattern</code> and the
+field's value is matched against that pattern; <code>{ x }</code> is shorthand for <code>{ x = x }</code>, the field
+matched against a variable pattern of its own label.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, describe)
+
+type Celsius
+  = Celsius
+
+describe reading =
+  case reading of
+    { taken = Celsius, expected = e } -&gt;
+      e
+
+    { expected } -&gt;
+      expected</code></pre></div>
+<p><strong>Not implemented:</strong> the pattern grammar has no brace production
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-49.md"><code>LANG-49</code></a>), and braces are not tokens at all
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>).</p>
+<p>A record pattern names a <strong>subset</strong> of the record's fields, so it is refutable exactly when one
+of its sub-patterns is and a pattern of shorthand entries alone can never fail. Sub-patterns are
+whole patterns, so record patterns nest in both directions like every other form.
+<a href="records.html#record-patterns">Records</a> is where the rest of the construct is specified.</p>
+
+</main>
+</div>
+</body>
+</html>

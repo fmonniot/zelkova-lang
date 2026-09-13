@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Packages — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-packages" class="sidebar-toggle-input">
+<label for="sidebar-toggle-packages" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html" class="current">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#what-a-package-is">What a package is</a></li>
+<li><a href="#source-roots">Source roots</a></li>
+<li><a href="#the-manifest">The manifest</a></li>
+<li><a href="#what-a-package-exposes">What a package exposes</a></li>
+<li><a href="#dependencies">Dependencies</a></li>
+<li class="nested"><a href="#the-version-constraint">The version constraint</a></li>
+<li class="nested"><a href="#where-a-dependency-comes-from">Where a dependency comes from</a></li>
+<li class="nested"><a href="#wrapped">wrapped</a></li>
+<li class="nested"><a href="#one-version-of-each">One version of each</a></li>
+<li class="nested"><a href="#only-direct-dependencies-are-usable">Only direct dependencies are usable</a></li>
+<li class="nested"><a href="#zelkova-core-is-a-dependency-of-every-package">zelkova-core is a dependency of every package</a></li>
+<li><a href="#imports-across-a-package-boundary">Imports across a package boundary</a></li>
+<li class="nested"><a href="#the-namespace">The namespace</a></li>
+<li class="nested"><a href="#unwrapping-a-dependency">Unwrapping a dependency</a></li>
+<li class="nested"><a href="#what-a-package-boundary-cannot-rename">What a package boundary cannot rename</a></li>
+<li class="nested"><a href="#two-modules-under-one-name-is-an-error">Two modules under one name is an error</a></li>
+<li><a href="#tests">Tests</a></li>
+<li class="nested"><a href="#what-a-test-is">What a test is</a></li>
+<li class="nested"><a href="#test-dependencies">test-dependencies</a></li>
+<li><a href="#programs">Programs</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="packages-and-source-layout">Packages and source layout</h1>
+<p>A module is one file, and it is the unit of encapsulation
+(<a href="modules.html">Modules</a>). A <strong>package</strong> is a directory of modules, and it is the unit of
+distribution — the thing that has a name and a version, that depends on other things, and
+that a compiler is pointed at. Every module belongs to exactly one package.</p>
+<p>The two units nest: a module chooses
+which of its declarations other modules may see; a package chooses which of its modules
+other packages may see. A
+package boundary is also where a module's name changes: what a package calls <code>Model</code>,
+everything outside it calls <code>Todo.Model</code>.</p>
+<h2 id="what-a-package-is">What a package is</h2>
+<p>A package is a directory containing a <code>zelkova.toml</code> manifest. The manifest names the
+package and describes it; a directory without one is not a package, and the compiler will
+refuse to compile a raw collection of source files. Beside the manifest are the two source roots,
+<code>src/</code> and <code>tests/</code>.</p>
+<pre><code class="language-text">todo/
+  zelkova.toml
+  zelkova.lock
+  src/
+    App.zel            module App
+    Model.zel          module Model
+    Model/
+      Internal.zel     module Model.Internal
+  tests/
+    ModelTest.zel      module ModelTest
+</code></pre>
+<p><code>zelkova.lock</code> is written beside the manifest by the toolchain and records the exact
+versions a build was resolved to. It is not written by hand and says nothing the manifest
+does not already permit; the <a href="toolchain.html#resolution-and-zelkovalock">toolchain appendix</a>
+is where it is described.</p>
+<p><strong>Not implemented:</strong> the compiler reads no manifest. It is handed a source directory
+directly, and the name of the package it is compiling is fixed at the call site rather than
+declared — so every module it compiles, from any directory, belongs to one package with a
+name nothing wrote down (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-13.md"><code>docs/tickets/lang-13.md</code></a>).</p>
+<h2 id="source-roots">Source roots</h2>
+<p>A package has two fixed source roots: <code>src/</code> and <code>tests/</code>.</p>
+<p><code>src/</code> holds the package's modules — what the package <em>is</em>, and the only thing it ships.
+<code>tests/</code> holds modules that exercise them, compiled when this package's own tests are run
+and at no other time; a package that depends on this one never reads a file under <code>tests/</code>.
+<a href="#tests">Tests</a> describes the second root in full. Everything below is true of both.</p>
+<p>Every file under a root whose name ends in <code>.zel</code> is a module of the package, found by
+walking that root recursively. That is true whether or not the package keeps the module
+private and whether or not anything imports it: an unreferenced module still has to parse
+and still has to type-check, so a package cannot carry a broken file by leaving it
+unmentioned.</p>
+<p>A module's name is its path under its root, with each directory separator written as a <code>.</code>
+and the <code>.zel</code> dropped — the rule stated in full under
+<a href="modules.html#the-name-and-the-file">Modules</a>. That is the module's name <em>within</em> its package,
+which is what its neighbours import it by; how a package's modules are named from outside is
+<a href="#imports-across-a-package-boundary">Imports across a package boundary</a>, below. Every
+directory under a root is a segment of a module name, and must be spelled like one: an
+uppercase-initial identifier. <code>src/js/Basics.zel</code> is not a legal file, because <code>js.Basics</code> is
+not a legal module name.</p>
+<p>The two roots share one set of names. <code>src/Model.zel</code> and <code>tests/Model.zel</code> are both <code>Model</code>,
+which is a module name declared twice in one package, and that is an error — the same error
+as declaring it twice under one root. A test module is imported by its name like any other.</p>
+<p><strong>Known gap:</strong> neither half is checked, and the path-derived name is computed and then
+discarded (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-6.md"><code>docs/tickets/lang-6.md</code></a>). A file may declare any module
+name regardless of where it sits, so a lowercase directory is accepted today.</p>
+<p>A file whose name does not end in <code>.zel</code> is not a module and is not read. That is what
+allows a <code>module foreign</code> facade's companion files to sit next to it in the same
+directory, which is where <a href="interop.html">Foreign interoperability</a> requires them to be:</p>
+<pre><code class="language-text">src/
+  Core/
+    Basics.zel     module foreign Core.Basics
+    Basics.mjs     the JavaScript behind it
+    Basics.wasm    the WebAssembly component behind it
+</code></pre>
+<h2 id="the-manifest">The manifest</h2>
+<p><code>zelkova.toml</code> is a <a href="https://toml.io">TOML</a> document with six fields, of which five are
+required:</p>
+<pre><code class="language-toml">name = "todo"
+version = "0.4.1"
+main = "App"
+private-modules = ["Model.Internal"]
+
+[dependencies.acme-widgets]
+version = "^1.2.0"
+git = "https://github.com/acme/widgets"
+
+# unwrapped: its Decode module is on every other line in this package
+[dependencies.acme-json]
+version = "^0.4.1"
+git = "https://github.com/acme/json"
+wrapped = false
+
+[test-dependencies.acme-expect]
+version = "^2.0.0"
+git = "https://github.com/acme/expect"
+</code></pre>
+<p>The format is TOML because a manifest is read and edited by hand far more often than it is
+generated. It takes comments, so why a dependency is pinned or unwrapped can be written
+beside the pin rather than in a commit message nobody will find; and a dependency's fields
+read as one line each instead of as nested punctuation.</p>
+<p><strong><code>name</code></strong> is one identifier: ASCII lowercase letters, digits and hyphens. It begins with a
+letter, and every hyphen is followed by a letter. It is not a dotted name and has no author
+segment. A package name and a module name are never confusable — one is lowercase-with-hyphens,
+the other uppercase-with-dots — and the shape of a package name is what makes the namespace it
+<a href="#the-namespace">derives</a> unambiguous.</p>
+<p><strong><code>version</code></strong> is exactly three non-negative integers separated by dots. There are no
+pre-release suffixes and no build metadata.</p>
+<p><strong><code>main</code></strong> is optional and names the module holding a program's entry point; see
+<a href="#programs">Programs</a>.</p>
+<p><strong><code>private-modules</code></strong> lists the modules other packages may not import. It is required, and
+it may be empty — a package that keeps nothing private writes <code>private-modules = []</code>, so that
+a reader can tell a wholly public package from a forgotten field. Every entry must name a
+module the package actually holds.</p>
+<p><strong><code>dependencies</code></strong> is a table mapping package names to what is wanted of each; see
+<a href="#dependencies">Dependencies</a>. It is required, and a package with none writes the header
+<code>[dependencies]</code> with nothing under it.</p>
+<p><strong><code>test-dependencies</code></strong> is the same table for packages the tests need and the package itself
+does not; see <a href="#tests">Tests</a>. It is required and may likewise be empty.</p>
+<p><strong>Not implemented:</strong> no part of this is read (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-13.md"><code>docs/tickets/lang-13.md</code></a>).
+A manifest is not source text, so no tagged example can hold the compiler to any of it, and
+the ticket carries the obligation to rewrite this section when it lands.</p>
+<h2 id="what-a-package-exposes">What a package exposes</h2>
+<p>Every module of a package under <code>src/</code> is importable from outside it, except the ones
+<code>private-modules</code> names. Those are <strong>package-internal</strong>: importable from other modules of the
+same package and from nowhere else.</p>
+<p>A <code>module foreign</code> facade is never importable from outside, whatever the manifest says,
+because its guarantees are about a companion file that ships with the package that declares
+it — <a href="interop.html">Foreign interoperability</a> is where that rule and its reasoning live.
+Listing a facade in <code>private-modules</code> changes nothing; the declaration itself is what makes
+it internal.</p>
+<p>A package offers foreign-backed values to its dependents by wrapping them: an ordinary
+module imports the facade and re-declares what it offers under the types it really handles.
+That module is public like any other, and it is where a signature the compiler cannot check
+becomes one it can. <code>zelkova-core</code> is the worked example — <code>Basics</code> is an ordinary module,
+and every value in it a companion computes reaches its dependents through a declaration
+there rather than out of the facade.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Widget exposing (measure)
+
+measure : Int -&gt; Int</code></pre></div>
+<p><strong>Not implemented:</strong> nothing consults <code>private-modules</code>, because nothing in the compiler
+represents a package other than the one being compiled
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-14.md"><code>docs/tickets/lang-14.md</code></a>).</p>
+<h2 id="dependencies">Dependencies</h2>
+<p>A package may only use another package it has declared. <code>dependencies</code> maps a package name to
+a table, which says both what is wanted of that package and where it comes from:</p>
+<pre><code class="language-toml">[dependencies.acme-widgets]
+version = "^1.2.0"
+git = "https://github.com/acme/widgets"
+
+[dependencies.acme-json]
+version = "&gt;=0.4.1, &lt;0.6.0"
+git = "https://github.com/acme/json"
+
+[dependencies.acme-parser]
+path = "../acme-parser"
+</code></pre>
+<h3 id="the-version-constraint">The version constraint</h3>
+<p><code>^x.y.z</code> is the ordinary form. It admits any version at or above <code>x.y.z</code> that does not change
+the leftmost non-zero position — so <code>^1.2.0</code> allows <code>1.9.3</code> and not <code>2.0.0</code>, <code>^0.3.1</code> allows
+<code>0.3.9</code> and not <code>0.4.0</code>, and <code>^0.0.4</code> allows nothing but <code>0.0.4</code>. The leftmost non-zero
+position is where breaking changes go, and below <code>1.0.0</code> there is no major position for them
+to go in. <code>=x.y.z</code> admits that version alone. A two-sided range admits everything between its
+bounds, the lower inclusive and the upper exclusive.</p>
+<h3 id="where-a-dependency-comes-from">Where a dependency comes from</h3>
+<p>Every entry names a <strong>source</strong>, and names exactly one. There is no index anywhere that a bare
+name could be looked up in, and so no version constraint alone is enough to find a package:
+the manifest is where a package says where its dependencies are, and reading one file is
+enough to know. <code>git</code> is a repository URL; <code>path</code> is a directory, relative to the manifest
+that names it, holding a package being developed alongside this one.</p>
+<p>Naming a published version and naming its commit are one act, because publishing a version
+<em>is</em> tagging a commit with <code>v</code> followed by that version — <code>1.2.4</code> is published as <code>v1.2.4</code>.
+So a <code>git</code> entry asks for a version and stops there: the constraint is what finds the commit,
+by way of the tag, and nothing else in the entry restates in a repository's vocabulary what
+the constraint has already said.</p>
+<pre><code class="language-toml">[dependencies.acme-json]
+version = "^0.4.1"
+git = "https://github.com/acme/json"    # resolves through the tag v0.4.3
+</code></pre>
+<p>Work that has not been published has no version to ask for, and an entry reaches it by
+writing <code>rev</code> in place of <code>version</code>: one commit, named in full.</p>
+<pre><code class="language-toml">[dependencies.acme-widgets]
+git = "https://github.com/acme/widgets"
+rev = "a3f9c1d84b2e57906fbbb0a4c1d2e3f4a5b6c7d8"  # size-rework, 2026-08-30
+</code></pre>
+<p>A commit is the only pin there is, and a branch name is not one. A version constraint and a
+commit are both things the manifest states and a reader can check; a branch is a name someone
+else owns, and what it points at changes with nothing in this package changing — a dependency
+that moves without a diff is one nobody reviewed. Following a branch is something done between
+edits of the manifest, by resolving a tip and writing down the commit it was, and where that
+commit came from is a comment beside it.</p>
+<p>A <code>path</code> names a directory, and there is nothing left for a version constraint to choose
+among, so an entry naming one carries no <code>version</code> either:</p>
+<pre><code class="language-toml">[dependencies.acme-parser]
+path = "../acme-parser"
+</code></pre>
+<p>So an entry says what it wants exactly once: a <code>git</code> source carries a version constraint or a
+<code>rev</code>, and a <code>path</code> carries neither. Two of them in one entry would be two answers to a
+question that has one, and the second is either agreeing with the first or contradicting it.
+Which of those the manifest is doing cannot be read off the entry, so neither is a state worth
+being able to write.</p>
+<p>Saying it once is not saying less. Whichever form is written, a package arrives declaring a
+<code>version</code> in its own manifest, and that version is what it brings to the rest of the build:
+every constraint anyone else placed on that package still has to hold. What an entry gives up
+is a constraint on its <em>own</em> choice, which had already been made by the time the constraint
+could be read.</p>
+<p>The key is the package's name and the fetched package's own <code>name</code> field must equal it.
+Otherwise a manifest could call a package anything, and the namespace a dependent derives from
+that key would name modules the package itself has never heard of. Writing the name rather
+than only the source is also what keeps the manifest readable on its own: <code>AcmeWidgets.Size</code>
+is traceable to an entry by reading, with nothing fetched.</p>
+<p>Two entries anywhere in a build that give one name two different sources is an error, and so
+is one name given a source and, elsewhere, another. A name is a package's identity for the
+whole build, not a label local to the manifest that writes it, and two packages under one name
+would collide in exactly the way <a href="#one-version-of-each">at most one version</a> already forbids.</p>
+<p>How a source is fetched, where the fetched copy is kept, and what a build does when the network
+is unavailable are matters for the toolchain rather than the language, and the
+<a href="toolchain.html">toolchain appendix</a> describes them.</p>
+<h3 id="wrapped"><code>wrapped</code></h3>
+<p>An entry may also carry <code>wrapped</code>, which is <code>true</code> unless written, and which decides
+<a href="#unwrapping-a-dependency">how that dependency's modules are named</a> in this package.</p>
+<pre><code class="language-toml">[dependencies.acme-parser]
+path = "../acme-parser"
+wrapped = false
+</code></pre>
+<h3 id="one-version-of-each">One version of each</h3>
+<p>Two rules bind the resolved set of packages a build is made from. The package graph is
+<strong>acyclic</strong> — a package may not depend on itself, directly or through a chain — for the same
+reason the module graph is (<a href="modules.html#imports-may-not-form-a-cycle">Modules</a>): there is no
+order in which the members of a cycle could be compiled. And <strong>at most one version of a
+package</strong> is in a build. Two versions of one package would present the same namespace to the
+same importers.</p>
+<p>Beyond satisfying every constraint, which version a resolver picks is not a question the
+language answers. What it picked is recorded in <code>zelkova.lock</code>, generated beside the
+manifest: the manifest says what is acceptable and the lock file says what was chosen, so a
+build is reproducible without the manifest having to be rewritten to pin it. Its contents are
+<a href="toolchain.html#resolution-and-zelkovalock">in the toolchain appendix</a>.</p>
+<h3 id="only-direct-dependencies-are-usable">Only direct dependencies are usable</h3>
+<p>Only a package listed in <code>dependencies</code> is importable within this package.
+So the packages a module may draw on are exactly the ones written in the manifest
+beside it, and a reader never has to walk a dependency chain to find out where a module could
+have come from. It also means upgrading a dependency cannot change what any import in your own
+package resolves to.</p>
+<h3 id="zelkova-core-is-a-dependency-of-every-package"><code>zelkova-core</code> is a dependency of every package</h3>
+<p>Every module behaves as though it began with a fixed list of imports, drawn from <code>Basics</code>,
+<code>Maybe</code>, <code>Result</code>, <code>List</code>, <code>Task</code>, <code>Char</code>, <code>String</code> and <code>Tuple</code> — the list is
+<a href="modules.html#the-default-imports">in the Modules chapter</a>. Those modules belong to
+<code>zelkova-core</code>, which is a dependency of every package and is not written in <code>dependencies</code>.
+Its version is the compiler's.</p>
+<p>It is seen unwrapped, in every package. So <code>Basics</code> is <code>Basics</code> and <code>List</code> is <code>List</code> everywhere in the language. The names of
+core's public modules are therefore taken in every package — a module of your own called
+<code>List</code> would be <a href="#two-modules-under-one-name-is-an-error">a second module answering to one name</a>.</p>
+<h2 id="imports-across-a-package-boundary">Imports across a package boundary</h2>
+<p>An <code>import</code> names a module, never a package. Which modules a name can reach is decided by the
+manifest — the package's own modules, and the public modules of its direct dependencies — and
+a package's modules are named from outside through that package's <strong>namespace</strong>.</p>
+<h3 id="the-namespace">The namespace</h3>
+<p>A package's namespace is derived from its name: split it at the hyphens, uppercase the first
+letter of each piece, and join. <code>acme-widgets</code> is <code>AcmeWidgets</code>, <code>todo</code> is <code>Todo</code>.
+A dependent names one of its modules by writing the namespace, a <code>.</code>,
+and the module's name within its package.</p>
+<pre><code class="language-text">acme-widgets/
+  src/
+    Size.zel        module Size, and AcmeWidgets.Size to a dependent
+    Style/
+      Dark.zel      module Style.Dark, and AcmeWidgets.Style.Dark to a dependent
+</code></pre>
+<p>Nothing has to be checked for two packages to keep out of each other's way. A package name is
+unique in a build, so distinct package names
+give distinct namespaces, and no two wrapped modules can be reached by one name.</p>
+<p>The namespace is not a directory and does not appear under <code>src/</code>. Nor does a package ever
+write its own: inside <code>acme-widgets</code>, <code>Size</code> is <code>Size</code>, and <code>AcmeWidgets.Size</code> names nothing.
+A module's name within its package is the one thing its file path decides, and the namespace
+is added at the boundary by whoever crosses it.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module App exposing (start)
+
+import AcmeWidgets.Size
+
+start : AcmeWidgets.Size.Size
+start = AcmeWidgets.Size.small</code></pre></div>
+<p>The prefix an import brings into scope is the module's name as written, here all of
+<code>AcmeWidgets.Size</code>. <code>as</code> shortens it, exactly as it does for a neighbour, and is how a file
+that leans on one module of a dependency keeps its uses short:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module App exposing (start)
+
+import AcmeWidgets.Size as Size
+
+start : Size.Size
+start = Size.small</code></pre></div>
+<p>Within one package nothing is prefixed, because no boundary is crossed:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=one-package</span></div><pre><code>module Model exposing (Task, empty)
+
+type Task
+  = Task
+
+empty : Task
+empty = Task</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=one-package</span></div><pre><code>module App exposing (start)
+
+import Model
+
+start : Model.Task
+start = Model.empty</code></pre></div>
+<p>A name that is neither a module of the package nor a public module of a dependency is an
+error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:EnvironmentErrors</span></div><pre><code>module App exposing (start)
+
+import Elsewhere
+
+type Task
+  = Task
+
+start : Task
+start = Task</code></pre></div>
+<h3 id="unwrapping-a-dependency">Unwrapping a dependency</h3>
+<p>A package that finds the prefix costs more than it is worth may drop it, per dependency,
+by writing <code>wrapped = false</code> in that dependency's entry. That package's modules are then
+named by their own names in every file of the depending package: <code>Size</code>, not
+<code>AcmeWidgets.Size</code>.</p>
+<pre><code class="language-toml">[dependencies.acme-widgets]
+version = "^1.2.0"
+git = "https://github.com/acme/widgets"
+wrapped = false
+</code></pre>
+<p>Unwrapping is a property of the pair (this package, that dependency) and not of the
+dependency itself. It is written by the package doing the importing because that is where the
+cost of the prefix is paid: a package used once in a file and a package used on every other
+line are the same package, and only its user knows which it is. Two packages depending on one
+package may spell it differently, and neither choice is visible to anyone else. A package
+cannot decide how it is spelled by its dependents, and does not need to.</p>
+<p>A module has exactly one spelling in any file. Wrapped, <code>Size</code> names nothing; unwrapped,
+<code>AcmeWidgets.Size</code> names nothing. Two ways to write one import would put two prefixes on one
+module, which is the thing <a href="modules.html#one-module-one-import">one module, one import</a> exists
+to prevent.</p>
+<h3 id="what-a-package-boundary-cannot-rename">What a package boundary cannot rename</h3>
+<p>Unwrapping and <code>as</code> produce <strong>spellings</strong>, and a spelling is a convenience the file or the
+package granting it keeps to itself. What a module offers to whoever imports it is written in
+names — <code>AcmeWidgets.Size</code>, always — so a type does not change identity by being mentioned in
+a file that spells it short, and two packages that spell one dependency differently still
+agree about every type in it.</p>
+<p>Three things follow.</p>
+<p><strong>A package cannot rename a module it exposes.</strong> A public module's name is its path, so
+<code>src/Model/Internal.zel</code> is <code>Todo.Model.Internal</code> to everyone outside <code>todo</code> and cannot be
+presented as <code>Todo.Parser</code>. Moving the file is the only way to change the name, and it is a
+breaking change for the same reason renaming an exposed function is.</p>
+<p><strong>A package cannot re-export a module of a dependency as one of its own.</strong> <code>todo</code> may depend
+on <code>acme-widgets</code> and use it throughout, but <code>AcmeWidgets.Size</code> is a module of <code>acme-widgets</code>
+under every spelling and there is no <code>Todo.Size</code> to be had. A package's public surface is its
+own modules and nothing else, which is what makes the namespace prefix reliable: the package a
+module comes from is readable from the name.</p>
+<p><strong>A signature that names a dependency's type asks the consumer for that dependency.</strong> Values
+flow freely — a consumer can call the function, hold the result and pass it on, knowing nothing
+about where its type was declared. Writing that type down is what needs the dependency, and a
+consumer adds it to its own manifest, at which point both packages mean the same type: one
+version of <code>acme-widgets</code> is in the build, so <code>AcmeWidgets.Size.Size</code> is one type wherever it
+is written.</p>
+<pre><code class="language-text">-- todo exposes:   resize : Task -&gt; AcmeWidgets.Size.Size
+
+-- in a package depending on todo alone:
+import Todo.Model
+
+bigger = Todo.Model.resize task            -- fine
+
+f : Todo.Model.Task -&gt; AcmeWidgets.Size.Size
+                       ^^^^^^^^^^^^^^^^^^^^
+-- error: there is no module named `AcmeWidgets.Size`
+--   `acme-widgets` is not a dependency of this package
+</code></pre>
+<p>That cost falls on whoever exposes the type, and it is the design pressure it looks like: a
+type in a public signature is part of the package's interface, and a package that puts a
+dependency's type there has made that dependency part of what it asks of its users. Wrapping
+the type in one of its own is how a package chooses not to.</p>
+<h3 id="two-modules-under-one-name-is-an-error">Two modules under one name is an error</h3>
+<p>Two wrapped dependencies cannot collide, whatever they contain, and that is what the namespace
+is for. Unwrapping is what puts names in the same space: an unwrapped dependency's modules sit
+beside the depending package's own modules, beside <code>zelkova-core</code>'s, and beside any other
+unwrapped dependency's.</p>
+<p>Two modules answering to one name in one package is an error. It is reported when the build is
+resolved, before any module of that package is compiled, and it names both modules and the
+packages they come from:</p>
+<pre><code class="language-text">error: two modules are named `Size` in package `todo`
+  acme-widgets 1.2.0, imported unwrapped
+  fmonniot-ui 3.0.1, imported unwrapped
+</code></pre>
+<p>It is not reported at an <code>import</code> line, and not only in the files that would have been
+ambiguous. The manifest is what created the ambiguity and the manifest is what has to change —
+by wrapping one of the two, or by renaming the package's own module — so a build that has no
+coherent answer for a name is stopped before any file is read for one.</p>
+<p><strong>Not implemented:</strong> the compiler compiles one package and has no representation of another,
+so no namespace is ever applied, nothing is unwrappable, and the two blocks above that import
+<code>AcmeWidgets.Size</code> fail on a module that cannot be found
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-14.md"><code>docs/tickets/lang-14.md</code></a>).</p>
+<h2 id="tests">Tests</h2>
+<p><code>tests/</code> is the package's second source root. A module under it is an ordinary module, with
+one difference: it is compiled when this package's own tests are run, and never otherwise.
+A package that depends on this one does not compile it, does not resolve what it needs, and
+cannot observe that it exists.</p>
+<p>A test module may import any module of its own package, the private ones included.
+A package whose internals
+could only be tested through its public surface would be pushed into exposing them. It may
+also import the public modules of the package's dependencies and of its test-dependencies.</p>
+<p>Nothing may import a test module. A module under <code>src/</code> cannot, which is what keeps <code>tests/</code>
+out of what the package ships.</p>
+<h3 id="what-a-test-is">What a test is</h3>
+<p><strong>A test is a value a module under <code>tests/</code> exposes whose type is <code>Test</code>.</strong> Every such value is
+a test, and nothing else in the module is one: a test module may declare and expose helpers, and
+a helper whose type is not <code>Test</code> is never run.</p>
+<p><code>Test</code> is a type <code>zelkova-test</code> declares and exposes without its constructors, and the rule
+above names that one. It reaches a test module through
+<a href="#test-dependencies"><code>test-dependencies</code></a> and nothing else, so a module under <code>src/</code> cannot
+name it at all; a test module writes <code>import Test</code>.</p>
+<p>A runner has the type to go on and nothing else: no name is fixed and no manifest field lists
+them. A test is exposed even though nothing imports a test module, because a runner reads the
+module's interface and the <code>exposing</code> clause decides what is in one.</p>
+<p>What a <code>Test</code> holds — a name, a check, a group of other tests — belongs to <code>zelkova-test</code> and to
+any library built on it. How a runner is invoked and what it reports is
+<a href="toolchain.html#running-a-packages-tests">the toolchain's</a>.</p>
+<h3 id="test-dependencies"><code>test-dependencies</code></h3>
+<p><code>test-dependencies</code> maps package names to entries of exactly the shape <code>dependencies</code> takes.
+It is required and may be empty.</p>
+<p>A package listed there is available to <code>tests/</code> and to nothing else.</p>
+<p>A package name appears in at most one of the two maps. Anything already in
+<code>dependencies</code> is usable from <code>tests/</code> without being written twice.</p>
+<p>The rest of the resolution rules are unchanged and apply to the union of the two maps. The
+graph stays acyclic, at most one version of each package is in the build, only direct
+dependencies are usable, and <code>zelkova.lock</code> records what was chosen for both.</p>
+<p><strong>Not implemented:</strong> the compiler has one source root and no notion of a test at all
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-15.md"><code>docs/tickets/lang-15.md</code></a>), and there is no <code>zelkova-test</code> package.</p>
+<h2 id="programs">Programs</h2>
+<p>A package whose manifest has no <code>main</code> field is a library: it is something other packages
+depend on, and it does not run.</p>
+<p><code>main</code> names one module, by its name within the package, which must be a module under <code>src/</code>
+and must expose a value called <code>main</code>. Naming it in the manifest rather than fixing it by
+convention means the entry point is findable in the same file as everything else about the
+package, and a module can be a program's entry point without its name having to say so.</p>
+<p><strong><code>main</code> must have type <code>Task ()</code>.</strong> A
+<a href="evaluation-semantics.html#effects"><code>Task</code></a> describes work, and running the program is
+<a href="evaluation-semantics.html#running-a-task">running it</a>: the runtime is handed the value
+<code>main</code> names and performs what it describes.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module App exposing (main)
+
+main : Task ()
+main =
+  Task.succeed ()</code></pre></div>
+<p>The <code>()</code> is the whole of what a program produces: nothing is waiting on a result, so a <code>main</code>
+of any other type would name a value nobody reads.</p>
+<p>It also decides what a program does about a boundary failure. Every primitive effect carries a
+<a href="evaluation-semantics.html#an-effect-that-can-fail"><code>Result Failure</code></a> in its payload and <code>Task ()</code>
+carries no payload, so a program reaching <code>main</code> has said what to do with each of them.</p>
+<p>A package can be both. <code>main</code> and <code>private-modules</code> are independent, so a program may also be
+depended on as a library, and the module holding <code>main</code> may be one of the private ones.</p>
+<p><strong>Not implemented:</strong> the field is not read, and nothing yet turns a package into something
+that runs (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-13.md"><code>docs/tickets/lang-13.md</code></a>). <code>zelkova-core</code> declares no
+<code>Task</code> either, and the block above fails earlier than that: <code>()</code> has
+<a href="types.html#the-unit-type">no production</a>, so it does not parse.</p>
+
+</main>
+</div>
+</body>
+</html>

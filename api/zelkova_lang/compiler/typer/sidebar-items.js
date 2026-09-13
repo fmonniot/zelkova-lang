@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ErrorKind","Reason","TermKind","TermPatternKind","Type","TypeLiteral"],"fn":["infer","type_check"],"struct":["Cause","Error","Origin","Term","TermPattern","TypeVariable"]};

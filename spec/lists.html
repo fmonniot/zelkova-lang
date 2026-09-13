@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lists — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-lists" class="sidebar-toggle-input">
+<label for="sidebar-toggle-lists" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html" class="current">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#the-type">The type</a></li>
+<li><a href="#what-a-list-is">What a list is</a></li>
+<li><a href="#list-literals">List literals</a></li>
+<li><a href="#the-cons-operator">The cons operator</a></li>
+<li><a href="#lists-in-patterns">Lists in patterns</a></li>
+<li><a href="#what-the-standard-library-provides">What the standard library provides</a></li>
+<li><a href="#lists-and-derivation">Lists and derivation</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="lists">Lists</h1>
+<p>A list is a sequence of values, all of one type, of any length. It has a spelling in all three of
+the languages the earlier chapters describe — a <a href="types.html">type</a>, an
+<a href="expressions.html">expression</a> and a <a href="patterns.html">pattern</a> — so those three chapters name the
+forms and this one says what they mean.</p>
+<p>Nothing about a list is built into the grammar as a new <em>kind</em> of thing. The type is an
+ordinary application, the literal is sugar over two constructors, and prepending is an operator
+someone declared. What the language adds is bracket syntax for building and matching a value
+that could otherwise only be written constructor by constructor.</p>
+<h2 id="the-type">The type</h2>
+<p>A list's type is written <code>List a</code>, where <code>a</code> is the type of its elements. <code>List</code> names a type
+constructor taking one argument, so <code>List a</code> is a
+<a href="types.html#applying-a-type-to-arguments">type application</a> like <code>Maybe Colour</code>, covered by
+<a href="types.html#the-forms-of-a-type-expression">Types</a>' six forms. There is no bracket spelling for a
+list <em>type</em>; <code>[a]</code> is not a type expression.</p>
+<p>A list is <strong>homogeneous</strong>: <code>List a</code> is one type applied to one argument, so every element of a
+list has the same type.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (mixed)
+
+mixed =
+  [1, 'a']</code></pre></div>
+<p><strong>Not implemented:</strong> brackets are not consumed by any production, so that block is a syntax
+error today rather than the type error it is (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-44.md"><code>LANG-44</code></a>). When lists
+land it parses and canonicalizes, and the type checker is what rejects it.</p>
+<h2 id="what-a-list-is">What a list is</h2>
+<p>A list is one of two things: <strong>empty</strong>, or a <strong>first element and the rest</strong>, where the rest is
+itself a list. That is a two-variant union type and it is written as one:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module List exposing (List)
+
+type List a
+  = Nil
+  | Cons a (List a)</code></pre></div>
+<p><strong>Not implemented:</strong> a type argument must be a bare name, so the parenthesised <code>(List a)</code> is a
+syntax error (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-9.md"><code>LANG-9</code></a>). That block is what goes green when it lands.</p>
+<p><code>Nil</code> and <code>Cons</code> are <strong>not exposed</strong>: a list is built and taken apart through the bracket forms
+and the cons operator below and through nothing else, so no program names either constructor.
+How a backend represents a list is therefore its own choice, and the only property the language
+fixes is that <strong>prepending an element to a list, and splitting a non-empty list into its first
+element and the rest, each take constant time.</strong> Every function written by recursion over a list
+assumes exactly that.</p>
+<p><code>[</code>, <code>]</code> and the empty literal are read against <code>List</code>, <code>Nil</code> and <code>Cons</code> in the standard
+library's <code>List</code> module, the way an integer literal is read against <code>Int</code>.</p>
+<h2 id="list-literals">List literals</h2>
+<p>A list literal is a bracketed, comma-separated sequence of expressions. <code>[]</code> is the empty list;
+<code>[a]</code>, <code>[a, b]</code> and <code>[a, b, c]</code> are lists of one, two and three elements, and there is no upper
+limit.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (empty, one, three)
+
+empty =
+  []
+
+one =
+  [1]
+
+three =
+  [1, 2, 3]</code></pre></div>
+<p><strong>Not implemented:</strong> no production consumes a bracket (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-44.md"><code>LANG-44</code></a>).</p>
+<p>Each element is an ordinary expression, so anything an expression may be an element may be. A
+literal is exactly the nested <code>Cons</code> chain the elements spell out: <code>[1, 2]</code> is <code>1</code> prepended to
+<code>2</code> prepended to the empty list, and <code>[]</code> is <code>Nil</code>.</p>
+<p><code>[]</code> has type <code>List a</code> for any <code>a</code>, and needs no annotation to have one. It is a polymorphic
+value like any other, and the type it is used at is decided where it is used.</p>
+<p>A literal may be written across several lines, with the separator leading each line — the
+ordinary way to write a long one.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (primes)
+
+primes =
+  [ 2
+  , 3
+  , 5
+  ]</code></pre></div>
+<p><strong>Not implemented:</strong> the same missing production (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-44.md"><code>LANG-44</code></a>).</p>
+<p>A trailing comma is an error: a list follows the same rule a
+<a href="types.html#a-variant-list-has-at-least-one-variant">variant list</a> does, and not the
+<a href="modules.html#the-exposing-list"><code>exposing</code> list</a>'s, whose trailing comma exists to make appending
+a name touch one line. The leading-comma layout above already buys that here.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error</span></div><pre><code>module Example exposing (f)
+
+f = [1, 2,]</code></pre></div>
+<p><strong>Not implemented:</strong> that block is rejected today at the <code>[</code> rather than at the comma, because
+no bracket is consumed at all, so it does not yet distinguish the rule it illustrates from the
+missing production around it (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-44.md"><code>LANG-44</code></a>).</p>
+<h2 id="the-cons-operator">The cons operator</h2>
+<p><code>::</code> prepends one element to a list: <code>x :: xs</code> is the list whose first element is <code>x</code> and whose
+rest is <code>xs</code>. It is an <strong>ordinary operator</strong> — a name, bound by an
+<a href="lexical-structure.html#operators"><code>infix</code> declaration</a> to an ordinary function, exactly like
+<code>+</code> — and not punctuation. The standard library declares it <code>infix right 5</code>, so it is
+right-associative and <code>a :: b :: xs</code> is <code>a :: (b :: xs)</code>, which is the only grouping that has a
+type: the left operand of a <code>::</code> is an element and the right one is a list.</p>
+<p>Being a name has three consequences. It is resolved, imported and shadowed like any other
+operator (<a href="name-resolution.html">Name resolution</a>). It can be written <code>(::)</code> to name the function
+itself. And a module may bind the spelling to something else entirely, at which point <code>::</code> means
+that instead:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing ((::), weird)
+
+infix left 9 (::) = weird
+
+weird a b =
+  a</code></pre></div>
+<p>An operator with no <code>infix</code> declaration in scope is an unresolved name, and <code>::</code> is no different:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span></div><pre><code>module Example exposing (f)
+
+f x xs =
+  x :: xs</code></pre></div>
+<p><code>List</code> and <code>::</code> are an ordinary union and an ordinary operator over it, with the element type
+left as a variable. Written out for one element type:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, Chain, (::), link, chain)
+
+type Flag
+  = On
+  | Off
+
+type Chain
+  = Empty
+  | Link Flag Chain
+
+infix right 5 (::) = link
+
+link : Flag -&gt; Chain -&gt; Chain
+link x xs =
+  Link x xs
+
+chain : Chain
+chain =
+  On :: Off :: Empty</code></pre></div>
+<h2 id="lists-in-patterns">Lists in patterns</h2>
+<p>Both spellings have a pattern counterpart, and neither is the expression form reused.
+<a href="patterns.html">Pattern syntax is closed</a>: a pattern never resolves an operator, so <code>::</code> in a
+pattern cannot be the name the section above describes and is instead a production of the
+<strong>pattern grammar</strong>, consumed there the way a leading <code>-</code> before a literal is. It separates a
+first element from a rest the way <code>,</code> separates tuple elements, and it keeps that meaning
+whatever a module has bound the operator to.</p>
+<p>A <strong>bracket pattern</strong> matches a list of exactly its length, element by element: <code>[]</code> matches the
+empty list, <code>[a, b]</code> a list of two. A <strong>cons pattern</strong>, <code>first :: rest</code>, matches a list of one
+element or more. Both sides of a <code>::</code> are whole patterns, so <code>a :: b :: rest</code> matches a list of
+two or more and <code>Circle n :: rest</code> matches on the first element's shape.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (f)
+
+f xs =
+  case xs of
+    a :: b :: rest -&gt;
+      a
+
+    [_] -&gt;
+      xs
+
+    [] -&gt;
+      xs</code></pre></div>
+<p><strong>Not implemented:</strong> neither production exists (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-45.md"><code>LANG-45</code></a>).</p>
+<p>Each is a constructor pattern: <code>[]</code> is <code>Nil</code>, <code>first :: rest</code> is <code>Cons first rest</code>, and <code>[a, b]</code>
+is <code>Cons a (Cons b Nil)</code>. So <code>[]</code> and a cons pattern <strong>cover</strong> the list type between them and a
+<code>case</code> written out of the two needs no wildcard: coverage here is the ordinary
+<a href="patterns.html#a-pattern-that-can-fail-and-one-that-cannot">constructor coverage</a> every union type
+gets. A bracket pattern of fixed length is a <code>Cons</code> chain ending in <code>Nil</code>, so it is refutable
+however long it is, and no finite set of lengths covers a list.</p>
+<p><a href="patterns.html#list-patterns">Patterns</a> has the worked examples of both.</p>
+<h2 id="what-the-standard-library-provides">What the standard library provides</h2>
+<p>The type, the two literal forms and cons are the whole of the language's part. The functions over
+a list — mapping, folding, filtering, sorting — are the standard library's <code>List</code> module and carry
+no syntax.</p>
+<p>Neither <code>++</code> nor <code>==</code> over two lists is built in. <code>++</code> is an
+<a href="lexical-structure.html#operators"><code>infix</code> declaration</a> like any other, and <code>==</code> is the ordinary
+<a href="evaluation-semantics.html">structural equality</a> two constructors and their arguments already
+define.</p>
+<h2 id="lists-and-derivation">Lists and derivation</h2>
+<p>A <a href="type-classes.html#a-class-says-how-it-is-derived">derivation</a> folds a class's <code>combine</code> pairwise
+over the answers a constructor's arguments produced, because a class has no way to be handed all
+of them at once. With a list type there is one: <code>combine : List R -&gt; R</code> is a writable member
+shape, and a class declared that way receives every answer in one call.</p>
+<p>That reaches the one property a derivation is trusted to keep and cannot check — that
+<a href="type-classes.html#what-a-derivation-is-trusted-to-keep"><code>combine</code> is associative with <code>matched</code> as its identity</a>
+— because an n-ary <code>combine</code> has no associativity to assume: the fold becomes the class's to
+perform rather than the walk's. Which of the two shapes a derivation's <code>combine</code> takes is
+<a href="type-classes.html#open-questions">an open question</a> of the mechanism itself.</p>
+
+</main>
+</div>
+</body>
+</html>

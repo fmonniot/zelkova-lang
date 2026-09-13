@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluation semantics — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-evaluation-semantics" class="sidebar-toggle-input">
+<label for="sidebar-toggle-evaluation-semantics" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html" class="current">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#two-outcomes">Two outcomes</a></li>
+<li><a href="#evaluation-is-strict">Evaluation is strict</a></li>
+<li><a href="#order-of-evaluation">Order of evaluation</a></li>
+<li><a href="#conditional-evaluation">Conditional evaluation</a></li>
+<li class="nested"><a href="#nothing-short-circuits">Nothing short-circuits</a></li>
+<li><a href="#bindings">Bindings</a></li>
+<li class="nested"><a href="#a-binding-with-no-parameters-is-evaluated-once">A binding with no parameters is evaluated once</a></li>
+<li class="nested"><a href="#a-binding-may-not-depend-on-itself">A binding may not depend on itself</a></li>
+<li class="nested"><a href="#let-follows-the-same-rule">let follows the same rule</a></li>
+<li><a href="#function-values">Function values</a></li>
+<li><a href="#equality">Equality</a></li>
+<li class="nested"><a href="#what-structural-equality-computes">What structural equality computes</a></li>
+<li class="nested"><a href="#functions-are-not-comparable">Functions are not comparable</a></li>
+<li><a href="#recursion-and-tail-calls">Recursion and tail calls</a></li>
+<li><a href="#sharing">Sharing</a></li>
+<li><a href="#numbers">Numbers</a></li>
+<li class="nested"><a href="#an-operation-with-no-answer">An operation with no answer</a></li>
+<li class="nested"><a href="#converting-a-float-to-an-int">Converting a Float to an Int</a></li>
+<li><a href="#purity-and-the-foreign-boundary">Purity and the foreign boundary</a></li>
+<li><a href="#effects">Effects</a></li>
+<li class="nested"><a href="#where-a-task-comes-from">Where a Task comes from</a></li>
+<li class="nested"><a href="#sequencing">Sequencing</a></li>
+<li class="nested"><a href="#running-a-task">Running a Task</a></li>
+<li class="nested"><a href="#an-effect-that-can-fail">An effect that can fail</a></li>
+<li><a href="#when-a-program-aborts">When a program aborts</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="evaluation-semantics">Evaluation semantics</h1>
+<p>A program runs by evaluating an expression, and every form <a href="expressions.html">Expressions</a> lists
+is evaluated by a rule below. Two properties decide almost all of them. Evaluation is
+<strong>strict</strong>: a subexpression is evaluated when it is reached, not when its value is demanded. And
+it is <strong>pure</strong>: evaluating an expression produces a value and has no other consequence.</p>
+<p><strong>Not implemented:</strong> nothing in the compiler evaluates a Zelkova program. The pipeline ends at
+type checking and code generation has not started, so every rule below is one the compiler
+neither enforces nor implements. An <code>expect=ok</code> block here is a program the type checker
+accepted, and nothing runs it — so nothing holds it to the value a rule below says it has.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/gen-1.md"><code>GEN-1</code></a> is the ticket.</p>
+<h2 id="two-outcomes">Two outcomes</h2>
+<p>Evaluating an expression either produces a value or does not terminate. There is no third
+outcome: no exception, no crash, no undefined result. Nothing in the language throws, so
+nothing in it catches.</p>
+<p>That is a promise about a <em>well-typed</em> program, and it is kept by pushing every failure
+somewhere earlier or somewhere else:</p>
+<table><thead><tr><th>What would otherwise fail</th><th>Where it goes instead</th></tr></thead><tbody>
+<tr><td>A <code>case</code> with no branch for the value</td><td><a href="patterns.html#a-pattern-that-can-fail-and-one-that-cannot">Coverage</a> is checked, so no such <code>case</code> compiles</td></tr>
+<tr><td>A name that is not in scope</td><td><a href="name-resolution.html#unresolved-names">Name resolution</a></td></tr>
+<tr><td>Applying a value that is not a function</td><td>Type checking</td></tr>
+<tr><td>Integer division by zero</td><td><a href="#an-operation-with-no-answer">Defined below</a> to be <code>0</code>, because no <code>Int</code> value means <em>no answer</em></td></tr>
+<tr><td>A lookup, a parse, a conversion that can fail</td><td>The type: <code>Maybe a</code>, <code>Result e a</code></td></tr>
+<tr><td>A companion that throws, or returns a value of the wrong shape</td><td>The <code>Task</code>'s payload: <a href="#an-effect-that-can-fail"><code>Result Failure a</code></a></td></tr>
+</tbody></table>
+<p><strong>Known gap:</strong> coverage is not checked — the exhaustiveness phase inspects nothing and accepts
+every module — so a <code>case</code> missing a branch compiles today and would have no value to produce.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-19.md"><code>LANG-19</code></a> is the ticket.</p>
+<p>That is a claim about evaluating an expression. A whole program has one more outcome, because a
+program has a boundary and an expression does not: see <a href="#when-a-program-aborts">When a program
+aborts</a>.</p>
+<h2 id="evaluation-is-strict">Evaluation is strict</h2>
+<p>An argument is a value before the function it is passed to is entered, and it is evaluated
+whether or not the body ever mentions it.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (first, loop, stuck)
+
+first a b =
+  a
+
+loop n =
+  loop n
+
+stuck =
+  first 1 (loop 2)</code></pre></div>
+<p><code>first</code> ignores its second argument, and <code>stuck</code> still has no value: <code>loop 2</code> is evaluated
+before <code>first</code> is entered, and it does not terminate.</p>
+<p>A subexpression therefore runs once each time it is reached, whether or not its value is used.</p>
+<p><code>if</code> and <code>case</code> are the exception; see <a href="#conditional-evaluation">Conditional evaluation</a>,
+below.</p>
+<h2 id="order-of-evaluation">Order of evaluation</h2>
+<p><strong>Subexpressions are evaluated left to right, in the order they are written.</strong></p>
+<p>An application evaluates the function expression first, then each argument in source order,
+and applies last.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing ((+), add, g, h, f)
+
+infix left 6 (+) = add
+
+add a b =
+  a
+
+g x =
+  x
+
+h x =
+  x
+
+f a b =
+  g a + h b</code></pre></div>
+<p><code>g a + h b</code> is <code>add (g a) (h b)</code>, so <code>add</code> is evaluated, then <code>g a</code>, then <code>h b</code>, and then the
+application happens. <a href="expressions.html#precedence-and-associativity">Precedence and associativity</a>
+decide how an expression <em>groups</em>; they never decide what runs first.</p>
+<p>The same rule covers every other form that holds more than one subexpression: a tuple evaluates
+its elements left to right, an <code>if</code> evaluates its condition before either arm, and a <code>case</code>
+evaluates its scrutinee before any branch is tried.</p>
+<p>Because evaluation is <a href="#purity-and-the-foreign-boundary">pure</a>, the order is observable only
+through non-termination: it settles which of two diverging subexpressions hangs the program.</p>
+<h2 id="conditional-evaluation">Conditional evaluation</h2>
+<p><code>if</code> evaluates its condition, then exactly one of its arms — never both. <code>case</code> evaluates its
+scrutinee, then tries its branches in the order written and evaluates the body of the first one
+that matches — never another.</p>
+<p>These are the only two forms in the language that evaluate one subexpression and not another.</p>
+<h3 id="nothing-short-circuits">Nothing short-circuits</h3>
+<p><code>&amp;&amp;</code> and <code>||</code> are <a href="expressions.html#an-operator-is-a-name">names</a>, bound by an <code>infix</code>
+declaration to ordinary functions.
+<strong>Both operands of <code>&amp;&amp;</code> are evaluated, always, and likewise for <code>||</code>.</strong></p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Bool, (&amp;&amp;), and, safe)
+
+type Bool
+  = True
+  | False
+
+infix right 3 (&amp;&amp;) = and
+
+and a b =
+  if a then b else False
+
+safe a b =
+  a &amp;&amp; b</code></pre></div>
+<p><code>and</code>'s body uses <code>if</code>, so the <em>body</em> looks at <code>b</code> only when <code>a</code> is <code>True</code>. Conditional
+evaluation is a property of the call site, and <code>&amp;&amp;</code> is a call.</p>
+<p>Skipping the right operand is written out:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Bool, expensive, careful)
+
+type Bool
+  = True
+  | False
+
+expensive n =
+  expensive n
+
+careful a n =
+  if a then expensive n else False</code></pre></div>
+<p><code>&amp;&amp;</code> gets no exception: an operator's meaning is its <code>infix</code> declaration and nothing else, and
+no signature can defer a parameter.</p>
+<p><strong>Known gap:</strong> <code>std/core</code>'s <code>(&amp;&amp;)</code> and <code>(||)</code> are documented as short-circuiting.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-36.md"><code>LANG-36</code></a> is the ticket. No block holds it to account: the claim is in
+a doc comment, and the JavaScript behind those two operators already takes both operands
+evaluated.</p>
+<h2 id="bindings">Bindings</h2>
+<h3 id="a-binding-with-no-parameters-is-evaluated-once">A binding with no parameters is evaluated once</h3>
+<p>A top-level binding that names no parameters is evaluated once, before the program runs, and
+every reference to it is that one value. Such bindings are evaluated in <strong>dependency order</strong>:
+one is evaluated after everything it mentions.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Colour, base, shifted, other)
+
+type Colour
+  = Red
+  | Green
+
+base =
+  Red
+
+shifted =
+  other base
+
+other c =
+  case c of
+    Red -&gt;
+      Green
+
+    Green -&gt;
+      Red</code></pre></div>
+<p><code>shifted</code> mentions <code>base</code>, so <code>base</code> is evaluated first, whichever order the two are written in.
+<a href="declarations.html#declarations-are-unordered">Declarations are unordered</a> as text; this is the
+one place the language puts an order on them, and it reads it off the references rather than off
+the page.</p>
+<p>A binding that <em>does</em> name parameters is not evaluated at initialisation at all. Its value is
+the function, and its body runs when the function is applied.</p>
+<h3 id="a-binding-may-not-depend-on-itself">A binding may not depend on itself</h3>
+<p>Under strict evaluation a parameterless binding's value has to exist before the binding can be
+used. <strong>A cycle among parameterless bindings is an error</strong>, whether it is one binding long or
+runs through several.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (x)
+
+x =
+  x</code></pre></div>
+<p><strong>Known gap:</strong> that is accepted, and so is <code>a = b</code> beside <code>b = a</code>. Nothing computes an
+initialisation order, so nothing notices there is no order to compute.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-35.md"><code>LANG-35</code></a> is the ticket, and this block goes red when it lands.</p>
+<p>The restriction is on parameterless bindings only. A function may call itself, and two functions
+may call each other, because neither body runs until the function is applied:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Nat, Bool, isEven, isOdd)
+
+type Bool
+  = True
+  | False
+
+type Nat
+  = Zero
+  | Succ Nat
+
+isEven n =
+  case n of
+    Zero -&gt;
+      True
+
+    Succ m -&gt;
+      isOdd m
+
+isOdd n =
+  case n of
+    Zero -&gt;
+      False
+
+    Succ m -&gt;
+      isEven m</code></pre></div>
+<h3 id="let-follows-the-same-rule"><code>let</code> follows the same rule</h3>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (f)
+
+f n =
+  let
+    doubled =
+      add n n
+
+    quadrupled =
+      add doubled doubled
+  in
+  quadrupled</code></pre></div>
+<p><strong>Not implemented:</strong> there is no <code>let</code> production
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-33.md"><code>LANG-33</code></a>). Its bindings are evaluated when the <code>let</code> is reached, in
+dependency order, once each — <code>doubled</code> above is computed once and used twice. The bindings of
+one <code>let</code> are <a href="expressions.html#let--in">mutually recursive</a>, and the same restriction applies
+one level down: a <code>let</code> binding with parameters may take part in a cycle, one without may not.</p>
+<h2 id="function-values">Function values</h2>
+<p>A function is a value like any other. It can be an argument, a result, an element of a tuple,
+and the value of a binding.</p>
+<p>Every function takes exactly one argument, and a function of several is one that returns a
+function (<a href="expressions.html#application">Application</a>), so <strong>applying a function to fewer
+arguments than its type has arrows produces a function value</strong> rather than doing part of the
+work:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Pair, pair, pairWithOne)
+
+type Pair a
+  = Pair a a
+
+pair a b =
+  Pair a b
+
+pairWithOne =
+  pair 1</code></pre></div>
+<p><code>pairWithOne</code> is a value: the function <code>pair</code>, carrying the argument it has already been given.
+Nothing of <code>pair</code>'s body has run.</p>
+<p>A function value carries whatever its body needs from the scope it was built in, which is what
+makes a partially applied function, a
+<a href="expressions.html#let--in"><code>let</code>-bound</a> function, and a <a href="expressions.html#lambdas">lambda</a> work
+away from where they were written.</p>
+<p><strong>A function is not observable except by applying it.</strong> It has no identity, no arity that can
+be asked for, and no equality — see below. Two functions that compute the same results are
+indistinguishable, and so are two occurrences of the same lambda.</p>
+<h2 id="equality">Equality</h2>
+<p><code>==</code> is not built into the language. It is an <a href="expressions.html#an-operator-is-a-name">operator</a>,
+bound to a function, and that function is a member of the <code>Eq</code> class
+(<a href="type-classes.html#what-the-standard-library-declares">Type classes</a>). What equality <em>means</em> is
+therefore a property of each instance rather than of the language.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Bool, (==), eq, alike)
+
+type Bool
+  = True
+  | False
+
+infix non 4 (==) = eq
+
+eq a b =
+  True
+
+alike a b =
+  a == b</code></pre></div>
+<h3 id="what-structural-equality-computes">What structural equality computes</h3>
+<p>Every instance <code>std/core</code> declares is <strong>structural</strong>, and so is a
+<a href="type-classes.html#an-instance-may-be-derived">derived instance</a>. Structural equality is defined
+by the shape of the value:</p>
+<ul>
+<li>Two values of a union type are equal when they are the same constructor and their
+corresponding arguments are equal.</li>
+<li>Two tuples are equal when their elements are pairwise equal. They have the same
+<a href="types.html#tuple-types">arity</a> by construction, since arity is part of the type.</li>
+<li>Two <code>Char</code>s are equal when they are the same character; two <code>String</code>s when they are the same
+sequence of characters; two <code>Int</code>s when they are the same number.</li>
+<li>Two <code>Float</code>s are compared as <a href="#numbers">IEEE 754</a> does, which is the one place structural
+equality does not apply: <code>nan</code> is equal to nothing, itself included, and <code>0.0</code> is equal to
+<code>-0.0</code>.</li>
+</ul>
+<p>An instance is free to define something else — equality up to a normal form, say, for a type
+whose representation has more than one spelling of the same value.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Colour, alike)
+
+type Colour
+  = Red
+  | Green
+
+alike : Eq a =&gt; a -&gt; a -&gt; Bool
+alike a b =
+  eq a b</code></pre></div>
+<p><strong>Not implemented:</strong> no part of a class parses — <code>class</code>, <code>instance</code> and <code>=&gt;</code> are ordinary
+identifiers today (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-37.md"><code>LANG-37</code></a>,
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-38.md"><code>LANG-38</code></a>), and <code>std/core</code> declares no classes
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-42.md"><code>LANG-42</code></a>). A type asks for the definition above rather than writing
+it out by declaring an instance whose body is <code>derived</code> — and what that yields is the definition
+<a href="type-classes.html#a-class-says-how-it-is-derived"><code>Eq</code>'s own declaration supplies</a>, not one the
+compiler holds for a class it recognises.</p>
+<h3 id="functions-are-not-comparable">Functions are not comparable</h3>
+<p>There is no <code>Eq</code> instance for a function type, and there cannot usefully be one: deciding
+whether two functions agree on every input is not something a program can do. So <code>f == g</code> is a
+type error — an unsatisfied constraint, reported where every other unsatisfied constraint is
+reported, rather than something that compiles and then misbehaves.</p>
+<h2 id="recursion-and-tail-calls">Recursion and tail calls</h2>
+<p>Recursion is the only way to iterate. There is no loop form, and there is nothing to mutate
+that a loop would use.</p>
+<p><strong>A self tail call runs in constant stack.</strong> A call to the enclosing declaration, in tail
+position, is compiled as a jump back to the top of that declaration with new arguments — so a
+recursion written this way is as deep as the compiler's stack allows, which is to say
+unbounded.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Nat, count)
+
+type Nat
+  = Zero
+  | Succ Nat
+
+count acc n =
+  case n of
+    Zero -&gt;
+      acc
+
+    Succ m -&gt;
+      count (Succ acc) m</code></pre></div>
+<p>An expression is in <strong>tail position</strong> when its value is the value of the whole declaration
+body. The body itself is; both arms of an <code>if</code> in tail position are; every branch body of a
+<code>case</code> in tail position is; and the expression after <code>in</code> of a <code>let</code> in tail position is.
+Nothing else is — not an argument, not an operand, not a scrutinee, not an <code>if</code>'s condition.
+<code>count (Succ acc) m</code> above is in tail position; <code>Succ (count acc m)</code> would not be, and would
+use stack proportional to <code>n</code>.</p>
+<p>The guarantee covers a call to the declaration the call is written in, and nothing wider.
+Mutual tail recursion between two declarations carries no guarantee.</p>
+<h2 id="sharing">Sharing</h2>
+<p>No rule above says how long an operation takes or how much memory it uses, and nothing here
+gives one. The promise below is narrower, and needs only one notion of what a value is: a value
+exists independently of any name bound to it, so binding a second name to one produces a second
+way to reach it, not a second value.</p>
+<p><strong>A value is not copied when it is passed as an argument, returned as a result, bound to a name,
+or stored inside another value.</strong> Binding a large structure to a second name costs nothing beyond
+the binding itself. A backend that copies a value on assignment does not implement Zelkova.</p>
+<p><strong>Not promised: anything about a function value.</strong> Applying a function to fewer arguments than
+its type has arrows produces a function value (<a href="#function-values">Function values</a>), and whether
+the code generator builds a new one on every such application or reuses one across calls made
+with the same arguments is left to it entirely. A program whose performance depends on <code>f 1</code>,
+written inside a loop where <code>f</code> is applied to a constant, not allocating depends on a particular
+backend, never on the language.</p>
+<p>Sharing does not widen <a href="#recursion-and-tail-calls">the tail-call rule</a>: mutual recursion between
+two declarations still carries no stack guarantee. Nor does it name an allocation count for any
+operation — only that reusing an existing value is free.</p>
+<h2 id="numbers">Numbers</h2>
+<p><strong><code>Int</code> is a 32-bit signed two's-complement integer.</strong> Arithmetic wraps: <code>2147483647 + 1</code> is
+<code>-2147483648</code>. The range and the wrapping are the same on every compilation target, so a
+program computes the same answer wherever it is run.</p>
+<p><strong><code>Float</code> is an IEEE 754 binary64 number</strong>, with IEEE's own answers throughout. <code>1.0 / 0.0</code> is
+positive infinity, <code>0.0 / 0.0</code> is <code>nan</code>, and the ordering of a <code>nan</code> against anything is
+<code>False</code>. Nothing about a <code>Float</code> operation is a failure; IEEE defines a result for every one of
+them, and those results are the language's.</p>
+<p>A float literal denotes the binary64 value nearest to the decimal number it spells, rounding
+<strong>to nearest, with ties going to the value whose final mantissa bit is even</strong> — the rounding
+IEEE 754 specifies for every decimal-to-binary conversion, and this language has no reason to
+pick anything else. Rounding is total: every literal that <a href="lexical-structure.html#floats">Lexical
+structure</a> accepts denotes some binary64 value, and none is
+rejected for the value it rounds to. A literal too large in magnitude for any finite binary64
+value denotes positive infinity; one too small to be distinguished from zero denotes positive
+zero. Both are the <em>positive</em> infinity and the <em>positive</em> zero, because a float literal's
+grammar never places a <code>-</code> before it — a literal is always non-negative — so a negative literal,
+a negative infinity and a negative zero are all reached the same way any other negative <code>Float</code>
+is: by <a href="lexical-structure.html#prefix-negation">prefix negation</a> applied to a non-negative one.</p>
+<p><code>nan</code> has no literal spelling at all — no run of digits denotes it — and is reached only
+through an operation IEEE defines to produce it, such as the <code>0.0 / 0.0</code> above. Once reached,
+<code>nan</code>, the infinities and the negative zero are ordinary <code>Float</code> values: every operation this
+section defines accepts them and returns IEEE's answer, and <a href="#what-structural-equality-computes">structural
+equality</a> is the one place that answer is not the everyday
+one.</p>
+<h3 id="an-operation-with-no-answer">An operation with no answer</h3>
+<p>Some operations are handed arguments for which no answer exists: a divisor of zero, the square
+root of a negative number, the logarithm of a negative one. A well-typed program has <a href="#two-outcomes">only two
+outcomes</a> and a crash is not one of them, so each of these still produces a
+value — and which value it produces is decided by what the result type has room for.</p>
+<p><strong>A <code>Float</code>-returning operation with no answer produces <code>nan</code>.</strong> binary64 keeps a value meaning
+<em>not a number</em>: <code>nan</code> is not any number, it propagates through every arithmetic operation it
+reaches, and <code>isNaN</code> detects it. So a <code>Float</code> operation never invents a stand-in answer.
+<code>sqrt (-1)</code> is <code>nan</code>, <code>logBase 0 0</code> is <code>nan</code>, <code>0.0 / 0.0</code> is <code>nan</code>, and a caller can ask
+afterwards whether an answer was ever found.</p>
+<p>Rounding is a different thing, and this rule does not reach it. An operation whose exact result
+is too small for binary64 <em>has</em> an answer — the nearest representable value, which is a zero —
+and returns it, so <code>1.0e-300 * 1.0e-300</code> is <code>0.0</code> rather than <code>nan</code>, and a literal too small to
+be distinguished from zero denotes positive zero for the same reason. Losing precision, even all
+of it, is not the same as having nothing to return.</p>
+<p><code>Int</code> has no such value. Every 32-bit two's-complement bit pattern is a number somebody might
+have meant, so whatever an integer operation returns is indistinguishable from a real result,
+and the language names one rather than leaving the operation partial:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing ((//), idiv, half)
+
+infix left 7 (//) = idiv
+
+idiv a b =
+  a
+
+half n =
+  n // 2</code></pre></div>
+<p><strong><code>n // 0</code> is <code>0</code>. <code>modBy 0 n</code> is <code>0</code>. <code>remainderBy 0 n</code> is <code>0</code>.</strong> These are the values that
+keep those three operations total. Nothing marks such a zero as invented, so a caller for whom a
+zero divisor is a real case tests the divisor beforehand, where a <code>Float</code> caller can test the
+result afterwards.</p>
+<p><strong>Known gap:</strong> <code>modBy 0</code> calls an undefined <code>__Debug_crash</code>, so it is a <code>ReferenceError</code> rather
+than <code>0</code>, and <code>remainderBy 0</code> returns <code>nan</code> rather than <code>0</code>.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-24.md"><code>BUG-24</code></a> is the ticket. No block holds either to account: both are in
+the JavaScript companion files, which nothing in the test suite runs.</p>
+<h3 id="converting-a-float-to-an-int">Converting a <code>Float</code> to an <code>Int</code></h3>
+<p><code>round</code>, <code>floor</code>, <code>ceiling</code> and <code>truncate</code> each take a <code>Float</code> and produce an <code>Int</code>, and there
+are <code>Float</code>s the <code>Int</code>s have no room for: <code>nan</code>, both infinities, and every finite value outside
+the 32-bit range.</p>
+<p><strong>A conversion to <code>Int</code> rounds as its name says and then wraps into 32 bits</strong>, the way <code>Int</code>
+arithmetic wraps, <strong>and <code>nan</code> and both infinities convert to <code>0</code>.</strong> That zero is the same
+concession <code>//</code> makes, and for the same reason: the result type has no value meaning <em>no
+answer</em>, so the conversion returns one that means something else. A program holding a <code>Float</code> it
+is unsure of tests it with <code>isNaN</code> or <code>isInfinite</code> before converting, as a program holding a
+divisor tests the divisor.</p>
+<p><strong>Known gap:</strong> <code>round</code>, <code>floor</code> and <code>ceiling</code> return their JavaScript <code>Math</code> result with no
+wrap, so <code>round nan</code> is <code>nan</code> and <code>round 1.0e20</code> is <code>1.0e20</code> — neither of them an <code>Int</code>. Only
+<code>truncate</code> wraps. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-25.md"><code>BUG-25</code></a> is the ticket. No block holds it to account:
+all four conversions are in a JavaScript companion, which nothing in the test suite runs.</p>
+<h2 id="purity-and-the-foreign-boundary">Purity and the foreign boundary</h2>
+<p><strong>An expression's value depends only on the values of the names it mentions.</strong> Evaluating it
+twice gives the same value, and evaluating it does nothing else — nothing is written, read,
+mutated or sent anywhere.</p>
+<p>A <a href="interop.html"><code>module foreign</code> facade</a> is where that guarantee meets code the compiler
+did not produce and cannot inspect. A facade declares an effect by default, and its companion is
+under no obligation to be a function of anything: reading a clock, keeping a counter, printing
+and reaching the network are what it is for.</p>
+<p><strong>The word <a href="interop.html#an-unsafe-facade"><code>unsafe</code></a> is what claims otherwise.</strong> A signature
+marked with it declares a function rather than an effect, and its author is asserting that the
+same arguments give the same result and that calling it has no other consequence.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Math exposing (square)
+
+unsafe square : Float -&gt; Float</code></pre></div>
+<p>Nothing distinguishes that from the same word over an impure export:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Random exposing (next)
+
+unsafe next : Int -&gt; Int</code></pre></div>
+<p>The second is a broken program, and the rule it breaks is one only its author can keep. What the
+word buys is not a check but a place to look: the assertions a program makes about foreign code are
+the declarations carrying it, and a reader who wants to know what this language is trusting reads
+those.</p>
+<p>Purity is not the only rule an <code>unsafe</code> companion owes. <strong>It also owes the answers
+<a href="#an-operation-with-no-answer">Numbers</a> defines</strong>: a <code>Float</code>-returning companion with no answer
+returns <code>nan</code>, an <code>Int</code>-returning one returns the value that section names, and a conversion
+returns a value the <code>Int</code> type can hold. Nothing checks that either, for the reason nothing
+checks purity: a type annotation with no body is all the compiler ever sees.</p>
+<p>How a program <em>does</em> reach the outside world is the next section's.</p>
+<h2 id="effects">Effects</h2>
+<p>Everything above describes a computation. A program reaches the outside world by producing a
+<strong><code>Task</code></strong>: a value describing work, which the runtime performs.</p>
+<p><code>Task</code> is a type <code>zelkova-core</code> declares and exposes without its constructors, so a <code>Task</code> is
+opaque everywhere but in core — nothing else builds one out of parts or takes one apart. A
+<code>Task a</code> describes work that produces an <code>a</code> when it is run.</p>
+<p><strong>Building a <code>Task</code> performs nothing.</strong> An expression whose value is a <code>Task</code> is as pure as any
+other: evaluating it twice gives the same description twice, and neither evaluation reads a file
+or writes a byte. The work happens when a <code>Task</code> is <a href="#running-a-task">run</a>, so the guarantee
+above holds over a program with effects in it.</p>
+<h3 id="where-a-task-comes-from">Where a <code>Task</code> comes from</h3>
+<p>A primitive <code>Task</code> is declared by a <a href="interop.html"><code>module foreign</code> facade</a> whose result
+type is one.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.File exposing (read)
+
+import Task exposing (Failure)
+
+read : String -&gt; Task (Result Failure String)</code></pre></div>
+<p>That is the only place an effect enters the language. What the companion behind such a signature
+returns, and which types the signature may still name, is
+<a href="interop.html#an-effectful-facade">Foreign interoperability</a>'s. Every other <code>Task</code> is built from
+those, so a package declares its own effects on the same terms <code>zelkova-core</code> declares its.</p>
+<h3 id="sequencing">Sequencing</h3>
+<p><code>Task.andThen</code> runs one <code>Task</code> after another, and it is an ordinary function.</p>
+<div class="zel-block expect-unchecked"><div class="zel-block-tags"><span class="zel-tag">expect=fragment</span></div><pre><code>succeed : a -&gt; Task a
+map : (a -&gt; b) -&gt; Task a -&gt; Task b
+andThen : (a -&gt; Task b) -&gt; Task a -&gt; Task b</code></pre></div>
+<p><code>andThen f t</code> describes running <code>t</code>, handing its result to <code>f</code>, and running the <code>Task</code> <code>f</code>
+returns. None of the three is a member of a class: <a href="type-classes.html#a-class-is-always-over-a-complete-type">a class is always over a complete
+type</a>, and <code>Task</code> on its own is not one.</p>
+<p>Nothing about <code>Task</code> is built into the language beyond the name and
+<a href="#running-a-task">running one</a>. Core writes its sequencing the way any module writes a function
+over a type it declares, and which shape it picks is core's: a program outside core cannot
+observe the difference.</p>
+<h3 id="running-a-task">Running a <code>Task</code></h3>
+<p>A program hands the runtime one <code>Task</code>, and running the program is running that <code>Task</code>. The
+value it hands over is <code>main</code>, whose type <a href="packages.html#programs">Packages</a> writes down. Nothing
+else runs one: a <code>Task</code> a program builds and never gives to the runtime describes work that
+never happens.</p>
+<p>A <code>Task</code> is a value, so <a href="#sharing">sharing</a> reaches it like anything else — binding one to two
+names gives two ways to reach one description. Running that description twice performs its work
+twice.</p>
+<p>The effects of a <code>Task</code> happen in the order it sequences them: <code>andThen</code> runs the second only
+once the first has produced a value.</p>
+<h3 id="an-effect-that-can-fail">An effect that can fail</h3>
+<p><code>Task</code> takes one type parameter and carries no channel for an error. A failure an effect can
+produce is a value in its payload, which is where <a href="#two-outcomes">every other failure the language
+admits</a> goes.</p>
+<p>Every effect can produce two of those values whatever else it produces, because a primitive
+effect is a call into JavaScript and such a call can break in two ways its caller did not ask
+for. <code>Task</code> declares them, and exposes them with their constructors — the type is matched on
+rather than held opaque:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Task exposing (Failure(..))
+
+type Failure
+  = Threw String
+  | Malformed String</code></pre></div>
+<p><code>Threw</code> is a companion that threw, or whose promise rejected, carrying the host's description of
+what happened. <code>Malformed</code> is a companion that returned a value its declared type does not admit,
+carrying the name of the export that returned it.</p>
+<p>So a facade declares a <code>Task (Result Failure a)</code> unless it is marked
+<a href="interop.html#an-unsafe-facade"><code>unsafe</code></a>, a rule
+<a href="interop.html#an-effectful-facade">Foreign interoperability</a> states in full. Running such a <code>Task</code>
+yields a value even when the code behind it breaks, so the two outcomes above are the two
+outcomes of running one.</p>
+<p>A failure belonging to the effect's own domain goes in the payload beside those. <code>read</code> above,
+reporting a missing file apart from a broken companion, is <code>String -&gt; Task (Result Failure (Result IoError String))</code>. The module that
+<a href="packages.html#what-a-package-exposes">publishes <code>read</code></a> outside its package is where the two
+<code>Result</code>s collapse into the one its dependents see.</p>
+<p><strong>Not implemented:</strong> the <code>read</code> block under
+<a href="#where-a-task-comes-from">Where a <code>Task</code> comes from</a> does not parse, a type argument having to be
+a bare name today (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-9.md"><code>LANG-9</code></a>). <code>zelkova-core</code> declares no <code>Task</code> and no
+<code>Failure</code>, no facade wrapper is generated, and nothing runs a program at all — the pipeline ends
+at type checking, so there is no runtime for a <code>Task</code> to be handed to
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/gen-1.md"><code>GEN-1</code></a>).</p>
+<p><strong>Known gap:</strong> the <code>Failure</code> block above compiles, and should not: <code>String</code> names no type the
+build has, and an unresolved type name is invented rather than reported
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-16.md"><code>BUG-16</code></a>). It goes red when <code>BUG-16</code> lands, and green again once
+<code>zelkova-core</code> declares <code>String</code>.</p>
+<h2 id="when-a-program-aborts">When a program aborts</h2>
+<p>Evaluating an expression has <a href="#two-outcomes">two outcomes</a>. Running a program has a third: it
+can <strong>abort</strong>, stopping without producing a value and without running any more of itself.</p>
+<p>No Zelkova expression asks for one. The language has no keyword that aborts and none that
+catches one, so an abort is never a step a program takes — it is the runtime saying it can no
+longer keep the guarantees above. Three things cause one.</p>
+<p><strong>An <a href="interop.html#an-unsafe-facade"><code>unsafe</code></a> facade whose companion breaks its promise.</strong> A
+companion declared as a function that throws, or that returns a value its declared type does not
+admit, leaves its caller owed a value that nothing produced. An effectful facade has somewhere to
+put that and an <code>unsafe</code> one has nowhere.</p>
+<p>So every abort a program's own code can cause is attributable to a declaration carrying that
+word.</p>
+<p><strong>Exhaustion.</strong> No memory left to hold a value, or no stack left to enter a call. The second is
+reachable from Zelkova alone, by a recursion the <a href="#recursion-and-tail-calls">tail-call rule</a> does
+not cover.</p>
+<p><strong>The host.</strong> Whatever runs the program can stop it.</p>
+<p>An abort says what caused it, and one caused by a facade names the export whose companion broke.</p>
+<p>Only the first is a promise broken. The other two are the runtime running out of what it needs.</p>
+<p><strong>Not implemented:</strong> nothing runs a program, so nothing aborts (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/gen-1.md"><code>GEN-1</code></a>),
+and no predicate exists to fail (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/gen-2.md"><code>GEN-2</code></a>).</p>
+
+</main>
+</div>
+</body>
+</html>

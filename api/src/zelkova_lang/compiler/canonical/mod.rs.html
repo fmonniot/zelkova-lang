@@ -1,0 +1,1508 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/compiler/canonical/mod.rs`."><title>mod.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../../../" data-static-root-path="../../../../static.files/" data-current-crate="zelkova_lang" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.1 (48a229cea 2026-09-01)" data-channel="1.98.1" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../../static.files/src-script-813739b1.js"></script><script defer src="../../../../src-files.js"></script><script defer src="../../../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">zelkova_lang/compiler/canonical/</div>mod.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-4"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! The canonical representation of a zelkova programs is a translation of a local
+<a href=#2 id=2 data-nosnippet>2</a>//! source into the broader world.
+<a href=#3 id=3 data-nosnippet>3</a>//!
+<a href=#4 id=4 data-nosnippet>4</a>//! This phase is where we integrate the local parsed module into the rest of the
+<a href=#5 id=5 data-nosnippet>5</a>//! program. We do the following steps:
+<a href=#6 id=6 data-nosnippet>6</a>//!
+<a href=#7 id=7 data-nosnippet>7</a>//! - Resolve all imports
+<a href=#8 id=8 data-nosnippet>8</a>//! - Qualify all `Name` (eg. a local value `test` in a `Mod.A` module will be renamed `Mod.A.test`)
+<a href=#9 id=9 data-nosnippet>9</a>//! - Checks that exported names are actually present in the module
+<a href=#10 id=10 data-nosnippet>10</a>//! - Checks there is none cyclic dependency between this module and others (Might be done earlier, let's see)
+<a href=#11 id=11 data-nosnippet>11</a>//!
+<a href=#12 id=12 data-nosnippet>12</a>//! Note that we use `HashMap`'s a lot in this module's structures. This is because later phases will
+<a href=#13 id=13 data-nosnippet>13</a>//! want to have cheap access to the different components of a `Module`.
+<a href=#14 id=14 data-nosnippet>14</a>//!
+<a href=#15 id=15 data-nosnippet>15</a>//! TODO Rename this to core ? I feel it's going to be te main internal representation of the language.
+<a href=#16 id=16 data-nosnippet>16</a></span><span class="kw">use </span><span class="kw">super</span>::parser;
+<a href=#17 id=17 data-nosnippet>17</a><span class="kw">use </span><span class="kw">super</span>::Interface;
+<a href=#18 id=18 data-nosnippet>18</a><span class="kw">use </span><span class="kw">super</span>::PhaseError;
+<a href=#19 id=19 data-nosnippet>19</a><span class="kw">use </span><span class="kw">super</span>::SpanLabel;
+<a href=#20 id=20 data-nosnippet>20</a><span class="kw">use super</span>::{ModuleName, PackageName};
+<a href=#21 id=21 data-nosnippet>21</a><span class="kw">use </span><span class="kw">crate</span>::utils::collect_accumulate;
+<a href=#22 id=22 data-nosnippet>22</a><span class="kw">use </span>log::{debug, trace};
+<a href=#23 id=23 data-nosnippet>23</a><span class="kw">use </span>std::collections::HashMap;
+<a href=#24 id=24 data-nosnippet>24</a>
+<a href=#25 id=25 data-nosnippet>25</a><span class="kw">mod </span>environment;
+<a href=#26 id=26 data-nosnippet>26</a><span class="doccomment">/// Part of [`Error::AmbiguousOperatorPrecedence`]'s public shape, so it is
+<a href=#27 id=27 data-nosnippet>27</a>/// re-exported alongside the error rather than left behind a private module.
+<a href=#28 id=28 data-nosnippet>28</a></span><span class="kw">pub use </span>environment::InfixDeclaration;
+<a href=#29 id=29 data-nosnippet>29</a><span class="kw">use </span>environment::{
+<a href=#30 id=30 data-nosnippet>30</a>    new_environment, suggest_name, EnvError, Environment, RootEnvironment, ValueType,
+<a href=#31 id=31 data-nosnippet>31</a>};
+<a href=#32 id=32 data-nosnippet>32</a>
+<a href=#33 id=33 data-nosnippet>33</a><span class="comment">// Some elements which are common to both AST
+<a href=#34 id=34 data-nosnippet>34</a></span><span class="kw">use </span><span class="kw">crate</span>::compiler::name::{Name, QualName};
+<a href=#35 id=35 data-nosnippet>35</a><span class="kw">use </span><span class="kw">crate</span>::compiler::position::NodeSpan;
+<a href=#36 id=36 data-nosnippet>36</a><span class="kw">use </span><span class="kw">crate</span>::compiler::source::files::SourceFileId;
+<a href=#37 id=37 data-nosnippet>37</a><span class="kw">use </span><span class="kw">crate</span>::compiler::tuple::Tuple;
+<a href=#38 id=38 data-nosnippet>38</a><span class="kw">pub use </span>parser::Associativity;
+<a href=#39 id=39 data-nosnippet>39</a>
+<a href=#40 id=40 data-nosnippet>40</a><span class="comment">// begin AST
+<a href=#41 id=41 data-nosnippet>41</a>
+<a href=#42 id=42 data-nosnippet>42</a></span><span class="doccomment">/// A resolved module
+<a href=#43 id=43 data-nosnippet>43</a></span><span class="attr">#[derive(Debug)]
+<a href=#44 id=44 data-nosnippet>44</a></span><span class="kw">pub struct </span>Module {
+<a href=#45 id=45 data-nosnippet>45</a>    <span class="kw">pub </span>name: ModuleName,
+<a href=#46 id=46 data-nosnippet>46</a>    <span class="kw">pub </span>exports: Exports,
+<a href=#47 id=47 data-nosnippet>47</a>    <span class="doccomment">/// Operator name to infix details
+<a href=#48 id=48 data-nosnippet>48</a>    </span><span class="kw">pub </span>infixes: HashMap&lt;Name, Infix&gt;,
+<a href=#49 id=49 data-nosnippet>49</a>    <span class="kw">pub </span>types: HashMap&lt;Name, UnionType&gt;,
+<a href=#50 id=50 data-nosnippet>50</a>    <span class="kw">pub </span>values: HashMap&lt;Name, Value&gt;,
+<a href=#51 id=51 data-nosnippet>51</a>    <span class="doccomment">/// True when this module is a JavaScript binding module.
+<a href=#52 id=52 data-nosnippet>52</a>    /// Such modules have synthetic placeholder bodies and must not be type-checked.
+<a href=#53 id=53 data-nosnippet>53</a>    </span><span class="kw">pub </span>binding_javascript: bool,
+<a href=#54 id=54 data-nosnippet>54</a>}
+<a href=#55 id=55 data-nosnippet>55</a>
+<a href=#56 id=56 data-nosnippet>56</a><span class="kw">impl </span>Module {
+<a href=#57 id=57 data-nosnippet>57</a>    <span class="doccomment">/// Build the trimmed-down view of this module other modules import against.
+<a href=#58 id=58 data-nosnippet>58</a>    ///
+<a href=#59 id=59 data-nosnippet>59</a>    /// `file` is the [`SourceFileId`] this module was read from, which is what lets
+<a href=#60 id=60 data-nosnippet>60</a>    /// a later module's diagnostic point back into *this* module's source — see
+<a href=#61 id=61 data-nosnippet>61</a>    /// [`Interface::file`](super::Interface::file). It is a parameter rather than
+<a href=#62 id=62 data-nosnippet>62</a>    /// something this method could work out because a `canonical::Module` does not
+<a href=#63 id=63 data-nosnippet>63</a>    /// know it: only driver code does, and the sole caller
+<a href=#64 id=64 data-nosnippet>64</a>    /// (`dependencies::ModuleWalker::check_in_order`) is driver code that has the
+<a href=#65 id=65 data-nosnippet>65</a>    /// map from module name to file in hand. A caller with nothing to give — every
+<a href=#66 id=66 data-nosnippet>66</a>    /// test that hand-builds an interface — passes `None`, and
+<a href=#67 id=67 data-nosnippet>67</a>    /// [`Interface::source_span`](super::Interface::source_span) then declines to
+<a href=#68 id=68 data-nosnippet>68</a>    /// build a cross-module label rather than building one at the wrong place.
+<a href=#69 id=69 data-nosnippet>69</a>    </span><span class="kw">pub fn </span>to_interface(<span class="kw-2">&amp;</span><span class="self">self</span>, file: <span class="prelude-ty">Option</span>&lt;SourceFileId&gt;) -&gt; <span class="kw">super</span>::Interface {
+<a href=#70 id=70 data-nosnippet>70</a>        <span class="kw">let </span>values = <span class="self">self
+<a href=#71 id=71 data-nosnippet>71</a>            </span>.values
+<a href=#72 id=72 data-nosnippet>72</a>            .iter()
+<a href=#73 id=73 data-nosnippet>73</a>            .filter_map(|(name, value)| <span class="kw">match </span>value {
+<a href=#74 id=74 data-nosnippet>74</a>                Value::Value { .. } =&gt; <span class="prelude-val">None</span>,
+<a href=#75 id=75 data-nosnippet>75</a>                Value::TypedValue { tpe, span, .. } =&gt; <span class="prelude-val">Some</span>((name.clone(), (<span class="kw-2">*</span>span, tpe.clone()))),
+<a href=#76 id=76 data-nosnippet>76</a>            })
+<a href=#77 id=77 data-nosnippet>77</a>            .collect();
+<a href=#78 id=78 data-nosnippet>78</a>
+<a href=#79 id=79 data-nosnippet>79</a>        <span class="kw">super</span>::Interface {
+<a href=#80 id=80 data-nosnippet>80</a>            module_name: <span class="self">self</span>.name.clone(),
+<a href=#81 id=81 data-nosnippet>81</a>            values,
+<a href=#82 id=82 data-nosnippet>82</a>            unions: <span class="self">self</span>.types.clone(),
+<a href=#83 id=83 data-nosnippet>83</a>            infixes: <span class="self">self</span>.infixes.clone(),
+<a href=#84 id=84 data-nosnippet>84</a>            file,
+<a href=#85 id=85 data-nosnippet>85</a>        }
+<a href=#86 id=86 data-nosnippet>86</a>    }
+<a href=#87 id=87 data-nosnippet>87</a>}
+<a href=#88 id=88 data-nosnippet>88</a>
+<a href=#89 id=89 data-nosnippet>89</a><span class="attr">#[derive(Debug, PartialEq)]
+<a href=#90 id=90 data-nosnippet>90</a></span><span class="kw">pub enum </span>Exports {
+<a href=#91 id=91 data-nosnippet>91</a>    Everything,
+<a href=#92 id=92 data-nosnippet>92</a>    <span class="doccomment">/// Non qualified name to its export type
+<a href=#93 id=93 data-nosnippet>93</a>    </span>Specifics(HashMap&lt;Name, ExportType&gt;),
+<a href=#94 id=94 data-nosnippet>94</a>}
+<a href=#95 id=95 data-nosnippet>95</a>
+<a href=#96 id=96 data-nosnippet>96</a><span class="attr">#[derive(Debug, PartialEq)]
+<a href=#97 id=97 data-nosnippet>97</a></span><span class="kw">pub enum </span>ExportType {
+<a href=#98 id=98 data-nosnippet>98</a>    Value,
+<a href=#99 id=99 data-nosnippet>99</a>    Infix,
+<a href=#100 id=100 data-nosnippet>100</a>    UnionPublic,
+<a href=#101 id=101 data-nosnippet>101</a>    UnionPrivate,
+<a href=#102 id=102 data-nosnippet>102</a>}
+<a href=#103 id=103 data-nosnippet>103</a>
+<a href=#104 id=104 data-nosnippet>104</a><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#105 id=105 data-nosnippet>105</a></span><span class="kw">pub struct </span>Infix {
+<a href=#106 id=106 data-nosnippet>106</a>    <span class="kw">pub </span>associativity: Associativity,
+<a href=#107 id=107 data-nosnippet>107</a>    <span class="kw">pub </span>precedence: u8,
+<a href=#108 id=108 data-nosnippet>108</a>    <span class="kw">pub </span>function_name: Name,
+<a href=#109 id=109 data-nosnippet>109</a>    <span class="doccomment">/// Where the `infix` declaration this came from was written.
+<a href=#110 id=110 data-nosnippet>110</a>    </span><span class="kw">pub </span>span: NodeSpan,
+<a href=#111 id=111 data-nosnippet>111</a>}
+<a href=#112 id=112 data-nosnippet>112</a>
+<a href=#113 id=113 data-nosnippet>113</a><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#114 id=114 data-nosnippet>114</a></span><span class="kw">pub struct </span>UnionType {
+<a href=#115 id=115 data-nosnippet>115</a>    <span class="kw">pub </span>variables: Vec&lt;Name&gt;,
+<a href=#116 id=116 data-nosnippet>116</a>    <span class="kw">pub </span>variants: Vec&lt;TypeConstructor&gt;,
+<a href=#117 id=117 data-nosnippet>117</a>    <span class="doccomment">/// Where the `type` declaration this came from was written.
+<a href=#118 id=118 data-nosnippet>118</a>    </span><span class="kw">pub </span>span: NodeSpan,
+<a href=#119 id=119 data-nosnippet>119</a>}
+<a href=#120 id=120 data-nosnippet>120</a>
+<a href=#121 id=121 data-nosnippet>121</a><span class="comment">// TODO Once we have most of the pipeline built, revisit the decision of
+<a href=#122 id=122 data-nosnippet>122</a>// having Vec&lt;Type&gt; + Type instead of Type::Arrow(Box&lt;Type&gt;, Box&lt;Type&gt;)
+<a href=#123 id=123 data-nosnippet>123</a>// as it's essentially what a constructor is, a function from parameter
+<a href=#124 id=124 data-nosnippet>124</a>// to the resulting type.
+<a href=#125 id=125 data-nosnippet>125</a>// Later me: well, that's only true at the type level. The value also need
+<a href=#126 id=126 data-nosnippet>126</a>// to tag what variant it represent.
+<a href=#127 id=127 data-nosnippet>127</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#128 id=128 data-nosnippet>128</a></span><span class="kw">pub struct </span>TypeConstructor {
+<a href=#129 id=129 data-nosnippet>129</a>    <span class="doccomment">/// Constructor name. eg. in `type A = B`, the name is `B`
+<a href=#130 id=130 data-nosnippet>130</a>    </span><span class="kw">pub </span>name: Name,
+<a href=#131 id=131 data-nosnippet>131</a>    <span class="doccomment">/// The types of the parameters
+<a href=#132 id=132 data-nosnippet>132</a>    </span><span class="kw">pub </span>type_parameters: Vec&lt;Type&gt;,
+<a href=#133 id=133 data-nosnippet>133</a>    <span class="doccomment">/// The type's name once constructed
+<a href=#134 id=134 data-nosnippet>134</a>    </span><span class="kw">pub </span>tpe: Name,
+<a href=#135 id=135 data-nosnippet>135</a>}
+<a href=#136 id=136 data-nosnippet>136</a>
+<a href=#137 id=137 data-nosnippet>137</a><span class="doccomment">/// A canonical type.
+<a href=#138 id=138 data-nosnippet>138</a>///
+<a href=#139 id=139 data-nosnippet>139</a>/// # Why there is no span on this type, or on [`TypeConstructor`]
+<a href=#140 id=140 data-nosnippet>140</a>///
+<a href=#141 id=141 data-nosnippet>141</a>/// Every other canonical node this module builds carries a [`NodeSpan`] taken from
+<a href=#142 id=142 data-nosnippet>142</a>/// the parser node it came from. A `Type` deliberately does not.
+<a href=#143 id=143 data-nosnippet>143</a>///
+<a href=#144 id=144 data-nosnippet>144</a>/// The reason `ERR-3` recorded is that a `Type` does not always come from the module
+<a href=#145 id=145 data-nosnippet>145</a>/// being canonicalized: `Type::from_parser_type` resolves a name through the
+<a href=#146 id=146 data-nosnippet>146</a>/// [`Environment`], which clones types straight out of the [`Interface`]s of the
+<a href=#147 id=147 data-nosnippet>147</a>/// modules this one imports, so the `Type` handed back may well have been *written
+<a href=#148 id=148 data-nosnippet>148</a>/// in a different file* — and a bare span on it would be read as a position in the
+<a href=#149 id=149 data-nosnippet>149</a>/// importing module's source. `ERR-5` settled that half: a [`SpanLabel`] can now
+<a href=#150 id=150 data-nosnippet>150</a>/// carry a file of its own, so "written in another file" is no longer the obstacle.
+<a href=#151 id=151 data-nosnippet>151</a>///
+<a href=#152 id=152 data-nosnippet>152</a>/// The other half is unfinished work, not an impossibility. `parser::Type` carries a
+<a href=#153 id=153 data-nosnippet>153</a>/// [`NodeSpan`] per node like every other parser node, and `Type::from_parser_type`
+<a href=#154 id=154 data-nosnippet>154</a>/// is the recursive walk over it — `tpe.span` is in hand at every level, and each
+<a href=#155 id=155 data-nosnippet>155</a>/// branch of an `Arrow` arrives as its own spanned `parser::Type`. Those spans are
+<a href=#156 id=156 data-nosnippet>156</a>/// discarded here by choice. Keeping them means a span field on every canonical
+<a href=#157 id=157 data-nosnippet>157</a>/// `Type` node, plus a decision about what a `Type` cloned out of an `Environment`
+<a href=#158 id=158 data-nosnippet>158</a>/// should then report — where it was written, or where it was used. Nobody has
+<a href=#159 id=159 data-nosnippet>159</a>/// written that.
+<a href=#160 id=160 data-nosnippet>160</a>///
+<a href=#161 id=161 data-nosnippet>161</a>/// What exists instead is coarser and enough for the diagnostics that exist: the
+<a href=#162 id=162 data-nosnippet>162</a>/// *declaration* a `Type` is the type of — [`Value`]'s own `span`, [`UnionType`]'s,
+<a href=#163 id=163 data-nosnippet>163</a>/// [`Infix`]'s — is what a diagnostic wants to underline ("defined here"), not a
+<a href=#164 id=164 data-nosnippet>164</a>/// position inside the type expression itself. [`Interface::values`] pairs each
+<a href=#165 id=165 data-nosnippet>165</a>/// value's `Type` with that declaration's [`NodeSpan`], and
+<a href=#166 id=166 data-nosnippet>166</a>/// [`Interface::source_span`] pairs it with the file, once [`Interface::file`] is
+<a href=#167 id=167 data-nosnippet>167</a>/// set. A type error still points at the whole declaration that failed rather than
+<a href=#168 id=168 data-nosnippet>168</a>/// the sub-expression that disagrees, which is `ERR-4`, a separate limit in the
+<a href=#169 id=169 data-nosnippet>169</a>/// typer's own `Term`/`Constraint` translation.
+<a href=#170 id=170 data-nosnippet>170</a></span><span class="attr">#[derive(Debug, Clone, PartialEq)]
+<a href=#171 id=171 data-nosnippet>171</a></span><span class="kw">pub enum </span>Type {
+<a href=#172 id=172 data-nosnippet>172</a>    Variable(Name),
+<a href=#173 id=173 data-nosnippet>173</a>    Type(Name, Vec&lt;Type&gt;),
+<a href=#174 id=174 data-nosnippet>174</a>    <span class="comment">// Record
+<a href=#175 id=175 data-nosnippet>175</a>    // Unit
+<a href=#176 id=176 data-nosnippet>176</a>    </span>Arrow(Box&lt;Type&gt;, Box&lt;Type&gt;),
+<a href=#177 id=177 data-nosnippet>177</a>    <span class="doccomment">/// A tuple type. Zelkova keeps Elm's restriction of two or three elements,
+<a href=#178 id=178 data-nosnippet>178</a>    /// which [`Tuple`] carries in its shape.
+<a href=#179 id=179 data-nosnippet>179</a>    </span>Tuple(Tuple&lt;Type&gt;),
+<a href=#180 id=180 data-nosnippet>180</a>    <span class="comment">// Alias
+<a href=#181 id=181 data-nosnippet>181</a></span>}
+<a href=#182 id=182 data-nosnippet>182</a>
+<a href=#183 id=183 data-nosnippet>183</a><span class="kw">impl </span>Type {
+<a href=#184 id=184 data-nosnippet>184</a>    <span class="doccomment">/// The one conversion in this module that reads a span and produces none.
+<a href=#185 id=185 data-nosnippet>185</a>    ///
+<a href=#186 id=186 data-nosnippet>186</a>    /// `parser::Type` carries a [`NodeSpan`] like every other parser node, and it is
+<a href=#187 id=187 data-nosnippet>187</a>    /// dropped here on purpose — see this type's documentation for why a canonical
+<a href=#188 id=188 data-nosnippet>188</a>    /// `Type` holds no span at all, and what `ERR-5` built instead.
+<a href=#189 id=189 data-nosnippet>189</a>    </span><span class="kw">fn </span>from_parser_type(env: <span class="kw-2">&amp;</span><span class="kw">dyn </span>Environment, tpe: <span class="kw-2">&amp;</span>parser::Type) -&gt; <span class="prelude-ty">Result</span>&lt;Type, Error&gt; {
+<a href=#190 id=190 data-nosnippet>190</a>        <span class="kw">match </span><span class="kw-2">&amp;</span>tpe.kind {
+<a href=#191 id=191 data-nosnippet>191</a>            parser::TypeKind::Unqualified(name, vars) =&gt; {
+<a href=#192 id=192 data-nosnippet>192</a>                <span class="kw">let </span>args = vars
+<a href=#193 id=193 data-nosnippet>193</a>                    .iter()
+<a href=#194 id=194 data-nosnippet>194</a>                    .map(|t| Type::from_parser_type(env, t))
+<a href=#195 id=195 data-nosnippet>195</a>                    .collect::&lt;<span class="prelude-ty">Result</span>&lt;Vec&lt;<span class="kw">_</span>&gt;, Error&gt;&gt;()<span class="question-mark">?</span>;
+<a href=#196 id=196 data-nosnippet>196</a>
+<a href=#197 id=197 data-nosnippet>197</a>                <span class="kw">match </span>env.find_type(name) {
+<a href=#198 id=198 data-nosnippet>198</a>                    <span class="comment">// `name` resolves to a declared type: `args` is what was
+<a href=#199 id=199 data-nosnippet>199</a>                    // written after it, and has to match the declaration's own
+<a href=#200 id=200 data-nosnippet>200</a>                    // arity (`BUG-17`) — nothing else here re-derives that check.
+<a href=#201 id=201 data-nosnippet>201</a>                    // The head is the *declaration's* name, not the one written:
+<a href=#202 id=202 data-nosnippet>202</a>                    // `Lib.Option` and `Option` are two spellings of one entry, and
+<a href=#203 id=203 data-nosnippet>203</a>                    // normalizing here is what lets the two unify downstream.
+<a href=#204 id=204 data-nosnippet>204</a>                    </span><span class="prelude-val">Some</span>(declared) <span class="kw">if </span>declared.arity() == args.len() =&gt; {
+<a href=#205 id=205 data-nosnippet>205</a>                        <span class="prelude-val">Ok</span>(Type::Type(declared.name.clone(), args))
+<a href=#206 id=206 data-nosnippet>206</a>                    }
+<a href=#207 id=207 data-nosnippet>207</a>                    <span class="prelude-val">Some</span>(declared) =&gt; <span class="prelude-val">Err</span>(Error::TypeArityMismatch(
+<a href=#208 id=208 data-nosnippet>208</a>                        name.clone(),
+<a href=#209 id=209 data-nosnippet>209</a>                        declared.arity(),
+<a href=#210 id=210 data-nosnippet>210</a>                        args.len(),
+<a href=#211 id=211 data-nosnippet>211</a>                        tpe.span,
+<a href=#212 id=212 data-nosnippet>212</a>                    )),
+<a href=#213 id=213 data-nosnippet>213</a>                    <span class="comment">// `name` resolves to nothing: BUG-16 is the ticket for reporting
+<a href=#214 id=214 data-nosnippet>214</a>                    // this instead of fabricating a type for it.
+<a href=#215 id=215 data-nosnippet>215</a>                    </span><span class="prelude-val">None </span>=&gt; <span class="prelude-val">Ok</span>(Type::Type(name.clone(), args)),
+<a href=#216 id=216 data-nosnippet>216</a>                }
+<a href=#217 id=217 data-nosnippet>217</a>            }
+<a href=#218 id=218 data-nosnippet>218</a>            parser::TypeKind::Arrow(t1, t2) =&gt; <span class="prelude-val">Ok</span>(Type::Arrow(
+<a href=#219 id=219 data-nosnippet>219</a>                Box::new(Type::from_parser_type(env, t1)<span class="question-mark">?</span>),
+<a href=#220 id=220 data-nosnippet>220</a>                Box::new(Type::from_parser_type(env, t2)<span class="question-mark">?</span>),
+<a href=#221 id=221 data-nosnippet>221</a>            )),
+<a href=#222 id=222 data-nosnippet>222</a>            parser::TypeKind::Variable(n) =&gt; <span class="prelude-val">Ok</span>(Type::Variable(n.clone())),
+<a href=#223 id=223 data-nosnippet>223</a>            parser::TypeKind::Tuple(tuple) =&gt; <span class="prelude-val">Ok</span>(Type::Tuple(
+<a href=#224 id=224 data-nosnippet>224</a>                tuple.try_map(|t| Type::from_parser_type(env, t))<span class="question-mark">?</span>,
+<a href=#225 id=225 data-nosnippet>225</a>            )),
+<a href=#226 id=226 data-nosnippet>226</a>        }
+<a href=#227 id=227 data-nosnippet>227</a>    }
+<a href=#228 id=228 data-nosnippet>228</a>
+<a href=#229 id=229 data-nosnippet>229</a>    <span class="comment">// TODO Write some tests
+<a href=#230 id=230 data-nosnippet>230</a>    </span><span class="kw">fn </span>to_linear_types(tpe: <span class="kw-2">&amp;</span>Type) -&gt; Vec&lt;Type&gt; {
+<a href=#231 id=231 data-nosnippet>231</a>        <span class="kw">match </span>tpe {
+<a href=#232 id=232 data-nosnippet>232</a>            Type::Arrow(a, b) =&gt; {
+<a href=#233 id=233 data-nosnippet>233</a>                <span class="kw">let </span><span class="kw-2">mut </span>next = Type::to_linear_types(b);
+<a href=#234 id=234 data-nosnippet>234</a>
+<a href=#235 id=235 data-nosnippet>235</a>                next.insert(<span class="number">0</span>, <span class="kw-2">*</span>a.clone());
+<a href=#236 id=236 data-nosnippet>236</a>
+<a href=#237 id=237 data-nosnippet>237</a>                next
+<a href=#238 id=238 data-nosnippet>238</a>            }
+<a href=#239 id=239 data-nosnippet>239</a>            <span class="kw">_ </span>=&gt; <span class="macro">vec!</span>[tpe.clone()],
+<a href=#240 id=240 data-nosnippet>240</a>        }
+<a href=#241 id=241 data-nosnippet>241</a>    }
+<a href=#242 id=242 data-nosnippet>242</a>}
+<a href=#243 id=243 data-nosnippet>243</a>
+<a href=#244 id=244 data-nosnippet>244</a><span class="attr">#[derive(Debug, PartialEq)]
+<a href=#245 id=245 data-nosnippet>245</a></span><span class="kw">pub enum </span>Value {
+<a href=#246 id=246 data-nosnippet>246</a>    Value {
+<a href=#247 id=247 data-nosnippet>247</a>        name: Name,
+<a href=#248 id=248 data-nosnippet>248</a>        patterns: Vec&lt;Pattern&gt;,
+<a href=#249 id=249 data-nosnippet>249</a>        body: Expression,
+<a href=#250 id=250 data-nosnippet>250</a>        <span class="doccomment">/// Where the declaration was written, annotation and body together.
+<a href=#251 id=251 data-nosnippet>251</a>        </span>span: NodeSpan,
+<a href=#252 id=252 data-nosnippet>252</a>    },
+<a href=#253 id=253 data-nosnippet>253</a>    TypedValue {
+<a href=#254 id=254 data-nosnippet>254</a>        name: Name,
+<a href=#255 id=255 data-nosnippet>255</a>        patterns: Vec&lt;(Pattern, Type)&gt;,
+<a href=#256 id=256 data-nosnippet>256</a>        body: Expression,
+<a href=#257 id=257 data-nosnippet>257</a>        tpe: Type,
+<a href=#258 id=258 data-nosnippet>258</a>        <span class="doccomment">/// Where the declaration was written, annotation and body together.
+<a href=#259 id=259 data-nosnippet>259</a>        </span>span: NodeSpan,
+<a href=#260 id=260 data-nosnippet>260</a>        <span class="doccomment">/// Where the `name : Type` annotation alone was written.
+<a href=#261 id=261 data-nosnippet>261</a>        ///
+<a href=#262 id=262 data-nosnippet>262</a>        /// [`Type`] itself carries no span — it may have been cloned out of another
+<a href=#263 id=263 data-nosnippet>263</a>        /// module's `Interface` — so this is the only thing that can answer "where
+<a href=#264 id=264 data-nosnippet>264</a>        /// was the expected type declared". A type error uses it for the secondary
+<a href=#265 id=265 data-nosnippet>265</a>        /// label that says the annotation is what the body is being held to.
+<a href=#266 id=266 data-nosnippet>266</a>        </span>annotation_span: NodeSpan,
+<a href=#267 id=267 data-nosnippet>267</a>    },
+<a href=#268 id=268 data-nosnippet>268</a>}
+<a href=#269 id=269 data-nosnippet>269</a>
+<a href=#270 id=270 data-nosnippet>270</a><span class="kw">impl </span>Value {
+<a href=#271 id=271 data-nosnippet>271</a>    <span class="doccomment">/// Where this declaration was written, whichever variant it is.
+<a href=#272 id=272 data-nosnippet>272</a>    ///
+<a href=#273 id=273 data-nosnippet>273</a>    /// The typer falls back to this when a type error has no finer position of its
+<a href=#274 id=274 data-nosnippet>274</a>    /// own — see `typer::Error::labels`.
+<a href=#275 id=275 data-nosnippet>275</a>    </span><span class="kw">pub fn </span>span(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; NodeSpan {
+<a href=#276 id=276 data-nosnippet>276</a>        <span class="kw">match </span><span class="self">self </span>{
+<a href=#277 id=277 data-nosnippet>277</a>            Value::Value { span, .. } | Value::TypedValue { span, .. } =&gt; <span class="kw-2">*</span>span,
+<a href=#278 id=278 data-nosnippet>278</a>        }
+<a href=#279 id=279 data-nosnippet>279</a>    }
+<a href=#280 id=280 data-nosnippet>280</a>}
+<a href=#281 id=281 data-nosnippet>281</a>
+<a href=#282 id=282 data-nosnippet>282</a><span class="doccomment">/// A canonical pattern, and where it was written.
+<a href=#283 id=283 data-nosnippet>283</a>///
+<a href=#284 id=284 data-nosnippet>284</a>/// Same shape as [`parser::Pattern`] — a [`NodeSpan`] beside a kind — and for the
+<a href=#285 id=285 data-nosnippet>285</a>/// same reason: the children stay plain `Pattern`s, so a reader matches `&amp;p.kind`.
+<a href=#286 id=286 data-nosnippet>286</a></span><span class="attr">#[derive(Debug, PartialEq)]
+<a href=#287 id=287 data-nosnippet>287</a></span><span class="kw">pub struct </span>Pattern {
+<a href=#288 id=288 data-nosnippet>288</a>    <span class="kw">pub </span>span: NodeSpan,
+<a href=#289 id=289 data-nosnippet>289</a>    <span class="kw">pub </span>kind: PatternKind,
+<a href=#290 id=290 data-nosnippet>290</a>}
+<a href=#291 id=291 data-nosnippet>291</a>
+<a href=#292 id=292 data-nosnippet>292</a><span class="attr">#[derive(Debug, PartialEq)]
+<a href=#293 id=293 data-nosnippet>293</a></span><span class="kw">pub enum </span>PatternKind {
+<a href=#294 id=294 data-nosnippet>294</a>    Anything,
+<a href=#295 id=295 data-nosnippet>295</a>    Variable(Name), <span class="comment">// TODO Name or QualName ?
+<a href=#296 id=296 data-nosnippet>296</a>    </span>Int(i64),
+<a href=#297 id=297 data-nosnippet>297</a>    Float(f64),
+<a href=#298 id=298 data-nosnippet>298</a>    Char(char),
+<a href=#299 id=299 data-nosnippet>299</a>    Bool(bool),
+<a href=#300 id=300 data-nosnippet>300</a>    <span class="doccomment">/// A tuple pattern. Zelkova keeps Elm's restriction of two or three
+<a href=#301 id=301 data-nosnippet>301</a>    /// elements, which [`Tuple`] carries in its shape.
+<a href=#302 id=302 data-nosnippet>302</a>    </span>Tuple(Tuple&lt;Pattern&gt;),
+<a href=#303 id=303 data-nosnippet>303</a>
+<a href=#304 id=304 data-nosnippet>304</a>    Constructor {
+<a href=#305 id=305 data-nosnippet>305</a>        ctor: TypeConstructor,
+<a href=#306 id=306 data-nosnippet>306</a>        args: Vec&lt;Pattern&gt;,
+<a href=#307 id=307 data-nosnippet>307</a>    },
+<a href=#308 id=308 data-nosnippet>308</a>}
+<a href=#309 id=309 data-nosnippet>309</a>
+<a href=#310 id=310 data-nosnippet>310</a><span class="kw">impl </span>Pattern {
+<a href=#311 id=311 data-nosnippet>311</a>    <span class="doccomment">/// A pattern canonicalized from source, keeping the parser node's position.
+<a href=#312 id=312 data-nosnippet>312</a>    </span><span class="kw">pub fn </span>new(span: NodeSpan, kind: PatternKind) -&gt; Pattern {
+<a href=#313 id=313 data-nosnippet>313</a>        Pattern { span, kind }
+<a href=#314 id=314 data-nosnippet>314</a>    }
+<a href=#315 id=315 data-nosnippet>315</a>
+<a href=#316 id=316 data-nosnippet>316</a>    <span class="doccomment">/// A pattern with no position — hand-built by a test. See [`NodeSpan`].
+<a href=#317 id=317 data-nosnippet>317</a>    </span><span class="kw">pub fn </span>bare(kind: PatternKind) -&gt; Pattern {
+<a href=#318 id=318 data-nosnippet>318</a>        Pattern {
+<a href=#319 id=319 data-nosnippet>319</a>            span: NodeSpan::none(),
+<a href=#320 id=320 data-nosnippet>320</a>            kind,
+<a href=#321 id=321 data-nosnippet>321</a>        }
+<a href=#322 id=322 data-nosnippet>322</a>    }
+<a href=#323 id=323 data-nosnippet>323</a>
+<a href=#324 id=324 data-nosnippet>324</a>    <span class="kw">fn </span>from_parser(p: <span class="kw-2">&amp;</span>parser::Pattern, env: <span class="kw-2">&amp;</span><span class="kw">dyn </span>Environment) -&gt; <span class="prelude-ty">Result</span>&lt;Pattern, Error&gt; {
+<a href=#325 id=325 data-nosnippet>325</a>        <span class="kw">let </span>kind = <span class="kw">match </span><span class="kw-2">&amp;</span>p.kind {
+<a href=#326 id=326 data-nosnippet>326</a>            parser::PatternKind::Anything =&gt; PatternKind::Anything,
+<a href=#327 id=327 data-nosnippet>327</a>            parser::PatternKind::Variable(name) =&gt; PatternKind::Variable(name.clone()),
+<a href=#328 id=328 data-nosnippet>328</a>            parser::PatternKind::Literal(parser::Literal::Int(i)) =&gt; PatternKind::Int(<span class="kw-2">*</span>i),
+<a href=#329 id=329 data-nosnippet>329</a>            parser::PatternKind::Literal(parser::Literal::Float(f)) =&gt; PatternKind::Float(<span class="kw-2">*</span>f),
+<a href=#330 id=330 data-nosnippet>330</a>            parser::PatternKind::Literal(parser::Literal::Char(c)) =&gt; PatternKind::Char(<span class="kw-2">*</span>c),
+<a href=#331 id=331 data-nosnippet>331</a>            parser::PatternKind::Literal(parser::Literal::Bool(b)) =&gt; PatternKind::Bool(<span class="kw-2">*</span>b),
+<a href=#332 id=332 data-nosnippet>332</a>            parser::PatternKind::Tuple(tuple) =&gt; {
+<a href=#333 id=333 data-nosnippet>333</a>                PatternKind::Tuple(tuple.try_map(|p| Pattern::from_parser(p, env))<span class="question-mark">?</span>)
+<a href=#334 id=334 data-nosnippet>334</a>            }
+<a href=#335 id=335 data-nosnippet>335</a>            parser::PatternKind::Constructor(name, args) =&gt; {
+<a href=#336 id=336 data-nosnippet>336</a>                <span class="comment">// `p.span` covers the constructor and its arguments, which is the
+<a href=#337 id=337 data-nosnippet>337</a>                // text a "no such constructor" caret should sit under.
+<a href=#338 id=338 data-nosnippet>338</a>                </span><span class="kw">let </span>ctor = env
+<a href=#339 id=339 data-nosnippet>339</a>                    .find_type_constructor(name)
+<a href=#340 id=340 data-nosnippet>340</a>                    .ok_or_else(|| {
+<a href=#341 id=341 data-nosnippet>341</a>                        <span class="kw">let </span>suggestion =
+<a href=#342 id=342 data-nosnippet>342</a>                            suggest_name(name, env.type_constructor_names().into_iter());
+<a href=#343 id=343 data-nosnippet>343</a>                        Error::VariantNotFound(
+<a href=#344 id=344 data-nosnippet>344</a>                            env.module_name().qualify_name(name),
+<a href=#345 id=345 data-nosnippet>345</a>                            p.span,
+<a href=#346 id=346 data-nosnippet>346</a>                            suggestion,
+<a href=#347 id=347 data-nosnippet>347</a>                        )
+<a href=#348 id=348 data-nosnippet>348</a>                    })<span class="question-mark">?
+<a href=#349 id=349 data-nosnippet>349</a>                    </span>.clone();
+<a href=#350 id=350 data-nosnippet>350</a>
+<a href=#351 id=351 data-nosnippet>351</a>                <span class="kw">let </span>args = args
+<a href=#352 id=352 data-nosnippet>352</a>                    .iter()
+<a href=#353 id=353 data-nosnippet>353</a>                    .map(|p| Pattern::from_parser(p, env))
+<a href=#354 id=354 data-nosnippet>354</a>                    .collect::&lt;<span class="prelude-ty">Result</span>&lt;Vec&lt;<span class="kw">_</span>&gt;, Error&gt;&gt;()<span class="question-mark">?</span>;
+<a href=#355 id=355 data-nosnippet>355</a>
+<a href=#356 id=356 data-nosnippet>356</a>                PatternKind::Constructor { ctor, args }
+<a href=#357 id=357 data-nosnippet>357</a>            }
+<a href=#358 id=358 data-nosnippet>358</a>        };
+<a href=#359 id=359 data-nosnippet>359</a>
+<a href=#360 id=360 data-nosnippet>360</a>        <span class="prelude-val">Ok</span>(Pattern::new(p.span, kind))
+<a href=#361 id=361 data-nosnippet>361</a>    }
+<a href=#362 id=362 data-nosnippet>362</a>}
+<a href=#363 id=363 data-nosnippet>363</a>
+<a href=#364 id=364 data-nosnippet>364</a><span class="doccomment">/// A canonical expression, and where it was written.
+<a href=#365 id=365 data-nosnippet>365</a>///
+<a href=#366 id=366 data-nosnippet>366</a>/// Same shape as [`parser::Expression`] — a [`NodeSpan`] beside a kind — and for the
+<a href=#367 id=367 data-nosnippet>367</a>/// same reason: the children stay `Box&lt;Expression&gt;`, so a reader matches `&amp;e.kind`.
+<a href=#368 id=368 data-nosnippet>368</a></span><span class="attr">#[derive(Debug, PartialEq)]
+<a href=#369 id=369 data-nosnippet>369</a></span><span class="kw">pub struct </span>Expression {
+<a href=#370 id=370 data-nosnippet>370</a>    <span class="kw">pub </span>span: NodeSpan,
+<a href=#371 id=371 data-nosnippet>371</a>    <span class="kw">pub </span>kind: ExpressionKind,
+<a href=#372 id=372 data-nosnippet>372</a>}
+<a href=#373 id=373 data-nosnippet>373</a>
+<a href=#374 id=374 data-nosnippet>374</a><span class="comment">// TODO Find a way to detect recursive functions (even indirect recursivity,
+<a href=#375 id=375 data-nosnippet>375</a>// eg. `a` calls `b` calls `a`)
+<a href=#376 id=376 data-nosnippet>376</a></span><span class="doccomment">/// Expression is an optimized version for checks and caches.
+<a href=#377 id=377 data-nosnippet>377</a>///
+<a href=#378 id=378 data-nosnippet>378</a>/// Elm declare those expressions:
+<a href=#379 id=379 data-nosnippet>379</a>/// ```haskell
+<a href=#380 id=380 data-nosnippet>380</a>/// data Expr_
+<a href=#381 id=381 data-nosnippet>381</a>///   = VarLocal Name
+<a href=#382 id=382 data-nosnippet>382</a>///   | VarTopLevel ModuleName.Canonical Name
+<a href=#383 id=383 data-nosnippet>383</a>///   | VarKernel Name Name
+<a href=#384 id=384 data-nosnippet>384</a>///   | VarForeign ModuleName.Canonical Name Annotation
+<a href=#385 id=385 data-nosnippet>385</a>///   | VarCtor CtorOpts ModuleName.Canonical Name Index.ZeroBased Annotation
+<a href=#386 id=386 data-nosnippet>386</a>///   | VarDebug ModuleName.Canonical Name Annotation
+<a href=#387 id=387 data-nosnippet>387</a>///   | VarOperator Name ModuleName.Canonical Name Annotation -- CACHE real name for optimization
+<a href=#388 id=388 data-nosnippet>388</a>///   | Chr ES.String
+<a href=#389 id=389 data-nosnippet>389</a>///   | Str ES.String
+<a href=#390 id=390 data-nosnippet>390</a>///   | Int Int
+<a href=#391 id=391 data-nosnippet>391</a>///   | Float EF.Float
+<a href=#392 id=392 data-nosnippet>392</a>///   | List [Expr]
+<a href=#393 id=393 data-nosnippet>393</a>///   | Negate Expr
+<a href=#394 id=394 data-nosnippet>394</a>///   | Binop Name ModuleName.Canonical Name Annotation Expr Expr -- CACHE real name for optimization
+<a href=#395 id=395 data-nosnippet>395</a>///   | Lambda [Pattern] Expr
+<a href=#396 id=396 data-nosnippet>396</a>///   | Call Expr [Expr]
+<a href=#397 id=397 data-nosnippet>397</a>///   | If [(Expr, Expr)] Expr
+<a href=#398 id=398 data-nosnippet>398</a>///   | Let Def Expr
+<a href=#399 id=399 data-nosnippet>399</a>///   | LetRec [Def] Expr
+<a href=#400 id=400 data-nosnippet>400</a>///   | LetDestruct Pattern Expr Expr
+<a href=#401 id=401 data-nosnippet>401</a>///   | Case Expr [CaseBranch]
+<a href=#402 id=402 data-nosnippet>402</a>///   | Accessor Name
+<a href=#403 id=403 data-nosnippet>403</a>///   | Access Expr (A.Located Name)
+<a href=#404 id=404 data-nosnippet>404</a>///   | Update Name Expr (Map.Map Name FieldUpdate)
+<a href=#405 id=405 data-nosnippet>405</a>///   | Record (Map.Map Name Expr)
+<a href=#406 id=406 data-nosnippet>406</a>///   | Unit
+<a href=#407 id=407 data-nosnippet>407</a>///   | Tuple Expr Expr (Maybe Expr)
+<a href=#408 id=408 data-nosnippet>408</a>/// ```
+<a href=#409 id=409 data-nosnippet>409</a></span><span class="attr">#[derive(Debug, PartialEq)]
+<a href=#410 id=410 data-nosnippet>410</a></span><span class="kw">pub enum </span>ExpressionKind {
+<a href=#411 id=411 data-nosnippet>411</a>    VarLocal(Name),
+<a href=#412 id=412 data-nosnippet>412</a>    VarTopLevel(QualName),
+<a href=#413 id=413 data-nosnippet>413</a>    VarKernel(QualName),
+<a href=#414 id=414 data-nosnippet>414</a>    VarForeign(QualName, Type),
+<a href=#415 id=415 data-nosnippet>415</a>    VarConstructor(QualName, Type),
+<a href=#416 id=416 data-nosnippet>416</a>    Char(char),
+<a href=#417 id=417 data-nosnippet>417</a>    Int(i64),
+<a href=#418 id=418 data-nosnippet>418</a>    Float(f64),
+<a href=#419 id=419 data-nosnippet>419</a>    Bool(bool),
+<a href=#420 id=420 data-nosnippet>420</a>    <span class="comment">// List
+<a href=#421 id=421 data-nosnippet>421</a>    // Lambda
+<a href=#422 id=422 data-nosnippet>422</a>    </span>Apply(Box&lt;Expression&gt;, Box&lt;Expression&gt;),
+<a href=#423 id=423 data-nosnippet>423</a>    If(Box&lt;Expression&gt;, Box&lt;Expression&gt;, Box&lt;Expression&gt;),
+<a href=#424 id=424 data-nosnippet>424</a>    <span class="comment">// Let
+<a href=#425 id=425 data-nosnippet>425</a>    // LetRec
+<a href=#426 id=426 data-nosnippet>426</a>    // LetDestruct (eg. `(a,b) = someTuple`)
+<a href=#427 id=427 data-nosnippet>427</a>    </span>Case(Box&lt;Expression&gt;, Vec&lt;CaseBranch&gt;),
+<a href=#428 id=428 data-nosnippet>428</a>    <span class="comment">// Accessor
+<a href=#429 id=429 data-nosnippet>429</a>    // Access
+<a href=#430 id=430 data-nosnippet>430</a>    // Update (record)
+<a href=#431 id=431 data-nosnippet>431</a>    // Unit
+<a href=#432 id=432 data-nosnippet>432</a>    </span><span class="doccomment">/// A tuple expression. Zelkova keeps Elm's restriction of two or three
+<a href=#433 id=433 data-nosnippet>433</a>    /// elements, which [`Tuple`] carries in its shape.
+<a href=#434 id=434 data-nosnippet>434</a>    </span>Tuple(Tuple&lt;Expression&gt;),
+<a href=#435 id=435 data-nosnippet>435</a>}
+<a href=#436 id=436 data-nosnippet>436</a>
+<a href=#437 id=437 data-nosnippet>437</a><span class="kw">impl </span>Expression {
+<a href=#438 id=438 data-nosnippet>438</a>    <span class="doccomment">/// An expression canonicalized from source, keeping the parser node's position.
+<a href=#439 id=439 data-nosnippet>439</a>    </span><span class="kw">pub fn </span>new(span: NodeSpan, kind: ExpressionKind) -&gt; Expression {
+<a href=#440 id=440 data-nosnippet>440</a>        Expression { span, kind }
+<a href=#441 id=441 data-nosnippet>441</a>    }
+<a href=#442 id=442 data-nosnippet>442</a>
+<a href=#443 id=443 data-nosnippet>443</a>    <span class="doccomment">/// An expression with no position: hand-built by a test, or synthesised by the
+<a href=#444 id=444 data-nosnippet>444</a>    /// compiler with nothing in the user's text behind it. See [`NodeSpan`].
+<a href=#445 id=445 data-nosnippet>445</a>    </span><span class="kw">pub fn </span>bare(kind: ExpressionKind) -&gt; Expression {
+<a href=#446 id=446 data-nosnippet>446</a>        Expression {
+<a href=#447 id=447 data-nosnippet>447</a>            span: NodeSpan::none(),
+<a href=#448 id=448 data-nosnippet>448</a>            kind,
+<a href=#449 id=449 data-nosnippet>449</a>        }
+<a href=#450 id=450 data-nosnippet>450</a>    }
+<a href=#451 id=451 data-nosnippet>451</a>
+<a href=#452 id=452 data-nosnippet>452</a>    <span class="kw">fn </span>from_parser(e: <span class="kw-2">&amp;</span>parser::Expression, env: <span class="kw-2">&amp;</span><span class="kw">dyn </span>Environment) -&gt; <span class="prelude-ty">Result</span>&lt;Expression, Error&gt; {
+<a href=#453 id=453 data-nosnippet>453</a>        <span class="comment">// Every arm builds a kind and every kind gets `e.span`, so a name the
+<a href=#454 id=454 data-nosnippet>454</a>        // environment cannot resolve is underlined where it was written rather than
+<a href=#455 id=455 data-nosnippet>455</a>        // somewhere up the tree.
+<a href=#456 id=456 data-nosnippet>456</a>        </span><span class="kw">let </span>kind = <span class="kw">match </span><span class="kw-2">&amp;</span>e.kind {
+<a href=#457 id=457 data-nosnippet>457</a>            parser::ExpressionKind::Lit(parser::Literal::Int(i)) =&gt; ExpressionKind::Int(<span class="kw-2">*</span>i),
+<a href=#458 id=458 data-nosnippet>458</a>            parser::ExpressionKind::Lit(parser::Literal::Float(f)) =&gt; ExpressionKind::Float(<span class="kw-2">*</span>f),
+<a href=#459 id=459 data-nosnippet>459</a>            parser::ExpressionKind::Lit(parser::Literal::Char(c)) =&gt; ExpressionKind::Char(<span class="kw-2">*</span>c),
+<a href=#460 id=460 data-nosnippet>460</a>            parser::ExpressionKind::Lit(parser::Literal::Bool(b)) =&gt; ExpressionKind::Bool(<span class="kw-2">*</span>b),
+<a href=#461 id=461 data-nosnippet>461</a>            parser::ExpressionKind::Variable(name) =&gt; {
+<a href=#462 id=462 data-nosnippet>462</a>                <span class="kw">match </span>env.find_value(name).ok_or_else(|| {
+<a href=#463 id=463 data-nosnippet>463</a>                    <span class="kw">let </span>suggestion = suggest_name(name, env.value_names().into_iter());
+<a href=#464 id=464 data-nosnippet>464</a>                    Error::VariableNotFound(
+<a href=#465 id=465 data-nosnippet>465</a>                        env.module_name().qualify_name(name),
+<a href=#466 id=466 data-nosnippet>466</a>                        e.span,
+<a href=#467 id=467 data-nosnippet>467</a>                        suggestion,
+<a href=#468 id=468 data-nosnippet>468</a>                    )
+<a href=#469 id=469 data-nosnippet>469</a>                })<span class="question-mark">? </span>{
+<a href=#470 id=470 data-nosnippet>470</a>                    ValueType::Local =&gt; ExpressionKind::VarLocal(name.clone()),
+<a href=#471 id=471 data-nosnippet>471</a>                    ValueType::TopLevel =&gt; {
+<a href=#472 id=472 data-nosnippet>472</a>                        ExpressionKind::VarTopLevel(env.module_name().qualify_name(name))
+<a href=#473 id=473 data-nosnippet>473</a>                    }
+<a href=#474 id=474 data-nosnippet>474</a>                    ValueType::Foreign(m, _source, tpe) =&gt; {
+<a href=#475 id=475 data-nosnippet>475</a>                        ExpressionKind::VarForeign(m.qualify_name(name), tpe.clone())
+<a href=#476 id=476 data-nosnippet>476</a>                    }
+<a href=#477 id=477 data-nosnippet>477</a>                    ValueType::Foreigns(candidates) =&gt; {
+<a href=#478 id=478 data-nosnippet>478</a>                        <span class="kw">return </span><span class="prelude-val">Err</span>(Error::AmbiguousVariables(
+<a href=#479 id=479 data-nosnippet>479</a>                            name.clone(),
+<a href=#480 id=480 data-nosnippet>480</a>                            candidates.clone(),
+<a href=#481 id=481 data-nosnippet>481</a>                            e.span,
+<a href=#482 id=482 data-nosnippet>482</a>                        ))
+<a href=#483 id=483 data-nosnippet>483</a>                    }
+<a href=#484 id=484 data-nosnippet>484</a>                }
+<a href=#485 id=485 data-nosnippet>485</a>            }
+<a href=#486 id=486 data-nosnippet>486</a>            parser::ExpressionKind::TypeConstructor(name) =&gt; {
+<a href=#487 id=487 data-nosnippet>487</a>                <span class="kw">let </span>ctor = env.find_type_constructor(name).ok_or_else(|| {
+<a href=#488 id=488 data-nosnippet>488</a>                    <span class="kw">let </span>suggestion = suggest_name(name, env.type_constructor_names().into_iter());
+<a href=#489 id=489 data-nosnippet>489</a>                    Error::VariantNotFound(env.module_name().qualify_name(name), e.span, suggestion)
+<a href=#490 id=490 data-nosnippet>490</a>                })<span class="question-mark">?</span>;
+<a href=#491 id=491 data-nosnippet>491</a>
+<a href=#492 id=492 data-nosnippet>492</a>                <span class="kw">let </span>tpe = <span class="kw">if </span>ctor.type_parameters.is_empty() {
+<a href=#493 id=493 data-nosnippet>493</a>                    Type::Type(ctor.tpe.clone(), <span class="macro">vec!</span>[])
+<a href=#494 id=494 data-nosnippet>494</a>                } <span class="kw">else </span>{
+<a href=#495 id=495 data-nosnippet>495</a>                    <span class="comment">// TODO Rework that part. ctor.types is only for the type parameters of the constructor, not for the overall type.
+<a href=#496 id=496 data-nosnippet>496</a>                    </span><span class="kw">let </span><span class="kw-2">mut </span>iter = ctor.type_parameters.iter().rev();
+<a href=#497 id=497 data-nosnippet>497</a>                    <span class="kw">let </span>first = iter.next().unwrap().clone();
+<a href=#498 id=498 data-nosnippet>498</a>
+<a href=#499 id=499 data-nosnippet>499</a>                    <span class="comment">// TODO tests this, 99.999% I'm wrong about it (like everytime I try to implement arrows, plus
+<a href=#500 id=500 data-nosnippet>500</a>                    // the foldr in this particular case)
+<a href=#501 id=501 data-nosnippet>501</a>                    </span><span class="kw">let </span>tpe = iter.fold(first, |acc, t| {
+<a href=#502 id=502 data-nosnippet>502</a>                        Type::Arrow(Box::new(t.clone()), Box::new(acc))
+<a href=#503 id=503 data-nosnippet>503</a>                    });
+<a href=#504 id=504 data-nosnippet>504</a>
+<a href=#505 id=505 data-nosnippet>505</a>                    Type::Arrow(
+<a href=#506 id=506 data-nosnippet>506</a>                        Box::new(Type::Type(ctor.tpe.clone(), <span class="macro">vec!</span>[])),
+<a href=#507 id=507 data-nosnippet>507</a>                        Box::new(tpe),
+<a href=#508 id=508 data-nosnippet>508</a>                    )
+<a href=#509 id=509 data-nosnippet>509</a>                };
+<a href=#510 id=510 data-nosnippet>510</a>
+<a href=#511 id=511 data-nosnippet>511</a>                <span class="kw">let </span>name = name
+<a href=#512 id=512 data-nosnippet>512</a>                    .to_qual()
+<a href=#513 id=513 data-nosnippet>513</a>                    .unwrap_or_else(|| env.module_name().qualify_name(name));
+<a href=#514 id=514 data-nosnippet>514</a>
+<a href=#515 id=515 data-nosnippet>515</a>                ExpressionKind::VarConstructor(name, tpe)
+<a href=#516 id=516 data-nosnippet>516</a>            }
+<a href=#517 id=517 data-nosnippet>517</a>            parser::ExpressionKind::Application(a, b) =&gt; {
+<a href=#518 id=518 data-nosnippet>518</a>                <span class="kw">let </span>a = Expression::from_parser(a, env)<span class="question-mark">?</span>;
+<a href=#519 id=519 data-nosnippet>519</a>                <span class="kw">let </span>b = Expression::from_parser(b, env)<span class="question-mark">?</span>;
+<a href=#520 id=520 data-nosnippet>520</a>
+<a href=#521 id=521 data-nosnippet>521</a>                ExpressionKind::Apply(Box::new(a), Box::new(b))
+<a href=#522 id=522 data-nosnippet>522</a>            }
+<a href=#523 id=523 data-nosnippet>523</a>            parser::ExpressionKind::InfixChain(first, rest) =&gt; {
+<a href=#524 id=524 data-nosnippet>524</a>                <span class="kw">let </span>first = Expression::from_parser(first, env)<span class="question-mark">?</span>;
+<a href=#525 id=525 data-nosnippet>525</a>
+<a href=#526 id=526 data-nosnippet>526</a>                <span class="kw">let </span>rest = rest
+<a href=#527 id=527 data-nosnippet>527</a>                    .iter()
+<a href=#528 id=528 data-nosnippet>528</a>                    .map(|(op_name, op_span, operand)| {
+<a href=#529 id=529 data-nosnippet>529</a>                        <span class="kw">let </span>op = resolve_infix_operator(op_name, <span class="kw-2">*</span>op_span, env)<span class="question-mark">?</span>;
+<a href=#530 id=530 data-nosnippet>530</a>                        <span class="kw">let </span>operand = Expression::from_parser(operand, env)<span class="question-mark">?</span>;
+<a href=#531 id=531 data-nosnippet>531</a>                        <span class="prelude-val">Ok</span>((op, operand))
+<a href=#532 id=532 data-nosnippet>532</a>                    })
+<a href=#533 id=533 data-nosnippet>533</a>                    .collect::&lt;<span class="prelude-ty">Result</span>&lt;Vec&lt;<span class="kw">_</span>&gt;, Error&gt;&gt;()<span class="question-mark">?</span>;
+<a href=#534 id=534 data-nosnippet>534</a>
+<a href=#535 id=535 data-nosnippet>535</a>                <span class="kw">let </span><span class="kw-2">mut </span>rest = rest.into_iter().peekable();
+<a href=#536 id=536 data-nosnippet>536</a>                <span class="kw">let </span>reassociated = reassociate_infix_chain(first, <span class="kw-2">&amp;mut </span>rest, <span class="number">0</span>)<span class="question-mark">?</span>;
+<a href=#537 id=537 data-nosnippet>537</a>
+<a href=#538 id=538 data-nosnippet>538</a>                reassociated.kind
+<a href=#539 id=539 data-nosnippet>539</a>            }
+<a href=#540 id=540 data-nosnippet>540</a>            parser::ExpressionKind::Tuple(tuple) =&gt; {
+<a href=#541 id=541 data-nosnippet>541</a>                ExpressionKind::Tuple(tuple.try_map(|e| Expression::from_parser(e, env))<span class="question-mark">?</span>)
+<a href=#542 id=542 data-nosnippet>542</a>            }
+<a href=#543 id=543 data-nosnippet>543</a>            parser::ExpressionKind::Case(expr, branches) =&gt; {
+<a href=#544 id=544 data-nosnippet>544</a>                <span class="kw">let </span>expr = Expression::from_parser(expr, env)<span class="question-mark">?</span>;
+<a href=#545 id=545 data-nosnippet>545</a>
+<a href=#546 id=546 data-nosnippet>546</a>                <span class="kw">let </span>b = branches.iter().map::&lt;<span class="prelude-ty">Result</span>&lt;CaseBranch, Error&gt;, <span class="kw">_</span>&gt;(|cb| {
+<a href=#547 id=547 data-nosnippet>547</a>                    <span class="kw">let </span>pattern = Pattern::from_parser(<span class="kw-2">&amp;</span>cb.pattern, env)<span class="question-mark">?</span>;
+<a href=#548 id=548 data-nosnippet>548</a>                    <span class="kw">let </span><span class="kw-2">mut </span>scoped = env.new_scope();
+<a href=#549 id=549 data-nosnippet>549</a>
+<a href=#550 id=550 data-nosnippet>550</a>                    scoped.expose_pattern(<span class="kw-2">&amp;</span>pattern);
+<a href=#551 id=551 data-nosnippet>551</a>
+<a href=#552 id=552 data-nosnippet>552</a>                    <span class="kw">let </span>expression = Expression::from_parser(<span class="kw-2">&amp;</span>cb.expression, <span class="kw-2">&amp;</span>scoped)<span class="question-mark">?</span>;
+<a href=#553 id=553 data-nosnippet>553</a>
+<a href=#554 id=554 data-nosnippet>554</a>                    <span class="prelude-val">Ok</span>(CaseBranch {
+<a href=#555 id=555 data-nosnippet>555</a>                        pattern,
+<a href=#556 id=556 data-nosnippet>556</a>                        expression,
+<a href=#557 id=557 data-nosnippet>557</a>                        span: cb.span,
+<a href=#558 id=558 data-nosnippet>558</a>                    })
+<a href=#559 id=559 data-nosnippet>559</a>                });
+<a href=#560 id=560 data-nosnippet>560</a>
+<a href=#561 id=561 data-nosnippet>561</a>                <span class="kw">let </span>branches = collect_accumulate(b)<span class="question-mark">?</span>;
+<a href=#562 id=562 data-nosnippet>562</a>
+<a href=#563 id=563 data-nosnippet>563</a>                ExpressionKind::Case(Box::new(expr), branches)
+<a href=#564 id=564 data-nosnippet>564</a>            }
+<a href=#565 id=565 data-nosnippet>565</a>            parser::ExpressionKind::If(cond, then, els) =&gt; {
+<a href=#566 id=566 data-nosnippet>566</a>                <span class="kw">let </span>cond = Expression::from_parser(cond, env)<span class="question-mark">?</span>;
+<a href=#567 id=567 data-nosnippet>567</a>                <span class="kw">let </span>then = Expression::from_parser(then, env)<span class="question-mark">?</span>;
+<a href=#568 id=568 data-nosnippet>568</a>                <span class="kw">let </span>els = Expression::from_parser(els, env)<span class="question-mark">?</span>;
+<a href=#569 id=569 data-nosnippet>569</a>
+<a href=#570 id=570 data-nosnippet>570</a>                ExpressionKind::If(Box::new(cond), Box::new(then), Box::new(els))
+<a href=#571 id=571 data-nosnippet>571</a>            }
+<a href=#572 id=572 data-nosnippet>572</a>        };
+<a href=#573 id=573 data-nosnippet>573</a>
+<a href=#574 id=574 data-nosnippet>574</a>        <span class="prelude-val">Ok</span>(Expression::new(e.span, kind))
+<a href=#575 id=575 data-nosnippet>575</a>    }
+<a href=#576 id=576 data-nosnippet>576</a>}
+<a href=#577 id=577 data-nosnippet>577</a>
+<a href=#578 id=578 data-nosnippet>578</a><span class="doccomment">/// One operator of an `ExpressionKind::InfixChain`, resolved against the infix
+<a href=#579 id=579 data-nosnippet>579</a>/// environment: its own `Infix` (precedence, associativity, and where it was
+<a href=#580 id=580 data-nosnippet>580</a>/// declared) alongside the canonical `Expression` it resolves to as a value —
+<a href=#581 id=581 data-nosnippet>581</a>/// `VarLocal`, `VarTopLevel` or `VarForeign`, whichever `find_value` reports for
+<a href=#582 id=582 data-nosnippet>582</a>/// its `function_name`, exactly as a plain reference to the operator would
+<a href=#583 id=583 data-nosnippet>583</a>/// resolve. `reassociate_infix_chain` consults `infix` to decide how to nest,
+<a href=#584 id=584 data-nosnippet>584</a>/// and `span` and `expr` to build the invented `Application` nodes.
+<a href=#585 id=585 data-nosnippet>585</a></span><span class="kw">struct </span>ResolvedInfixOp {
+<a href=#586 id=586 data-nosnippet>586</a>    name: Name,
+<a href=#587 id=587 data-nosnippet>587</a>    <span class="doccomment">/// Where the operator itself was written — not its `infix` declaration.
+<a href=#588 id=588 data-nosnippet>588</a>    </span>span: NodeSpan,
+<a href=#589 id=589 data-nosnippet>589</a>    expr: Expression,
+<a href=#590 id=590 data-nosnippet>590</a>    infix: Infix,
+<a href=#591 id=591 data-nosnippet>591</a>    <span class="doccomment">/// Where the `infix` declaration was written, and in which module's file —
+<a href=#592 id=592 data-nosnippet>592</a>    /// the operator may well have been declared by an imported module, in which
+<a href=#593 id=593 data-nosnippet>593</a>    /// case `infix.span` is a byte range in *that* module's source. See
+<a href=#594 id=594 data-nosnippet>594</a>    /// [`InfixDeclaration`].
+<a href=#595 id=595 data-nosnippet>595</a>    </span>declaration: InfixDeclaration,
+<a href=#596 id=596 data-nosnippet>596</a>}
+<a href=#597 id=597 data-nosnippet>597</a>
+<a href=#598 id=598 data-nosnippet>598</a><span class="doccomment">/// Resolves one operator of an `InfixChain` the same way a bare reference to it
+<a href=#599 id=599 data-nosnippet>599</a>/// would resolve as a value, plus the `Infix` re-association needs.
+<a href=#600 id=600 data-nosnippet>600</a>///
+<a href=#601 id=601 data-nosnippet>601</a>/// An operator symbol only ever reaches `self.variables` through the `infixes`
+<a href=#602 id=602 data-nosnippet>602</a>/// redirect in `RootEnvironment::find_value` — nothing else can insert a key
+<a href=#603 id=603 data-nosnippet>603</a>/// spelled like an operator, since a function's own name always comes from
+<a href=#604 id=604 data-nosnippet>604</a>/// `VarIdent`, a distinct token from `Op`. So `find_infix` failing here is
+<a href=#605 id=605 data-nosnippet>605</a>/// exactly the case a plain `Variable` reference to the same name would fail
+<a href=#606 id=606 data-nosnippet>606</a>/// `find_value` on, and gets the same `VariableNotFound` a reader would expect.
+<a href=#607 id=607 data-nosnippet>607</a></span><span class="kw">fn </span>resolve_infix_operator(
+<a href=#608 id=608 data-nosnippet>608</a>    name: <span class="kw-2">&amp;</span>Name,
+<a href=#609 id=609 data-nosnippet>609</a>    span: NodeSpan,
+<a href=#610 id=610 data-nosnippet>610</a>    env: <span class="kw-2">&amp;</span><span class="kw">dyn </span>Environment,
+<a href=#611 id=611 data-nosnippet>611</a>) -&gt; <span class="prelude-ty">Result</span>&lt;ResolvedInfixOp, Error&gt; {
+<a href=#612 id=612 data-nosnippet>612</a>    <span class="kw">let </span>entry = env.find_infix(name).cloned().ok_or_else(|| {
+<a href=#613 id=613 data-nosnippet>613</a>        <span class="kw">let </span>suggestion = suggest_name(name, env.value_names().into_iter());
+<a href=#614 id=614 data-nosnippet>614</a>        Error::VariableNotFound(env.module_name().qualify_name(name), span, suggestion)
+<a href=#615 id=615 data-nosnippet>615</a>    })<span class="question-mark">?</span>;
+<a href=#616 id=616 data-nosnippet>616</a>
+<a href=#617 id=617 data-nosnippet>617</a>    <span class="comment">// Resolved the same way a written `Variable(name)` would be — through the
+<a href=#618 id=618 data-nosnippet>618</a>    // `Variable` arm of `Expression::from_parser` — so the operator picks up
+<a href=#619 id=619 data-nosnippet>619</a>    // exactly the `VarLocal`/`VarTopLevel`/`VarForeign` shape a plain reference
+<a href=#620 id=620 data-nosnippet>620</a>    // to it would.
+<a href=#621 id=621 data-nosnippet>621</a>    </span><span class="kw">let </span>synthetic = parser::Expression::new(span, parser::ExpressionKind::Variable(name.clone()));
+<a href=#622 id=622 data-nosnippet>622</a>    <span class="kw">let </span>expr = Expression::from_parser(<span class="kw-2">&amp;</span>synthetic, env)<span class="question-mark">?</span>;
+<a href=#623 id=623 data-nosnippet>623</a>
+<a href=#624 id=624 data-nosnippet>624</a>    <span class="prelude-val">Ok</span>(ResolvedInfixOp {
+<a href=#625 id=625 data-nosnippet>625</a>        name: name.clone(),
+<a href=#626 id=626 data-nosnippet>626</a>        span,
+<a href=#627 id=627 data-nosnippet>627</a>        expr,
+<a href=#628 id=628 data-nosnippet>628</a>        infix: entry.infix,
+<a href=#629 id=629 data-nosnippet>629</a>        declaration: entry.declaration,
+<a href=#630 id=630 data-nosnippet>630</a>    })
+<a href=#631 id=631 data-nosnippet>631</a>}
+<a href=#632 id=632 data-nosnippet>632</a>
+<a href=#633 id=633 data-nosnippet>633</a><span class="doccomment">/// Re-associates a flat run of operator applications into a tree of
+<a href=#634 id=634 data-nosnippet>634</a>/// `Application` nodes, in one pass over the operators — no operator or operand
+<a href=#635 id=635 data-nosnippet>635</a>/// is visited twice — using precedence climbing (a standard algorithm; see e.g.
+<a href=#636 id=636 data-nosnippet>636</a>/// https://en.wikipedia.org/wiki/Operator-precedence_parser#Precedence_climbing_method).
+<a href=#637 id=637 data-nosnippet>637</a>///
+<a href=#638 id=638 data-nosnippet>638</a>/// `min_prec` is the lowest precedence this call is willing to fold into `lhs`;
+<a href=#639 id=639 data-nosnippet>639</a>/// the outer, top-level call passes 0, admitting every operator. A recursive
+<a href=#640 id=640 data-nosnippet>640</a>/// call raises it to bind only the tighter operators that belong on the right
+<a href=#641 id=641 data-nosnippet>641</a>/// of the operator being folded — `op.infix.precedence + 1` for strictly higher
+<a href=#642 id=642 data-nosnippet>642</a>/// precedence, or `op.infix.precedence` itself when the next operator ties and
+<a href=#643 id=643 data-nosnippet>643</a>/// both associate right, which is what lets a right-associative run keep
+<a href=#644 id=644 data-nosnippet>644</a>/// folding at the same level (`a &lt;| b &lt;| c` → `a &lt;| (b &lt;| c)`).
+<a href=#645 id=645 data-nosnippet>645</a>///
+<a href=#646 id=646 data-nosnippet>646</a>/// Two adjacent operators of equal precedence are rejected rather than guessed
+<a href=#647 id=647 data-nosnippet>647</a>/// at unless they agree — both `left` (fold `lhs`, the usual case) or both
+<a href=#648 id=648 data-nosnippet>648</a>/// `right` (recurse into `rhs`). Anything else — a `left` against a `right`, or
+<a href=#649 id=649 data-nosnippet>649</a>/// either against an `infix non` operator, including one against itself — is
+<a href=#650 id=650 data-nosnippet>650</a>/// `Error::AmbiguousOperatorPrecedence`: nothing here says which one should
+<a href=#651 id=651 data-nosnippet>651</a>/// bind first, and guessing would silently pick a grouping the user did not
+<a href=#652 id=652 data-nosnippet>652</a>/// write.
+<a href=#653 id=653 data-nosnippet>653</a></span><span class="kw">fn </span>reassociate_infix_chain(
+<a href=#654 id=654 data-nosnippet>654</a>    <span class="kw-2">mut </span>lhs: Expression,
+<a href=#655 id=655 data-nosnippet>655</a>    rest: <span class="kw-2">&amp;mut </span>std::iter::Peekable&lt;<span class="kw">impl </span>Iterator&lt;Item = (ResolvedInfixOp, Expression)&gt;&gt;,
+<a href=#656 id=656 data-nosnippet>656</a>    min_prec: u8,
+<a href=#657 id=657 data-nosnippet>657</a>) -&gt; <span class="prelude-ty">Result</span>&lt;Expression, Error&gt; {
+<a href=#658 id=658 data-nosnippet>658</a>    <span class="kw">while let </span><span class="prelude-val">Some</span>((op, <span class="kw-2">mut </span>rhs)) = rest.next_if(|(op, <span class="kw">_</span>)| op.infix.precedence &gt;= min_prec) {
+<a href=#659 id=659 data-nosnippet>659</a>        <span class="kw">loop </span>{
+<a href=#660 id=660 data-nosnippet>660</a>            <span class="kw">let </span>next_min = <span class="kw">match </span>rest.peek() {
+<a href=#661 id=661 data-nosnippet>661</a>                <span class="prelude-val">None </span>=&gt; <span class="prelude-val">None</span>,
+<a href=#662 id=662 data-nosnippet>662</a>                <span class="prelude-val">Some</span>((next_op, <span class="kw">_</span>)) =&gt; {
+<a href=#663 id=663 data-nosnippet>663</a>                    <span class="kw">if </span>next_op.infix.precedence &gt; op.infix.precedence {
+<a href=#664 id=664 data-nosnippet>664</a>                        <span class="prelude-val">Some</span>(op.infix.precedence + <span class="number">1</span>)
+<a href=#665 id=665 data-nosnippet>665</a>                    } <span class="kw">else if </span>next_op.infix.precedence == op.infix.precedence {
+<a href=#666 id=666 data-nosnippet>666</a>                        <span class="kw">match </span>(op.infix.associativity, next_op.infix.associativity) {
+<a href=#667 id=667 data-nosnippet>667</a>                            (Associativity::Left, Associativity::Left) =&gt; <span class="prelude-val">None</span>,
+<a href=#668 id=668 data-nosnippet>668</a>                            (Associativity::Right, Associativity::Right) =&gt; {
+<a href=#669 id=669 data-nosnippet>669</a>                                <span class="prelude-val">Some</span>(op.infix.precedence)
+<a href=#670 id=670 data-nosnippet>670</a>                            }
+<a href=#671 id=671 data-nosnippet>671</a>                            <span class="kw">_ </span>=&gt; {
+<a href=#672 id=672 data-nosnippet>672</a>                                <span class="kw">return </span><span class="prelude-val">Err</span>(Error::AmbiguousOperatorPrecedence(
+<a href=#673 id=673 data-nosnippet>673</a>                                    AmbiguousOperator::new(<span class="kw-2">&amp;</span>op),
+<a href=#674 id=674 data-nosnippet>674</a>                                    AmbiguousOperator::new(next_op),
+<a href=#675 id=675 data-nosnippet>675</a>                                    op.span.merge(next_op.span),
+<a href=#676 id=676 data-nosnippet>676</a>                                ))
+<a href=#677 id=677 data-nosnippet>677</a>                            }
+<a href=#678 id=678 data-nosnippet>678</a>                        }
+<a href=#679 id=679 data-nosnippet>679</a>                    } <span class="kw">else </span>{
+<a href=#680 id=680 data-nosnippet>680</a>                        <span class="prelude-val">None
+<a href=#681 id=681 data-nosnippet>681</a>                    </span>}
+<a href=#682 id=682 data-nosnippet>682</a>                }
+<a href=#683 id=683 data-nosnippet>683</a>            };
+<a href=#684 id=684 data-nosnippet>684</a>
+<a href=#685 id=685 data-nosnippet>685</a>            <span class="kw">match </span>next_min {
+<a href=#686 id=686 data-nosnippet>686</a>                <span class="prelude-val">Some</span>(min) =&gt; rhs = reassociate_infix_chain(rhs, rest, min)<span class="question-mark">?</span>,
+<a href=#687 id=687 data-nosnippet>687</a>                <span class="prelude-val">None </span>=&gt; <span class="kw">break</span>,
+<a href=#688 id=688 data-nosnippet>688</a>            }
+<a href=#689 id=689 data-nosnippet>689</a>        }
+<a href=#690 id=690 data-nosnippet>690</a>
+<a href=#691 id=691 data-nosnippet>691</a>        lhs = apply_infix(op, lhs, rhs);
+<a href=#692 id=692 data-nosnippet>692</a>    }
+<a href=#693 id=693 data-nosnippet>693</a>
+<a href=#694 id=694 data-nosnippet>694</a>    <span class="prelude-val">Ok</span>(lhs)
+<a href=#695 id=695 data-nosnippet>695</a>}
+<a href=#696 id=696 data-nosnippet>696</a>
+<a href=#697 id=697 data-nosnippet>697</a><span class="doccomment">/// Builds the two `Application` nodes one step of infix re-association adds,
+<a href=#698 id=698 data-nosnippet>698</a>/// following the same span convention the grammar's right-recursive rewrite
+<a href=#699 id=699 data-nosnippet>699</a>/// used before this: the partial application of the operator to `lhs` — a node
+<a href=#700 id=700 data-nosnippet>700</a>/// with nothing in the user's text of its own — takes the operator's own span,
+<a href=#701 id=701 data-nosnippet>701</a>/// and the outer application, which stands for `lhs op rhs` as the user wrote
+<a href=#702 id=702 data-nosnippet>702</a>/// it, spans from wherever `lhs` starts to wherever `rhs` ends.
+<a href=#703 id=703 data-nosnippet>703</a></span><span class="kw">fn </span>apply_infix(op: ResolvedInfixOp, lhs: Expression, rhs: Expression) -&gt; Expression {
+<a href=#704 id=704 data-nosnippet>704</a>    <span class="kw">let </span>span = lhs.span.merge(rhs.span);
+<a href=#705 id=705 data-nosnippet>705</a>
+<a href=#706 id=706 data-nosnippet>706</a>    <span class="kw">let </span>partial = Expression::new(
+<a href=#707 id=707 data-nosnippet>707</a>        op.span,
+<a href=#708 id=708 data-nosnippet>708</a>        ExpressionKind::Apply(Box::new(op.expr), Box::new(lhs)),
+<a href=#709 id=709 data-nosnippet>709</a>    );
+<a href=#710 id=710 data-nosnippet>710</a>
+<a href=#711 id=711 data-nosnippet>711</a>    Expression::new(
+<a href=#712 id=712 data-nosnippet>712</a>        span,
+<a href=#713 id=713 data-nosnippet>713</a>        ExpressionKind::Apply(Box::new(partial), Box::new(rhs)),
+<a href=#714 id=714 data-nosnippet>714</a>    )
+<a href=#715 id=715 data-nosnippet>715</a>}
+<a href=#716 id=716 data-nosnippet>716</a>
+<a href=#717 id=717 data-nosnippet>717</a><span class="doccomment">/// One side of an [`Error::AmbiguousOperatorPrecedence`]: the operator as the user
+<a href=#718 id=718 data-nosnippet>718</a>/// spelled it, how its `infix` declaration said it associates, and where that
+<a href=#719 id=719 data-nosnippet>719</a>/// declaration was written.
+<a href=#720 id=720 data-nosnippet>720</a>///
+<a href=#721 id=721 data-nosnippet>721</a>/// `associativity` is carried rather than re-derived because the message depends on
+<a href=#722 id=722 data-nosnippet>722</a>/// it — an `infix non` operator does not chain at all, where a `left` against a
+<a href=#723 id=723 data-nosnippet>723</a>/// `right` is a choice the user can make with parentheses — and the error outlives
+<a href=#724 id=724 data-nosnippet>724</a>/// the environment the declaration was looked up in.
+<a href=#725 id=725 data-nosnippet>725</a></span><span class="attr">#[derive(Debug)]
+<a href=#726 id=726 data-nosnippet>726</a></span><span class="kw">pub struct </span>AmbiguousOperator {
+<a href=#727 id=727 data-nosnippet>727</a>    <span class="kw">pub </span>name: Name,
+<a href=#728 id=728 data-nosnippet>728</a>    <span class="kw">pub </span>associativity: Associativity,
+<a href=#729 id=729 data-nosnippet>729</a>    <span class="kw">pub </span>declaration: InfixDeclaration,
+<a href=#730 id=730 data-nosnippet>730</a>}
+<a href=#731 id=731 data-nosnippet>731</a>
+<a href=#732 id=732 data-nosnippet>732</a><span class="kw">impl </span>AmbiguousOperator {
+<a href=#733 id=733 data-nosnippet>733</a>    <span class="kw">fn </span>new(op: <span class="kw-2">&amp;</span>ResolvedInfixOp) -&gt; <span class="self">Self </span>{
+<a href=#734 id=734 data-nosnippet>734</a>        AmbiguousOperator {
+<a href=#735 id=735 data-nosnippet>735</a>            name: op.name.clone(),
+<a href=#736 id=736 data-nosnippet>736</a>            associativity: op.infix.associativity,
+<a href=#737 id=737 data-nosnippet>737</a>            declaration: op.declaration,
+<a href=#738 id=738 data-nosnippet>738</a>        }
+<a href=#739 id=739 data-nosnippet>739</a>    }
+<a href=#740 id=740 data-nosnippet>740</a>
+<a href=#741 id=741 data-nosnippet>741</a>    <span class="kw">fn </span>is_non_associative(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+<a href=#742 id=742 data-nosnippet>742</a>        <span class="self">self</span>.associativity == Associativity::None
+<a href=#743 id=743 data-nosnippet>743</a>    }
+<a href=#744 id=744 data-nosnippet>744</a>}
+<a href=#745 id=745 data-nosnippet>745</a>
+<a href=#746 id=746 data-nosnippet>746</a><span class="attr">#[derive(Debug, PartialEq)]
+<a href=#747 id=747 data-nosnippet>747</a></span><span class="kw">pub struct </span>CaseBranch {
+<a href=#748 id=748 data-nosnippet>748</a>    <span class="kw">pub </span>pattern: Pattern,
+<a href=#749 id=749 data-nosnippet>749</a>    <span class="kw">pub </span>expression: Expression,
+<a href=#750 id=750 data-nosnippet>750</a>    <span class="doccomment">/// The whole branch, pattern and expression together.
+<a href=#751 id=751 data-nosnippet>751</a>    </span><span class="kw">pub </span>span: NodeSpan,
+<a href=#752 id=752 data-nosnippet>752</a>}
+<a href=#753 id=753 data-nosnippet>753</a>
+<a href=#754 id=754 data-nosnippet>754</a><span class="comment">// end AST
+<a href=#755 id=755 data-nosnippet>755</a>
+<a href=#756 id=756 data-nosnippet>756</a></span><span class="doccomment">/// Everything canonicalization can reject.
+<a href=#757 id=757 data-nosnippet>757</a>///
+<a href=#758 id=758 data-nosnippet>758</a>/// # Why only some variants carry a span
+<a href=#759 id=759 data-nosnippet>759</a>///
+<a href=#760 id=760 data-nosnippet>760</a>/// A variant carries a [`NodeSpan`] when its construction site has one in hand — it
+<a href=#761 id=761 data-nosnippet>761</a>/// is looking at a `parser::Import`, `parser::Infix`, `parser::UnionType`,
+<a href=#762 id=762 data-nosnippet>762</a>/// `parser::Function` or `parser::Exposed`, all of which the grammar gives a span.
+<a href=#763 id=763 data-nosnippet>763</a>/// Those are the variants a diagnostic can put a caret under, and today that is every
+<a href=#764 id=764 data-nosnippet>764</a>/// variant below except three: the two group variants, `EnvironmentErrors` and
+<a href=#765 id=765 data-nosnippet>765</a>/// `Many`, have no position of their own and flatten their members' labels instead;
+<a href=#766 id=766 data-nosnippet>766</a>/// and `InvalidTupleSize` carries none for an unrelated reason — see its own doc
+<a href=#767 id=767 data-nosnippet>767</a>/// comment. Writing `NodeSpan::none()` into a variant that lacks a real position
+<a href=#768 id=768 data-nosnippet>768</a>/// would say "this error has a position we happen not to know", which is a lie;
+<a href=#769 id=769 data-nosnippet>769</a>/// leaving the field off says "this error has nowhere to point", which is true, and
+<a href=#770 id=770 data-nosnippet>770</a>/// the reporter renders it as message-plus-notes with no caret.
+<a href=#771 id=771 data-nosnippet>771</a></span><span class="attr">#[derive(Debug)]
+<a href=#772 id=772 data-nosnippet>772</a></span><span class="kw">pub enum </span>Error {
+<a href=#773 id=773 data-nosnippet>773</a>    <span class="doccomment">/// A name in the `module … exposing (…)` header that nothing in the module
+<a href=#774 id=774 data-nosnippet>774</a>    /// declares, and where that name was written (`ERR-9`).
+<a href=#775 id=775 data-nosnippet>775</a>    </span>ExportNotFound(Name, ExportType, NodeSpan),
+<a href=#776 id=776 data-nosnippet>776</a>    EnvironmentErrors(Vec&lt;EnvError&gt;),
+<a href=#777 id=777 data-nosnippet>777</a>    <span class="doccomment">/// (infix, function), and where the `infix` declaration was written
+<a href=#778 id=778 data-nosnippet>778</a>    </span>InfixReferenceInvalidValue(Name, Name, NodeSpan),
+<a href=#779 id=779 data-nosnippet>779</a>    <span class="doccomment">/// Infix re-association (`reassociate_infix_chain`) found two adjacent
+<a href=#780 id=780 data-nosnippet>780</a>    /// operators of equal precedence that do not agree how to group: the left
+<a href=#781 id=781 data-nosnippet>781</a>    /// one, the right one, and the ambiguous pair's own span — from the left
+<a href=#782 id=782 data-nosnippet>782</a>    /// operator through the right one.
+<a href=#783 id=783 data-nosnippet>783</a>    ///
+<a href=#784 id=784 data-nosnippet>784</a>    /// Three shapes reach this, and [`PhaseError::message`] says which:
+<a href=#785 id=785 data-nosnippet>785</a>    /// `left.name == right.name` is one `infix non` operator chained with
+<a href=#786 id=786 data-nosnippet>786</a>    /// itself (`a == b == c`); either side being `infix non` against a
+<a href=#787 id=787 data-nosnippet>787</a>    /// different operator is a non-associative operator that does not chain at
+<a href=#788 id=788 data-nosnippet>788</a>    /// all (`a &lt; b &gt; c`); and a `left` against a `right` is the genuine
+<a href=#789 id=789 data-nosnippet>789</a>    /// disagreement about which side groups first (`a &lt;&lt; b &gt;&gt; c`).
+<a href=#790 id=790 data-nosnippet>790</a>    </span>AmbiguousOperatorPrecedence(AmbiguousOperator, AmbiguousOperator, NodeSpan),
+<a href=#791 id=791 data-nosnippet>791</a>    BindingPatternsInvalidLen(NodeSpan),
+<a href=#792 id=792 data-nosnippet>792</a>    <span class="doccomment">/// A declaration with a type annotation and no body, and where the annotation
+<a href=#793 id=793 data-nosnippet>793</a>    /// was written — which is the only part of it there is to point at.
+<a href=#794 id=794 data-nosnippet>794</a>    </span>NoBindings(NodeSpan),
+<a href=#795 id=795 data-nosnippet>795</a>    <span class="doccomment">/// A name used as a value that nothing in scope declares, where it was
+<a href=#796 id=796 data-nosnippet>796</a>    /// written — the identifier alone, not the declaration around it — and,
+<a href=#797 id=797 data-nosnippet>797</a>    /// when one name in scope is a close enough typo-distance match, a
+<a href=#798 id=798 data-nosnippet>798</a>    /// suggestion for what was meant (`ERR-7`).
+<a href=#799 id=799 data-nosnippet>799</a>    </span>VariableNotFound(QualName, NodeSpan, <span class="prelude-ty">Option</span>&lt;Name&gt;),
+<a href=#800 id=800 data-nosnippet>800</a>    <span class="doccomment">/// A name exposed unqualified by more than one imported module, and where it
+<a href=#801 id=801 data-nosnippet>801</a>    /// was used. Each candidate module is paired with where the name is declared
+<a href=#802 id=802 data-nosnippet>802</a>    /// there — `Some` when that module's `Interface` knows both its file and the
+<a href=#803 id=803 data-nosnippet>803</a>    /// declaration's span, `None` for a hand-built interface (a test) or one built
+<a href=#804 id=804 data-nosnippet>804</a>    /// before its module's file was known (`ERR-5`).
+<a href=#805 id=805 data-nosnippet>805</a>    </span>AmbiguousVariables(Name, Vec&lt;(ModuleName, <span class="prelude-ty">Option</span>&lt;<span class="kw">super</span>::SourceSpan&gt;)&gt;, NodeSpan),
+<a href=#806 id=806 data-nosnippet>806</a>    <span class="doccomment">/// A constructor used in an expression or a pattern that nothing in scope
+<a href=#807 id=807 data-nosnippet>807</a>    /// declares, where it was written, and an optional "did you mean …?"
+<a href=#808 id=808 data-nosnippet>808</a>    /// suggestion (`ERR-7`).
+<a href=#809 id=809 data-nosnippet>809</a>    </span>VariantNotFound(QualName, NodeSpan, <span class="prelude-ty">Option</span>&lt;Name&gt;),
+<a href=#810 id=810 data-nosnippet>810</a>    <span class="doccomment">/// Nothing constructs this today — `Environment::find_type_constructor` returns
+<a href=#811 id=811 data-nosnippet>811</a>    /// at most one constructor per name, so it has no way to report an ambiguity.
+<a href=#812 id=812 data-nosnippet>812</a>    /// It is the designated rejection path once it can, and carries the span the
+<a href=#813 id=813 data-nosnippet>813</a>    /// construction site would have, alongside each candidate's declaration
+<a href=#814 id=814 data-nosnippet>814</a>    /// location — see [`Error::AmbiguousVariables`].
+<a href=#815 id=815 data-nosnippet>815</a>    </span>AmbiguousVariants(Name, Vec&lt;(ModuleName, <span class="prelude-ty">Option</span>&lt;<span class="kw">super</span>::SourceSpan&gt;)&gt;, NodeSpan),
+<a href=#816 id=816 data-nosnippet>816</a>    <span class="doccomment">/// A tuple type, pattern or expression had a size other than 2 or 3 (the
+<a href=#817 id=817 data-nosnippet>817</a>    /// only sizes the language supports).
+<a href=#818 id=818 data-nosnippet>818</a>    ///
+<a href=#819 id=819 data-nosnippet>819</a>    /// Nothing constructs this today, and it is kept deliberately. Both ASTs
+<a href=#820 id=820 data-nosnippet>820</a>    /// now hold their tuples in [`Tuple`], which cannot represent another
+<a href=#821 id=821 data-nosnippet>821</a>    /// arity, and the grammar has one production per arity — so a bad tuple is
+<a href=#822 id=822 data-nosnippet>822</a>    /// a parse error and never reaches canonicalization. This variant is the
+<a href=#823 id=823 data-nosnippet>823</a>    /// designated rejection path should a future source of tuples (a REPL, a
+<a href=#824 id=824 data-nosnippet>824</a>    /// desugaring pass) build one from a list.
+<a href=#825 id=825 data-nosnippet>825</a>    </span>InvalidTupleSize(usize),
+<a href=#826 id=826 data-nosnippet>826</a>    <span class="doccomment">/// A function was declared with multiple bindings (multi-clause definitions),
+<a href=#827 id=827 data-nosnippet>827</a>    /// which the compiler does not support yet.
+<a href=#828 id=828 data-nosnippet>828</a>    </span>MultipleBindingsUnsupported(Name, NodeSpan),
+<a href=#829 id=829 data-nosnippet>829</a>    <span class="doccomment">/// A type name applied to the wrong number of arguments: the name, its
+<a href=#830 id=830 data-nosnippet>830</a>    /// declaration's own arity, the number of arguments actually written, and
+<a href=#831 id=831 data-nosnippet>831</a>    /// `tpe.span` — the whole application, so the caret covers every argument
+<a href=#832 id=832 data-nosnippet>832</a>    /// along with the name (`BUG-17`).
+<a href=#833 id=833 data-nosnippet>833</a>    </span>TypeArityMismatch(Name, usize, usize, NodeSpan),
+<a href=#834 id=834 data-nosnippet>834</a>
+<a href=#835 id=835 data-nosnippet>835</a>    <span class="comment">// Binding module
+<a href=#836 id=836 data-nosnippet>836</a>    </span>InfixDeclared(Name, NodeSpan),
+<a href=#837 id=837 data-nosnippet>837</a>    TypeDeclared(Name, NodeSpan),
+<a href=#838 id=838 data-nosnippet>838</a>    NoTypeInBinding(Name, NodeSpan),
+<a href=#839 id=839 data-nosnippet>839</a>
+<a href=#840 id=840 data-nosnippet>840</a>    <span class="comment">// Utility error
+<a href=#841 id=841 data-nosnippet>841</a>    </span>Many(Vec&lt;Error&gt;),
+<a href=#842 id=842 data-nosnippet>842</a>}
+<a href=#843 id=843 data-nosnippet>843</a>
+<a href=#844 id=844 data-nosnippet>844</a><span class="doccomment">/// Canonicalization errors name source constructs — a value, a type, an operator —
+<a href=#845 id=845 data-nosnippet>845</a>/// so their messages can be written in the same words the user wrote.
+<a href=#846 id=846 data-nosnippet>846</a>///
+<a href=#847 id=847 data-nosnippet>847</a>/// The variants whose construction site had a declaration in hand also point at it;
+<a href=#848 id=848 data-nosnippet>848</a>/// see the enum's own documentation for why the others do not.
+<a href=#849 id=849 data-nosnippet>849</a></span><span class="kw">impl </span>PhaseError <span class="kw">for </span>Error {
+<a href=#850 id=850 data-nosnippet>850</a>    <span class="kw">fn </span>message(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; String {
+<a href=#851 id=851 data-nosnippet>851</a>        <span class="kw">match </span><span class="self">self </span>{
+<a href=#852 id=852 data-nosnippet>852</a>            Error::ExportNotFound(name, tpe, <span class="kw">_</span>) =&gt; <span class="macro">format!</span>(
+<a href=#853 id=853 data-nosnippet>853</a>                <span class="string">"`{}` is exposed by this module but no {} of that name is declared in it"</span>,
+<a href=#854 id=854 data-nosnippet>854</a>                name,
+<a href=#855 id=855 data-nosnippet>855</a>                export_type_noun(tpe)
+<a href=#856 id=856 data-nosnippet>856</a>            ),
+<a href=#857 id=857 data-nosnippet>857</a>            Error::EnvironmentErrors(errors) =&gt; <span class="kw">match </span>errors.as_slice() {
+<a href=#858 id=858 data-nosnippet>858</a>                [only] =&gt; only.message(),
+<a href=#859 id=859 data-nosnippet>859</a>                many =&gt; <span class="macro">format!</span>(<span class="string">"{} of this module's imports could not be resolved"</span>, many.len()),
+<a href=#860 id=860 data-nosnippet>860</a>            },
+<a href=#861 id=861 data-nosnippet>861</a>            Error::InfixReferenceInvalidValue(infix, function, <span class="kw">_</span>) =&gt; <span class="macro">format!</span>(
+<a href=#862 id=862 data-nosnippet>862</a>                <span class="string">"the infix operator `{}` is declared as `{}`, which is not a value declared in this module"</span>,
+<a href=#863 id=863 data-nosnippet>863</a>                infix, function
+<a href=#864 id=864 data-nosnippet>864</a>            ),
+<a href=#865 id=865 data-nosnippet>865</a>            Error::AmbiguousOperatorPrecedence(left, right, <span class="kw">_</span>) =&gt; {
+<a href=#866 id=866 data-nosnippet>866</a>                <span class="comment">// Three shapes, and the everyday one is the middle: `Basics`
+<a href=#867 id=867 data-nosnippet>867</a>                // declares six operators `infix non 4`, so `a &lt; b &gt; c` reaches
+<a href=#868 id=868 data-nosnippet>868</a>                // here with two *different* operators that do not disagree about
+<a href=#869 id=869 data-nosnippet>869</a>                // anything — both say they do not chain. Calling that a
+<a href=#870 id=870 data-nosnippet>870</a>                // disagreement about which side groups first would name a reason
+<a href=#871 id=871 data-nosnippet>871</a>                // that is not the reason.
+<a href=#872 id=872 data-nosnippet>872</a>                </span><span class="kw">if </span>left.name == right.name {
+<a href=#873 id=873 data-nosnippet>873</a>                    <span class="macro">format!</span>(
+<a href=#874 id=874 data-nosnippet>874</a>                        <span class="string">"`{}` is declared `infix non`, so it cannot be chained with itself without parentheses to say which application comes first"</span>,
+<a href=#875 id=875 data-nosnippet>875</a>                        left.name
+<a href=#876 id=876 data-nosnippet>876</a>                    )
+<a href=#877 id=877 data-nosnippet>877</a>                } <span class="kw">else if </span>left.is_non_associative() &amp;&amp; right.is_non_associative() {
+<a href=#878 id=878 data-nosnippet>878</a>                    <span class="macro">format!</span>(
+<a href=#879 id=879 data-nosnippet>879</a>                        <span class="string">"`{}` and `{}` are both declared `infix non` at the same precedence, so neither groups the other and this needs parentheses"</span>,
+<a href=#880 id=880 data-nosnippet>880</a>                        left.name, right.name
+<a href=#881 id=881 data-nosnippet>881</a>                    )
+<a href=#882 id=882 data-nosnippet>882</a>                } <span class="kw">else if </span>left.is_non_associative() || right.is_non_associative() {
+<a href=#883 id=883 data-nosnippet>883</a>                    <span class="kw">let </span>(non, other) = <span class="kw">if </span>left.is_non_associative() {
+<a href=#884 id=884 data-nosnippet>884</a>                        (<span class="kw-2">&amp;</span>left.name, <span class="kw-2">&amp;</span>right.name)
+<a href=#885 id=885 data-nosnippet>885</a>                    } <span class="kw">else </span>{
+<a href=#886 id=886 data-nosnippet>886</a>                        (<span class="kw-2">&amp;</span>right.name, <span class="kw-2">&amp;</span>left.name)
+<a href=#887 id=887 data-nosnippet>887</a>                    };
+<a href=#888 id=888 data-nosnippet>888</a>
+<a href=#889 id=889 data-nosnippet>889</a>                    <span class="macro">format!</span>(
+<a href=#890 id=890 data-nosnippet>890</a>                        <span class="string">"`{}` is declared `infix non`, so it does not chain with `{}` at the same precedence without parentheses"</span>,
+<a href=#891 id=891 data-nosnippet>891</a>                        non, other
+<a href=#892 id=892 data-nosnippet>892</a>                    )
+<a href=#893 id=893 data-nosnippet>893</a>                } <span class="kw">else </span>{
+<a href=#894 id=894 data-nosnippet>894</a>                    <span class="macro">format!</span>(
+<a href=#895 id=895 data-nosnippet>895</a>                        <span class="string">"`{}` and `{}` have the same precedence but disagree on which side groups first, so this needs parentheses to say which one applies first"</span>,
+<a href=#896 id=896 data-nosnippet>896</a>                        left.name, right.name
+<a href=#897 id=897 data-nosnippet>897</a>                    )
+<a href=#898 id=898 data-nosnippet>898</a>                }
+<a href=#899 id=899 data-nosnippet>899</a>            }
+<a href=#900 id=900 data-nosnippet>900</a>            Error::BindingPatternsInvalidLen(<span class="kw">_</span>) =&gt; {
+<a href=#901 id=901 data-nosnippet>901</a>                <span class="string">"the arguments of this declaration do not line up with its type annotation"
+<a href=#902 id=902 data-nosnippet>902</a>                    </span>.to_owned()
+<a href=#903 id=903 data-nosnippet>903</a>            }
+<a href=#904 id=904 data-nosnippet>904</a>            Error::NoBindings(<span class="kw">_</span>) =&gt; {
+<a href=#905 id=905 data-nosnippet>905</a>                <span class="string">"this declaration has a type annotation but no body"</span>.to_owned()
+<a href=#906 id=906 data-nosnippet>906</a>            }
+<a href=#907 id=907 data-nosnippet>907</a>            Error::VariableNotFound(name, <span class="kw">_</span>, <span class="kw">_</span>) =&gt; {
+<a href=#908 id=908 data-nosnippet>908</a>                <span class="macro">format!</span>(<span class="string">"cannot find a value named `{}`"</span>, name.to_name())
+<a href=#909 id=909 data-nosnippet>909</a>            }
+<a href=#910 id=910 data-nosnippet>910</a>            Error::AmbiguousVariables(name, <span class="kw">_</span>, <span class="kw">_</span>) =&gt; {
+<a href=#911 id=911 data-nosnippet>911</a>                <span class="macro">format!</span>(<span class="string">"`{}` is exposed by several imported modules"</span>, name)
+<a href=#912 id=912 data-nosnippet>912</a>            }
+<a href=#913 id=913 data-nosnippet>913</a>            Error::VariantNotFound(name, <span class="kw">_</span>, <span class="kw">_</span>) =&gt; {
+<a href=#914 id=914 data-nosnippet>914</a>                <span class="macro">format!</span>(<span class="string">"cannot find a type constructor named `{}`"</span>, name.to_name())
+<a href=#915 id=915 data-nosnippet>915</a>            }
+<a href=#916 id=916 data-nosnippet>916</a>            Error::AmbiguousVariants(name, <span class="kw">_</span>, <span class="kw">_</span>) =&gt; <span class="macro">format!</span>(
+<a href=#917 id=917 data-nosnippet>917</a>                <span class="string">"the type constructor `{}` is exposed by several imported modules"</span>,
+<a href=#918 id=918 data-nosnippet>918</a>                name
+<a href=#919 id=919 data-nosnippet>919</a>            ),
+<a href=#920 id=920 data-nosnippet>920</a>            Error::InvalidTupleSize(size) =&gt; <span class="macro">format!</span>(
+<a href=#921 id=921 data-nosnippet>921</a>                <span class="string">"a tuple has two or three elements, this one has {}"</span>,
+<a href=#922 id=922 data-nosnippet>922</a>                size
+<a href=#923 id=923 data-nosnippet>923</a>            ),
+<a href=#924 id=924 data-nosnippet>924</a>            Error::MultipleBindingsUnsupported(name, <span class="kw">_</span>) =&gt; <span class="macro">format!</span>(
+<a href=#925 id=925 data-nosnippet>925</a>                <span class="string">"`{}` is declared over several bindings, which is not supported yet"</span>,
+<a href=#926 id=926 data-nosnippet>926</a>                name
+<a href=#927 id=927 data-nosnippet>927</a>            ),
+<a href=#928 id=928 data-nosnippet>928</a>            Error::TypeArityMismatch(name, declared, written, <span class="kw">_</span>) =&gt; <span class="macro">format!</span>(
+<a href=#929 id=929 data-nosnippet>929</a>                <span class="string">"`{}` takes {}, but is applied to {} here"</span>,
+<a href=#930 id=930 data-nosnippet>930</a>                name,
+<a href=#931 id=931 data-nosnippet>931</a>                type_argument_count(<span class="kw-2">*</span>declared),
+<a href=#932 id=932 data-nosnippet>932</a>                type_argument_count(<span class="kw-2">*</span>written)
+<a href=#933 id=933 data-nosnippet>933</a>            ),
+<a href=#934 id=934 data-nosnippet>934</a>            Error::InfixDeclared(name, <span class="kw">_</span>) =&gt; <span class="macro">format!</span>(
+<a href=#935 id=935 data-nosnippet>935</a>                <span class="string">"a `module javascript` facade cannot declare an infix operator, but declares `{}`"</span>,
+<a href=#936 id=936 data-nosnippet>936</a>                name
+<a href=#937 id=937 data-nosnippet>937</a>            ),
+<a href=#938 id=938 data-nosnippet>938</a>            Error::TypeDeclared(name, <span class="kw">_</span>) =&gt; <span class="macro">format!</span>(
+<a href=#939 id=939 data-nosnippet>939</a>                <span class="string">"a `module javascript` facade cannot declare a type, but declares `{}`"</span>,
+<a href=#940 id=940 data-nosnippet>940</a>                name
+<a href=#941 id=941 data-nosnippet>941</a>            ),
+<a href=#942 id=942 data-nosnippet>942</a>            Error::NoTypeInBinding(name, <span class="kw">_</span>) =&gt; <span class="macro">format!</span>(
+<a href=#943 id=943 data-nosnippet>943</a>                <span class="string">"`{}` has no type annotation, and a `module javascript` facade is annotations only"</span>,
+<a href=#944 id=944 data-nosnippet>944</a>                name
+<a href=#945 id=945 data-nosnippet>945</a>            ),
+<a href=#946 id=946 data-nosnippet>946</a>            Error::Many(errors) =&gt; <span class="kw">match </span>errors.as_slice() {
+<a href=#947 id=947 data-nosnippet>947</a>                [only] =&gt; only.message(),
+<a href=#948 id=948 data-nosnippet>948</a>                many =&gt; <span class="macro">format!</span>(<span class="string">"{} errors while canonicalizing this module"</span>, many.len()),
+<a href=#949 id=949 data-nosnippet>949</a>            },
+<a href=#950 id=950 data-nosnippet>950</a>        }
+<a href=#951 id=951 data-nosnippet>951</a>    }
+<a href=#952 id=952 data-nosnippet>952</a>
+<a href=#953 id=953 data-nosnippet>953</a>    <span class="kw">fn </span>labels(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;SpanLabel&gt; {
+<a href=#954 id=954 data-nosnippet>954</a>        <span class="comment">// One helper per shape: a variant either has a span and one thing to say
+<a href=#955 id=955 data-nosnippet>955</a>        // about it, or it delegates to the errors it wraps.
+<a href=#956 id=956 data-nosnippet>956</a>        </span><span class="kw">let </span>primary = |span: <span class="kw-2">&amp;</span>NodeSpan, message: <span class="kw-2">&amp;</span>str| <span class="kw">match </span>span.span() {
+<a href=#957 id=957 data-nosnippet>957</a>            <span class="prelude-val">Some</span>(span) =&gt; <span class="macro">vec!</span>[SpanLabel {
+<a href=#958 id=958 data-nosnippet>958</a>                span,
+<a href=#959 id=959 data-nosnippet>959</a>                message: message.to_owned(),
+<a href=#960 id=960 data-nosnippet>960</a>                primary: <span class="bool-val">true</span>,
+<a href=#961 id=961 data-nosnippet>961</a>                file: <span class="prelude-val">None</span>,
+<a href=#962 id=962 data-nosnippet>962</a>            }],
+<a href=#963 id=963 data-nosnippet>963</a>            <span class="prelude-val">None </span>=&gt; Vec::new(),
+<a href=#964 id=964 data-nosnippet>964</a>        };
+<a href=#965 id=965 data-nosnippet>965</a>
+<a href=#966 id=966 data-nosnippet>966</a>        <span class="comment">// A secondary label pointing at where one ambiguous candidate is declared,
+<a href=#967 id=967 data-nosnippet>967</a>        // in *its own* module's file rather than the one being checked — the
+<a href=#968 id=968 data-nosnippet>968</a>        // mechanism `ERR-5` adds. `None` when that candidate's `Interface` cannot
+<a href=#969 id=969 data-nosnippet>969</a>        // say (a hand-built interface, or one built before its file was known)
+<a href=#970 id=970 data-nosnippet>970</a>        // yields no label for that candidate rather than one at the wrong place.
+<a href=#971 id=971 data-nosnippet>971</a>        </span><span class="kw">let </span>ambiguous_candidates = |candidates: <span class="kw-2">&amp;</span>[(ModuleName, <span class="prelude-ty">Option</span>&lt;<span class="kw">super</span>::SourceSpan&gt;)]| {
+<a href=#972 id=972 data-nosnippet>972</a>            candidates
+<a href=#973 id=973 data-nosnippet>973</a>                .iter()
+<a href=#974 id=974 data-nosnippet>974</a>                .filter_map(|(module, source)| {
+<a href=#975 id=975 data-nosnippet>975</a>                    source.map(|s| SpanLabel {
+<a href=#976 id=976 data-nosnippet>976</a>                        span: s.span,
+<a href=#977 id=977 data-nosnippet>977</a>                        message: <span class="macro">format!</span>(<span class="string">"also exposed here, by `{}`"</span>, module.name()),
+<a href=#978 id=978 data-nosnippet>978</a>                        primary: <span class="bool-val">false</span>,
+<a href=#979 id=979 data-nosnippet>979</a>                        file: <span class="prelude-val">Some</span>(s.file),
+<a href=#980 id=980 data-nosnippet>980</a>                    })
+<a href=#981 id=981 data-nosnippet>981</a>                })
+<a href=#982 id=982 data-nosnippet>982</a>                .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
+<a href=#983 id=983 data-nosnippet>983</a>        };
+<a href=#984 id=984 data-nosnippet>984</a>
+<a href=#985 id=985 data-nosnippet>985</a>        <span class="kw">match </span><span class="self">self </span>{
+<a href=#986 id=986 data-nosnippet>986</a>            Error::ExportNotFound(name, <span class="kw">_</span>, span) =&gt; primary(
+<a href=#987 id=987 data-nosnippet>987</a>                span,
+<a href=#988 id=988 data-nosnippet>988</a>                <span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"`{}` is not declared anywhere in this module"</span>, name),
+<a href=#989 id=989 data-nosnippet>989</a>            ),
+<a href=#990 id=990 data-nosnippet>990</a>            Error::InfixReferenceInvalidValue(<span class="kw">_</span>, <span class="kw">_</span>, span) =&gt; primary(span, <span class="string">"declared here"</span>),
+<a href=#991 id=991 data-nosnippet>991</a>            <span class="comment">// The two "declared here" labels go through `InfixDeclaration`, which
+<a href=#992 id=992 data-nosnippet>992</a>            // is what knows whether the declaration is in the module under check
+<a href=#993 id=993 data-nosnippet>993</a>            // or in an imported one. An operator's `infix` declaration is very
+<a href=#994 id=994 data-nosnippet>994</a>            // often not local — `Basics` declares every one the standard library
+<a href=#995 id=995 data-nosnippet>995</a>            // uses — and `Infix::span` is then a byte range in *that* module's
+<a href=#996 id=996 data-nosnippet>996</a>            // file, so a label built with `file: None` would underline unrelated
+<a href=#997 id=997 data-nosnippet>997</a>            // text in the importing module (`ERR-5` is the mechanism that avoids
+<a href=#998 id=998 data-nosnippet>998</a>            // it).
+<a href=#999 id=999 data-nosnippet>999</a>            </span>Error::AmbiguousOperatorPrecedence(left, right, span) =&gt; {
+<a href=#1000 id=1000 data-nosnippet>1000</a>                <span class="kw">let </span><span class="kw-2">mut </span>labels = primary(span, <span class="string">"ambiguous without parentheses"</span>);
+<a href=#1001 id=1001 data-nosnippet>1001</a>
+<a href=#1002 id=1002 data-nosnippet>1002</a>                labels.extend(
+<a href=#1003 id=1003 data-nosnippet>1003</a>                    left.declaration
+<a href=#1004 id=1004 data-nosnippet>1004</a>                        .label(<span class="macro">format!</span>(<span class="string">"`{}` declared here"</span>, left.name)),
+<a href=#1005 id=1005 data-nosnippet>1005</a>                );
+<a href=#1006 id=1006 data-nosnippet>1006</a>
+<a href=#1007 id=1007 data-nosnippet>1007</a>                <span class="comment">// Both sides naming the same operator is the `infix non`
+<a href=#1008 id=1008 data-nosnippet>1008</a>                // self-conflict — they point at the very same declaration, so a
+<a href=#1009 id=1009 data-nosnippet>1009</a>                // second label there would only repeat the first one.
+<a href=#1010 id=1010 data-nosnippet>1010</a>                </span><span class="kw">if </span>left.name != right.name {
+<a href=#1011 id=1011 data-nosnippet>1011</a>                    labels.extend(
+<a href=#1012 id=1012 data-nosnippet>1012</a>                        right
+<a href=#1013 id=1013 data-nosnippet>1013</a>                            .declaration
+<a href=#1014 id=1014 data-nosnippet>1014</a>                            .label(<span class="macro">format!</span>(<span class="string">"`{}` declared here"</span>, right.name)),
+<a href=#1015 id=1015 data-nosnippet>1015</a>                    );
+<a href=#1016 id=1016 data-nosnippet>1016</a>                }
+<a href=#1017 id=1017 data-nosnippet>1017</a>
+<a href=#1018 id=1018 data-nosnippet>1018</a>                labels
+<a href=#1019 id=1019 data-nosnippet>1019</a>            }
+<a href=#1020 id=1020 data-nosnippet>1020</a>            <span class="comment">// The four that name an identifier: the caret sits under the name the
+<a href=#1021 id=1021 data-nosnippet>1021</a>            // user wrote, which is the whole point of spanning expressions and
+<a href=#1022 id=1022 data-nosnippet>1022</a>            // patterns rather than only declarations. `VariableNotFound` and
+<a href=#1023 id=1023 data-nosnippet>1023</a>            // `VariantNotFound` append their suggestion, when they have one, to
+<a href=#1024 id=1024 data-nosnippet>1024</a>            // this same label rather than a free-floating note, so the caret and
+<a href=#1025 id=1025 data-nosnippet>1025</a>            // the suggestion agree about which name is meant (`ERR-7`).
+<a href=#1026 id=1026 data-nosnippet>1026</a>            </span>Error::VariableNotFound(<span class="kw">_</span>, span, suggestion) =&gt; primary(
+<a href=#1027 id=1027 data-nosnippet>1027</a>                span,
+<a href=#1028 id=1028 data-nosnippet>1028</a>                <span class="kw-2">&amp;</span><span class="macro">format!</span>(
+<a href=#1029 id=1029 data-nosnippet>1029</a>                    <span class="string">"no value of this name is in scope{}"</span>,
+<a href=#1030 id=1030 data-nosnippet>1030</a>                    suggestion_suffix(suggestion)
+<a href=#1031 id=1031 data-nosnippet>1031</a>                ),
+<a href=#1032 id=1032 data-nosnippet>1032</a>            ),
+<a href=#1033 id=1033 data-nosnippet>1033</a>            Error::AmbiguousVariables(<span class="kw">_</span>, candidates, span) =&gt; {
+<a href=#1034 id=1034 data-nosnippet>1034</a>                <span class="kw">let </span><span class="kw-2">mut </span>labels = primary(span, <span class="string">"this name is ambiguous"</span>);
+<a href=#1035 id=1035 data-nosnippet>1035</a>                labels.extend(ambiguous_candidates(candidates));
+<a href=#1036 id=1036 data-nosnippet>1036</a>                labels
+<a href=#1037 id=1037 data-nosnippet>1037</a>            }
+<a href=#1038 id=1038 data-nosnippet>1038</a>            Error::VariantNotFound(<span class="kw">_</span>, span, suggestion) =&gt; primary(
+<a href=#1039 id=1039 data-nosnippet>1039</a>                span,
+<a href=#1040 id=1040 data-nosnippet>1040</a>                <span class="kw-2">&amp;</span><span class="macro">format!</span>(
+<a href=#1041 id=1041 data-nosnippet>1041</a>                    <span class="string">"no type constructor of this name is in scope{}"</span>,
+<a href=#1042 id=1042 data-nosnippet>1042</a>                    suggestion_suffix(suggestion)
+<a href=#1043 id=1043 data-nosnippet>1043</a>                ),
+<a href=#1044 id=1044 data-nosnippet>1044</a>            ),
+<a href=#1045 id=1045 data-nosnippet>1045</a>            Error::AmbiguousVariants(<span class="kw">_</span>, candidates, span) =&gt; {
+<a href=#1046 id=1046 data-nosnippet>1046</a>                <span class="kw">let </span><span class="kw-2">mut </span>labels = primary(span, <span class="string">"this type constructor is ambiguous"</span>);
+<a href=#1047 id=1047 data-nosnippet>1047</a>                labels.extend(ambiguous_candidates(candidates));
+<a href=#1048 id=1048 data-nosnippet>1048</a>                labels
+<a href=#1049 id=1049 data-nosnippet>1049</a>            }
+<a href=#1050 id=1050 data-nosnippet>1050</a>            Error::BindingPatternsInvalidLen(span) =&gt; primary(span, <span class="string">"declared here"</span>),
+<a href=#1051 id=1051 data-nosnippet>1051</a>            Error::NoBindings(span) =&gt; primary(span, <span class="string">"this annotation has no body"</span>),
+<a href=#1052 id=1052 data-nosnippet>1052</a>            Error::MultipleBindingsUnsupported(<span class="kw">_</span>, span) =&gt; primary(span, <span class="string">"declared here"</span>),
+<a href=#1053 id=1053 data-nosnippet>1053</a>            Error::TypeArityMismatch(name, declared, written, span) =&gt; primary(
+<a href=#1054 id=1054 data-nosnippet>1054</a>                span,
+<a href=#1055 id=1055 data-nosnippet>1055</a>                <span class="kw-2">&amp;</span><span class="macro">format!</span>(
+<a href=#1056 id=1056 data-nosnippet>1056</a>                    <span class="string">"`{}` takes {}, this application has {}"</span>,
+<a href=#1057 id=1057 data-nosnippet>1057</a>                    name,
+<a href=#1058 id=1058 data-nosnippet>1058</a>                    type_argument_count(<span class="kw-2">*</span>declared),
+<a href=#1059 id=1059 data-nosnippet>1059</a>                    type_argument_count(<span class="kw-2">*</span>written)
+<a href=#1060 id=1060 data-nosnippet>1060</a>                ),
+<a href=#1061 id=1061 data-nosnippet>1061</a>            ),
+<a href=#1062 id=1062 data-nosnippet>1062</a>            Error::InfixDeclared(<span class="kw">_</span>, span) =&gt; primary(span, <span class="string">"declared here"</span>),
+<a href=#1063 id=1063 data-nosnippet>1063</a>            Error::TypeDeclared(<span class="kw">_</span>, span) =&gt; primary(span, <span class="string">"declared here"</span>),
+<a href=#1064 id=1064 data-nosnippet>1064</a>            Error::NoTypeInBinding(<span class="kw">_</span>, span) =&gt; primary(span, <span class="string">"declared here"</span>),
+<a href=#1065 id=1065 data-nosnippet>1065</a>            <span class="comment">// A group has no position of its own; the errors it swallowed do.
+<a href=#1066 id=1066 data-nosnippet>1066</a>            </span>Error::EnvironmentErrors(errors) =&gt; errors.iter().flat_map(|e| e.labels()).collect(),
+<a href=#1067 id=1067 data-nosnippet>1067</a>            Error::Many(errors) =&gt; errors.iter().flat_map(|e| e.labels()).collect(),
+<a href=#1068 id=1068 data-nosnippet>1068</a>            <span class="kw">_ </span>=&gt; Vec::new(),
+<a href=#1069 id=1069 data-nosnippet>1069</a>        }
+<a href=#1070 id=1070 data-nosnippet>1070</a>    }
+<a href=#1071 id=1071 data-nosnippet>1071</a>
+<a href=#1072 id=1072 data-nosnippet>1072</a>    <span class="kw">fn </span>notes(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;String&gt; {
+<a href=#1073 id=1073 data-nosnippet>1073</a>        <span class="kw">match </span><span class="self">self </span>{
+<a href=#1074 id=1074 data-nosnippet>1074</a>            Error::AmbiguousVariables(<span class="kw">_</span>, candidates, <span class="kw">_</span>)
+<a href=#1075 id=1075 data-nosnippet>1075</a>            | Error::AmbiguousVariants(<span class="kw">_</span>, candidates, <span class="kw">_</span>) =&gt; {
+<a href=#1076 id=1076 data-nosnippet>1076</a>                <span class="macro">vec!</span>[<span class="macro">format!</span>(
+<a href=#1077 id=1077 data-nosnippet>1077</a>                    <span class="string">"it is exposed by: {}"</span>,
+<a href=#1078 id=1078 data-nosnippet>1078</a>                    candidates
+<a href=#1079 id=1079 data-nosnippet>1079</a>                        .iter()
+<a href=#1080 id=1080 data-nosnippet>1080</a>                        .map(|(m, <span class="kw">_</span>)| m.name().to_string())
+<a href=#1081 id=1081 data-nosnippet>1081</a>                        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
+<a href=#1082 id=1082 data-nosnippet>1082</a>                        .join(<span class="string">", "</span>)
+<a href=#1083 id=1083 data-nosnippet>1083</a>                )]
+<a href=#1084 id=1084 data-nosnippet>1084</a>            }
+<a href=#1085 id=1085 data-nosnippet>1085</a>            <span class="comment">// A group renders as a summary, so every message it swallowed becomes a
+<a href=#1086 id=1086 data-nosnippet>1086</a>            // note. A group of one is rendered by its own message and adds nothing.
+<a href=#1087 id=1087 data-nosnippet>1087</a>            </span>Error::EnvironmentErrors(errors) =&gt; <span class="kw">match </span>errors.as_slice() {
+<a href=#1088 id=1088 data-nosnippet>1088</a>                [only] =&gt; only.notes(),
+<a href=#1089 id=1089 data-nosnippet>1089</a>                many =&gt; many.iter().flat_map(|e| e.message_and_notes()).collect(),
+<a href=#1090 id=1090 data-nosnippet>1090</a>            },
+<a href=#1091 id=1091 data-nosnippet>1091</a>            Error::Many(errors) =&gt; <span class="kw">match </span>errors.as_slice() {
+<a href=#1092 id=1092 data-nosnippet>1092</a>                [only] =&gt; only.notes(),
+<a href=#1093 id=1093 data-nosnippet>1093</a>                many =&gt; many.iter().flat_map(|e| e.message_and_notes()).collect(),
+<a href=#1094 id=1094 data-nosnippet>1094</a>            },
+<a href=#1095 id=1095 data-nosnippet>1095</a>            <span class="kw">_ </span>=&gt; Vec::new(),
+<a href=#1096 id=1096 data-nosnippet>1096</a>        }
+<a href=#1097 id=1097 data-nosnippet>1097</a>    }
+<a href=#1098 id=1098 data-nosnippet>1098</a>}
+<a href=#1099 id=1099 data-nosnippet>1099</a>
+<a href=#1100 id=1100 data-nosnippet>1100</a><span class="doccomment">/// A "did you mean `X`?" suffix for a label message, when a suggestion was
+<a href=#1101 id=1101 data-nosnippet>1101</a>/// found — empty otherwise, so callers can always append the result without
+<a href=#1102 id=1102 data-nosnippet>1102</a>/// checking `is_some()` first (`ERR-7`). Mirrors the identically-named helper
+<a href=#1103 id=1103 data-nosnippet>1103</a>/// in `environment.rs`; kept separate rather than shared because the two
+<a href=#1104 id=1104 data-nosnippet>1104</a>/// modules' `EnvError`/`Error` types are unrelated and neither should reach
+<a href=#1105 id=1105 data-nosnippet>1105</a>/// into the other for a two-line formatter.
+<a href=#1106 id=1106 data-nosnippet>1106</a></span><span class="kw">fn </span>suggestion_suffix(suggestion: <span class="kw-2">&amp;</span><span class="prelude-ty">Option</span>&lt;Name&gt;) -&gt; String {
+<a href=#1107 id=1107 data-nosnippet>1107</a>    <span class="kw">match </span>suggestion {
+<a href=#1108 id=1108 data-nosnippet>1108</a>        <span class="prelude-val">Some</span>(name) =&gt; <span class="macro">format!</span>(<span class="string">" — did you mean `{}`?"</span>, name),
+<a href=#1109 id=1109 data-nosnippet>1109</a>        <span class="prelude-val">None </span>=&gt; String::new(),
+<a href=#1110 id=1110 data-nosnippet>1110</a>    }
+<a href=#1111 id=1111 data-nosnippet>1111</a>}
+<a href=#1112 id=1112 data-nosnippet>1112</a>
+<a href=#1113 id=1113 data-nosnippet>1113</a><span class="doccomment">/// "1 type argument" or "N type arguments" — the two counts an
+<a href=#1114 id=1114 data-nosnippet>1114</a>/// `Error::TypeArityMismatch` message quotes.
+<a href=#1115 id=1115 data-nosnippet>1115</a></span><span class="kw">fn </span>type_argument_count(n: usize) -&gt; String {
+<a href=#1116 id=1116 data-nosnippet>1116</a>    <span class="kw">if </span>n == <span class="number">1 </span>{
+<a href=#1117 id=1117 data-nosnippet>1117</a>        <span class="string">"1 type argument"</span>.to_owned()
+<a href=#1118 id=1118 data-nosnippet>1118</a>    } <span class="kw">else </span>{
+<a href=#1119 id=1119 data-nosnippet>1119</a>        <span class="macro">format!</span>(<span class="string">"{} type arguments"</span>, n)
+<a href=#1120 id=1120 data-nosnippet>1120</a>    }
+<a href=#1121 id=1121 data-nosnippet>1121</a>}
+<a href=#1122 id=1122 data-nosnippet>1122</a>
+<a href=#1123 id=1123 data-nosnippet>1123</a><span class="doccomment">/// How a name is exposed, said in the words the source uses for it.
+<a href=#1124 id=1124 data-nosnippet>1124</a></span><span class="kw">fn </span>export_type_noun(tpe: <span class="kw-2">&amp;</span>ExportType) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str {
+<a href=#1125 id=1125 data-nosnippet>1125</a>    <span class="kw">match </span>tpe {
+<a href=#1126 id=1126 data-nosnippet>1126</a>        ExportType::Value =&gt; <span class="string">"value"</span>,
+<a href=#1127 id=1127 data-nosnippet>1127</a>        ExportType::Infix =&gt; <span class="string">"infix operator"</span>,
+<a href=#1128 id=1128 data-nosnippet>1128</a>        ExportType::UnionPublic | ExportType::UnionPrivate =&gt; <span class="string">"type"</span>,
+<a href=#1129 id=1129 data-nosnippet>1129</a>    }
+<a href=#1130 id=1130 data-nosnippet>1130</a>}
+<a href=#1131 id=1131 data-nosnippet>1131</a>
+<a href=#1132 id=1132 data-nosnippet>1132</a><span class="kw">impl </span>From&lt;Vec&lt;EnvError&gt;&gt; <span class="kw">for </span>Error {
+<a href=#1133 id=1133 data-nosnippet>1133</a>    <span class="kw">fn </span>from(errors: Vec&lt;EnvError&gt;) -&gt; <span class="self">Self </span>{
+<a href=#1134 id=1134 data-nosnippet>1134</a>        Error::EnvironmentErrors(errors)
+<a href=#1135 id=1135 data-nosnippet>1135</a>    }
+<a href=#1136 id=1136 data-nosnippet>1136</a>}
+<a href=#1137 id=1137 data-nosnippet>1137</a>
+<a href=#1138 id=1138 data-nosnippet>1138</a><span class="kw">impl </span>From&lt;Vec&lt;Error&gt;&gt; <span class="kw">for </span>Error {
+<a href=#1139 id=1139 data-nosnippet>1139</a>    <span class="kw">fn </span>from(errors: Vec&lt;Error&gt;) -&gt; <span class="self">Self </span>{
+<a href=#1140 id=1140 data-nosnippet>1140</a>        Error::Many(errors)
+<a href=#1141 id=1141 data-nosnippet>1141</a>    }
+<a href=#1142 id=1142 data-nosnippet>1142</a>}
+<a href=#1143 id=1143 data-nosnippet>1143</a>
+<a href=#1144 id=1144 data-nosnippet>1144</a><span class="doccomment">/// Transform a given `parser::Module` into a `canonical::Module`
+<a href=#1145 id=1145 data-nosnippet>1145</a></span><span class="kw">pub fn </span>canonicalize(
+<a href=#1146 id=1146 data-nosnippet>1146</a>    package: <span class="kw-2">&amp;</span>PackageName,
+<a href=#1147 id=1147 data-nosnippet>1147</a>    interfaces: <span class="kw-2">&amp;</span>HashMap&lt;Name, Interface&gt;,
+<a href=#1148 id=1148 data-nosnippet>1148</a>    source: <span class="kw-2">&amp;</span>parser::Module,
+<a href=#1149 id=1149 data-nosnippet>1149</a>) -&gt; <span class="prelude-ty">Result</span>&lt;Module, Vec&lt;Error&gt;&gt; {
+<a href=#1150 id=1150 data-nosnippet>1150</a>    <span class="kw">let </span>name = ModuleName {
+<a href=#1151 id=1151 data-nosnippet>1151</a>        package: package.clone(),
+<a href=#1152 id=1152 data-nosnippet>1152</a>        name: source.name.clone(),
+<a href=#1153 id=1153 data-nosnippet>1153</a>    };
+<a href=#1154 id=1154 data-nosnippet>1154</a>
+<a href=#1155 id=1155 data-nosnippet>1155</a>    <span class="kw">let </span><span class="kw-2">mut </span>errors: Vec&lt;Error&gt; = <span class="macro">vec!</span>[];
+<a href=#1156 id=1156 data-nosnippet>1156</a>    <span class="kw">let </span><span class="kw-2">mut </span>env =
+<a href=#1157 id=1157 data-nosnippet>1157</a>        new_environment(<span class="kw-2">&amp;</span>name, interfaces, <span class="kw-2">&amp;</span>source.imports).map_err(|e| <span class="macro">vec!</span>[e.into()])<span class="question-mark">?</span>;
+<a href=#1158 id=1158 data-nosnippet>1158</a>
+<a href=#1159 id=1159 data-nosnippet>1159</a>    <span class="kw">let </span>(infixes, types, values) = <span class="kw">if </span>source.binding_javascript {
+<a href=#1160 id=1160 data-nosnippet>1160</a>        <span class="comment">// Javascript modules run a parallel canonicalization process as the constraints are a bit different:
+<a href=#1161 id=1161 data-nosnippet>1161</a>        // - Only functions without bindings are authorized.
+<a href=#1162 id=1162 data-nosnippet>1162</a>        // - Infixes and types are forbidden.
+<a href=#1163 id=1163 data-nosnippet>1163</a>        // The idea being to have the js module be a facade for the actual Javascript module.
+<a href=#1164 id=1164 data-nosnippet>1164</a>        // Assuming Json types are part of the prelude, this should goes well with the restriction on what types are available for bindings.
+<a href=#1165 id=1165 data-nosnippet>1165</a>
+<a href=#1166 id=1166 data-nosnippet>1166</a>        // Verify no infix present
+<a href=#1167 id=1167 data-nosnippet>1167</a>        </span><span class="kw">if </span>!source.infixes.is_empty() {
+<a href=#1168 id=1168 data-nosnippet>1168</a>            <span class="kw">let </span>e = source
+<a href=#1169 id=1169 data-nosnippet>1169</a>                .infixes
+<a href=#1170 id=1170 data-nosnippet>1170</a>                .iter()
+<a href=#1171 id=1171 data-nosnippet>1171</a>                .map(|i| Error::InfixDeclared(i.operator.clone(), i.span));
+<a href=#1172 id=1172 data-nosnippet>1172</a>            errors.extend(e);
+<a href=#1173 id=1173 data-nosnippet>1173</a>        }
+<a href=#1174 id=1174 data-nosnippet>1174</a>        <span class="comment">// Verify no types present
+<a href=#1175 id=1175 data-nosnippet>1175</a>        </span><span class="kw">if </span>!source.types.is_empty() {
+<a href=#1176 id=1176 data-nosnippet>1176</a>            <span class="kw">let </span>e = source
+<a href=#1177 id=1177 data-nosnippet>1177</a>                .types
+<a href=#1178 id=1178 data-nosnippet>1178</a>                .iter()
+<a href=#1179 id=1179 data-nosnippet>1179</a>                .map(|t| Error::TypeDeclared(t.name.clone(), t.span));
+<a href=#1180 id=1180 data-nosnippet>1180</a>            errors.extend(e);
+<a href=#1181 id=1181 data-nosnippet>1181</a>        }
+<a href=#1182 id=1182 data-nosnippet>1182</a>
+<a href=#1183 id=1183 data-nosnippet>1183</a>        <span class="comment">// Iterate on values
+<a href=#1184 id=1184 data-nosnippet>1184</a>        </span><span class="kw">let </span>iter = source.functions.iter().map(|function| {
+<a href=#1185 id=1185 data-nosnippet>1185</a>            <span class="comment">// Make sure there is no binding
+<a href=#1186 id=1186 data-nosnippet>1186</a>            </span><span class="kw">if </span>!function.bindings.is_empty() {
+<a href=#1187 id=1187 data-nosnippet>1187</a>                <span class="comment">//println!("bindings = {:?} (js module)", function.bindings);
+<a href=#1188 id=1188 data-nosnippet>1188</a>                </span><span class="prelude-val">Err</span>(Error::BindingPatternsInvalidLen(function.span))<span class="question-mark">? </span><span class="comment">// TODO More specific error
+<a href=#1189 id=1189 data-nosnippet>1189</a>            </span>}
+<a href=#1190 id=1190 data-nosnippet>1190</a>
+<a href=#1191 id=1191 data-nosnippet>1191</a>            <span class="comment">// Make sure there is a type
+<a href=#1192 id=1192 data-nosnippet>1192</a>            </span><span class="kw">let </span>tpe = function
+<a href=#1193 id=1193 data-nosnippet>1193</a>                .tpe
+<a href=#1194 id=1194 data-nosnippet>1194</a>                .as_ref()
+<a href=#1195 id=1195 data-nosnippet>1195</a>                .ok_or_else(|| Error::NoTypeInBinding(function.name.clone(), function.span))<span class="question-mark">?</span>;
+<a href=#1196 id=1196 data-nosnippet>1196</a>            <span class="kw">let </span>tpe = Type::from_parser_type(<span class="kw-2">&amp;</span>env, tpe)<span class="question-mark">?</span>;
+<a href=#1197 id=1197 data-nosnippet>1197</a>
+<a href=#1198 id=1198 data-nosnippet>1198</a>            <span class="kw">let </span>name = function.name.clone();
+<a href=#1199 id=1199 data-nosnippet>1199</a>            <span class="comment">// TODO Think how it's going to be represented. Currently canonical values assume an expression is present
+<a href=#1200 id=1200 data-nosnippet>1200</a>            //      I'd like to not introduce a trait or new struct for binding. Should we fake an expression or create
+<a href=#1201 id=1201 data-nosnippet>1201</a>            //      a new type of value ? New type of value will be annoying for regular modules as they aren't present
+<a href=#1202 id=1202 data-nosnippet>1202</a>            //      there. Fake expression might be ok as MVP. We have to make sure that binding module are removed from
+<a href=#1203 id=1203 data-nosnippet>1203</a>            //      some phase of the compilation pipeline.
+<a href=#1204 id=1204 data-nosnippet>1204</a>            </span><span class="kw">let </span>value = Value::TypedValue {
+<a href=#1205 id=1205 data-nosnippet>1205</a>                name: name.clone(),
+<a href=#1206 id=1206 data-nosnippet>1206</a>                patterns: <span class="macro">vec!</span>[],
+<a href=#1207 id=1207 data-nosnippet>1207</a>                <span class="comment">// A `module javascript` facade has no body in the source, so this
+<a href=#1208 id=1208 data-nosnippet>1208</a>                // stand-in has nothing to point at (see the TODO above).
+<a href=#1209 id=1209 data-nosnippet>1209</a>                </span>body: Expression::bare(ExpressionKind::Bool(<span class="bool-val">true</span>)),
+<a href=#1210 id=1210 data-nosnippet>1210</a>                tpe,
+<a href=#1211 id=1211 data-nosnippet>1211</a>                span: function.span,
+<a href=#1212 id=1212 data-nosnippet>1212</a>                annotation_span: function.annotation_span,
+<a href=#1213 id=1213 data-nosnippet>1213</a>            };
+<a href=#1214 id=1214 data-nosnippet>1214</a>
+<a href=#1215 id=1215 data-nosnippet>1215</a>            <span class="prelude-val">Ok</span>((name, value))
+<a href=#1216 id=1216 data-nosnippet>1216</a>        });
+<a href=#1217 id=1217 data-nosnippet>1217</a>        <span class="kw">let </span>values = <span class="kw">crate</span>::utils::collect_accumulate(iter).unwrap_or_else(|err| {
+<a href=#1218 id=1218 data-nosnippet>1218</a>            errors.extend(err);
+<a href=#1219 id=1219 data-nosnippet>1219</a>            HashMap::new()
+<a href=#1220 id=1220 data-nosnippet>1220</a>        });
+<a href=#1221 id=1221 data-nosnippet>1221</a>
+<a href=#1222 id=1222 data-nosnippet>1222</a>        (HashMap::new(), HashMap::new(), values)
+<a href=#1223 id=1223 data-nosnippet>1223</a>    } <span class="kw">else </span>{
+<a href=#1224 id=1224 data-nosnippet>1224</a>        <span class="comment">// Because we are rewriting infixes in this phase, we must do this check before
+<a href=#1225 id=1225 data-nosnippet>1225</a>        // resolving values.
+<a href=#1226 id=1226 data-nosnippet>1226</a>        </span><span class="kw">let </span>infixes =
+<a href=#1227 id=1227 data-nosnippet>1227</a>            do_infixes(<span class="kw-2">&amp;</span>source.infixes, <span class="kw-2">&amp;mut </span>env, <span class="kw-2">&amp;</span>source.functions).unwrap_or_else(|err| {
+<a href=#1228 id=1228 data-nosnippet>1228</a>                errors.extend(err);
+<a href=#1229 id=1229 data-nosnippet>1229</a>                HashMap::new()
+<a href=#1230 id=1230 data-nosnippet>1230</a>            });
+<a href=#1231 id=1231 data-nosnippet>1231</a>
+<a href=#1232 id=1232 data-nosnippet>1232</a>        <span class="kw">let </span>types = do_types(<span class="kw-2">&amp;</span>env, <span class="kw-2">&amp;</span>source.types).unwrap_or_else(|err| {
+<a href=#1233 id=1233 data-nosnippet>1233</a>            errors.extend(err);
+<a href=#1234 id=1234 data-nosnippet>1234</a>            HashMap::new()
+<a href=#1235 id=1235 data-nosnippet>1235</a>        });
+<a href=#1236 id=1236 data-nosnippet>1236</a>
+<a href=#1237 id=1237 data-nosnippet>1237</a>        <span class="kw">for </span>(n, t) <span class="kw">in </span>types.iter() {
+<a href=#1238 id=1238 data-nosnippet>1238</a>            env.insert_union_type(n.clone(), t.clone());
+<a href=#1239 id=1239 data-nosnippet>1239</a>        }
+<a href=#1240 id=1240 data-nosnippet>1240</a>
+<a href=#1241 id=1241 data-nosnippet>1241</a>        <span class="macro">trace!</span>(<span class="string">"Environment after do_types: {:#?}"</span>, env);
+<a href=#1242 id=1242 data-nosnippet>1242</a>
+<a href=#1243 id=1243 data-nosnippet>1243</a>        <span class="comment">// TODO Should I manage infixes rewrite here too ?
+<a href=#1244 id=1244 data-nosnippet>1244</a>        // Yes I should do it here
+<a href=#1245 id=1245 data-nosnippet>1245</a>        </span><span class="kw">let </span>values = do_values(<span class="kw-2">&amp;mut </span>env, <span class="kw-2">&amp;</span>source.functions).unwrap_or_else(|err| {
+<a href=#1246 id=1246 data-nosnippet>1246</a>            errors.extend(err);
+<a href=#1247 id=1247 data-nosnippet>1247</a>            HashMap::new()
+<a href=#1248 id=1248 data-nosnippet>1248</a>        });
+<a href=#1249 id=1249 data-nosnippet>1249</a>
+<a href=#1250 id=1250 data-nosnippet>1250</a>        (infixes, types, values)
+<a href=#1251 id=1251 data-nosnippet>1251</a>    };
+<a href=#1252 id=1252 data-nosnippet>1252</a>
+<a href=#1253 id=1253 data-nosnippet>1253</a>    <span class="comment">// We do exports at the end, and verify that all exported value do
+<a href=#1254 id=1254 data-nosnippet>1254</a>    // have a reference within the current module
+<a href=#1255 id=1255 data-nosnippet>1255</a>    </span><span class="kw">let </span>exports = do_exports(<span class="kw-2">&amp;</span>source.exposing, <span class="kw-2">&amp;</span>env).unwrap_or_else(|err| {
+<a href=#1256 id=1256 data-nosnippet>1256</a>        errors.extend(err);
+<a href=#1257 id=1257 data-nosnippet>1257</a>        Exports::Everything <span class="comment">// Never exposed, as we will return the errors instead
+<a href=#1258 id=1258 data-nosnippet>1258</a>    </span>});
+<a href=#1259 id=1259 data-nosnippet>1259</a>
+<a href=#1260 id=1260 data-nosnippet>1260</a>    <span class="kw">if </span>errors.is_empty() {
+<a href=#1261 id=1261 data-nosnippet>1261</a>        <span class="prelude-val">Ok</span>(Module {
+<a href=#1262 id=1262 data-nosnippet>1262</a>            name,
+<a href=#1263 id=1263 data-nosnippet>1263</a>            exports,
+<a href=#1264 id=1264 data-nosnippet>1264</a>            infixes,
+<a href=#1265 id=1265 data-nosnippet>1265</a>            types,
+<a href=#1266 id=1266 data-nosnippet>1266</a>            values,
+<a href=#1267 id=1267 data-nosnippet>1267</a>            binding_javascript: source.binding_javascript,
+<a href=#1268 id=1268 data-nosnippet>1268</a>        })
+<a href=#1269 id=1269 data-nosnippet>1269</a>    } <span class="kw">else </span>{
+<a href=#1270 id=1270 data-nosnippet>1270</a>        <span class="prelude-val">Err</span>(errors)
+<a href=#1271 id=1271 data-nosnippet>1271</a>    }
+<a href=#1272 id=1272 data-nosnippet>1272</a>}
+<a href=#1273 id=1273 data-nosnippet>1273</a>
+<a href=#1274 id=1274 data-nosnippet>1274</a><span class="kw">fn </span>do_values(
+<a href=#1275 id=1275 data-nosnippet>1275</a>    env: <span class="kw-2">&amp;mut </span>RootEnvironment,
+<a href=#1276 id=1276 data-nosnippet>1276</a>    functions: <span class="kw-2">&amp;</span>[parser::Function],
+<a href=#1277 id=1277 data-nosnippet>1277</a>) -&gt; <span class="prelude-ty">Result</span>&lt;HashMap&lt;Name, Value&gt;, Vec&lt;Error&gt;&gt; {
+<a href=#1278 id=1278 data-nosnippet>1278</a>    <span class="comment">// Before resolving expressions, we store the top-level values in the environment.
+<a href=#1279 id=1279 data-nosnippet>1279</a>    // We do so first because their expression below could refer to them.
+<a href=#1280 id=1280 data-nosnippet>1280</a>    </span><span class="kw">for </span>f <span class="kw">in </span>functions.iter() {
+<a href=#1281 id=1281 data-nosnippet>1281</a>        env.insert_top_level_value(f.name.clone());
+<a href=#1282 id=1282 data-nosnippet>1282</a>    }
+<a href=#1283 id=1283 data-nosnippet>1283</a>
+<a href=#1284 id=1284 data-nosnippet>1284</a>    <span class="kw">let </span>iter = functions.iter().map(|function| {
+<a href=#1285 id=1285 data-nosnippet>1285</a>        <span class="comment">// Bindings to expression
+<a href=#1286 id=1286 data-nosnippet>1286</a>
+<a href=#1287 id=1287 data-nosnippet>1287</a>        // TODO Better error message with position of mismatch
+<a href=#1288 id=1288 data-nosnippet>1288</a>        // TODO Error when bindings is empty
+<a href=#1289 id=1289 data-nosnippet>1289</a>        </span><span class="kw">let </span>bindings_size = function
+<a href=#1290 id=1290 data-nosnippet>1290</a>            .bindings
+<a href=#1291 id=1291 data-nosnippet>1291</a>            .iter()
+<a href=#1292 id=1292 data-nosnippet>1292</a>            .all(|v| v.patterns.len() == function.bindings[<span class="number">0</span>].patterns.len());
+<a href=#1293 id=1293 data-nosnippet>1293</a>
+<a href=#1294 id=1294 data-nosnippet>1294</a>        <span class="kw">if </span>!bindings_size {
+<a href=#1295 id=1295 data-nosnippet>1295</a>            <span class="comment">//println!("bindings = {:?} (bindings_size)", function.bindings);
+<a href=#1296 id=1296 data-nosnippet>1296</a>            </span><span class="prelude-val">Err</span>(Error::BindingPatternsInvalidLen(function.span))<span class="question-mark">?
+<a href=#1297 id=1297 data-nosnippet>1297</a>        </span>}
+<a href=#1298 id=1298 data-nosnippet>1298</a>
+<a href=#1299 id=1299 data-nosnippet>1299</a>        <span class="kw">let </span>(patterns, body): (Vec&lt;Pattern&gt;, Expression) = <span class="kw">match </span>function.bindings.len() {
+<a href=#1300 id=1300 data-nosnippet>1300</a>            <span class="number">0 </span>=&gt; <span class="prelude-val">Err</span>(Error::NoBindings(function.span)),
+<a href=#1301 id=1301 data-nosnippet>1301</a>            <span class="number">1 </span>=&gt; {
+<a href=#1302 id=1302 data-nosnippet>1302</a>                <span class="comment">// if one binding, we can convert directly to canonical format
+<a href=#1303 id=1303 data-nosnippet>1303</a>                </span><span class="kw">let </span>binding = <span class="kw-2">&amp;</span>function.bindings[<span class="number">0</span>];
+<a href=#1304 id=1304 data-nosnippet>1304</a>
+<a href=#1305 id=1305 data-nosnippet>1305</a>                <span class="kw">let </span><span class="kw-2">mut </span>scoped = env.new_scope();
+<a href=#1306 id=1306 data-nosnippet>1306</a>
+<a href=#1307 id=1307 data-nosnippet>1307</a>                <span class="kw">let </span>patterns: Vec&lt;Pattern&gt; = binding
+<a href=#1308 id=1308 data-nosnippet>1308</a>                    .patterns
+<a href=#1309 id=1309 data-nosnippet>1309</a>                    .iter()
+<a href=#1310 id=1310 data-nosnippet>1310</a>                    .map(|p| Pattern::from_parser(p, env))
+<a href=#1311 id=1311 data-nosnippet>1311</a>                    .collect::&lt;<span class="prelude-ty">Result</span>&lt;Vec&lt;<span class="kw">_</span>&gt;, Error&gt;&gt;()<span class="question-mark">?</span>;
+<a href=#1312 id=1312 data-nosnippet>1312</a>
+<a href=#1313 id=1313 data-nosnippet>1313</a>                <span class="kw">for </span>p <span class="kw">in </span><span class="kw-2">&amp;</span>patterns {
+<a href=#1314 id=1314 data-nosnippet>1314</a>                    scoped.expose_pattern(p);
+<a href=#1315 id=1315 data-nosnippet>1315</a>                }
+<a href=#1316 id=1316 data-nosnippet>1316</a>
+<a href=#1317 id=1317 data-nosnippet>1317</a>                <span class="comment">// Maybe create a case_branch function and make it common with Expression::Case ?
+<a href=#1318 id=1318 data-nosnippet>1318</a>                // Or maybe not at the case_branch level, as here we can have multiple patterns
+<a href=#1319 id=1319 data-nosnippet>1319</a>                // whereas cases cannot.
+<a href=#1320 id=1320 data-nosnippet>1320</a>                // eg. a: Int -&gt; Int -&gt; Int  ==&gt;  a b c = b + c
+<a href=#1321 id=1321 data-nosnippet>1321</a>                //println!("Env before transforming expression: {:?}", scoped);
+<a href=#1322 id=1322 data-nosnippet>1322</a>                </span><span class="kw">let </span>body = Expression::from_parser(<span class="kw-2">&amp;</span>binding.body, <span class="kw-2">&amp;</span>scoped)<span class="question-mark">?</span>;
+<a href=#1323 id=1323 data-nosnippet>1323</a>
+<a href=#1324 id=1324 data-nosnippet>1324</a>                <span class="prelude-val">Ok</span>((patterns, body))
+<a href=#1325 id=1325 data-nosnippet>1325</a>            }
+<a href=#1326 id=1326 data-nosnippet>1326</a>            <span class="kw">_ </span>=&gt; {
+<a href=#1327 id=1327 data-nosnippet>1327</a>                <span class="comment">// if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
+<a href=#1328 id=1328 data-nosnippet>1328</a>                </span><span class="prelude-val">Err</span>(Error::MultipleBindingsUnsupported(
+<a href=#1329 id=1329 data-nosnippet>1329</a>                    function.name.clone(),
+<a href=#1330 id=1330 data-nosnippet>1330</a>                    function.span,
+<a href=#1331 id=1331 data-nosnippet>1331</a>                ))
+<a href=#1332 id=1332 data-nosnippet>1332</a>            }
+<a href=#1333 id=1333 data-nosnippet>1333</a>        }<span class="question-mark">?</span>;
+<a href=#1334 id=1334 data-nosnippet>1334</a>
+<a href=#1335 id=1335 data-nosnippet>1335</a>        <span class="kw">let </span>name = function.name.clone();
+<a href=#1336 id=1336 data-nosnippet>1336</a>
+<a href=#1337 id=1337 data-nosnippet>1337</a>        <span class="kw">match </span><span class="kw-2">&amp;</span>function.tpe {
+<a href=#1338 id=1338 data-nosnippet>1338</a>            <span class="prelude-val">Some</span>(t) =&gt; {
+<a href=#1339 id=1339 data-nosnippet>1339</a>                <span class="kw">let </span>tpe = Type::from_parser_type(env, t)<span class="question-mark">?</span>;
+<a href=#1340 id=1340 data-nosnippet>1340</a>                <span class="kw">let </span>linear = Type::to_linear_types(<span class="kw-2">&amp;</span>tpe);
+<a href=#1341 id=1341 data-nosnippet>1341</a>
+<a href=#1342 id=1342 data-nosnippet>1342</a>                <span class="comment">// Linear is a list of types making the function. Because it includes the return type,
+<a href=#1343 id=1343 data-nosnippet>1343</a>                // it will always be bigger than the number of patterns by one.
+<a href=#1344 id=1344 data-nosnippet>1344</a>                </span><span class="kw">if </span>!patterns.is_empty() &amp;&amp; (linear.len() - <span class="number">1 </span>!= patterns.len()) {
+<a href=#1345 id=1345 data-nosnippet>1345</a>                    <span class="comment">// TODO Better error message
+<a href=#1346 id=1346 data-nosnippet>1346</a>                    </span><span class="macro">debug!</span>(
+<a href=#1347 id=1347 data-nosnippet>1347</a>                        <span class="string">"linear = {:#?}\nbindings = {:#?} (linear.len ({}) != patterns.len ({}))"</span>,
+<a href=#1348 id=1348 data-nosnippet>1348</a>                        linear,
+<a href=#1349 id=1349 data-nosnippet>1349</a>                        function.bindings,
+<a href=#1350 id=1350 data-nosnippet>1350</a>                        linear.len(),
+<a href=#1351 id=1351 data-nosnippet>1351</a>                        patterns.len()
+<a href=#1352 id=1352 data-nosnippet>1352</a>                    );
+<a href=#1353 id=1353 data-nosnippet>1353</a>                    <span class="prelude-val">Err</span>(Error::BindingPatternsInvalidLen(function.span))<span class="question-mark">?
+<a href=#1354 id=1354 data-nosnippet>1354</a>                </span>}
+<a href=#1355 id=1355 data-nosnippet>1355</a>
+<a href=#1356 id=1356 data-nosnippet>1356</a>                <span class="kw">let </span>patterns = patterns.into_iter().zip(linear).collect();
+<a href=#1357 id=1357 data-nosnippet>1357</a>
+<a href=#1358 id=1358 data-nosnippet>1358</a>                <span class="prelude-val">Ok</span>((
+<a href=#1359 id=1359 data-nosnippet>1359</a>                    function.name.clone(),
+<a href=#1360 id=1360 data-nosnippet>1360</a>                    Value::TypedValue {
+<a href=#1361 id=1361 data-nosnippet>1361</a>                        name,
+<a href=#1362 id=1362 data-nosnippet>1362</a>                        patterns,
+<a href=#1363 id=1363 data-nosnippet>1363</a>                        body,
+<a href=#1364 id=1364 data-nosnippet>1364</a>                        tpe,
+<a href=#1365 id=1365 data-nosnippet>1365</a>                        span: function.span,
+<a href=#1366 id=1366 data-nosnippet>1366</a>                        annotation_span: function.annotation_span,
+<a href=#1367 id=1367 data-nosnippet>1367</a>                    },
+<a href=#1368 id=1368 data-nosnippet>1368</a>                ))
+<a href=#1369 id=1369 data-nosnippet>1369</a>            }
+<a href=#1370 id=1370 data-nosnippet>1370</a>            <span class="prelude-val">None </span>=&gt; <span class="prelude-val">Ok</span>((
+<a href=#1371 id=1371 data-nosnippet>1371</a>                function.name.clone(),
+<a href=#1372 id=1372 data-nosnippet>1372</a>                Value::Value {
+<a href=#1373 id=1373 data-nosnippet>1373</a>                    name,
+<a href=#1374 id=1374 data-nosnippet>1374</a>                    patterns,
+<a href=#1375 id=1375 data-nosnippet>1375</a>                    body,
+<a href=#1376 id=1376 data-nosnippet>1376</a>                    span: function.span,
+<a href=#1377 id=1377 data-nosnippet>1377</a>                },
+<a href=#1378 id=1378 data-nosnippet>1378</a>            )),
+<a href=#1379 id=1379 data-nosnippet>1379</a>        }
+<a href=#1380 id=1380 data-nosnippet>1380</a>    });
+<a href=#1381 id=1381 data-nosnippet>1381</a>
+<a href=#1382 id=1382 data-nosnippet>1382</a>    collect_accumulate(iter)
+<a href=#1383 id=1383 data-nosnippet>1383</a>}
+<a href=#1384 id=1384 data-nosnippet>1384</a>
+<a href=#1385 id=1385 data-nosnippet>1385</a><span class="kw">fn </span>do_types(
+<a href=#1386 id=1386 data-nosnippet>1386</a>    env: <span class="kw-2">&amp;</span><span class="kw">dyn </span>Environment,
+<a href=#1387 id=1387 data-nosnippet>1387</a>    types: <span class="kw-2">&amp;</span>[parser::UnionType],
+<a href=#1388 id=1388 data-nosnippet>1388</a>) -&gt; <span class="prelude-ty">Result</span>&lt;HashMap&lt;Name, UnionType&gt;, Vec&lt;Error&gt;&gt; {
+<a href=#1389 id=1389 data-nosnippet>1389</a>    <span class="kw">let </span>iter = types.iter().map(|tpe| {
+<a href=#1390 id=1390 data-nosnippet>1390</a>        <span class="kw">let </span>tpe_name = tpe.name.clone();
+<a href=#1391 id=1391 data-nosnippet>1391</a>        <span class="kw">let </span>variables = tpe.type_arguments.clone();
+<a href=#1392 id=1392 data-nosnippet>1392</a>
+<a href=#1393 id=1393 data-nosnippet>1393</a>        <span class="macro">trace!</span>(<span class="string">"do_types(in:{:?})"</span>, tpe);
+<a href=#1394 id=1394 data-nosnippet>1394</a>
+<a href=#1395 id=1395 data-nosnippet>1395</a>        <span class="comment">// variants are represented as parser::Type::Unqualified. Other types
+<a href=#1396 id=1396 data-nosnippet>1396</a>        // can be safely ignored in this context.
+<a href=#1397 id=1397 data-nosnippet>1397</a>
+<a href=#1398 id=1398 data-nosnippet>1398</a>        </span><span class="kw">let </span>variants = tpe
+<a href=#1399 id=1399 data-nosnippet>1399</a>            .variants
+<a href=#1400 id=1400 data-nosnippet>1400</a>            .iter()
+<a href=#1401 id=1401 data-nosnippet>1401</a>            .filter_map(|t| <span class="kw">match </span><span class="kw-2">&amp;</span>t.kind {
+<a href=#1402 id=1402 data-nosnippet>1402</a>                <span class="comment">// TODO It might actually make more sense to put Type::from_parser_type
+<a href=#1403 id=1403 data-nosnippet>1403</a>                // on `Environment`.
+<a href=#1404 id=1404 data-nosnippet>1404</a>                </span>parser::TypeKind::Unqualified(name, vars) =&gt; <span class="prelude-val">Some</span>((name, vars)),
+<a href=#1405 id=1405 data-nosnippet>1405</a>                <span class="kw">_ </span>=&gt; <span class="prelude-val">None</span>,
+<a href=#1406 id=1406 data-nosnippet>1406</a>            })
+<a href=#1407 id=1407 data-nosnippet>1407</a>            .map(|(name, vars)| {
+<a href=#1408 id=1408 data-nosnippet>1408</a>                <span class="kw">let </span>type_parameters = vars
+<a href=#1409 id=1409 data-nosnippet>1409</a>                    .iter()
+<a href=#1410 id=1410 data-nosnippet>1410</a>                    .map(|t| Type::from_parser_type(env, t))
+<a href=#1411 id=1411 data-nosnippet>1411</a>                    .collect::&lt;<span class="prelude-ty">Result</span>&lt;Vec&lt;<span class="kw">_</span>&gt;, Error&gt;&gt;()<span class="question-mark">?</span>;
+<a href=#1412 id=1412 data-nosnippet>1412</a>
+<a href=#1413 id=1413 data-nosnippet>1413</a>                <span class="prelude-val">Ok</span>(TypeConstructor {
+<a href=#1414 id=1414 data-nosnippet>1414</a>                    name: name.clone(),
+<a href=#1415 id=1415 data-nosnippet>1415</a>                    type_parameters,
+<a href=#1416 id=1416 data-nosnippet>1416</a>                    tpe: tpe_name.clone(),
+<a href=#1417 id=1417 data-nosnippet>1417</a>                })
+<a href=#1418 id=1418 data-nosnippet>1418</a>            })
+<a href=#1419 id=1419 data-nosnippet>1419</a>            .collect::&lt;<span class="prelude-ty">Result</span>&lt;Vec&lt;<span class="kw">_</span>&gt;, Error&gt;&gt;()<span class="question-mark">?</span>;
+<a href=#1420 id=1420 data-nosnippet>1420</a>
+<a href=#1421 id=1421 data-nosnippet>1421</a>        <span class="prelude-val">Ok</span>((
+<a href=#1422 id=1422 data-nosnippet>1422</a>            tpe_name,
+<a href=#1423 id=1423 data-nosnippet>1423</a>            UnionType {
+<a href=#1424 id=1424 data-nosnippet>1424</a>                variables,
+<a href=#1425 id=1425 data-nosnippet>1425</a>                variants,
+<a href=#1426 id=1426 data-nosnippet>1426</a>                span: tpe.span,
+<a href=#1427 id=1427 data-nosnippet>1427</a>            },
+<a href=#1428 id=1428 data-nosnippet>1428</a>        ))
+<a href=#1429 id=1429 data-nosnippet>1429</a>    });
+<a href=#1430 id=1430 data-nosnippet>1430</a>
+<a href=#1431 id=1431 data-nosnippet>1431</a>    collect_accumulate(iter)
+<a href=#1432 id=1432 data-nosnippet>1432</a>}
+<a href=#1433 id=1433 data-nosnippet>1433</a>
+<a href=#1434 id=1434 data-nosnippet>1434</a><span class="kw">fn </span>do_infixes(
+<a href=#1435 id=1435 data-nosnippet>1435</a>    infixes: <span class="kw-2">&amp;</span>[parser::Infix],
+<a href=#1436 id=1436 data-nosnippet>1436</a>    env: <span class="kw-2">&amp;mut </span>RootEnvironment,
+<a href=#1437 id=1437 data-nosnippet>1437</a>    functions: <span class="kw-2">&amp;</span>[parser::Function],
+<a href=#1438 id=1438 data-nosnippet>1438</a>) -&gt; <span class="prelude-ty">Result</span>&lt;HashMap&lt;Name, Infix&gt;, Vec&lt;Error&gt;&gt; {
+<a href=#1439 id=1439 data-nosnippet>1439</a>    <span class="kw">let </span>iter = infixes.iter().map(|infix| {
+<a href=#1440 id=1440 data-nosnippet>1440</a>        <span class="kw">let </span>op_name = infix.operator.clone();
+<a href=#1441 id=1441 data-nosnippet>1441</a>        <span class="kw">let </span>function_name = infix.function_name.clone();
+<a href=#1442 id=1442 data-nosnippet>1442</a>
+<a href=#1443 id=1443 data-nosnippet>1443</a>        <span class="kw">let </span>function_exist = functions
+<a href=#1444 id=1444 data-nosnippet>1444</a>            .iter()
+<a href=#1445 id=1445 data-nosnippet>1445</a>            .find(|f| f.name == infix.function_name)
+<a href=#1446 id=1446 data-nosnippet>1446</a>            .is_some();
+<a href=#1447 id=1447 data-nosnippet>1447</a>
+<a href=#1448 id=1448 data-nosnippet>1448</a>        <span class="kw">if </span>function_exist {
+<a href=#1449 id=1449 data-nosnippet>1449</a>            <span class="kw">let </span>infix = Infix {
+<a href=#1450 id=1450 data-nosnippet>1450</a>                associativity: infix.associativity,
+<a href=#1451 id=1451 data-nosnippet>1451</a>                precedence: infix.precedence,
+<a href=#1452 id=1452 data-nosnippet>1452</a>                function_name,
+<a href=#1453 id=1453 data-nosnippet>1453</a>                span: infix.span,
+<a href=#1454 id=1454 data-nosnippet>1454</a>            };
+<a href=#1455 id=1455 data-nosnippet>1455</a>
+<a href=#1456 id=1456 data-nosnippet>1456</a>            env.insert_local_infix(op_name.clone(), infix.clone());
+<a href=#1457 id=1457 data-nosnippet>1457</a>
+<a href=#1458 id=1458 data-nosnippet>1458</a>            <span class="prelude-val">Ok</span>((op_name, infix))
+<a href=#1459 id=1459 data-nosnippet>1459</a>        } <span class="kw">else </span>{
+<a href=#1460 id=1460 data-nosnippet>1460</a>            <span class="prelude-val">Err</span>(Error::InfixReferenceInvalidValue(
+<a href=#1461 id=1461 data-nosnippet>1461</a>                op_name,
+<a href=#1462 id=1462 data-nosnippet>1462</a>                function_name,
+<a href=#1463 id=1463 data-nosnippet>1463</a>                infix.span,
+<a href=#1464 id=1464 data-nosnippet>1464</a>            ))
+<a href=#1465 id=1465 data-nosnippet>1465</a>        }
+<a href=#1466 id=1466 data-nosnippet>1466</a>    });
+<a href=#1467 id=1467 data-nosnippet>1467</a>
+<a href=#1468 id=1468 data-nosnippet>1468</a>    collect_accumulate(iter)
+<a href=#1469 id=1469 data-nosnippet>1469</a>}
+<a href=#1470 id=1470 data-nosnippet>1470</a>
+<a href=#1471 id=1471 data-nosnippet>1471</a><span class="comment">// `BUG-8`: only the `Operator` arm below checks that the exposed name actually
+<a href=#1472 id=1472 data-nosnippet>1472</a>// exists — a `Lower` or `Upper` name in a module's own `exposing (...)` header is
+<a href=#1473 id=1473 data-nosnippet>1473</a>// accepted unconditionally even when nothing by that name is declared.
+<a href=#1474 id=1474 data-nosnippet>1474</a></span><span class="kw">fn </span>do_exports(
+<a href=#1475 id=1475 data-nosnippet>1475</a>    source_exposing: <span class="kw-2">&amp;</span>parser::Exposing,
+<a href=#1476 id=1476 data-nosnippet>1476</a>    env: <span class="kw-2">&amp;</span><span class="kw">dyn </span>Environment,
+<a href=#1477 id=1477 data-nosnippet>1477</a>) -&gt; <span class="prelude-ty">Result</span>&lt;Exports, Vec&lt;Error&gt;&gt; {
+<a href=#1478 id=1478 data-nosnippet>1478</a>    <span class="kw">match </span>source_exposing {
+<a href=#1479 id=1479 data-nosnippet>1479</a>        parser::Exposing::Open =&gt; <span class="prelude-val">Ok</span>(Exports::Everything),
+<a href=#1480 id=1480 data-nosnippet>1480</a>        parser::Exposing::Explicit(exposed) =&gt; {
+<a href=#1481 id=1481 data-nosnippet>1481</a>            <span class="kw">let </span>specifics = exposed.iter().map(|exposed| <span class="kw">match </span><span class="kw-2">&amp;</span>exposed.kind {
+<a href=#1482 id=1482 data-nosnippet>1482</a>                parser::ExposedKind::Lower(name) =&gt; <span class="prelude-val">Ok</span>((name.clone(), ExportType::Value)),
+<a href=#1483 id=1483 data-nosnippet>1483</a>                parser::ExposedKind::Upper(name, parser::Privacy::Public) =&gt; {
+<a href=#1484 id=1484 data-nosnippet>1484</a>                    <span class="prelude-val">Ok</span>((name.clone(), ExportType::UnionPublic))
+<a href=#1485 id=1485 data-nosnippet>1485</a>                }
+<a href=#1486 id=1486 data-nosnippet>1486</a>                parser::ExposedKind::Upper(name, parser::Privacy::Private) =&gt; {
+<a href=#1487 id=1487 data-nosnippet>1487</a>                    <span class="prelude-val">Ok</span>((name.clone(), ExportType::UnionPrivate))
+<a href=#1488 id=1488 data-nosnippet>1488</a>                }
+<a href=#1489 id=1489 data-nosnippet>1489</a>                parser::ExposedKind::Operator(name) =&gt; {
+<a href=#1490 id=1490 data-nosnippet>1490</a>                    <span class="kw">if </span>env.local_infix_exists(name) {
+<a href=#1491 id=1491 data-nosnippet>1491</a>                        <span class="prelude-val">Ok</span>((name.clone(), ExportType::Infix))
+<a href=#1492 id=1492 data-nosnippet>1492</a>                    } <span class="kw">else </span>{
+<a href=#1493 id=1493 data-nosnippet>1493</a>                        <span class="prelude-val">Err</span>(Error::ExportNotFound(
+<a href=#1494 id=1494 data-nosnippet>1494</a>                            name.clone(),
+<a href=#1495 id=1495 data-nosnippet>1495</a>                            ExportType::Infix,
+<a href=#1496 id=1496 data-nosnippet>1496</a>                            exposed.span,
+<a href=#1497 id=1497 data-nosnippet>1497</a>                        ))
+<a href=#1498 id=1498 data-nosnippet>1498</a>                    }
+<a href=#1499 id=1499 data-nosnippet>1499</a>                }
+<a href=#1500 id=1500 data-nosnippet>1500</a>            });
+<a href=#1501 id=1501 data-nosnippet>1501</a>
+<a href=#1502 id=1502 data-nosnippet>1502</a>            <span class="kw">let </span>specifics = collect_accumulate(specifics)<span class="question-mark">?</span>;
+<a href=#1503 id=1503 data-nosnippet>1503</a>
+<a href=#1504 id=1504 data-nosnippet>1504</a>            <span class="prelude-val">Ok</span>(Exports::Specifics(specifics))
+<a href=#1505 id=1505 data-nosnippet>1505</a>        }
+<a href=#1506 id=1506 data-nosnippet>1506</a>    }
+<a href=#1507 id=1507 data-nosnippet>1507</a>}
+</code></pre></div></section></main></body></html>

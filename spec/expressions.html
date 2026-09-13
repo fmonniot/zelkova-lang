@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expressions — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-expressions" class="sidebar-toggle-input">
+<label for="sidebar-toggle-expressions" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html" class="current">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#the-forms">The forms</a></li>
+<li><a href="#literals">Literals</a></li>
+<li class="nested"><a href="#a-literals-type-is-its-spelling">A literal's type is its spelling</a></li>
+<li class="nested"><a href="#there-is-no-boolean-literal">There is no boolean literal</a></li>
+<li class="nested"><a href="#string-literals">String literals</a></li>
+<li><a href="#names">Names</a></li>
+<li><a href="#application">Application</a></li>
+<li><a href="#grouping-and-tuples">Grouping and tuples</a></li>
+<li><a href="#operators">Operators</a></li>
+<li class="nested"><a href="#an-operator-is-a-name">An operator is a name</a></li>
+<li class="nested"><a href="#naming-an-operator">Naming an operator</a></li>
+<li class="nested"><a href="#precedence-and-associativity">Precedence and associativity</a></li>
+<li class="nested"><a href="#equal-precedence-disagreeing-associativity">Equal precedence, disagreeing associativity</a></li>
+<li class="nested"><a href="#prefix-negation">Prefix negation</a></li>
+<li><a href="#if--then--else">if … then … else</a></li>
+<li><a href="#case--of">case … of</a></li>
+<li><a href="#let--in">let … in</a></li>
+<li><a href="#lambdas">Lambdas</a></li>
+<li><a href="#forms-the-compiler-does-not-have">Forms the compiler does not have</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="expressions">Expressions</h1>
+<p>An expression denotes a value. Every declaration's body is one, every argument to a function
+is one, and every branch of a <code>case</code> is one — there is no statement form anywhere in the
+language.</p>
+<h2 id="the-forms">The forms</h2>
+<table><thead><tr><th>Form</th><th>Written</th></tr></thead><tbody>
+<tr><td>Literal</td><td><code>42</code>, <code>1.5</code>, <code>'x'</code>, <code>"hello"</code></td></tr>
+<tr><td>Variable</td><td><code>count</code>, <code>List.map</code></td></tr>
+<tr><td>Constructor</td><td><code>Nothing</code>, <code>Maybe.Just</code></td></tr>
+<tr><td>Application</td><td><code>f x y</code></td></tr>
+<tr><td>Operator application</td><td><code>a + b</code></td></tr>
+<tr><td>Prefix negation</td><td><code>-x</code></td></tr>
+<tr><td>Grouping</td><td><code>(a)</code></td></tr>
+<tr><td>Tuple</td><td><code>(a, b)</code>, <code>(a, b, c)</code></td></tr>
+<tr><td>Conditional</td><td><code>if c then a else b</code></td></tr>
+<tr><td>Case analysis</td><td><code>case v of …</code></td></tr>
+<tr><td>Local bindings</td><td><code>let … in …</code></td></tr>
+<tr><td>Lambda</td><td><code>\x -&gt; e</code></td></tr>
+</tbody></table>
+<p>Three more forms — list literals, records, and record field access — are part of the language
+and are specified in their own chapters: <a href="lists.html">Lists</a> for the first and
+<a href="records.html">Records</a> for the other two. None of the three is implemented; see
+<a href="#forms-the-compiler-does-not-have">Forms the compiler does not have</a> at the foot of this
+chapter.</p>
+<h2 id="literals">Literals</h2>
+<p>A literal is an expression whose value is written out in full. The spelling of each is
+<a href="lexical-structure.html#literals">Lexical structure</a>' subject.</p>
+<h3 id="a-literals-type-is-its-spelling">A literal's type is its spelling</h3>
+<p><strong>A numeric literal written without a point is an <code>Int</code>. One written with a point is a
+<code>Float</code>.</strong></p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (count, ratio, letter)
+
+count = 1
+
+ratio = 1.5
+
+letter = 'x'</code></pre></div>
+<p>An annotation cannot change that: a declaration annotated <code>Float</code> whose body is <code>1</code> is an
+error, and the fix is to write <code>1.0</code>. Arithmetic between the two is an error for the same
+reason.</p>
+<p>Because a literal carries no constraint, nothing in the language defaults: there is no fallback
+rule, and no class the compiler has to know by name.</p>
+<p>The cost lands in one place: inside a function constrained over a numeric class, a literal is
+already concrete, so it cannot be used at the constrained type:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (double)
+
+double : Number a =&gt; a -&gt; a
+double x =
+  mul x 2</code></pre></div>
+<p><strong>Not implemented:</strong> constraints do not parse (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-37.md"><code>LANG-37</code></a>). Once they
+do, that declaration is an error: <code>2</code> is an <code>Int</code>, so <code>mul x 2</code> forces <code>a</code> to be <code>Int</code> and the
+annotation promises more than the body supports. <code>double x = add x x</code> is the way to write it,
+and a class that wants numeric constants declares them as members.</p>
+<p><strong>Known gap:</strong> the type checker gives an integer literal an internal type that unifies with
+<code>Int</code> <em>and</em> <code>Float</code>, so a declaration annotated <code>Float</code> with a body of <code>1</code> is accepted today.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-41.md"><code>LANG-41</code></a> is the ticket. No block here holds it to account.</p>
+<h3 id="there-is-no-boolean-literal">There is no boolean literal</h3>
+<p><code>Bool</code> is an ordinary union type and <code>True</code> and <code>False</code> are its constructors, resolved and
+shadowed like any other name — see <a href="lexical-structure.html#reserved-words">Reserved words</a>.</p>
+<h3 id="string-literals">String literals</h3>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (greeting)
+
+greeting = "hello"</code></pre></div>
+<p><strong>Not implemented:</strong> <code>"</code> is not a token the tokenizer knows.</p>
+<h2 id="names">Names</h2>
+<p>A <strong>variable</strong> is a lowercase-initial name, optionally qualified by a module. A
+<strong>constructor</strong> is an uppercase-initial one, likewise qualifiable. Which module a name is
+looked up in, and what makes one ambiguous, is
+<a href="name-resolution.html">Name resolution and scoping</a>' subject.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Shape, area, corners)
+
+type Shape
+  = Square
+  | Circle
+
+area shape =
+  shape
+
+corners = Square</code></pre></div>
+<p>A constructor is an ordinary function of its arguments, so it applies and partially applies
+like one:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Box, wrap, boxed)
+
+type Box a
+  = Box a
+
+boxed = Box 1
+
+wrap = Box</code></pre></div>
+<p><code>wrap</code> here is the constructor itself, not applied to anything — a function from <code>a</code> to
+<code>Box a</code>.</p>
+<h2 id="application">Application</h2>
+<p>A function is applied to an argument by writing them next to each other. Application is
+<strong>left-associative</strong>, so <code>f x y</code> is <code>(f x) y</code>: <code>f</code> is applied to <code>x</code>, and the result is
+applied to <code>y</code>. Every function takes exactly one argument and a multi-argument function is one
+that returns a function, which is why partial application needs no syntax of its own.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (apply, twice)
+
+apply f x =
+  f x
+
+twice f x =
+  f (f x)</code></pre></div>
+<p><strong>Application binds tighter than every other form.</strong> An argument is therefore an <em>atomic</em>
+expression — a literal, a name, a parenthesised expression, or a tuple — and anything else has
+to be parenthesised. <code>f (f x)</code> above needs its parentheses: <code>f f x</code> would be <code>(f f) x</code>.</p>
+<p>The same rule is why <code>if</code> and <code>case</code> need parentheses in argument position. <code>g if c then a else b</code> cannot be read as applying <code>g</code> to a conditional, because <code>g</code> claims <code>if</code> as its
+argument before the conditional is assembled, and <code>if</code> is not an atomic expression:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (Flag, f)
+
+type Flag
+  = On
+  | Off
+
+f g c = g if c then On else Off</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, f)
+
+type Flag
+  = On
+  | Off
+
+f g c = g (if c then On else Off)</code></pre></div>
+<p>Nothing in the grammar restricts what may be applied. Applying a value that is not a function
+is a type error rather than a syntax error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=type-error:UnificationFailed</span></div><pre><code>module Example exposing (f)
+
+f = 1 2</code></pre></div>
+<h2 id="grouping-and-tuples">Grouping and tuples</h2>
+<p>Parentheses around a single expression <strong>group</strong>: <code>(a)</code> is <code>a</code>, and no node exists for the
+parentheses. Parentheses around two or three comma-separated expressions build a <strong>tuple</strong>.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (pair, triple, nested)
+
+pair a b = (a, b)
+
+triple a b c = (a, b, c)
+
+nested a b = ((a, b), b)</code></pre></div>
+<p>A tuple has two or three elements only — see <a href="types.html#tuple-types">Tuple types</a>, which
+carries the reasoning. Four elements is a <em>syntax</em> error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (f)
+
+f a b = (a, b, a, b)</code></pre></div>
+<h2 id="operators">Operators</h2>
+<h3 id="an-operator-is-a-name">An operator is a name</h3>
+<p>An operator has no meaning of its own. It is a name, bound by an
+<a href="lexical-structure.html#operators"><code>infix</code> declaration</a> to an ordinary function, and <code>a + b</code> is
+that function applied to <code>a</code> and <code>b</code>. Nothing about arithmetic, comparison or composition is
+built into the language: <code>std/core</code> declares every operator it offers in exactly the way a
+program declares its own.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing ((+), add, sum)
+
+infix left 6 (+) = add
+
+add a b =
+  a
+
+sum a b c =
+  a + b + c</code></pre></div>
+<p>An operator with no <code>infix</code> declaration in scope is an unresolved name, and the diagnostic
+says so under the operator itself:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span></div><pre><code>module Example exposing (f)
+
+f a b =
+  a + b</code></pre></div>
+<h3 id="naming-an-operator">Naming an operator</h3>
+<p>An operator wrapped in parentheses is an expression denoting the function it is bound to. It
+is the same spelling an <code>infix</code> declaration and an <a href="modules.html"><code>exposing</code></a> list use, so a
+module that exports <code>(+)</code> exports something an expression can name.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing ((+), add, plus)
+
+infix left 6 (+) = add
+
+add a b =
+  a
+
+plus = (+)</code></pre></div>
+<p><strong>Not implemented:</strong> <code>(+)</code> in expression position is a parse error, so an exported operator
+can be used infix and in no other way — it cannot be passed to a higher-order function at all.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-23.md"><code>LANG-23</code></a> is the ticket.</p>
+<h3 id="precedence-and-associativity">Precedence and associativity</h3>
+<p>Each <code>infix</code> declaration gives its operator a <strong>precedence</strong> and an <strong>associativity</strong>, and
+those two decide how an expression holding more than one operator groups. A higher precedence
+binds tighter, so <code>a * b + c</code> is <code>(a * b) + c</code> when <code>*</code> is declared above <code>+</code>. Among operators
+of equal precedence, <code>left</code> groups leftward and <code>right</code> groups rightward: <code>a - b - c</code> is
+<code>(a - b) - c</code>, and <code>a ++ b ++ c</code> is <code>a ++ (b ++ c)</code>.</p>
+<p>Grouping is decided by these declarations alone. It does not depend on spacing, on the order
+the declarations appear in, or on anything the operators are bound to.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing ((+), (*), add, mul, poly)
+
+infix left 6 (+) = add
+
+infix left 7 (*) = mul
+
+add a b =
+  a
+
+mul a b =
+  a
+
+poly a b c =
+  a * b + c</code></pre></div>
+<h3 id="equal-precedence-disagreeing-associativity">Equal precedence, disagreeing associativity</h3>
+<p>Two operators of the same precedence group an expression only when they agree how — both
+<code>left</code> or both <code>right</code>. Anything else has no unambiguous grouping, and an expression that
+mixes the two without parentheses is rejected. A <code>left</code> against a <code>right</code> disagrees. An
+operator declared <code>non</code> agrees with nothing at all, itself included:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:AmbiguousOperatorPrecedence</span></div><pre><code>module Example exposing ((==), eq, chain)
+
+infix non 4 (==) = eq
+
+eq a b =
+  a
+
+chain a b c =
+  a == b == c</code></pre></div>
+<p>Falling back to left-grouping would let <code>a == b == c</code> compile as <code>(a == b) == c</code>, comparing a
+boolean against <code>c</code>.</p>
+<p>Two <em>different</em> <code>non</code> operators of the same precedence are rejected for the same reason. They
+do not disagree — neither offers to group the other — and there is no grouping left to fall
+back on:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:AmbiguousOperatorPrecedence</span></div><pre><code>module Example exposing ((&lt;), (&gt;), lt, gt, chain)
+
+infix non 4 (&lt;) = lt
+
+infix non 4 (&gt;) = gt
+
+lt a b =
+  a
+
+gt a b =
+  a
+
+chain a b c =
+  a &lt; b &gt; c</code></pre></div>
+<h3 id="prefix-negation">Prefix negation</h3>
+<p>A <code>-</code> with no left operand available is <strong>prefix negation</strong> rather than subtraction. That rule
+has no exceptions: it reads off the text alone and never off the spacing.</p>
+<p>At the start of an expression there is no left operand, so <code>-</code> negates:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing ((-), sub, opposite)
+
+infix left 6 (-) = sub
+
+sub a b =
+  a
+
+opposite n =
+  -n</code></pre></div>
+<p>Directly after a binary operator there is no left operand either, so <code>-</code> negates there too:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing ((-), (+), sub, add, f)
+
+infix left 6 (-) = sub
+
+infix left 6 (+) = add
+
+sub a b =
+  a
+
+add a b =
+  a
+
+f a b =
+  a - -b</code></pre></div>
+<p><strong>Known gap:</strong> that should be <code>expect=ok</code> — <code>a - -b</code> is <code>a</code> minus the negation of <code>b</code>. The
+right operand of an operator may not be a negation today, and <code>a - (-b)</code> is the only way to
+write it. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-22.md"><code>LANG-22</code></a> is the ticket.</p>
+<p>After an expression there <em>is</em> a left operand, so <code>-</code> is subtraction — including in what looks
+like argument position. <code>g -n</code> is <code>g - n</code>, not <code>g</code> applied to the negation of <code>n</code>:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing ((-), sub, f)
+
+infix left 6 (-) = sub
+
+sub a b =
+  a
+
+f g n =
+  g -n</code></pre></div>
+<p>Reading <code>g -n</code> as an application would make meaning turn on spacing alone. Write <code>g (-n)</code> when
+an argument is what is meant.</p>
+<p>Negation takes exactly the operand in front of it, and binds tighter than every operator
+however that operator is declared. <code>-a + b</code> is <code>(-a) + b</code> and <code>-a * b</code> is <code>(-a) * b</code>; a
+negation that is meant to cover more is written with parentheses, as <code>-(a + b)</code>.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing ((-), (+), sub, add, f)
+
+infix left 6 (-) = sub
+
+infix left 6 (+) = add
+
+sub a b =
+  a
+
+add a b =
+  a
+
+f a b =
+  -a + b</code></pre></div>
+<p>That block pins the syntax only — both groupings type the same, and nothing here evaluates
+anything. <code>tests/compiler/canonical.rs</code> is where the grouping itself is pinned.</p>
+<p>There is likewise no negative literal: <code>-1</code> is negation applied to the literal <code>1</code>. A
+<a href="patterns.html#literal-patterns">pattern</a> carries its sign on the literal instead, because
+pattern syntax is closed and never looks an operator up.</p>
+<h2 id="if--then--else"><code>if … then … else</code></h2>
+<p><code>if c then a else b</code> evaluates <code>c</code>, which must be a <code>Bool</code>, and has the value of <code>a</code> or of
+<code>b</code>. <strong>The <code>else</code> is not optional</strong> — an <code>if</code> with no value for one of its cases could not be
+an expression.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (Flag, f)
+
+type Flag
+  = On
+  | Off
+
+f c = if c then On</code></pre></div>
+<p>Both arms are ordinary expressions, so an <code>else if</code> chain is nesting rather than a form of its
+own:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, classify)
+
+type Flag
+  = On
+  | Off
+
+classify a b =
+  if a then
+    On
+  else if b then
+    Off
+  else
+    On</code></pre></div>
+<p>An <code>if</code> may appear wherever an expression may, subject to the
+<a href="#application">application</a> rule above: parenthesised in argument position, bare elsewhere.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, f, g)
+
+type Flag
+  = On
+  | Off
+
+f c = (if c then On else Off, Off)
+
+g c =
+  case if c then On else Off of
+    On -&gt;
+      Off
+
+    Off -&gt;
+      On</code></pre></div>
+<p>An <code>if</code> extends rightward as far as it can. Used as an operator's right operand it swallows
+everything after it, so <code>1 + if c then a else b</code> is <code>1 + (if c then a else b)</code>; by the same
+rule, an <code>if</code> on the <em>left</em> of an operator swallows the operator too. <code>if c then 1 else 2 + 3</code>
+is <code>if c then 1 else (2 + 3)</code>, so parentheses are the only way to make an <code>if</code> a left operand.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing ((+), add, f)
+
+infix left 6 (+) = add
+
+add a b =
+  a
+
+f c =
+  1 + if c then 2 else 3</code></pre></div>
+<p><strong>Known gap:</strong> that should be <code>expect=ok</code>. An operator's right operand may not be an <code>if</code>
+today. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-22.md"><code>LANG-22</code></a> is the ticket.</p>
+<h2 id="case--of"><code>case … of</code></h2>
+<p><code>case v of</code> matches <code>v</code> against a list of branches, each a pattern, <code>-&gt;</code>, and an expression.
+The branches are tried in the order written and the first match wins; between them they must
+cover the type of <code>v</code>. Every branch has the same type, which is the type of the whole
+expression.</p>
+<p>What a pattern may be, and what binding one means, is <a href="patterns.html">Patterns</a>' subject. Where
+the branches must sit on the page is <a href="layout.html#case--of">Layout</a>'s.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, invert)
+
+type Flag
+  = On
+  | Off
+
+invert flag =
+  case flag of
+    On -&gt;
+      Off
+
+    Off -&gt;
+      On</code></pre></div>
+<p>A <code>case</code> has <strong>at least one branch</strong>. A <code>case</code> with none could not have a value:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (f)
+
+f v =
+  case v of</code></pre></div>
+<p>A <code>case</code> is an expression like any other, so it nests in both positions — as the scrutinee of
+another <code>case</code>, and as a branch body:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Flag, both)
+
+type Flag
+  = On
+  | Off
+
+both a b =
+  case a of
+    On -&gt;
+      case b of
+        On -&gt;
+          On
+
+        Off -&gt;
+          Off
+
+    Off -&gt;
+      Off</code></pre></div>
+<p>The same is true of parenthesisation, so a <code>case</code> may also appear as an argument, a tuple
+element, or an operand:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (Flag, f)
+
+type Flag
+  = On
+  | Off
+
+f g v =
+  g (case v of
+      On -&gt;
+        Off
+
+      Off -&gt;
+        On)</code></pre></div>
+<p><strong>Known gap:</strong> that should be <code>expect=ok</code>. A <code>case</code> cannot be parenthesised at all today, in
+any position — the closing <code>)</code> arrives while the branch block is still open — so a <code>case</code> is
+usable only as a whole declaration body, a whole <code>if</code> arm, or a whole branch body. It cannot be
+an argument, a tuple element, an operator operand, or another <code>case</code>'s scrutinee.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-21.md"><code>LANG-21</code></a> is the ticket.</p>
+<p>A <code>case</code> in the <code>then</code> arm of an <code>if</code> ends where the <code>else</code> begins, the same as any other
+block that a following keyword closes:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:LayoutError</span></div><pre><code>module Example exposing (Flag, f)
+
+type Flag
+  = On
+  | Off
+
+f c v =
+  if c then
+    case v of
+      On -&gt;
+        Off
+
+      Off -&gt;
+        On
+  else
+    On</code></pre></div>
+<p><strong>Known gap:</strong> that should be <code>expect=ok</code>. The <code>else</code> does not close the branch block, so a
+<code>case</code> in a <code>then</code> arm is followed by a layout error whatever the <code>else</code> is indented to — which
+makes the <code>then</code> arm the one position a <code>case</code> cannot occupy even though the <code>else</code> arm can.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-23.md"><code>BUG-23</code></a> is the ticket.</p>
+<h2 id="let--in"><code>let … in</code></h2>
+<p><code>let bindings in expression</code> introduces names visible in the bindings themselves and in the
+expression after <code>in</code>. The value of the whole is the value of that expression.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (f)
+
+f n =
+  let
+    double x =
+      mul 2 x
+
+    (lo, hi) =
+      bounds n
+  in
+  double (add lo hi)</code></pre></div>
+<p><strong>Not implemented:</strong> <code>let</code> and <code>in</code> are reserved words with no production behind them, and
+everything below is design intent. Where the bindings sit on the page is
+<a href="layout.html#let--in">Layout</a>'s subject, with two open questions of its own. A <code>let</code> binding
+takes any form a module's declarations take — a <a href="types.html#type-annotations">type annotation</a>,
+a value binding, a function binding with parameters, and a
+<a href="patterns.html#where-a-pattern-may-appear">destructuring pattern</a>, which must be irrefutable
+since there is nowhere for a failed match to go. The bindings of one <code>let</code> are <strong>mutually
+recursive</strong>: every one of them is in scope in every other's body, and in the expression after
+<code>in</code>, so the order they are written in does not matter and two functions may call each other.</p>
+<p>A <code>let</code> binds nothing outside itself. It is the only construct that introduces a name that is
+not a declaration or a pattern.</p>
+<h2 id="lambdas">Lambdas</h2>
+<p><code>\patterns -&gt; expression</code> is an anonymous function. It takes one or more parameters, and
+<code>\x y -&gt; e</code> means the same as <code>\x -&gt; \y -&gt; e</code>, matching the way
+<a href="#application">application</a> and the <a href="types.html#the-function-arrow">function arrow</a> already
+associate.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (f)
+
+f =
+  \x y -&gt; add x y</code></pre></div>
+<p><strong>Not implemented:</strong> there is no lambda production — <code>\</code> is an ordinary operator character, so
+<code>\x -&gt; x</code> is rejected as an operator in a position where an expression was wanted. Its
+parameters are meant to be the patterns a function declaration's parameters accept, for the
+same reason: a lambda has one body, so a pattern that can fail has nowhere to fall through to.
+Only <a href="patterns.html#a-pattern-that-can-fail-and-one-that-cannot">irrefutable patterns</a> may
+appear.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Point, f)
+
+type Point a
+  = Point a a
+
+f =
+  \(Point x y) -&gt; add x y</code></pre></div>
+<p>A lambda's body extends as far to the right as it can, so <code>\x -&gt; f x y</code> is <code>\x -&gt; (f x y)</code> and
+a lambda used as an argument is parenthesised like any other non-atomic expression. A lambda
+cannot span multiple lines.</p>
+<h2 id="forms-the-compiler-does-not-have">Forms the compiler does not have</h2>
+<p>Three expression forms are part of the language and are specified elsewhere:</p>
+<table><thead><tr><th>Form</th><th>Where it is specified</th></tr></thead><tbody>
+<tr><td>List literals — <code>[1, 2]</code></td><td><a href="lists.html#list-literals">Lists</a></td></tr>
+<tr><td>Records — <code>{ a = 1 }</code>, <code>{ r | a = 2 }</code></td><td><a href="records.html#building-a-record">Records</a></td></tr>
+<tr><td>Field access — <code>r.name</code>, <code>.name</code></td><td><a href="records.html#reading-a-field">Records</a></td></tr>
+</tbody></table>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (f)
+
+f r =
+  r.name</code></pre></div>
+<p><strong>Not implemented:</strong> <code>.</code> is punctuation for qualified names only, so <code>r.name</code> is rejected
+rather than read as a projection (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-50.md"><code>LANG-50</code></a>).</p>
+
+</main>
+</div>
+</body>
+</html>

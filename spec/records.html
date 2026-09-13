@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Records — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-records" class="sidebar-toggle-input">
+<label for="sidebar-toggle-records" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html" class="current">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#the-type">The type</a></li>
+<li><a href="#a-record-type-is-a-set-of-fields">A record type is a set of fields</a></li>
+<li><a href="#building-a-record">Building a record</a></li>
+<li><a href="#reading-a-field">Reading a field</a></li>
+<li><a href="#the-accessor">The accessor</a></li>
+<li class="nested"><a href="#whitespace-before-a--decides-which-form-it-is">Whitespace before a . decides which form it is</a></li>
+<li><a href="#updating-a-record">Updating a record</a></li>
+<li><a href="#record-patterns">Record patterns</a></li>
+<li><a href="#labels-are-not-values">Labels are not values</a></li>
+<li><a href="#records-are-closed">Records are closed</a></li>
+<li><a href="#records-and-derivation">Records and derivation</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="records">Records</h1>
+<p>A record is a value made of <strong>named fields</strong>. A <a href="types.html#tuple-types">tuple</a> says which part is
+which by position; a record says it by label, so a value of several parts stays readable where it
+is taken apart, and past the three elements a tuple stops at.</p>
+<p>A record has a spelling in all three grammars — a <a href="types.html">type</a>, an
+<a href="expressions.html">expression</a> and a <a href="patterns.html">pattern</a>. A <a href="lists.html">list</a> is an ordinary
+union type behind bracket syntax; a record is a form of its own in each of the three, and no
+<code>type</code> declaration anywhere describes one.</p>
+<h2 id="the-type">The type</h2>
+<p>A record type is a brace-enclosed, comma-separated list of <code>label : Type</code> fields.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, reading)
+
+type Celsius
+  = Celsius
+
+reading : { taken : Celsius, expected : Celsius }
+reading =
+  { taken = Celsius, expected = Celsius }</code></pre></div>
+<p><strong>Not implemented:</strong> <code>{</code> and <code>}</code> are not tokens — the tokenizer reads <code>{</code> only as the opening of
+a <code>{-</code> block comment and rejects it anywhere else (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>) — and no
+production consumes a record in a type or an expression (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-48.md"><code>LANG-48</code></a>).</p>
+<p>A label is a lowercase-initial identifier, spelled the way a
+<a href="lexical-structure.html#identifiers">value name</a> is. A field's type is any
+<a href="types.html#the-forms-of-a-type-expression">type expression</a>, so a field may hold a function, a
+tuple, a type variable or another record, and a record type may itself be written wherever a
+type expression may.</p>
+<p>Repeating a label in one record type is an error.</p>
+<p>A record has <strong>at least one field</strong>. <code>{}</code> is neither a type nor an expression: the
+<a href="types.html#the-unit-type">unit type</a> already names the type with a single value.</p>
+<p>A record type is written out in full wherever it appears, so <strong>a record type cannot contain
+itself</strong>. There is no name in <code>{ value : Int, next : … }</code> for the <code>next</code> field to be given. A
+recursive shape goes through a <code>type</code> declaration, which introduces the name the recursion turns
+on, and the record sits inside a variant:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Chain)
+
+type Chain
+  = End
+  | Link { value : Chain, next : Chain }</code></pre></div>
+<p><strong>Not implemented:</strong> the same two (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>,
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-48.md"><code>LANG-48</code></a>).</p>
+<h2 id="a-record-type-is-a-set-of-fields">A record type is a set of fields</h2>
+<p>Two record types are the same type when they carry the <strong>same labels with the same field types</strong>.
+Field order is not part of a record type, so the two annotations below name one type and either
+declaration satisfies either annotation.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, swapped)
+
+type Celsius
+  = Celsius
+
+taken : { at : Celsius, of : Celsius }
+taken =
+  { at = Celsius, of = Celsius }
+
+swapped : { of : Celsius, at : Celsius }
+swapped =
+  taken</code></pre></div>
+<p><strong>Not implemented:</strong> braces do not tokenize (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>), and the typer
+has no record type to compare field sets of (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-51.md"><code>LANG-51</code></a>).</p>
+<p>This makes a record type <strong>structural</strong>: it is described entirely by what it holds. Two modules
+that separately annotate <code>{ x : Int, y : Int }</code> have written one type, and a value of it crosses
+between them with no conversion and no shared declaration.</p>
+<p>A <a href="types.html#type-aliases">type alias</a> over a record therefore names a record type and introduces
+nothing else — no new type, and no constructor function of its fields. <code>Point</code> below is
+<code>{ x : Celsius, y : Celsius }</code> spelled shorter, in both directions.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, Point, origin)
+
+type Celsius
+  = Celsius
+
+type alias Point = { x : Celsius, y : Celsius }
+
+origin : Point
+origin =
+  { x = Celsius, y = Celsius }</code></pre></div>
+<p><strong>Not implemented:</strong> <code>type alias</code> is a syntax error before the braces are reached; see
+<a href="types.html#type-aliases">Types</a>.</p>
+<h2 id="building-a-record">Building a record</h2>
+<p>A record expression is a brace-enclosed, comma-separated list of <code>label = expression</code> fields, and
+its type is the record type its labels and its values' types spell out. Every field of the type
+is given a value.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, reading)
+
+type Celsius
+  = Celsius
+
+reading =
+  { taken = Celsius, expected = Celsius }</code></pre></div>
+<p><strong>Not implemented:</strong> <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>, <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-48.md"><code>LANG-48</code></a>.</p>
+<p>Each field's value is an ordinary expression, so anything an expression may be a field may hold.
+Repeating a label is an error here too.</p>
+<p>A record may be written across several lines with the separator leading each line:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, reading)
+
+type Celsius
+  = Celsius
+
+reading =
+  { taken = Celsius
+  , expected = Celsius
+  }</code></pre></div>
+<p><strong>Not implemented:</strong> <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>, <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-48.md"><code>LANG-48</code></a>.</p>
+<p>A trailing comma is an error, following the <a href="types.html#a-variant-list-has-at-least-one-variant">variant list</a>
+and the <a href="lists.html#list-literals">list literal</a> rather than the
+<a href="modules.html#the-exposing-list"><code>exposing</code> list</a>. The leading-comma layout above already buys what
+a trailing comma would.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error</span></div><pre><code>module Example exposing (f)
+
+f = { a = 1, }</code></pre></div>
+<p><strong>Not implemented:</strong> that block is rejected at the <code>{</code> rather than at the comma
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>), so it does not yet distinguish the rule it illustrates from
+the missing token around it.</p>
+<h2 id="reading-a-field">Reading a field</h2>
+<p><code>r.name</code> is the value of <code>r</code>'s <code>name</code> field. The record's type must have that label, and the
+expression's type is the field's.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Text, nameOf)
+
+type Text
+  = Text
+
+nameOf person =
+  person.name</code></pre></div>
+<p><strong>Not implemented:</strong> <code>.</code> is punctuation for a qualified name, so the grammar rejects <code>person.name</code>
+at the <code>.</code> (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-50.md"><code>LANG-50</code></a>).</p>
+<p>Access binds tighter than <a href="expressions.html#application">application</a>, so <code>f r.name</code> is
+<code>f (r.name)</code>. It chains left to right: <code>r.centre.x</code> is <code>(r.centre).x</code>.</p>
+<h2 id="the-accessor">The accessor</h2>
+<p><code>.name</code> on its own is a function that reads that field: <code>.name</code> is <code>\r -&gt; r.name</code>, and it is an
+expression wherever one may be written.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Text, nameOf)
+
+type Text
+  = Text
+
+apply : ({ name : Text } -&gt; Text) -&gt; { name : Text } -&gt; Text
+apply f r =
+  f r
+
+nameOf person =
+  apply .name person</code></pre></div>
+<p><strong>Not implemented:</strong> no production consumes a leading <code>.</code> (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-50.md"><code>LANG-50</code></a>).</p>
+<p><code>.name</code> names a field of <em>some</em> record, and
+<a href="#records-are-closed">a record type is written out in full</a>, so there is no type an accessor can
+stand for on its own. It is therefore typed <strong>from where it is written</strong>: the record type comes
+from what the accessor is applied to, or from the annotation of the position it sits in. Where
+nothing fixes that type, the accessor is an error naming itself.</p>
+<h3 id="whitespace-before-a--decides-which-form-it-is">Whitespace before a <code>.</code> decides which form it is</h3>
+<p>A <code>.</code> written against the expression to its left is an <strong>access</strong> of that expression; a <code>.</code> with
+whitespace before it, or one opening an expression, is an <strong>accessor</strong>, and it is written against
+its label with no space after it.</p>
+<p>The same rule governs the <code>.</code> of a <a href="name-resolution.html#namespaces">qualified name</a>: <code>Dict.get</code>
+is one name, and <code>Dict .get</code> is <code>Dict</code> applied to an accessor.</p>
+<p><strong>Known gap:</strong> whitespace around a qualification dot is accepted today, so the block below
+compiles and names <code>Widget</code>'s <code>size</code>. The language reads it as an application of a module name
+and rejects it (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-52.md"><code>LANG-52</code></a>).</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=spaced</span></div><pre><code>module Widget exposing (Size, size)
+
+type Size
+  = Small
+
+size : Size
+size = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=spaced</span></div><pre><code>module Example exposing (f)
+
+import Widget
+
+f =
+  Widget . size</code></pre></div>
+<h2 id="updating-a-record">Updating a record</h2>
+<p><code>{ r | label = expression, … }</code> is <code>r</code> with the named fields replaced. Every other field keeps
+the value it had, and the result is a new record: <a href="evaluation-semantics.html">evaluation</a> has no
+mutation in it.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, correct)
+
+type Celsius
+  = Celsius
+
+correct reading =
+  { reading | taken = Celsius }</code></pre></div>
+<p><strong>Not implemented:</strong> <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>, <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-48.md"><code>LANG-48</code></a>.</p>
+<p>An update <strong>has the type of the record it updates</strong>. Each label it names must already be a field
+of that type, and each value must have the type that field already has. An update can therefore
+neither add a field, remove one, nor change one's type.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, added)
+
+type Celsius
+  = Celsius
+
+added : { taken : Celsius } -&gt; { taken : Celsius }
+added reading =
+  { reading | expected = Celsius }</code></pre></div>
+<p><strong>Not implemented:</strong> rejected at the brace today (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>); the rule
+that rejects it is the typer's (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-51.md"><code>LANG-51</code></a>).</p>
+<p>The expression left of the <code>|</code> is an ordinary expression rather than a name, so
+<code>{ f x | taken = Celsius }</code> updates whatever <code>f x</code> returns.</p>
+<h2 id="record-patterns">Record patterns</h2>
+<p>A record pattern matches a record by naming fields. Each entry is <code>label = pattern</code>, and the
+field's value is matched against that pattern:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, describe)
+
+type Celsius
+  = Celsius
+
+describe reading =
+  case reading of
+    { taken = Celsius, expected = e } -&gt;
+      e</code></pre></div>
+<p><strong>Not implemented:</strong> no record production exists in the pattern grammar
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-49.md"><code>LANG-49</code></a>).</p>
+<p><code>{ name }</code> is shorthand for <code>{ name = name }</code>: the field matched against a
+<a href="patterns.html#variable-patterns">variable pattern</a> of its own label.</p>
+<p>A record pattern <strong>names a subset</strong>: the fields it does not mention are not matched and not
+bound. It is therefore <a href="patterns.html#a-pattern-that-can-fail-and-one-that-cannot">refutable</a>
+exactly when one of its sub-patterns is, and a pattern of shorthand entries alone can never fail
+— so one may be written where a pattern must not fail, as a parameter or in a <code>let</code> binding:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Text, nameOf)
+
+type Text
+  = Text
+
+nameOf { name } =
+  name</code></pre></div>
+<p><strong>Not implemented:</strong> <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-49.md"><code>LANG-49</code></a>.</p>
+<p>Sub-patterns are whole patterns, so record patterns <a href="patterns.html#patterns-nest">nest</a> the way
+every other form does, in both directions — a record pattern inside a constructor pattern, and a
+constructor or record pattern inside a field.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, Reading, depth)
+
+type Celsius
+  = Celsius
+
+type Reading
+  = Reading { centre : { x : Celsius }, taken : Celsius }
+
+depth r =
+  case r of
+    Reading { centre = { x } } -&gt;
+      x</code></pre></div>
+<p><strong>Not implemented:</strong> <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-49.md"><code>LANG-49</code></a>.</p>
+<p>A record pattern says nothing about which record type it matches, since it names a subset of some
+record's fields. The type comes from the value being matched, the same way an
+<a href="#the-accessor">accessor's</a> does, and a pattern naming a label the matched type does not have is
+an error.</p>
+<h2 id="labels-are-not-values">Labels are not values</h2>
+<p>A label is a name in a namespace of its own, the <strong>sixth</strong> of the ones
+<a href="name-resolution.html#namespaces">name resolution</a> lists, so a name in it never collides with a
+name in another. Every record type that mentions a label puts it there: writing <code>{ x : Int }</code>
+anywhere makes <code>x</code> a label, and two record types may both carry <code>x</code> without that being a clash.</p>
+<p>Which record a label belongs to is decided by the type it is read against, never by what is in
+scope. A label is never imported, exposed or shadowed — an <code>exposing</code> list holds declarations,
+and no declaration ever introduced a label. A value and a field of one spelling have nothing to
+do with each other:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Celsius, x, origin)
+
+type Celsius
+  = Celsius
+
+x : Celsius
+x = Celsius
+
+origin =
+  { x = Celsius }</code></pre></div>
+<p><strong>Not implemented:</strong> <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>, <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-48.md"><code>LANG-48</code></a>.</p>
+<p>The shorthand pattern is where the two namespaces meet, in one direction only: <code>{ x }</code> reads the
+label <code>x</code> and binds the <strong>value</strong> <code>x</code>, which then shadows an outer value of that name like any
+other <a href="patterns.html#variable-patterns">pattern binding</a>.</p>
+<h2 id="records-are-closed">Records are closed</h2>
+<p>A record type names every field the record has. There is no way to write "any record with a
+<code>name</code> field", and a function that wants one accepts the whole record type it is given.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Text, Number, greet)
+
+type Text
+  = Text
+
+type Number
+  = Number
+
+greet : { name : Text, age : Number } -&gt; Text
+greet person =
+  person.name</code></pre></div>
+<p><strong>Not implemented:</strong> <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>, <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-48.md"><code>LANG-48</code></a>,
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-50.md"><code>LANG-50</code></a>.</p>
+<p>Opening records up means a variable standing for "the rest of the fields", a second kind of thing
+a type variable may be: today <a href="types.html#type-variables">a type variable stands for a type</a> and
+nothing else, and solving for one would need the type checker to solve a second kind of equation
+beside the one it solves for types.</p>
+<p>A function loses by it the ability to be written once over records that differ. A function
+wanting to serve many records takes the fields it needs as arguments.</p>
+<h2 id="records-and-derivation">Records and derivation</h2>
+<p>A <a href="type-classes.html#a-class-says-how-it-is-derived">derivation</a> folds the answers a value's parts
+produce, and a record is walked with the bindings a class already supplies.</p>
+<p>A record has exactly one shape, so the half of the walk that answers for a constructor is never
+reached: there are no constructor positions to hand <code>differed</code> or <code>atConstructor</code>. What is left
+is the argument half — each <strong>field</strong> in turn, through the instance belonging to that field's
+type, folded with <code>combine</code>. A two-value derivation walks the fields in pairs and ends at
+<code>matched</code>; a <a href="type-classes.html#a-derivation-over-one-value">one-value derivation</a> walks them
+singly and starts at the first field's answer, which every record has because it has
+<a href="#the-type">at least one field</a>.</p>
+<p>The fields are walked <strong>in label order</strong>, sorted by the label's characters. A record type is a
+set of fields with no order of its own, so the walk supplies one, and sorting is the only order
+available that two spellings of one type agree on. Where
+<a href="type-classes.html#what-a-derived-instance-computes">reordering a union's variants changes what a derived member computes</a>,
+reordering a record's fields changes nothing — it did not produce a different type.</p>
+<p>A record is walked because it has no instance to delegate to. An
+<a href="type-classes.html#where-an-instance-may-be-declared">instance may be declared only in the module declaring its class or its type</a>,
+and a record type is declared in no module — so <code>instance Eq { x : Int }</code> names no module that
+could hold it and is not writable. Each field's <em>value</em> still goes through its own type's
+instance in the ordinary way.</p>
+<p><a href="evaluation-semantics.html#what-structural-equality-computes">Structural equality</a> over two records
+is that walk with <code>Eq</code>'s answers filled in: equal when every field is equal.</p>
+
+</main>
+</div>
+</body>
+</html>

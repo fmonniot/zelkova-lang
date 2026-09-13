@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Types — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-types" class="sidebar-toggle-input">
+<label for="sidebar-toggle-types" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html" class="current">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#the-forms-of-a-type-expression">The forms of a type expression</a></li>
+<li class="nested"><a href="#type-names">Type names</a></li>
+<li class="nested"><a href="#type-variables">Type variables</a></li>
+<li><a href="#applying-a-type-to-arguments">Applying a type to arguments</a></li>
+<li class="nested"><a href="#arity-is-part-of-the-application">Arity is part of the application</a></li>
+<li class="nested"><a href="#an-applied-type-still-means-what-it-says">An applied type still means what it says</a></li>
+<li><a href="#the-function-arrow">The function arrow</a></li>
+<li><a href="#tuple-types">Tuple types</a></li>
+<li><a href="#the-unit-type">The unit type</a></li>
+<li><a href="#type-annotations">Type annotations</a></li>
+<li class="nested"><a href="#an-exposed-declaration-must-be-annotated">An exposed declaration must be annotated</a></li>
+<li class="nested"><a href="#an-annotation-is-a-promise">An annotation is a promise</a></li>
+<li class="nested"><a href="#where-an-annotation-goes">Where an annotation goes</a></li>
+<li class="nested"><a href="#an-annotation-may-span-several-lines">An annotation may span several lines</a></li>
+<li class="nested"><a href="#the-annotation-and-the-declarations-parameters">The annotation and the declaration's parameters</a></li>
+<li><a href="#type-declarations">type declarations</a></li>
+<li class="nested"><a href="#what-a-variant-may-be">What a variant may be</a></li>
+<li class="nested"><a href="#a-variant-list-has-at-least-one-variant">A variant list has at least one variant</a></li>
+<li><a href="#type-aliases">Type aliases</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="types-and-type-annotations">Types and type annotations</h1>
+<p>A <strong>type expression</strong> is the language Zelkova uses to talk about its own values. It appears in
+three places: to the right of the <code>:</code> in a type annotation, as the argument of a constructor in
+a <code>type</code> declaration, and inside another type expression.</p>
+<p>This chapter specifies that language, and the two declarations that are made of type
+expressions: the annotation <code>name : Type</code>, and the <code>type</code> declaration that introduces a new
+type. The neighbouring <a href="declarations.html">Declarations</a> chapter covers value and function
+bindings and <code>infix</code> declarations, and refers here for these two.</p>
+<h2 id="the-forms-of-a-type-expression">The forms of a type expression</h2>
+<p>There are six, and nothing else is a type:</p>
+<table><thead><tr><th>Form</th><th>Written</th><th>Section</th></tr></thead><tbody>
+<tr><td>A type name</td><td><code>Colour</code>, <code>Widget.Size</code></td><td><a href="#type-names">below</a></td></tr>
+<tr><td>A type variable</td><td><code>a</code>, <code>value</code></td><td><a href="#type-variables">below</a></td></tr>
+<tr><td>An application</td><td><code>Maybe Colour</code></td><td><a href="#applying-a-type-to-arguments">below</a></td></tr>
+<tr><td>A function</td><td><code>Colour -&gt; Colour</code></td><td><a href="#the-function-arrow">below</a></td></tr>
+<tr><td>A tuple</td><td><code>(Colour, Colour)</code></td><td><a href="#tuple-types">below</a></td></tr>
+<tr><td>The unit type</td><td><code>()</code></td><td><a href="#the-unit-type">below</a></td></tr>
+</tbody></table>
+<p>Parentheses may be written around any type expression and mean grouping only: <code>(Colour)</code> is
+<code>Colour</code>.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Colour, red)
+
+type Colour
+  = Red
+
+red : (Colour)
+red = Red</code></pre></div>
+<p>A list type needs no form of its own: it is written <code>List a</code>, an application like any other, and
+<a href="lists.html#the-type">Lists</a> specifies it with the rest of that construct. A record type —
+<code>{ x : Celsius, y : Celsius }</code> — is a seventh form, specified in
+<a href="records.html#the-type">Records</a>.</p>
+<h3 id="type-names">Type names</h3>
+<p>A type name is an uppercase-initial identifier, optionally qualified by the module it comes
+from. The case is what makes it a name rather than a variable — that rule and its reasoning
+are in <a href="lexical-structure.html#identifiers">Lexical structure</a>.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Celsius, freezing)
+
+type Celsius
+  = Celsius
+
+freezing : Celsius
+freezing = Celsius</code></pre></div>
+<p>A qualified name is spelled and resolved exactly as it is in an expression: the module's name,
+or the alias standing in for it, then a <code>.</code>, then the type's own name. See
+<a href="modules.html#imports">Modules</a> for what an import brings into scope.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=qualified</span></div><pre><code>module Widget exposing (Size, small)
+
+type Size
+  = Small
+
+small : Size
+small = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=qualified</span></div><pre><code>module Main exposing (x)
+
+import Widget
+
+x : Widget.Size
+x = Widget.small</code></pre></div>
+<h3 id="type-variables">Type variables</h3>
+<p>A type variable is a lowercase-initial identifier. It stands for a complete type, and it is
+universally quantified over the declaration it appears in: a variable in an annotation means
+<em>the caller chooses</em>, and the declaration must work for every choice.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (constant)
+
+constant : a -&gt; b -&gt; a
+constant x y =
+  x</code></pre></div>
+<p>Nothing distinguishes one lowercase spelling from another: <code>celsius</code> is a type variable in
+exactly the way <code>a</code> is, and the length of a name carries no meaning.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (identity)
+
+identity : celsius -&gt; celsius
+identity x =
+  x</code></pre></div>
+<p>A type variable is never <strong>applied</strong>. Only a type name may head an application, so <code>m a</code> — a
+variable standing for a type constructor rather than for a type — is a syntax error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error</span></div><pre><code>module Example exposing (Box, lift)
+
+type Box a
+  = Box a
+
+lift : m a -&gt; m a
+lift x =
+  x</code></pre></div>
+<p>Allowing it would mean type variables ranging over type constructors as well as types, which
+needs a kind system — a commitment the language is not ready for.
+<a href="type-classes.html#a-class-is-always-over-a-complete-type">Type classes</a> carries what that limit
+costs.</p>
+<h2 id="applying-a-type-to-arguments">Applying a type to arguments</h2>
+<p>A type declared with parameters is used by applying it to that many arguments, written after
+the name and separated by spaces. The number of arguments must equal the number of parameters
+the <code>type</code> declaration gave it.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Maybe, nothing)
+
+type Maybe a
+  = Just a
+  | Nothing
+
+nothing : Maybe a
+nothing = Nothing</code></pre></div>
+<p>An argument may be any type expression. Where that expression is itself an application, a
+function, or a tuple, it is parenthesised — application binds tighter than everything else, so
+<code>Maybe Maybe Colour</code> would otherwise read as <code>Maybe</code> applied to two arguments.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Maybe, nested)
+
+type Maybe a
+  = Just a
+  | Nothing
+
+nested : Maybe (Maybe a)
+nested = Nothing</code></pre></div><div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Box, boxed)
+
+type Box a
+  = Box a
+
+boxed : Box (a -&gt; a)
+boxed = Box</code></pre></div>
+<p><strong>Not implemented:</strong> neither block parses. An argument must be a bare name or a variable
+today — the grammar has no parenthesised form in argument position at all — so every nested
+type is rejected, including <code>type Tree a = Node (Tree a) (Tree a)</code>, the shape a recursive
+container is written in. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-9.md"><code>docs/tickets/lang-9.md</code></a> is the ticket. The
+workaround the grammar leaves open is a trap: <code>Box Maybe a</code> parses, as <code>Box</code> applied to two
+arguments.</p>
+<h3 id="arity-is-part-of-the-application">Arity is part of the application</h3>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:TypeArityMismatch</span></div><pre><code>module Example exposing (Maybe, bare)
+
+type Maybe a
+  = Just a
+  | Nothing
+
+bare : Maybe
+bare = Nothing</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:TypeArityMismatch</span></div><pre><code>module Example exposing (Maybe, Size, tooMany)
+
+type Maybe a
+  = Just a
+  | Nothing
+
+type Size
+  = Small
+
+tooMany : Maybe Size Size
+tooMany = Nothing</code></pre></div>
+<p><strong>Known gap:</strong> a variant argument naming a type declared in the <em>same</em> module should be held
+to the same count and is not. The check runs wherever the name already resolves at the point
+the application is canonicalized — every annotation, and a <code>type</code> declaration's variant
+arguments when the head is imported — but canonicalization builds all of a module's <code>type</code>
+declarations before recording any of them, so <code>type W a = W Maybe a</code> beside <code>type Maybe a = ...</code> is accepted, while the same shape over an imported <code>Maybe</code> is rejected.</p>
+<h3 id="an-applied-type-still-means-what-it-says">An applied type still means what it says</h3>
+<p>Two applications of one type name are the same type exactly when their arguments are.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Maybe, Size, sized)
+
+type Maybe a
+  = Just a
+  | Nothing
+
+type Size
+  = Small
+
+sized : Maybe Size
+sized = Just Small</code></pre></div>
+<p>So <code>Maybe Size</code> and <code>Maybe Other</code> are two types, and one does not stand in for the other. The
+arguments are what separates them: the head is the same name in both.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=type-error:UnificationFailed</span></div><pre><code>module Example exposing (Maybe, Size, Other, mismatched)
+
+type Maybe a
+  = Just a
+  | Nothing
+
+type Size
+  = Small
+
+type Other
+  = First
+
+mismatched : Maybe Size
+mismatched = Just First</code></pre></div>
+<h2 id="the-function-arrow">The function arrow</h2>
+<p><code>a -&gt; b</code> is the type of a function from <code>a</code> to <code>b</code>. The arrow is <strong>right-associative</strong>, so
+<code>a -&gt; b -&gt; c</code> means <code>a -&gt; (b -&gt; c)</code> — a function of one argument returning a function — and a
+function of several arguments needs no parentheses.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, clamp)
+
+type Size
+  = Small
+
+clamp : Size -&gt; Size -&gt; Size
+clamp a b =
+  a</code></pre></div>
+<p>A function <em>argument</em> is the case that needs parentheses. <code>(a -&gt; b) -&gt; c</code> is a function taking a
+function; without them it would be a function of two arguments.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, apply)
+
+type Size
+  = Small
+
+apply : (Size -&gt; Size) -&gt; Size -&gt; Size
+apply f x =
+  x</code></pre></div>
+<p>An arrow needs a type on both sides:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error</span></div><pre><code>module Example exposing (Size, f)
+
+type Size
+  = Small
+
+f : Size -&gt;
+f = Small</code></pre></div>
+<h2 id="tuple-types">Tuple types</h2>
+<p>A tuple type is two or three types between parentheses, separated by commas. The elements may
+be any type expression, including another tuple.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, first, second)
+
+type Size
+  = Small
+
+first : (Size, Size) -&gt; Size
+first p =
+  Small
+
+second : (Size, Size, Size) -&gt; Size
+second p =
+  Small</code></pre></div>
+<p><strong>Two or three, and nothing else.</strong> There is no one-element tuple — <code>(Colour)</code> is grouping, as
+<a href="#the-forms-of-a-type-expression">above</a> — and no tuple of four or more. A four-element tuple is
+a <em>syntax</em> error rather than a type error found later:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error</span></div><pre><code>module Example exposing (Size, quad)
+
+type Size
+  = Small
+
+quad : (Size, Size, Size, Size) -&gt; Size
+quad p =
+  Small</code></pre></div>
+<p>A tuple of four is where a <a href="records.html">record</a> belongs: past three elements, position stops
+being a usable way to say which field is which.</p>
+<p>The same limit applies to tuple <em>patterns</em> and tuple <em>expressions</em>, so no tuple of any other
+size is representable anywhere in the language.</p>
+<h2 id="the-unit-type">The unit type</h2>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (nothingUseful)
+
+nothingUseful : ()
+nothingUseful = ()</code></pre></div>
+<p><code>()</code> is the type with exactly one value, and that value is also written <code>()</code>. It is what a
+function returns when it has nothing to say, and what a function takes when it needs nothing
+meaningful.</p>
+<p><strong>Not implemented:</strong> <code>()</code> is not recognised in either position. In a type the grammar reaches
+for a type expression after the <code>(</code> and finds the <code>)</code>; in an expression the same happens. The
+<code>.ignored</code> modules under <code>std/core/src/</code> use it freely (<code>Task x ()</code>), which is one of the
+things keeping them ignored.</p>
+<h2 id="type-annotations">Type annotations</h2>
+<p>A type annotation gives a declaration a type. It is the declaration's name, a <code>:</code>, and a type
+expression.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, grow)
+
+type Size
+  = Small
+
+grow : Size -&gt; Size
+grow s =
+  s</code></pre></div>
+<h3 id="an-exposed-declaration-must-be-annotated">An exposed declaration must be annotated</h3>
+<p>A declaration named in its module's <a href="modules.html#the-exposing-list"><code>exposing</code> list</a> <strong>must</strong>
+carry an annotation. A declaration the module keeps to itself need not: it gets whatever type
+the checker infers for it.</p>
+<p>The rule is drawn at the module boundary because that is where a type stops being the
+compiler's business and becomes a promise to someone else — the sense of <em>promise</em> the
+<a href="#an-annotation-is-a-promise">next section</a> is about.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, visible)
+
+type Size
+  = Small
+
+visible : Size
+visible =
+  hidden
+
+hidden =
+  Small</code></pre></div>
+<p><code>visible</code> is exposed and annotated; <code>hidden</code> is neither, and needs no annotation to be used by
+its neighbour.</p>
+<p>Because <code>exposing (..)</code> exposes everything a module declares, a module written that way must
+annotate <strong>every</strong> top-level declaration. A module that wants unannotated helpers lists what it
+exposes.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, count)
+
+type Size
+  = Small
+
+count = Small</code></pre></div>
+<p><strong>Known gap:</strong> that block should be rejected — <code>count</code> is exposed and carries no annotation.
+Today it is accepted, and the consequence falls on the <em>importer</em> rather than here:
+<code>Module::to_interface</code> keeps only annotated values, so <code>count</code> is silently absent from every
+importing module's scope and the diagnostic there says the name does not exist
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-14.md"><code>docs/tickets/bug-14.md</code></a>, whose <em>Exposing is what other modules can
+see</em> blocks in <a href="modules.html#exposing-is-what-other-modules-can-see">Modules</a> show that end of
+it). This rule is what that ticket's fix enforces, turning a name that vanishes across the
+boundary into an error at the declaration that failed to describe itself.</p>
+<h3 id="an-annotation-is-a-promise">An annotation is a promise</h3>
+<p>An annotation is not a hint and not a starting point for inference. It is what callers rely
+on, so the declared type may be <strong>no more general</strong> than what the body can actually support.</p>
+<p><code>f : a -&gt; a</code> promises to return whatever the caller passed in. A body that always returns one
+particular type cannot honour that, and the declaration is an error — even though there is a
+type (<code>Size -&gt; Size</code>) that would make the body check.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, f)
+
+type Size
+  = Small
+
+f : a -&gt; a
+f x =
+  Small</code></pre></div>
+<p><strong>Known gap:</strong> that block should be rejected and is accepted. The annotation's type variables
+become ordinary unification variables, so <code>a</code> is quietly solved to <code>Size</code> and the type the
+compiler works with is not the one written in the file
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-12.md"><code>docs/tickets/lang-12.md</code></a>). Its <code>expect=ok</code> tag is what the type
+checker does today: the block goes red the day that ticket lands, and this paragraph goes with
+it.</p>
+<p>An annotation <em>more</em> specific than the body would allow is ordinary and useful: it is how a
+general function is given a narrower published type.</p>
+<h3 id="where-an-annotation-goes">Where an annotation goes</h3>
+<p>An annotation is written on the line directly above the declaration it annotates, with
+<strong>nothing</strong> between the two — not another declaration, not a comment, not even a blank line —
+and a declaration carries <strong>at most one</strong>.</p>
+<p>A comment belonging to the declaration goes <em>above</em> the annotation, where it
+reads as a comment on both.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, first, second)
+
+type Size
+  = Small
+
+first : Size
+
+second : Size
+second = Small
+
+first = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, spaced)
+
+type Size
+  = Small
+
+spaced : Size
+
+spaced = Small</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=type-error:UnificationFailed</span></div><pre><code>module Example exposing (Size, Other, ambiguous)
+
+type Size
+  = Small
+
+type Other
+  = Other
+
+ambiguous : Size
+ambiguous : Other
+ambiguous = Small</code></pre></div>
+<p><strong>Known gap:</strong> all three blocks should be rejected here, and not one of them is rejected for the
+rule it breaks. Declarations are grouped by name into a map with their order thrown away, so an
+annotation may sit anywhere among the top-level declarations — and, position being gone
+entirely, a blank line between an annotation and its declaration is not noticed either. The
+first two blocks are accepted outright. The third is rejected, but for the wrong reason: when a
+name carries two annotations the <strong>last</strong> silently wins, so <code>ambiguous</code> is checked against
+<code>Other</code>, the body <code>Small</code> disagrees with it, and what the reader sees is a type mismatch rather
+than a repeated annotation (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-11.md"><code>docs/tickets/lang-11.md</code></a>).</p>
+<p>A <a href="interop.html">foreign</a> facade is the one place an annotation stands alone: a
+<code>module foreign</code> module is annotations with no bodies at all.</p>
+<h3 id="an-annotation-may-span-several-lines">An annotation may span several lines</h3>
+<p>An annotation is one declaration, so it may be carried onto following lines as long as they are
+indented, following <a href="layout.html#top-level-declarations">Layout</a> rules.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, combine)
+
+type Size
+  = Small
+
+combine :
+  Size -&gt; Size -&gt; Size
+combine a b =
+  a</code></pre></div>
+<p>The conventional way to break a long signature is one argument per line, with each continuation
+line starting with the arrow:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:IndentationError</span></div><pre><code>module Example exposing (Size, combine)
+
+type Size
+  = Small
+
+combine : Size
+  -&gt; Size
+  -&gt; Size
+combine a b =
+  a</code></pre></div>
+<p><strong>Known gap:</strong> that block should be <code>expect=ok</code>. A line whose first token starts with <code>-</code>
+leaves the tokenizer believing it is still scanning leading whitespace, so the spaces <em>after</em>
+the <code>-&gt;</code> are measured against the two-space indentation rule and an odd number of them is
+reported as an indentation error. Whether the line is accepted therefore depends on the parity
+of a space run in the middle of it — <code>  -&gt;Size</code> and <code>  -&gt;  Size</code> both pass.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-19.md"><code>docs/tickets/bug-19.md</code></a> is the ticket.</p>
+<h3 id="the-annotation-and-the-declarations-parameters">The annotation and the declaration's parameters</h3>
+<p>A function's parameter list and its annotation have to agree. The annotation's arrows, read
+left to right, are the parameters, and the type after the last arrow is what the body produces.
+So <code>Size -&gt; Size</code> describes a function of one parameter, and the declaration below it may name
+<strong>at most</strong> one — naming fewer leaves the rest of the type for the body to produce, which is
+<a href="declarations.html#parameters">Declarations</a>' subject.</p>
+<p>Naming more is an error. Here the annotation has one arrow and <code>f a b</code> supplies two
+parameters:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:BindingPatternsInvalidLen</span></div><pre><code>module Example exposing (Size, f)
+
+type Size
+  = Small
+
+f : Size -&gt; Size
+f a b =
+  a</code></pre></div>
+<p>A tuple or a parenthesised function counts as <strong>one</strong> parameter:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, f)
+
+type Size
+  = Small
+
+f : (Size, Size) -&gt; Size
+f p =
+  Small</code></pre></div>
+<h2 id="type-declarations"><code>type</code> declarations</h2>
+<p>A <code>type</code> declaration introduces a new type together with the constructors that build it. It is
+the keyword <code>type</code>, the type's name, zero or more type parameters, an <code>=</code>, and the variants
+separated by <code>|</code>.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Colour)
+
+type Colour
+  = Red
+  | Green
+  | Blue</code></pre></div>
+<p>The type's name is uppercase-initial; its parameters are lowercase-initial, because they are
+type variables and are in scope throughout the variants.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Either)
+
+type Either a b
+  = Left a
+  | Right b</code></pre></div>
+<p>An uppercase parameter is a syntax error — it would be a type name, and a <code>type</code> declaration
+does not take types as parameters:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error</span></div><pre><code>module Example exposing (Box)
+
+type Box A
+  = Box A</code></pre></div>
+<p>Each declaration introduces a genuinely new type. Two declarations of the same shape, in the
+same module or in different ones, are different types. A constructor may share its type's name;
+nothing is ambiguous, because one is a type and the other is a value.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Celsius)
+
+type Celsius
+  = Celsius</code></pre></div>
+<p>A type may refer to itself, and two types declared in one module may refer to each other in
+either order — the declarations of a module are not read top to bottom.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Chain)
+
+type Chain
+  = Link Chain
+  | End</code></pre></div>
+<p>A <code>type</code> declaration can be exposed to other modules in two ways, and the module's <code>exposing</code>
+list is where the choice is made: naming the type on its own exposes it without its
+constructors, so other modules can mention <code>Chain</code> but cannot build or match one; naming it
+<code>Chain(..)</code> exposes the constructors too. <a href="modules.html#the-exposing-list">Modules</a> specifies
+both forms and why the difference matters.</p>
+<h3 id="what-a-variant-may-be">What a variant may be</h3>
+<p>A variant is a constructor name followed by zero or more type arguments. That is the whole
+form: a variant is not a type expression, and a tuple, an arrow, or a bare type variable in
+variant position is not a variant.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Colour)
+
+type Colour
+  = red</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, Pair)
+
+type Size
+  = Small
+
+type Pair
+  = (Size, Size)</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size, Wrapper)
+
+type Size
+  = Small
+
+type Wrapper
+  = Wrap Size -&gt; Size</code></pre></div>
+<p><strong>Known gap:</strong> all three should be rejected and all three are accepted — with the variant
+<strong>silently deleted</strong>. The grammar parses a variant as a full type expression and
+canonicalization then keeps only the ones that happen to be a constructor application,
+discarding the rest without a word (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-18.md"><code>docs/tickets/bug-18.md</code></a>). Each
+block above declares a type with <em>zero</em> variants. The first is the one most likely to be
+written by accident — a mistyped constructor name — and its only symptom is that every later
+mention of the constructor fails to resolve, pointing anywhere but here.</p>
+<p>A variant's arguments are type expressions under the same rules as anywhere else, including
+the parenthesisation limit in <a href="#applying-a-type-to-arguments">Applying a type to arguments</a>:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Tree)
+
+type Tree a
+  = Node (Tree a) (Tree a)
+  | Leaf a</code></pre></div>
+<p><strong>Not implemented:</strong> <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-9.md"><code>lang-9</code></a> again, seen from the declaration side.</p>
+<h3 id="a-variant-list-has-at-least-one-variant">A variant list has at least one variant</h3>
+<p><code>|</code> appears strictly between variants — never before the first, never after the last — and a
+<code>type</code> declaration has at least one.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error</span></div><pre><code>module Example exposing (Colour)
+
+type Colour
+  | Red</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Colour)
+
+type Colour
+  = Red
+  |</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Empty)
+
+type Empty
+  =</code></pre></div>
+<p><strong>Known gap:</strong> the first block is correctly rejected; the second and third should be and are
+not. A trailing <code>|</code> is ignored, and <code>type Empty =</code> declares a type with no constructors at all
+— something nothing can build, arrived at by accident rather than on purpose
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-10.md"><code>docs/tickets/lang-10.md</code></a>).</p>
+<p>A variant list is written with the separator <em>leading</em> each line, so appending a variant
+already touches exactly one line and a trailing <code>|</code> would buy nothing — which is why the
+trailing comma an <a href="modules.html#the-exposing-list"><code>exposing</code> list allows</a> has no counterpart here.</p>
+<h2 id="type-aliases">Type aliases</h2>
+<p>A type alias gives an existing type a second name. It introduces no new type: the alias and
+what it names are interchangeable everywhere, in both directions, including across module
+boundaries.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (Size, Pair)
+
+type Size
+  = Small
+
+type alias Pair = (Size, Size)</code></pre></div>
+<p><strong>Not implemented:</strong> <code>type alias</code> is a syntax error — the grammar reads <code>type</code> and then wants
+an uppercase name, and <code>alias</code> is neither. Several modules under <code>std/core/src/</code> already write
+aliases (<code>Task.ignored</code>, <code>Array.ignored</code>) and the documentation comments in <code>Maybe.zel</code> and
+<code>Result.zel</code> use them in their examples, so this is a hole in the compiler rather than a
+question about the language.</p>
+<p><code>Pair</code> above is <em>not</em> a new type that happens to be a pair; it is <code>(Size, Size)</code>, spelled
+differently. A function annotated <code>Pair -&gt; Size</code> accepts a <code>(Size, Size)</code> with no conversion,
+and a type error mentioning one may mention the other. Where a genuinely distinct type is
+wanted — one the compiler will keep apart from its representation — that is a <code>type</code>
+declaration with a single variant.</p>
+
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Token","TokenizerErrorType"],"fn":["make_tokenizer"],"struct":["TokenizerError"],"type":["Result"]};

@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modules — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-modules" class="sidebar-toggle-input">
+<label for="sidebar-toggle-modules" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html" class="current">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#the-module-header">The module header</a></li>
+<li class="nested"><a href="#the-name-and-the-file">The name and the file</a></li>
+<li><a href="#the-exposing-list">The exposing list</a></li>
+<li class="nested"><a href="#everything-exposed-must-be-declared-here">Everything exposed must be declared here</a></li>
+<li class="nested"><a href="#exposing-is-what-other-modules-can-see">Exposing is what other modules can see</a></li>
+<li><a href="#imports">Imports</a></li>
+<li class="nested"><a href="#where-imports-go">Where imports go</a></li>
+<li class="nested"><a href="#what-an-imports-exposing-list-does">What an import's exposing list does</a></li>
+<li class="nested"><a href="#operators">Operators</a></li>
+<li class="nested"><a href="#two-imports-exposing-the-same-name">Two imports exposing the same name</a></li>
+<li class="nested"><a href="#one-module-one-import">One module, one import</a></li>
+<li class="nested"><a href="#imports-may-not-form-a-cycle">Imports may not form a cycle</a></li>
+<li><a href="#the-default-imports">The default imports</a></li>
+<li><a href="#packages">Packages</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="modules-exposing-and-imports">Modules, exposing and imports</h1>
+<p>Every Zelkova source file is exactly one module, and every module is exactly one source
+file. A module names itself, says which of its declarations the rest of the world may
+see, and names the other modules it draws on. Those three things are the module header
+and the <code>import</code> declarations under it.</p>
+<p>There is no other unit of encapsulation. Zelkova has no nested modules, no namespaces
+within a file, and no way to reopen a module from somewhere else — so "where does this
+name come from" and "who is allowed to use this" are both answered at the top of one file.</p>
+<h2 id="the-module-header">The module header</h2>
+<p>The first token of a file is the keyword <code>module</code>, in column 1 — <a href="layout.html#a-file-starts-at-column-1">Layout</a>
+carries that rule and the reasoning for it. What follows is the module's name and its
+<code>exposing</code> list:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Widget exposing (label)
+
+label = 1</code></pre></div>
+<p>A module name is one or more segments separated by <code>.</code>, each an uppercase-initial
+identifier. The dots are punctuation inside one name rather than a path through
+anything: <code>Ui.Widget</code> is a single identifier, and there is no module <code>Ui</code> implied by it —
+importing <code>Ui.Widget</code> gives <code>Ui</code> no meaning of its own. Where the file lives does mirror
+those dots, which is the next section, but that is a rule about files and not about how
+the name resolves.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Ui.Widget exposing (label)
+
+label = 1</code></pre></div>
+<p>A lowercase segment is not a module name:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module ui.Widget exposing (label)
+
+label = 1</code></pre></div>
+<p>The <code>exposing</code> clause is not optional. A module that means to expose nothing writes an
+empty list, so that a reader can tell an empty interface from a forgotten one:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Widget exposing ()
+
+label = 1</code></pre></div>
+<p>Leaving the clause out entirely is a syntax error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Widget
+
+label = 1</code></pre></div>
+<p>The header is one layout block, so the <code>exposing</code> clause may be carried onto later lines
+as long as they are indented past column 1:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Widget exposing
+  ( label
+  , size
+  )
+
+label = 1
+
+size = 2</code></pre></div>
+<p>Continuing it in column 1 does not work, because a line starting in column 1 begins a new
+top-level declaration:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Widget
+exposing (label)
+
+label = 1</code></pre></div>
+<h3 id="the-name-and-the-file">The name and the file</h3>
+<p><strong>Not implemented:</strong> a module's declared name must match the path of the file that holds
+it, relative to the package's source root, with each <code>.</code> in the name standing for a
+directory separator and <code>.zel</code> appended. <code>module Ui.Widget</code> lives in <code>Ui/Widget.zel</code> and
+nowhere else. Two files may not declare the same module name.</p>
+<pre><code class="language-text">src/
+  Widget.zel        module Widget exposing (…)
+  Ui/Widget.zel     module Ui.Widget exposing (…)
+</code></pre>
+<p>That rule is what makes an <code>import</code> answerable without searching: a reader who sees
+<code>import Ui.Widget</code> knows which file to open, and a compiler that has to resolve it can
+find the file without parsing every module in the package first. Today neither half is
+checked — a file at <code>Sub/Thing.zel</code> may declare <code>module Elsewhere</code> and be imported as
+<code>Elsewhere</code>, and two files may both declare <code>module Same</code> with the second silently
+replacing the first. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-6.md"><code>docs/tickets/lang-6.md</code></a> is the ticket. The
+rule cannot be shown as a tagged block here at all: a block is source text with no path
+behind it, so there is nothing for an example to violate.</p>
+<h2 id="the-exposing-list">The <code>exposing</code> list</h2>
+<p>An <code>exposing</code> list is either <code>(..)</code>, which exposes everything the module declares, or a
+parenthesised list of entries. There are exactly four kinds of entry:</p>
+<table><thead><tr><th>Entry</th><th>Exposes</th></tr></thead><tbody>
+<tr><td><code>label</code></td><td>a value or function declared in this module</td></tr>
+<tr><td><code>Size</code></td><td>a type, but not its constructors — an <em>opaque</em> type</td></tr>
+<tr><td><code>Size(..)</code></td><td>a type together with every one of its constructors</td></tr>
+<tr><td><code>(+)</code></td><td>an operator, which must have an <code>infix</code> declaration in this module</td></tr>
+</tbody></table>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Widget exposing (Color, Shape(..), label, (+))
+
+type Color
+  = Red
+  | Blue
+
+type Shape
+  = Round
+
+label = 1
+
+infix left 6 (+) = add
+
+add a b =
+  a</code></pre></div>
+<p>The <code>Size</code> / <code>Size(..)</code> split is the whole of Zelkova's data hiding. Exposing a type
+without its constructors gives other modules a name they can write in a type annotation
+and values they can pass around, while leaving them unable to build one or take one
+apart — so the module's own functions are the only way in, and the representation stays
+changeable. Exposing <code>Size(..)</code> gives that up deliberately and permanently.</p>
+<p>There is no way to expose <em>some</em> of a type's constructors. A type is opaque or it is not:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Widget exposing (Color(Red))
+
+type Color
+  = Red
+  | Blue</code></pre></div>
+<p>An operator entry names the operator, in parentheses, and the module must carry the
+<code>infix</code> declaration that gives it a meaning. Operators are not built in — exposing <code>(+)</code>
+from a module that never declared it is an error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:ExportNotFound</span></div><pre><code>module Widget exposing ((+))
+
+label = 1</code></pre></div>
+<p>An entry is always a bare name. A qualified name in an <code>exposing</code> list is a syntax
+error, since a module can only expose what it declares itself:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Widget exposing (Ui.label)
+
+label = 1</code></pre></div>
+<p>A trailing comma is allowed, and means nothing:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Widget exposing (label,)
+
+label = 1</code></pre></div>
+<p>This is a deliberate divergence — most languages of this family reject it. A
+one-name-per-line <code>exposing</code> list is the normal way to write a long one, and with no
+trailing comma every addition to the end of such a list touches two lines instead of one.</p>
+<p><code>(..)</code> is all or nothing. It cannot be combined with named entries:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Widget exposing (.., label)
+
+label = 1</code></pre></div>
+<h3 id="everything-exposed-must-be-declared-here">Everything exposed must be declared here</h3>
+<p>Every entry in a module's own <code>exposing</code> list names one of that module's declarations.
+A module may not re-export something it imported: a name that reaches other modules
+through <code>Widget</code> is a name <code>Widget</code> declared.</p>
+<p><strong>Known gap:</strong> the first and the last of the three blocks below should both be rejected —
+the first exposes a name nothing declares, the last exposes one it only imported. Today
+only an <em>operator</em> entry is checked; a lowercase or uppercase entry in a module's own
+header is accepted unconditionally, whether it names a declaration, an import, or nothing
+at all (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-8.md"><code>docs/tickets/bug-8.md</code></a>). Both are therefore tagged for
+what happens now, and go red when that lands.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Widget exposing (missing)
+
+label = 1</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=reexport</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=reexport</span></div><pre><code>module Facade exposing (label)
+
+import Widget exposing (label)</code></pre></div>
+<h3 id="exposing-is-what-other-modules-can-see">Exposing is what other modules can see</h3>
+<p>A module's <code>exposing</code> list is the complete list of what any other module may reach,
+qualified or not. A declaration left out of it is private to the module.</p>
+<p><strong>Known gap:</strong> it is not enforced. <code>Module::to_interface</code> builds the view other modules
+import against out of every top-level declaration, ignoring the <code>exposing</code> list entirely,
+so nothing is private today — <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-9.md"><code>docs/tickets/bug-9.md</code></a>. The
+importing block below should fail to resolve <code>Widget.hidden</code>.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=privacy</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label = Small
+
+hidden : Size
+hidden = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=privacy</span></div><pre><code>module Main exposing (x)
+
+import Widget
+
+x : Widget.Size
+x = Widget.hidden</code></pre></div>
+<p><strong>Known gap:</strong> the reverse also happens — a value the module <em>does</em> expose can fail to
+cross the boundary. A top-level declaration written without a type annotation is dropped
+when the module's interface is built, so importers cannot see it at all, and the
+diagnostic they get says the name does not exist rather than saying why
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-14.md"><code>docs/tickets/bug-14.md</code></a>). Annotating <code>label</code> in the first block
+below makes the second compile. The first block is not valid Zelkova either way: an
+exposed declaration <a href="types.html#an-exposed-declaration-must-be-annotated">must be annotated</a>,
+and enforcing that rule is what removes this gap — the error moves to the declaration that
+failed to describe itself, instead of landing on the importer.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=unannotated</span></div><pre><code>module Widget exposing (label)
+
+label = 1</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span><span class="zel-package">package=unannotated</span></div><pre><code>module Main exposing (x)
+
+import Widget
+
+x = Widget.label</code></pre></div>
+<h2 id="imports">Imports</h2>
+<p>An <code>import</code> declaration names a module and, optionally, an alias for it and a list of
+names to bring into scope unqualified:</p>
+<pre><code class="language-text">import &lt;ModuleName&gt; [as &lt;Alias&gt;] [exposing (&lt;list&gt;)]
+</code></pre>
+<p>The order is fixed: the module name, then <code>as</code>, then <code>exposing</code>. Writing them the other
+way round is a syntax error, so there is one shape for an <code>import</code> line and a reader
+scanning a column of them is never re-reading one:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Main exposing (x)
+
+import Widget exposing (label) as W
+
+x = 1</code></pre></div>
+<p>An alias is a single uppercase-initial identifier. It has no dots in it — an alias
+introduces one new prefix, and a dotted one would introduce a prefix that looks like a
+module name of its own:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Main exposing (x)
+
+import Widget as W.Inner
+
+x = 1</code></pre></div>
+<p>Every import brings the imported module's exposed names into scope <strong>qualified</strong> — under
+the module's name, or under its alias when it has one:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=qualified</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=qualified</span></div><pre><code>module Main exposing (x)
+
+import Widget
+
+x : Widget.Size
+x = Widget.label</code></pre></div>
+<p>An alias <strong>replaces</strong> the module's own name rather than adding to it. After
+<code>import Widget as W</code>, <code>W.label</code> resolves and <code>Widget.label</code> does not — there is one
+spelling for one module in one file:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=alias</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=alias</span></div><pre><code>module Main exposing (x)
+
+import Widget as W
+
+x : W.Size
+x = W.label</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span><span class="zel-package">package=alias</span></div><pre><code>module Other exposing (y)
+
+import Widget as W
+
+y = Widget.label</code></pre></div>
+<h3 id="where-imports-go">Where imports go</h3>
+<p><strong>Not implemented:</strong> every <code>import</code> in a file sits between the module header and the
+first other declaration. An import after a value, type or <code>infix</code> declaration is a syntax
+error. The list of what a module depends on is a property of the module rather than of
+the point it is written at.</p>
+<p><strong>Known gap:</strong> the grammar treats <code>import</code> as an ordinary top-level declaration and
+accepts one anywhere among the others, which is what the second block below shows
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-5.md"><code>docs/tickets/lang-5.md</code></a>).</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=position</span></div><pre><code>module Widget exposing (Size)
+
+type Size
+  = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=position</span></div><pre><code>module Main exposing (x)
+
+x = 1
+
+import Widget</code></pre></div>
+<h3 id="what-an-imports-exposing-list-does">What an import's <code>exposing</code> list does</h3>
+<p>An import's <code>exposing</code> list takes the same four entry forms as a module header, and does
+one extra thing: it makes those names available <strong>unqualified</strong>, in addition to the
+qualified spelling every import already provides.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=unqualified</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=unqualified</span></div><pre><code>module Main exposing (x)
+
+import Widget exposing (Size, label)
+
+x : Size
+x = label</code></pre></div>
+<p>Without the entry, the qualified spelling is the only one:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=unqualified2</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label = Small</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span><span class="zel-package">package=unqualified2</span></div><pre><code>module Main exposing (x)
+
+import Widget
+
+x : Widget.Size
+x = label</code></pre></div>
+<p><code>Size</code> and <code>Size(..)</code> differ on the import side exactly as they do on the export side:
+the first brings the type's name into scope, the second brings its constructors too.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=variants</span></div><pre><code>module Widget exposing (Size(..))
+
+type Size
+  = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=variants</span></div><pre><code>module Main exposing (x)
+
+import Widget exposing (Size(..))
+
+x : Size
+x = Small</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariantNotFound</span><span class="zel-package">package=variants</span></div><pre><code>module Other exposing (y)
+
+import Widget exposing (Size)
+
+y : Size
+y = Small</code></pre></div>
+<p>Constructors are the only thing the bare entry gives up. The type's name is in scope
+unqualified, so a module can name it in its own signatures while leaving every way of
+building one to <code>Widget</code>:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=variants</span></div><pre><code>module Shape exposing (grow)
+
+import Widget exposing (Size)
+
+grow : Size -&gt; Size
+grow s =
+  s</code></pre></div>
+<p><strong>Known gap:</strong> that block states the rule rather than testing it. It compiles unchanged
+with the <code>exposing (Size)</code> dropped, because neither the entry nor the annotation is
+checked today (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-16.md"><code>docs/tickets/bug-16.md</code></a>, which covers both sites
+and is the gap described further down).</p>
+<p>An <code>exposing (..)</code> on an import brings in everything the module exposes, unqualified. A
+bare <code>import Widget</code> with no <code>exposing</code> clause brings in nothing unqualified, and means
+the same as <code>import Widget exposing ()</code>.</p>
+<p>An entry naming something the imported module does not expose is an error, and the
+diagnostic points at the entry rather than at the whole <code>import</code> line:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=missing-entry</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label = Small</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:EnvironmentErrors</span><span class="zel-package">package=missing-entry</span></div><pre><code>module Main exposing (x)
+
+import Widget exposing (missing)
+
+x = 1</code></pre></div>
+<p><strong>Known gap:</strong> that check is done for value entries and operator entries, and for
+<code>Size(..)</code>, but not for a bare <code>Size</code>. An opaque-type entry naming a type that does not
+exist is accepted, and a type by that name is invented on the spot — so the mistake
+surfaces later, as a confusing type error, or not at all
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-16.md"><code>docs/tickets/bug-16.md</code></a>).</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=missing-type</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=missing-type</span></div><pre><code>module Main exposing (x)
+
+import Widget exposing (Missing)
+
+x = 1</code></pre></div>
+<h3 id="operators">Operators</h3>
+<p>An operator has no qualified spelling: <code>Widget.(+)</code> is a syntax error, and <code>Widget.+</code> is
+not a qualified operator either — it is the constructor <code>Widget</code> and an operator named
+<code>.+</code>. So an operator entry in an import's <code>exposing</code> list is the only way to use one from
+another module. Naming the operator is enough on its own: the function that its <code>infix</code>
+declaration points at need not be in scope.</p>
+<p><strong>Known gap:</strong> it does depend on that function being in scope today. An operator is
+resolved by looking up the name its <code>infix</code> declaration gives, unqualified, in the
+<em>importing</em> module — so an operator entry that does not also bring in <code>add</code> leaves <code>+</code>
+unresolvable, and the error names <code>+</code> when the name that actually failed to resolve is
+<code>add</code> (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/bug-15.md"><code>docs/tickets/bug-15.md</code></a>). <code>exposing (..)</code> happens to work,
+because it drags the backing function in as well; the third block below is that.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=operators</span></div><pre><code>module Widget exposing (Size, one, (+), add)
+
+type Size
+  = Small
+
+one : Size
+one = Small
+
+infix left 6 (+) = add
+
+add : Size -&gt; Size -&gt; Size
+add a b =
+  a</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span><span class="zel-package">package=operators</span></div><pre><code>module Main exposing (x)
+
+import Widget exposing (Size, one, (+))
+
+x : Size
+x = one + one</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=operators</span></div><pre><code>module Other exposing (y)
+
+import Widget exposing (..)
+
+y : Size
+y = one + one</code></pre></div>
+<h3 id="two-imports-exposing-the-same-name">Two imports exposing the same name</h3>
+<p>A name brought in unqualified by two different imports is not an error at the <code>import</code>
+line — it becomes one at each place it is <em>used</em>, and only there. Importing two modules
+that both expose <code>label</code> is fine right up until something writes <code>label</code>.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=ambiguous</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=ambiguous</span></div><pre><code>module Gadget exposing (label)
+
+label : Int
+label = 1</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:AmbiguousVariables</span><span class="zel-package">package=ambiguous</span></div><pre><code>module Main exposing (x)
+
+import Widget exposing (label)
+import Gadget exposing (label)
+
+x = label</code></pre></div>
+<p>The qualified spelling is unaffected: <code>Widget.label</code> and <code>Gadget.label</code> both still
+resolve, and are the fix.
+<a href="name-resolution.html#ambiguous-rather-than-unresolved">Name resolution and scoping</a> is where
+the general rule lives, including what shadows what.</p>
+<h3 id="one-module-one-import">One module, one import</h3>
+<p>A module may be imported at most once in a file, an alias may name at most one module,
+and an alias may not collide with the name of another imported module. Each of the three
+would otherwise let one prefix mean two things at once.</p>
+<p><strong>Not implemented:</strong> none of the three is checked at the <code>import</code> line
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-7.md"><code>docs/tickets/lang-7.md</code></a>), and the two that quietly succeed are
+the worse pair. An alias colliding with another imported module's name merges the two
+namespaces, so <code>Gadget.</code> in the fourth block below reaches into both <code>Widget</code> and
+<code>Gadget</code> and nothing says so — that block is tagged <code>expect=ok</code> for exactly that reason.</p>
+<p><strong>Known gap:</strong> importing the same module twice does fail today, but not as a duplicate
+import. Every one of that module's names is registered twice over, so each <em>use</em> of one
+is reported as ambiguous between two modules that happen to be the same module — the
+third block below is tagged for an error whose message names <code>Widget</code> twice, at the use
+site rather than at the <code>import</code> line.</p>
+<p><strong>Known gap:</strong> a module importing itself is rejected too, and also for the wrong reason:
+a module's own interface does not exist while it is being checked, so <code>import Alone</code>
+inside <code>module Alone</code> is reported as a module that cannot be found. The last block is
+tagged for that. Both are <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-7.md"><code>lang-7</code></a>.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=duplicates</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label = Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=duplicates</span></div><pre><code>module Gadget exposing (Size, volume)
+
+type Size
+  = Loud
+
+volume : Size
+volume = Loud</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:AmbiguousVariables</span><span class="zel-package">package=duplicates</span></div><pre><code>module Main exposing (x)
+
+import Widget
+import Widget
+
+x = Widget.label</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=duplicates</span></div><pre><code>module Other exposing (y, z)
+
+import Widget as Gadget
+import Gadget
+
+y = Gadget.label
+
+z = Gadget.volume</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:EnvironmentErrors</span></div><pre><code>module Alone exposing (x)
+
+import Alone
+
+x = 1</code></pre></div>
+<h3 id="imports-may-not-form-a-cycle">Imports may not form a cycle</h3>
+<p>The <code>import</code> declarations of a package form a graph, and that graph must be acyclic. Two
+modules that import each other, or any longer loop, is an error reported before any of
+the modules involved is checked — there is no order in which they could be, since each
+needs the other's exposed types to make sense of its own.</p>
+<p>The error names every module on the cycle and points at the <code>import</code> line that forms each
+edge, so breaking it is a matter of picking one of those lines.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=dependency-error</span><span class="zel-package">package=cycle</span></div><pre><code>module Left exposing (x)
+
+import Right
+
+x = 1</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=dependency-error</span><span class="zel-package">package=cycle</span></div><pre><code>module Right exposing (y)
+
+import Left
+
+y = 2</code></pre></div>
+<h2 id="the-default-imports">The default imports</h2>
+<p><strong>Not implemented:</strong> every module behaves as though it began with these eight imports,
+whether they are written or not:</p>
+<pre><code class="language-text">import Basics exposing (..)
+import List exposing (List)
+import Maybe exposing (Maybe(..))
+import Result exposing (Result(..))
+import Task exposing (Task)
+import Char
+import String
+import Tuple
+</code></pre>
+<p>So <code>Int</code>, <code>Bool</code>, <code>True</code>, <code>+</code> and <code>&lt;|</code> are in scope in every module with nothing written
+at the top of it, <code>Maybe</code> and <code>Just</code> likewise, and <code>List.map</code>, <code>Char.toUpper</code> and
+<code>String.length</code> are reachable under their qualified names. Nothing else is: a module that
+wants <code>Dict</code> imports it.</p>
+<p>The list is chosen so that the types appearing in ordinary type annotations are always
+writable. <code>Maybe</code> and <code>Result</code> are exposed with their constructors because matching on
+them is the ordinary way to use them, and a qualified <code>Maybe.Just</code> in every <code>case</code> branch
+would spell out a module name on one of the most common patterns in the language.
+<code>List</code> is exposed as a bare type because its module's functions read better qualified —
+<code>List.map</code>, not <code>map</code>. <a href="evaluation-semantics.html#effects"><code>Task</code></a> is exposed the same way and for
+the same reason, and it is on the list because <a href="packages.html#programs"><code>main</code></a> names it in an
+annotation every program has to write.
+<a href="evaluation-semantics.html#an-effect-that-can-fail"><code>Failure</code></a> does not come with it: the modules
+naming that type are the ones declaring or consuming an
+<a href="interop.html#an-effectful-facade">effectful facade</a>, and a module that names it imports it.
+Writing any of these imports out explicitly is allowed and changes nothing.</p>
+<p><strong>Known gap:</strong> none of it exists. Every module resolves only what it declares and what it
+imports by hand, which is why <code>std/core</code>'s modules all begin with <code>import Basics</code>
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-8.md"><code>docs/tickets/lang-8.md</code></a>). The block below is pinned on the
+error today's compiler gives, not on a bare rejection, so that it goes red whichever way
+the ticket lands.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span></div><pre><code>module Main exposing (x)
+
+x = 1 + 2</code></pre></div>
+<h2 id="packages">Packages</h2>
+<p>A module belongs to exactly one package, and its name is unique within it. An <code>import</code>
+names a module of the package being compiled or a public module of one of that package's
+direct dependencies — the second under that dependency's namespace, so the name written is
+longer than the name the module has at home. What a package is, which of its modules it keeps
+private, how its dependencies are declared, and how a namespace is derived and when a
+depending package may drop one are the subject of
+<a href="packages.html">Packages and source layout</a>.</p>
+
+</main>
+</div>
+</body>
+</html>

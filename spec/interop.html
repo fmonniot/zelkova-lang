@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interop — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-interop" class="sidebar-toggle-input">
+<label for="sidebar-toggle-interop" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html" class="current">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#a-facade-names-a-boundary-not-a-backend">A facade names a boundary, not a backend</a></li>
+<li class="nested"><a href="#the-javascript-companion">The JavaScript companion</a></li>
+<li class="nested"><a href="#the-webassembly-companion">The WebAssembly companion</a></li>
+<li><a href="#which-types-may-cross-the-boundary">Which types may cross the boundary</a></li>
+<li class="nested"><a href="#a-union-crosses-as-a-tagged-value">A union crosses as a tagged value</a></li>
+<li class="nested"><a href="#what-a-facade-signature-may-not-name">What a facade signature may not name</a></li>
+<li><a href="#an-effectful-facade">An effectful facade</a></li>
+<li><a href="#an-unsafe-facade">An unsafe facade</a></li>
+<li><a href="#facade-constants">Facade constants</a></li>
+<li><a href="#testing-a-companion">Testing a companion</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="foreign-interoperability">Foreign interoperability</h1>
+<p>A package reaches code the compiler did not compile through a <strong>facade</strong>: a module marked
+<code>foreign</code> after the <code>module</code> keyword. In a facade only signatures are accepted — no bodies, no
+infix declarations, no type declarations. A signature may be a function's or, as
+<a href="#facade-constants">below</a>, a constant's. Only
+<a href="#which-types-may-cross-the-boundary">a subset of the Zelkova types</a> may appear as a parameter
+or return type in one of those signatures.</p>
+<p>This is the <strong>only</strong> way out of Zelkova. There is no privileged escape hatch the standard
+library may use and a user's package may not: a standard-library module that needs a foreign
+primitive declares a facade in the same syntax any user package would.</p>
+<p>The idea is close to TypeScript's type definitions, with a stricter rule about which types a
+signature may name.</p>
+<p>A facade is only usable from inside the package that declares it. The module name is not
+exposed to any other package.</p>
+<p>A facade declares an <strong>effect</strong> unless it says otherwise. Its result type is
+<code>Task (Result Failure a)</code>, its companion may do anything, and the compiler wraps the call
+(<a href="#an-effectful-facade">An effectful facade</a>). Writing <code>unsafe</code> before a signature removes the
+<code>Task</code> and leaves a plain function type, which its author promises is pure and total
+(<a href="#an-unsafe-facade">An <code>unsafe</code> facade</a>).</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Prim exposing
+  ( fdiv
+  , idiv
+  )
+
+unsafe fdiv : Float -&gt; Float -&gt; Float
+unsafe idiv : Int -&gt; Int -&gt; Int</code></pre></div>
+<p>Two signatures rather than one, because a facade names the types the code behind it really
+handles: the division behind <code>fdiv</code> divides, the one behind <code>idiv</code> truncates.</p>
+<p><strong>Not implemented:</strong> <code>foreign</code> is not a word the grammar knows. The modifier is spelled
+<code>javascript</code> today (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-54.md"><code>LANG-54</code></a>), so every block below that declares a
+facade fails to parse on its header.</p>
+<h2 id="a-facade-names-a-boundary-not-a-backend">A facade names a boundary, not a backend</h2>
+<p>Zelkova compiles to more than one target, and a facade is written once for all of them. What
+varies is the <strong>companion</strong>: a file of the same base name, sitting beside the facade in the same
+directory, holding the code the signatures describe. There is one companion per target.</p>
+<pre><code class="language-text">src/
+  Core/
+    Prim.zel     module foreign Core.Prim
+    Prim.mjs     the JavaScript behind it
+    Prim.wasm    the WebAssembly component behind it
+</code></pre>
+<p>A build reads the companion for the target it is building and ignores the others. Neither the
+facade nor anything importing it names a target, so a module written above a facade — <code>Basics</code>,
+say — is compiled for every target unchanged.</p>
+<p><strong>One signature list serves every target.</strong> Both companions above export <code>fdiv</code> and <code>idiv</code>, with
+the types <code>Core.Prim</code> declares for them. A facade whose exports cannot be provided on some
+target is not one facade: it splits into one facade per target, each shipping the companion it
+has.</p>
+<p><strong>A facade with no companion for the target being built is an error</strong>, and the error names the
+facade and the target. A facade that ships one companion is a package that builds for one
+target — a facade over a browser API, say.</p>
+<h3 id="the-javascript-companion">The JavaScript companion</h3>
+<p>An ES module. Its exports take a <strong>plain parameter list</strong>: a Zelkova function of two arguments
+is backed by a JavaScript function of two arguments, called directly. There is no
+curried-wrapper convention to observe on the JavaScript side — currying is the compiler's
+business.</p>
+<h3 id="the-webassembly-companion">The WebAssembly companion</h3>
+<p>A <a href="https://component-model.bytecodealliance.org/design/wit.html">component</a>, whose exported
+interface is written in WIT. Its exports take a plain parameter list on the same terms, and each
+is declared with the WIT spelling of the Zelkova type in its signature.</p>
+<h2 id="which-types-may-cross-the-boundary">Which types may cross the boundary</h2>
+<p>A type may be named in a facade signature when <strong>every target can hold the code behind the
+facade to it</strong>. Two targets means two mechanisms, and a type is admitted when it has both.</p>
+<ul>
+<li><strong>JavaScript needs a predicate</strong>: a piece of JavaScript that decides, from a value alone,
+whether that value belongs to that type. A value the companion hands back is run through the
+predicate of the type its signature declares, on every crossing.</li>
+<li><strong>WebAssembly needs a spelling</strong>: a WIT type that means what the Zelkova type means. The
+component's declared interface is checked against the facade once, when the component is
+loaded, and nothing is checked per call.</li>
+</ul>
+<p>A value that fails a check becomes <a href="evaluation-semantics.html#an-effect-that-can-fail"><code>Err (Malformed ..)</code></a> out of an <a href="#an-effectful-facade">effectful
+facade</a>, and <a href="evaluation-semantics.html#when-a-program-aborts">aborts the
+program</a> out of an <a href="#an-unsafe-facade"><code>unsafe</code></a>
+one, which has no result type to carry it.</p>
+<p>A facade has no body the compiler can read, so its annotation is enforced by the target rather
+than while compiling. Four of the
+<a href="types.html#the-forms-of-a-type-expression">six forms a type expression can take</a> have both
+mechanisms:</p>
+<table><thead><tr><th>Type</th><th>What its JavaScript predicate decides</th><th>What its WIT spelling is</th></tr></thead><tbody>
+<tr><td><code>Int</code></td><td>the value is a number, and a whole one the <a href="evaluation-semantics.html#numbers">32-bit range</a> holds</td><td><code>s32</code></td></tr>
+<tr><td><code>Float</code></td><td>the value is a number</td><td><code>f64</code></td></tr>
+<tr><td><code>Bool</code></td><td>the value is a boolean</td><td><code>bool</code></td></tr>
+<tr><td><code>Char</code></td><td>the value is a string of one character</td><td><code>char</code></td></tr>
+<tr><td><code>String</code></td><td>the value is a string</td><td><code>string</code></td></tr>
+<tr><td><code>()</code></td><td>the value is the one value that type has</td><td>nothing: no parameter, and no result</td></tr>
+<tr><td>A tuple</td><td>the value is an array of the tuple's length, each element satisfying its component's predicate</td><td><code>tuple</code> of its components' spellings</td></tr>
+<tr><td>A record</td><td>the value is an object with exactly the record's fields, each field satisfying its own predicate</td><td>a <code>record</code> of the same fields</td></tr>
+<tr><td>A list</td><td>the value is an array, every element of which satisfies the element type's predicate</td><td><code>list</code> of the element's spelling</td></tr>
+<tr><td>A union type, applied to admitted types</td><td>the value carries one of that type's constructor names, and arguments satisfying that constructor's predicates</td><td>a <code>variant</code>, one case per constructor</td></tr>
+</tbody></table>
+<p>A signature may name any of those, in any position an argument or a result may take.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Colour exposing
+  ( rgb
+  , luminance
+  )
+
+rgb : Int -&gt; (Int, Int, Int)
+luminance : (Int, Int, Int) -&gt; Float</code></pre></div>
+<p>JavaScript has one number type where Zelkova has two, and the <code>Int</code> predicate is what separates
+them. WIT has both and needs no separating.</p>
+<p>The two mechanisms cost different things. A predicate walks the whole value, so a facade taking
+a list of a thousand tuples checks a thousand tuples on the way in, once per crossing; the same
+facade on a WebAssembly target checks nothing at the call, because the interface was checked
+when the component loaded.</p>
+<p><strong>Not implemented:</strong> <code>String</code> has no <a href="lexical-structure.html#strings">literal syntax</a> yet,
+<a href="types.html#the-unit-type"><code>()</code> is not recognised</a> in either position, records have no brace token
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-47.md"><code>LANG-47</code></a>) and lists no literal production
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-44.md"><code>LANG-44</code></a>) — so four of those rows are about types a program cannot
+write today. Both constructs are specified, in <a href="records.html">Records</a> and <a href="lists.html">Lists</a>, and
+neither chapter publishes an encoding: what a record and a list look like across either boundary
+belongs to code generation. Nothing runs a predicate or reads a WIT interface either, because
+code generation has not started — <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/gen-2.md"><code>GEN-2</code></a> is the ticket that emits them.</p>
+<h3 id="a-union-crosses-as-a-tagged-value">A union crosses as a tagged value</h3>
+<p>A companion may receive a union value and construct one, so the two sides have to agree on its
+shape.</p>
+<p>In JavaScript a union value is an <strong>object carrying the name of its constructor</strong> in a <code>$</code> field,
+with that constructor's arguments in declaration order in fields named <code>a</code>, <code>b</code>, <code>c</code> and so on.
+<code>Red</code> is <code>{$: "Red"}</code>; <code>Rgb 255 0 0</code> is <code>{$: "Rgb", a: 255, b: 0, c: 0}</code>. The predicate reads
+<code>$</code>, checks it against the declaration's constructors, and checks each argument against the
+predicate of the type that constructor declares for it.</p>
+<p>In WebAssembly it is a <code>variant</code> with one case per constructor, named after it, carrying that
+constructor's arguments as its payload — a <code>tuple</code> of them where there is more than one.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Palette exposing (Swatch(..))
+
+type Swatch
+  = Named Int
+  | Rgb Int Int Int</code></pre></div><div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Palette exposing
+  ( toHex
+  )
+
+import Palette exposing (Swatch(..))
+
+toHex : Swatch -&gt; Int</code></pre></div>
+<p>A constructor's <strong>name</strong> is part of what a companion depends on, on either target, so renaming
+one breaks every companion that mentions it.</p>
+<p>A union may be recursive, and the JavaScript predicate follows it: the walk descends into each
+argument and terminates because a Zelkova value is immutable and can hold no cycle.</p>
+<p><strong>Not implemented:</strong> no value is encoded, no predicate is run and no interface is read, because
+code generation has not started; both encodings above are what
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/gen-2.md"><code>GEN-2</code></a> emits.</p>
+<h3 id="what-a-facade-signature-may-not-name">What a facade signature may not name</h3>
+<p>Two of the six forms can be enforced by neither target, and a facade signature may name neither.</p>
+<p>A <strong>type variable</strong> excludes no value, so there is nothing for a predicate to decide, and WIT has
+no variable to spell it with. A facade is therefore monomorphic; polymorphism lives in ordinary
+Zelkova above it.</p>
+<p>A <strong>function type</strong> is rejected wherever it appears. <code>typeof x === 'function'</code> decides that a
+value is <em>some</em> function, not that it is the one declared, and a component's interface has no
+function type to name either.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Utils exposing
+  ( equal
+  )
+
+equal : a -&gt; a -&gt; Bool</code></pre></div><div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.List exposing
+  ( count
+  )
+
+count : (Int -&gt; Bool) -&gt; Int -&gt; Int</code></pre></div>
+<p><strong>Known gap:</strong> neither signature is admitted — <code>equal</code> names a type variable, <code>count</code> takes a
+function — and nothing rejects either. A facade annotation is resolved exactly as any other
+annotation is, so every type a normal module may write, a facade may write.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-43.md"><code>LANG-43</code></a> is the check. Both blocks fail on the modifier today rather
+than on the type, so both go red when <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-54.md"><code>LANG-54</code></a> lands and stay red until
+<code>LANG-43</code> follows it.</p>
+<p><strong>Not implemented:</strong> a class constraint is rejected on the same grounds, <code>Comparable a =&gt; a</code>
+being a signature over <code>a</code>. A constrained function is specialised, and a facade has no body to
+specialise.
+<a href="type-classes.html#a-constrained-function-may-not-be-a-foreign-facade">Type classes</a> is the
+chapter.</p>
+<h2 id="an-effectful-facade">An effectful facade</h2>
+<p>A clock, a file and a socket are what a program reaches foreign code for, and none of them is a
+function of its arguments. So a facade declares an effect by default: its companion may read,
+write, wait and fail.</p>
+<p><strong>A facade signature declares an effect, and its result type must be <code>Task (Result Failure a)</code>.</strong>
+Any other result type is an error unless the signature is marked
+<a href="#an-unsafe-facade"><code>unsafe</code></a>, so a facade cannot declare its foreign code to be infallible by
+saying less.
+<a href="evaluation-semantics.html#an-effect-that-can-fail"><code>Failure</code></a> is the error type every one of them
+names, <code>a</code> being the only part its author chooses. It is not one of
+<a href="modules.html#the-default-imports">the default imports</a>, so a facade naming it imports it.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.File exposing (read)
+
+import Task exposing (Failure)
+
+read : String -&gt; Task (Result Failure String)</code></pre></div>
+<p>A <code>Task</code> never crosses the boundary, and neither does the <code>Result</code>. The companion takes the
+arguments the signature names and returns the payload — a string, for <code>read</code>:</p>
+<pre><code class="language-js">export async function read(path) {
+  return await fs.promises.readFile(path, "utf8");
+}
+</code></pre>
+<p>That companion throws when the file is missing, and it is a correct companion. The <code>Result</code> is
+built on the Zelkova side, by the wrapper the compiler puts around the call: it catches what the
+companion throws, checks what the companion returns against <code>a</code>, and yields <code>Ok</code> for a value that
+passes, <code>Err (Threw ..)</code> for a failure the companion raised, and <code>Err (Malformed ..)</code> for a value
+that does not match.</p>
+<p>What counts as raising a failure is the target's own word for it: a thrown exception or a
+rejected promise in JavaScript, <a href="evaluation-semantics.html#when-a-program-aborts">a trap</a> in
+WebAssembly. Both arrive as <code>Err (Threw ..)</code>.</p>
+<p><code>a</code> is the type the companion really hands back: it is checked at the boundary like any other
+returned value, and it may be neither a type variable nor a function type.</p>
+<p>A companion whose result is not ready at once returns it the way its target returns a value
+later, and the check runs on the value that arrives. A result that never arrives is a <code>Task</code> that
+never produces a value, which is the second of the <a href="evaluation-semantics.html#two-outcomes">two
+outcomes</a> rather than a failure.</p>
+<p>A <a href="#facade-constants">facade constant</a> may name a <code>Task</code> too, and it is the one constant whose
+JavaScript companion is a function: the effect has to happen each time the <code>Task</code> is run, and a
+value exported once happens once.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Time exposing (now)
+
+import Task exposing (Failure)
+
+now : Task (Result Failure Int)</code></pre></div>
+<pre><code class="language-js">export function now() {
+  return Date.now();
+}
+</code></pre>
+<p>An effectful facade is a facade, so it is <a href="packages.html#what-a-package-exposes">not importable outside the package that declares
+it</a>. A package offers an effect to its dependents the way it
+offers any other foreign-backed value: an ordinary module imports the facade and re-declares what
+it offers.</p>
+<p><strong><code>Task</code> may appear only as the whole of a result type.</strong> Not as an argument; and not nested
+inside another type.</p>
+<p><strong>A failure the caller is meant to tell apart from a broken companion goes in the payload.</strong>
+<code>Failure</code> reports that the foreign code broke and says nothing about what the effect was for. A
+<code>read</code> separating a missing file from a broken companion declares <code>String -&gt; Task (Result Failure (Result IoError String))</code> — two <code>Result</code>s, collapsed into one by the module that
+<a href="packages.html#what-a-package-exposes">publishes <code>read</code></a> to other packages.</p>
+<p><strong>Not implemented:</strong> neither block above parses, on two counts. A type argument must be a bare
+name today, so the parentheses in <code>Task (Result Failure String)</code> are a syntax error
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-9.md"><code>LANG-9</code></a>) — the same gap that rejects <code>Maybe (Maybe Int)</code> and every
+other nested type — and the modifier is <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-54.md"><code>LANG-54</code></a>'s. Nothing declares
+<code>Task</code> or <code>Failure</code> either, no wrapper is generated, and nothing is checked at either boundary
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/gen-1.md"><code>GEN-1</code></a>, <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/gen-2.md"><code>GEN-2</code></a>); no check holds a facade to the
+result type above, which is <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-43.md"><code>LANG-43</code></a>'s.</p>
+<h2 id="an-unsafe-facade">An <code>unsafe</code> facade</h2>
+<p><strong><code>unsafe</code> before a signature declares a function rather than an effect.</strong> The result type is
+then any <a href="#which-types-may-cross-the-boundary">admitted type</a>, the <code>Task</code> and its <code>Result</code> are
+gone, and no wrapper stands between the caller and the companion.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Basics exposing (idiv)
+
+unsafe idiv : Int -&gt; Int -&gt; Int</code></pre></div>
+<p>The word is a promise its author makes to the compiler, covering the two things the compiler
+cannot check and does not try to:</p>
+<ul>
+<li><strong>The companion is a function of its arguments.</strong> The same arguments give the same result, and
+calling it reads nothing, writes nothing and sends nothing anywhere — the same
+<a href="evaluation-semantics.html#purity-and-the-foreign-boundary">purity</a> an ordinary Zelkova
+expression keeps.</li>
+<li><strong>The companion returns.</strong> It does not fail, and it hands back a value rather than something
+that produces one later: work still unfinished when the call returns cannot be declared this
+way.</li>
+</ul>
+<p>A companion that breaks the first computes wrong answers and nothing reports it. One that breaks
+the second <a href="evaluation-semantics.html#when-a-program-aborts">aborts the program</a>.</p>
+<p><strong><code>unsafe</code> removes the <code>Task</code>, not the check.</strong> The return value is held to its declared type
+exactly as any other crossing is, and a value that fails
+<a href="evaluation-semantics.html#when-a-program-aborts">aborts</a>.</p>
+<p><strong>Not implemented:</strong> the block does not parse. <code>unsafe</code> is an ordinary identifier today, so
+<code>unsafe idiv : Int -&gt; Int -&gt; Int</code> reads as two names where the grammar expects one
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-53.md"><code>LANG-53</code></a>), the modifier is <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-54.md"><code>LANG-54</code></a>'s, and
+nothing holds an unmarked facade to a <code>Task</code> result either.</p>
+<h2 id="facade-constants">Facade constants</h2>
+<p>A facade signature may also declare a constant — a type with no arrow, taking no arguments.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.Basics exposing
+  ( pi
+  , e
+  )
+
+pi : Float
+e : Float</code></pre></div>
+<p>The plain-parameter-list rule above has a zero-argument case, and the two targets spell it
+differently. A JavaScript companion exports the value itself — unless the constant names a
+<code>Task</code>, which is <a href="#an-effectful-facade">the one case</a> where it exports a function:</p>
+<pre><code class="language-js">export const pi = Math.PI;
+export const e = Math.E;
+</code></pre>
+<p>A component exports only functions, so a WebAssembly companion exports one of no arguments
+returning the value, and its WIT declares that.</p>
+<p>Evaluation is <a href="evaluation-semantics.html#evaluation-is-strict">strict</a>, and an ordinary
+parameterless binding is placed in an evaluation order that reads off which bindings it
+mentions — see
+<a href="evaluation-semantics.html#a-binding-with-no-parameters-is-evaluated-once">A binding with no parameters is evaluated once</a>.
+A facade constant has no Zelkova body to place in that order: it names a foreign binding
+directly, so it is evaluated on whatever schedule the target gives that — when the <code>.mjs</code> module
+exporting it is evaluated, or when the component's export is called — and nothing here promises
+it happens once, lazily, or at any particular point relative to the rest of the program.</p>
+<p><strong>Not implemented:</strong> the block fails on its modifier (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-54.md"><code>LANG-54</code></a>), which
+is the whole of what stands between it and compiling: a constant signature is an annotation with
+no body, which a facade already accepts.</p>
+<h2 id="testing-a-companion">Testing a companion</h2>
+<p>A companion is target code, and so is its test: a JavaScript assertion about a JavaScript
+function. It reaches Zelkova the way any other foreign code does — as a facade — and sits under
+<a href="packages.html#tests"><code>tests/</code></a>, the root a dependent never compiles.</p>
+<pre><code class="language-text">src/
+  Core/
+    Prim.zel        module foreign Core.Prim
+    Prim.mjs
+    Prim.wasm
+tests/
+  Core/
+    PrimChecks.zel  module foreign Core.PrimChecks
+    PrimChecks.mjs
+    PrimChecks.wasm
+    PrimTest.zel    the Test values a runner finds
+</code></pre>
+<p>Everything <a href="#a-facade-names-a-boundary-not-a-backend">a facade is</a> holds of one under <code>tests/</code>:
+signatures and no bodies, one companion per target,
+<a href="#which-types-may-cross-the-boundary">the admitted types</a> in every position, and the same error
+when the target being built has no companion. The
+<a href="packages.html#source-roots">two roots share one set of module names</a>, so a facade that checks
+<code>Core.Prim</code> takes a different name.</p>
+<p><strong>A test facade declares an effect, and is never <a href="#an-unsafe-facade"><code>unsafe</code></a>.</strong> A failed
+assertion is a failure the companion raised, and <a href="#an-effectful-facade">the wrapper</a> around an
+effectful call turns that into <code>Err (Threw ..)</code>, which the module above reports as a failing
+test. The same assertion behind an <code>unsafe</code> signature
+<a href="evaluation-semantics.html#when-a-program-aborts">aborts the program</a> instead of failing one test.</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module foreign Core.PrimChecks exposing
+  ( idivTruncates
+  , idivRefusesAFraction
+  )
+
+import Task exposing (Failure)
+
+idivTruncates : Task (Result Failure ())
+idivRefusesAFraction : Task (Result Failure ())</code></pre></div>
+<p>Each is a <a href="#facade-constants">facade constant naming a <code>Task</code></a>, so its JavaScript companion
+exports a function, and the target's own assertion library raises:</p>
+<pre><code class="language-js">import assert from "node:assert/strict";
+import { idiv } from "../../src/Core/Prim.mjs";
+
+export function idivTruncates() {
+  assert.equal(idiv(7, 2), 3);
+}
+
+export function idivRefusesAFraction() {
+  assert.throws(() =&gt; idiv(7.5, 2));
+}
+</code></pre>
+<p><strong>A test companion may import the companion it checks as a module of the target</strong>, which is what
+the second export above does: <code>Core.Prim</code> is reached as a <code>.mjs</code> file, with no boundary between
+them. A value crossing a boundary is checked against the type its signature declares, so a test
+written <em>above</em> <code>Core.Prim</code> can hand <code>idiv</code> only what <code>Int</code> admits. What a companion does with a
+value outside that set is a question only the target can ask it.</p>
+<p>A runner finds <a href="packages.html#what-a-test-is">a value of type <code>Test</code> a module under <code>tests/</code>
+exposes</a>, so <code>Core.PrimTest</code> imports the facade and exposes one per
+check.</p>
+<p><strong>Not implemented:</strong> none of this runs. The <code>zel</code> block fails on its modifier
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-54.md"><code>LANG-54</code></a>) and on the parentheses in its result type
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-9.md"><code>LANG-9</code></a>), and <a href="types.html#the-unit-type"><code>()</code> is not recognised</a> in
+either position. A package has one source root and no notion of a test
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-15.md"><code>LANG-15</code></a>), nothing declares <code>Task</code> or <code>Failure</code>, no wrapper is
+generated around an effectful call (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/gen-1.md"><code>GEN-1</code></a>,
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/gen-2.md"><code>GEN-2</code></a>), and there is no runner to find a <code>Test</code>. Until there is, a
+companion test under <code>tests/</code> is a <code>.mjs</code> file that the target's own test runner is pointed at
+directly, and the facade half of the pair is not written yet.</p>
+
+</main>
+</div>
+</body>
+</html>

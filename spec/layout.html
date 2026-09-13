@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-layout" class="sidebar-toggle-input">
+<label for="sidebar-toggle-layout" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html" class="current">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#indentation-is-measured-in-two-space-levels">Indentation is measured in two-space levels</a></li>
+<li><a href="#tabs-are-legal-only-inside-a-comment">Tabs are legal only inside a comment</a></li>
+<li><a href="#a-blank-line-is-blank-whatever-spaces-it-holds">A blank line is blank whatever spaces it holds</a></li>
+<li><a href="#a-file-starts-at-column-1">A file starts at column 1</a></li>
+<li><a href="#top-level-declarations">Top-level declarations</a></li>
+<li><a href="#case--of">case … of</a></li>
+<li class="nested"><a href="#the-scrutinee">The scrutinee</a></li>
+<li class="nested"><a href="#the-first-branch-fixes-the-column-for-all-of-them">The first branch fixes the column for all of them</a></li>
+<li class="nested"><a href="#a-branch-body-is-deeper-than-its-pattern">A branch body is deeper than its pattern</a></li>
+<li class="nested"><a href="#nesting">Nesting</a></li>
+<li><a href="#let--in">let … in</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="layout--the-offside-rule">Layout — the offside rule</h1>
+<p>Zelkova is indentation-sensitive: where a line starts decides which construct it belongs
+to, and there are no braces to fall back on.</p>
+<p>Two kinds of thing can go wrong with a line. The leading whitespace may be malformed in
+its own right — an odd number of spaces, or a tab — in which case the error is about the
+whitespace and says so. Or the whitespace may be well-formed and the <em>column</em> wrong for
+the construct the line belongs to, in which case the error names the block that was
+broken: "the branches of a <code>case … of</code>", "the expression of a <code>case … of</code>".</p>
+<p>An error message may also name <code>open block</code> or <code>close block</code>. Those are not tokens you can
+write. They are Zelkova's block structure made explicit so that a diagnostic has something
+to point at, and seeing one in a message means a layout rule was violated rather than a
+token missed.</p>
+<h2 id="indentation-is-measured-in-two-space-levels">Indentation is measured in two-space levels</h2>
+<p>Leading whitespace on a line must be an even number of spaces. One level is two spaces.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f =
+  case f of
+    On -&gt;
+      1
+
+    Off -&gt;
+      0</code></pre></div>
+<p>An odd number of leading spaces is rejected before layout ever sees the line:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:IndentationError</span></div><pre><code>module Example exposing (f)
+
+f x =
+   1</code></pre></div>
+<h2 id="tabs-are-legal-only-inside-a-comment">Tabs are legal only inside a comment</h2>
+<p>A tab is an error anywhere in a source line except inside a comment. It does not matter
+whether the tab is indenting the line, separating two tokens, or sitting alone on a line
+that would otherwise be blank. Zelkova therefore takes no position on how wide a tab is,
+because no position in a program can depend on one.</p>
+<p>A tab in a line's leading whitespace:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:TabError</span></div><pre><code>module Example exposing (f)
+
+f x =
+	1</code></pre></div>
+<p>A tab between two tokens, well after the line's first non-whitespace character, is the
+same error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:TabError</span></div><pre><code>module Example exposing (f)
+
+f x =
+  1	+	2</code></pre></div>
+<p>So is a tab on a line that carries nothing else:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:TabError</span></div><pre><code>module Example exposing (f)
+	
+f x =
+  1</code></pre></div>
+<p>Inside a comment — from <code>--</code> to the end of the line, or between <code>{-</code> and <code>-}</code> — a tab is
+ordinary text and is accepted:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (f)
+
+-- a	tab in a line comment
+{- and a	tab in a block comment -}
+f x =
+  1</code></pre></div>
+<h2 id="a-blank-line-is-blank-whatever-spaces-it-holds">A blank line is blank whatever spaces it holds</h2>
+<p>A line holding only spaces is blank whatever its width: it neither breaks the even-width
+rule nor closes any block.</p>
+<p>The blank line in the example below is not empty: it holds three spaces, which would be an
+odd-width indentation error on any line that had a token on it. Stripping that whitespace,
+as an editor "cleaning" trailing whitespace will, turns the block into an example that
+proves nothing.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (f)
+   
+f x =
+  1</code></pre></div>
+<h2 id="a-file-starts-at-column-1">A file starts at column 1</h2>
+<p>The first <strong>token</strong> of a source file is the <code>module</code> keyword, and it sits in column 1. A
+comment may precede it — comments are consumed as part of the indentation scan, so they
+are invisible to this rule:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>-- Comments before the header are fine.
+module Example exposing (f)
+
+f x =
+  1</code></pre></div>
+<p>Whitespace before <code>module</code> is not. A leading space is invalid under this rule; a leading
+tab is invalid too, but as a tab (above).</p>
+<p>The compiler does not enforce this rule as stated. An indented file holding a single
+declaration is accepted:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>  module Example exposing (f)</code></pre></div>
+<p><strong>Known gap:</strong> that block is tagged <code>expect=ok</code> because that is what happens today, and it
+is the gap <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/err-12.md"><code>docs/tickets/err-12.md</code></a> tracks made visible. The
+language's answer is that this file is invalid.</p>
+<p>An indented file with a <em>second</em> declaration is rejected, but for a reason one step removed
+from the rule: the second declaration is what fails, not the indentation on line 1.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>  module Example exposing (f)
+
+  f x =
+    1</code></pre></div>
+<p><strong>Known gap:</strong> that block pins "an indented file with two declarations is rejected", not "a
+file must start at column 1". The diagnostic is bad in the way ERR-12 describes — the caret
+lands on the later declaration and the message asks for <code>close block</code>, which the reader
+cannot write. It is tagged <code>expect=parse-error:UnexpectedToken</code>, naming that
+wrong-but-current error on purpose: when ERR-12 lands and the message becomes a real one,
+the block goes red.</p>
+<h2 id="top-level-declarations">Top-level declarations</h2>
+<p>Every top-level declaration — <code>module</code>, <code>import</code>, a type declaration, a type annotation, a
+function definition — begins in column 1. A token in column 1 on a line after the current
+declaration started is what ends that declaration and begins the next; a declaration's own
+continuation lines must therefore be indented.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (first, second)
+
+first x =
+  1
+
+second x =
+  2</code></pre></div>
+<p>A line written in column 1 where a continuation was meant closes the declaration, and the
+parser is then handed the end of a declaration whose body never arrived.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (f)
+
+f x =
+1</code></pre></div>
+<p>There is no separator between declarations. Blank lines between them are conventional and
+carry no meaning.</p>
+<p>A declaration written as several clauses is no exception. Each clause begins in column 1
+and so ends the one before it; what makes them one declaration is that they share a name
+and stand together, which is <a href="declarations.html#the-clauses-stand-together">Declarations</a>'
+rule rather than a layout one. See also
+<a href="patterns.html#a-pattern-that-can-fail-and-one-that-cannot">Patterns</a>.</p>
+<h2 id="case--of"><code>case … of</code></h2>
+<h3 id="the-scrutinee">The scrutinee</h3>
+<p>The expression between <code>case</code> and <code>of</code> may span several lines. It opens a block of its
+own, closed by the <code>of</code>:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f =
+  case
+    f
+  of
+    On -&gt; 1
+    Off -&gt; 0</code></pre></div>
+<h3 id="the-first-branch-fixes-the-column-for-all-of-them">The first branch fixes the column for all of them</h3>
+<p>When the block of branches opens, the first token after it sets the column that every
+branch in that block must start on. That column must be strictly deeper than the column of
+the <code>case</code> keyword itself.</p>
+<p>Branches may be written one per line:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f =
+  case f of
+    On -&gt; 1
+    Off -&gt; 0</code></pre></div>
+<p>A branch that starts <strong>left</strong> of the column the first branch established is an error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:LayoutError</span></div><pre><code>module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f =
+  case f of
+      On -&gt; 1
+    Off -&gt; 0</code></pre></div>
+<p>A branch that starts <strong>right</strong> of it is equally an error: a deeper line that begins a new
+branch is a mistake, not a continuation of the branch above it:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f =
+  case f of
+    On -&gt; 1
+      Off -&gt; 0</code></pre></div>
+<p><strong>Known gap:</strong> the compiler rejects that today, but for the wrong reason and with the wrong
+caret: layout has no rule for the deeper line, so it is absorbed into the previous branch's
+body and the grammar then trips on the second <code>-&gt;</code>.
+<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/err-11.md"><code>docs/tickets/err-11.md</code></a> tracks the diagnostic. The language's
+answer is unchanged by that ticket, and the block pins today's <code>UnexpectedToken</code> so this
+paragraph goes red along with it.</p>
+<p>Even where a branch satisfies the enclosing block's own indentation, sitting level with
+<code>case</code> — or left of it — is an error:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:LayoutError</span></div><pre><code>module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f =
+  case f of
+  On -&gt; 1
+  Off -&gt; 0</code></pre></div>
+<p>A <code>case</code> written on the same line as the <code>=</code> that introduces the body puts the column its
+branches must clear deep inside the line rather than at its start, so they have to follow it
+there:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f = case f of
+              On -&gt; 1
+              Off -&gt; 0</code></pre></div>
+<h3 id="a-branch-body-is-deeper-than-its-pattern">A branch body is deeper than its pattern</h3>
+<p>A branch body may sit on the same line as its <code>-&gt;</code>, or on following lines indented past
+the branch's own column. It may not start at the branch's column — that column belongs to
+the next branch, so a body written there closes the branch and leaves it empty:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=parse-error:UnexpectedToken</span></div><pre><code>module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f =
+  case f of
+    On -&gt;
+    1
+
+    Off -&gt;
+      0</code></pre></div>
+<p>Written correctly, with the body one level deeper than the pattern:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (describe)
+
+type Flag
+  = On
+  | Off
+
+describe f =
+  case f of
+    On -&gt;
+      1
+
+    Off -&gt;
+      0</code></pre></div>
+<h3 id="nesting">Nesting</h3>
+<p>A <code>case … of</code> in a branch body follows the same rules relative to its own position:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (both)
+
+type Flag
+  = On
+  | Off
+
+both a b =
+  case a of
+    On -&gt;
+      case b of
+        On -&gt;
+          1
+
+        Off -&gt;
+          2
+
+    Off -&gt;
+      0</code></pre></div>
+<h2 id="let--in"><code>let … in</code></h2>
+<p><code>let … in</code> is part of the language as designed and is not implemented. A <code>let</code> in a source
+file is rejected today:</p>
+<div class="zel-block expect-pending"><div class="zel-block-tags"><span class="zel-tag">expect=unimplemented</span></div><pre><code>module Example exposing (f)
+
+f x =
+  let
+    y = 1
+  in
+    y</code></pre></div>
+<p><strong>Not implemented:</strong> that example is tagged <code>expect=unimplemented</code>; it will go red the day
+<code>let</code> is implemented.</p>
+<p><strong>Not implemented:</strong> the layout rules below are design intent, not something the compiler
+has ever checked. The bindings sit deeper than the <code>let</code>, and <code>in</code> closes the block. Two
+questions are <strong>open</strong> — whether the bindings of a <code>let</code> form a block with the same column
+discipline as <code>case … of</code> branches, so that the first binding fixes the column for all of
+them; and whether <code>in</code> must align with its <code>let</code>. <a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-33.md"><code>LANG-33</code></a>
+answers both, as the first step of implementing <code>let … in</code>.</p>
+
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["CompilationError"],"fn":["check_module","compile_package"],"mod":["canonical","dependencies","exhaustiveness","name","parser","position","source","tuple","typer"],"struct":["Interface","ModuleName","PackageName","SourceSpan","SpanLabel"],"trait":["PhaseError"]};

@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Name resolution — Zelkova specification</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="page-shell">
+<div class="sidebar">
+<input type="checkbox" id="sidebar-toggle-name-resolution" class="sidebar-toggle-input">
+<label for="sidebar-toggle-name-resolution" class="sidebar-toggle-label"></label>
+<div class="sidebar-inner">
+<a href="../" class="sidebar-home">Zelkova</a>
+<span class="sidebar-label">Specification</span>
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="conventions.html">Conventions</a></li>
+</ul>
+<span class="sidebar-label">Chapters</span>
+<ul>
+<li><a href="lexical-structure.html">Lexical structure</a></li>
+<li><a href="layout.html">Layout (the offside rule)</a></li>
+<li><a href="modules.html">Modules, exposing and imports</a></li>
+<li><a href="declarations.html">Declarations</a></li>
+<li><a href="types.html">Types and type annotations</a></li>
+<li><a href="expressions.html">Expressions</a></li>
+<li><a href="patterns.html">Patterns</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="records.html">Records</a></li>
+<li><a href="name-resolution.html" class="current">Name resolution and scoping</a></li>
+<li><a href="evaluation-semantics.html">Evaluation semantics</a></li>
+<li><a href="interop.html">Foreign interoperability</a></li>
+<li><a href="packages.html">Packages and source layout</a></li>
+<li><a href="type-classes.html">Type classes</a></li>
+</ul>
+<span class="sidebar-label">Appendix</span>
+<ul>
+<li><a href="toolchain.html">The toolchain</a></li>
+</ul>
+<span class="sidebar-label">On this page</span>
+<ul>
+<li><a href="#namespaces">Namespaces</a></li>
+<li><a href="#scopes">Scopes</a></li>
+<li class="nested"><a href="#a-qualified-name-cannot-be-shadowed">A qualified name cannot be shadowed</a></li>
+<li class="nested"><a href="#a-module-has-no-prefix-for-itself">A module has no prefix for itself</a></li>
+<li><a href="#a-top-level-name-comes-from-exactly-one-place">A top-level name comes from exactly one place</a></li>
+<li class="nested"><a href="#a-name-is-declared-at-most-once">A name is declared at most once</a></li>
+<li><a href="#unresolved-names">Unresolved names</a></li>
+<li><a href="#ambiguous-rather-than-unresolved">Ambiguous rather than unresolved</a></li>
+<li class="nested"><a href="#order-never-decides">Order never decides</a></li>
+<li><a href="#type-variables">Type variables</a></li>
+</ul>
+</div>
+</div>
+<main class="chapter">
+<h1 id="name-resolution-and-scoping">Name resolution and scoping</h1>
+<p>Every name a program writes is resolved statically, from the text around it. Resolution asks
+one question of each occurrence — <em>which declaration does it name?</em> — and there are only three
+answers: exactly one, which is the ordinary case; none, which is an <strong>unresolved</strong> name; or
+more than one, which is an <strong>ambiguous</strong> name. The last two are both errors: an unresolved name
+has to be declared or imported, an ambiguous one has to be spelled so that it picks.</p>
+<p>Nothing in the answer depends on a value, so a reader has exactly the information the compiler
+does: the file, and the modules it imports.</p>
+<h2 id="namespaces">Namespaces</h2>
+<p>A program has six namespaces, and a name in one never collides with a name in another:</p>
+<table><thead><tr><th>Namespace</th><th>Holds</th><th>Written</th></tr></thead><tbody>
+<tr><td>values</td><td>top-level bindings, parameters, pattern bindings</td><td>lowercase-initial</td></tr>
+<tr><td>types</td><td><code>type</code> declarations</td><td>uppercase-initial, in a <a href="types.html#type-names">type expression</a></td></tr>
+<tr><td>constructors</td><td>the variants of a <code>type</code> declaration</td><td>uppercase-initial, <a href="expressions.html#names">in an expression</a> or a <a href="patterns.html#constructor-patterns">pattern</a></td></tr>
+<tr><td>operators</td><td><code>infix</code> declarations</td><td>operator characters, never letters</td></tr>
+<tr><td>modules</td><td>the prefix of a qualified name</td><td>uppercase-initial, before the final <code>.</code></td></tr>
+<tr><td>labels</td><td>the fields of a <a href="records.html#the-type">record type</a></td><td>lowercase-initial, before a <code>:</code>, an <code>=</code> or after a <code>.</code></td></tr>
+</tbody></table>
+<p>Which namespace an occurrence is looked up in is decided by how it is written and where it
+sits, never by what happens to be in scope. So one spelling can be several unrelated things at
+once, and each occurrence still has exactly one meaning:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Reading, Celsius, boiling)
+
+type Reading
+  = Celsius
+
+type Celsius
+  = Absolute
+
+boiling : Reading
+boiling =
+  Celsius</code></pre></div>
+<p><code>Celsius</code> is both a constructor of <code>Reading</code> and the name of a second type. The annotation
+<code>boiling : Reading</code> names a type and the body <code>Celsius</code> names a constructor.</p>
+<p>The one lowercase name that is not a value is a <a href="#type-variables">type variable</a>, which is not
+resolved against a namespace at all: it is bound by the declaration it appears in.</p>
+<p>A label is the one namespace with no declaration behind it. What puts a label in it is any
+<a href="records.html#the-type">record type</a> mentioning that label, so two record types may both carry <code>x</code>
+without that being a clash, and which record a label belongs to is decided by the type it is read
+against rather than by what is in scope. Nothing below therefore reaches a label: it is not
+imported, not exposed, not shadowed, and never ambiguous.
+<a href="records.html#labels-are-not-values">Records</a> is the rest of it.</p>
+<p>Module names are separate for the same reason. A module name is only ever read to the left of
+a <code>.</code>, so a constructor named <code>Widget</code> and an imported module named <code>Widget</code> coexist:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=prefix</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label =
+  Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=prefix</span></div><pre><code>module Main exposing (Named, here, there)
+
+import Widget
+
+type Named
+  = Widget
+
+here : Named
+here =
+  Widget
+
+there : Widget.Size
+there =
+  Widget.label</code></pre></div>
+<p>A <a href="modules.html#the-module-header">module name may contain dots</a> and is still one name, so the
+module part of a qualified name is everything before its <strong>final</strong> <code>.</code> and the local part is
+what follows. <code>Ui.Widget.label</code> names <code>label</code> in <code>Ui.Widget</code>; there is no module <code>Ui</code> in it to
+look anything up in.</p>
+<h2 id="scopes">Scopes</h2>
+<p>A name is resolved in the scopes enclosing the place it is written, innermost first. There are
+two kinds, and no more:</p>
+<ol>
+<li><strong>A binding position</strong> — a declaration's parameters, or a <code>case</code> branch's pattern. Each
+binds the <a href="patterns.html#variable-patterns">variables of its patterns</a> for the extent of one
+body, and these nest: a <code>case</code> inside a <code>case</code> branch is inside that branch's scope.</li>
+<li><strong>The module's top level</strong> — everything the module declares, plus every name its imports
+bring in unqualified.</li>
+</ol>
+<p>There is no scope outside the module: a name is in scope because this module declares it or
+imports it, and being declared in a neighbouring module — or in a dependency — is not being in
+scope. The <a href="modules.html#the-default-imports">default imports</a> are the one thing a module gets
+without writing anything, and they are imports like any other.</p>
+<p><strong>Not implemented:</strong> <a href="expressions.html#let--in"><code>let … in</code></a>
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-33.md"><code>docs/tickets/lang-33.md</code></a>) and <a href="expressions.html#lambdas">lambdas</a>
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-34.md"><code>docs/tickets/lang-34.md</code></a>) each add a binding position of the same
+kind as the two above: bindings visible in one body, invisible outside it. Neither construct
+exists yet.</p>
+<p>An inner binding <strong>shadows</strong> an outer name of the same spelling — <a href="patterns.html#variable-patterns">Patterns</a>
+carries that rule and its consequences — and it applies to imported names exactly as it does to
+a module's own declarations:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=shadow</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label =
+  Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=shadow</span></div><pre><code>module Main exposing (f)
+
+import Widget exposing (Size(..), label)
+
+f : Size -&gt; Size
+f label =
+  case label of
+    Small -&gt;
+      Widget.label</code></pre></div>
+<h3 id="a-qualified-name-cannot-be-shadowed">A qualified name cannot be shadowed</h3>
+<p><code>Widget.label</code> in that body still reaches the imported value, even though <code>label</code> alone means
+the parameter. A binding position binds bare names — a pattern has no way to write a dotted
+one — so nothing an inner scope does can change what a qualified name means. It is the fix for
+a shadowed name and for an <a href="#ambiguous-rather-than-unresolved">ambiguous</a> one, and it works
+without knowing what else is in scope.</p>
+<h3 id="a-module-has-no-prefix-for-itself">A module has no prefix for itself</h3>
+<p>A qualifier names an import, and a module does not import itself. Inside <code>module Example</code>,
+<code>Example.first</code> names nothing:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span></div><pre><code>module Example exposing (Size, first, second)
+
+type Size
+  = Small
+
+first : Size
+first =
+  Small
+
+second : Size
+second =
+  Example.first</code></pre></div>
+<p>A module's own declarations are in scope under their bare names throughout it, so the prefix
+would say nothing the bare name does not — and reading it as "this module" would make one
+prefix mean something different in every file it is written in.</p>
+<p>Which prefix an import contributes is <a href="modules.html#imports">Modules</a>' subject: the module's
+name as written, or its alias, which <strong>replaces</strong> that name rather than adding to it.</p>
+<h2 id="a-top-level-name-comes-from-exactly-one-place">A top-level name comes from exactly one place</h2>
+<p>What a module declares and what it imports unqualified are one scope, not two, so a module that
+declares <code>label</code> and also imports <code>label</code> unqualified is rejected. Neither shadows the other.
+The fix is to pick one — drop the entry from the <code>exposing</code> list and write <code>Widget.label</code> where
+the imported value is wanted, or rename the declaration.</p>
+<p><strong>Known gap:</strong> the module's own declaration silently wins today, for values and for types
+alike. Both blocks below are accepted, and in each of them the imported name is dead without
+anything saying so (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-29.md"><code>docs/tickets/lang-29.md</code></a>).</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=clash</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label =
+  Small</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=clash</span></div><pre><code>module Main exposing (x)
+
+import Widget exposing (Size, label)
+
+type Size
+  = Big
+
+label : Size
+label =
+  Big
+
+x : Size
+x =
+  label</code></pre></div>
+<p>The rule holds for <code>exposing (..)</code>, which collides the same way a named entry does; the error
+is reported on the <code>import</code> line, there being no entry to point at. So a module gaining an
+export can break a file that imports it openly.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=clash</span></div><pre><code>module Other exposing (y)
+
+import Widget exposing (..)
+
+label : Size
+label =
+  Small
+
+y : Size
+y =
+  label</code></pre></div>
+<h3 id="a-name-is-declared-at-most-once">A name is declared at most once</h3>
+<p>Within one module, each type is declared once and each operator carries <a href="declarations.html#an-operator-has-one-infix-declaration">one <code>infix</code>
+declaration</a>: two declarations of one
+name introduce two things with one name, and no rule chooses between them.</p>
+<p>Repeated <em>value</em> bindings are not an exception. They are not two declarations but the
+<a href="declarations.html#clauses">clauses</a> of one, which is why they must agree on their parameter
+count.</p>
+<p><strong>Known gap:</strong> a second <code>type</code> declaration of a name silently replaces the first, taking its
+constructors with it — after the block below the module has one type <code>Size</code>, built by <code>Big</code>,
+and <code>Small</code> no longer resolves anywhere
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-32.md"><code>docs/tickets/lang-32.md</code></a>).</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Size)
+
+type Size
+  = Small
+
+type Size
+  = Big</code></pre></div>
+<h2 id="unresolved-names">Unresolved names</h2>
+<p>A name that no scope binds is an error where it is written, with the caret under the name
+rather than under the declaration containing it. A bare name that nothing declares or imports:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span></div><pre><code>module Example exposing (Size, x)
+
+type Size
+  = Small
+
+x : Size
+x =
+  missing</code></pre></div>
+<p>A constructor is looked up in its own namespace, and an uppercase name that names no variant
+fails the same way:</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariantNotFound</span></div><pre><code>module Example exposing (Size, x)
+
+type Size
+  = Small
+
+x : Size
+x =
+  Large</code></pre></div>
+<p>A qualified name resolves only if its prefix names an import <em>and</em> that module exposes the
+name. A prefix that names no import is not a hint to go looking for the module.</p>
+<div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span></div><pre><code>module Example exposing (Size, x)
+
+type Size
+  = Small
+
+x : Size
+x =
+  Widget.label</code></pre></div>
+<p><strong>Known gap:</strong> the diagnostic there reports a missing <em>value</em> called <code>Widget.label</code>. What is
+missing is the <code>import</code>, and the message never says the word
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/err-14.md"><code>docs/tickets/err-14.md</code></a>).</p>
+<p><code>Widget</code> below is compiled alongside <code>Main</code>, and <code>Main</code> still cannot see it:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=notimported</span></div><pre><code>module Widget exposing (Size, label)
+
+type Size
+  = Small
+
+label : Size
+label =
+  Small</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:VariableNotFound</span><span class="zel-package">package=notimported</span></div><pre><code>module Main exposing (Size, x)
+
+type Size
+  = Small
+
+x : Size
+x =
+  Widget.label</code></pre></div>
+<h2 id="ambiguous-rather-than-unresolved">Ambiguous rather than unresolved</h2>
+<p>A name brought into scope unqualified by two different imports is not an error at either
+<code>import</code> line. It becomes one at each place the bare name is <em>written</em>, and only there. The
+report names both candidates, and the qualified spelling of either is the fix.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=ambiguous</span></div><pre><code>module Widget exposing (Size(..), label, one, add, (+))
+
+type Size
+  = Small
+
+label : Size
+label =
+  Small
+
+one : Size
+one =
+  Small
+
+add : Size -&gt; Size -&gt; Size
+add a b =
+  a
+
+infix left 6 (+) = add</code></pre></div><div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=ambiguous</span></div><pre><code>module Gadget exposing (Size(..), label, two, mul, (+))
+
+type Size
+  = Small
+
+label : Size
+label =
+  Small
+
+two : Size
+two =
+  Small
+
+mul : Size -&gt; Size -&gt; Size
+mul a b =
+  a
+
+infix left 6 (+) = mul</code></pre></div><div class="zel-block expect-rejected"><div class="zel-block-tags"><span class="zel-tag">expect=canonical-error:AmbiguousVariables</span><span class="zel-package">package=ambiguous</span></div><pre><code>module Main exposing (x)
+
+import Widget exposing (label)
+import Gadget exposing (label)
+
+x : Widget.Size
+x =
+  label</code></pre></div>
+<p>The same rule holds in every namespace: two imports, one spelling, no reason to prefer either.
+<code>Widget.Size</code> and <code>Widget.Small</code> are the fixes for a type and for a constructor.</p>
+<p><strong>Known gap:</strong> ambiguity is detected for values only. A type, a constructor or an operator
+arriving from two imports is taken from whichever <code>import</code> line is written last, silently, so
+the meaning of the two blocks below depends on the order of two lines that look
+interchangeable (<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-30.md"><code>docs/tickets/lang-30.md</code></a>).</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=ambiguous</span></div><pre><code>module Other exposing (y)
+
+import Widget exposing (Size(..))
+import Gadget exposing (Size(..))
+
+y : Size
+y =
+  Small</code></pre></div>
+<p>An operator is the one case with no qualified spelling to fall back on —
+<a href="modules.html#operators"><code>Widget.(+)</code> is not writable</a> — so the fix there is an edit to an
+<code>import</code> line: name what the file wants.</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span><span class="zel-package">package=ambiguous</span></div><pre><code>module Third exposing (z)
+
+import Widget exposing (..)
+import Gadget exposing (..)
+
+z : Widget.Size
+z =
+  one + one</code></pre></div>
+<h3 id="order-never-decides">Order never decides</h3>
+<p>Once ambiguity is an error, nothing about resolution depends on the order things are written
+in. <a href="declarations.html#declarations-are-unordered">Declarations are unordered</a>, and so are
+imports: reordering either never changes what a name in the file means.</p>
+<h2 id="type-variables">Type variables</h2>
+<p>A <a href="types.html#type-variables">type variable</a> is bound by the declaration it appears in, and by
+nothing outside it. No lowercase spelling is privileged: <code>a</code>, <code>number</code> and <code>comparable</code> are the
+same kind of name.</p>
+<p>In an annotation, every lowercase name is a variable of that annotation. Two annotations that
+happen to use the same letter share nothing:</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Box, first, second)
+
+type Box a
+  = Box a
+
+first : a -&gt; a
+first x =
+  x
+
+second : a -&gt; Box a
+second x =
+  Box x</code></pre></div>
+<p>In a <code>type</code> declaration, the parameters between the type's name and the <code>=</code> are the binders,
+and they are in scope throughout the variants. A variant may use those and no others: a
+variable the declaration does not bind has no value to stand for, since there is no argument
+position that would ever fix it.</p>
+<p><strong>Known gap:</strong> an unbound variable in a variant is accepted, and <code>Box</code> below is a type whose
+constructor takes an argument of a type nothing can name
+(<a href="https://github.com/fmonniot/zelkova-lang/blob/main/docs/tickets/lang-31.md"><code>docs/tickets/lang-31.md</code></a>).</p>
+<div class="zel-block expect-accepted"><div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div><pre><code>module Example exposing (Box)
+
+type Box
+  = Box a</code></pre></div>
+</main>
+</div>
+</body>
+</html>
