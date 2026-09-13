@@ -55,7 +55,7 @@ never declared as a value, and one where it is never declared as a type — each
 `Error::ExportNotFound(_, ExportType::Value | ExportType::UnionPublic | ExportType::UnionPrivate, _)`
 is raised with the exposed name's own span (not the whole header).
 
-**Related:** [BUG-9](README.md), found alongside this one and since closed, was the larger gap
+**Related:** `BUG-9`, found alongside this one and since closed, was the larger gap
 in the same area — the `Exports` this function computes was not consulted anywhere once built,
 so no `exposing` list restricted what an importer could see. `Module::to_interface` reads it
 now, which is what gives the value this function computes a consumer; it does not add the

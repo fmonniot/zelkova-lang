@@ -252,8 +252,8 @@ x : Widget.Size
 x = Widget.hidden
 ```
 
-Privacy is a property of the boundary: `hidden` is an ordinary value inside `Widget` and
-`label` may call it, and the list decides who else can.
+Privacy is a property of the boundary: `hidden` is an ordinary value inside `Widget`, and
+`label` may call it.
 
 **Known gap:** the reverse also happens — a value the module *does* expose can fail to
 cross the boundary. A top-level declaration written without a type annotation is dropped

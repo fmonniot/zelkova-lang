@@ -65,7 +65,7 @@ rule to a reader, so it is worth writing before the check that produces it.
    existing shape for that pairing.
 
 2. `to_interface` publishes **every** instance, not the exposed ones. That is now an explicit
-   exception rather than a free ride: since [BUG-9](README.md) closed, `to_interface` filters
+   exception rather than a free ride: since `BUG-9` closed, `to_interface` filters
    values, types and infixes against the module's `exposing` list, and the instance table has
    to be the one part of the interface that skips that filter — an instance is not a name
    anybody writes, so there is no entry that could expose it. Instances arriving from an
