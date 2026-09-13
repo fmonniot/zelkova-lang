@@ -100,11 +100,14 @@ Pipe<T>: Vec<T> = {
 // as a terminal instead, which moves the decision to a shift the parser can make.
 PlainVarIdent: Name = {
     // A soft keyword is a keyword in exactly one position and an ordinary lowercase
-    // identifier everywhere else, so every token the lexer's soft-keyword table
-    // produces is re-admitted here: `left`/`right`/`non` away from an `infix`
-    // declaration's associativity, `foreign` away from a module header. Adding a word
-    // to that table without adding it here takes the name out of the language in
-    // every position instead of just the one.
+    // identifier everywhere else, so every token the lexer's soft-keyword table needs
+    // an arm somewhere in `VarIdent`'s closure: `left`/`right`/`non` away from an
+    // `infix` declaration's associativity, and `foreign` away from a module header,
+    // are re-admitted right here. `unsafe`'s arm lives one level up, in `VarIdent`
+    // itself, because its keyword position is a declaration head — exactly the case
+    // `PlainVarIdent` exists to carve out. Adding a word to the soft-keyword table
+    // without giving it an arm anywhere in `VarIdent`'s closure takes the name out of
+    // the language in every position instead of just the one.
     "left" => Name::new("left"),
     "right" => Name::new("right"),
     "non" => Name::new("non"),

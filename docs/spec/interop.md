@@ -345,7 +345,7 @@ the second [aborts the program](evaluation-semantics.md#when-a-program-aborts).
 exactly as any other crossing is, and a value that fails
 [aborts](evaluation-semantics.md#when-a-program-aborts).
 
-**Not implemented:** the word is read and carried no further. Nothing holds an unmarked facade to
+**Not implemented:** the word is read and acted on nowhere. Nothing holds an unmarked facade to
 a `Task` result ([`LANG-43`](../tickets/lang-43.md)), so the two shapes declare the same thing
 today; and no wrapper is generated for either, because code generation has not started
 ([`GEN-1`](../tickets/gen-1.md)).

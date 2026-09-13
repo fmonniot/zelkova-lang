@@ -225,7 +225,8 @@ which reading is meant, so reserving the word outright would take a useful name.
 `unsafe` are the two that need the token *after* them rather than the one before: `derived`
 alone asks for an instance to be derived, `derived eq` opens the derivation of a member, and
 `derived = …` or `derived : …` is an ordinary binding or signature; `unsafe f : …` marks a
-facade signature where `unsafe : …` declares a constant of that name.
+facade signature where `unsafe : …` declares a constant of that name. The other five are
+keywords only in the position listed against them, and ordinary identifiers everywhere else:
 
 ```zel expect=ok
 module Example exposing ()
@@ -244,10 +245,7 @@ unsafe = 6
 ```
 
 **Not implemented:** `derived` is an ordinary identifier in every position today, because class
-and instance bodies do not parse at all ([`LANG-38`](../tickets/lang-38.md)). The other five are
-keywords in the position listed against them and names everywhere else, which is what the block
-above pins: a soft keyword costs a program no name, and reserving one outright to save the
-grammar the work turns that block red.
+and instance bodies do not parse at all ([`LANG-38`](../tickets/lang-38.md)).
 
 No other word is reserved — not even ones a reader arriving from another language might expect,
 such as `match` (pattern matching's usual keyword) or `await` (an effect's usual one):

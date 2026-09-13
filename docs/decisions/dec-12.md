@@ -205,8 +205,8 @@ can assert anything without writing it down.
 
 ## What nothing checks
 
-None of it is implemented. `zelkova-core` declares no `Task` and therefore no `Failure`, no
-wrapper is generated, no predicate is emitted, and nothing runs a program, so no abort can occur
+`zelkova-core` declares no `Task` and therefore no `Failure`, no wrapper is generated, no
+predicate is emitted, and nothing runs a program, so no abort can occur
 ([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)). `Failure`'s two constructors
 carry a `String`, which has [no literal syntax](../spec/lexical-structure.md#strings) yet.
 
