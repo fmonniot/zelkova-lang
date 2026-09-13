@@ -147,9 +147,9 @@ it describes.
   kernel. What a facade *is* — the `Task`/`unsafe` split, which types may cross, the
   plain-parameter-list guarantee the companion makes — is
   [`docs/spec/interop.md`](docs/spec/interop.md), with [`DEC-11`](docs/decisions/dec-11.md) and
-  [`DEC-12`](docs/decisions/dec-12.md) behind it. None of that is implemented: the compiler
-  spells the modifier `module javascript` where the spec says `foreign`
-  ([`LANG-54`](docs/tickets/lang-54.md)), and `unsafe` is [`LANG-53`](docs/tickets/lang-53.md).
+  [`DEC-12`](docs/decisions/dec-12.md) behind it. Most of that is not implemented — `unsafe` is
+  [`LANG-53`](docs/tickets/lang-53.md) and the admitted-types check is
+  [`LANG-43`](docs/tickets/lang-43.md) — though the modifier is now spelled `module foreign`.
 - **A doc comment describes what the code at that site does** — not what you intended, and
   not what it used to do. An overstated comment is a real defect because it is what the next
   reader trusts. Prefer saying less over saying more than you verified.

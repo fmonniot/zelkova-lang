@@ -492,8 +492,8 @@ impl PhaseError for Error {
 /// *wrong* and *where inside the declaration* comes up from inference on the
 /// [`ErrorKind`]; see [`Error`].
 pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
-    // JavaScript binding modules use synthetic placeholder bodies — skip type checking.
-    if module.binding_javascript {
+    // A `module foreign` facade uses synthetic placeholder bodies — skip type checking.
+    if module.binding_foreign {
         return Ok(());
     }
 

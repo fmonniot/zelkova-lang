@@ -58,7 +58,7 @@ pub enum Token {
     Left,
     Right,
     Non,
-    Javascript,
+    Foreign,
 
     // Layout
     OpenBlock,
@@ -91,7 +91,7 @@ fn keyword(s: &str) -> Option<Token> {
         "left" => Some(Token::Left),
         "right" => Some(Token::Right),
         "non" => Some(Token::Non),
-        "javascript" => Some(Token::Javascript),
+        "foreign" => Some(Token::Foreign),
 
         _ => None,
     }

@@ -163,7 +163,7 @@ becomes one it can. `zelkova-core` is the worked example — `Basics` is an ordi
 and every value in it a companion computes reaches its dependents through a declaration
 there rather than out of the facade.
 
-```zel expect=unimplemented
+```zel expect=ok
 module foreign Core.Widget exposing (measure)
 
 measure : Int -> Int

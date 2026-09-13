@@ -58,7 +58,7 @@ extern {
         "left"  => Token::Left,
         "right" => Token::Right,
         "non"   => Token::Non,
-        "javascript" => Token::Javascript,
+        "foreign" => Token::Foreign,
     }
 }
 
@@ -91,10 +91,16 @@ Pipe<T>: Vec<T> = {
 // some don't (e.g. type variables).
 
 VarIdent: Name = {
-    // soft keywords are authorized identifier
+    // A soft keyword is a keyword in exactly one position and an ordinary lowercase
+    // identifier everywhere else, so every token the lexer's soft-keyword table
+    // produces is re-admitted here: `left`/`right`/`non` away from an `infix`
+    // declaration's associativity, `foreign` away from a module header. Adding a word
+    // to that table without adding it here takes the name out of the language in
+    // every position instead of just the one.
     "left" => Name::new("left"),
     "right" => Name::new("right"),
     "non" => Name::new("non"),
+    "foreign" => Name::new("foreign"),
 
     <"lo_ident"> => Name::new(<>),
 };
@@ -550,7 +556,7 @@ Decl: Declaration = {
 // declaring the module
 pub Module: Module = 
     "open block"
-        "module" <js: "javascript"?> <name: QualTypeIdent> "exposing" <exposing:Exposing>
+        "module" <modifier: "foreign"?> <name: QualTypeIdent> "exposing" <exposing:Exposing>
     "close block" <declarations:Decl*> => Module::from_declarations(<>);
 
 // TODO Maybe something for the REPL. Might just be Decl.

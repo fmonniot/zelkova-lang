@@ -1,4 +1,4 @@
-module javascript Js.Basics exposing
+module foreign Js.Basics exposing
   ( add, sub, mul, fdiv, idiv, pow
   , toFloat, round, floor, ceiling, truncate
   , not, and, or, xor

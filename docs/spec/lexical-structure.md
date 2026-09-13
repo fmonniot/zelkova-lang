@@ -243,31 +243,26 @@ derived = 5
 unsafe = 6
 ```
 
-**Not implemented:** `foreign`, `derived` and `unsafe` are ordinary identifiers in every
-position today, because the construct each is a keyword in does not parse at all — a facade
-header spells its modifier `javascript` ([`LANG-54`](../tickets/lang-54.md)), class and
-instance bodies do not parse ([`LANG-38`](../tickets/lang-38.md)), and neither does a marked
-facade signature ([`LANG-53`](../tickets/lang-53.md)). That block is green now and should stay
-green: what each word becomes is a keyword in a position it cannot currently occupy, not a name
-a program loses. It goes red if any of the three is reserved outright as a shortcut, which is
-the choice [`LANG-53`](../tickets/lang-53.md) leaves open and the state
-[`LANG-2`](../tickets/lang-2.md) records for `javascript`.
+**Not implemented:** `derived` and `unsafe` are ordinary identifiers in every position today,
+because the construct each is a keyword in does not parse at all — class and instance bodies do
+not parse ([`LANG-38`](../tickets/lang-38.md)), and neither does a marked facade signature
+([`LANG-53`](../tickets/lang-53.md)). That block is green now and should stay green: what each
+word becomes is a keyword in a position it cannot currently occupy, not a name a program loses.
+It goes red if either is reserved outright as a shortcut, which is the choice
+[`LANG-53`](../tickets/lang-53.md) leaves open.
 
-`javascript` is an ordinary identifier, and the word a facade header once took:
+No other word is reserved — not even ones a reader arriving from another language might expect,
+such as `match` (pattern matching's usual keyword) or `await` (an effect's usual one):
 
-```zel expect=parse-error:UnexpectedToken
-module Example exposing (f)
+```zel expect=ok
+module Example exposing ()
 
-javascript = 1
+match = 1
 
-f = javascript
+await = 2
+
+f = match
 ```
-
-**Known gap:** that block should be `expect=ok`. `javascript` is the facade modifier today and
-is reserved outright, taking a name from every program that models the language rather than
-compiles to it. [`LANG-54`](../tickets/lang-54.md) frees it by moving the modifier to
-`foreign`; [`LANG-2`](../tickets/lang-2.md) is the narrower reading, that the word be soft
-where it stands.
 
 `true` and `false` are **not** reserved. Zelkova has no boolean literal syntax: `Bool` is an
 ordinary union type and `True` and `False` are its constructors, resolved, imported and

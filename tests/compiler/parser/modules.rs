@@ -5,13 +5,13 @@ use zelkova_lang::compiler::parser::*;
 // module
 
 test_parse_ok!(
-    module_js,
+    module_foreign,
     r#"
-    module javascript Maybe exposing ( map )
+    module foreign Maybe exposing ( map )
     "#,
     Module {
         name: name("Maybe"),
-        binding_javascript: true,
+        binding_foreign: true,
         exposing: Exposing::Explicit(vec![Exposed::bare(ExposedKind::Lower(name("map")))]),
         imports: vec![],
         infixes: vec![],
@@ -19,6 +19,59 @@ test_parse_ok!(
         functions: vec![],
     }
 );
+
+/// `foreign` is the only modifier a module header takes, so an unrecognised word in
+/// that slot is a plain identifier the `Module` production has no place for.
+///
+/// Verified to fail by pointing the tokenizer's soft-keyword entry for `Token::Foreign`
+/// back at `"javascript"`, which reds this test and `module_foreign` together.
+#[test]
+fn module_javascript_modifier_is_rejected() {
+    use codespan_reporting::files::SimpleFile;
+
+    let source = indoc::indoc! {r#"
+    module javascript Maybe exposing ( map )
+    "#}
+    .to_string();
+    let file = SimpleFile::new("module_javascript_modifier_is_rejected".to_owned(), source);
+
+    let error = parser::parse(&file).expect_err("`javascript` is not a module modifier");
+
+    match error {
+        parser::Error::UnexpectedToken { .. } => {}
+        other => panic!("expected UnexpectedToken, got {:?}", other),
+    }
+}
+
+/// `foreign` is a keyword only in a module header, and an ordinary lowercase
+/// identifier in every other position — the same terms `left`, `right` and `non`
+/// stand on. `javascript` is not a keyword anywhere.
+///
+/// Verified to fail two ways, each red on its own: removing
+/// `"foreign" => Name::new("foreign")` from `VarIdent` (the `foreign` half), and giving
+/// the tokenizer's keyword table an entry for `"javascript"` mapped to a token
+/// `VarIdent` does not admit (the `javascript` half).
+#[test]
+fn foreign_and_javascript_are_identifiers_outside_a_module_header() {
+    use codespan_reporting::files::SimpleFile;
+
+    let source = indoc::indoc! {r#"
+    module Example exposing ( foreign, javascript )
+
+    foreign = 1
+
+    javascript = 2
+
+    f foreign javascript = foreign
+    "#}
+    .to_string();
+    let file = SimpleFile::new(
+        "foreign_and_javascript_are_identifiers_outside_a_module_header".to_owned(),
+        source,
+    );
+
+    parser::parse(&file).expect("both words are ordinary identifiers here");
+}
 
 // exposing
 
@@ -34,7 +87,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
-        binding_javascript: false,
+        binding_foreign: false,
         exposing: Exposing::Explicit(vec![
             Exposed::bare(ExposedKind::Upper(name("Maybe"), Privacy::Public)),
             Exposed::bare(ExposedKind::Upper(name("Option"), Privacy::Private)),
@@ -63,7 +116,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
-        binding_javascript: false,
+        binding_foreign: false,
         exposing: Exposing::Open,
         imports: vec![
             Import {
@@ -95,7 +148,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
-        binding_javascript: false,
+        binding_foreign: false,
         exposing: Exposing::Open,
         imports: vec![
             Import {
@@ -128,7 +181,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
-        binding_javascript: false,
+        binding_foreign: false,
         exposing: Exposing::Open,
         imports: vec![
             Import {
@@ -176,7 +229,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
-        binding_javascript: false,
+        binding_foreign: false,
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![Infix {
@@ -200,7 +253,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
-        binding_javascript: false,
+        binding_foreign: false,
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![Infix {
@@ -224,7 +277,7 @@ test_parse_ok!(
     "#,
     Module {
         name: name("Maybe"),
-        binding_javascript: false,
+        binding_foreign: false,
         exposing: Exposing::Open,
         imports: vec![],
         infixes: vec![Infix {

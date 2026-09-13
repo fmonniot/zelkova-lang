@@ -48,9 +48,9 @@ pub struct Module {
     pub infixes: HashMap<Name, Infix>,
     pub types: HashMap<Name, UnionType>,
     pub values: HashMap<Name, Value>,
-    /// True when this module is a JavaScript binding module.
+    /// True when this module is a `module foreign` facade.
     /// Such modules have synthetic placeholder bodies and must not be type-checked.
-    pub binding_javascript: bool,
+    pub binding_foreign: bool,
 }
 
 impl Module {
@@ -1117,15 +1117,15 @@ impl PhaseError for Error {
                 }
             },
             Error::InfixDeclared(name, _) => format!(
-                "a `module javascript` facade cannot declare an infix operator, but declares `{}`",
+                "a `module foreign` facade cannot declare an infix operator, but declares `{}`",
                 name
             ),
             Error::TypeDeclared(name, _) => format!(
-                "a `module javascript` facade cannot declare a type, but declares `{}`",
+                "a `module foreign` facade cannot declare a type, but declares `{}`",
                 name
             ),
             Error::NoTypeInBinding(name, _) => format!(
-                "`{}` has no type annotation, and a `module javascript` facade is annotations only",
+                "`{}` has no type annotation, and a `module foreign` facade is annotations only",
                 name
             ),
             Error::Many(errors) => match errors.as_slice() {
@@ -1376,11 +1376,11 @@ pub fn canonicalize(
     let mut env =
         new_environment(&name, interfaces, &source.imports).map_err(|e| vec![e.into()])?;
 
-    let (infixes, types, values) = if source.binding_javascript {
-        // Javascript modules run a parallel canonicalization process as the constraints are a bit different:
+    let (infixes, types, values) = if source.binding_foreign {
+        // A `module foreign` facade runs a parallel canonicalization process as the constraints are a bit different:
         // - Only functions without bindings are authorized.
         // - Infixes and types are forbidden.
-        // The idea being to have the js module be a facade for the actual Javascript module.
+        // The idea being to have the facade stand for the companion file shipped beside it.
         // Assuming Json types are part of the prelude, this should goes well with the restriction on what types are available for bindings.
 
         // Verify no infix present
@@ -1401,7 +1401,7 @@ pub fn canonicalize(
         }
 
         // Register each binding as a top-level value before resolving any of
-        // them, the same as the non-`javascript` branch below — otherwise
+        // them, the same as the non-`foreign` branch below — otherwise
         // `do_exports`'s existence check (`BUG-8`) would reject a facade
         // exposing its own declared binding, since nothing would have told
         // `env` the binding exists.
@@ -1433,7 +1433,7 @@ pub fn canonicalize(
             let value = Value::TypedValue {
                 name: name.clone(),
                 patterns: vec![],
-                // A `module javascript` facade has no body in the source, so this
+                // A `module foreign` facade has no body in the source, so this
                 // stand-in has nothing to point at (see the TODO above).
                 body: Expression::bare(ExpressionKind::Bool(true)),
                 tpe,
@@ -1493,7 +1493,7 @@ pub fn canonicalize(
             infixes,
             types,
             values,
-            binding_javascript: source.binding_javascript,
+            binding_foreign: source.binding_foreign,
         })
     } else {
         Err(errors)
@@ -1723,7 +1723,7 @@ fn do_infixes(
 // both check existence with `find_type` the same way.
 //
 // `values` is this module's own declarations (from `do_values`/the
-// `javascript` iterator above), separate from `env`: `env.find_value` also
+// facade iterator above), separate from `env`: `env.find_value` also
 // answers `Some` for a name resolved through an import, and a re-exported
 // foreign value is already guaranteed typed by its own module's `do_exports`
 // (`SPEC-5` applies there, transitively, through `Interface::values` only
