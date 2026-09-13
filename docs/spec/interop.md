@@ -198,7 +198,7 @@ A **function type** is rejected wherever it appears. `typeof x === 'function'` d
 value is *some* function, not that it is the one declared, and a component's interface has no
 function type to name either.
 
-```zel expect=unimplemented
+```zel expect=ok
 module foreign Core.Utils exposing
   ( equal
   )
@@ -206,7 +206,7 @@ module foreign Core.Utils exposing
 equal : a -> a -> Bool
 ```
 
-```zel expect=unimplemented
+```zel expect=ok
 module foreign Core.List exposing
   ( count
   )
@@ -217,8 +217,7 @@ count : (Int -> Bool) -> Int -> Int
 **Known gap:** neither signature is admitted — `equal` names a type variable, `count` takes a
 function — and nothing rejects either. A facade annotation is resolved exactly as any other
 annotation is, so every type a normal module may write, a facade may write.
-Both blocks carry the rejection tag the rule calls for, and both are red until
-[`LANG-43`](../tickets/lang-43.md) adds the check.
+[`LANG-43`](../tickets/lang-43.md) is the check.
 
 **Not implemented:** a class constraint is rejected on the same grounds, `Comparable a => a`
 being a signature over `a`. A constrained function is specialised, and a facade has no body to

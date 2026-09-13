@@ -28,8 +28,8 @@ and covered by the one **Known gap:** paragraph that follows them and names this
 - `equal : a -> a -> Bool`, a facade over a bare type variable.
 - `count : (Int -> Bool) -> Int -> Int`, a facade taking a function.
 
-Both canonicalize cleanly today, so both blocks are **red** on their `expect=unimplemented`
-tag. This ticket is what rejects them for the reason the chapter gives, and it deletes that
+Both canonicalize cleanly today, so both blocks are tagged **`expect=ok`** in the chapter. This
+ticket is what rejects them for the reason the chapter gives, retagging both and deleting that
 **Known gap:** paragraph in the same diff.
 
 **Approach:**
