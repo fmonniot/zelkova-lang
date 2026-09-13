@@ -209,6 +209,7 @@ const PARSE_ERROR_SPECIFICS: &[&str] = &[
     "MultipleDecimalPoints",
     "NonAsciiDigit",
     "MalformedNumber",
+    "UnclosedBlockComment",
     "LayoutError",
     "InvalidToken",
     "UnexpectedEOF",
@@ -251,6 +252,7 @@ fn parse_error_reasons(error: &parser::Error) -> Vec<&'static str> {
                 TokenizerErrorType::MultipleDecimalPoints => "MultipleDecimalPoints",
                 TokenizerErrorType::NonAsciiDigit { .. } => "NonAsciiDigit",
                 TokenizerErrorType::MalformedNumber => "MalformedNumber",
+                TokenizerErrorType::UnclosedBlockComment => "UnclosedBlockComment",
             };
             vec!["Tokenizer", specific]
         }

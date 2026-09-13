@@ -177,7 +177,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-10 | bug | low | closed 2026-09-12 | A `case` branch level with, or left of, the `case` keyword is accepted |
 | BUG-11 | bug | low | closed 2026-09-11 | The `Tokenizer` never terminates on a tab outside leading whitespace |
 | BUG-12 | bug | medium | closed 2026-09-12 | Four `unwrap()`s on user input panic the compiler instead of reporting a syntax error |
-| [BUG-13](bug-13.md) | bug | medium | open | Block comments are lexed only at the start of a line, swallow the rest of their closing line, do not nest, and are accepted unterminated |
+| BUG-13 | bug | medium | closed 2026-09-12 | Block comments are lexed only at the start of a line, swallow the rest of their closing line, do not nest, and are accepted unterminated |
 | [BUG-14](bug-14.md) | bug | medium | open | A top-level value with no type annotation never reaches the module's interface |
 | [BUG-15](bug-15.md) | bug | medium | open | An imported operator is unresolvable unless the function behind it is also in scope |
 | [BUG-16](bug-16.md) | bug | medium | open | An unresolved type name is invented rather than reported |
@@ -193,6 +193,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-26](bug-26.md) | bug | medium | open | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
 | [BUG-27](bug-27.md) | bug | medium | open | A canonicalized infix operator is qualified under its own symbol, not the function its `infix` declaration names |
 | [BUG-28](bug-28.md) | bug | low | open | The `Tokenizer` never terminates on an unterminated character literal |
+| [BUG-29](bug-29.md) | bug | medium | open | A top-level declaration whose first token is not at column 1 fails to parse |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |

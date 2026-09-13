@@ -135,6 +135,13 @@ impl Error {
                         .with_message("this is not a number")
                         .with_labels(vec![Label::primary(name, err.error.span.to_range())
                             .with_message("this literal cannot be read as an integer or a float")]),
+                    TokenizerErrorType::UnclosedBlockComment => diag
+                        .with_message("this block comment is never closed")
+                        .with_labels(vec![Label::primary(name, non_empty(err.error.span.to_range()))
+                            .with_message("this comment opens here, but no matching `-}` was found before the end of the file")])
+                        .with_notes(vec![
+                            "block comments nest, so every `{-` needs its own `-}`".to_owned()
+                        ]),
                 }
             }
 

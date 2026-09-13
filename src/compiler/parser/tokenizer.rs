@@ -179,6 +179,12 @@ pub enum TokenizerErrorType {
     /// so that a loop which stops upholding that has a diagnostic to raise, rather
     /// than a panic or a fabricated value (`BUG-12`).
     MalformedNumber,
+    /// End of file reached while a block comment (`consume_comment`'s `{-` branch) is
+    /// still open — a stray `{-` with no matching `-}` would otherwise comment out the
+    /// rest of the file with no diagnostic at all (`BUG-13`). Spanned from the `{-` that
+    /// opened the outermost unclosed comment, since that is the one the author has to go
+    /// fix; a comment nested inside it that never closed is not separately reported.
+    UnclosedBlockComment,
 }
 
 /// Represent a standard `Result` scoped to a `TokenizerError`
@@ -483,9 +489,28 @@ where
                 }
                 Some('{') => {
                     if let Some('-') = self.lookahead.1 {
-                        // This is a comment, let's skip it (and start counting again)
+                        // A block comment may appear anywhere a space may (SPEC-2), but
+                        // it is not itself whitespace of a known width. If it carries us
+                        // onto a later line, or ends the line it was on, whatever spaces
+                        // come next really are a fresh line's leading indentation, so we
+                        // restart the count exactly as for a line comment. But if more
+                        // content follows the closing `-}` on the *same* line, that
+                        // content is this line's first real token, and `spaces` already
+                        // holds its indentation from before the comment — resetting it
+                        // here would measure only the accidental run of spaces after the
+                        // comment instead, misfiring the even-indentation check below on
+                        // input the language accepts (BUG-13).
+                        let line_before = self.position.line;
                         self.consume_comment()?;
-                        spaces = 0;
+
+                        if self.position.line != line_before
+                            || matches!(self.lookahead.0, Some('\n') | None)
+                        {
+                            spaces = 0;
+                        } else {
+                            self.at_line_start = false;
+                            break;
+                        }
                     } else {
                         break;
                     }
@@ -529,22 +554,51 @@ where
             trace!("Start skipping single line comment {:?}", self.position);
             self.skip_end_of_line();
         } else if self.lookahead.0 == Some('{') && self.lookahead.1 == Some('-') {
-            // A multi line comment end at the newline after the -} symbol
+            // A block comment ends exactly at its matching `-}`; whatever follows on
+            // that line is ordinary source, so unlike the line-comment branch above we
+            // must not call `skip_end_of_line` (BUG-13). Block comments also nest: `depth`
+            // counts how many `{-` are currently open, incremented on each `{-` and
+            // decremented on each `-}`, and the loop only stops once it reaches zero. We
+            // are entered with the outermost `{-` about to be read, so `depth` starts at
+            // one rather than zero.
             trace!("Start skipping multi line comment {:?}", self.position);
 
+            let start = self.position;
+            self.next_char(); // the opening `{`
+            self.next_char(); // the opening `-`
+            let mut depth: usize = 1;
+
             loop {
-                match self.lookahead.0 {
-                    Some('-') => {
-                        if let Some('}') = self.lookahead.1 {
-                            // We have reached the end symbol, let's skip the rest of the line
-                            self.skip_end_of_line();
+                match (self.lookahead.0, self.lookahead.1) {
+                    (Some('{'), Some('-')) => {
+                        depth += 1;
+                        self.next_char();
+                        self.next_char();
+                    }
+                    (Some('-'), Some('}')) => {
+                        depth -= 1;
+                        self.next_char();
+                        self.next_char();
+                        if depth == 0 {
                             break;
                         }
                     }
-                    Some(_) => (),
-                    None => break,
+                    (Some(_), _) => {
+                        self.next_char();
+                    }
+                    (None, _) => {
+                        // End of file reached with `depth` comments still open. The
+                        // outermost one — spanned from `start`, captured before we
+                        // consumed anything — is the one the author has to go fix, so
+                        // that is where the error points rather than at EOF or at
+                        // whichever nested `{-` happened to be innermost.
+                        return Err(TokenizerError::new(
+                            start.absolute,
+                            self.position.absolute,
+                            TokenizerErrorType::UnclosedBlockComment,
+                        ));
+                    }
                 }
-                self.next_char();
             }
         } else {
             // We aren't looking at the symbols -- or {-, this isn't a comment
@@ -617,6 +671,16 @@ where
                     if let Some(spanned) = spanned {
                         self.processed_tokens.push(spanned);
                     }
+                }
+                // A block comment may appear anywhere a space may (SPEC-2), including
+                // mid-expression, not only in a line's leading whitespace — `{` had no
+                // arm here at all before, so `f = {- a note -} 1` fell through to the
+                // catch-all below and was rejected as an `UnrecognizedToken` naming `{`,
+                // which is not the problem (BUG-13). `{` is not otherwise a valid start
+                // of a token today, so a `{` not followed by `-` falls through to that
+                // same catch-all unchanged.
+                '{' if self.lookahead.1 == Some('-') => {
+                    self.consume_comment()?;
                 }
                 '\'' => {
                     match (self.lookahead.1, self.lookahead.2) {
@@ -1353,6 +1417,89 @@ mod tests {
         });
 
         assert_eq!(tokens, vec![]);
+    }
+
+    /// A block comment is recognised mid-expression, not only in a line's leading
+    /// whitespace (defect 1 of `BUG-13`). Before the fix, `consume_char`'s `match` had no
+    /// arm for `{`, so this fell through to the catch-all and was rejected as an
+    /// `UnrecognizedToken` naming `{` — a character that was never the problem.
+    ///
+    /// Verified to fail by removing the `'{' if self.lookahead.1 == Some('-')` arm from
+    /// `consume_char`: `tokenize` then panics inside its `.expect("no error in tokenize")`
+    /// on the `UnrecognizedToken` the catch-all raises instead.
+    #[test]
+    fn block_comment_recognised_mid_expression() {
+        assert_eq!(
+            tokenize("f = {- a note -} 1"),
+            vec![ident_token("f"), Token::Equal, int_token(1),]
+        );
+    }
+
+    /// Whatever follows a block comment's closing `-}` on the same line is ordinary
+    /// source, not discarded (defect 2 of `BUG-13`). This source has the comment at the
+    /// very start of the line — the one case `consume_char`'s new arm above does not
+    /// exercise, since `handle_indentation` reads leading `{-` on its own — so it also
+    /// pins the `handle_indentation` interaction the ticket calls out: `spaces` must keep
+    /// counting the indentation from before the comment rather than being reset by it,
+    /// or the spurious content after `-}` would misfire the even-indentation check.
+    ///
+    /// Verified to fail by restoring the unconditional `self.skip_end_of_line()` call in
+    /// `consume_comment`'s block branch: `f`, `=` and `1` are then swallowed along with
+    /// the comment and `tokenize` returns `vec![]`.
+    #[test]
+    fn code_after_block_comment_close_still_parses() {
+        assert_eq!(
+            tokenize("{- a note -} f = 1"),
+            vec![ident_token("f"), Token::Equal, int_token(1),]
+        );
+    }
+
+    /// Block comments nest: an inner `{-` must be closed by its own `-}` before the outer
+    /// comment ends (defect 3 of `BUG-13`). Without nesting the first `-}` — the inner
+    /// comment's — would end the whole thing, leaving `still outer -}` to be read as
+    /// source.
+    ///
+    /// Verified to fail by reverting the block branch to the old first-`-}`-wins loop:
+    /// `tokenize` then panics inside `.expect("no error in tokenize")`, because `still`
+    /// and `outer` tokenize fine but the trailing `-}` becomes a `Minus` immediately
+    /// followed by `}`, and `}` has no arm in `consume_char` and is rejected as an
+    /// `UnrecognizedToken`.
+    #[test]
+    fn nested_block_comments() {
+        assert_eq!(
+            tokenize("{- outer {- inner -} still outer -} f = 1"),
+            vec![ident_token("f"), Token::Equal, int_token(1),]
+        );
+    }
+
+    /// Reaching end of file inside an open block comment is an error, not silent
+    /// acceptance of the rest of the file (defect 4 of `BUG-13`). The primary label sits
+    /// on the opening `{-` — the outermost one, when several are nested — since that is
+    /// the one the author has to go fix.
+    ///
+    /// Verified to fail by reverting the loop's `(None, _)` arm to `break` (as the old
+    /// `None => break` did): the tokenizer then reaches end of file with no error at all,
+    /// and this assertion fails as `Ok([])` rather than the expected `Err`.
+    #[test]
+    fn unclosed_block_comment_is_an_error() {
+        assert_eq!(
+            make_tokenizer("f = 1\n{- oops, never closed").collect::<Result<Vec<_>, _>>(),
+            Err(TokenizerError::new(
+                BytePos(6),
+                BytePos(27),
+                TokenizerErrorType::UnclosedBlockComment
+            ))
+        );
+
+        // Nesting: the error blames the outermost `{-`, not the inner one.
+        assert_eq!(
+            make_tokenizer("{- outer {- inner -} still open").collect::<Result<Vec<_>, _>>(),
+            Err(TokenizerError::new(
+                BytePos(0),
+                BytePos(31),
+                TokenizerErrorType::UnclosedBlockComment
+            ))
+        );
     }
 
     #[test]
