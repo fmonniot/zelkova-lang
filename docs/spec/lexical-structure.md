@@ -30,7 +30,7 @@ run together are separated by a space.
 A **line comment** starts at `--` and runs to the end of the line.
 
 ```zel expect=ok
-module Example exposing (f)
+module Example exposing ()
 
 -- a line comment
 f = 1
@@ -40,7 +40,7 @@ Because `--` always starts a comment, no operator can contain two consecutive hy
 `a--a` is the single token `a` followed by a comment rather than anything arithmetic:
 
 ```zel expect=ok
-module Example exposing (f)
+module Example exposing ()
 
 f a =
   a--a
@@ -55,7 +55,7 @@ A block comment ends exactly at its closing `-}`. Whatever follows on that line 
 source text. A block comment may appear anywhere a space may.
 
 ```zel expect=ok
-module Example exposing (f)
+module Example exposing ()
 
 f = {- a note -} 1
 ```
@@ -76,7 +76,7 @@ reproduces with no comment involved at all — a plain, correctly 2-space-indent
 identically. [`docs/tickets/bug-29.md`](../tickets/bug-29.md) tracks it.
 
 ```zel expect=ok
-module Example exposing (f)
+module Example exposing ()
 
 {- outer
    {- inner -}
@@ -100,7 +100,7 @@ documents the declaration below it, and the `@docs` markup used inside the modul
 belong to documentation tooling; the compiler discards them like any other comment.
 
 ```zel expect=ok
-module Example exposing (f)
+module Example exposing ()
 
 {-| Documentation for f. -}
 f = 1
@@ -127,7 +127,7 @@ A letter that has no case cannot begin an identifier, because there would be not
 language to read off it. Such letters are perfectly good *inside* a name.
 
 ```zel expect=ok
-module Example exposing (Форма, aire)
+module Example exposing ()
 
 type Форма
   = Ronde
@@ -141,7 +141,7 @@ lowercase letters, so they name a function and its parameter. A name may mix scr
 after its first character:
 
 ```zel expect=ok
-module Example exposing (f)
+module Example exposing ()
 
 fデータ = 1
 
@@ -162,7 +162,7 @@ They may not begin an identifier either, for the same reason, and are ordinary c
 characters.
 
 ```zel expect=ok
-module Example exposing (f)
+module Example exposing ()
 
 ǅoo = 1
 
@@ -228,7 +228,7 @@ alone asks for an instance to be derived, `derived eq` opens the derivation of a
 facade signature where `unsafe : …` declares a constant of that name.
 
 ```zel expect=ok
-module Example exposing (left, right, non, foreign, derived, unsafe)
+module Example exposing ()
 
 left = 1
 
@@ -322,7 +322,7 @@ value — but the sign there belongs to the [pattern grammar](patterns.md#litera
 to this token.
 
 ```zel expect=ok
-module Example exposing (count)
+module Example exposing ()
 
 count = 42
 ```
@@ -349,7 +349,7 @@ on each side** — optionally followed by an exponent: `e` or `E`, an optional `
 a run of digits. An exponent may also follow a bare run of digits with no `.` at all.
 
 ```zel expect=ok
-module Example exposing (ratio)
+module Example exposing ()
 
 ratio = 3.14
 ```
@@ -369,7 +369,7 @@ does not fit — is [Evaluation semantics](evaluation-semantics.md#numbers)'s ru
 section's.
 
 ```zel expect=ok
-module Example exposing (f)
+module Example exposing ()
 
 f = 1.
 ```
@@ -394,7 +394,7 @@ directly, or as one of these escape sequences:
 | `\u{H…}` | the character with the given hexadecimal code point |
 
 ```zel expect=ok
-module Example exposing (letter)
+module Example exposing ()
 
 letter = 'a'
 ```
@@ -465,7 +465,7 @@ by an `infix` declaration to an ordinary function, and its precedence and associ
 declared there rather than built in.
 
 ```zel expect=ok
-module Example exposing ((|+|), combine)
+module Example exposing ()
 
 infix left 6 (|+|) = combine
 
@@ -497,7 +497,7 @@ a `-` has a left operand and where it does not is
 [Expressions](expressions.md#prefix-negation)' subject.
 
 ```zel expect=ok
-module Example exposing (opposite)
+module Example exposing ()
 
 infix left 6 (-) = sub
 

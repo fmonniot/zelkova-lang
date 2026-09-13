@@ -84,7 +84,7 @@ fn p_ctor(ctor: canonical::TypeConstructor, args: Vec<canonical::Pattern>) -> ca
 #[test]
 fn simple_constant_no_annotation() {
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
         answer = 42
     "#};
     let module = canonicalize_standalone(source).expect("should canonicalize");
@@ -405,6 +405,124 @@ fn export_nonexistent_type_is_error() {
         start..(start + identifier.len()),
         "the caret must sit under the exposed name alone, not the whole header"
     );
+}
+
+// ── Scenario 7b: an exposed value with no annotation (`BUG-14`) ─────────────
+
+/// `SPEC-5`: a value named in the `exposing` list must carry a type
+/// annotation. `label` has none, so exposing it is rejected at the
+/// declaration rather than silently dropped from the interface.
+///
+/// Mutation-checked: dropping the `values.get(name)` match arm in
+/// `do_exports`'s `Lower` case (falling straight through to
+/// `Ok((name.clone(), ExportType::Value))`, the pre-fix behaviour) turns this
+/// red — `canonicalize_standalone` starts returning `Ok` again.
+#[test]
+fn exposed_value_without_annotation_is_error() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (label)
+        label = 1
+    "#};
+
+    let errors = canonicalize_standalone(source)
+        .expect_err("exposing an unannotated value must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::ExportedValueNotAnnotated(name, _, _) => {
+            assert_eq!(name.as_str(), "label");
+        }
+        other => panic!("expected ExportedValueNotAnnotated, got {:?}", other),
+    }
+
+    // Primary label under the name in the `exposing` list; secondary under
+    // the declaration itself, which is `Value::span()` — the whole
+    // `label = 1` line, annotation and body together (there is none of the
+    // former here), not just the name.
+    let identifier = "label";
+    let header_start = source
+        .find(identifier)
+        .expect("source names it in the header");
+    let declaration = "label = 1";
+    let declaration_start = source
+        .find(declaration)
+        .expect("source declares it on its own line");
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 2, "expected two labels, got {:?}", labels);
+    assert!(labels[0].primary, "the first label must be the primary one");
+    assert_eq!(
+        labels[0].span.to_range(),
+        header_start..(header_start + identifier.len()),
+        "the primary caret must sit under the name in the exposing list"
+    );
+    assert!(!labels[1].primary, "the second label must be secondary");
+    assert_eq!(
+        labels[1].span.to_range(),
+        declaration_start..(declaration_start + declaration.len()),
+        "the secondary caret must sit under the declaration itself"
+    );
+}
+
+/// The same declaration, kept private: `SPEC-5` only constrains what crosses
+/// the module boundary, so an unannotated value that nothing exposes still
+/// compiles.
+#[test]
+fn private_value_without_annotation_compiles() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        label = 1
+    "#};
+
+    let module = canonicalize_standalone(source)
+        .expect("a private, unannotated declaration must still compile");
+    assert_eq!(
+        module.values.get(&"label".into()).unwrap(),
+        &canonical::Value::Value {
+            span: NodeSpan::none(),
+            name: "label".into(),
+            patterns: vec![],
+            body: c_int(1),
+        }
+    );
+}
+
+/// `exposing (..)` exposes every top-level declaration, so `SPEC-5` applies
+/// to all of them — not just a name written out individually. There is no
+/// per-name span to blame here (`Exposing::Open` carries none), so the
+/// declaration itself is the error's only label.
+///
+/// Mutation-checked: replacing the `Open` arm's `collect_accumulate` check
+/// with a bare `Ok(Exports::Everything)` (the pre-fix behaviour) turns this
+/// red.
+#[test]
+fn open_exposing_with_unannotated_declaration_is_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        label = 1
+    "#};
+
+    let errors = canonicalize_standalone(source)
+        .expect_err("exposing (..) over an unannotated declaration must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::ExportedValueNotAnnotated(name, exposed_span, declared_span) => {
+            assert_eq!(name.as_str(), "label");
+            assert_eq!(
+                exposed_span.span(),
+                None,
+                "exposing (..) names nothing individually, so there is no exposing-list span"
+            );
+            assert!(
+                declared_span.span().is_some(),
+                "the declaration's own span must still be real"
+            );
+        }
+        other => panic!("expected ExportedValueNotAnnotated, got {:?}", other),
+    }
 }
 
 // ── Scenario 8: JS binding module ────────────────────────────────────────────
@@ -1279,8 +1397,12 @@ fn neg(operand: Shape) -> Shape {
 /// Canonicalizes `chain a b c = <chain_body>` against the `infix` declarations
 /// in `preamble`, and returns the re-associated shape of `chain`'s body.
 fn infix_chain_shape(preamble: &str, chain_body: &str) -> Shape {
+    // `exposing ()`, not `(..)`: every function these preambles declare (the
+    // infix-backing ones, `chain` itself) is left without a type annotation on
+    // purpose, to keep `chain_shape`'s `Value::Value` match below meaningful —
+    // `exposing (..)` would expose them unannotated, which `SPEC-5` now rejects.
     let source = format!(
-        "module Test exposing (..)\n{}\nchain a b c =\n  {}\n",
+        "module Test exposing ()\n{}\nchain a b c =\n  {}\n",
         preamble, chain_body
     );
 
@@ -1290,7 +1412,7 @@ fn infix_chain_shape(preamble: &str, chain_body: &str) -> Shape {
 /// The same, for a body that has to be written on the declaration's own line.
 fn infix_chain_shape_one_line(preamble: &str, chain_body: &str) -> Shape {
     let source = format!(
-        "module Test exposing (..)\n{}\nchain a b c = {}\n",
+        "module Test exposing ()\n{}\nchain a b c = {}\n",
         preamble, chain_body
     );
 

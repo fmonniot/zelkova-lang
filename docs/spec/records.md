@@ -227,7 +227,7 @@ size = Small
 ```
 
 ```zel expect=ok package=spaced
-module Example exposing (f)
+module Example exposing ()
 
 import Widget
 

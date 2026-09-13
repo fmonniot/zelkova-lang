@@ -260,7 +260,7 @@ it group. It is the keyword `infix`, an associativity, a precedence, the operato
 parentheses, `=`, and the function's name.
 
 ```zel expect=ok
-module Example exposing ((+), add)
+module Example exposing ()
 
 infix left 6 (+) = add
 
@@ -314,7 +314,7 @@ A precedence is a single decimal digit: `0` binds loosest, `9` tightest. Ten lev
 to place every operator a program declares against the ones it imports.
 
 ```zel expect=ok
-module Example exposing ((^), pow)
+module Example exposing ()
 
 infix left 10 (^) = pow
 
@@ -395,7 +395,7 @@ A module declares each operator once. Two declarations for one operator give it 
 precedences and two meanings, and no rule chooses between them:
 
 ```zel expect=ok
-module Example exposing ((+), add, mul)
+module Example exposing ()
 
 infix left 6 (+) = add
 

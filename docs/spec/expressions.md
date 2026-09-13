@@ -38,7 +38,7 @@ A literal is an expression whose value is written out in full. The spelling of e
 `Float`.**
 
 ```zel expect=ok
-module Example exposing (count, ratio, letter)
+module Example exposing ()
 
 count = 1
 
@@ -97,7 +97,7 @@ looked up in, and what makes one ambiguous, is
 [Name resolution and scoping](name-resolution.md)' subject.
 
 ```zel expect=ok
-module Example exposing (Shape, area, corners)
+module Example exposing ()
 
 type Shape
   = Square
@@ -113,7 +113,7 @@ A constructor is an ordinary function of its arguments, so it applies and partia
 like one:
 
 ```zel expect=ok
-module Example exposing (Box, wrap, boxed)
+module Example exposing ()
 
 type Box a
   = Box a
@@ -134,7 +134,7 @@ applied to `y`. Every function takes exactly one argument and a multi-argument f
 that returns a function, which is why partial application needs no syntax of its own.
 
 ```zel expect=ok
-module Example exposing (apply, twice)
+module Example exposing ()
 
 apply f x =
   f x
@@ -162,7 +162,7 @@ f g c = g if c then On else Off
 ```
 
 ```zel expect=ok
-module Example exposing (Flag, f)
+module Example exposing ()
 
 type Flag
   = On
@@ -175,7 +175,7 @@ Nothing in the grammar restricts what may be applied. Applying a value that is n
 is a type error rather than a syntax error:
 
 ```zel expect=type-error:UnificationFailed
-module Example exposing (f)
+module Example exposing ()
 
 f = 1 2
 ```
@@ -186,7 +186,7 @@ Parentheses around a single expression **group**: `(a)` is `a`, and no node exis
 parentheses. Parentheses around two or three comma-separated expressions build a **tuple**.
 
 ```zel expect=ok
-module Example exposing (pair, triple, nested)
+module Example exposing ()
 
 pair a b = (a, b)
 
@@ -215,7 +215,7 @@ built into the language: `std/core` declares every operator it offers in exactly
 program declares its own.
 
 ```zel expect=ok
-module Example exposing ((+), add, sum)
+module Example exposing ()
 
 infix left 6 (+) = add
 
@@ -269,7 +269,7 @@ Grouping is decided by these declarations alone. It does not depend on spacing, 
 the declarations appear in, or on anything the operators are bound to.
 
 ```zel expect=ok
-module Example exposing ((+), (*), add, mul, poly)
+module Example exposing ()
 
 infix left 6 (+) = add
 
@@ -336,7 +336,7 @@ has no exceptions: it reads off the text alone and never off the spacing.
 At the start of an expression there is no left operand, so `-` negates:
 
 ```zel expect=ok
-module Example exposing ((-), sub, opposite)
+module Example exposing ()
 
 infix left 6 (-) = sub
 
@@ -374,7 +374,7 @@ After an expression there *is* a left operand, so `-` is subtraction — includi
 like argument position. `g -n` is `g - n`, not `g` applied to the negation of `n`:
 
 ```zel expect=ok
-module Example exposing ((-), sub, f)
+module Example exposing ()
 
 infix left 6 (-) = sub
 
@@ -393,7 +393,7 @@ however that operator is declared. `-a + b` is `(-a) + b` and `-a * b` is `(-a) 
 negation that is meant to cover more is written with parentheses, as `-(a + b)`.
 
 ```zel expect=ok
-module Example exposing ((-), (+), sub, add, f)
+module Example exposing ()
 
 infix left 6 (-) = sub
 
@@ -436,7 +436,7 @@ Both arms are ordinary expressions, so an `else if` chain is nesting rather than
 own:
 
 ```zel expect=ok
-module Example exposing (Flag, classify)
+module Example exposing ()
 
 type Flag
   = On
@@ -455,7 +455,7 @@ An `if` may appear wherever an expression may, subject to the
 [application](#application) rule above: parenthesised in argument position, bare elsewhere.
 
 ```zel expect=ok
-module Example exposing (Flag, f, g)
+module Example exposing ()
 
 type Flag
   = On
@@ -503,7 +503,7 @@ What a pattern may be, and what binding one means, is [Patterns](patterns.md)' s
 the branches must sit on the page is [Layout](layout.md#case--of)'s.
 
 ```zel expect=ok
-module Example exposing (Flag, invert)
+module Example exposing ()
 
 type Flag
   = On
@@ -531,7 +531,7 @@ A `case` is an expression like any other, so it nests in both positions — as t
 another `case`, and as a branch body:
 
 ```zel expect=ok
-module Example exposing (Flag, both)
+module Example exposing ()
 
 type Flag
   = On
@@ -580,7 +580,7 @@ A `case` in the `then` arm of an `if` ends where the `else` begins, the same as 
 block that a following keyword closes:
 
 ```zel expect=ok
-module Example exposing (Flag, f)
+module Example exposing ()
 
 type Flag
   = On

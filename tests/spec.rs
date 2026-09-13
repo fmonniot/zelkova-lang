@@ -293,6 +293,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
         match e {
             Many(inner) => inner.iter().flat_map(one).collect(),
             ExportNotFound(..) => vec!["ExportNotFound"],
+            ExportedValueNotAnnotated(..) => vec!["ExportedValueNotAnnotated"],
             EnvironmentErrors(..) => vec!["EnvironmentErrors"],
             InfixReferenceInvalidValue(..) => vec!["InfixReferenceInvalidValue"],
             AmbiguousOperatorPrecedence(..) => vec!["AmbiguousOperatorPrecedence"],

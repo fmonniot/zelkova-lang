@@ -131,7 +131,7 @@ itself. And a module may bind the spelling to something else entirely, at which 
 that instead:
 
 ```zel expect=ok
-module Example exposing ((::), weird)
+module Example exposing ()
 
 infix left 9 (::) = weird
 
