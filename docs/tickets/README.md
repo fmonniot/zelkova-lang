@@ -185,7 +185,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-18 | bug | medium | closed 2026-09-13 | A variant that is not a constructor application is silently dropped |
 | BUG-19 | bug | medium | closed 2026-09-12 | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
 | [BUG-20](bug-20.md) | bug | high | open | `Js.Utils`'s comparison and append facades declare a type the JavaScript cannot honour |
-| [BUG-21](bug-21.md) | bug | medium | open | Every error from the source-directory walk is discarded, so a missing package root compiles as success |
+| BUG-21 | bug | medium | closed 2026-09-13 | Every error from the source-directory walk is discarded, so a missing package root compiles as success |
 | BUG-22 | bug | high | closed 2026-09-10 | An operator's declared precedence and associativity are recorded and then ignored |
 | BUG-23 | bug | medium | closed 2026-09-12 | An `else` does not close a `case` block, so a `case` in a `then` arm is a layout error |
 | [BUG-24](bug-24.md) | bug | medium | open | Two `.mjs` companions call helpers no file defines, so `modBy 0` and comparing functions are `ReferenceError`s |
@@ -197,6 +197,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-30](bug-30.md) | bug | medium | open | An `Upper(..)` import entry does not check the type was exposed transparently |
 | [BUG-31](bug-31.md) | bug | medium | open | `do_exports` accepts a `Lower`/`Upper` name that resolves only through an import |
 | [BUG-32](bug-32.md) | bug | medium | open | An exposed infix's unannotated backing function is silently dropped from the interface |
+| [BUG-33](bug-33.md) | bug | low | open | `SourceFileError::notes()` dumps `io::Error`'s `Debug` form instead of its `Display` form |
 | [BUG-34](bug-34.md) | bug | low | open | A failed sub-pass in `canonicalize` reports as if it found nothing, cascading into spurious errors from every later pass that depended on it |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |

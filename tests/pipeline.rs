@@ -19,7 +19,7 @@ use zelkova_lang::compiler::dependencies::{self, ModuleWalker};
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::source::load_package_sources;
 use zelkova_lang::compiler::{
-    check_module, compile_package, parser, CompilationError, Interface, PackageName,
+    check_module, compile_package, parser, CompilationError, Interface, PackageName, PhaseError,
 };
 
 mod support;
@@ -61,11 +61,12 @@ fn fixture_package(name: &str) -> std::path::PathBuf {
 
 /// The `.zel` modules `compile_package` would pick up under `root`, sorted.
 ///
-/// `load_package_sources` builds its `WalkDir` with `filter_map(|r| r.ok())`, so
-/// a missing or empty root is indistinguishable from a package with no modules:
-/// zero sources, zero errors, and `compile_package` returns `Ok(())` having
-/// compiled nothing. Any test that reads a green `compile_package` as evidence
-/// the modules were fine has to establish first that there were modules.
+/// An *existing* root holding no `.zel` files at all still loads as zero sources
+/// and zero errors, indistinguishable from a package with no modules. Any test
+/// that reads a green `compile_package` as evidence the modules were fine has to
+/// establish first that there were modules. (A root that doesn't exist is a
+/// different case: `load_package_sources` reports that as an error — see
+/// `BUG-21` in `docs/tickets/README.md`.)
 fn module_names(root: &Path) -> Vec<String> {
     let sources = load_package_sources(root)
         .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
@@ -495,9 +496,9 @@ fn stdlib_bitwise_compiles() {
 /// The `.ignored` modules under `std/core/src` are invisible to the source loader,
 /// which only collects `.zel`, so this covers exactly the modules `cargo run` does.
 ///
-/// The module list is asserted before compiling, and that is not decoration: a
-/// missing or empty `std/core/src` yields zero modules and a green
-/// `compile_package`, so `is_ok()` on its own would pass on a tree with no
+/// The module list is asserted before compiling, and that is not decoration: an
+/// *existing* but empty `std/core/src` would still yield zero modules and a
+/// green `compile_package`, so `is_ok()` on its own would pass on a tree with no
 /// standard library at all. Adding a `.zel` module to the package is expected to
 /// fail this list; extend it, do not weaken it.
 #[test]
@@ -1898,5 +1899,49 @@ fn backing_function_of_an_exposed_operator_stays_unimportable_by_name() {
     assert_eq!(
         only_canonical_error(&error),
         "the imported module does not expose a value named `plus`"
+    );
+}
+
+// ── Test 28: a missing package root is reported, not compiled as success ─────
+
+/// `BUG-21`: `load_package_sources` walked the package root with `WalkDir` and
+/// discarded every `Err` the walk produced (`.filter_map(|r| r.ok())`). A root
+/// that doesn't exist makes `WalkDir` yield exactly one `Err` and then stop, so
+/// that discard turned a missing package root into an empty `SourceFiles` —
+/// zero modules, zero errors, and `compile_package` returning `Ok(())`.
+///
+/// Mutation-checked by restoring the `filter_map(|r| r.ok())` discard in
+/// `load_package_sources` (`src/compiler/source/mod.rs`): with the walk error
+/// thrown away, `compile_package` returns `Ok(())` on this same missing root,
+/// and `expect_err` below panics.
+#[test]
+fn compile_package_reports_a_missing_root() {
+    let root = fixture_package("this-package-root-does-not-exist");
+    assert!(
+        !root.exists(),
+        "fixture path must not exist for this test to mean anything"
+    );
+
+    let error = compile_package(&root)
+        .expect_err("a package root that does not exist must not compile as success");
+
+    let CompilationError::LoadingFiles(errors) = &error else {
+        panic!(
+            "expected Err(CompilationError::LoadingFiles(..)), got {:?}",
+            error
+        );
+    };
+    assert_eq!(
+        errors.len(),
+        1,
+        "expected exactly one error, got {:?}",
+        errors
+    );
+
+    let message = errors[0].message();
+    assert!(
+        message.contains(&root.to_string_lossy().to_string()),
+        "expected the missing root's path in the error message, got {:?}",
+        message
     );
 }

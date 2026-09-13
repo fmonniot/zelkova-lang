@@ -191,6 +191,15 @@ Single message, multiple `Agent` calls. For each:
 >   conclusions across sections. A chapter edit that fixes the compiler behaviour it documents
 >   in the same diff is `[blocking]` on its own account — *A spec change and a semantics change
 >   do not share a diff* forbids exactly that, independent of whether the fix itself is correct.
+> - **Prose that narrates the pre-fix behaviour instead of stating the current rule.** This is
+>   its own failure mode, distinct from a decorative negation tail, and shows up specifically
+>   where a PR rewrites a `Known gap:` or `Not implemented:` paragraph it is closing out: "rejected
+>   at the declaration, rather than silently dropped and left for the importer to discover as a
+>   name that does not exist" is project history in the sentence's own clothing.
+>   `docs/spec/conventions.md`'s *A chapter says what the language is* section forbids this
+>   whether or not it names a ticket — ask whether the sentence would still be true and
+>   unremarkable if the bug being fixed had never existed; if the answer depends on knowing what
+>   the diagnostic used to say, it's a finding.
 > - **Tests that pin nothing.** Ask, per new test: if I reverted the one line that constitutes
 >   the fix, would this test go red? An assertion of `is_err()` where the point was *which*
 >   error is raised, an assertion that holds trivially because of ordering elsewhere, one the
