@@ -484,6 +484,14 @@ where
                         self.consume_comment()?;
                         spaces = 0;
                     } else {
+                        // A lone `-` is not a comment opener, so it is the line's first
+                        // real character — the same conclusion the `_` arm below reaches
+                        // for every other character. Clear the flag here too, or the next
+                        // poll re-enters this function believing it is still scanning
+                        // leading whitespace and measures the run of spaces *after* this
+                        // token (e.g. between `->` and what follows it) against the
+                        // two-space rule instead (BUG-19).
+                        self.at_line_start = false;
                         break;
                     }
                 }
@@ -512,6 +520,12 @@ where
                             break;
                         }
                     } else {
+                        // A lone `{` not opening a `{-` comment is not a token the
+                        // tokenizer knows yet (BUG-13), so this arm has no observable
+                        // effect today. But it reaches the same "first real character"
+                        // conclusion as the `-` arm above, so it clears the flag on the
+                        // same reasoning (BUG-19) rather than leaving it to surface later.
+                        self.at_line_start = false;
                         break;
                     }
                 }
@@ -735,13 +749,11 @@ where
                     // re-entering this same arm forever (BUG-11). Unlike that sibling arm,
                     // this one leaves `at_line_start` alone, because it is only ever reached
                     // with the flag already false. `handle_indentation` does not clear the
-                    // flag on every exit — its `None` (EOF) case and its `Some('-')` and
-                    // `Some('{')` breaks all return with it still set — but each of those
-                    // leaves the iterator on `None`, `-` or `{` rather than on a tab, and
-                    // while the flag is set `process_next_tokens` re-enters
-                    // `handle_indentation` before every `consume_char`, so a tab further along
-                    // such a line meets that arm instead. A tab reaches this arm only once the
-                    // "first real character" arm has cleared the flag.
+                    // flag on every exit — its `None` (EOF) case returns with it still set
+                    // (every other `break`, including `Some('-')` and `Some('{')`'s since
+                    // BUG-19, clears it first) — but that leaves the iterator on `None`
+                    // rather than on a tab, so it cannot reach this arm. A tab reaches this
+                    // arm only once the "first real character" arm has cleared the flag.
                     let start = self.position.absolute;
                     self.next_char();
                     let end = self.position.absolute;
@@ -1366,6 +1378,42 @@ mod tests {
                 TokenizerErrorType::TabError
             ))
         );
+    }
+
+    /// A continuation line starting with `->` must tokenize regardless of how many spaces
+    /// follow the arrow (`BUG-19`). Before the fix, `handle_indentation`'s `Some('-')` arm
+    /// broke out of the indentation loop without clearing `at_line_start`, so the next poll
+    /// re-entered `handle_indentation` believing it was still scanning the line's leading
+    /// whitespace and measured the run of spaces *after* `->` against the two-space rule
+    /// instead — rejecting the line whenever that run was odd, and accepting it whenever it
+    /// was even, which is the parity this test rules out by trying one, two and three spaces.
+    ///
+    /// Verified to fail by reverting the fix (dropping `self.at_line_start = false;` from the
+    /// `Some('-')` arm's `else` branch): the one- and three-space cases then raise
+    /// `IndentationError` on the space between `->` and `Int`, while the two-space case still
+    /// passes — reproducing the parity table in `BUG-19`.
+    #[test]
+    fn continuation_line_starting_with_arrow_tokenizes() {
+        for spaces in 1..=3 {
+            let source = format!("f : Int\n  ->{}Int\nf a = a\n", " ".repeat(spaces));
+
+            assert_eq!(
+                tokenize(&source),
+                vec![
+                    ident_token("f"),
+                    Token::Colon,
+                    ident_token("Int"),
+                    Token::Arrow,
+                    ident_token("Int"),
+                    ident_token("f"),
+                    ident_token("a"),
+                    Token::Equal,
+                    ident_token("a"),
+                ],
+                "failed with {} space(s) after the arrow",
+                spaces
+            );
+        }
     }
 
     /// A consumer which keeps polling past a `TabError` raised while scanning
