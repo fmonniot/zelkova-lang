@@ -2,6 +2,9 @@
 /site
 
 # Keep .claude/skills/ tracked so they're versioned and shared; ignore everything else
-# (worktrees, memory, local settings, session state).
+# (worktrees, memory, local settings, session state). model-policy.md is tracked for the same
+# reason the skills are — all three of them cite it, so an untracked copy would be a rule that
+# only exists on one machine.
 .claude/*
 !.claude/skills
+!.claude/model-policy.md

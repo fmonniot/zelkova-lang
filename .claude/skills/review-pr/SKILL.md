@@ -1,7 +1,7 @@
 ---
 name: review-pr
 description: Spawn one agent per PR to do an adversarial review and post findings as GitHub comments, preferring inline. Use when the user says "review PR #N", "review AST-1 -> PR #M", or asks for an adversarial/independent review of one or more open PRs.
-argument-hint: <PR-number | TICKET-ID -> PR-M> [...] [--model sonnet|opus|fable|haiku]
+argument-hint: <PR-number | TICKET-ID -> PR-M> [...] [--model sonnet|opus|fable|haiku] [--deep|--cheap]
 ---
 
 # Review PR
@@ -19,8 +19,30 @@ there is no associated ticket. Normalize to a list of `(ticket_id_or_none, pr_nu
 
 ### Model
 
-Default model is **opus** — adversarial review benefits from the stronger model. Honor a model
-the user names, globally or per PR. Valid: `sonnet`, `opus`, `fable`, `haiku`.
+Resolve a **tier** per PR with [`.claude/model-policy.md`](../../model-policy.md). The default
+is `standard` (sonnet); `deep` (opus) needs a named trigger. Review used to default to opus on
+the reasoning that adversarial search benefits from the stronger model — true, but review is
+also the most-run phase in the loop (every PR, twice if it reaches round 2), so paying for it
+by default is what leaves nothing for the ticket that needed it.
+
+The pick cannot be made until **after Step 0.5**, because the round is part of it:
+
+- **Round ≥ 2 is always `standard`.** It reviews a bounded delta against findings that are
+  already written down and replied to. Nothing about that is a search problem.
+- **Round 1 is `standard` unless the diff reaches the cross-cutting paths.** Check with
+  `gh pr diff <PR> --repo fmonniot/zelkova-lang --name-only`: `src/compiler/parser/grammar.lalrpop`
+  together with the `parser`/`canonical` ASTs, anything under `src/compiler/typer/`, or the
+  error accumulation in `src/compiler/mod.rs`. Those are the three areas where a defect is
+  subtle enough to survive a `standard` read, and each is on the list because it already
+  produced one.
+- **Round 1 is also `deep` when the ticket itself was a design-decision ticket** — the same
+  trigger `work-ticket` uses. A PR that made a call the ticket left open needs a reviewer who
+  can tell whether it made the right one.
+
+Honor a model the user names, globally or per PR; `--deep`/`--cheap` force the tier for the
+whole run. Valid: `sonnet`, `opus`, `fable`, `haiku`. `/code-review ultra` remains the
+deliberate escape hatch when a specific PR is worth a deep multi-agent pass — it is
+user-triggered and billed, so recommend it and never launch it without explicit user consent.
 
 ## Step 0 — Locate each PR's worktree, and pull the ticket
 
@@ -99,7 +121,7 @@ what was decided and why, and a decision recorded there is settled.
 Single message, multiple `Agent` calls. For each:
 
 - `subagent_type: general-purpose`
-- `model:` resolved above (opus unless overridden)
+- `model:` the tier resolved in Input → Model, now that Step 0.5 has fixed the round
 - `run_in_background: true`
 - **Do not set `isolation: "worktree"`** — reuse the worktree from Step 0 via `cd`/`git -C`.
 - **Prompt:** the shared body below; for round ≥ 2, the round-N block prepended to it.
@@ -225,6 +247,14 @@ Single message, multiple `Agent` calls. For each:
 > gh pr review <PR> --repo fmonniot/zelkova-lang --comment --body "<summary>"
 > ```
 >
+> **If there is a specific question you could not settle**, do not guess it into a `[note]` and
+> do not leave it out. Post the findings you did settle, then add `NEEDS-ESCALATION:` to your
+> report back, naming the one question, the file and lines it lives on, and what you ruled out
+> already. A scoped second pass on one question is cheap; a review that quietly rounded an
+> unsettled correctness question down to an observation is how a defect merges with a comment
+> attached to it. This is for a question you genuinely cannot answer at the depth you can reach,
+> not for anything you merely find hard.
+>
 > Report back your verdict, how many inline comments you posted, and your top finding.
 
 ### Prompt template — additional block for round N ≥ 2
@@ -261,11 +291,11 @@ against.
 
 ## Step 2 — Report the launch immediately
 
-One line per agent, right after spawning, naming the model:
+One line per agent, right after spawning, naming the model **and the tier that chose it**:
 
-> I've launched an agent in the background to review PR #<PR> (`<ID>`, one-line description).
-> Model: `<model>`. It's working in `<WT>` on branch `<branch>`. I'll verify its work and report
-> back once it completes.
+> I've launched an agent in the background to review PR #<PR> (`<ID>`, one-line description),
+> round `<N>`. Model: `<model>` (`<tier>`<, and the trigger, when it is deep>). It's working in
+> `<WT>` on branch `<branch>`. I'll verify its work and report back once it completes.
 
 ## Step 3 — Verify
 
@@ -289,11 +319,17 @@ Two things to check, and to fix by hand rather than re-spawning:
 - **More than 3 `[blocking]`.** Ranking was skipped; flag it. A review that tags most of its
   findings blocking has defeated the mechanism.
 
+If an agent's report carries `NEEDS-ESCALATION`, spawn one **`deep`** agent scoped to that
+single question — the same worktree, and a prompt containing only the question, the files it
+names, what the first pass ruled out, and an instruction to post its conclusion as one inline
+comment with the appropriate severity tag. Do not re-run the whole review at `deep`; the rest of
+it was already done.
+
 ## Step 4 — Report
 
-| Ticket | PR | Round | Model | Verdict | blocking / should-fix / note | Top finding |
+| Ticket | PR | Round | Model (why) | Verdict | blocking / should-fix / note | Top finding |
 |---|---|---|---|---|---|---|
-| AST-1 | #NNN | 2 | opus | APPROVED | 0 / 1 / 2 | one-line |
+| AST-1 | #NNN | 2 | sonnet (standard — round 2) | APPROVED | 0 / 1 / 2 | one-line |
 
 If the verdict is `APPROVED` with zero blocking findings, say so plainly and recommend merging
 rather than another `fix-pr-comments` pass. **The loop is supposed to terminate**; an approved

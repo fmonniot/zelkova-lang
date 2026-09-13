@@ -68,9 +68,13 @@ opens is not a record. (The codebase still has plenty of pre-existing ones; don'
 
 `.claude/skills/` holds the skills that drive both loops: `create-ticket`, `work-ticket`,
 `review-pr` and `fix-pr-comments` change the compiler; `write-spec-chapter` and `prose-pass`
-specify the language. Both spec skills — and any session writing spec prose without one — are
-held to [`docs/spec/conventions.md`](docs/spec/conventions.md), whose wording rules have no
-test behind them.
+specify the language. Which model the first three spawn their agents on is
+[`.claude/model-policy.md`](.claude/model-policy.md), not each skill's own judgment: the default
+is sonnet everywhere, opus needs one of that file's named triggers, and an agent that hits a
+decision its ticket does not make stops and escalates rather than guessing. Both spec skills —
+and any session writing spec prose without one — are held to
+[`docs/spec/conventions.md`](docs/spec/conventions.md), whose wording rules have no test behind
+them.
 
 ## Architecture
 

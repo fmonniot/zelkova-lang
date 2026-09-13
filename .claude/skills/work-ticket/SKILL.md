@@ -1,7 +1,7 @@
 ---
 name: work-ticket
 description: Spawn one agent per ticket, each in its own git worktree, to read the ticket from docs/tickets/<id>.md, implement it, and open a PR. Use when the user says "work on AST-1", "fix BUG-2 and TIDY-3", or asks to start work on one or more tickets from docs/tickets/ in parallel.
-argument-hint: <TICKET-ID> [TICKET-ID ...] [--model sonnet|opus|fable|haiku]
+argument-hint: <TICKET-ID> [TICKET-ID ...] [--model sonnet|opus|fable|haiku] [--deep|--cheap]
 ---
 
 # Work Ticket
@@ -19,11 +19,23 @@ should give the full prefix.
 
 ### Model
 
-Default model is **sonnet**. If the user names a model — globally ("use opus for these") or per
-ticket ("BUG-2 with opus, TIDY-3 with sonnet") — honor it; a global choice applies to every
-ticket in the run, a per-ticket choice only to that one. Valid models: `sonnet`, `opus`,
-`fable`, `haiku`. Solving a written ticket is usually mechanical enough not to need more than
-sonnet; `ERR-2` and `AST-2`, which ask for a design decision, are the kind that do.
+Resolve a **tier** per ticket with [`.claude/model-policy.md`](../../model-policy.md), read
+before spawning anything. The default is `standard` (sonnet); `deep` (opus) needs one of the
+policy's named triggers to fire, and the trigger gets reported at launch.
+
+Every signal is on the ticket you just read in Step 0 — its `Sizing:` line, its `Severity:` if
+it is a bug, whether its *Approach* leaves a decision unmade, whether it is a fragment of a
+chain, and whether the files it names are the cross-cutting ones (the `grammar.lalrpop` triad,
+`typer/`, `compile_package`'s error accumulation). Note that `Sizing` alone does not decide it:
+`LANG-4` is small and still fires trigger 1.
+
+If the user names a model — globally ("use opus for these") or per ticket ("BUG-2 with opus,
+TIDY-3 with sonnet") — that overrides the policy for those tickets and no trigger need fire; a
+global choice applies to every ticket in the run, a per-ticket choice only to that one. Valid
+models: `sonnet`, `opus`, `fable`, `haiku`. `--deep`/`--cheap` force the tier for the whole run.
+
+Getting the tier wrong low is cheap here **only because of the escalation contract** in the
+prompt template below and the re-spawn row in Step 4. Don't drop either one.
 
 ## Step 0 — Read each ticket and check it's actually workable
 
@@ -157,6 +169,15 @@ round trip on its first turn.
 >    **no `panic!`, `unwrap()`, `expect()` or `todo!()` on a non-test path** — return a phase
 >    `Error` instead; and **a change to `grammar.lalrpop` lands in the same commit as the
 >    matching `parser` AST and `canonical` conversion changes**, never split across commits.
+>
+>    **Stop rather than guess.** If finishing means making a decision the ticket does not make —
+>    choosing what a construct desugars to, picking one of two error shapes, settling where a
+>    check belongs — stop there. Do not pick one and carry on. Commit nothing, and report
+>    `NEEDS-ESCALATION:` followed by what you found, the options as you now understand them, and
+>    what you had already established before stopping. The same applies if the change cannot
+>    stay inside the ticket's stated scope. Being handed back a well-framed question is a good
+>    outcome; a merged PR that quietly decided a language question is not.
+>
 > 5. Rename the branch: `git branch -m <branch-prefix>/<id-lower>-<slug>`.
 > 6. Run the checks before committing:
 >    ```sh
@@ -208,13 +229,17 @@ round trip on its first turn.
 ## Step 3 — Report the launch immediately
 
 Right after spawning — before verifying anything, without waiting for completion — post one
-line per agent. Always name the model: surfacing it only in the final report means it is
-discovered after the agent may already have been interrupted.
+line per agent. Always name the model **and the tier that chose it**: surfacing it only in the
+final report means a wrong call is discovered after the spend, and after the agent may already
+have been interrupted.
 
 > I've launched an agent in the background to work on `<ID>` (one-line description from the
-> ticket). Model: `<model>`. It's working in its own worktree at `.claude/worktrees/<id-lower>`
-> on branch `<id-lower>` (to be renamed to `<branch-prefix>/<id-lower>-<slug>`). I'll verify
-> its work and report back once it completes.
+> ticket). Model: `<model>` (`<tier>`<, and the trigger, when it is deep>). It's working in its
+> own worktree at `.claude/worktrees/<id-lower>` on branch `<id-lower>` (to be renamed to
+> `<branch-prefix>/<id-lower>-<slug>`). I'll verify its work and report back once it completes.
+
+If the run would spawn more than **two** `deep` agents at once, stop and ask which to promote
+before spawning any of them — see the concurrency cap in `.claude/model-policy.md`.
 
 ## Step 4 — Verify (never trust an agent's self-report)
 
@@ -234,6 +259,15 @@ gh pr list --repo fmonniot/zelkova-lang --head "<branch>" --json number,url -q '
 | Yes | Yes | No | Partial | Open the PR yourself |
 | Yes | No | No | Partial | Push, then open the PR |
 | No | No | No | Not started | Re-spawn with the same prompt into the same empty worktree |
+| — | — | No | Reported `NEEDS-ESCALATION` | Re-spawn at `deep` into the **same** worktree (see below) |
+
+An agent that reported `NEEDS-ESCALATION` did the right thing — it is not a failed run. Re-spawn
+it with the same prompt at the `deep` tier, into the **same** worktree (its `target/` is warm),
+with its report pasted in under a line saying it is a prior attempt's findings rather than
+instructions — that report is the exploration the deep agent would otherwise redo. Say in the report which tickets escalated and why:
+that is the feedback that tunes the triggers in `.claude/model-policy.md`. If a ticket escalates
+a second time, the re-spawn is not being handed the first attempt's findings — fix the prompt,
+not the tier.
 
 Also confirm the close-out actually happened — `git -C "$WT" show --stat HEAD` should show
 `docs/tickets/<id-lower>.md` deleted and `README.md` modified. Agents forget step 7 more often
@@ -241,9 +275,10 @@ than they forget step 6.
 
 ## Step 5 — Report
 
-| Ticket | Model | Branch | PR | Summary |
+| Ticket | Model (why) | Branch | PR | Summary |
 |---|---|---|---|---|
-| AST-1 | sonnet | task/ast-1-remove-box-vec | #NNN | one-line summary |
+| AST-1 | sonnet (standard) | task/ast-1-remove-box-vec | #NNN | one-line summary |
+| ERR-10 | opus (deep — undecided Approach) | task/err-10-unused-imports | #NNN | one-line summary |
 
 Then `cd "$REPO_ROOT"`.
 

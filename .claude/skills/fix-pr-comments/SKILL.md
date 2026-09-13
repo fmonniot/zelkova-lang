@@ -1,7 +1,7 @@
 ---
 name: fix-pr-comments
 description: Triage the review comments on a GitHub PR (inline, review-level, and issue-level) by severity, implement blocking findings unconditionally, judge should-fix/note findings for relevance and either implement, decline, or file a follow-up ticket, resolve merge conflicts with main, run cargo fmt/clippy, push, and resolve the threads. Use when the user says "fix the comments on PR #N", "address the review", or asks to act on reviewer feedback for one or more PRs.
-argument-hint: <TICKET-ID -> PR-M> [...] [--model sonnet|opus|fable|haiku]
+argument-hint: <TICKET-ID -> PR-M> [...] [--model sonnet|opus|fable|haiku] [--deep|--cheap]
 ---
 
 # Fix PR Comments
@@ -19,13 +19,16 @@ Pairs like `AST-1 -> PR 120` or `BUG-2 -> PR 121`. A ticket ID is any ID in
 
 ### Model
 
-If the user names a model — globally or per PR — use it and skip the complexity assessment for
-that PR. Valid: `sonnet`, `opus`, `fable`, `haiku`.
+Resolve a **tier** per PR with [`.claude/model-policy.md`](../../model-policy.md), using the
+signals at the end of Step 0 — the tier depends on which comments are going to be implemented,
+so it cannot be picked before the triage.
 
-Otherwise fall through to the heuristic at the end of Step 0. **Triage in Step 0 runs either
-way** — the model choice is separate from deciding which comments get implemented.
+If the user names a model — globally or per PR — use it and skip the assessment for that PR;
+`--deep`/`--cheap` force the tier for the whole run. Valid: `sonnet`, `opus`, `fable`, `haiku`.
+**Triage in Step 0 runs either way** — the model choice is separate from deciding which comments
+get implemented.
 
-## Step 0 — Triage by severity, then pick a model per PR
+## Step 0 — Triage by severity, then pick a tier per PR
 
 Pull the review feedback and skim it before spawning anything:
 
@@ -58,12 +61,25 @@ Report the triage before spawning, so a `[note]` you are about to skip can be pr
 > PR #NNN: 1 blocking, 2 should-fix, 3 notes. 1 implemented unconditionally; the agent will
 > judge the other 5 and implement, decline, or ticket each.
 
-### Then pick the model
+### Then pick the tier
 
-Skip for any PR whose model the user named. Otherwise default to `opus`. Downgrade to `sonnet`
-only when every comment **to be implemented** is mechanical — typos, renames, formatting, moving
-a line, a one-word doc fix. Anything touching the AST, the grammar, error types, control flow or
-test coverage keeps that PR on opus.
+Skip for any PR whose model the user named. Otherwise the default is `standard` (sonnet), and
+the question is whether anything **to be implemented** fires a trigger — the rule used to run
+the other way round, upgrading unless everything was mechanical, which meant almost every PR
+took the expensive tier for a handful of renames.
+
+A finding here arrives already localized: the reviewer named the file, the line and what is
+wrong with it. That is `standard` work. Go `deep` only when one of these holds:
+
+- **A `[blocking]` finding disputes the approach**, rather than pointing at a defect within it —
+  "this belongs in the unifier, not the annotator", "this error should not exist as its own
+  variant". Implementing that is making the decision, not applying one.
+- **The fix lands in the cross-cutting paths** named in the policy: the `grammar.lalrpop` triad,
+  `src/compiler/typer/`, or `compile_package`'s error accumulation.
+- **A finding reverses an earlier round's decision** (`[blocking] Reversing round N-1's decision
+  on …`). Two rounds disagreeing about the same code is the case where the tier is worth it.
+
+Volume is not a trigger. Eight mechanical comments are still eight mechanical comments.
 
 ## Step 1 — Reuse the PR's worktree
 
@@ -206,17 +222,26 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 >    ```
 > 8. Check CI: `gh pr checks <PR>`. Fix any failures in their own commit, then push again.
 >
+> **Stop rather than guess.** If implementing a finding means making a decision neither the
+> review nor the ticket makes — the comment says a check belongs somewhere else without saying
+> where, or two findings can only be satisfied by picking one of two designs — stop on that
+> finding. Implement the others, commit them, and report `NEEDS-ESCALATION:` naming the one
+> finding, the options as you now understand them, and what you established before stopping.
+> Do not silently decline it as "not relevant": a decline is a judgment that the comment is
+> wrong, which is a different claim from "this needs a decision I am not the one to make."
+>
 > Report back: commits made, whether the merge had conflicts, final `gh pr checks` state, how
 > many threads you resolved, and — listed explicitly — which comments you declined, which you
 > deferred (with their ticket IDs), and which you disputed.
 
 ## Step 3 — Report the launch immediately
 
-One line per agent, right after spawning, naming the model:
+One line per agent, right after spawning, naming the model **and the tier that chose it**:
 
 > I've launched an agent in the background to address review comments on PR #<PR> (`<ID>`,
-> one-line description). Model: `<model>`. It's working in `<WT>` on branch `<branch>`. I'll
-> verify its work and report back once it completes.
+> one-line description). Model: `<model>` (`<tier>`<, and the trigger, when it is deep>). It's
+> working in `<WT>` on branch `<branch>`. I'll verify its work and report back once it
+> completes.
 
 ## Step 4 — Verify
 
@@ -232,15 +257,19 @@ disputed**. Anything else means threads were dropped silently; go resolve them r
 trusting the report. A disputed thread left open is correct — surface it to the user below
 rather than closing it.
 
+If the agent reported `NEEDS-ESCALATION`, its other commits still stand — re-spawn a **`deep`**
+agent into the same worktree, scoped to that one finding, with the first agent's account pasted
+in as prior findings rather than instructions. Do not re-run the whole pass.
+
 Because CI does not gate fmt or clippy, a passing `gh pr checks` is not evidence they are clean.
 Confirm in the worktree: `git -C "$WT" ...` then `cargo fmt --all --check` and
 `cargo clippy --all-features`.
 
 ## Step 5 — Report
 
-| Ticket | PR | Model | Commits | Implemented / declined / deferred / disputed | Tickets filed | Conflicts resolved? | CI | Threads resolved |
+| Ticket | PR | Model (why) | Commits | Implemented / declined / deferred / disputed | Tickets filed | Conflicts resolved? | CI | Threads resolved |
 |---|---|---|---|---|---|---|---|---|
-| AST-1 | #NNN | opus | 3 | 2 / 2 / 1 / 1 | 1 | yes | passing | 6/7 |
+| AST-1 | #NNN | sonnet (standard) | 3 | 2 / 2 / 1 / 1 | 1 | yes | passing | 6/7 |
 
 Spell out any deferred or disputed item in prose under the table: for a deferred one, the
 finding and the ticket ID it produced; for a disputed one, which finding, which earlier decision
