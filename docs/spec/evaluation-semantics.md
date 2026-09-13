@@ -43,7 +43,7 @@ An argument is a value before the function it is passed to is entered, and it is
 whether or not the body ever mentions it.
 
 ```zel expect=ok
-module Example exposing (first, loop, stuck)
+module Example exposing ()
 
 first a b =
   a
@@ -71,7 +71,7 @@ An application evaluates the function expression first, then each argument in so
 and applies last.
 
 ```zel expect=ok
-module Example exposing ((+), add, g, h, f)
+module Example exposing ()
 
 infix left 6 (+) = add
 
@@ -114,7 +114,7 @@ declaration to ordinary functions.
 **Both operands of `&&` are evaluated, always, and likewise for `||`.**
 
 ```zel expect=ok
-module Example exposing (Bool, (&&), and, safe)
+module Example exposing ()
 
 type Bool
   = True
@@ -135,7 +135,7 @@ evaluation is a property of the call site, and `&&` is a call.
 Skipping the right operand is written out:
 
 ```zel expect=ok
-module Example exposing (Bool, expensive, careful)
+module Example exposing ()
 
 type Bool
   = True
@@ -165,7 +165,7 @@ every reference to it is that one value. Such bindings are evaluated in **depend
 one is evaluated after everything it mentions.
 
 ```zel expect=ok
-module Example exposing (Colour, base, shifted, other)
+module Example exposing ()
 
 type Colour
   = Red
@@ -201,7 +201,7 @@ used. **A cycle among parameterless bindings is an error**, whether it is one bi
 runs through several.
 
 ```zel expect=ok
-module Example exposing (x)
+module Example exposing ()
 
 x =
   x
@@ -215,7 +215,7 @@ The restriction is on parameterless bindings only. A function may call itself, a
 may call each other, because neither body runs until the function is applied:
 
 ```zel expect=ok
-module Example exposing (Nat, Bool, isEven, isOdd)
+module Example exposing ()
 
 type Bool
   = True
@@ -275,7 +275,7 @@ arguments than its type has arrows produces a function value** rather than doing
 work:
 
 ```zel expect=ok
-module Example exposing (Pair, pair, pairWithOne)
+module Example exposing ()
 
 type Pair a
   = Pair a a
@@ -307,7 +307,7 @@ bound to a function, and that function is a member of the `Eq` class
 therefore a property of each instance rather than of the language.
 
 ```zel expect=ok
-module Example exposing (Bool, (==), eq, alike)
+module Example exposing ()
 
 type Bool
   = True
@@ -379,7 +379,7 @@ recursion written this way is as deep as the compiler's stack allows, which is t
 unbounded.
 
 ```zel expect=ok
-module Example exposing (Nat, count)
+module Example exposing ()
 
 type Nat
   = Zero
@@ -480,7 +480,7 @@ have meant, so whatever an integer operation returns is indistinguishable from a
 and the language names one rather than leaving the operation partial:
 
 ```zel expect=ok
-module Example exposing ((//), idiv, half)
+module Example exposing ()
 
 infix left 7 (//) = idiv
 

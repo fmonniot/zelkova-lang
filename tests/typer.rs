@@ -258,7 +258,7 @@ fn application_mismatch_blames_the_function_not_the_annotation() {
 #[test]
 fn unannotated_application_mismatch_blames_the_function_too() {
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing (not)
         not : Bool -> Bool
         not b = b
         result = not 42

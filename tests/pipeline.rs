@@ -14,6 +14,7 @@ use std::path::Path;
 
 use codespan_reporting::diagnostic::{LabelStyle, Severity};
 use codespan_reporting::files::SimpleFile;
+use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::dependencies::{self, ModuleWalker};
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::source::load_package_sources;
@@ -94,7 +95,7 @@ fn unwrap_in_file(error: &CompilationError) -> &CompilationError {
 #[test]
 fn minimal_passing_module() {
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
         x = 42
     "#};
     let parsed = parse_source(source);
@@ -108,7 +109,7 @@ fn minimal_passing_module() {
 #[test]
 fn module_with_typed_and_untyped_values() {
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing (identity, add)
         answer = 42
         identity : a -> a
         identity x = x
@@ -1474,6 +1475,78 @@ fn export_not_found_labels_the_exposed_name_alone() {
         "the caret must sit under `{}` alone, not the `module` header around it",
         operator
     );
+}
+
+// ── Test 26b: an exposed value with no annotation (`BUG-14`) ────────────────
+//
+// `Module::to_interface` keeps a value only when it carries a type
+// (`Value::TypedValue`), so an unannotated declaration named in `exposing`
+// used to vanish from the interface silently — the importer then failed with
+// `VariableNotFound` for a name `Widget` plainly declares, blaming the wrong
+// module for the wrong reason. `SPEC-5` closes this at the source: `Widget`
+// itself is now rejected, before it ever publishes an interface.
+
+/// `Widget` fails to canonicalize on its own — `label` is exposed with no
+/// annotation — and `Main`, which imports it, gets an error too, but not
+/// `VariableNotFound`: `Widget` never published an `Interface` for it to
+/// resolve against, so the import itself is what fails.
+///
+/// Mutation-checked: reverting `do_exports`'s `Lower` arm to accept `label`
+/// once `env.find_value` succeeds (the pre-fix behaviour, before the
+/// `values.get(name)` annotation check was added) turns `Widget`'s check
+/// green again, and with it this test — `Main` would then fail with
+/// `VariableNotFound` instead, the exact symptom `BUG-14` was filed over.
+#[test]
+fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
+    let widget = indoc::indoc! {r#"
+        module Widget exposing (label)
+        label = 1
+    "#};
+    let main = indoc::indoc! {r#"
+        module Main exposing (x)
+        import Widget
+        x = Widget.label
+    "#};
+
+    let pkg = test_package();
+
+    let widget_error = check_module(&pkg, &HashMap::new(), &parse_source(widget))
+        .expect_err("an exposed, unannotated value must not compile");
+
+    match &widget_error {
+        CompilationError::Canonical(errors, module) => {
+            assert_eq!(module, &Name::from("Widget"));
+            assert_eq!(errors.len(), 1, "got {:?}", errors);
+            match &errors[0] {
+                canonical::Error::ExportedValueNotAnnotated(name, _, _) => {
+                    assert_eq!(name.as_str(), "label");
+                }
+                other => panic!("expected ExportedValueNotAnnotated, got {:?}", other),
+            }
+        }
+        other => panic!("expected a Canonical error naming Widget, got {:?}", other),
+    }
+
+    // `Widget` never checked, so there is no `Interface` for it in scope —
+    // exactly what the real pipeline would have, since `check_in_order` only
+    // inserts an `Interface` for a module that canonicalized.
+    let main_error = check_module(&pkg, &HashMap::new(), &parse_source(main))
+        .expect_err("Main imports a module that never checked");
+
+    match &main_error {
+        CompilationError::Canonical(errors, module) => {
+            assert_eq!(module, &Name::from("Main"));
+            assert!(
+                !errors
+                    .iter()
+                    .any(|e| matches!(e, canonical::Error::VariableNotFound(..))),
+                "the importer must not blame a missing variable for a name \
+                 `Widget` plainly declares: {:?}",
+                errors
+            );
+        }
+        other => panic!("expected a Canonical error naming Main, got {:?}", other),
+    }
 }
 
 // ── Test 27: an `exposing` list is the whole of what other modules reach ─────

@@ -19,7 +19,7 @@ token missed.
 Leading whitespace on a line must be an even number of spaces. One level is two spaces.
 
 ```zel expect=ok
-module Example exposing (describe)
+module Example exposing ()
 
 type Flag
   = On
@@ -82,7 +82,7 @@ Inside a comment — from `--` to the end of the line, or between `{-` and `-}` 
 ordinary text and is accepted:
 
 ```zel expect=ok
-module Example exposing (f)
+module Example exposing ()
 
 -- a	tab in a line comment
 {- and a	tab in a block comment -}
@@ -101,7 +101,7 @@ as an editor "cleaning" trailing whitespace will, turns the block into an exampl
 proves nothing.
 
 ```zel expect=ok
-module Example exposing (f)
+module Example exposing ()
    
 f x =
   1
@@ -115,7 +115,7 @@ are invisible to this rule:
 
 ```zel expect=ok
 -- Comments before the header are fine.
-module Example exposing (f)
+module Example exposing ()
 
 f x =
   1
@@ -160,7 +160,7 @@ declaration started is what ends that declaration and begins the next; a declara
 continuation lines must therefore be indented.
 
 ```zel expect=ok
-module Example exposing (first, second)
+module Example exposing ()
 
 first x =
   1
@@ -196,7 +196,7 @@ The expression between `case` and `of` may span several lines. It opens a block 
 own, closed by the `of`:
 
 ```zel expect=ok
-module Example exposing (describe)
+module Example exposing ()
 
 type Flag
   = On
@@ -219,7 +219,7 @@ the `case` keyword itself.
 Branches may be written one per line:
 
 ```zel expect=ok
-module Example exposing (describe)
+module Example exposing ()
 
 type Flag
   = On
@@ -290,7 +290,7 @@ branches must clear deep inside the line rather than at its start, so they have 
 there:
 
 ```zel expect=ok
-module Example exposing (describe)
+module Example exposing ()
 
 type Flag
   = On
@@ -326,7 +326,7 @@ describe f =
 Written correctly, with the body one level deeper than the pattern:
 
 ```zel expect=ok
-module Example exposing (describe)
+module Example exposing ()
 
 type Flag
   = On
@@ -346,7 +346,7 @@ describe f =
 A `case … of` in a branch body follows the same rules relative to its own position:
 
 ```zel expect=ok
-module Example exposing (both)
+module Example exposing ()
 
 type Flag
   = On

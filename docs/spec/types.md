@@ -393,8 +393,8 @@ Because `exposing (..)` exposes everything a module declares, a module written t
 annotate **every** top-level declaration. A module that wants unannotated helpers lists what it
 exposes.
 
-```zel expect=ok
-module Example exposing (Size, count)
+```zel expect=canonical-error:ExportedValueNotAnnotated
+module Example exposing (count)
 
 type Size
   = Small
@@ -402,14 +402,10 @@ type Size
 count = Small
 ```
 
-**Known gap:** that block should be rejected — `count` is exposed and carries no annotation.
-Today it is accepted, and the consequence falls on the *importer* rather than here:
-`Module::to_interface` keeps only annotated values, so `count` is silently absent from every
-importing module's scope and the diagnostic there says the name does not exist
-([`docs/tickets/bug-14.md`](../tickets/bug-14.md), whose *Exposing is what other modules can
-see* blocks in [Modules](modules.md#exposing-is-what-other-modules-can-see) show that end of
-it). This rule is what that ticket's fix enforces, turning a name that vanishes across the
-boundary into an error at the declaration that failed to describe itself.
+`count` is exposed and carries no annotation, so the declaration itself is rejected — not the
+importer that would otherwise have to guess why the name is not there. [Modules](modules.md#exposing-is-what-other-modules-can-see)
+shows the same rule from the importer's side: an exposed value that fails this check never
+publishes an interface at all, so nothing downstream can even try to resolve it.
 
 ### An annotation is a promise
 

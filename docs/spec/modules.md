@@ -18,6 +18,7 @@ carries that rule and the reasoning for it. What follows is the module's name an
 ```zel expect=ok
 module Widget exposing (label)
 
+label : Int
 label = 1
 ```
 
@@ -31,6 +32,7 @@ the name resolves.
 ```zel expect=ok
 module Ui.Widget exposing (label)
 
+label : Int
 label = 1
 ```
 
@@ -68,8 +70,10 @@ module Widget exposing
   , size
   )
 
+label : Int
 label = 1
 
+size : Int
 size = 2
 ```
 
@@ -127,6 +131,7 @@ type Color
 type Shape
   = Round
 
+label : Int
 label = 1
 
 infix left 6 (+) = add
@@ -175,6 +180,7 @@ A trailing comma is allowed, and means nothing:
 ```zel expect=ok
 module Widget exposing (label,)
 
+label : Int
 label = 1
 ```
 
@@ -255,23 +261,24 @@ x = Widget.hidden
 Privacy is a property of the boundary: `hidden` is an ordinary value inside `Widget`, and
 `label` may call it.
 
-**Known gap:** the reverse also happens — a value the module *does* expose can fail to
-cross the boundary. A top-level declaration written without a type annotation is dropped
-when the module's interface is built, so importers cannot see it at all, and the
-diagnostic they get says the name does not exist rather than saying why
-([`docs/tickets/bug-14.md`](../tickets/bug-14.md)). Annotating `label` in the first block
-below makes the second compile. The first block is not valid Zelkova either way: an
-exposed declaration [must be annotated](types.md#an-exposed-declaration-must-be-annotated),
-and enforcing that rule is what removes this gap — the error moves to the declaration that
-failed to describe itself, instead of landing on the importer.
+The reverse matters too: a value the module *does* expose still has to actually cross the
+boundary, which is only possible once the checker knows its type. An exposed declaration
+with no type annotation is rejected at the declaration itself — [an exposed declaration
+must be annotated](types.md#an-exposed-declaration-must-be-annotated) — rather than
+silently dropped from the interface and left for every importer to discover as a name
+that does not exist.
 
-```zel expect=ok package=unannotated
+```zel expect=canonical-error:ExportedValueNotAnnotated package=unannotated
 module Widget exposing (label)
 
 label = 1
 ```
 
-```zel expect=canonical-error:VariableNotFound package=unannotated
+`Widget` never canonicalizes, so it never publishes an interface for `Main` to resolve
+against — the import itself fails, rather than the one name inside it that was the actual
+problem.
+
+```zel expect=canonical-error:EnvironmentErrors package=unannotated
 module Main exposing (x)
 
 import Widget
@@ -384,7 +391,7 @@ type Size
 ```
 
 ```zel expect=ok package=position
-module Main exposing (x)
+module Main exposing ()
 
 x = 1
 
@@ -526,7 +533,7 @@ label = Small
 ```
 
 ```zel expect=ok package=missing-type
-module Main exposing (x)
+module Main exposing ()
 
 import Widget exposing (Missing)
 
@@ -672,7 +679,7 @@ x = Widget.label
 ```
 
 ```zel expect=ok package=duplicates
-module Other exposing (y, z)
+module Other exposing ()
 
 import Widget as Gadget
 import Gadget

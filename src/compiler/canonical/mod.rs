@@ -79,8 +79,12 @@ impl Module {
     ///
     /// - a value reaches the interface when the header exposes its name as
     ///   [`ExportType::Value`], on top of the pre-existing requirement that it
-    ///   carry a type annotation (`Value::TypedValue`; an unannotated one is
-    ///   dropped regardless, which is `BUG-14`);
+    ///   carry a type annotation (`Value::TypedValue`). `do_exports` is what
+    ///   makes that requirement real (`SPEC-5`): it rejects a module that
+    ///   exposes an unannotated declaration before this method ever runs, so
+    ///   the `Value::Value` arm in the `filter_map` below is unreachable
+    ///   through normal use — its own comment says why it stays rather than
+    ///   becoming an `unwrap`;
     /// - an infix reaches it when the header exposes the operator;
     /// - a union type reaches it when the header names it either way, but a
     ///   `Size` entry ([`ExportType::UnionPrivate`]) hands over the declaration
@@ -105,6 +109,13 @@ impl Module {
             .iter()
             .filter(|(name, _)| self.exports.exposes(name, &ExportType::Value))
             .filter_map(|(name, value)| match value {
+                // Unreachable through normal use: `do_exports` (`SPEC-5`)
+                // rejects an exposed, unannotated declaration before
+                // canonicalization ever produces a `Module` for this method
+                // to run on (`BUG-14`). Kept rather than `unwrap`ped so a
+                // future caller that hands this a hand-built `Module` — a
+                // test, most likely — gets a value silently absent from the
+                // interface instead of a panic.
                 Value::Value { .. } => None,
                 Value::TypedValue { tpe, span, .. } => Some((name.clone(), (*span, tpe.clone()))),
             })
@@ -891,6 +902,17 @@ pub enum Error {
     /// A name in the `module … exposing (…)` header that nothing in the module
     /// declares, and where that name was written (`ERR-9`).
     ExportNotFound(Name, ExportType, NodeSpan),
+    /// A value exposed by this module — named explicitly in its `exposing` list,
+    /// or implicitly by `exposing (..)` — whose declaration carries no type
+    /// annotation (`SPEC-5`: an exposed declaration must be annotated).
+    ///
+    /// The first [`NodeSpan`] is where the `exposing` list names it — a real
+    /// position for an explicit list, `NodeSpan::none()` for `exposing (..)`,
+    /// which names nothing individually and so has no per-value span to point
+    /// at (`parser::Exposing::Open` carries none at all). The second is the
+    /// declaration's own span, always real: `labels()` falls back to it as the
+    /// primary label when the first is absent, rather than pointing nowhere.
+    ExportedValueNotAnnotated(Name, NodeSpan, NodeSpan),
     EnvironmentErrors(Vec<EnvError>),
     /// (infix, function), and where the `infix` declaration was written
     InfixReferenceInvalidValue(Name, Name, NodeSpan),
@@ -971,6 +993,10 @@ impl PhaseError for Error {
                 "`{}` is exposed by this module but no {} of that name is declared in it",
                 name,
                 export_type_noun(tpe)
+            ),
+            Error::ExportedValueNotAnnotated(name, _, _) => format!(
+                "`{}` is exposed by this module but has no type annotation",
+                name
             ),
             Error::EnvironmentErrors(errors) => match errors.as_slice() {
                 [only] => only.message(),
@@ -1105,6 +1131,33 @@ impl PhaseError for Error {
                 span,
                 &format!("`{}` is not declared anywhere in this module", name),
             ),
+            Error::ExportedValueNotAnnotated(name, exposed_span, declared_span) => {
+                let mut labels = primary(
+                    exposed_span,
+                    &format!("`{}` is exposed here but has no type annotation", name),
+                );
+                if labels.is_empty() {
+                    // Reached only for `exposing (..)`: it names nothing
+                    // individually, so there is no exposing-list position to put
+                    // the primary label under — the declaration becomes the
+                    // primary (and only) label instead of a secondary one.
+                    labels = primary(
+                        declared_span,
+                        &format!(
+                            "`{}` is exposed by `exposing (..)` but has no type annotation",
+                            name
+                        ),
+                    );
+                } else if let Some(span) = declared_span.span() {
+                    labels.push(SpanLabel {
+                        span,
+                        message: "declared here, with no type annotation".to_owned(),
+                        primary: false,
+                        file: None,
+                    });
+                }
+                labels
+            }
             Error::InfixReferenceInvalidValue(_, _, span) => primary(span, "declared here"),
             // The two "declared here" labels go through `InfixDeclaration`, which
             // is what knows whether the declaration is in the module under check
@@ -1379,7 +1432,7 @@ pub fn canonicalize(
 
     // We do exports at the end, and verify that all exported value do
     // have a reference within the current module
-    let exports = do_exports(&source.exposing, &env).unwrap_or_else(|err| {
+    let exports = do_exports(&source.exposing, &env, &values).unwrap_or_else(|err| {
         errors.extend(err);
         Exports::Everything // Never exposed, as we will return the errors instead
     });
@@ -1602,63 +1655,103 @@ fn do_infixes(
 // which `ExportType` they report on success: `Privacy` governs whether the
 // type's constructors are exposed, not whether the type itself exists, so
 // both check existence with `find_type` the same way.
+//
+// `values` is this module's own declarations (from `do_values`/the
+// `javascript` iterator above), separate from `env`: `env.find_value` also
+// answers `Some` for a name resolved through an import, and a re-exported
+// foreign value is already guaranteed typed by its own module's `do_exports`
+// (`SPEC-5` applies there, transitively, through `Interface::values` only
+// ever holding typed entries) — so `Lower`'s annotation check is scoped to a
+// name this module declares itself, and leaves a name it does not declare to
+// the existence check above.
 fn do_exports(
     source_exposing: &parser::Exposing,
     env: &dyn Environment,
+    values: &HashMap<Name, Value>,
 ) -> Result<Exports, Vec<Error>> {
     match source_exposing {
-        parser::Exposing::Open => Ok(Exports::Everything),
-        parser::Exposing::Explicit(exposed) => {
-            let specifics = exposed.iter().map(|exposed| match &exposed.kind {
-                parser::ExposedKind::Lower(name) => {
-                    if env.find_value(name).is_some() {
-                        Ok((name.clone(), ExportType::Value))
-                    } else {
-                        Err(Error::ExportNotFound(
-                            name.clone(),
-                            ExportType::Value,
-                            exposed.span,
-                        ))
-                    }
-                }
-                // Privacy governs whether the type's constructors are exposed,
-                // not whether the type itself exists — both arms check
-                // existence the same way, and only the `ExportType` they
-                // report on success differs.
-                parser::ExposedKind::Upper(name, parser::Privacy::Public) => {
-                    if env.find_type(name).is_some() {
-                        Ok((name.clone(), ExportType::UnionPublic))
-                    } else {
-                        Err(Error::ExportNotFound(
-                            name.clone(),
-                            ExportType::UnionPublic,
-                            exposed.span,
-                        ))
-                    }
-                }
-                parser::ExposedKind::Upper(name, parser::Privacy::Private) => {
-                    if env.find_type(name).is_some() {
-                        Ok((name.clone(), ExportType::UnionPrivate))
-                    } else {
-                        Err(Error::ExportNotFound(
-                            name.clone(),
-                            ExportType::UnionPrivate,
-                            exposed.span,
-                        ))
-                    }
-                }
-                parser::ExposedKind::Operator(name) => {
-                    if env.local_infix_exists(name) {
-                        Ok((name.clone(), ExportType::Infix))
-                    } else {
-                        Err(Error::ExportNotFound(
-                            name.clone(),
-                            ExportType::Infix,
-                            exposed.span,
-                        ))
-                    }
-                }
+        // `exposing (..)` exposes every top-level declaration this module
+        // makes, so `SPEC-5` applies to every one of them, not just those
+        // named individually — and there is no per-name span in this header
+        // to blame (`parser::Exposing::Open` carries none), so
+        // `ExportedValueNotAnnotated`'s first span is `NodeSpan::none()` and
+        // the declaration itself is what a diagnostic points at.
+        parser::Exposing::Open => {
+            let checked = values.values().map(|value| match value {
+                Value::TypedValue { .. } => Ok(()),
+                Value::Value { name, span, .. } => Err(Error::ExportedValueNotAnnotated(
+                    name.clone(),
+                    NodeSpan::none(),
+                    *span,
+                )),
             });
+
+            let _: Vec<()> = collect_accumulate(checked)?;
+
+            Ok(Exports::Everything)
+        }
+        parser::Exposing::Explicit(exposed) => {
+            let specifics =
+                exposed.iter().map(|exposed| match &exposed.kind {
+                    parser::ExposedKind::Lower(name) => {
+                        if env.find_value(name).is_none() {
+                            return Err(Error::ExportNotFound(
+                                name.clone(),
+                                ExportType::Value,
+                                exposed.span,
+                            ));
+                        }
+
+                        match values.get(name) {
+                            Some(Value::Value { span, .. }) => Err(
+                                Error::ExportedValueNotAnnotated(name.clone(), exposed.span, *span),
+                            ),
+                            // `Some(TypedValue)` is declared locally and annotated;
+                            // `None` is resolved through an import instead of a
+                            // local declaration, already covered above.
+                            Some(Value::TypedValue { .. }) | None => {
+                                Ok((name.clone(), ExportType::Value))
+                            }
+                        }
+                    }
+                    // Privacy governs whether the type's constructors are exposed,
+                    // not whether the type itself exists — both arms check
+                    // existence the same way, and only the `ExportType` they
+                    // report on success differs.
+                    parser::ExposedKind::Upper(name, parser::Privacy::Public) => {
+                        if env.find_type(name).is_some() {
+                            Ok((name.clone(), ExportType::UnionPublic))
+                        } else {
+                            Err(Error::ExportNotFound(
+                                name.clone(),
+                                ExportType::UnionPublic,
+                                exposed.span,
+                            ))
+                        }
+                    }
+                    parser::ExposedKind::Upper(name, parser::Privacy::Private) => {
+                        if env.find_type(name).is_some() {
+                            Ok((name.clone(), ExportType::UnionPrivate))
+                        } else {
+                            Err(Error::ExportNotFound(
+                                name.clone(),
+                                ExportType::UnionPrivate,
+                                exposed.span,
+                            ))
+                        }
+                    }
+                    parser::ExposedKind::Operator(name) => {
+                        if env.local_infix_exists(name) {
+                            Ok((name.clone(), ExportType::Infix))
+                        } else {
+                            Err(Error::ExportNotFound(
+                                name.clone(),
+                                ExportType::Infix,
+                                exposed.span,
+                            ))
+                        }
+                    }
+                });
 
             let specifics = collect_accumulate(specifics)?;
 

@@ -5,6 +5,6 @@ whole purpose is to go red the day a feature lands, so a block that parses and
 canonicalizes cleanly must fail its `expect=unimplemented` tag rather than pass.
 
 ```zel expect=unimplemented
-module Test exposing (..)
+module Test exposing ()
 x = 42
 ```

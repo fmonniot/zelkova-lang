@@ -596,7 +596,7 @@ A numeric literal carries no constraint. Its type is decided by how it is spelle
 is where that rule lives.
 
 ```zel expect=ok
-module Example exposing (x)
+module Example exposing ()
 
 x =
   1
