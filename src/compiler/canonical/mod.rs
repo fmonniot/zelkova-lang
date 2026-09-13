@@ -91,8 +91,16 @@ impl Module {
     ///
     /// [`Exports::Everything`] — a `exposing (..)` header — exposes every
     /// declaration with every constructor, so nothing is dropped in that case.
+    ///
+    /// An exposed infix whose backing function is not itself separately exposed
+    /// — `infix left 6 (+) = add` with `(+)` in the header and `add` not, which
+    /// is every operator `std/core` declares — still needs `add`'s type
+    /// reachable, or `find_value`'s redirect (`BUG-15`) has nothing to find once
+    /// an importer brings the operator into scope with `exposing (..)`.
+    /// [`Interface::infix_functions`] carries exactly that, kept out of
+    /// `values` itself so `add` stays unreachable under its own name.
     pub fn to_interface(&self, file: Option<SourceFileId>) -> super::Interface {
-        let values = self
+        let values: HashMap<Name, (NodeSpan, Type)> = self
             .values
             .iter()
             .filter(|(name, _)| self.exports.exposes(name, &ExportType::Value))
@@ -119,11 +127,27 @@ impl Module {
             })
             .collect();
 
-        let infixes = self
+        let infixes: HashMap<Name, Infix> = self
             .infixes
             .iter()
             .filter(|(name, _)| self.exports.exposes(name, &ExportType::Infix))
             .map(|(name, infix)| (name.clone(), infix.clone()))
+            .collect();
+
+        // See `Interface::infix_functions`'s doc comment: only a backing function
+        // *not* already reaching `values` on its own needs a supplementary entry
+        // here — one that is already exposed by name is inserted twice
+        // otherwise, which `insert_foreign_value` reads as the same value
+        // imported from two places.
+        let infix_functions = infixes
+            .values()
+            .filter(|infix| !values.contains_key(&infix.function_name))
+            .filter_map(|infix| match self.values.get(&infix.function_name) {
+                Some(Value::TypedValue { tpe, span, .. }) => {
+                    Some((infix.function_name.clone(), (*span, tpe.clone())))
+                }
+                _ => None,
+            })
             .collect();
 
         super::Interface {
@@ -131,6 +155,7 @@ impl Module {
             values,
             unions,
             infixes,
+            infix_functions,
             file,
         }
     }

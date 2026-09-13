@@ -1755,3 +1755,76 @@ fn unexposed_operator_is_not_importable() {
         "the imported module does not expose an infix operator named `<->`"
     );
 }
+
+/// The regression `to_interface`'s `infixes` filter almost reintroduced:
+/// `std/core/src/Basics.zel` exposes every operator without separately
+/// exposing its backing function by name — `infix left 6 (+) = add`, header
+/// exposing `(+)` and not `add` — and `import Basics exposing (..)` relies on
+/// `+` still resolving. `find_value`'s redirect (`BUG-15`) looks `add` up
+/// unqualified in the *importer's* own scope, and `Exposing::Open` copying
+/// `interface.values` in wholesale is the only thing that ever put it there;
+/// once `values` is filtered by the header, that copy no longer carries a
+/// value never exposed by name, unless something else keeps it reachable.
+///
+/// `Lib` here has exactly `Basics`' shape: one operator exposed, its backing
+/// function not exposed at all.
+///
+/// Mutation-checked by dropping the `interface.infix_functions` loop from
+/// `process_import`'s `Exposing::Open` arm (`src/compiler/canonical/environment.rs`),
+/// which turns this red with `cannot find a value named \`Main.<+>\``.
+#[test]
+fn exposed_operator_resolves_via_open_import_without_its_backing_function_exposed() {
+    let lib = indoc::indoc! {r#"
+        module Lib exposing ((<+>))
+        infix left 6 (<+>) = plus
+        plus : Int -> Int -> Int
+        plus a b = a
+    "#};
+
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (..)
+        answer : Int
+        answer = 1 <+> 2
+    "#};
+
+    assert!(
+        check_importer(lib, main).is_ok(),
+        "`(<+>)` is exposed by `Lib`, and `exposing (..)` must still resolve it even though `plus` is never exposed by name"
+    );
+}
+
+/// The other half of the fix above: keeping `plus` reachable for the operator
+/// redirect must not make `plus` importable *by its own name* — that would
+/// reopen the hole `BUG-9` closed. `Interface::infix_functions` is kept
+/// separate from `values` for exactly this reason.
+///
+/// Mutation-checked by dropping the `exports.exposes(..)` filter from
+/// `to_interface`'s `values` (the original `BUG-9` fix, not the addition
+/// above) — the same mutation `unexposed_value_is_not_importable` catches,
+/// repeated here because this is the one shape a wrong reading of the
+/// `infix_functions` fix (keeping the backing function in `values` itself)
+/// would get wrong without failing that test.
+#[test]
+fn backing_function_of_an_exposed_operator_stays_unimportable_by_name() {
+    let lib = indoc::indoc! {r#"
+        module Lib exposing ((<+>))
+        infix left 6 (<+>) = plus
+        plus : Int -> Int -> Int
+        plus a b = a
+    "#};
+
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (plus)
+        answer = 1
+    "#};
+
+    let error =
+        check_importer(lib, main).expect_err("`plus` is not exposed by `Lib`, only `(<+>)` is");
+
+    assert_eq!(
+        only_canonical_error(&error),
+        "the imported module does not expose a value named `plus`"
+    );
+}
