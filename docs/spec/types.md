@@ -670,7 +670,7 @@ type Pair
 
 A function type is rejected, and the rejection covers the constructor written to the left of
 the arrow: `Wrap Size -> Size` is a single function type whose argument is `Wrap Size`, so
-`Wrap` sits inside the rejected form rather than existing as a variant beside it.
+`Wrap` sits inside the rejected form.
 
 ```zel expect=canonical-error:InvalidVariant
 module Example exposing (Size, Wrapper)
@@ -724,7 +724,7 @@ type Empty
 
 **Known gap:** the first block is correctly rejected; the second and third should be and are
 not. A trailing `|` is ignored, and `type Empty =` declares a type with no constructors at all
-— something nothing can build, arrived at by accident rather than on purpose
+— something nothing can build, arrived at by accident
 ([`docs/tickets/lang-10.md`](../tickets/lang-10.md)).
 
 A variant list is written with the separator *leading* each line, so appending a variant
