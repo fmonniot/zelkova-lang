@@ -128,7 +128,7 @@ The compiler does not enforce this rule as stated. An indented file holding a si
 declaration is accepted:
 
 ```zel expect=ok
-  module Example exposing (f)
+  module Example exposing (..)
 ```
 
 **Known gap:** that block is tagged `expect=ok` because that is what happens today, and it

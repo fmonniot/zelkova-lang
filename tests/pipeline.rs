@@ -1421,13 +1421,12 @@ fn missing_exposed_import_name_labels_the_name_alone() {
 /// `ERR-9`: `module Foo exposing (bar)` naming something `Foo` never declares is
 /// underlined at `bar` alone.
 ///
-/// `do_exports` (`canonical/mod.rs`) only checks existence for the `Operator`
-/// case today — `BUG-8` is the pre-existing gap this ticket does not close, so a
-/// value or type named in the header is accepted unconditionally regardless of
-/// whether it exists. An undeclared infix is therefore the one case that can
-/// exercise `Error::ExportNotFound`'s span; a `Lower`/`Upper` version of this test
-/// would pass today for the wrong reason (no check ever runs) rather than the right
-/// one.
+/// This exercises the `Operator` case specifically; `do_exports`
+/// (`canonical/mod.rs`) checks existence the same way for `Lower` and `Upper`
+/// names too (`BUG-8`), and `tests/compiler/canonical.rs`'s
+/// `export_nonexistent_value_is_error`/`export_nonexistent_type_is_error` cover
+/// those directly against `canonical::Error` rather than through the whole
+/// package pipeline.
 ///
 /// Mutation-checked two ways, each red on its own: making the `Exposed`
 /// productions in `grammar.lalrpop` emit `NodeSpan::none()`, and reverting

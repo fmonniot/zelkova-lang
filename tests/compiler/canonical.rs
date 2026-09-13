@@ -323,17 +323,88 @@ fn if_then_else_expression() {
 
 // ── Scenario 7: Export validation — exporting a name that doesn't exist ──────
 
+/// `BUG-8`: a module's own `exposing (...)` header naming a value it never
+/// declares is `Error::ExportNotFound`, underlined at the exposed name alone —
+/// not the whole header.
+///
+/// Mutation-checked by reverting the `Lower` arm of `do_exports` to accept the
+/// name unconditionally (the pre-fix behaviour): this test goes red because
+/// `canonicalize_standalone` starts returning `Ok` again.
 #[test]
-fn export_nonexistent_name_is_error() {
-    // NOTE: The canonicalizer only validates infix operators in exports today,
-    // not lower-case names, so this currently succeeds.  This test documents
-    // that current (incomplete) behaviour; flip to `is_err()` once
-    // export validation is tightened.
+fn export_nonexistent_value_is_error() {
+    use zelkova_lang::compiler::PhaseError;
+
     let source = indoc::indoc! {r#"
         module Test exposing (nonexistent)
         x = 42
     "#};
-    let _ = canonicalize_standalone(source); // Ok or Err both acceptable today
+
+    let errors =
+        canonicalize_standalone(source).expect_err("exposing an undeclared value must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::ExportNotFound(name, kind, _) => {
+            assert_eq!(name.as_str(), "nonexistent");
+            assert_eq!(*kind, canonical::ExportType::Value);
+        }
+        other => panic!("expected ExportNotFound, got {:?}", other),
+    }
+
+    let identifier = "nonexistent";
+    let start = source
+        .find(identifier)
+        .expect("source names it in the header");
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + identifier.len()),
+        "the caret must sit under the exposed name alone, not the whole header"
+    );
+}
+
+/// The same check for a type named in `exposing (...)` that the module never
+/// declares. `Upper`'s two `Privacy` arms both check existence with
+/// `find_type` — this covers the private (bare) spelling.
+///
+/// Mutation-checked by reverting the `Upper` arms of `do_exports` to accept
+/// the name unconditionally: this test goes red because `canonicalize_standalone`
+/// starts returning `Ok` again.
+#[test]
+fn export_nonexistent_type_is_error() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (Missing)
+        x = 42
+    "#};
+
+    let errors =
+        canonicalize_standalone(source).expect_err("exposing an undeclared type must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::ExportNotFound(name, kind, _) => {
+            assert_eq!(name.as_str(), "Missing");
+            assert_eq!(*kind, canonical::ExportType::UnionPrivate);
+        }
+        other => panic!("expected ExportNotFound, got {:?}", other),
+    }
+
+    let identifier = "Missing";
+    let start = source
+        .find(identifier)
+        .expect("source names it in the header");
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + identifier.len()),
+        "the caret must sit under the exposed name alone, not the whole header"
+    );
 }
 
 // ── Scenario 8: JS binding module ────────────────────────────────────────────

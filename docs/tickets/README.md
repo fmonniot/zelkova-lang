@@ -172,7 +172,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-5 | bug | medium | closed 2026-08-26 | The `Tokenizer` never terminates on a tab used for indentation |
 | BUG-6 | bug | medium | closed 2026-08-27 | Rendering a parse error panics for four of `parser::Error`'s five variants |
 | BUG-7 | bug | low | closed 2026-09-11 | The unclosed-char diagnostic draws two invisible carets, and swaps their messages |
-| [BUG-8](bug-8.md) | bug | medium | open | `do_exports` never checks that an exposed value or type actually exists |
+| BUG-8 | bug | medium | closed 2026-09-12 | `do_exports` never checks that an exposed value or type actually exists |
 | BUG-9 | bug | medium | closed 2026-09-12 | A module's `exposing` list is computed and then never consulted |
 | BUG-10 | bug | low | closed 2026-09-12 | A `case` branch level with, or left of, the `case` keyword is accepted |
 | BUG-11 | bug | low | closed 2026-09-11 | The `Tokenizer` never terminates on a tab outside leading whitespace |
