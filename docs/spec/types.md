@@ -402,10 +402,10 @@ type Size
 count = Small
 ```
 
-`count` is exposed and carries no annotation, so the declaration itself is rejected — not the
-importer that would otherwise have to guess why the name is not there. [Modules](modules.md#exposing-is-what-other-modules-can-see)
-shows the same rule from the importer's side: an exposed value that fails this check never
-publishes an interface at all, so nothing downstream can even try to resolve it.
+`count` is exposed and carries no annotation, so the declaration itself is rejected.
+[Modules](modules.md#exposing-is-what-other-modules-can-see) shows the same rule from the
+importer's side: an exposed value that fails this check never publishes an interface at all,
+so nothing downstream can even try to resolve it.
 
 ### An annotation is a promise
 

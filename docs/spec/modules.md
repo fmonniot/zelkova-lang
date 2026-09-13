@@ -264,9 +264,7 @@ Privacy is a property of the boundary: `hidden` is an ordinary value inside `Wid
 The reverse matters too: a value the module *does* expose still has to actually cross the
 boundary, which is only possible once the checker knows its type. An exposed declaration
 with no type annotation is rejected at the declaration itself — [an exposed declaration
-must be annotated](types.md#an-exposed-declaration-must-be-annotated) — rather than
-silently dropped from the interface and left for every importer to discover as a name
-that does not exist.
+must be annotated](types.md#an-exposed-declaration-must-be-annotated).
 
 ```zel expect=canonical-error:ExportedValueNotAnnotated package=unannotated
 module Widget exposing (label)
