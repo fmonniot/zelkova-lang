@@ -56,6 +56,27 @@ pub struct SourceFileError {
     abs_path: PathBuf,
 }
 
+impl SourceFileError {
+    /// Build a `SourceFileError` from a `walkdir` failure.
+    ///
+    /// `walkdir::Error::path` is `None` only for the handful of internal errors that
+    /// aren't tied to a specific directory entry (see the crate's `Error::from_io`);
+    /// `root` is the best path to blame in that case, since it is what was being
+    /// walked. Everything else — a root that doesn't exist, a directory the process
+    /// can't read, a symlink loop — carries its own path.
+    pub(super) fn from_walk_error(root: &Path, error: walkdir::Error) -> SourceFileError {
+        let abs_path = error
+            .path()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| root.to_path_buf());
+
+        SourceFileError {
+            error: SourceFileErrorType::Walk(error),
+            abs_path,
+        }
+    }
+}
+
 /// Loading is the one phase that has no module and no source text to point into —
 /// it failed before either existed — so its errors name the path instead. It goes
 /// through [`PhaseError`] anyway, so that `as_diagnostic` has exactly one way to
@@ -71,6 +92,17 @@ impl PhaseError for SourceFileError {
                 // Maybe we should add some details as to where the incorrect characters are ?
                 "module names must be utf-8 encoded"
             }
+            SourceFileErrorType::Walk(err) => {
+                if err.loop_ancestor().is_some() {
+                    "a symbolic link loop was found while walking the package sources"
+                } else if err.io_error().map(std::io::Error::kind)
+                    == Some(std::io::ErrorKind::NotFound)
+                {
+                    "this path does not exist"
+                } else {
+                    "an I/O error occured while walking the package sources"
+                }
+            }
         };
 
         format!("{}: {}", self.abs_path.display(), detail)
@@ -84,6 +116,19 @@ impl PhaseError for SourceFileError {
                 // Maybe we should add some details as to where the incorrect characters are ?
                 vec![format!("relative path: {}", rel_path.display())]
             }
+            SourceFileErrorType::Walk(err) => {
+                let mut notes = vec![];
+                if let Some(ancestor) = err.loop_ancestor() {
+                    notes.push(format!(
+                        "the link back to {} was found here",
+                        ancestor.display()
+                    ));
+                }
+                if let Some(io_err) = err.io_error() {
+                    notes.push(format!("detailled error: {:?}", io_err));
+                }
+                notes
+            }
         }
     }
 }
@@ -93,6 +138,10 @@ pub enum SourceFileErrorType {
     InvalidPathPrefix,
     Io(std::io::Error),
     NonUtf8Module(PathBuf),
+    /// An entry `walkdir` failed to yield while walking the package root — a root
+    /// that doesn't exist, a directory the process can't read, or a symbolic-link
+    /// loop it detected (see `WalkDir::follow_links` on why the walk can hit one).
+    Walk(walkdir::Error),
 }
 
 impl From<std::path::StripPrefixError> for SourceFileErrorType {
