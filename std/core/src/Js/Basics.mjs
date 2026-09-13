@@ -20,17 +20,23 @@ export function fdiv(a, b) { return a / b }
 export function idiv(a, b) { return (a / b) | 0 }
 export const pow = Math.pow
 
-export function remainderBy(a, b) { return b % a }
+// docs/spec/evaluation-semantics.md#an-operation-with-no-answer defines
+// `remainderBy 0 n` to be `0`, keeping the operation total the same way `idiv`
+// already is: `(a / 0) | 0` is `0`.
+export function remainderBy(a, b) { return a === 0 ? 0 : b % a }
 
 // https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/divmodnote-letter.pdf
+//
+// docs/spec/evaluation-semantics.md#an-operation-with-no-answer defines
+// `modBy 0 n` to be `0`.
 export function modBy(modulus, x) {
+  if (modulus === 0) {
+    return 0;
+  }
   let answer = x % modulus;
-  return modulus === 0
-		? __Debug_crash(11)
-		:
-	((answer > 0 && modulus < 0) || (answer < 0 && modulus > 0))
-		? answer + modulus
-		: answer;
+  return ((answer > 0 && modulus < 0) || (answer < 0 && modulus > 0))
+    ? answer + modulus
+    : answer;
 }
 
 // MORE MATH

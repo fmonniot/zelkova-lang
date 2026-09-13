@@ -496,11 +496,6 @@ keep those three operations total. Nothing marks such a zero as invented, so a c
 zero divisor is a real case tests the divisor beforehand, where a `Float` caller can test the
 result afterwards.
 
-**Known gap:** `modBy 0` calls an undefined `__Debug_crash`, so it is a `ReferenceError` rather
-than `0`, and `remainderBy 0` returns `nan` rather than `0`.
-[`BUG-24`](../tickets/bug-24.md) is the ticket. No block holds either to account: both are in
-the JavaScript companion files, which nothing in the test suite runs.
-
 ### Converting a `Float` to an `Int`
 
 `round`, `floor`, `ceiling` and `truncate` each take a `Float` and produce an `Int`, and there

@@ -40,7 +40,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-    compare, lt, le, gt, ge, append,
+    compare, lt, le, gt, ge, append, equal, notEqual,
 } from '../../src/Js/Utils.mjs';
 
 // A stand-in for `Colour = Red | Blue`, encoded as
@@ -194,4 +194,25 @@ test('PINS append refuses arrays rather than returning one of them', () => {
 test('PINS append refuses a record and a function', () => {
     assert.throws(() => append({ x: 1 }, { x: 2 }), appendError);
     assert.throws(() => append(() => 1, () => 2), appendError);
+});
+
+// EQUALITY — the function case (BUG-24)
+
+// `Eq` has no instance for a function type, so comparing two functions does
+// not type-check and this path is unreachable from well-typed source — but
+// `Js.Utils.equal` is declared `a -> a -> Bool` today (BUG-20) and accepts
+// anything, so it is reachable now. `_Utils_eqHelp` used to call an undefined
+// crash helper here, a `ReferenceError`; it now answers `false` instead of
+// inventing a failure mode equality does not have.
+test('PINS comparing two functions for equality answers false rather than throwing', () => {
+    const f = () => 1;
+    const g = () => 2;
+    assert.equal(equal(f, g), false);
+    assert.equal(notEqual(f, g), true);
+});
+
+test('GUARD a function is equal to itself by reference', () => {
+    const f = () => 1;
+    assert.equal(equal(f, f), true);
+    assert.equal(notEqual(f, f), false);
 });

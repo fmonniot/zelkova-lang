@@ -188,7 +188,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-21 | bug | medium | closed 2026-09-13 | Every error from the source-directory walk is discarded, so a missing package root compiles as success |
 | BUG-22 | bug | high | closed 2026-09-10 | An operator's declared precedence and associativity are recorded and then ignored |
 | BUG-23 | bug | medium | closed 2026-09-12 | An `else` does not close a `case` block, so a `case` in a `then` arm is a layout error |
-| [BUG-24](bug-24.md) | bug | medium | open | Two `.mjs` companions call helpers no file defines, so `modBy 0` and comparing functions are `ReferenceError`s |
+| BUG-24 | bug | medium | closed 2026-09-13 | Two `.mjs` companions call helpers no file defines, so `modBy 0` and comparing functions are `ReferenceError`s |
 | [BUG-25](bug-25.md) | bug | medium | open | Three of the four `Float -> Int` conversions never wrap, so `round nan` and `round 1.0e20` are not `Int`s |
 | [BUG-26](bug-26.md) | bug | medium | open | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
 | [BUG-27](bug-27.md) | bug | medium | open | A canonicalized infix operator is qualified under its own symbol, not the function its `infix` declaration names |
