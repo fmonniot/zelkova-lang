@@ -242,6 +242,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-28](spec-28.md) | task | — | open | Two chapters disagree on `Int`'s range, and the tokenizer enforces a third bound |
 | [SPEC-29](spec-29.md) | task | — | open | `unsafe` marks 45 `std/core` signatures and none of the chapter's own examples |
 | [SPEC-30](spec-30.md) | task | — | open | `unsafe` outside a facade is rejected, and no chapter says so |
+| [SPEC-31](spec-31.md) | task | — | open | A facade has no legitimate way to name `Int`, and `BUG-16` is what hides it |
+| [SPEC-32](spec-32.md) | task | — | open | A module is made ambiguous by an import it never wrote |
+| [SPEC-33](spec-33.md) | task | — | open | Which default imports a module gets is a fixed point over the whole package |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
