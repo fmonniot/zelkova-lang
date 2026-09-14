@@ -2099,3 +2099,43 @@ fn an_explicit_default_import_still_compiles() {
         "the fixture package must compile as a whole"
     );
 }
+
+// ── Test 31: which default import wins does not depend on module names ──────
+
+/// `LANG-8`: a lower-priority implicit edge must not cost another module its
+/// `Basics`.
+///
+/// `add_default_import_edges` is greedy — it refuses an edge whose target already
+/// reaches the importer — so the edges it has already added are part of the graph
+/// the next test consults. Allocating them importer by importer in *name* order
+/// made that self-interference follow the alphabet: in this package `Aux` sorts
+/// first and its only available entry is `Maybe`, and the `Aux -> Maybe` edge then
+/// made `Basics` reach `Zed` through `Aux -> Maybe -> Zed`, so `Zed -> Basics` was
+/// refused and `Zed` lost the one import it needed. Renaming `Aux` to something
+/// after `Zed` made the same package compile.
+///
+/// Allocating target by target in `DEFAULT_IMPORTS` order instead settles every
+/// `Basics` edge before any `Maybe` edge exists to interfere, and within one
+/// target the importers cannot interfere with each other at all — see
+/// `add_default_import_edges`' doc comment for why.
+///
+/// Mutation-checked by restoring the old loop nesting (`for importer { for default
+/// }`): `Zed` then fails with a `VariableNotFound` for `+` and never reaches
+/// `checked`, so `checked_value` panics.
+#[test]
+fn a_low_priority_implicit_edge_does_not_cost_another_module_basics() {
+    let root = fixture_package("package_default_import_priority");
+    assert_eq!(
+        module_names(&root),
+        vec!["Aux.zel", "Basics.zel", "Maybe.zel", "Zed.zel"]
+    );
+
+    let checked = check_fixture("package_default_import_priority");
+    let z = checked_value(&checked, "Zed", "z");
+
+    assert_eq!(
+        foreign_names(z),
+        vec!["Basics.+".to_string()],
+        "`Zed` must keep its implicit `Basics` however its siblings are named"
+    );
+}

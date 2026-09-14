@@ -355,23 +355,57 @@ fn build_cycle(
 /// same import for its own reason — a dropped edge means the target is checked
 /// *later*, so its interface is not available when the importer is canonicalized.
 ///
-/// Modules are visited in name order: the result must not depend on the order
-/// `load_package_sources` walked the directory in.
+/// # Why the loops are nested target-first
+///
+/// Refusing an edge against the graph *so far* means the edges already added are
+/// part of what the next test sees, so this pass can talk itself out of an edge it
+/// would otherwise have allowed. The nesting decides which edge wins that race, and
+/// only one nesting makes the winner a property of the package rather than of the
+/// alphabet.
+///
+/// Iterating importer-first did not. A package where `Basics` imports `Aux` and
+/// `Maybe` imports `Zed` gave `Aux` its `Maybe` — nothing needs it, but nothing
+/// forbade it either — and that edge made `Basics` reach `Zed` through
+/// `Aux -> Maybe -> Zed`, so `Zed -> Basics` was refused and `Zed` could no longer
+/// spell `+`. Renaming `Aux` to sort *after* `Zed` compiled the same package.
+/// `tests/fixtures/package_default_import_priority/` is that package.
+///
+/// Iterating target-first, in [`default_imports::DEFAULT_IMPORTS`] order, gives the
+/// race a fixed outcome twice over:
+///
+/// - **Across targets**, every `Basics` edge is settled before any `Maybe` edge
+///   exists to constrain the graph, so a conflict is resolved in favour of whichever
+///   entry the list writes first. That is the list's own stated priority, and it is
+///   the same list on every package.
+/// - **Within one target**, the importers cannot interfere with each other at all.
+///   Adding `m -> d` creates new paths only from nodes that reach `m` to nodes `d`
+///   reaches, so a *new* path `d ⇝ m'` would have to run `d ⇝ m -> d ⇝ m'` and
+///   therefore require `d ⇝ m` to have held already — in which case `m -> d` was
+///   refused rather than added. So every importer of `d` is tested against the graph
+///   as it stood when `d`'s pass began, and the set of edges added for `d` does not
+///   depend on the order they were tested in.
+///
+/// The same argument run with `m' = m` is why no edge added here can close a loop.
+///
+/// Importers are still visited in name order, but now only so that the edges land
+/// in the graph in a fixed sequence: `names` is a `HashMap`, and `tarjan_scc` breaks
+/// ties between unordered modules by insertion order, so without the sort the
+/// *reported* check order would drift between runs even though the edge set did not.
 fn add_default_import_edges(graph: &mut DiGraph<&Module, ()>, names: &HashMap<&Name, NodeIndex>) {
     let mut importers: Vec<(&Name, NodeIndex)> =
         names.iter().map(|(&name, &idx)| (name, idx)).collect();
     importers.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
 
-    for (module_name, module_idx) in importers {
-        if crate::compiler::default_imports::is_default(module_name) {
+    for default in crate::compiler::default_imports::DEFAULT_IMPORTS {
+        let target = default.name();
+        let Some(&target_idx) = names.get(&target) else {
             continue;
-        }
+        };
 
-        for default in crate::compiler::default_imports::DEFAULT_IMPORTS {
-            let target = default.name();
-            let Some(&target_idx) = names.get(&target) else {
+        for &(module_name, module_idx) in &importers {
+            if crate::compiler::default_imports::is_default(module_name) {
                 continue;
-            };
+            }
 
             // A written import already carries the edge, and replaces the implicit
             // import anyway.
@@ -1029,5 +1063,150 @@ mod tests {
             vec!["a".to_string(), "c".to_string()],
             "expected the non-failing modules to still be returned"
         );
+    }
+
+    /// The implicit edges `add_default_import_edges` adds, as slot pairs.
+    ///
+    /// Slots rather than names, so that two namings of one package shape produce
+    /// directly comparable answers.
+    fn implicit_edges(names: &[&str], written: &[Vec<usize>]) -> Vec<(usize, usize)> {
+        let modules: Vec<Module> = names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                let deps: Vec<&str> = written[i].iter().map(|&j| names[j]).collect();
+                module(*n, deps)
+            })
+            .collect();
+
+        let mut graph = DiGraph::new();
+        let mut idx_of = HashMap::new();
+        let mut slot_of = HashMap::new();
+        for (slot, m) in modules.iter().enumerate() {
+            let idx = graph.add_node(m);
+            idx_of.insert(&m.name, idx);
+            slot_of.insert(idx, slot);
+        }
+        for m in modules.iter() {
+            let from = idx_of[&m.name];
+            for &to in m.imports.iter().filter_map(|i| idx_of.get(&i.name)) {
+                graph.add_edge(from, to, ());
+            }
+        }
+
+        let before = graph.edge_count();
+        add_default_import_edges(&mut graph, &idx_of);
+
+        let mut added: Vec<(usize, usize)> = graph
+            .edge_indices()
+            .skip(before)
+            .filter_map(|e| graph.edge_endpoints(e))
+            .map(|(from, to)| (slot_of[&from], slot_of[&to]))
+            .collect();
+        added.sort_unstable();
+        added
+    }
+
+    /// `LANG-8`: which default imports a module ends up with is a property of the
+    /// package's shape, not of what its modules are called.
+    ///
+    /// `add_default_import_edges` refuses an edge against the graph *as built so
+    /// far*, so the edges it has already added constrain the ones it may still add.
+    /// Nesting the loops importer-first made that self-interference follow the
+    /// alphabet — `tests/fixtures/package_default_import_priority/` is a four-module
+    /// package that compiled or did not depending on one module's name. Nesting them
+    /// target-first fixes the outcome; this pins that over shapes nobody wrote by
+    /// hand.
+    ///
+    /// Each trial builds a random acyclic package — some modules named on
+    /// `DEFAULT_IMPORTS`, the rest not — and then renames only the *non*-default
+    /// modules, by rotating their names through the same slots. Renaming a default
+    /// module would be a different package, so those names stay put.
+    ///
+    /// Mutation-checked by restoring the old `for importer { for default }` nesting:
+    /// this fails inside the first twenty trials.
+    #[test]
+    fn renaming_a_module_does_not_change_which_default_imports_it_gets() {
+        // A fixed-seed LCG rather than a dependency: the shapes have to be the same
+        // ones on every run, or a failure here could not be reproduced.
+        let mut seed: u64 = 0x243F_6A88_85A3_08D3;
+        let mut rnd = move |n: usize| {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (seed >> 33) as usize % n
+        };
+
+        let defaults = ["Basics", "Maybe", "Result", "Tuple", "List"];
+        let pool = [
+            "Aux", "Bee", "Cee", "Dee", "Eee", "Mmm", "Nnn", "Yak", "Zed",
+        ];
+
+        for trial in 0..2000 {
+            let default_count = rnd(4);
+            let other_count = 2 + rnd(5);
+            let total = default_count + other_count;
+
+            let mut default_names: Vec<&str> = Vec::new();
+            while default_names.len() < default_count {
+                let candidate = defaults[rnd(defaults.len())];
+                if !default_names.contains(&candidate) {
+                    default_names.push(candidate);
+                }
+            }
+            let mut other_names: Vec<&str> = Vec::new();
+            while other_names.len() < other_count {
+                let candidate = pool[rnd(pool.len())];
+                if !other_names.contains(&candidate) {
+                    other_names.push(candidate);
+                }
+            }
+
+            // Which slots hold a module named on the list.
+            let mut is_default = vec![false; total];
+            let mut remaining = default_count;
+            for (slot, flag) in is_default.iter_mut().enumerate() {
+                if remaining > 0 && (total - slot == remaining || rnd(2) == 0) {
+                    *flag = true;
+                    remaining -= 1;
+                }
+            }
+
+            // Written imports, acyclic by construction: a slot only imports lower ones.
+            let written: Vec<Vec<usize>> = (0..total)
+                .map(|slot| (0..slot).filter(|_| rnd(3) == 0).collect())
+                .collect();
+
+            let naming = |others: &[&'static str]| -> Vec<&'static str> {
+                let mut defaults = default_names.iter();
+                let mut others = others.iter();
+                (0..total)
+                    .map(|slot| {
+                        if is_default[slot] {
+                            *defaults.next().unwrap()
+                        } else {
+                            *others.next().unwrap()
+                        }
+                    })
+                    .collect()
+            };
+
+            let expected = implicit_edges(&naming(&other_names), &written);
+
+            for shift in 1..other_names.len() {
+                let mut renamed = other_names.clone();
+                renamed.rotate_left(shift);
+
+                assert_eq!(
+                    implicit_edges(&naming(&renamed), &written),
+                    expected,
+                    "trial {} renamed {:?} to {:?}, written imports {:?}",
+                    trial,
+                    other_names,
+                    renamed,
+                    written
+                );
+            }
+        }
     }
 }
