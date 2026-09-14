@@ -433,24 +433,30 @@ fn process_import(
                         );
                     }
                     parser::ExposedKind::Upper(type_name, parser::Privacy::Private) => {
+                        // `Size` and `Size(..)` are one entry differing only in
+                        // whether the constructors come along, so the name itself is
+                        // checked the same way in both and reports the same
+                        // `UnionNotFound`. What the `Public` arm below cannot yet
+                        // tell apart is a type exposed *opaquely* by its own module
+                        // from one that genuinely has no constructors (`BUG-30`);
+                        // that distinction does not arise here, since this arm never
+                        // reads `variants`.
+                        let union = interface.unions.get(type_name).ok_or_else(|| {
+                            let suggestion =
+                                suggest_name(type_name, interface.unions.keys().cloned());
+                            EnvError::UnionNotFound(type_name.clone(), exposed.span, suggestion)
+                        })?;
+
                         // Add the type without qualifier and without constructors
                         // (they are private), but with the declaration's own type
                         // variables: an opaque `Option` is still `Option a`, and
                         // every later application of it is measured against this
-                        // arity. A name the interface does not know falls back to
-                        // zero variables — unlike the `Public` arm below, this one
-                        // does not report the unknown name, which is `BUG-16`.
-                        let variables = interface
-                            .unions
-                            .get(type_name)
-                            .map(|union| union.variables.clone())
-                            .unwrap_or_default();
-
+                        // arity.
                         env.types.insert(
                             type_name.clone(),
                             TypeArity {
                                 name: type_name.clone(),
-                                variables,
+                                variables: union.variables.clone(),
                             },
                         );
                     }
@@ -1543,6 +1549,49 @@ mod tests {
 
         let errors = new_environment(&module_name(), &interfaces, &imports)
             .expect_err("an unknown exposed type should not resolve");
+        assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+        let inner = match &errors[0] {
+            EnvError::Multiple(inner) => inner,
+            other => panic!("expected Multiple, got {:?}", other),
+        };
+        assert_eq!(inner.len(), 1, "got {:?}", inner);
+
+        match &inner[0] {
+            EnvError::UnionNotFound(name, _, suggestion) => {
+                assert_eq!(name, &Name::from("Mayeb"));
+                assert_eq!(suggestion, &Some(Name::from("Maybe")));
+            }
+            other => panic!("expected UnionNotFound, got {:?}", other),
+        }
+    }
+
+    /// A bare `Mayeb` entry is checked against the interface exactly as `Mayeb(..)`
+    /// is: the two differ in whether the constructors come along, not in whether the
+    /// type has to exist, so both report the same `UnionNotFound` with the same
+    /// suggestion (`BUG-16`).
+    ///
+    /// Mutation-checked by restoring the arm's old body — reading the variables with
+    /// `interface.unions.get(type_name).map(..).unwrap_or_default()` and inserting
+    /// unconditionally: the import then succeeds and `expect_err` panics.
+    #[test]
+    fn unknown_opaque_exposed_type_suggests_a_near_miss() {
+        let imports = vec![import(
+            "Maybe".into(),
+            None,
+            exposing_explicit(vec![parser::Exposed::bare(parser::ExposedKind::Upper(
+                "Mayeb".into(),
+                parser::Privacy::Private,
+            ))]),
+        )];
+        let mut interfaces = HashMap::new();
+        {
+            let (name, iface) = maybe_interface();
+            interfaces.insert(name, iface);
+        }
+
+        let errors = new_environment(&module_name(), &interfaces, &imports)
+            .expect_err("an unknown opaquely exposed type should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 
         let inner = match &errors[0] {

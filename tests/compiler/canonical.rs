@@ -1340,6 +1340,52 @@ fn unresolved_import_exposed_value_suggests_a_near_miss() {
     );
 }
 
+/// `EnvError::UnionNotFound`, through `canonicalize`, for a *bare* type entry —
+/// the opaque form, which asks for the type without its constructors (`BUG-16`).
+///
+/// `Size` and `Size(..)` are one entry differing only in whether the constructors
+/// come along, so both check the name against the interface and both point the
+/// caret at the entry rather than at the `import` line (`ERR-9`).
+///
+/// Mutation-checked by restoring the arm's old body in `process_import` — reading
+/// the variables with `.map(..).unwrap_or_default()` and inserting regardless:
+/// the module then canonicalizes and `expect_err` panics.
+#[test]
+fn unresolved_opaque_import_exposed_type_suggests_a_near_miss() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let (iface_name, iface) = maybe_interface();
+    let mut interfaces = HashMap::new();
+    interfaces.insert(iface_name, iface);
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        import Maybe exposing (Mayeb)
+        answer = 1
+    "#};
+
+    let errors = canonicalize_with_interfaces(source, &interfaces)
+        .expect_err("an unknown opaquely exposed type should not resolve");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    assert_eq!(
+        errors[0].message(),
+        "the imported module does not expose a type named `Mayeb`"
+    );
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert!(
+        labels[0].message.contains("did you mean `Maybe`?"),
+        "expected a suggestion naming `Maybe`, got {:?}",
+        labels[0].message
+    );
+
+    // The caret covers `Mayeb` alone, not the `import` line it sits on.
+    let start = source.find("Mayeb").unwrap();
+    assert_eq!(labels[0].span.to_range(), start..(start + "Mayeb".len()));
+}
+
 // ── Scenario 12: Infix re-association (BUG-22) ───────────────────────────────
 //
 // `InfixExpr` parses a flat run of operator applications (`a * b + c` is one
