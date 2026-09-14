@@ -2,6 +2,7 @@
 
 use super::{parser, Pattern, PatternKind};
 use super::{Infix, Interface, ModuleName, Name, Type, TypeConstructor, UnionType};
+use crate::compiler::default_imports;
 use crate::compiler::position::NodeSpan;
 use crate::compiler::{PhaseError, SourceSpan, SpanLabel};
 use crate::utils::{collect_accumulate, suggest};
@@ -245,6 +246,18 @@ pub fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>) -> Op
     }
 }
 
+/// Build a module's scope out of the imports it wrote and the ones it did not have
+/// to.
+///
+/// The implicit half comes first, and goes through `process_import` exactly as a
+/// written `import` does, so a name arriving through
+/// [`default_imports`](crate::compiler::default_imports) is indistinguishable from
+/// one the file named — including for `insert_foreign_value`, which is what makes
+/// two imports of one name ambiguous. That is also why a module that *writes* one
+/// of the default imports gets only what it wrote:
+/// [`implicit_imports`](crate::compiler::default_imports::implicit_imports) drops
+/// an entry the file already names, rather than registering `Basics` twice over and
+/// turning every use of `+` into an `AmbiguousVariables`.
 pub fn new_environment(
     module_name: &ModuleName,
     interfaces: &HashMap<Name, Interface>,
@@ -259,12 +272,14 @@ pub fn new_environment(
     };
     let mut errors = vec![];
 
+    let implicit = default_imports::implicit_imports(module_name.name(), imports, interfaces);
+
     for parser::Import {
         name,
         alias,
         exposing,
         span,
-    } in imports
+    } in implicit.iter().chain(imports)
     {
         match process_import(&mut env, interfaces, name, alias, exposing, *span) {
             Ok(_) => (),
@@ -974,13 +989,16 @@ mod tests {
         ("Maybe".into(), interface)
     }
 
+    /// A module that writes no imports, in a package that provides nothing to
+    /// import, has an empty scope.
+    ///
+    /// The interfaces map is empty and that is now load-bearing: `Maybe` is on the
+    /// [default import list](crate::compiler::default_imports), so a package that
+    /// *has* a `Maybe` puts it in scope here without a written `import` —
+    /// `default_imports_reach_a_module_that_wrote_none` below is that case.
     #[test]
     fn new_no_imports() -> Result<(), Vec<EnvError>> {
-        let mut interfaces = HashMap::new();
-        {
-            let (name, iface) = maybe_interface();
-            interfaces.insert(name, iface);
-        }
+        let interfaces = HashMap::new();
         let env = new_environment(&module_name(), &interfaces, &vec![])?;
 
         assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
@@ -992,6 +1010,97 @@ mod tests {
             env.constructors
         );
         assert_eq!(env.variables.len(), 0, "variables={:?}", env.variables); // qual + explicit
+
+        Ok(())
+    }
+
+    /// `LANG-8`: a module with no `import` line at all still resolves `Maybe`,
+    /// `Just` and `Maybe.map`, because `Maybe` is on the default import list and
+    /// the package provides it.
+    ///
+    /// Asserted through the same `find_*` lookups `new_import_type_with_constructors`
+    /// uses for a written `import Maybe exposing (Maybe(..))`, because that is the
+    /// claim: an implicitly imported name is indistinguishable from one the file
+    /// named. `withDefault` is the counter-assertion — the entry exposes the type
+    /// and not the module's values, so it is reachable only qualified.
+    ///
+    /// Mutation-checked by dropping the `implicit` half of `new_environment`'s
+    /// import loop: every assertion below goes red.
+    #[test]
+    fn default_imports_reach_a_module_that_wrote_none() -> Result<(), Vec<EnvError>> {
+        let mut interfaces = HashMap::new();
+        {
+            let (name, iface) = maybe_interface();
+            interfaces.insert(name, iface);
+        }
+        let env = new_environment(&module_name(), &interfaces, &vec![])?;
+
+        assert!(
+            env.find_type(&"Maybe".into()).is_some(),
+            "type Maybe not found"
+        );
+        assert!(
+            env.find_type_constructor(&"Just".into()).is_some(),
+            "type constructor Just not found"
+        );
+        assert!(
+            env.find_value(&"Maybe.withDefault".into()).is_some(),
+            "value Maybe.withDefault not found"
+        );
+        assert!(
+            env.find_value(&"withDefault".into()).is_none(),
+            "`exposing (Maybe(..))` names the type, not the module's values"
+        );
+
+        Ok(())
+    }
+
+    /// A module *on* the list receives none of it: `Basics` cannot implicitly
+    /// import `Basics`, and `Maybe` importing `Result` importing `Maybe` is the
+    /// cycle `dependencies` exists to reject.
+    ///
+    /// Mutation-checked by dropping the `is_default` guard in
+    /// `default_imports::implicit_imports`, which puts `Maybe` in its own scope.
+    #[test]
+    fn a_default_module_does_not_import_itself() -> Result<(), Vec<EnvError>> {
+        let mut interfaces = HashMap::new();
+        {
+            let (name, iface) = maybe_interface();
+            interfaces.insert(name, iface);
+        }
+        let maybe = ModuleName::new(PackageName::new("zelkova", "core"), "Maybe".into());
+        let env = new_environment(&maybe, &interfaces, &vec![])?;
+
+        assert_eq!(env.types.len(), 0, "types={:?}", env.types);
+        assert_eq!(env.variables.len(), 0, "variables={:?}", env.variables);
+
+        Ok(())
+    }
+
+    /// A written `import` of a default module replaces the implicit one, rather
+    /// than registering every name twice and making each *use* of one ambiguous.
+    ///
+    /// Mutation-checked by dropping the `written.iter().any(..)` filter in
+    /// `default_imports::implicit_imports`: `Maybe.map` becomes
+    /// `ValueType::Foreigns` and the assertion below goes red.
+    #[test]
+    fn a_written_default_import_is_not_registered_twice() -> Result<(), Vec<EnvError>> {
+        let mut interfaces = HashMap::new();
+        {
+            let (name, iface) = maybe_interface();
+            interfaces.insert(name, iface);
+        }
+        let imports = vec![import("Maybe".into(), None, exposing_open())];
+        let env = new_environment(&module_name(), &interfaces, &imports)?;
+
+        match env.find_value(&"Maybe.map".into()) {
+            Some(ValueType::Foreign(..)) => (),
+            other => panic!("expected one candidate for `Maybe.map`, got {:?}", other),
+        }
+        match env.find_value(&"map".into()) {
+            Some(ValueType::Foreign(..)) => (),
+            other => panic!("expected one candidate for `map`, got {:?}", other),
+        }
 
         Ok(())
     }

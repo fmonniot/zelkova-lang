@@ -39,9 +39,9 @@ list-shaped case in every phase after it.
 
 Resolving `Nil` and `Cons` from a module that does not expose them is the one genuinely new
 thing here, since they are deliberately not in scope for the program being compiled
-([`LANG-46`](lang-46.md)). Whether that reaches for the `List` interface directly or waits on
-the default imports ([`LANG-8`](lang-8.md)) is the implementer's call; it is not a language
-question and the chapter does not answer it.
+([`LANG-46`](lang-46.md)). Whether that reaches for the `List` interface directly or goes through
+the [default imports](../spec/modules.md#the-default-imports) is the implementer's call; it is
+not a language question and the chapter does not answer it.
 
 **Acceptance:** `[]`, `[1]`, `[1, 2, 3]`, a multi-line leading-comma literal and a nested
 `[[1], [2]]` all parse and canonicalize; `[1, 2,]` is a syntax error. Tests in the parser's own

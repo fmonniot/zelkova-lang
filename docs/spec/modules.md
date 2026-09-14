@@ -723,8 +723,8 @@ y = 2
 
 ## The default imports
 
-**Not implemented:** every module behaves as though it began with these eight imports,
-whether they are written or not:
+Every module behaves as though it began with these eight imports, whether they are
+written or not:
 
 ```text
 import Basics exposing (..)
@@ -742,6 +742,25 @@ at the top of it, `Maybe` and `Just` likewise, and `List.map`, `Char.toUpper` an
 `String.length` are reachable under their qualified names. Nothing else is: a module that
 wants `Dict` imports it.
 
+```zel expect=ok package=defaults
+module Basics exposing (Int, (+), add)
+
+type Int = Int
+
+infix left 6 (+) = add
+
+add : Int -> Int -> Int
+add a b =
+  a
+```
+
+```zel expect=ok package=defaults
+module Main exposing (x)
+
+x : Int
+x = 1 + 2
+```
+
 The list is chosen so that the types appearing in ordinary type annotations are always
 writable. `Maybe` and `Result` are exposed with their constructors because matching on
 them is the ordinary way to use them, and a qualified `Maybe.Just` in every `case` branch
@@ -753,19 +772,34 @@ annotation every program has to write.
 [`Failure`](evaluation-semantics.md#an-effect-that-can-fail) does not come with it: the modules
 naming that type are the ones declaring or consuming an
 [effectful facade](interop.md#an-effectful-facade), and a module that names it imports it.
-Writing any of these imports out explicitly is allowed and changes nothing.
 
-**Known gap:** none of it exists. Every module resolves only what it declares and what it
-imports by hand, which is why `std/core`'s modules all begin with `import Basics`
-([`docs/tickets/lang-8.md`](../tickets/lang-8.md)). The block below is pinned on the
-error today's compiler gives, not on a bare rejection, so that it goes red whichever way
-the ticket lands.
+An `import` of one of the eight **replaces** the implicit one, the way [an alias replaces
+a module's own name](#imports): writing a line of the list out verbatim changes nothing,
+and `import Maybe as M` means `M.map` and no unqualified `Maybe`.
 
-```zel expect=canonical-error:VariableNotFound
-module Main exposing (x)
+The eight modules receive none of the list themselves: `Basics` cannot import `Basics`,
+and `Maybe` and `Result` would import each other — [an import
+cycle](#imports-may-not-form-a-cycle) either way. They write the imports they need.
 
-x = 1 + 2
-```
+Every other module is judged **one entry at a time**. It drops the entry for a module
+that already depends on it, since that implicit import would close a cycle back, and
+keeps every other entry. So a facade `Basics` imports does not receive `Basics` — but it
+still receives `Tuple`, which depends on nothing. Where a module sits in the import graph
+is what decides its set, and two modules of one package need not have the same one.
+
+A drop can propagate, because the imports the compiler supplies are dependencies like any
+other. Say `Basics` imports `A`: then `A` loses `Basics`, and if the compiler goes on to
+give `Basics` to some module `Maybe` imports, `Maybe` reaches `A` through it and `A`
+loses `Maybe` as well. Which entry survives such a collision is settled by the order the
+list above writes them — an entry is only ever dropped for a dependency an *earlier*
+entry created, never a later one. `Basics` is first, so it is the entry a module keeps
+when it can keep only one.
+
+**Known gap:** `std/core` ships four of the eight, so `List`, `Char`, `String` and `Task`
+bring nothing. A program naming `String.length` is rejected where the name is used.
+Naming `List` in a type annotation is *accepted* today, but only because an unknown type
+name is accepted anywhere ([`BUG-16`](../tickets/bug-16.md)) — not because the entry
+works. Each entry starts working on the day its module compiles.
 
 ## Packages
 

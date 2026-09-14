@@ -1,0 +1,15 @@
+-- The module whose `Basics` must survive. It writes no import at all, so `Int`
+-- and `+` have to arrive implicitly.
+--
+-- The name matters. `Zed` sorts after `Aux`, and `Aux`'s only available entry is
+-- the lower-priority `Maybe`. If the implicit edges are allocated importer by
+-- importer in name order, `Aux -> Maybe` is added first, which puts `Zed` behind
+-- `Maybe` behind `Aux` behind `Basics` — and the `Zed -> Basics` edge is then
+-- refused as a loop, costing this module the import it actually needs. Allocating
+-- them target by target in `DEFAULT_IMPORTS` order settles every `Basics` edge
+-- before any `Maybe` edge can constrain the graph.
+module Zed exposing (z)
+
+
+z : Int
+z = 1 + 2

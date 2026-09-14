@@ -36,6 +36,11 @@ use std::io::Write;
 use std::path::Path;
 
 pub mod canonical;
+/// The imports every module gets without writing them. Public because it is a rule
+/// about the language rather than an implementation detail of one phase, and
+/// because two phases read it: canonicalization synthesises the imports, and
+/// `dependencies` puts the matching edges in the import graph.
+pub mod default_imports;
 // Public so that `tests/pipeline.rs` can drive `ModuleWalker::check_in_order` with the
 // real `check_module`, which is the only seam that observes the modules that checked
 // successfully alongside the ones that failed (`BUG-2`) — `compile_package` only reports
