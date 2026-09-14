@@ -33,7 +33,7 @@
 //
 //   PINS  — verified red against the file as it stood before the relevant
 //           fix (BUG-24 for idiv/modBy/remainderBy, BUG-25 for
-//           round/floor/ceiling/truncate). These are the fix.
+//           round/floor/ceiling). These are the fix.
 //   GUARD — passes with and without the fix. These pin that the fix did not
 //           disturb already-correct behaviour; they prove nothing about the
 //           fix itself, so do not read a green one as a pinned new behaviour.
