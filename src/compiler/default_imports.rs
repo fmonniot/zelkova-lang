@@ -38,13 +38,20 @@
 //!    `ModuleWalker::new` tests that edge by edge against the graph it has built so
 //!    far, so no addition can ever introduce a cycle that was not already written.
 //!
+//! Rule 2 reaches further than "built from", because the graph it consults includes
+//! the edges it has itself just added. A module no default import names can still
+//! lose an entry, when an implicit edge allocated for an *earlier* entry put it
+//! downstream of that one. `add_default_import_edges` allocates target by target in
+//! `DEFAULT_IMPORTS` order for exactly that reason — so a collision is decided by
+//! the list's priority rather than by what the modules are called — and its doc
+//! comment carries the argument that nothing beyond that priority is left to
+//! chance.
+//!
 //! The two rules agree with the availability check below rather than duplicating
 //! it. When rule 2 drops an edge `m → d`, it is because `d` already depends on `m`,
 //! which means `m` is checked *first* and `d`'s interface is not yet available when
 //! `m` is canonicalized — so [`implicit_imports`] skips the same import on its own,
-//! for its own reason. Whichever way a pair falls, both phases fall the same way,
-//! and the outcome does not depend on the order the source files happened to load
-//! in.
+//! for its own reason. Whichever way a pair falls, both phases fall the same way.
 //!
 //! # An implicit import is never a diagnostic
 //!
@@ -180,6 +187,15 @@ impl DefaultImport {
     /// would raise [`EnvError::UnionNotFound`](crate::compiler::canonical::environment::EnvError::UnionNotFound)
     /// from an `import` nobody wrote. Rather than report that, the entry is
     /// dropped — see this module's documentation.
+    ///
+    /// The test for a [`Unqualified::Type`] or [`Unqualified::TypeAndVariants`]
+    /// entry is that the interface declares a **union** of the module's own name.
+    /// That is what `Maybe`, `Result` and `List` are. It is an assumption about
+    /// [`Task`](../../../docs/spec/evaluation-semantics.md#effects), which is not
+    /// ported yet and which the chapter does not oblige to be a union: if `Task`
+    /// arrives as anything else — a type alias, or a type the compiler knows
+    /// without a declaration — this entry is silently dropped and nothing here goes
+    /// red. Whoever ports `Task` has to widen this test rather than trust it.
     fn satisfied_by(&self, interface: &Interface) -> bool {
         match self.unqualified {
             Unqualified::Everything | Unqualified::Nothing => true,

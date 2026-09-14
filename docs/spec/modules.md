@@ -777,16 +777,29 @@ An `import` of one of the eight **replaces** the implicit one, the way [an alias
 a module's own name](#imports): writing a line of the list out verbatim changes nothing,
 and `import Maybe as M` means `M.map` and no unqualified `Maybe`.
 
-The eight modules do not receive the default imports themselves, and neither does a
-module one of them depends on. `Basics` cannot import `Basics`, `Maybe` and `Result`
-would import each other, and a module `Basics` imports would import `Basics` back —
-[an import cycle](#imports-may-not-form-a-cycle) in all three cases. Those modules write
-the imports they need.
+The eight modules receive none of the list themselves: `Basics` cannot import `Basics`,
+and `Maybe` and `Result` would import each other — [an import
+cycle](#imports-may-not-form-a-cycle) either way. They write the imports they need.
 
-**Known gap:** `std/core` ships four of the eight. `List`, `Char`, `String` and `Task`
-have no module behind them yet, so nothing arrives from those entries and a program
-naming `List` or `String.length` is rejected where the name is used. Each entry starts
-working on the day its module compiles.
+Every other module is judged **one entry at a time**. It drops the entry for a module
+that already depends on it, since that implicit import would close a cycle back, and
+keeps every other entry. So a facade `Basics` imports does not receive `Basics` — but it
+still receives `Tuple`, which depends on nothing. Where a module sits in the import graph
+is what decides its set, and two modules of one package need not have the same one.
+
+A drop can propagate, because the imports the compiler supplies are dependencies like any
+other. Say `Basics` imports `A`: then `A` loses `Basics`, and if the compiler goes on to
+give `Basics` to some module `Maybe` imports, `Maybe` reaches `A` through it and `A`
+loses `Maybe` as well. Which entry survives such a collision is settled by the order the
+list above writes them — an entry is only ever dropped for a dependency an *earlier*
+entry created, never a later one. `Basics` is first, so it is the entry a module keeps
+when it can keep only one.
+
+**Known gap:** `std/core` ships four of the eight, so `List`, `Char`, `String` and `Task`
+bring nothing. A program naming `String.length` is rejected where the name is used.
+Naming `List` in a type annotation is *accepted* today, but only because an unknown type
+name is accepted anywhere ([`BUG-16`](../tickets/bug-16.md)) — not because the entry
+works. Each entry starts working on the day its module compiles.
 
 ## Packages
 

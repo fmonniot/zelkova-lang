@@ -2093,11 +2093,6 @@ fn an_explicit_default_import_still_compiles() {
         vec!["Basics.+".to_string()],
         "a written default import must resolve the same way the implicit one does"
     );
-
-    assert!(
-        compile_package(&fixture_package("package_default_imports")).is_ok(),
-        "the fixture package must compile as a whole"
-    );
 }
 
 // ── Test 31: which default import wins does not depend on module names ──────

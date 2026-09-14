@@ -63,10 +63,18 @@ new `canonical::Error` variant naming the type and carrying `tpe.span` — `pars
 span (`ERR-3`) so the caret lands under the name. Two things to check before assuming it is
 mechanical: type *variables* arrive as `TypeKind::Variable` and must keep resolving to
 nothing; and `std/core/src/` must still compile, which it will only once the modules it uses
-genuinely have their types in scope. If it does not, say so rather than working around it —
-that is the [default imports](../spec/modules.md#the-default-imports) being needed first
-(`LANG-8`, closed — see [the index](README.md)), and the two should be sequenced rather
-than merged.
+genuinely have their types in scope.
+
+The [default imports](../spec/modules.md#the-default-imports) landed (`LANG-8`, closed — see
+[the index](README.md)), but they do not cover this on their own. `Js/Basics.zel` and
+`Js/Utils.zel` name `Int`, `Float` and `Bool` between them with no `import` line at all, and
+they are exactly the two modules the default imports withhold `Basics` from: `Basics` imports
+both facades, so the implicit import back would be a cycle. (`Js/Bitwise.zel` is not in that
+position and does receive `Basics`, which makes the mechanism look as though it covers
+facades.) Expect those two to go red, and note that writing the import out by hand is not the
+way out: that is the same cycle, only now written, and `dependencies` rejects it outright.
+Deciding where a facade's `Int` comes from is part of this ticket, and it is the part to
+settle first. Anything *else* that goes red, say so rather than working around it.
 
 **Acceptance:** `import Widget exposing (Missing)`, where `Widget` declares no `Missing`,
 fails with `EnvError::UnionNotFound` — a test beside the existing `UnionNotFound` coverage in
