@@ -546,12 +546,8 @@ not a qualified operator either — it is the constructor `Widget` and an operat
 another module. Naming the operator is enough on its own: the function that its `infix`
 declaration points at need not be in scope.
 
-**Known gap:** it does depend on that function being in scope today. An operator is
-resolved by looking up the name its `infix` declaration gives, unqualified, in the
-*importing* module — so an operator entry that does not also bring in `add` leaves `+`
-unresolvable, and the error names `+` when the name that actually failed to resolve is
-`add` ([`docs/tickets/bug-15.md`](../tickets/bug-15.md)). `exposing (..)` happens to work,
-because it drags the backing function in as well; the third block below is that.
+An `exposing (..)` import brings in every operator the module exposes, the same way it
+brings in every value.
 
 ```zel expect=ok package=operators
 module Widget exposing (Size, one, (+), add)
@@ -569,7 +565,7 @@ add a b =
   a
 ```
 
-```zel expect=canonical-error:VariableNotFound package=operators
+```zel expect=ok package=operators
 module Main exposing (x)
 
 import Widget exposing (Size, one, (+))

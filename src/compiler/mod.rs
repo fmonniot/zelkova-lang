@@ -154,20 +154,17 @@ pub struct Interface {
     /// header exposing `(+)` and not `add`, is `std/core`'s own shape for every
     /// operator it declares).
     ///
-    /// `process_import`'s `Exposing::Open` arm is the only reader: an
-    /// `exposing (..)` import brings every exposed infix into scope, and
-    /// `RootEnvironment::find_value`'s redirect (`BUG-15`) resolves a use of the
-    /// operator by looking up its backing function *unqualified* in the
-    /// importer's own scope. Before the `exposing (...)` header was enforced
-    /// (`BUG-9`), `values` held every declaration unconditionally and that
-    /// lookup always had something to find; filtering `values` down to what the
-    /// header actually exposes took that away whenever the function itself
-    /// wasn't separately named, breaking every operator in `Basics.zel`. This
-    /// map restores exactly that reachability and nothing more: it is never
-    /// consulted by the qualified-prefix loop or by an explicit
-    /// `exposing (add)` naming the function itself, so a function that backs an
-    /// exposed operator still cannot be imported *by its own name* unless the
-    /// header says so too.
+    /// `canonical::environment::imported_infix` is what needs it: an operator is
+    /// resolved through its `infix` declaration, and the declaration alone names
+    /// the backing function without saying anything about its type. Whichever of
+    /// the two maps holds it, that is where the type comes from — and for an
+    /// operator whose function is not separately exposed, this is the only one
+    /// that can.
+    ///
+    /// Nothing else reads it, and in particular nothing inserts it into an
+    /// importing module's scope under its own name: a function that backs an
+    /// exposed operator is importable by name only when the header says so too
+    /// (`BUG-9`), and then it is [`values`](Self::values) that carries it.
     pub infix_functions: HashMap<Name, (NodeSpan, canonical::Type)>,
     /// The file this interface's module was read from, when the caller knows it.
     ///

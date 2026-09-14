@@ -45,14 +45,13 @@ nothing ever inserts a top-level value under an operator's own symbol
 typer's `canonical_expr_to_term` turns `VarTopLevel` into `TermKind::Identifier(qname.to_name()
 .as_str())` — `"+"` — which will not resolve against an environment keyed by `"add"`.
 
-This is `find_value`'s redirect doing the *opposite* of what [BUG-15](bug-15.md) is about.
-BUG-15 is the case where the redirect target itself isn't in scope (an operator imported without
-its backing function), and its `VariableNotFound` names the wrong symbol because the error is
-built from the pre-redirect name. This ticket is the case where the redirect *succeeds* — the
-function is in scope — and the qualified name built from that success still reverts to the
-pre-redirect symbol. Both bugs share the same root (`find_value` discards which name it actually
-matched), so a fix that changes how the redirect surfaces its result is worth checking against
-both tickets at once, but they are independent defects with independent reproductions.
+This is `find_value`'s redirect doing the *opposite* of what BUG-15
+([closed](README.md)) was about. BUG-15 was the case where the redirect target itself isn't in
+scope (an operator imported without its backing function), and its `VariableNotFound` named the
+wrong symbol because the error was built from the pre-redirect name. This ticket is the case
+where the redirect *succeeds* — the function is in scope — and the qualified name built from
+that success still reverts to the pre-redirect symbol. Both share the same root: `find_value`
+discards which name it actually matched.
 
 **Not reachable today.** None of the eight modules `cargo run` compiles (`Basics.zel`,
 `Bitwise.zel`, `Js/Basics.zel`, `Js/Bitwise.zel`, `Js/Utils.zel`, `Maybe.zel`, `Result.zel`,

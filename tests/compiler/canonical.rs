@@ -1350,12 +1350,14 @@ fn unresolved_import_exposed_value_suggests_a_near_miss() {
 // `infix left`, `++` is `infix right`, `==` is `infix non`.
 
 /// A trimmed-down view of a canonicalized infix expression, asserting nesting
-/// only — an operator's own identity (which top-level value it resolves to) is
-/// unrelated to what BUG-22 fixes, which is grouping. `Op` recognizes the
-/// `Apply(Apply(operator, lhs), rhs)` shape re-association builds for one
-/// step; `Var` is a `VarLocal` leaf — every operand in these tests is a bare
-/// function parameter — and `Lit` is an integer leaf, which only the `0` prefix
-/// negation desugars to ever produces.
+/// only — which grouping re-association produced is what BUG-22 is about. `Op`
+/// recognizes the `Apply(Apply(operator, lhs), rhs)` shape re-association
+/// builds for one step, and carries the name in that operator position: the
+/// *function* the operator's `infix` declaration points at (`sub` for `-`), not
+/// the symbol, since that is what an operator resolves to as a value. `Var` is
+/// a `VarLocal` leaf — every operand in these tests is a bare function
+/// parameter — and `Lit` is an integer leaf, which only the `0` prefix negation
+/// desugars to ever produces.
 #[derive(Debug, PartialEq)]
 enum Shape {
     Var(String),
@@ -1396,9 +1398,10 @@ fn var(name: &str) -> Shape {
     Shape::Var(name.to_string())
 }
 
-/// `-x`, as the grammar desugars it: subtraction from a literal `0`.
+/// `-x`, as the grammar desugars it: subtraction from a literal `0`. Named for
+/// `ADD_SUB_MUL`'s backing function, which is what the `-` position resolves to.
 fn neg(operand: Shape) -> Shape {
-    op("-", Shape::Lit(0), operand)
+    op("sub", Shape::Lit(0), operand)
 }
 
 /// Canonicalizes `chain a b c = <chain_body>` against the `infix` declarations
@@ -1460,7 +1463,7 @@ fn higher_precedence_groups_first() {
     // `a * (b + c)`.
     assert_eq!(
         infix_chain_shape(ADD_SUB_MUL, "a * b + c"),
-        op("+", op("*", var("a"), var("b")), var("c")),
+        op("add", op("mul", var("a"), var("b")), var("c")),
     );
 }
 
@@ -1476,7 +1479,7 @@ fn lower_precedence_on_the_left_still_yields_to_the_higher_one_on_the_right() {
     // red, producing `(a + b) * c` instead.
     assert_eq!(
         infix_chain_shape(ADD_SUB_MUL, "a + b * c"),
-        op("+", var("a"), op("*", var("b"), var("c"))),
+        op("add", var("a"), op("mul", var("b"), var("c"))),
     );
 }
 
@@ -1489,7 +1492,7 @@ fn infix_left_groups_leftward() {
     // treatment) instead of `None` turned this red, producing `a - (b - c)`.
     assert_eq!(
         infix_chain_shape(ADD_SUB_MUL, "a - b - c"),
-        op("-", op("-", var("a"), var("b")), var("c")),
+        op("sub", op("sub", var("a"), var("b")), var("c")),
     );
 }
 
@@ -1507,7 +1510,7 @@ fn infix_right_groups_rightward() {
     "#};
     assert_eq!(
         infix_chain_shape(preamble, "a ++ b ++ c"),
-        op("++", var("a"), op("++", var("b"), var("c"))),
+        op("append", var("a"), op("append", var("b"), var("c"))),
     );
 }
 
@@ -1640,7 +1643,7 @@ fn prefix_negation_does_not_swallow_the_rest_of_the_chain() {
     // `-(a + b)`.
     assert_eq!(
         infix_chain_shape(ADD_SUB_MUL, "-a + b"),
-        op("+", neg(var("a")), var("b")),
+        op("add", neg(var("a")), var("b")),
     );
 }
 
@@ -1654,7 +1657,7 @@ fn prefix_negation_binds_tighter_than_any_operator() {
     // `Expr` this reads `-(a * b)`.
     assert_eq!(
         infix_chain_shape(ADD_SUB_MUL, "-a * b"),
-        op("*", neg(var("a")), var("b")),
+        op("mul", neg(var("a")), var("b")),
     );
 }
 
@@ -1667,7 +1670,7 @@ fn repeated_prefix_negation_nests() {
     // `-`.
     assert_eq!(
         infix_chain_shape_one_line(ADD_SUB_MUL, "- -a + b"),
-        op("+", neg(neg(var("a"))), var("b")),
+        op("add", neg(neg(var("a"))), var("b")),
     );
 }
 

@@ -27,7 +27,7 @@ mod environment;
 /// re-exported alongside the error rather than left behind a private module.
 pub use environment::InfixDeclaration;
 use environment::{
-    new_environment, suggest_name, EnvError, Environment, RootEnvironment, ValueType,
+    new_environment, suggest_name, EnvError, Environment, InfixFunction, RootEnvironment, ValueType,
 };
 
 // Some elements which are common to both AST
@@ -99,10 +99,10 @@ impl Module {
     /// An exposed infix whose backing function is not itself separately exposed
     /// — `infix left 6 (+) = add` with `(+)` in the header and `add` not, which
     /// is every operator `std/core` declares — still needs `add`'s type
-    /// reachable, or `find_value`'s redirect (`BUG-15`) has nothing to find once
-    /// an importer brings the operator into scope with `exposing (..)`.
-    /// [`Interface::infix_functions`] carries exactly that, kept out of
-    /// `values` itself so `add` stays unreachable under its own name.
+    /// reachable, or an importer that brings `(+)` into scope has no type to
+    /// give a use of it. [`Interface::infix_functions`] carries exactly that,
+    /// kept out of `values` itself so `add` stays unreachable under its own
+    /// name.
     pub fn to_interface(&self, file: Option<SourceFileId>) -> super::Interface {
         let values: HashMap<Name, (NodeSpan, Type)> = self
             .values
@@ -716,10 +716,10 @@ impl Expression {
 /// One operator of an `ExpressionKind::InfixChain`, resolved against the infix
 /// environment: its own `Infix` (precedence, associativity, and where it was
 /// declared) alongside the canonical `Expression` it resolves to as a value —
-/// `VarLocal`, `VarTopLevel` or `VarForeign`, whichever `find_value` reports for
-/// its `function_name`, exactly as a plain reference to the operator would
-/// resolve. `reassociate_infix_chain` consults `infix` to decide how to nest,
-/// and `span` and `expr` to build the invented `Application` nodes.
+/// a reference to the function its `infix` declaration names, qualified with the
+/// module that wrote that declaration. `reassociate_infix_chain` consults `infix`
+/// to decide how to nest, and `span` and `expr` to build the invented
+/// `Application` nodes.
 struct ResolvedInfixOp {
     name: Name,
     /// Where the operator itself was written — not its `infix` declaration.
@@ -733,15 +733,24 @@ struct ResolvedInfixOp {
     declaration: InfixDeclaration,
 }
 
-/// Resolves one operator of an `InfixChain` the same way a bare reference to it
-/// would resolve as a value, plus the `Infix` re-association needs.
+/// Resolves one operator of an `InfixChain` into the function its `infix`
+/// declaration names, plus the `Infix` re-association needs.
 ///
-/// An operator symbol only ever reaches `self.variables` through the `infixes`
-/// redirect in `RootEnvironment::find_value` — nothing else can insert a key
-/// spelled like an operator, since a function's own name always comes from
-/// `VarIdent`, a distinct token from `Op`. So `find_infix` failing here is
-/// exactly the case a plain `Variable` reference to the same name would fail
-/// `find_value` on, and gets the same `VariableNotFound` a reader would expect.
+/// The `infixes` map is the whole of an operator's scope: nothing else can hold
+/// a key spelled like one, since a function's own name always comes from
+/// `VarIdent`, a distinct token from `Op`. So `find_infix` failing is exactly
+/// "no operator by that name is in scope", and gets the `VariableNotFound` a
+/// reader would expect for a name they wrote and nothing declares.
+///
+/// The function behind the operator is resolved from the entry
+/// ([`InfixFunction`]) rather than looked up in the scope the operator is *used*
+/// in. An operator has no qualified spelling, so naming it in an `exposing` list
+/// is the only way to reach one across a module boundary, and whether the
+/// exporting module's backing function is separately in scope is neither the
+/// importer's choice nor visible to them. The resulting `VarTopLevel`/`VarForeign`
+/// is qualified with the module that wrote the `infix` declaration and names the
+/// function, not the operator symbol, so it matches the binding a later phase
+/// looks it up against.
 fn resolve_infix_operator(
     name: &Name,
     span: NodeSpan,
@@ -752,17 +761,32 @@ fn resolve_infix_operator(
         Error::VariableNotFound(env.module_name().qualify_name(name), span, suggestion)
     })?;
 
-    // Resolved the same way a written `Variable(name)` would be — through the
-    // `Variable` arm of `Expression::from_parser` — so the operator picks up
-    // exactly the `VarLocal`/`VarTopLevel`/`VarForeign` shape a plain reference
-    // to it would.
-    let synthetic = parser::Expression::new(span, parser::ExpressionKind::Variable(name.clone()));
-    let expr = Expression::from_parser(&synthetic, env)?;
+    let function_name = &entry.infix.function_name;
+    let kind = match &entry.function {
+        InfixFunction::Local => {
+            ExpressionKind::VarTopLevel(env.module_name().qualify_name(function_name))
+        }
+        InfixFunction::Imported(module, tpe) => {
+            ExpressionKind::VarForeign(module.qualify_name(function_name), tpe.clone())
+        }
+        // The exporting module declared the backing function without an
+        // annotation, so its interface carries no type for it. The name that
+        // failed to resolve is the function's, and that is what is reported —
+        // the operator is in scope, and saying otherwise would send the reader
+        // to check their own `import` line.
+        InfixFunction::ImportedUntyped(module) => {
+            return Err(Error::VariableNotFound(
+                module.qualify_name(function_name),
+                span,
+                None,
+            ))
+        }
+    };
 
     Ok(ResolvedInfixOp {
         name: name.clone(),
         span,
-        expr,
+        expr: Expression::new(span, kind),
         infix: entry.infix,
         declaration: entry.declaration,
     })

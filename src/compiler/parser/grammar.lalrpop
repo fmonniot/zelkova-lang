@@ -233,14 +233,17 @@ OperandExpr: Expression = {
     AppExpr,
 
     <l:@L> "-" <m:@R> <e: OperandExpr> => {
-        // Prefix negation desugars to `0 - e`: neither the `-` variable nor the `0`
-        // is in the user's text. Rather than leaving them span-less, both take the
-        // span of the `-` token — the one piece of source the desugaring is about —
-        // while the two applications, which stand for the whole expression, take it.
+        // Prefix negation desugars to `0 - e`, as a one-operator `InfixChain`: the
+        // `-` is the ordinary subtraction operator and resolves through the infix
+        // environment like every other operator, so it reaches the backing function
+        // its `infix` declaration names whether or not that function is separately
+        // in scope. Only *where* it is applied is decided here. A run of one
+        // operator has nothing to re-associate, so canonicalization turns this back
+        // into the same pair of `Application` nodes it always was.
         //
-        // The `-` is the ordinary subtraction operator, resolved through the infix
-        // environment like any other `Variable`; only *where* it is applied is
-        // decided here.
+        // The `0` is not in the user's text. Rather than leaving it span-less it
+        // takes the span of the `-` token — the one piece of source the desugaring
+        // is about — which is also the span the operator itself carries.
         let minus = NodeSpan::new(l, m);
         // The end comes from `e` rather than an `@R` after it, so that a parenthesised
         // operand reports the position its own production computed. See
@@ -249,15 +252,9 @@ OperandExpr: Expression = {
 
         Expression::new(
             whole,
-            ExpressionKind::Application(
-                Box::new(Expression::new(
-                    whole,
-                    ExpressionKind::Application(
-                        Box::new(Expression::new(minus, ExpressionKind::Variable(Name::new("-")))),
-                        Box::new(Expression::new(minus, ExpressionKind::Lit(Literal::Int(0)))),
-                    ),
-                )),
-                Box::new(e),
+            ExpressionKind::InfixChain(
+                Box::new(Expression::new(minus, ExpressionKind::Lit(Literal::Int(0)))),
+                vec![(Name::new("-"), minus, e)],
             ),
         )
     },

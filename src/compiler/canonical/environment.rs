@@ -23,17 +23,50 @@ pub enum ValueType {
 }
 
 /// An operator's `infix` declaration as the environment holds it: what it declares,
-/// and where that declaration was written.
+/// where that declaration was written, and how the function it names resolves.
 ///
-/// The two halves are separate because [`Infix::span`] on its own is not enough to
+/// The first two are separate because [`Infix::span`] on its own is not enough to
 /// underline: an infix reaches this environment either from the module under check
 /// or cloned out of an imported module's [`Interface`], and in the second case the
 /// span is a byte range in the *exporting* module's file. `declaration` is what
 /// records which of the two it was — see [`InfixDeclaration`].
+///
+/// `function` is the third, and is what makes an operator usable across a module
+/// boundary: it is resolved in the module that wrote the `infix` declaration, so
+/// whether the importing module also has the backing function in scope never enters
+/// into it — see [`InfixFunction`].
 #[derive(Debug, Clone)]
 pub struct InfixEntry {
     pub infix: Infix,
     pub declaration: InfixDeclaration,
+    pub function: InfixFunction,
+}
+
+/// The function an operator's `infix` declaration names, resolved once — when the
+/// declaration enters the environment — in the module that wrote it.
+///
+/// An operator has no qualified spelling, so naming it in an `exposing` list is the
+/// only way to use one from another module, and whether that module's *backing*
+/// function is also in scope is not something the importer chose or can see. Binding
+/// the function to the declaration here is what decouples the two: `resolve_infix_operator`
+/// (`canonical/mod.rs`) builds the operator's canonical value out of this variant
+/// and never looks the function's name up in the importing module's own scope.
+#[derive(Debug, Clone)]
+pub enum InfixFunction {
+    /// Declared by the module under check, as a top-level value. `do_infixes`
+    /// registers an `infix` only after finding the declaration it names among this
+    /// module's functions, so nothing further has to be checked at the use site.
+    Local,
+    /// Declared by the module that exported the operator, with the type that
+    /// module's [`Interface`] carries for it — from
+    /// [`Interface::values`] when the header exposes the function by name, and from
+    /// [`Interface::infix_functions`] when it exposes only the operator.
+    Imported(ModuleName, Type),
+    /// Exported by a module whose [`Interface`] carries no type for the backing
+    /// function, which happens when that declaration was never annotated. There is
+    /// nothing to type a use of the operator against, so `resolve_infix_operator`
+    /// reports the function as the unresolved name.
+    ImportedUntyped(ModuleName),
 }
 
 /// Where an operator's `infix` declaration was written, to the extent
@@ -153,12 +186,9 @@ pub trait Environment<'parent>: std::fmt::Debug {
     /// neither the duplication nor the parent-before-locals order changes
     /// which name comes back.
     ///
-    /// Two things this does *not* mirror from `find_value`, both deliberate:
-    /// the ordering (`find_value` checks a scope's own bindings before the
-    /// parent's; this appends them last), and `RootEnvironment`'s redirect
-    /// through `infixes` to `Infix::function_name` — that redirect lands on a
-    /// `variables` key, which is already in the result, so following it would
-    /// only add a duplicate.
+    /// One thing this does *not* mirror from `find_value` is the ordering:
+    /// `find_value` checks a scope's own bindings before the parent's, this
+    /// appends them last.
     fn value_names(&self) -> Vec<Name>;
 
     /// Same as [`value_names`](Environment::value_names), for type
@@ -169,18 +199,18 @@ pub trait Environment<'parent>: std::fmt::Debug {
     fn local_infix_exists(&self, name: &Name) -> bool;
 
     /// The [`InfixEntry`] an operator resolves to from this scope — its declared
-    /// precedence and associativity, plus which module declared it and where —
-    /// or `None` when no `infix` declaration for it is in scope.
+    /// precedence and associativity, which module declared it and where, and the
+    /// backing function it names — or `None` when no `infix` declaration for it
+    /// is in scope.
     ///
     /// Canonicalization's infix re-association is the only caller
-    /// (`resolve_infix_operator` in `canonical/mod.rs`): it needs this ahead of
-    /// resolving the operator as a value, to decide how a flat run of operator
-    /// applications (`ExpressionKind::InfixChain`) nests into `Application`
-    /// nodes. An operator symbol can only ever resolve as a value through this
-    /// same `infixes` map (`find_value`'s redirect below), so a lookup that
-    /// fails here fails identically for `find_value` — `resolve_infix_operator`
-    /// reports that with the same `VariableNotFound` a plain unresolvable
-    /// variable would get.
+    /// (`resolve_infix_operator` in `canonical/mod.rs`), and this is the whole
+    /// of how an operator resolves: the entry decides both how a flat run of
+    /// operator applications (`ExpressionKind::InfixChain`) nests into
+    /// `Application` nodes, and what each operator position becomes as a value.
+    /// So a lookup that fails here is an operator nothing in scope declares, and
+    /// `resolve_infix_operator` reports it with the same `VariableNotFound` a
+    /// plain unresolvable variable would get.
     fn find_infix(&self, name: &Name) -> Option<&InfixEntry>;
 
     #[allow(dead_code)]
@@ -379,23 +409,6 @@ fn process_import(
                     .insert(op_name.clone(), imported_infix(interface, infix));
             }
 
-            // An exposed operator's backing function must resolve unqualified
-            // too, even when it is not itself named in `Basics`' own header —
-            // see `Interface::infix_functions`'s doc comment. Skipped whenever
-            // the function is already being inserted above via `interface.values`
-            // (both hold the name only in the disjoint case, so this never
-            // duplicates an entry `insert_foreign_value` would otherwise read as
-            // an ambiguous import).
-            for (fn_name, (node_span, tpe)) in &interface.infix_functions {
-                insert_foreign_value(
-                    env,
-                    fn_name.clone(),
-                    tpe.clone(),
-                    interface.source_span(*node_span),
-                    &interface.module_name,
-                );
-            }
-
             // We need to insert the type without any qualifier, including variants
             for (union_name, union) in &interface.unions {
                 insert_foreign_union_type(
@@ -476,10 +489,13 @@ fn process_import(
                             EnvError::InfixNotFound(variable_name.clone(), exposed.span, suggestion)
                         })?;
 
+                        // The entry is the whole of what the importer gets: it
+                        // carries the backing function alongside the precedence
+                        // and associativity, so naming the operator here is
+                        // enough on its own. Nothing is inserted into
+                        // `env.variables` — an operator is not a value name.
                         env.infixes
                             .insert(variable_name.clone(), imported_infix(interface, infix));
-                        // How do we represent infixes ?
-                        // When do we do rewrite them ?
                     }
                 };
 
@@ -500,15 +516,32 @@ fn process_import(
 /// `Interface::source_span` declines when either half is missing, and
 /// [`InfixDeclaration::Unknown`] is that answer: the label is dropped rather than
 /// rendered against the wrong file.
+///
+/// The backing function is resolved here too, against the exporting interface,
+/// which is what lets an `exposing` list name the operator on its own — see
+/// [`InfixFunction`]. Two places in that interface can carry its type, and they are
+/// disjoint by construction ([`Interface::infix_functions`] holds only what
+/// [`Interface::values`] does not), so the order they are consulted in does not
+/// matter.
 fn imported_infix(interface: &Interface, infix: &Infix) -> InfixEntry {
     let declaration = match interface.source_span(infix.span) {
         Some(source) => InfixDeclaration::InImportedModule(source),
         None => InfixDeclaration::Unknown,
     };
 
+    let function = match interface
+        .values
+        .get(&infix.function_name)
+        .or_else(|| interface.infix_functions.get(&infix.function_name))
+    {
+        Some((_, tpe)) => InfixFunction::Imported(interface.module_name.clone(), tpe.clone()),
+        None => InfixFunction::ImportedUntyped(interface.module_name.clone()),
+    };
+
     InfixEntry {
         infix: infix.clone(),
         declaration,
+        function,
     }
 }
 
@@ -707,7 +740,14 @@ impl RootEnvironment {
     pub fn insert_local_infix(&mut self, name: Name, infix: Infix) {
         let declaration = InfixDeclaration::InThisModule(infix.span);
 
-        self.infixes.insert(name, InfixEntry { infix, declaration });
+        self.infixes.insert(
+            name,
+            InfixEntry {
+                infix,
+                declaration,
+                function: InfixFunction::Local,
+            },
+        );
     }
 
     // TODO Use insert_foreign_value (and rename to remove the foreign part)
@@ -741,13 +781,12 @@ impl<'p> Environment<'p> for RootEnvironment {
         self.types.get(name)
     }
 
+    /// Value names only. An operator symbol is never a key here — an `infix`
+    /// declaration goes into `infixes`, and no other insertion can produce one,
+    /// since a function's own name always comes from `VarIdent`, a distinct token
+    /// from `Op`. Operators resolve through [`find_infix`](Environment::find_infix)
+    /// and [`InfixFunction`] instead.
     fn find_value(&self, name: &Name) -> Option<&ValueType> {
-        // TODO Not a principled change. Will require a bit more thought :)
-        let name = if let Some(entry) = self.infixes.get(name) {
-            &entry.infix.function_name
-        } else {
-            name
-        };
         self.variables.get(name)
     }
 
