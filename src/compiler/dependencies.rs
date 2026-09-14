@@ -1124,7 +1124,7 @@ mod tests {
     /// module would be a different package, so those names stay put.
     ///
     /// Mutation-checked by restoring the old `for importer { for default }` nesting:
-    /// this fails inside the first twenty trials.
+    /// this fails at trial 111, the same one on every run because the seed is fixed.
     #[test]
     fn renaming_a_module_does_not_change_which_default_imports_it_gets() {
         // A fixed-seed LCG rather than a dependency: the shapes have to be the same
