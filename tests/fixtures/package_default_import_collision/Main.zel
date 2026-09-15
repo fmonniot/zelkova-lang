@@ -1,0 +1,10 @@
+-- SPEC-32's reproduction verbatim: nothing here mentions `Basics`, so the
+-- `Basics` half of the collision below is supplied by default rather than
+-- written.
+module Main exposing (x)
+
+import Helper exposing (add)
+
+
+x : Int
+x = add 1 2
