@@ -49,8 +49,9 @@ declaration sites, so it is not a caret-less error — but `Main.zel` contains n
 `Basics`, and the author of `Helper` is who chose the colliding name.
 
 The chapter's stated fix does work: qualifying the use as `Helper.add` compiles. So this is an
-ergonomics and diagnostics question rather than a dead end, which is why it is filed separately
-from [`SPEC-31`](spec-31.md) and at a smaller size.
+ergonomics and diagnostics question rather than a dead end, which is why it was filed separately
+from the default-import question `SPEC-31` settled ([`DEC-15`](../decisions/dec-15.md)) and at a
+smaller size.
 
 Found while reviewing `LANG-8` (PR #206). Left unfixed there because the PR implements the
 mechanism correctly — the composition is a consequence of two rules that were each settled

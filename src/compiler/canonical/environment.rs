@@ -2,8 +2,8 @@
 
 use super::{parser, Pattern, PatternKind};
 use super::{Infix, Interface, ModuleName, Name, Type, TypeConstructor, UnionType};
-use crate::compiler::default_imports;
 use crate::compiler::position::NodeSpan;
+use crate::compiler::{builtin_types, default_imports};
 use crate::compiler::{PhaseError, SourceSpan, SpanLabel};
 use crate::utils::{collect_accumulate, suggest};
 use log::trace;
@@ -301,6 +301,20 @@ pub fn new_environment(
         variables: HashMap::new(),
     };
     let mut errors = vec![];
+
+    // Before the imports, so an import or a declaration of the same name wins: a
+    // built-in name is the weakest entry in a scope, and `builtin_types` says why
+    // that matters. Each takes no arguments, so `variables` is empty and a written
+    // `Int a` is `Error::TypeArityMismatch` like any other nullary type's.
+    for name in builtin_types::names() {
+        env.types.insert(
+            name.clone(),
+            TypeArity {
+                name,
+                variables: vec![],
+            },
+        );
+    }
 
     let implicit = default_imports::implicit_imports(module_name.name(), imports, interfaces);
 
@@ -933,6 +947,17 @@ mod tests {
         ModuleName::new(PackageName::new("author", "project"), "module".into())
     }
 
+    /// The types in scope beyond [the built-in ones](crate::compiler::builtin_types),
+    /// which `new_environment` seeds into every scope before it reads an import.
+    /// What each test below counts is what its imports brought, so the seeded names
+    /// are filtered out rather than folded into the number.
+    fn imported_types(env: &RootEnvironment) -> Vec<&Name> {
+        env.types
+            .keys()
+            .filter(|name| !builtin_types::is_builtin(name))
+            .collect()
+    }
+
     fn import(name: Name, alias: Option<Name>, exposing: parser::Exposing) -> parser::Import {
         parser::Import {
             name,
@@ -1034,8 +1059,33 @@ mod tests {
         ("Maybe".into(), interface)
     }
 
+    /// Every [built-in type name](crate::compiler::builtin_types) resolves in a
+    /// module that imports nothing, each taking no arguments. This is what a
+    /// facade below `Basics` relies on, having no `import` that could bring them
+    /// in — `DEC-15`.
+    ///
+    /// Mutation-checked by dropping the seeding loop in `new_environment`.
+    #[test]
+    fn builtin_type_names_resolve_without_an_import() -> Result<(), Vec<EnvError>> {
+        let interfaces = HashMap::new();
+        let env = new_environment(&module_name(), &interfaces, &vec![])?;
+
+        for name in builtin_types::names() {
+            match env.find_type(&name) {
+                Some(arity) => {
+                    assert_eq!(arity.name, name);
+                    assert_eq!(arity.arity(), 0, "`{}` takes no arguments", name);
+                }
+                None => panic!("`{}` should resolve without an import", name),
+            }
+        }
+
+        Ok(())
+    }
+
     /// A module that writes no imports, in a package that provides nothing to
-    /// import, has an empty scope.
+    /// import, has nothing in scope but [the built-in type
+    /// names](crate::compiler::builtin_types).
     ///
     /// The interfaces map is empty and that is now load-bearing: `Maybe` is on the
     /// [default import list](crate::compiler::default_imports), so a package that
@@ -1047,7 +1097,12 @@ mod tests {
         let env = new_environment(&module_name(), &interfaces, &vec![])?;
 
         assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
-        assert_eq!(env.types.len(), 0, "types={:?}", env.types); // qual + explicit
+        assert_eq!(
+            imported_types(&env).len(),
+            0,
+            "types={:?}",
+            imported_types(&env)
+        ); // qual + explicit
         assert_eq!(
             env.constructors.len(),
             0,
@@ -1116,7 +1171,12 @@ mod tests {
         let maybe = ModuleName::new(PackageName::new("zelkova", "core"), "Maybe".into());
         let env = new_environment(&maybe, &interfaces, &vec![])?;
 
-        assert_eq!(env.types.len(), 0, "types={:?}", env.types);
+        assert_eq!(
+            imported_types(&env).len(),
+            0,
+            "types={:?}",
+            imported_types(&env)
+        );
         assert_eq!(env.variables.len(), 0, "variables={:?}", env.variables);
 
         Ok(())
@@ -1211,7 +1271,12 @@ mod tests {
 
         // Make sure we don't have more than what is expected
         assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
-        assert_eq!(env.types.len(), 1 + 1, "types={:?}", env.types); // qual + explicit
+        assert_eq!(
+            imported_types(&env).len(),
+            1 + 1,
+            "types={:?}",
+            imported_types(&env)
+        ); // qual + explicit
         assert_eq!(
             env.constructors.len(),
             4,
@@ -1273,7 +1338,12 @@ mod tests {
 
         // Make sure we don't have more than what is expected
         assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
-        assert_eq!(env.types.len(), 1 + 1, "types={:?}", env.types); // qual + explicit
+        assert_eq!(
+            imported_types(&env).len(),
+            1 + 1,
+            "types={:?}",
+            imported_types(&env)
+        ); // qual + explicit
         assert_eq!(
             env.constructors.len(),
             2,
@@ -1349,7 +1419,12 @@ mod tests {
 
         // Make sure we don't have more than what is expected
         assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
-        assert_eq!(env.types.len(), 2, "types={:?}", env.types); // qual + explicit
+        assert_eq!(
+            imported_types(&env).len(),
+            2,
+            "types={:?}",
+            imported_types(&env)
+        ); // qual + explicit
         assert_eq!(
             env.constructors.len(),
             4,
@@ -1426,7 +1501,12 @@ mod tests {
 
         // Make sure we don't have more than what is expected
         assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
-        assert_eq!(env.types.len(), 2, "types={:?}", env.types);
+        assert_eq!(
+            imported_types(&env).len(),
+            2,
+            "types={:?}",
+            imported_types(&env)
+        );
         assert_eq!(
             env.constructors.len(),
             4,

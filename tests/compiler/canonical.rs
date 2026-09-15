@@ -18,8 +18,9 @@ use support::*;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/// `Type::Type("Int", [])` — the canonical representation of an unresolved `Int`
-/// (no Basics import in these tests).
+/// `Type::Type("Int", [])` — what [the built-in
+/// `Int`](../../src/compiler/builtin_types.rs) resolves to, which is what these
+/// tests get with no `Basics` to import.
 fn int_t() -> canonical::Type {
     canonical::Type::Type("Int".into(), vec![])
 }
@@ -1983,5 +1984,75 @@ fn unsafe_is_a_facade_constant_name() {
             assert!(!marked_unsafe, "the word is the constant's name here");
         }
         other => panic!("expected a TypedValue for `unsafe`, got {:?}", other),
+    }
+}
+
+// ── Built-in type names ──────────────────────────────────────────────────────
+//
+// `Int`, `Float`, `Bool`, `Char` and `String` resolve in a module that imports
+// nothing — `docs/spec/types.md`'s *Built-in type names*, decided by `DEC-15`
+// because a facade below `Basics` has no import that could bring them in.
+
+/// A built-in name is a real entry in the scope, not a name nothing answers for:
+/// applying it to an argument is an arity error, exactly as applying a declared
+/// nullary type is.
+///
+/// This is the only observable difference while `BUG-16` stands — an unresolved
+/// name is fabricated with whatever arity was written, so the arity check is what
+/// distinguishes a name that resolved from one that was invented. Mutation-checked
+/// by dropping the seeding loop in `new_environment`: the annotation is then
+/// accepted and this test goes red.
+#[test]
+fn a_builtin_type_name_takes_no_arguments() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (x)
+        x : Int Float
+        x = 1
+    "#};
+
+    let errors =
+        canonicalize_standalone(source).expect_err("Int applied to an argument should be an error");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::TypeArityMismatch(name, declared, written, _) => {
+            assert_eq!(name.as_str(), "Int");
+            assert_eq!(*declared, 0, "a built-in type takes no arguments");
+            assert_eq!(*written, 1, "x : Int Float supplies one");
+        }
+        other => panic!("expected TypeArityMismatch, got {:?}", other),
+    }
+}
+
+/// A module's own `type` declaration wins over the built-in name it shares a
+/// spelling with: the seeded names are the weakest entries in a scope.
+///
+/// Mutation-checked by seeding the built-in names *after* the module's own
+/// declarations are inserted, which makes `Int Bool` an arity error.
+#[test]
+fn a_declaration_shadows_the_builtin_of_the_same_name() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (x)
+
+        type Int a
+          = Zero
+          | Succ a
+
+        x : Int Bool
+        x = Zero
+    "#};
+
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    match module.values.get(&"x".into()) {
+        Some(canonical::Value::TypedValue { tpe, .. }) => assert_eq!(
+            *tpe,
+            canonical::Type::Type(
+                "Int".into(),
+                vec![canonical::Type::Type("Bool".into(), vec![])]
+            ),
+            "`x` is annotated with the module's own one-argument `Int`"
+        ),
+        other => panic!("expected a TypedValue for `x`, got {:?}", other),
     }
 }

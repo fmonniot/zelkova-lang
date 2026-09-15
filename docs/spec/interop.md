@@ -116,7 +116,10 @@ mechanisms:
 | A list | the value is an array, every element of which satisfies the element type's predicate | `list` of the element's spelling |
 | A union type, applied to admitted types | the value carries one of that type's constructor names, and arguments satisfying that constructor's predicates | a `variant`, one case per constructor |
 
-A signature may name any of those, in any position an argument or a result may take.
+A signature may name any of those, in any position an argument or a result may take. The
+five scalar rows are [built-in type names](types.md#built-in-type-names) and need no import,
+which is what lets a facade underneath `Basics` — `Js.Basics` in `zelkova-core` — name them
+at all.
 
 ```zel expect=ok
 module foreign Core.Colour exposing

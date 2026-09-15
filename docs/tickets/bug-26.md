@@ -56,12 +56,18 @@ carries the `**Known gap:**` block for it.
 **Fix:** the four literal types are properties of the *type the name resolved to*, not of the
 spelling. Nothing in the canonical AST distinguishes them today, which is what makes this more
 than a one-line change: `canonical::Type::Type` carries a `Name`, and the typer has to decide
-whether a nullary named type is a builtin from the module it was declared in rather than from
-its letters. The two shapes worth weighing are giving the four builtins a real declaration in
-`std/core` and dropping `Type::Literal` in favour of `Type::Adt` throughout — which is the
-direction [`LANG-41`](lang-41.md) already moves `Type::Number` in — or qualifying the match so
-only `Basics`' own `Bool` becomes a literal, which needs the qualified name to survive into the
-typer.
+whether a nullary named type is a builtin from what the name resolved to rather than from its
+letters.
+
+[`DEC-15`](../decisions/dec-15.md) settled where those four come from and narrows the shapes
+worth weighing. They are [built-in type names](../spec/types.md#built-in-type-names) the
+compiler supplies, so *giving them a real declaration in `std/core` and dropping
+`Type::Literal`* is no longer available — `Int` and `Float` have no declaration anyone could
+write, and the decision is that a module is not what answers for them. What the same decision
+also grants is [that a module may shadow one](../spec/types.md#built-in-type-names), which is
+exactly the case this bug gets wrong: the fix is to carry the distinction from the canonical
+phase, where the names `builtin_types` seeds into a scope are what a built-in resolved against,
+rather than to re-derive it in the typer from the spelling.
 
 **Acceptance:** the module above type checks, and its `case` still rejects a branch of the
 wrong type — tests in `tests/typer.rs`. `cargo run` still prints `parsed 8 modules` and lists

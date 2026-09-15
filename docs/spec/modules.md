@@ -729,10 +729,11 @@ import String
 import Tuple
 ```
 
-So `Int`, `Bool`, `True`, `+` and `<|` are in scope in every module with nothing written
-at the top of it, `Maybe` and `Just` likewise, and `List.map`, `Char.toUpper` and
-`String.length` are reachable under their qualified names. Nothing else is: a module that
-wants `Dict` imports it.
+So `True`, `+` and `<|` are in scope in every module with nothing written at the top of
+it, `Maybe` and `Just` likewise, and `List.map`, `Char.toUpper` and `String.length` are
+reachable under their qualified names. Nothing else is: a module that wants `Dict` imports
+it. `Int` and `Bool` are in scope whatever this list does — they are [built-in type
+names](types.md#built-in-type-names), which the compiler supplies rather than a module.
 
 ```zel expect=ok package=defaults
 module Basics exposing (Int, (+), add)
@@ -775,9 +776,10 @@ cycle](#imports-may-not-form-a-cycle) either way. They write the imports they ne
 
 Every other module is judged **one entry at a time**. It drops the entry for a module
 that already depends on it, since that implicit import would close a cycle back, and
-keeps every other entry. So a facade `Basics` imports does not receive `Basics` — but it
-still receives `Tuple`, which depends on nothing. Where a module sits in the import graph
-is what decides its set, and two modules of one package need not have the same one.
+keeps every other entry. So a facade `Basics` imports does not receive `Basics` — the types
+in its signature are built-in for that reason — but it still receives `Tuple`, which depends
+on nothing. Where a module sits in the import graph is what decides its set, and two modules
+of one package need not have the same one.
 
 A drop can propagate, because the imports the compiler supplies are dependencies like any
 other. Say `Basics` imports `A`: then `A` loses `Basics`, and if the compiler goes on to

@@ -79,6 +79,55 @@ x : Widget.Size
 x = Widget.small
 ```
 
+### Built-in type names
+
+Five type names are supplied by the compiler and resolve in every module with nothing
+written at the top of the file: `Int`, `Float`, `Bool`, `Char` and `String`. Each takes no
+arguments.
+
+```zel expect=ok
+module Example exposing (width)
+
+width : Char -> Int
+width c =
+  1
+```
+
+They are the [scalar types a facade signature may
+name](interop.md#which-types-may-cross-the-boundary). A facade is where the language meets
+its target, and the facades that `Basics` is built from cannot import `Basics`: it imports
+them, and [an import may not form a cycle](modules.md#imports-may-not-form-a-cycle). The
+types that cross a boundary are therefore the ones no module has to be present to supply.
+
+A built-in name is the weakest entry in a scope. A module declaring a type of the same name,
+or importing one, gets that one, so `Bool` is [an ordinary union
+type](lexical-structure.md#reserved-words) and the other four are ordinary names too.
+
+```zel expect=ok
+module Ascii exposing (String, empty)
+
+type String
+  = Empty
+  | Byte Int String
+
+empty : String
+empty =
+  Empty
+```
+
+**Known gap:** shadowing any of the five is the rule above, and the type checker rejects it
+for four of them: it reads `Int`, `Float`, `Bool` and `Char` as its own built-in types
+wherever an annotation writes them, whatever the module declared —
+[`BUG-26`](../tickets/bug-26.md), whose block is in [Lexical
+structure](lexical-structure.md#reserved-words). `String` is the one it does not
+special-case, which is why the block above is written with that one.
+
+**Known gap:** `std/core`'s `Basics` declares `Int`, `Float` and `Bool` as well and exposes
+all three, so most modules reach those names twice — once from the compiler and once through
+[the default import](modules.md#the-default-imports). The two are indistinguishable rather
+than in conflict, because the compiler identifies a type by its name alone.
+[`SPEC-34`](../tickets/spec-34.md) is where the duplication is settled.
+
 ### Type variables
 
 A type variable is a lowercase-initial identifier. It stands for a complete type, and it is

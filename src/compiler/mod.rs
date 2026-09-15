@@ -35,6 +35,11 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 
+/// The type names the compiler supplies, in scope in every module. Public for the
+/// same reason as [`default_imports`]: it is a rule about the language, and the
+/// canonical phase seeds the names while the typer reads four of them back
+/// (`BUG-26`).
+pub mod builtin_types;
 pub mod canonical;
 /// The imports every module gets without writing them. Public because it is a rule
 /// about the language rather than an implementation detail of one phase, and

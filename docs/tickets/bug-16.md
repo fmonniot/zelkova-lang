@@ -3,8 +3,6 @@
 **Severity:** medium (wrong behaviour under normal use — a misspelled type name is accepted
 silently and surfaces later, if at all, as a type error about something else).
 
-**Blocked by:** [SPEC-31](spec-31.md). See *What is left, and why it waits* below.
-
 **Location:** `src/compiler/canonical/mod.rs` — `Type::from_parser_type`, the `None` arm of
 its `env.find_type(name)` match.
 
@@ -57,21 +55,14 @@ Two things go red on their own alongside it, both measured:
   has to assert on `PhaseError::message()` instead of on the variant. A unit test inside
   `environment.rs` is the only place the variant itself can be matched.
 
-**What is left, and why it waits:** [`SPEC-31`](spec-31.md). `Js/Basics.zel` and
-`Js/Utils.zel` name `Int`, `Float` and `Bool` with no `import` line, and they are exactly the
-two modules the [default imports](../spec/modules.md#the-default-imports) withhold `Basics`
-from — `Basics` imports both facades, so the implicit import back would be a cycle, and
-writing it by hand is the same cycle written out. `SPEC-31` is where that is decided; it
-weighs four shapes, deliberately picks none, and says the argument belongs in a
-[`docs/decisions/`](../decisions/README.md) entry. Its first shape — making the primitive
-types compiler-known — also decides [`BUG-26`](bug-26.md), whose own two candidate fixes both
-run the other way. Nothing here should pick for it.
-
-Applying the fix on a branch to measure it: with the `do_types` change above, and with `Int`,
-`Float`, `Bool`, `Char` and `String` seeded into every scope (`SPEC-31` shape 1, to see what
-else moved), `cargo run` checks all eight modules and `cargo test --workspace` is green with
-six `env.types.len()` assertions in `environment.rs` adjusted for the seeded names. So shape 1
-aside, the rest of the fix costs nothing beyond those two items.
+**What is left:** the fix itself, and nothing blocks it. The two facades underneath `Basics`
+used to name `Int`, `Float` and `Bool` with no import that could reach them, which is why this
+ticket waited; [`DEC-15`](../decisions/dec-15.md) made the five scalar type names
+[built-in](../spec/types.md#built-in-type-names) and they now resolve. Measured with the names
+seeded and the `None` arm above reporting what it fabricates: nothing in `std/core/src/` or in
+`docs/spec/` invents a primitive any more, and every remaining fabrication is the
+sibling-declaration case above — `Never` in `Basics`, and `Flag`, `Count`, `Nat` and `Chain`
+across the spec chapters. So the two items above are the whole of the cost.
 
 **Acceptance:** `label : Nope` in a module that declares no `Nope` fails with the new error,
 and `label : a` (a type variable) still compiles — tests in `tests/compiler/canonical.rs`.
