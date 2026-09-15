@@ -134,8 +134,8 @@ module foreign Core.Colour exposing
   , luminance
   )
 
-rgb : Int -> (Int, Int, Int)
-luminance : (Int, Int, Int) -> Float
+unsafe rgb : Int -> (Int, Int, Int)
+unsafe luminance : (Int, Int, Int) -> Float
 ```
 
 JavaScript has one number type where Zelkova has two, and the `Int` predicate is what separates
@@ -184,7 +184,7 @@ module foreign Core.Palette exposing
 
 import Palette exposing (Swatch(..))
 
-toHex : Swatch -> Int
+unsafe toHex : Swatch -> Int
 ```
 
 A constructor's **name** is part of what a companion depends on, on either target, so renaming
@@ -227,8 +227,10 @@ count : (Int -> Bool) -> Int -> Int
 
 **Known gap:** neither signature is admitted — `equal` names a type variable, `count` takes a
 function — and nothing rejects either. A facade annotation is resolved exactly as any other
-annotation is, so every type a normal module may write, a facade may write.
-[`LANG-43`](../tickets/lang-43.md) is the check.
+annotation is, so every type a normal module may write, a facade may write. Neither is marked
+`unsafe` or declares `Task (Result Failure a)` either, which the opening rule above also holds
+every facade signature to, and nothing checks that any more than it checks the rest.
+[`LANG-43`](../tickets/lang-43.md) is the check for all of it.
 
 **Not implemented:** a class constraint is rejected on the same grounds, `Comparable a => a`
 being a signature over `a`. A constrained function is specialised, and a facade has no body to
@@ -370,8 +372,8 @@ module foreign Core.Basics exposing
   , e
   )
 
-pi : Float
-e : Float
+unsafe pi : Float
+unsafe e : Float
 ```
 
 The plain-parameter-list rule above has a zero-argument case, and the two targets spell it

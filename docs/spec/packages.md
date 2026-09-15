@@ -166,7 +166,7 @@ there rather than out of the facade.
 ```zel expect=ok
 module foreign Core.Widget exposing (measure)
 
-measure : Int -> Int
+unsafe measure : Int -> Int
 ```
 
 **Not implemented:** nothing consults `private-modules`, because nothing in the compiler
