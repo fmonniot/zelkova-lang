@@ -114,3 +114,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-12](dec-12.md) | What a broken companion does: a survey and seven decisions | live |
 | [DEC-13](dec-13.md) | A facade names a boundary, not a backend: seven decisions | live |
 | [DEC-14](dec-14.md) | A companion's test is a facade under `tests/`: four decisions | live |
+| [DEC-15](dec-15.md) | The scalar types are declared in Zelkova and known by qualified name: five decisions | live |

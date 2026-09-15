@@ -262,7 +262,8 @@ f = match
 
 `true` and `false` are **not** reserved. Zelkova has no boolean literal syntax: `Bool` is an
 ordinary union type and `True` and `False` are its constructors, resolved, imported and
-shadowed like any other name.
+shadowed like any other name. `Bool` is also [a scalar type](types.md#scalar-types), which is
+a claim about the representation a target gives it and not about its structure.
 
 ```zel expect=type-error:UnificationFailed
 module Example exposing (Bool, not)
@@ -281,11 +282,10 @@ not b =
       True
 ```
 
-**Known gap:** that block should be `expect=ok`. The type checker reads the four names `Bool`,
-`Int`, `Char` and `Float` as its own builtin types wherever they appear in an annotation, while
-the module's own `True` and `False` get the union type it declared — so the two halves of a
-module that defines `Bool` do not match, and the error reads *cannot match `Bool` with `Bool`*.
-[`BUG-26`](../tickets/bug-26.md) is the ticket.
+**Known gap:** that block should be `expect=ok`. A scalar type is matched by spelling rather
+than [by the qualified name of its declaration](types.md#scalar-types), so the module's own
+`Bool` does not match the `True` and `False` the same module declared, and the error reads
+*cannot match `Bool` with `Bool`*. [`BUG-26`](../tickets/bug-26.md) is the ticket.
 
 So `true` is available as a variable name:
 

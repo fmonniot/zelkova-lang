@@ -242,7 +242,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-28](spec-28.md) | task | — | open | Two chapters disagree on `Int`'s range, and the tokenizer enforces a third bound |
 | [SPEC-29](spec-29.md) | task | — | open | `unsafe` marks 45 `std/core` signatures and none of the chapter's own examples |
 | [SPEC-30](spec-30.md) | task | — | open | `unsafe` outside a facade is rejected, and no chapter says so |
-| [SPEC-31](spec-31.md) | task | — | open | A facade has no legitimate way to name `Int`, and `BUG-16` is what hides it |
+| SPEC-31 | task | — | closed 2026-09-14 | A facade has no legitimate way to name `Int`, and `BUG-16` is what hides it |
 | [SPEC-32](spec-32.md) | task | — | open | A module is made ambiguous by an import it never wrote |
 | [SPEC-33](spec-33.md) | task | — | open | Which default imports a module gets is a fixed point over the whole package |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
@@ -297,6 +297,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-50](lang-50.md) | task | — | open | Field access `r.name` and the accessor `.name` do not parse |
 | [LANG-51](lang-51.md) | task | — | open | The typer has no record type, so nothing checks a field, an update or an accessor |
 | [LANG-52](lang-52.md) | task | — | open | Whitespace around a qualification dot is accepted, and records need it not to be |
+| [LANG-53](lang-53.md) | task | — | open | A module underneath `Basics` cannot name a scalar type |
+| [LANG-54](lang-54.md) | task | — | open | A scalar type's declaration is an ordinary union, so `Int` is a value and any body is accepted |
+| [LANG-55](lang-55.md) | task | — | open | The `Char` and `String` default imports bring their modules but not their types |
 | LANG-53 | task | — | closed 2026-09-13 | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | LANG-54 | task | — | closed 2026-09-13 | The interop modifier is `foreign`, not `javascript` |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
@@ -306,6 +309,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
+| [AST-4](ast-4.md) | task | — | open | A canonical type carries an unqualified name, so two types of one name are one type |
 | PERF-1 | task | — | closed 2026-08-25 | Reduce cloning in the `Layout` iterator |
 | TIDY-1 | task | — | closed 2026-08-25 | Make `Name`'s inner `String` private |
 | TIDY-2 | task | — | closed 2026-08-25 | Replace the tokenizer's keyword `HashMap` with a `match` |

@@ -724,13 +724,13 @@ import List exposing (List)
 import Maybe exposing (Maybe(..))
 import Result exposing (Result(..))
 import Task exposing (Task)
-import Char
-import String
+import Char exposing (Char)
+import String exposing (String)
 import Tuple
 ```
 
-So `Int`, `Bool`, `True`, `+` and `<|` are in scope in every module with nothing written
-at the top of it, `Maybe` and `Just` likewise, and `List.map`, `Char.toUpper` and
+So `Int`, `Bool`, `String`, `True`, `+` and `<|` are in scope in every module with nothing
+written at the top of it, `Maybe` and `Just` likewise, and `List.map`, `Char.toUpper` and
 `String.length` are reachable under their qualified names. Nothing else is: a module that
 wants `Dict` imports it.
 
@@ -757,8 +757,8 @@ The list is chosen so that the types appearing in ordinary type annotations are 
 writable. `Maybe` and `Result` are exposed with their constructors because matching on
 them is the ordinary way to use them, and a qualified `Maybe.Just` in every `case` branch
 would spell out a module name on one of the most common patterns in the language.
-`List` is exposed as a bare type because its module's functions read better qualified —
-`List.map`, not `map`. [`Task`](evaluation-semantics.md#effects) is exposed the same way and for
+`List`, `Char` and `String` are exposed as bare types because their modules' functions read
+better qualified — `List.map` and `String.length`, not `map` and `length`. [`Task`](evaluation-semantics.md#effects) is exposed the same way and for
 the same reason, and it is on the list because [`main`](packages.md#programs) names it in an
 annotation every program has to write.
 [`Failure`](evaluation-semantics.md#an-effect-that-can-fail) does not come with it: the modules
@@ -787,11 +787,46 @@ list above writes them — an entry is only ever dropped for a dependency an *ea
 entry created, never a later one. `Basics` is first, so it is the entry a module keeps
 when it can keep only one.
 
+**A module that drops the `Basics` entry receives the scalar type names in its place.** `Int`,
+`Float`, `Char`, `String` and `Bool` are in its scope with nothing written at the top of the
+file, bound to the same declarations `Basics` exposes. The compiler [knows each of the five by
+qualified name](types.md#scalar-types), so it supplies them without reading `Basics`, and the
+dependency the drop exists to avoid is never created.
+
+What arrives is the five type names and nothing else. A module reaching `Bool` this way writes
+it in a signature and cannot write a `True`: the constructors are `Basics`' values, and no rule
+brings a value down. The case is a [facade](interop.md) underneath `Basics`, which has no
+bodies to write one in.
+
+```zel expect=ok package=below
+module Basics exposing (Int)
+
+import Below
+
+type Int = Int
+```
+
+```zel expect=ok package=below
+module foreign Below exposing (twice)
+
+unsafe twice : Int -> Int
+```
+
+Only the package that declares `Basics` can hold such a module, since a package's dependencies
+run one way, so no module outside it ever meets this rule.
+
+**Known gap:** the second block above is green for the wrong reason. Nothing supplies the
+scalar names yet; `Int` resolves to nothing there and a type is fabricated for it
+([`BUG-16`](../tickets/bug-16.md)), and the fabrication passes for `Basics`' `Int` only because
+a type is identified today by its unqualified name.
+
 **Known gap:** `std/core` ships four of the eight, so `List`, `Char`, `String` and `Task`
 bring nothing. A program naming `String.length` is rejected where the name is used.
 Naming `List` in a type annotation is *accepted* today, but only because an unknown type
 name is accepted anywhere ([`BUG-16`](../tickets/bug-16.md)) — not because the entry
-works. Each entry starts working on the day its module compiles.
+works. Each entry starts working on the day its module compiles — except `Char` and `String`,
+which would still bring only their qualified names, since `DEFAULT_IMPORTS` gives both entries
+no unqualified name at all ([`LANG-55`](../tickets/lang-55.md)).
 
 ## Packages
 
