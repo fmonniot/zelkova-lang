@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zelkova</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="landing">
+  <h1>Zelkova</h1>
+  <p class="tagline">
+    An Elm-inspired functional language, compiling to WebAssembly by way of JavaScript,
+    written in Rust as a project about how compilers are built.
+  </p>
+  <p>
+    The <a href="spec/">specification</a> is normative, and every example in it is
+    checked against the compiler. A badge like the one below marks each example with
+    whether the compiler accepts it today.
+  </p>
+  <div class="zel-block expect-accepted">
+    <div class="zel-block-tags"><span class="zel-tag">expect=ok</span></div>
+    <pre><code>module Main exposing (answer)
+
+answer : Int
+answer = 42</code></pre>
+  </div>
+  <nav class="landing-links">
+    <a href="spec/">Read the specification</a>
+    <a href="api/zelkova_lang/">Browse the rustdoc</a>
+    <a href="https://github.com/fmonniot/zelkova-lang">View the repository</a>
+  </nav>
+</main>
+</body>
+</html>

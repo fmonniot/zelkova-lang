@@ -1,0 +1,66 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="The imports every module gets without writing them. Public because it is a rule about the language rather than an implementation detail of one phase, and because two phases read it: canonicalization synthesises the imports, and `dependencies` puts the matching edges in the import graph. The imports every module gets without writing them."><title>zelkova_lang::compiler::default_imports - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="zelkova_lang" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.1 (48a229cea 2026-09-01)" data-channel="1.98.1" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module default_imports</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../../zelkova_lang/index.html">zelkova_<wbr>lang</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module default_<wbr>imports</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#why-the-list-lives-here-and-not-in-canonicalization" title="Why the list lives here and not in canonicalization">Why the list lives here and not in canonicalization</a></li><li><a href="#where-the-cycle-does-not-happen" title="Where the cycle does not happen">Where the cycle does not happen</a></li><li><a href="#an-implicit-import-is-never-a-diagnostic" title="An implicit import is never a diagnostic">An implicit import is never a diagnostic</a></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#constants" title="Constants">Constants</a></li><li><a href="#functions" title="Functions">Functions</a></li></ul></section><div id="rustdoc-modnav"><h2><a href="../index.html">In zelkova_<wbr>lang::<wbr>compiler</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../../index.html">zelkova_lang</a>::<wbr><a href="../index.html">compiler</a></div><h1>Module <span>default_<wbr>imports</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../../src/zelkova_lang/compiler/default_imports.rs.html#1-404">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>The imports every module gets without writing them. Public because it is a rule
+about the language rather than an implementation detail of one phase, and
+because two phases read it: canonicalization synthesises the imports, and
+<code>dependencies</code> puts the matching edges in the import graph.
+The imports every module gets without writing them.</p>
+<p>Zelkova’s standard library is reachable from a module that imports nothing:
+<code>Int</code>, <code>Bool</code>, <code>True</code>, <code>+</code> and <code>&lt;|</code> resolve in a file whose only declaration is
+<code>x = 1 + 2</code>, and <code>Maybe</code>, <code>Just</code>, <code>List.map</code> and <code>String.length</code> resolve there
+too. <a href="../../../docs/spec/modules.md#the-default-imports"><em>The default
+imports</em></a> is the rule; this
+module is the list it names, plus the two questions asked of that list.</p>
+<h2 id="why-the-list-lives-here-and-not-in-canonicalization"><a class="doc-anchor" href="#why-the-list-lives-here-and-not-in-canonicalization">§</a>Why the list lives here and not in canonicalization</h2>
+<p>Two phases need it, for two halves of one behaviour.
+<a href="crate::compiler::canonical::environment::new_environment"><code>canonical::environment::new_environment</code></a>
+turns each entry into a <a href="../parser/struct.Import.html" title="struct zelkova_lang::compiler::parser::Import"><code>parser::Import</code></a> and runs it through <code>process_import</code>
+ahead of the module’s own, so a name arriving implicitly is indistinguishable
+from one written by hand. <a href="../dependencies/struct.ModuleWalker.html#method.new" title="associated function zelkova_lang::compiler::dependencies::ModuleWalker::new"><code>dependencies::ModuleWalker::new</code></a>
+adds the matching edge to the import graph, because a module can only resolve
+against an <a href="../struct.Interface.html" title="struct zelkova_lang::compiler::Interface"><code>Interface</code></a> that already exists — so
+<code>Basics</code> has to be <em>checked</em> before the module that never named it, and nothing
+but the dependency graph decides that order.</p>
+<p>Neither phase owns the other, and a copy of the list in each would be two lists.
+So it sits beside them both, in a module that is the list and nothing else.</p>
+<h2 id="where-the-cycle-does-not-happen"><a class="doc-anchor" href="#where-the-cycle-does-not-happen">§</a>Where the cycle does not happen</h2>
+<p><code>Basics</code> cannot implicitly import <code>Basics</code>, and <code>Maybe</code> implicitly importing
+<code>Result</code> importing <code>Maybe</code> is exactly the loop
+<a href="../dependencies/index.html" title="mod zelkova_lang::compiler::dependencies"><code>dependencies</code></a> exists to reject. Two rules keep
+the graph acyclic, and both are enforced here and in <code>ModuleWalker::new</code>:</p>
+<ol>
+<li><strong>A module named on the list receives no implicit imports</strong> — [<code>is_default</code>].
+Each of the eight writes the imports it needs, which is what <code>std/core</code>’s
+<code>Basics.zel</code>, <code>Maybe.zel</code> and <code>Result.zel</code> already do.</li>
+<li><strong>An implicit edge that would close a loop is not added.</strong> <code>Basics</code> imports
+the <code>Js.Basics</code> facade, so <code>Js.Basics</code> does not implicitly import <code>Basics</code>
+back: the modules a default import is <em>built from</em> do not receive it.
+<code>ModuleWalker::new</code> tests that edge by edge against the graph it has built so
+far, so no addition can ever introduce a cycle that was not already written.</li>
+</ol>
+<p>Rule 2 reaches further than “built from”, because the graph it consults includes
+the edges it has itself just added. A module no default import names can still
+lose an entry, when an implicit edge allocated for an <em>earlier</em> entry put it
+downstream of that one. <code>add_default_import_edges</code> allocates target by target in
+<code>DEFAULT_IMPORTS</code> order for exactly that reason — so a collision is decided by
+the list’s priority rather than by what the modules are called — and its doc
+comment carries the argument that nothing beyond that priority is left to
+chance.</p>
+<p>The two rules agree with the availability check below rather than duplicating
+it. When rule 2 drops an edge <code>m → d</code>, it is because <code>d</code> already depends on <code>m</code>,
+which means <code>m</code> is checked <em>first</em> and <code>d</code>’s interface is not yet available when
+<code>m</code> is canonicalized — so [<code>implicit_imports</code>] skips the same import on its own,
+for its own reason. Whichever way a pair falls, both phases fall the same way.</p>
+<h2 id="an-implicit-import-is-never-a-diagnostic"><a class="doc-anchor" href="#an-implicit-import-is-never-a-diagnostic">§</a>An implicit import is never a diagnostic</h2>
+<p>A synthesised import has no source text behind it, so its span is
+<a href="../position/struct.NodeSpan.html#method.none" title="associated function zelkova_lang::compiler::position::NodeSpan::none"><code>NodeSpan::none</code></a> and any error raised from it would render with no caret — a
+message about an <code>import</code> line the user never wrote. [<code>implicit_imports</code>]
+therefore applies an entry only when the package genuinely provides what that
+entry asks for: the module has to have been checked already, and a <code>Maybe(..)</code>
+or <code>List</code> entry additionally has to find that type declared in the interface.
+Anything missing is left out, and the names it would have brought fail at the
+place they are <em>used</em>, with a caret under them.</p>
+<p>That is what makes the list land in stages without a second change: <code>List</code>,
+<code>Char</code>, <code>String</code> and <code>Task</code> are <code>.ignored</code> files under <code>std/core/src</code> today, so
+their entries do nothing. Each starts working on the day its module compiles.</p>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.DefaultImport.html" title="struct zelkova_lang::compiler::default_imports::DefaultImport">Default<wbr>Import</a></dt><dd>One entry of the default import list.</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.Unqualified.html" title="enum zelkova_lang::compiler::default_imports::Unqualified">Unqualified</a></dt><dd>What a default import makes available <strong>unqualified</strong>, beyond the qualified
+spelling that every import provides.</dd></dl><h2 id="constants" class="section-header">Constants<a href="#constants" class="anchor">§</a></h2><dl class="item-table"><dt><a class="constant" href="constant.DEFAULT_IMPORTS.html" title="constant zelkova_lang::compiler::default_imports::DEFAULT_IMPORTS">DEFAULT_<wbr>IMPORTS</a></dt><dd>The eight modules every Zelkova module behaves as though it began by importing.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.implicit_imports.html" title="fn zelkova_lang::compiler::default_imports::implicit_imports">implicit_<wbr>imports</a></dt><dd>The imports <code>module</code> gets without writing them, given what it <em>did</em> write and
+which interfaces are available to it.</dd><dt><a class="fn" href="fn.is_default.html" title="fn zelkova_lang::compiler::default_imports::is_default">is_<wbr>default</a></dt><dd>Whether <code>module</code> is one of the modules the default imports name.</dd></dl></section></div></main></body></html>
