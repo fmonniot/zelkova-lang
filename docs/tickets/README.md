@@ -239,7 +239,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-25 | task | — | closed 2026-09-08 | A derivation walks two values, so the classes worth deriving most cannot be |
 | SPEC-26 | task | — | closed 2026-09-06 | Design rationale has nowhere to live, so it is kept in three unrelated places or lost |
 | SPEC-27 | task | — | closed 2026-09-08 | A derivation's `combine` must be a monoid and nothing checks it, at any point |
-| [SPEC-28](spec-28.md) | task | — | open | Two chapters disagree on `Int`'s range, and the tokenizer enforces a third bound |
+| SPEC-28 | task | — | closed 2026-09-15 | Two chapters disagree on `Int`'s range, and the tokenizer enforces a third bound |
 | [SPEC-29](spec-29.md) | task | — | open | `unsafe` marks 45 `std/core` signatures and none of the chapter's own examples |
 | [SPEC-30](spec-30.md) | task | — | open | `unsafe` outside a facade is rejected, and no chapter says so |
 | SPEC-31 | task | — | closed 2026-09-14 | A facade has no legitimate way to name `Int`, and `BUG-16` is what hides it |
@@ -300,6 +300,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-53](lang-53.md) | task | — | open | A module underneath `Basics` cannot name a scalar type |
 | [LANG-54](lang-54.md) | task | — | open | A scalar type's declaration is an ordinary union, so `Int` is a value and any body is accepted |
 | [LANG-55](lang-55.md) | task | — | open | The `Char` and `String` default imports bring their modules but not their types |
+| [LANG-56](lang-56.md) | task | — | open | `std/core`'s JavaScript companions implement a 32-bit `Int` held in a number |
 | LANG-53 | task | — | closed 2026-09-13 | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | LANG-54 | task | — | closed 2026-09-13 | The interop modifier is `foreign`, not `javascript` |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
@@ -318,6 +319,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TIDY-5 | task | — | closed 2026-08-25 | Fix all outstanding `cargo clippy` warnings |
 | TIDY-6 | task | — | closed 2026-08-26 | Stale doc comment on `canonical_type_to_typer_type` |
 | [TIDY-7](tidy-7.md) | task | — | open | Four label/diagnostic messages in `Error::Tokenizer`'s match are still capitalized |
+| [TIDY-8](tidy-8.md) | task | — | open | Two tokenizer comments describe the `Int` width as unsettled and cite a closed ticket |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |

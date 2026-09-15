@@ -105,7 +105,7 @@ mechanisms:
 
 | Type | What its JavaScript predicate decides | What its WIT spelling is |
 |---|---|---|
-| `Int` | the value is a number, and a whole one the [32-bit range](evaluation-semantics.md#numbers) holds | `s32` |
+| `Int` | the value is a `bigint` the [64-bit range](evaluation-semantics.md#numbers) holds | `s64` |
 | `Float` | the value is a number | `f64` |
 | `Bool` | the value is a boolean | `bool` |
 | `Char` | the value is a string of one character | `char` |
@@ -115,6 +115,11 @@ mechanisms:
 | A record | the value is an object with exactly the record's fields, each field satisfying its own predicate | a `record` of the same fields |
 | A list | the value is an array, every element of which satisfies the element type's predicate | `list` of the element's spelling |
 | A union type, applied to admitted types | the value carries one of that type's constructor names, and arguments satisfying that constructor's predicates | a `variant`, one case per constructor |
+
+An `Int` crosses as a `BigInt` and not as a number: a JavaScript number is a binary64, exact on
+integers only to `2^53`, and [`Int`'s range](evaluation-semantics.md#numbers) is wider. A
+companion holding a number converts before returning it, and one taking an `Int` is handed a
+`BigInt`.
 
 The first five rows are [the scalar types](types.md#scalar-types), which the compiler knows by
 the qualified name of each declaration. They are admitted by identity and not by spelling: a
@@ -294,7 +299,7 @@ now : Task (Result Failure Int)
 
 ```js
 export function now() {
-  return Date.now();
+  return BigInt(Date.now());
 }
 ```
 

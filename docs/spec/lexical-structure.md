@@ -328,10 +328,17 @@ mask = 0xFF
 literal `0` applied to a variable named `xFF`, which then fails to resolve — an accident, not
 a diagnostic.
 
-The language guarantees that every integer in `-2^31 .. 2^31 - 1` is representable on every
-target. Beyond that range the compilation target decides: the JavaScript backend is exact to
-`2^53`, and a future WebAssembly backend would use 64-bit two's-complement arithmetic with
-the wraparound that implies.
+How large an `Int` may be is [Evaluation semantics](evaluation-semantics.md#numbers)' rule
+rather than this section's. What belongs to the token is what becomes of a literal that range
+has no room for: **an integer literal outside `Int`'s range is an error.** It neither wraps nor
+saturates. A [float literal too large](evaluation-semantics.md#numbers) denotes positive
+infinity because binary64 keeps a value meaning exactly that; `Int` keeps none, so a wrapped or
+saturated literal would read as a number the program had meant.
+
+`Int`'s range is not symmetric and a literal carries no sign, so the most negative `Int` has no
+literal spelling — its magnitude is one larger than the largest positive `Int`, and a literal of
+that magnitude is an error. Arithmetic reaches it by
+[wrapping](evaluation-semantics.md#numbers).
 
 ### Floats
 
@@ -538,19 +545,13 @@ as operator characters.
 
 ## Numeric literals that are rejected
 
-An integer literal too large for a 64-bit signed integer is rejected, rather than silently
-wrapping or truncating:
+An integer literal outside [`Int`'s range](#integers) is rejected:
 
 ```zel expect=parse-error:IntegerOverflow
 module Example exposing (f)
 
 f = 99999999999999999999
 ```
-
-**Known gap:** the bound that block crosses should be [`Int`'s range](#integers). The error it
-gets today names a 64-bit signed integer instead, because the tokenizer carries a literal's
-value in an `i64` — a width no rule here sets
-([`docs/tickets/spec-28.md`](../tickets/spec-28.md)).
 
 A numeric literal may contain at most one `.`; a second one ends the literal in an error:
 
