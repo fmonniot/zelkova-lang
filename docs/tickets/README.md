@@ -240,7 +240,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-26 | task | — | closed 2026-09-06 | Design rationale has nowhere to live, so it is kept in three unrelated places or lost |
 | SPEC-27 | task | — | closed 2026-09-08 | A derivation's `combine` must be a monoid and nothing checks it, at any point |
 | SPEC-28 | task | — | closed 2026-09-15 | Two chapters disagree on `Int`'s range, and the tokenizer enforces a third bound |
-| [SPEC-29](spec-29.md) | task | — | open | `unsafe` marks 45 `std/core` signatures and none of the chapter's own examples |
+| SPEC-29 | task | — | closed 2026-09-15 | `unsafe` marks 45 `std/core` signatures and none of the chapter's own examples |
 | [SPEC-30](spec-30.md) | task | — | open | `unsafe` outside a facade is rejected, and no chapter says so |
 | SPEC-31 | task | — | closed 2026-09-14 | A facade has no legitimate way to name `Int`, and `BUG-16` is what hides it |
 | [SPEC-32](spec-32.md) | task | — | open | A module is made ambiguous by an import it never wrote |

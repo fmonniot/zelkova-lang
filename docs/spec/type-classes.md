@@ -622,7 +622,7 @@ file. None of those signatures may carry a constraint.
 ```zel expect=unimplemented
 module foreign Core.Cmp exposing (compare)
 
-compare : Comparable a => a -> a -> Int
+unsafe compare : Comparable a => a -> a -> Int
 ```
 
 The reason is a rule in [Foreign
