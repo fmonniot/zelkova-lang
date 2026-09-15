@@ -787,6 +787,39 @@ list above writes them — an entry is only ever dropped for a dependency an *ea
 entry created, never a later one. `Basics` is first, so it is the entry a module keeps
 when it can keep only one.
 
+**A module that drops the `Basics` entry receives the scalar type names in its place.** `Int`,
+`Float`, `Char`, `String` and `Bool` are in its scope with nothing written at the top of the
+file, bound to the same declarations `Basics` exposes. The compiler [knows each of the five by
+qualified name](types.md#scalar-types), so it supplies them without reading `Basics`, and the
+dependency the drop exists to avoid is never created.
+
+What arrives is the five type names and nothing else. A module reaching `Bool` this way writes
+it in a signature and cannot write a `True`: the constructors are `Basics`' values, and no rule
+brings a value down. The case is a [facade](interop.md) underneath `Basics`, which has no
+bodies to write one in.
+
+```zel expect=ok package=below
+module Basics exposing (Int)
+
+import Below
+
+type Int = Int
+```
+
+```zel expect=ok package=below
+module foreign Below exposing (twice)
+
+unsafe twice : Int -> Int
+```
+
+Only the package that declares `Basics` can hold such a module, since a package's dependencies
+run one way, so no module outside it ever meets this rule.
+
+**Known gap:** the second block above is green for the wrong reason. Nothing supplies the
+scalar names yet; `Int` resolves to nothing there and a type is fabricated for it
+([`BUG-16`](../tickets/bug-16.md)), and the fabrication passes for `Basics`' `Int` only because
+a type is identified today by its unqualified name.
+
 **Known gap:** `std/core` ships four of the eight, so `List`, `Char`, `String` and `Task`
 bring nothing. A program naming `String.length` is rejected where the name is used.
 Naming `List` in a type annotation is *accepted* today, but only because an unknown type

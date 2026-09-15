@@ -346,6 +346,73 @@ for a type expression after the `(` and finds the `)`; in an expression the same
 `.ignored` modules under `std/core/src/` use it freely (`Task x ()`), which is one of the
 things keeping them ignored.
 
+## Scalar types
+
+Five types are **scalar**: `Int`, `Float`, `Char`, `String` and `Bool`. Each is declared in
+Zelkova like any other type — `Int`, `Float` and `Bool` in `Basics`, `Char` in `Char`, `String`
+in `String` — and reaches an ordinary module through [the default
+imports](modules.md#the-default-imports).
+
+What separates the five from every other type is that the compiler knows them, and knows each
+one by the **qualified name of its declaration**. What it knows is the representation each
+target gives the type, which is what [the first five rows of the admitted-type
+table](interop.md#which-types-may-cross-the-boundary) hold and what lets a
+[facade](interop.md) signature name one.
+
+A scalar is therefore identified by where it is declared and never by how it is spelled. A
+module declaring its own `Int` declares an ordinary type that shares a name, since [every
+declaration introduces a genuinely new type](#type-declarations): that `Int` is not the
+language's, no annotation mixes the two, and it may not cross a facade boundary as an `Int`.
+
+```zel expect=type-error:UnificationFailed
+module Example exposing (Int, zero)
+
+type Int
+  = Zero
+
+zero : Int
+zero = Zero
+```
+
+**Known gap:** that block should be `expect=ok`. The type checker reads `Int` in an annotation
+as its own scalar wherever the name appears, while `Zero` gets the type the module declared, so
+the two halves of a module declaring an `Int` do not match and the error reads *cannot match
+`Int` with `Int`*. [`BUG-26`](../tickets/bug-26.md) is the ticket, and `Float`, `Char` and
+`Bool` behave the same way.
+
+**Four of the five are opaque.** Nothing in the language builds or inspects an `Int`, a
+`Float`, a `Char` or a `String`: their values come from [literals](lexical-structure.md#literals)
+and from the functions of the modules declaring them. Such a declaration has no variant to
+write, so it writes its own name and contributes no constructor — `Int` is a type and never a
+value.
+
+```zel expect=ok package=scalars
+module Basics exposing (Int)
+
+type Int = Int
+```
+
+Any other body is an error. The declaration is where a scalar's documentation lives, and a body
+naming anything but the type itself would describe a representation the language does not have.
+
+**`Bool` is a scalar and an ordinary union.** `type Bool = True | False` in `Basics` is the
+whole of its definition, and `True` and `False` are constructors built and matched like any
+others — which is what [`true` and `false` not being reserved
+words](lexical-structure.md#reserved-words) means. The compiler knows `Bool`'s representation
+and nothing about its structure, so the self-naming rule above does not reach it.
+
+**A module underneath `Basics` receives the scalar names without an import.** That rule belongs
+to [the default imports](modules.md#the-default-imports), which is also where the case it
+covers arises. It supplies the five type names and nothing else, so a module reaching `Bool`
+that way can annotate one and cannot write a `True`.
+
+**Not implemented:** none of the above is how the compiler behaves. A scalar is matched by
+spelling rather than by qualified name (`BUG-26`, above); nothing checks a scalar declaration's
+body, so `type Int = I32` in `Basics` is accepted; `Char` and `String` do not compile, so
+neither declares the scalar it is named for; and the two facades `Basics` imports name `Int`
+through a fabricated type ([`BUG-16`](../tickets/bug-16.md)) rather than through the rule
+above.
+
 ## Type annotations
 
 A type annotation gives a declaration a type. It is the declaration's name, a `:`, and a type

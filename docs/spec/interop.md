@@ -116,6 +116,11 @@ mechanisms:
 | A list | the value is an array, every element of which satisfies the element type's predicate | `list` of the element's spelling |
 | A union type, applied to admitted types | the value carries one of that type's constructor names, and arguments satisfying that constructor's predicates | a `variant`, one case per constructor |
 
+The first five rows are [the scalar types](types.md#scalar-types), which the compiler knows by
+the qualified name of each declaration. They are admitted by identity and not by spelling: a
+module declaring its own `Int` names an ordinary union in a facade signature, admitted — if at
+all — under the union row.
+
 A signature may name any of those, in any position an argument or a result may take.
 
 ```zel expect=ok
