@@ -724,13 +724,13 @@ import List exposing (List)
 import Maybe exposing (Maybe(..))
 import Result exposing (Result(..))
 import Task exposing (Task)
-import Char
-import String
+import Char exposing (Char)
+import String exposing (String)
 import Tuple
 ```
 
-So `Int`, `Bool`, `True`, `+` and `<|` are in scope in every module with nothing written
-at the top of it, `Maybe` and `Just` likewise, and `List.map`, `Char.toUpper` and
+So `Int`, `Bool`, `String`, `True`, `+` and `<|` are in scope in every module with nothing
+written at the top of it, `Maybe` and `Just` likewise, and `List.map`, `Char.toUpper` and
 `String.length` are reachable under their qualified names. Nothing else is: a module that
 wants `Dict` imports it.
 
@@ -757,8 +757,8 @@ The list is chosen so that the types appearing in ordinary type annotations are 
 writable. `Maybe` and `Result` are exposed with their constructors because matching on
 them is the ordinary way to use them, and a qualified `Maybe.Just` in every `case` branch
 would spell out a module name on one of the most common patterns in the language.
-`List` is exposed as a bare type because its module's functions read better qualified —
-`List.map`, not `map`. [`Task`](evaluation-semantics.md#effects) is exposed the same way and for
+`List`, `Char` and `String` are exposed as bare types because their modules' functions read
+better qualified — `List.map` and `String.length`, not `map` and `length`. [`Task`](evaluation-semantics.md#effects) is exposed the same way and for
 the same reason, and it is on the list because [`main`](packages.md#programs) names it in an
 annotation every program has to write.
 [`Failure`](evaluation-semantics.md#an-effect-that-can-fail) does not come with it: the modules
@@ -824,7 +824,9 @@ a type is identified today by its unqualified name.
 bring nothing. A program naming `String.length` is rejected where the name is used.
 Naming `List` in a type annotation is *accepted* today, but only because an unknown type
 name is accepted anywhere ([`BUG-16`](../tickets/bug-16.md)) — not because the entry
-works. Each entry starts working on the day its module compiles.
+works. Each entry starts working on the day its module compiles — except `Char` and `String`,
+which would still bring only their qualified names, since `DEFAULT_IMPORTS` gives both entries
+no unqualified name at all ([`LANG-55`](../tickets/lang-55.md)).
 
 ## Packages
 
