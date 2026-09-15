@@ -1112,6 +1112,57 @@ fn ambiguous_import_labels_point_into_each_defining_module() {
     );
 }
 
+// ── Test 22a: a default import is named as implicit in the ambiguity note ───
+
+/// `SPEC-32`: colliding with a *default* import is `AmbiguousVariables`, the
+/// same as colliding with two written ones — `docs/spec/modules.md`'s *The
+/// default imports* section says a default entry participates in ambiguity
+/// exactly as a written import does. What is worth pinning at this layer is
+/// the note: a reader of `Main.zel` never wrote `import Basics`, so the note
+/// names it differently from `Helper`, which `Main.zel` did write.
+///
+/// `Basics.zel` and `Helper.zel` both expose `add`; `Main.zel` writes only
+/// `import Helper exposing (add)`, so the `Basics` half of the collision is
+/// supplied by the default import list rather than written — the fixture is
+/// the ticket's reproduction verbatim.
+///
+/// Mutation-checked by reverting `ambiguous_note` to the old unconditional
+/// `"it is exposed by: {}".join(", ")` over every candidate's name: the
+/// assertion below goes red because the note no longer says "implicitly".
+#[test]
+fn ambiguous_variable_note_calls_out_the_implicit_default_import() {
+    let root = fixture_package("package_default_import_collision");
+    assert_eq!(
+        module_names(&root),
+        vec!["Basics.zel", "Helper.zel", "Main.zel"]
+    );
+
+    let error = compile_package(&root)
+        .expect_err("a name colliding with a default import must not compile");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    match unwrap_in_file(&errors[0]) {
+        CompilationError::Canonical(canonical_errors, module) => {
+            assert_eq!(module, &Name::from("Main"));
+            assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
+        }
+        other => panic!("expected a Canonical error, got {:?}", other),
+    }
+
+    let diagnostic = errors[0].as_diagnostic();
+    assert_eq!(
+        diagnostic.notes,
+        vec!["it is exposed by: Helper, and implicitly by Basics".to_string()],
+        "the note must name the written contributor plainly and the default one \
+         as implicit, got {:?}",
+        diagnostic.notes
+    );
+}
+
 // ── Test 22b: an ambiguous operator pair points at the declaring module ─────
 
 /// `BUG-22`: `AmbiguousOperatorPrecedence`'s "declared here" labels have to land

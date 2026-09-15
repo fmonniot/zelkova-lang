@@ -23,6 +23,10 @@ use log::{debug, trace};
 use std::collections::HashMap;
 
 mod environment;
+/// Part of [`Error::AmbiguousVariables`] and [`Error::AmbiguousVariants`]'s public
+/// shape, so it is re-exported alongside the error rather than left behind a
+/// private module.
+pub use environment::ImportOrigin;
 /// Part of [`Error::AmbiguousOperatorPrecedence`]'s public shape, so it is
 /// re-exported alongside the error rather than left behind a private module.
 pub use environment::InfixDeclaration;
@@ -609,7 +613,7 @@ impl Expression {
                     ValueType::TopLevel => {
                         ExpressionKind::VarTopLevel(env.module_name().qualify_name(name))
                     }
-                    ValueType::Foreign(m, _source, tpe) => {
+                    ValueType::Foreign(m, _source, tpe, _origin) => {
                         ExpressionKind::VarForeign(m.qualify_name(name), tpe.clone())
                     }
                     ValueType::Foreigns(candidates) => {
@@ -974,8 +978,17 @@ pub enum Error {
     /// was used. Each candidate module is paired with where the name is declared
     /// there — `Some` when that module's `Interface` knows both its file and the
     /// declaration's span, `None` for a hand-built interface (a test) or one built
-    /// before its module's file was known (`ERR-5`).
-    AmbiguousVariables(Name, Vec<(ModuleName, Option<super::SourceSpan>)>, NodeSpan),
+    /// before its module's file was known (`ERR-5`) — and with whether that import
+    /// was written by the module under check or supplied by [the default import
+    /// list](../../../docs/spec/modules.md#the-default-imports), which a default
+    /// entry participates in exactly as a written import does
+    /// (`SPEC-32`/[`DEC-15`](../../../docs/decisions/dec-15.md)); the note calls out
+    /// a default contributor as implicit.
+    AmbiguousVariables(
+        Name,
+        Vec<(ModuleName, Option<super::SourceSpan>, ImportOrigin)>,
+        NodeSpan,
+    ),
     /// A constructor used in an expression or a pattern that nothing in scope
     /// declares, where it was written, and an optional "did you mean …?"
     /// suggestion (`ERR-7`).
@@ -985,7 +998,11 @@ pub enum Error {
     /// It is the designated rejection path once it can, and carries the span the
     /// construction site would have, alongside each candidate's declaration
     /// location — see [`Error::AmbiguousVariables`].
-    AmbiguousVariants(Name, Vec<(ModuleName, Option<super::SourceSpan>)>, NodeSpan),
+    AmbiguousVariants(
+        Name,
+        Vec<(ModuleName, Option<super::SourceSpan>, ImportOrigin)>,
+        NodeSpan,
+    ),
     /// A tuple type, pattern or expression had a size other than 2 or 3 (the
     /// only sizes the language supports).
     ///
@@ -1200,19 +1217,20 @@ impl PhaseError for Error {
         // mechanism `ERR-5` adds. `None` when that candidate's `Interface` cannot
         // say (a hand-built interface, or one built before its file was known)
         // yields no label for that candidate rather than one at the wrong place.
-        let ambiguous_candidates = |candidates: &[(ModuleName, Option<super::SourceSpan>)]| {
-            candidates
-                .iter()
-                .filter_map(|(module, source)| {
-                    source.map(|s| SpanLabel {
-                        span: s.span,
-                        message: format!("also exposed here, by `{}`", module.name()),
-                        primary: false,
-                        file: Some(s.file),
+        let ambiguous_candidates =
+            |candidates: &[(ModuleName, Option<super::SourceSpan>, ImportOrigin)]| {
+                candidates
+                    .iter()
+                    .filter_map(|(module, source, _origin)| {
+                        source.map(|s| SpanLabel {
+                            span: s.span,
+                            message: format!("also exposed here, by `{}`", module.name()),
+                            primary: false,
+                            file: Some(s.file),
+                        })
                     })
-                })
-                .collect::<Vec<_>>()
-        };
+                    .collect::<Vec<_>>()
+            };
 
         match self {
             Error::ExportNotFound(name, _, span) => primary(
@@ -1344,16 +1362,7 @@ impl PhaseError for Error {
                     .to_owned(),
             ],
             Error::AmbiguousVariables(_, candidates, _)
-            | Error::AmbiguousVariants(_, candidates, _) => {
-                vec![format!(
-                    "it is exposed by: {}",
-                    candidates
-                        .iter()
-                        .map(|(m, _)| m.name().to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )]
-            }
+            | Error::AmbiguousVariants(_, candidates, _) => vec![ambiguous_note(candidates)],
             // A group renders as a summary, so every message it swallowed becomes a
             // note. A group of one is rendered by its own message and adds nothing.
             Error::EnvironmentErrors(errors) => match errors.as_slice() {
@@ -1379,6 +1388,43 @@ fn suggestion_suffix(suggestion: &Option<Name>) -> String {
     match suggestion {
         Some(name) => format!(" — did you mean `{}`?", name),
         None => String::new(),
+    }
+}
+
+/// The `it is exposed by: …` note shared by `Error::AmbiguousVariables` and
+/// `Error::AmbiguousVariants` — one clause for the contributors the module wrote
+/// an `import` for, one for those supplied by [the default import
+/// list](../../../docs/spec/modules.md#the-default-imports) because it wrote
+/// none. Naming the latter as implicit is what removes the surprise a module can
+/// otherwise get from colliding with an import it never wrote (`SPEC-32`).
+///
+/// Every candidate this ever runs over comes from `ValueType::Foreigns`, so
+/// `written`/`implicit` are never both empty in practice — `Foreigns` has at
+/// least two entries and each is one or the other — but the match is written to
+/// say something sensible even if that stopped holding.
+fn ambiguous_note(candidates: &[(ModuleName, Option<super::SourceSpan>, ImportOrigin)]) -> String {
+    let name_of =
+        |(m, _, _): &(ModuleName, Option<super::SourceSpan>, ImportOrigin)| m.name().to_string();
+    let written: Vec<String> = candidates
+        .iter()
+        .filter(|(_, _, origin)| *origin == ImportOrigin::Written)
+        .map(name_of)
+        .collect();
+    let implicit: Vec<String> = candidates
+        .iter()
+        .filter(|(_, _, origin)| *origin == ImportOrigin::Default)
+        .map(name_of)
+        .collect();
+
+    match (written.is_empty(), implicit.is_empty()) {
+        (false, true) => format!("it is exposed by: {}", written.join(", ")),
+        (true, false) => format!("it is exposed implicitly by: {}", implicit.join(", ")),
+        (true, true) => "it is exposed by nothing this module can see".to_owned(),
+        (false, false) => format!(
+            "it is exposed by: {}, and implicitly by {}",
+            written.join(", "),
+            implicit.join(", ")
+        ),
     }
 }
 
