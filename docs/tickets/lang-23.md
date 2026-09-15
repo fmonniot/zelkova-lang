@@ -25,20 +25,17 @@ would have to.
 
 Found while writing [`docs/spec/expressions.md`](../spec/expressions.md) (`SPEC-6`).
 
-**Approach:** add `"(" <Op> ")"` to `AtomicExpr`, building an `ExpressionKind::Variable` with
-the operator's name — which is exactly what `InfixExpr`'s rewrite already invents for the
-operator position, so canonicalization resolves it through the same path and needs no change.
-Take the span across the parentheses, not just the operator: `(+)` is what the user wrote and
+**Approach:** add `"(" <Op> ")"` to `AtomicExpr`. An operator symbol is not a value name —
+`Environment::find_value` never answers for one — so canonicalization resolves it through the
+infix environment instead, the way `resolve_infix_operator` does for one position of an
+`ExpressionKind::InfixChain`: `find_infix`, then the `InfixFunction` the entry carries. Take
+the span across the parentheses, not just the operator: `(+)` is what the user wrote and
 `VariableNotFound`'s caret should cover it.
 
 Watch for an ambiguity against the existing `"(" <Expr> ")"` grouping, since `-` is both an
 `Op` and the head of `Expr`'s negation alternative: `(-)` is the subtraction function and
 `(-x)` is a negation, and LALRPOP needs one token of lookahead past the `-` to tell them
 apart.
-
-Note that [BUG-15](bug-15.md) — an imported operator is unresolvable unless the function
-behind it is also in scope — sits on the resolution path this reuses. It is not a prerequisite,
-but a test of this ticket that imports its operator will trip over it.
 
 **Acceptance:** `plus = (+)` and `two = (+) 1 1` parse and canonicalize, with a test in
 `tests/compiler/canonical.rs` asserting the resolved name. `cargo run` still prints

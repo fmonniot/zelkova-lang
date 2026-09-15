@@ -1784,9 +1784,7 @@ fn transparently_exposed_type_carries_its_constructors() {
 ///
 /// Both halves are asserted because the exposed half is what shows the filter
 /// keyed on the operator's own entry: `(<+>)` crosses only because the header
-/// lists it. `plus` is exposed alongside it because an imported operator is
-/// resolved through the unqualified name its `infix` declaration points at,
-/// which is `BUG-15` and not this ticket's to fix.
+/// lists it.
 ///
 /// Mutation-checked by dropping the `exports.exposes(..)` filter from
 /// `to_interface`'s `infixes`.
@@ -1833,18 +1831,17 @@ fn unexposed_operator_is_not_importable() {
 /// `std/core/src/Basics.zel` exposes every operator without separately
 /// exposing its backing function by name — `infix left 6 (+) = add`, header
 /// exposing `(+)` and not `add` — and `import Basics exposing (..)` relies on
-/// `+` still resolving. `find_value`'s redirect (`BUG-15`) looks `add` up
-/// unqualified in the *importer's* own scope, and `Exposing::Open` copying
-/// `interface.values` in wholesale is the only thing that ever put it there;
-/// once `values` is filtered by the header, that copy no longer carries a
-/// value never exposed by name, unless something else keeps it reachable.
+/// `+` still resolving. The type of `add` has to cross with the operator, or a
+/// use of `+` has nothing to be typed against; `Interface::infix_functions` is
+/// what carries it once `values` is filtered down to what the header names.
 ///
 /// `Lib` here has exactly `Basics`' shape: one operator exposed, its backing
 /// function not exposed at all.
 ///
-/// Mutation-checked by dropping the `interface.infix_functions` loop from
-/// `process_import`'s `Exposing::Open` arm (`src/compiler/canonical/environment.rs`),
-/// which turns this red with `cannot find a value named \`Main.<+>\``.
+/// Mutation-checked by dropping the `.or_else(..)` over
+/// `interface.infix_functions` in `imported_infix`
+/// (`src/compiler/canonical/environment.rs`), which turns this red with
+/// `cannot find a value named \`Lib.plus\``.
 #[test]
 fn exposed_operator_resolves_via_open_import_without_its_backing_function_exposed() {
     let lib = indoc::indoc! {r#"
@@ -1867,8 +1864,8 @@ fn exposed_operator_resolves_via_open_import_without_its_backing_function_expose
     );
 }
 
-/// The other half of the fix above: keeping `plus` reachable for the operator
-/// redirect must not make `plus` importable *by its own name* — that would
+/// The other half of the fix above: carrying `plus`'s type across with the
+/// operator must not make `plus` importable *by its own name* — that would
 /// reopen the hole `BUG-9` closed. `Interface::infix_functions` is kept
 /// separate from `values` for exactly this reason.
 ///
@@ -2006,10 +2003,10 @@ fn checked_value<'a>(
 ///
 /// `ExpressionKind::VarForeign` is what canonicalization builds for a name found
 /// through an import, and it carries the *declaring* module, so this is what tells
-/// "`+` resolved" apart from "`+` resolved to the right module". An operator keeps
-/// its own spelling here rather than its `infix` declaration's backing function:
-/// `find_value` redirects through `infixes` to look the value up, and
-/// `Expression::from_parser` then qualifies the name that was written.
+/// "`+` resolved" apart from "`+` resolved to the right module". An operator
+/// appears here under the function its `infix` declaration names — `Basics.add`
+/// for `+` — which is the binding a later phase looks it up against; the symbol
+/// itself is never a value name.
 fn foreign_names(value: &canonical::Value) -> Vec<String> {
     fn walk(expr: &canonical::Expression, out: &mut Vec<String>) {
         match &expr.kind {
@@ -2063,7 +2060,7 @@ fn default_imports_resolve_without_an_import_line() {
 
     assert_eq!(
         foreign_names(x),
-        vec!["Basics.+".to_string()],
+        vec!["Basics.add".to_string()],
         "`+` must resolve through `Basics`"
     );
 }
@@ -2090,7 +2087,7 @@ fn an_explicit_default_import_still_compiles() {
 
     assert_eq!(
         foreign_names(y),
-        vec!["Basics.+".to_string()],
+        vec!["Basics.add".to_string()],
         "a written default import must resolve the same way the implicit one does"
     );
 }
@@ -2130,7 +2127,154 @@ fn a_low_priority_implicit_edge_does_not_cost_another_module_basics() {
 
     assert_eq!(
         foreign_names(z),
-        vec!["Basics.+".to_string()],
+        vec!["Basics.add".to_string()],
         "`Zed` must keep its implicit `Basics` however its siblings are named"
+    );
+}
+
+// ── Test 32: an operator entry brings its backing function with it ──────────
+//
+// `BUG-15`: an operator has no qualified spelling, so naming it in an
+// `exposing` list is the only way to reach one across a module boundary — and
+// whether the exporting module's *backing* function is separately in scope is
+// neither the importer's choice nor visible to them. These drive the real path,
+// `check_module` → `to_interface` → `check_module`, because the backing
+// function's type comes out of the exporting module's `Interface` and a
+// hand-built one would decide the outcome instead.
+
+/// An `exposing` list naming only the operator resolves it: `Main` below never
+/// names `add`, and `one + one` still canonicalizes and type checks.
+///
+/// This is the ticket's reproduction. Mutation-checked by resolving the
+/// operator through the importing scope again — replacing
+/// `resolve_infix_operator`'s match on `entry.function` with the synthetic
+/// `parser::ExpressionKind::Variable(name)` it used to hand to
+/// `Expression::from_parser` — which turns this red with `cannot find a value
+/// named `+``.
+#[test]
+fn an_operator_entry_resolves_without_its_backing_function_named() {
+    let lib = indoc::indoc! {r#"
+        module Lib exposing (Size, one, (+), add)
+        type Size = Small
+        one : Size
+        one = Small
+        infix left 6 (+) = add
+        add : Size -> Size -> Size
+        add a b = a
+    "#};
+
+    let main = indoc::indoc! {r#"
+        module Main exposing (x)
+        import Lib exposing (Size, one, (+))
+        x : Size
+        x = one + one
+    "#};
+
+    assert!(
+        check_importer(lib, main).is_ok(),
+        "naming `(+)` is enough — `add` need not be in the importer's scope"
+    );
+}
+
+/// The same import with the backing function *also* named stays a working
+/// import rather than an ambiguity: `add` reaches `Main` twice over — once as
+/// a value entry, once behind the operator — and only the value entry puts it
+/// in `Main`'s scope under that name.
+///
+/// Mutation-checked by making `process_import`'s `ExposedKind::Operator` arm
+/// insert the backing function into `env.variables` as well (the ticket's
+/// first approach): `add` then becomes a `ValueType::Foreigns` and `add one
+/// one` is rejected as `AmbiguousVariables`.
+#[test]
+fn an_operator_entry_alongside_its_backing_function_is_not_ambiguous() {
+    let lib = indoc::indoc! {r#"
+        module Lib exposing (Size, one, (+), add)
+        type Size = Small
+        one : Size
+        one = Small
+        infix left 6 (+) = add
+        add : Size -> Size -> Size
+        add a b = a
+    "#};
+
+    let main = indoc::indoc! {r#"
+        module Main exposing (x, y)
+        import Lib exposing (Size, one, (+), add)
+        x : Size
+        x = one + one
+        y : Size
+        y = add one one
+    "#};
+
+    assert!(
+        check_importer(lib, main).is_ok(),
+        "`add` named alongside `(+)` must stay one unambiguous value"
+    );
+}
+
+/// An operator entry naming an infix the exporting module does not declare is
+/// still rejected at the `import` line, and named as the operator it is —
+/// admitting an operator without its function in scope is not admitting an
+/// operator nothing declares.
+///
+/// Mutation-checked by replacing the `ok_or_else` in `process_import`'s
+/// `ExposedKind::Operator` arm with a `Some(..)`-guarded insert that skips an
+/// unknown name: `Main` then fails on the *use* of `<->` instead, and the
+/// message assertion goes red.
+#[test]
+fn an_operator_entry_naming_an_undeclared_infix_is_rejected() {
+    let lib = indoc::indoc! {r#"
+        module Lib exposing (Size, one, (+), add)
+        type Size = Small
+        one : Size
+        one = Small
+        infix left 6 (+) = add
+        add : Size -> Size -> Size
+        add a b = a
+    "#};
+
+    let main = indoc::indoc! {r#"
+        module Main exposing (x)
+        import Lib exposing (Size, one, (<->))
+        x : Size
+        x = one
+    "#};
+
+    let error = check_importer(lib, main).expect_err("`Lib` declares no `<->`");
+
+    assert_eq!(
+        only_canonical_error(&error),
+        "the imported module does not expose an infix operator named `<->`"
+    );
+}
+
+/// When an imported operator's backing function really is beyond reach — the
+/// exporting module declared it without an annotation, so its `Interface`
+/// carries no type for it — the error names *that* function, not the operator
+/// symbol the user wrote. Reporting `+` would send the reader to check an
+/// `import` line that is correct.
+///
+/// Mutation-checked by building the `ImportedUntyped` error from the operator
+/// instead (`module.qualify_name(name)` in place of `function_name`), which
+/// turns the message into ``cannot find a value named `Lib.+```.
+#[test]
+fn an_untyped_backing_function_is_reported_under_its_own_name() {
+    let lib = indoc::indoc! {r#"
+        module Lib exposing ((+))
+        infix left 6 (+) = add
+        add a b = a
+    "#};
+
+    let main = indoc::indoc! {r#"
+        module Main exposing (x)
+        import Lib exposing ((+))
+        x = 1 + 2
+    "#};
+
+    let error = check_importer(lib, main).expect_err("`Lib.add` has no type to import");
+
+    assert_eq!(
+        only_canonical_error(&error),
+        "cannot find a value named `Lib.add`"
     );
 }

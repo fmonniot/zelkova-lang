@@ -51,11 +51,10 @@ type grows a "more than one provider" case, and the lookup site raises when it l
   expression is not a variant of anything — and note that `from_parser_type` currently invents a
   type on a miss ([`BUG-16`](bug-16.md)), so the two touch the same match and are worth
   sequencing rather than merging.
-- **Operators.** `env.infixes` maps to `Infix`; the same wrapper applies. The lookup is
-  `RootEnvironment::find_value`'s redirect through `infixes`, which is also
-  [`BUG-15`](bug-15.md)'s subject — that ticket rewrites how an operator resolves, and doing
-  this half on top of the redirect as it stands would be building on the thing BUG-15 removes.
-  Land BUG-15 first.
+- **Operators.** `env.infixes` maps to an `InfixEntry`; the same wrapper applies. The lookup
+  is `Environment::find_infix`, whose one caller is `resolve_infix_operator` in
+  `canonical/mod.rs` — that is where an ambiguous operator would be raised, and it already
+  has the two candidates' declaration sites to point at.
 
 A local declaration is never one of the candidates: a name declared in this module and imported
 unqualified is [`LANG-29`](lang-29.md)'s collision, reported at the declaration rather than at
