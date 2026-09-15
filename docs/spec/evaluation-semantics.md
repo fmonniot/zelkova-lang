@@ -428,9 +428,9 @@ operation — only that reusing an existing value is free.
 
 ## Numbers
 
-**`Int` is a 32-bit signed two's-complement integer.** Arithmetic wraps: `2147483647 + 1` is
-`-2147483648`. The range and the wrapping are the same on every compilation target, so a
-program computes the same answer wherever it is run.
+**`Int` is a 64-bit signed two's-complement integer.** Arithmetic wraps:
+`9223372036854775807 + 1` is `-9223372036854775808`. The range and the wrapping are the same on
+every compilation target, so a program computes the same answer wherever it is run.
 
 **`Float` is an IEEE 754 binary64 number**, with IEEE's own answers throughout. `1.0 / 0.0` is
 positive infinity, `0.0 / 0.0` is `nan`, and the ordering of a `nan` against anything is
@@ -475,7 +475,7 @@ and returns it, so `1.0e-300 * 1.0e-300` is `0.0` rather than `nan`, and a liter
 be distinguished from zero denotes positive zero for the same reason. Losing precision, even all
 of it, is not the same as having nothing to return.
 
-`Int` has no such value. Every 32-bit two's-complement bit pattern is a number somebody might
+`Int` has no such value. Every 64-bit two's-complement bit pattern is a number somebody might
 have meant, so whatever an integer operation returns is indistinguishable from a real result,
 and the language names one rather than leaving the operation partial:
 
@@ -500,9 +500,9 @@ result afterwards.
 
 `round`, `floor`, `ceiling` and `truncate` each take a `Float` and produce an `Int`, and there
 are `Float`s the `Int`s have no room for: `nan`, both infinities, and every finite value outside
-the 32-bit range.
+the 64-bit range.
 
-**A conversion to `Int` rounds as its name says and then wraps into 32 bits**, the way `Int`
+**A conversion to `Int` rounds as its name says and then wraps into 64 bits**, the way `Int`
 arithmetic wraps, **and `nan` and both infinities convert to `0`.** That zero is the same
 concession `//` makes, and for the same reason: the result type has no value meaning *no
 answer*, so the conversion returns one that means something else. A program holding a `Float` it

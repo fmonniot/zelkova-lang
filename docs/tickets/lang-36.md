@@ -11,7 +11,7 @@ rules, each contradicted by one of those comments.
 - *Nothing short-circuits.* `&&` and `||` are names bound by an `infix` declaration to ordinary
   functions, and evaluation is strict, so both operands are evaluated at every call. Conditional
   evaluation is `if` and `case`, and nothing else.
-- *`Int` is a 32-bit signed two's-complement integer*, wrapping on overflow, the same on every
+- *`Int` is a 64-bit signed two's-complement integer*, wrapping on overflow, the same on every
   compilation target.
 - *Functions are not comparable.* `Eq` is an ordinary class with no instance for a function type,
   so `f == g` is a type error rather than something that compiles and fails.
@@ -42,7 +42,7 @@ Found while writing [`docs/spec/evaluation-semantics.md`](../spec/evaluation-sem
 (`SPEC-9`).
 
 **Approach:** rewrite the three, and only them. Say what the language does: `&&` and `||`
-evaluate both operands and `if` is how a program skips one; `Int` wraps at 32 bits everywhere;
+evaluate both operands and `if` is how a program skips one; `Int` wraps at 64 bits everywhere;
 comparing functions is rejected by the type checker because no instance covers them. Point each
 at the chapter rather than restating the reasoning —
 `docs/spec/evaluation-semantics.md` is the normative record and two records of one decision means
