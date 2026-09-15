@@ -43,12 +43,31 @@ answer](../spec/evaluation-semantics.md#an-operation-with-no-answer) sets — `n
 them today from `(a / 0) | 0` being `0`, and `BigInt` division by zero throws. Each needs the
 explicit guard `modBy` already has.
 
-**One thing this ticket does not decide.** `shiftRightZfBy` is an unsigned right shift, and
-`BigInt` has no `>>>` — the operator does not exist on a type with no width, and there is no
-correct answer to guess. What the function means at 64 bits is a language question:
-[`Bitwise.zel`](../../std/core/src/Bitwise.zel) documents it today as handing back a value in
-`0 .. 2^32 - 1`, deliberately outside `Int`'s range and matching Elm. Stop and ask the language
-owner rather than picking; the rest of the file does not depend on the answer.
+**`shiftRightZfBy` names its width** ([DEC-16](../decisions/dec-16.md) decision 6). `BigInt` has
+no `>>>`, so the operation reads its operand as a 64-bit two's-complement pattern, shifts zeros
+in from the left, and reads the result back as a signed `Int`:
+
+```js
+export function shiftRightZfBy(offset, a) {
+  return BigInt.asIntN(64, BigInt.asUintN(64, a) >> BigInt(offset));
+}
+```
+
+The outer mask is not redundant. It is a no-op for every offset of 1 or more — a zero-filled
+shift leaves at most 63 significant bits — and it is what makes an offset of `0` the identity
+rather than `2^64 - 1`.
+
+[`Bitwise.zel`](../../std/core/src/Bitwise.zel)'s doc comment needs the same pass. Its three
+examples are 32-bit: `shiftRightZfBy 1 -32 == 2147483632` is `9223372036854775792` at 64 bits,
+and the two positive cases (`shiftRightZfBy 1 32 == 16`, `shiftRightZfBy 2 32 == 8`) are
+unchanged. The sentence about handing back a value outside `Int`'s range goes: it cannot happen
+now, which is the one place this widening made a function's contract simpler.
+
+**Still to escalate: what a negative shift count means.** It is not `shiftRightZfBy`'s question
+alone — `shiftLeftBy` and `shiftRightBy` have it too. Under `BigInt` a negative count reverses
+the shift's direction, so `shiftRightZfBy -1 8` is `16`, a right shift that shifted left.
+JavaScript's operators mask the count to five bits and never had the case. Ask before picking;
+nothing else in either file depends on the answer.
 
 **Note — this ticket has no red test behind it.** `cargo test` never loads a `.mjs`, there is no
 code generator to exercise these functions, and `std/core/tests/` carries checks for `Js/Utils`
@@ -57,6 +76,6 @@ lands.
 
 **Acceptance:** no `| 0`, and no bare `+`, `-` or `*` on a value the file treats as an `Int`, in
 either companion. `Js/Bitwise.mjs`'s header comment names 64 bits and no longer cites a 32-bit
-range as `Int`'s promise. `shiftRightZfBy` either implements the rule the owner gave or is left
-untouched with the question recorded. `cargo run` still prints `parsed 8 modules` and lists all
-eight as checked.
+range as `Int`'s promise. `shiftRightZfBy` masks as above, and `Bitwise.zel`'s doc comment for it
+carries the 64-bit example and no longer promises a result outside `Int`'s range. `cargo run`
+still prints `parsed 8 modules` and lists all eight as checked.

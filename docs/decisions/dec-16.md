@@ -1,4 +1,4 @@
-# DEC-16 · `Int` is 64 bits on every target: five decisions
+# DEC-16 · `Int` is 64 bits on every target: six decisions
 
 **Settled:** 2026-09-15, by the language owner (`SPEC-28`).
 **Status:** live.
@@ -125,6 +125,28 @@ converts — `BigInt(Date.now())` — and one taking an `Int` receives a `BigInt
 on numbers today.
 
 `Bitwise` is where the cost is sharpest. `BigInt` supports `&`, `|`, `^`, `<<` and `>>`, and has
-no `>>>`: an unsigned right shift has no meaning on a type with no width, so `shiftRightZfBy`
-needs a width named explicitly. The language owes that function a rule at 64 bits, and
-`LANG-56` escalates rather than inventing one.
+no `>>>`: an unsigned right shift has no meaning on a type with no width. Decision 6 gives it
+one.
+
+## 6 — A shift reads its operand as a fixed 64-bit pattern
+
+`shiftRightZfBy` fills from the left with zeros, which needs a width to fill from. The width is
+named by the operation rather than borrowed from the representation: the operand is read as a
+64-bit two's-complement pattern, shifted, and the result read back as a signed `Int`.
+
+Two things follow that the 32-bit version did not have.
+
+**Every result is an `Int`.** `Bitwise.zel` documents `shiftRightZfBy 1 -32` as `2147483632`, a
+value deliberately outside `Int`'s 32-bit range and matching Elm — reachable only because a
+JavaScript number had room above the range to hold it. At 64 bits the representation has no room
+above, so the result is read back into the range, and it fits without anything being lost: a
+shift by one or more leaves at most 63 significant bits. A shift by zero is the identity, which
+is what reading the pattern back gives.
+
+**A shift of 64 or more is `0`.** JavaScript's `>>>` masks its count to five bits, so `1 >>> 32`
+is `1` and not `0`. `BigInt` does not mask, and naming the width does not reintroduce it: a
+count is a number of positions, and a 64-bit pattern moved 64 positions has nothing left.
+
+What a *negative* count means is unsettled, and it belongs to `shiftLeftBy` and `shiftRightBy`
+as much as to this one — under `BigInt` a negative count reverses a shift's direction.
+[`LANG-56`](../tickets/lang-56.md) carries the question.
