@@ -1580,12 +1580,11 @@ fn check_importer(lib: &str, main: &str) -> Result<(), CompilationError> {
 /// a transparent one. `hidden` and `Secret` are the two nothing outside `Lib`
 /// may reach, and `Opaque`'s constructor `Wrapped` is the third.
 ///
-/// `Opaque` takes a type variable on purpose. `process_import`'s
-/// `Privacy::Private` arm invents a zero-variable type when the interface does
-/// not know the name (`BUG-16`), so a nullary opaque type would let an importer
-/// write the annotation either way and no assertion below could tell the
-/// interface carrying the type from the import fabricating it. With an arity of
-/// one, `Opaque Int` only resolves when the real declaration crossed.
+/// `Opaque` takes a type variable on purpose. A nullary opaque type would let
+/// an importer write the annotation either way and no assertion below could
+/// tell the interface carrying the type from the import fabricating it. With
+/// an arity of one, `Opaque Int` only resolves when the real declaration
+/// crossed.
 fn privacy_lib() -> &'static str {
     indoc::indoc! {r#"
         module Lib exposing (visible, Opaque, Clear(..))

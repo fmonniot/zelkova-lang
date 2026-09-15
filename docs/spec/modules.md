@@ -485,9 +485,8 @@ grow s =
 ```
 
 **Known gap:** that block states the rule rather than testing it. It compiles unchanged
-with the `exposing (Size)` dropped, because neither the entry nor the annotation is
-checked today ([`docs/tickets/bug-16.md`](../tickets/bug-16.md), which covers both sites
-and is the gap described further down).
+with the `exposing (Size)` dropped, because an annotation naming a type nothing brings
+into scope is accepted ([`docs/tickets/bug-16.md`](../tickets/bug-16.md)).
 
 An `exposing (..)` on an import brings in everything the module exposes, unqualified. A
 bare `import Widget` with no `exposing` clause brings in nothing unqualified, and means
@@ -514,11 +513,8 @@ import Widget exposing (missing)
 x = 1
 ```
 
-**Known gap:** that check is done for value entries and operator entries, and for
-`Size(..)`, but not for a bare `Size`. An opaque-type entry naming a type that does not
-exist is accepted, and a type by that name is invented on the spot — so the mistake
-surfaces later, as a confusing type error, or not at all
-([`docs/tickets/bug-16.md`](../tickets/bug-16.md)).
+A bare `Size` entry is checked the same way, and so is `Size(..)`: whether the
+constructors come along is the only difference between the two.
 
 ```zel expect=ok package=missing-type
 module Widget exposing (Size, label)
@@ -530,7 +526,7 @@ label : Size
 label = Small
 ```
 
-```zel expect=ok package=missing-type
+```zel expect=canonical-error:EnvironmentErrors package=missing-type
 module Main exposing ()
 
 import Widget exposing (Missing)
