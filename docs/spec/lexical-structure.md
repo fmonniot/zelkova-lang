@@ -247,6 +247,23 @@ unsafe = 6
 **Not implemented:** `derived` is an ordinary identifier in every position today, because class
 and instance bodies do not parse at all ([`LANG-38`](../tickets/lang-38.md)).
 
+`unsafe` does not get the plain-name fallback the other five soft keywords get. `left`,
+`right`, `non` and `foreign` are ordinary identifiers anywhere outside their one keyword
+position, with no dedicated rejection for using them elsewhere — a stray one just misparses.
+`unsafe` written before a signature is read as the modifier in every module, `module foreign`
+facade or not, and a signature so marked outside a facade is rejected: `unsafe f : Int` in an
+ordinary module is a canonicalization error, not a name and not a parse error. A facade modifier
+only means something where there is a companion for it to be a claim about, and an ordinary
+module has none.
+
+```zel expect=canonical-error:UnsafeOutsideFacade
+module Example exposing (twice)
+
+unsafe twice : Int -> Int
+twice x =
+  x
+```
+
 No other word is reserved — not even ones a reader arriving from another language might expect,
 such as `match` (pattern matching's usual keyword) or `await` (an effect's usual one):
 
