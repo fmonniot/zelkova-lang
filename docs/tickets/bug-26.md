@@ -53,19 +53,40 @@ Found while extending the spec harness to run the type checker (`TEST-2`);
 [`docs/spec/lexical-structure.md`](../spec/lexical-structure.md)'s *Reserved words* section
 carries the `**Known gap:**` block for it.
 
-**Fix:** the four literal types are properties of the *type the name resolved to*, not of the
-spelling. Nothing in the canonical AST distinguishes them today, which is what makes this more
-than a one-line change: `canonical::Type::Type` carries a `Name`, and the typer has to decide
-whether a nullary named type is a builtin from the module it was declared in rather than from
-its letters. The two shapes worth weighing are giving the four builtins a real declaration in
-`std/core` and dropping `Type::Literal` in favour of `Type::Adt` throughout — which is the
-direction [`LANG-41`](lang-41.md) already moves `Type::Number` in — or qualifying the match so
-only `Basics`' own `Bool` becomes a literal, which needs the qualified name to survive into the
-typer.
+**Decided ([`DEC-15` decision
+1](../decisions/dec-15.md#1--a-scalar-type-is-known-by-its-qualified-name), by the language
+owner):** a [scalar type](../spec/types.md#scalar-types) is known by the **qualified name of
+its declaration**, never by its spelling. A module declaring its own `Bool` declares an
+ordinary type that shares four letters with a scalar, and every phase treats it as one.
+
+**Depends on:** [AST-4](ast-4.md), which is where most of the work is. A canonical type carries
+a bare `Name`, so there is nothing for the typer to match a qualified name against until that
+lands.
+
+**Blocks:** [LANG-53](lang-53.md) and [LANG-54](lang-54.md), both of which need the compiler to
+hold the scalar names before they can seed or check them.
+
+**Fix:** hold the five names the compiler knows — `Basics.Int`, `Basics.Float`, `Basics.Bool`,
+`Char.Char` and `String.String` — and have `canonical_type_to_typer_type` match on those rather
+than on `name.as_str()`. `TypeLiteral` has four variants and gains no fifth here: `String` is a
+scalar for [the boundary](../spec/interop.md#which-types-may-cross-the-boundary) and for
+[LANG-53](lang-53.md)'s seeding, and needs no typer arm until there is a string literal to give
+a type to.
+
+This is the second of the two shapes this ticket used to weigh. The first — dropping
+`Type::Literal` for `Type::Adt` throughout, on the strength of the four having real
+declarations in `std/core` — is ruled out by the same decision: a scalar's representation
+belongs to each target, and an opaque one has no constructors for an `Adt` to carry
+([`DEC-15` decision
+2](../decisions/dec-15.md#2--a-scalar-type-is-declared-in-zelkova-and-an-opaque-ones-declaration-names-itself)).
+[`LANG-41`](lang-41.md) is unaffected either way: retiring `Type::Number` leaves an integer
+literal with the type `Int`, which is `Basics.Int` under this fix.
 
 **Acceptance:** the module above type checks, and its `case` still rejects a branch of the
-wrong type — tests in `tests/typer.rs`. `cargo run` still prints `parsed 8 modules` and lists
-all eight as checked. The `**Known gap:**` block in
-[`docs/spec/lexical-structure.md`](../spec/lexical-structure.md)'s *Reserved words* section goes
-red on its `expect=type-error:UnificationFailed` tag and is retagged `expect=ok` with its
-paragraph deleted.
+wrong type — tests in `tests/typer.rs`. A module declaring its own `Int` and a module using
+`Basics`' `Int` are two distinct types to the typer, and only the second is admitted at a
+facade boundary. `cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+Two tagged blocks go red and are retagged `expect=ok` with their paragraphs deleted: the
+`**Known gap:**` block in [`docs/spec/lexical-structure.md`](../spec/lexical-structure.md)'s
+*Reserved words* section, and the `expect=type-error:UnificationFailed` block in
+[*Scalar types*](../spec/types.md#scalar-types).
