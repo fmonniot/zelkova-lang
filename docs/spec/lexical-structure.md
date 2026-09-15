@@ -328,17 +328,12 @@ mask = 0xFF
 literal `0` applied to a variable named `xFF`, which then fails to resolve — an accident, not
 a diagnostic.
 
-How large an `Int` may be is [Evaluation semantics](evaluation-semantics.md#numbers)' rule
-rather than this section's. What belongs to the token is what becomes of a literal that range
-has no room for: **an integer literal outside `Int`'s range is an error.** It neither wraps nor
-saturates. A [float literal too large](evaluation-semantics.md#numbers) denotes positive
-infinity because binary64 keeps a value meaning exactly that; `Int` keeps none, so a wrapped or
-saturated literal would read as a number the program had meant.
+How large an `Int` may be is [Evaluation semantics](evaluation-semantics.md#numbers)' rule.
+**An integer literal outside `Int`'s range is an error.** It neither wraps nor saturates.
 
 `Int`'s range is not symmetric and a literal carries no sign, so the most negative `Int` has no
 literal spelling — its magnitude is one larger than the largest positive `Int`, and a literal of
-that magnitude is an error. Arithmetic reaches it by
-[wrapping](evaluation-semantics.md#numbers).
+that magnitude is an error. Arithmetic reaches it by [wrapping](evaluation-semantics.md#numbers).
 
 ### Floats
 
