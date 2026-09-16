@@ -49,9 +49,10 @@ Type names only: no constructors and no values. A module receiving `Bool` this w
 one and cannot write a `True`, which is [`DEC-15` decision
 4](../decisions/dec-15.md#4--the-scalar-names-arrive-without-their-values) and is deliberate.
 
-[`SPEC-33`](spec-33.md) is reviewing the drop rule this hangs off. A coarser rule there — a
-module that any default import depends on receives none of the list — leaves this one intact,
-since it still turns on whether the `Basics` entry was dropped.
+[`SPEC-33`](spec-33.md) has since replaced the drop rule this hangs off: the chapter now gives
+the scalar names to every module of `zelkova-core` rather than to one that dropped the `Basics`
+entry. [`LANG-57`](lang-57.md) is the ticket for that change, and the two may land in either
+order — see its *Interaction* note.
 
 **Acceptance:** `Js/Basics.zel` and `Js/Utils.zel` resolve `Int`, `Float` and `Bool` through
 the seeded names, with no fabricated type standing in — verifiable by applying

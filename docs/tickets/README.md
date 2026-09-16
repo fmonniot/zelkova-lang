@@ -301,6 +301,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-54](lang-54.md) | task | — | open | A scalar type's declaration is an ordinary union, so `Int` is a value and any body is accepted |
 | [LANG-55](lang-55.md) | task | — | open | The `Char` and `String` default imports bring their modules but not their types |
 | [LANG-56](lang-56.md) | task | — | open | `std/core`'s JavaScript companions implement a 32-bit `Int` held in a number |
+| [LANG-57](lang-57.md) | task | — | open | The default imports are dropped entry by entry, not by package |
 | LANG-53 | task | — | closed 2026-09-13 | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | LANG-54 | task | — | closed 2026-09-13 | The interop modifier is `foreign`, not `javascript` |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
