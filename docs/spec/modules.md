@@ -771,34 +771,37 @@ and `import Maybe as M` means `M.map` and no unqualified `Maybe`.
 
 A default entry participates in ambiguity exactly as a written import does.
 
-The eight modules receive none of the list themselves: `Basics` cannot import `Basics`,
-and `Maybe` and `Result` would import each other — [an import
-cycle](#imports-may-not-form-a-cycle) either way. They write the imports they need.
+**`zelkova-core` is the exception.** No module of [the package the eight belong
+to](packages.md#zelkova-core-is-a-dependency-of-every-package) receives any of them — not the
+eight themselves, and not the modules beside them. `Basics` cannot import `Basics`, `Maybe` and
+`Result` would import each other, and a facade `Basics` is built from cannot import `Basics`
+back: each is [an import cycle](#imports-may-not-form-a-cycle). Core's modules write every
+import they use, the way `Basics.zel`, `Maybe.zel` and `Bitwise.zel` already do.
 
-Every other module is judged **one entry at a time**. It drops the entry for a module
-that already depends on it, since that implicit import would close a cycle back, and
-keeps every other entry. So a facade `Basics` imports does not receive `Basics` — but it
-still receives `Tuple`, which depends on nothing. Where a module sits in the import graph
-is what decides its set, and two modules of one package need not have the same one.
+Every module of every other package receives all eight, whatever it imports and whatever
+imports it. Core is a dependency of every package and dependencies run one way, so nothing you
+write can end up underneath one of the eight, and [no package but core may declare a module
+under one of their names](packages.md#two-modules-under-one-name-is-an-error). Why the exception
+is scoped to a package rather than judged from the import graph is
+[DEC-17](../decisions/dec-17.md).
 
-A drop can propagate, because the imports the compiler supplies are dependencies like any
-other. Say `Basics` imports `A`: then `A` loses `Basics`, and if the compiler goes on to
-give `Basics` to some module `Maybe` imports, `Maybe` reaches `A` through it and `A`
-loses `Maybe` as well. Which entry survives such a collision is settled by the order the
-list above writes them — an entry is only ever dropped for a dependency an *earlier*
-entry created, never a later one. `Basics` is first, so it is the entry a module keeps
-when it can keep only one.
+**Known gap:** the compiler does not decide this by package. It judges each module one entry at
+a time against the import graph as built so far, dropping only the entries that would close a
+cycle back — so inside `std/core`, `Bitwise` receives `Maybe`, `Result` and `Tuple`, `Js.Bitwise`
+receives those three and `Basics` besides, and the two facades `Basics` imports receive `Tuple`
+alone. No module names an entry it receives that way, so nothing compiles today that would not
+compile under the rule above. [`LANG-57`](../tickets/lang-57.md) is the ticket.
 
-**A module that drops the `Basics` entry receives the scalar type names in its place.** `Int`,
+**A module of `zelkova-core` receives the scalar type names without an import.** `Int`,
 `Float`, `Char`, `String` and `Bool` are in its scope with nothing written at the top of the
-file, bound to the same declarations `Basics` exposes. The compiler [knows each of the five by
-qualified name](types.md#scalar-types), so it supplies them without reading `Basics`, and the
-dependency the drop exists to avoid is never created.
+file, bound to the same declarations `Basics` exposes. That is not one of the eight entries
+coming back: the compiler [knows each of the five by qualified
+name](types.md#scalar-types), so it supplies them without reading `Basics`.
 
 What arrives is the five type names and nothing else. A module reaching `Bool` this way writes
 it in a signature and cannot write a `True`: the constructors are `Basics`' values, and no rule
-brings a value down. The case is a [facade](interop.md) underneath `Basics`, which has no
-bodies to write one in.
+brings a value down. The case it exists for is a [facade](interop.md) underneath `Basics`,
+which has no bodies to write one in.
 
 ```zel expect=ok package=below
 module Basics exposing (Int)
@@ -813,9 +816,6 @@ module foreign Below exposing (twice)
 
 unsafe twice : Int -> Int
 ```
-
-Only the package that declares `Basics` can hold such a module, since a package's dependencies
-run one way, so no module outside it ever meets this rule.
 
 **Known gap:** the second block above is green for the wrong reason. Nothing supplies the
 scalar names yet; `Int` resolves to nothing there and a type is fabricated for it

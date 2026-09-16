@@ -1,7 +1,7 @@
 # DEC-15 · The scalar types are declared in Zelkova and known by qualified name: five decisions
 
 **Settled:** 2026-09-14, by the language owner (`SPEC-31`).
-**Status:** live.
+**Status:** live; decision 3's trigger re-scoped by [DEC-17](dec-17.md) decision 3.
 **Where the rule lives:** [Scalar types](../spec/types.md#scalar-types), and [The default
 imports](../spec/modules.md#the-default-imports) for the rule that puts them in scope
 underneath `Basics`.
@@ -109,6 +109,11 @@ It scopes itself. A module underneath `Basics` can only be a module of the packa
 declares `Basics`, since a package's dependencies run one way, so the rule reaches `std/core`
 and nothing else without naming `std/core`. Two modules receive it as the tree stands:
 `Js.Basics` and `Js.Utils`.
+
+**Re-scoped:** [DEC-17](dec-17.md) removed the drop this decision triggers on — no module of
+`zelkova-core` receives the default imports at all — so the trigger is now membership of that
+package rather than the loss of the `Basics` entry. The same modules are reached, for the
+reason this paragraph gives.
 
 It also costs a language user nothing to know. The model stays *`Int` is declared in `Basics`,
 and `Basics` is imported by default* — one rule, the one already learned, with the same
