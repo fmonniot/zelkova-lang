@@ -114,5 +114,6 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-12](dec-12.md) | What a broken companion does: a survey and seven decisions | live |
 | [DEC-13](dec-13.md) | A facade names a boundary, not a backend: seven decisions | live |
 | [DEC-14](dec-14.md) | A companion's test is a facade under `tests/`: four decisions | live |
-| [DEC-15](dec-15.md) | The scalar types are declared in Zelkova and known by qualified name: five decisions | live |
+| [DEC-15](dec-15.md) | The scalar types are declared in Zelkova and known by qualified name: five decisions | live; 3 re-scoped by DEC-17 |
 | [DEC-16](dec-16.md) | `Int` is 64 bits on every target: six decisions | live |
+| [DEC-17](dec-17.md) | The default imports are decided by package, not by the import graph: three decisions | live |

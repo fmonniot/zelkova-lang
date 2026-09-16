@@ -784,7 +784,8 @@ imports it. Core is a dependency of every package and dependencies run one way, 
 write can end up underneath one of the eight, and [no package but core may declare a module
 under one of their names](packages.md#two-modules-under-one-name-is-an-error). So the exception
 is not one an ordinary package can reach, and two modules of your package always have the same
-set.
+set. Why the exception is scoped to a package rather than judged from the import graph is
+[DEC-17](../decisions/dec-17.md).
 
 **Known gap:** the compiler does not decide this by package. It judges each module one entry at
 a time against the import graph as built so far, dropping only the entries that would close a
