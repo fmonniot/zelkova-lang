@@ -17,7 +17,7 @@ with no local answer. Which entries a module gets depends on the whole package's
 graph and on the order the list itself is written in, a drop propagates through the implicit
 edges already allocated, and stating it precisely took three paragraphs of
 [Modules](../spec/modules.md) including a two-hop example and a tie-break. Probing `std/core`
-showed three facades with three different sets:
+showed three facades sitting side by side with two different sets between them:
 
 ```
 Tuple      -> []                                    Basics -> []

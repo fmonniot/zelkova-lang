@@ -403,9 +403,8 @@ and nothing about its structure, so the self-naming rule above does not reach it
 
 **A module of `zelkova-core` receives the scalar names without an import.** That rule belongs
 to [the default imports](modules.md#the-default-imports), which is also where the case it
-covers arises — a [facade](interop.md) underneath `Basics`, in the one package that cannot
-have the list. It supplies the five type names and nothing else, so a module reaching `Bool`
-that way can annotate one and cannot write a `True`.
+covers arises — a [facade](interop.md) underneath `Basics`. It supplies the five type names and
+nothing else, so a module reaching `Bool` that way can annotate one and cannot write a `True`.
 
 **Not implemented:** none of the above is how the compiler behaves. A scalar is matched by
 spelling rather than by qualified name (`BUG-26`, above); nothing checks a scalar declaration's
