@@ -23,6 +23,11 @@ Nothing observes this today. `std/core` ships neither module — `Char.ignored` 
 annotate either. It becomes visible the day those modules compile, which is why it is filed
 rather than left to be noticed then.
 
+**Folded into [`BUG-26`](bug-26.md) on 2026-09-15** (language owner). That ticket's tests are
+the first thing in the tree that observes these two fields: once a scalar is known by its
+qualified name, `char_literal_has_type_char` has no way to spell `Char` without them. The two
+land in one PR and both tickets close with it.
+
 **Fix:** set both entries to `Unqualified::Type`, the variant `List` and `Task` already use.
 
 **Acceptance:** a module that keeps both entries resolves `Char` and `String` as type names

@@ -83,6 +83,44 @@ belongs to each target, and an opaque one has no constructors for an `Adt` to ca
 [`LANG-41`](lang-41.md) is unaffected either way: retiring `Type::Number` leaves an integer
 literal with the type `Int`, which is `Basics.Int` under this fix.
 
+**Also in scope, established 2026-09-15:** the fix is a handful of lines and the work is
+everything downstream of them. Once a scalar is its qualified name, a bare `Int` in a module
+with no `Basics` in scope stops being one — and that describes almost every test module and
+spec block in the tree, because neither harness models the [default
+imports](../spec/modules.md#the-default-imports) at all. Measured against the fix above:
+11 tests in `tests/typer.rs`, 11 in `tests/pipeline.rs` and 6 `expect=ok` blocks in
+[`docs/spec/modules.md`](../spec/modules.md) go red, on top of the two blocks this ticket
+*wants* red. None of it is fixed by [`LANG-57`](lang-57.md) or [`LANG-58`](lang-58.md) — those
+tests hand `check_module` an empty interface map, and `LANG-58` seeds only the core modules
+that drop the `Basics` entry — so it cannot be sequenced away and lands here. Four pieces:
+
+1. A `basics_interface()` beside `maybe_interface()` in `tests/support/mod.rs`, declaring
+   `Basics.Int`, `Basics.Float` and `Basics.Bool`, for the standalone module harnesses to
+   resolve against. That is what the default imports would have given the module, built by
+   hand because nothing else in a single-package compile can: under `LANG-57`'s rule a fixture
+   package holding its own `Basics` is *core* and receives none of the eight, and one without
+   has no interface to find.
+2. `an_unresolved_qualified_scalar_name_is_not_the_scalar` (`tests/typer.rs`) re-points from
+   `f : Basics.Int -> Int` to `f : Missing.Int -> Int`, because `Basics.Int` now resolves. The
+   test gets sharper rather than weaker: with the real `Basics` in scope, reading the written
+   module half off the unresolved name would make the module check clean, which is exactly
+   what it pins.
+3. [`LANG-55`](lang-55.md) folded in and closed with this ticket. Its two
+   `Unqualified::Nothing` → `Unqualified::Type` fields are what make a bare `Char` resolve at
+   all; without them `char_literal_has_type_char` and `tuple_triple_typechecks` have no
+   spelling to use. Its own acceptance — a module resolving `Char` and `String` unqualified —
+   has nothing to test against until this ticket's harness exists.
+4. The examples that cannot reach a hand-built interface are rewritten to declare a local
+   type: the fixture packages under `tests/fixtures/` and the `check_importer` pair in
+   `tests/pipeline.rs`, and the six `docs/spec/modules.md` blocks, which annotate `label : Int`
+   incidentally in a chapter about module headers. A `type Label = Label` in each states the
+   same thing about `exposing` and stops relying on a spelling coincidence (language owner,
+   this session).
+
+Measured, not predicted: with pieces 1-3 applied, `tests/typer.rs` is 27/27 green and
+`tests/compiler_tests.rs` unchanged; piece 4 is what the remaining 10 `tests/pipeline.rs`
+failures and the 6 spec blocks need.
+
 **Acceptance:** the module above type checks, and its `case` still rejects a branch of the
 wrong type — tests in `tests/typer.rs`. A module declaring its own `Int` and a module using
 `Basics`' `Int` are two distinct types to the typer, and only the second is admitted at a
