@@ -73,7 +73,7 @@ checked at all. `translate_pattern` finds no local union for it and returns `Non
 `type_check` skips the whole value — so `case b of Lib.Box x -> 'c'` under `f : Lib.Box Int ->
 Int` checks clean. After this fix that lookup still fails for an imported constructor, now
 without finding a wrong local one; giving the typer the imported union's variables is separate
-work.
+work, and it is [`BUG-36`](bug-36.md).
 
 **Acceptance:** tests in `tests/pipeline.rs`, built the way `check_importer` builds its
 interfaces:
