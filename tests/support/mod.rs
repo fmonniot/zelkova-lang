@@ -11,10 +11,15 @@
 use codespan_reporting::files::SimpleFile;
 use std::collections::HashMap;
 use zelkova_lang::compiler::canonical;
-use zelkova_lang::compiler::name::Name;
+use zelkova_lang::compiler::name::{Name, QualName};
 use zelkova_lang::compiler::parser;
 use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::{Interface, ModuleName, PackageName};
+
+/// A [`QualName`] from its dotted spelling, for hand-built canonical types.
+pub fn qual(name: &str) -> QualName {
+    QualName::parse(name).expect("a qualified name needs a module prefix")
+}
 
 pub fn test_package() -> PackageName {
     PackageName::new("test", "project")
@@ -43,7 +48,9 @@ pub fn canonicalize_with_interfaces(
 /// Mirrors the `maybe_interface()` helper in environment.rs tests.
 pub fn maybe_interface() -> (Name, Interface) {
     let type_var = |name: &str| canonical::Type::Variable(name.into());
-    let type_hk = |name: &str, params| canonical::Type::Type(name.into(), params);
+    // A canonical type names its declaration in full, so the `Maybe` this
+    // interface exports is `Maybe.Maybe`.
+    let type_hk = |name: &str, params| canonical::Type::Type(qual(name), params);
     let type_fun = |t1, t2| canonical::Type::Arrow(Box::new(t1), Box::new(t2));
 
     let mut values = HashMap::new();
@@ -54,10 +61,10 @@ pub fn maybe_interface() -> (Name, Interface) {
             // Hand-built, not canonicalized from source: no position behind it.
             NodeSpan::none(),
             type_fun(
-                type_fun(type_var("a"), type_hk("Maybe", vec![type_var("b")])),
+                type_fun(type_var("a"), type_hk("Maybe.Maybe", vec![type_var("b")])),
                 type_fun(
-                    type_hk("Maybe", vec![type_var("a")]),
-                    type_hk("Maybe", vec![type_var("b")]),
+                    type_hk("Maybe.Maybe", vec![type_var("a")]),
+                    type_hk("Maybe.Maybe", vec![type_var("b")]),
                 ),
             ),
         ),
@@ -70,8 +77,8 @@ pub fn maybe_interface() -> (Name, Interface) {
             type_fun(
                 type_fun(type_var("a"), type_var("b")),
                 type_fun(
-                    type_hk("Maybe", vec![type_var("a")]),
-                    type_hk("Maybe", vec![type_var("b")]),
+                    type_hk("Maybe.Maybe", vec![type_var("a")]),
+                    type_hk("Maybe.Maybe", vec![type_var("b")]),
                 ),
             ),
         ),
@@ -83,7 +90,7 @@ pub fn maybe_interface() -> (Name, Interface) {
             NodeSpan::none(),
             type_fun(
                 type_var("a"),
-                type_fun(type_hk("Maybe", vec![type_var("a")]), type_var("a")),
+                type_fun(type_hk("Maybe.Maybe", vec![type_var("a")]), type_var("a")),
             ),
         ),
     );
@@ -99,12 +106,12 @@ pub fn maybe_interface() -> (Name, Interface) {
                 canonical::TypeConstructor {
                     name: "Just".into(),
                     type_parameters: vec![canonical::Type::Variable("a".into())],
-                    tpe: "Maybe".into(),
+                    tpe: qual("Maybe.Maybe"),
                 },
                 canonical::TypeConstructor {
                     name: "Nothing".into(),
                     type_parameters: vec![],
-                    tpe: "Maybe".into(),
+                    tpe: qual("Maybe.Maybe"),
                 },
             ],
         },

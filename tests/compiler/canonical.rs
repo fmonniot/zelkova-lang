@@ -18,10 +18,14 @@ use support::*;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/// `Type::Type("Int", [])` — the canonical representation of an unresolved `Int`
-/// (no Basics import in these tests).
+/// `Type::Type("Test.Int", [])` — the canonical representation of an unresolved
+/// `Int` (no Basics import in these tests).
+///
+/// A canonical type names the module that declared it. Nothing declares `Int`
+/// here, so `from_parser_type` attributes the head it fabricates to the module
+/// under check — every source in this file is `module Test`.
 fn int_t() -> canonical::Type {
-    canonical::Type::Type("Int".into(), vec![])
+    canonical::Type::Type(qual("Test.Int"), vec![])
 }
 
 // `canonical::Expression` and `canonical::Pattern` are each a `NodeSpan` beside a
@@ -187,16 +191,21 @@ fn union_type_definition_and_constructor() {
 
     for v in &color.variants {
         assert_eq!(v.type_parameters, vec![], "Color variants take no params");
-        assert_eq!(v.tpe, "Color".into(), "variant tpe points back to Color");
+        assert_eq!(
+            v.tpe,
+            qual("Test.Color"),
+            "variant tpe points back to Test's Color"
+        );
     }
 
     // ── Value using the constructor ─────────────────────────────────────────
     // `Color` is in env so `Type::from_parser_type` returns
-    // `Type::Type("Color", [])` directly for the annotation.
-    let color_t = canonical::Type::Type("Color".into(), vec![]);
+    // `Type::Type("Test.Color", [])` for the annotation — the head names the
+    // module that declared it.
+    let color_t = canonical::Type::Type(qual("Test.Color"), vec![]);
 
     // `Red` as a TypeConstructor expression:
-    //   - no type params → tpe = Type::Type("Color", [])
+    //   - no type params → tpe = Type::Type("Test.Color", [])
     //   - unqualified name → falls back to env.module_name().qualify_name("Red")
     //     = QualName { module: ["Test"], name: "Red" }
     assert_eq!(
@@ -228,11 +237,13 @@ fn case_expression_local_maybe() {
     "#};
     let module = canonicalize_standalone(source).expect("should canonicalize");
 
-    // `Maybe a` in the env after do_types:
-    //   insert_union_type inserts Type::Type("Maybe", [Variable("a")])
-    //   Type::from_parser_type finds it and returns it verbatim.
-    let maybe_a =
-        canonical::Type::Type("Maybe".into(), vec![canonical::Type::Variable("a".into())]);
+    // `Maybe a` in the env after do_types: `insert_union_type` records the
+    // declaration as `Test.Maybe`, and `Type::from_parser_type` applies the
+    // written argument to that head.
+    let maybe_a = canonical::Type::Type(
+        qual("Test.Maybe"),
+        vec![canonical::Type::Variable("a".into())],
+    );
 
     let value = module.values.get(&"isJust".into()).unwrap();
     let (patterns, body) = match value {
@@ -266,7 +277,7 @@ fn case_expression_local_maybe() {
     let just_ctor = canonical::TypeConstructor {
         name: "Just".into(),
         type_parameters: vec![canonical::Type::Variable("a".into())],
-        tpe: "Maybe".into(),
+        tpe: qual("Test.Maybe"),
     };
     assert_eq!(branches[0].pattern, p_ctor(just_ctor, vec![p_var("x")]));
     // Expression is Apply(VarConstructor("Test.Just", _), VarLocal("x"))
@@ -283,7 +294,7 @@ fn case_expression_local_maybe() {
     let nothing_ctor = canonical::TypeConstructor {
         name: "Nothing".into(),
         type_parameters: vec![],
-        tpe: "Maybe".into(),
+        tpe: qual("Test.Maybe"),
     };
     assert_eq!(branches[1].pattern, p_ctor(nothing_ctor, vec![]));
     // Expression is VarConstructor("Test.Nothing", _)
@@ -635,7 +646,7 @@ fn tuple_of_two_canonicalizes() {
             body: c_tuple(Tuple::two(c_int(1), c_char('a'),)),
             tpe: canonical::Type::Tuple(Tuple::two(
                 int_t(),
-                canonical::Type::Type("Char".into(), vec![]),
+                canonical::Type::Type(qual("Test.Char"), vec![]),
             )),
         }
     );
@@ -667,8 +678,8 @@ fn tuple_of_three_canonicalizes() {
             body: c_tuple(Tuple::three(c_int(1), c_char('a'), c_int(3),)),
             tpe: canonical::Type::Tuple(Tuple::three(
                 int_t(),
-                canonical::Type::Type("Char".into(), vec![]),
-                canonical::Type::Type("Bool".into(), vec![]),
+                canonical::Type::Type(qual("Test.Char"), vec![]),
+                canonical::Type::Type(qual("Test.Bool"), vec![]),
             )),
         }
     );
@@ -700,7 +711,7 @@ fn tuple_pattern_canonicalizes() {
             p_tuple(Tuple::two(p_var("a"), p_var("b"),)),
             canonical::Type::Tuple(Tuple::two(
                 int_t(),
-                canonical::Type::Type("Char".into(), vec![]),
+                canonical::Type::Type(qual("Test.Char"), vec![]),
             )),
         )]
     );
@@ -737,8 +748,8 @@ fn tuple_pattern_of_three_canonicalizes() {
             p_tuple(Tuple::three(p_var("a"), p_var("b"), p_var("c"),)),
             canonical::Type::Tuple(Tuple::three(
                 int_t(),
-                canonical::Type::Type("Char".into(), vec![]),
-                canonical::Type::Type("Bool".into(), vec![]),
+                canonical::Type::Type(qual("Test.Char"), vec![]),
+                canonical::Type::Type(qual("Test.Bool"), vec![]),
             )),
         )]
     );
@@ -890,8 +901,10 @@ fn module_using_imported_maybe() {
     // entry), so `Maybe a` resolves to a one-argument application — `BUG-17` — with
     // the written argument (`a`, the variable in this annotation) surviving rather
     // than being replaced by the declaration's own.
-    let maybe_t =
-        canonical::Type::Type("Maybe".into(), vec![canonical::Type::Variable("a".into())]);
+    let maybe_t = canonical::Type::Type(
+        qual("Maybe.Maybe"),
+        vec![canonical::Type::Variable("a".into())],
+    );
 
     let value = module.values.get(&"safeHead".into()).unwrap();
     let (patterns, body) = match value {
@@ -925,14 +938,14 @@ fn module_using_imported_maybe() {
     let just_ctor = canonical::TypeConstructor {
         name: "Just".into(),
         type_parameters: vec![canonical::Type::Variable("a".into())],
-        tpe: "Maybe".into(),
+        tpe: qual("Maybe.Maybe"),
     };
     assert_eq!(branches[0].pattern, p_ctor(just_ctor, vec![p_var("x")]));
 
     let nothing_ctor = canonical::TypeConstructor {
         name: "Nothing".into(),
         type_parameters: vec![],
-        tpe: "Maybe".into(),
+        tpe: qual("Maybe.Maybe"),
     };
     assert_eq!(branches[1].pattern, p_ctor(nothing_ctor, vec![]));
 }
@@ -1036,9 +1049,8 @@ fn type_application_with_too_many_arguments_is_an_arity_error() {
 /// be measured against arity 0, and `Maybe a` — a perfectly ordinary annotation —
 /// would be rejected as an arity mismatch.
 ///
-/// Mutation-checked by putting `TypeArity { name: type_name.clone(), variables:
-/// vec![] }` back in that arm: this test goes red with
-/// `TypeArityMismatch(Maybe, 0, 1)`.
+/// Mutation-checked by putting `variables: vec![]` back in the `TypeArity` that
+/// arm builds: this test goes red with `TypeArityMismatch(Maybe, 0, 1)`.
 #[test]
 fn opaque_import_of_a_parameterised_type_keeps_its_arity() {
     let (iface_name, iface) = maybe_interface();
@@ -1055,8 +1067,10 @@ fn opaque_import_of_a_parameterised_type_keeps_its_arity() {
     let module = canonicalize_with_interfaces(source, &interfaces)
         .expect("an opaque `Maybe` applied to one argument should canonicalize");
 
-    let maybe_a =
-        canonical::Type::Type("Maybe".into(), vec![canonical::Type::Variable("a".into())]);
+    let maybe_a = canonical::Type::Type(
+        qual("Maybe.Maybe"),
+        vec![canonical::Type::Variable("a".into())],
+    );
 
     match module.values.get(&"f".into()).unwrap() {
         canonical::Value::TypedValue { tpe, .. } => assert_eq!(
@@ -1075,9 +1089,10 @@ fn opaque_import_of_a_parameterised_type_keeps_its_arity() {
 /// it to keep the written name, `Maybe.Maybe Int` and `Maybe Int` would be two
 /// distinct types and would not unify downstream.
 ///
-/// Mutation-checked by building `Type::Type(name.clone(), args)` from the written
-/// name instead of `declared.name`: this test goes red with a head of
-/// `Maybe.Maybe`.
+/// Mutation-checked by building the head out of the written name — the
+/// `name.to_qual().unwrap_or_else(|| env.module_name().qualify_name(name))` the
+/// `None` arm uses — instead of `declared.name`: this test goes red, the two arms
+/// coming back as `Maybe.Maybe` and `Test.Maybe`.
 #[test]
 fn qualified_and_unqualified_spellings_canonicalize_to_one_head() {
     let (iface_name, iface) = maybe_interface();
@@ -1094,16 +1109,105 @@ fn qualified_and_unqualified_spellings_canonicalize_to_one_head() {
     let module = canonicalize_with_interfaces(source, &interfaces)
         .expect("both spellings of `Maybe` should canonicalize");
 
-    let maybe_int = canonical::Type::Type(
-        "Maybe".into(),
-        vec![canonical::Type::Type("Int".into(), vec![])],
-    );
+    let maybe_int = canonical::Type::Type(qual("Maybe.Maybe"), vec![int_t()]);
 
     match module.values.get(&"f".into()).unwrap() {
         canonical::Value::TypedValue { tpe, .. } => assert_eq!(
             *tpe,
             canonical::Type::Arrow(Box::new(maybe_int.clone()), Box::new(maybe_int)),
             "the qualified spelling must normalize to the declaration's own name"
+        ),
+        other => panic!("expected a TypedValue, got {:?}", other),
+    }
+}
+
+// ── AST-4: a canonical type names the module that declared it ────────────────
+
+/// A type reached through an import alias records the module that declared it.
+///
+/// `import Maybe as M` makes `M.Maybe` a spelling; the declaration behind it is
+/// still `Maybe`'s, so that is the head. An alias names a route to a declaration
+/// rather than a second declaration, which is the rule name resolution already
+/// states for values.
+///
+/// Mutation-checked by having `insert_foreign_union_type` record
+/// `env.module_name.qualify_name(union_name)` — the *importing* module — in place
+/// of the declaring one: this test goes red with a head of `Test.Maybe`.
+#[test]
+fn a_type_imported_under_an_alias_records_the_declaring_module() {
+    let (iface_name, iface) = maybe_interface();
+    let mut interfaces = HashMap::new();
+    interfaces.insert(iface_name, iface);
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        import Maybe as M
+        f : M.Maybe a -> M.Maybe a
+        f m = m
+    "#};
+
+    let module = canonicalize_with_interfaces(source, &interfaces)
+        .expect("an aliased `Maybe` should canonicalize");
+
+    let maybe_a = canonical::Type::Type(
+        qual("Maybe.Maybe"),
+        vec![canonical::Type::Variable("a".into())],
+    );
+
+    match module.values.get(&"f".into()).unwrap() {
+        canonical::Value::TypedValue { tpe, .. } => assert_eq!(
+            *tpe,
+            canonical::Type::Arrow(Box::new(maybe_a.clone()), Box::new(maybe_a)),
+            "the alias `M` names a route to `Maybe`, not a module of its own"
+        ),
+        other => panic!("expected a TypedValue, got {:?}", other),
+    }
+}
+
+/// Two modules declaring one type name declare two types.
+///
+/// `Widget.Size` and the module under check's own `Size` share four letters and
+/// nothing else: each `type` declaration introduces a genuinely new type, and a
+/// canonical type that held only the spelling made these one value. The interface
+/// here is built by canonicalizing `Widget` for real, so what is asserted is that
+/// the declaring module survives the interface boundary as well as the annotation.
+///
+/// Mutation-checked by throwing the resolved module away again in
+/// `Type::from_parser_type`'s `Some` arm —
+/// `env.module_name().qualify_name(&declared.name.unqualified_name())`, which is
+/// the old bare-`Name` behaviour spelled in the new type: both sides of the arrow
+/// come back `Test.Size` and this test goes red.
+#[test]
+fn two_modules_declaring_one_type_name_are_two_types() {
+    let widget = canonicalize_standalone(indoc::indoc! {r#"
+        module Widget exposing (Size(..))
+        type Size = Small
+    "#})
+    .expect("Widget should canonicalize");
+
+    let mut interfaces = HashMap::new();
+    interfaces.insert(widget.name.name().clone(), widget.to_interface(None));
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        import Widget
+        type Size = Big
+        resize : Size -> Widget.Size
+        resize s = s
+    "#};
+
+    let module = canonicalize_with_interfaces(source, &interfaces)
+        .expect("a module declaring its own `Size` alongside `Widget`'s should canonicalize");
+
+    let own = canonical::Type::Type(qual("Test.Size"), vec![]);
+    let widgets = canonical::Type::Type(qual("Widget.Size"), vec![]);
+    assert_ne!(own, widgets, "the two `Size` declarations are two types");
+
+    match module.values.get(&"resize".into()).unwrap() {
+        canonical::Value::TypedValue { tpe, .. } => assert_eq!(
+            *tpe,
+            canonical::Type::Arrow(Box::new(own), Box::new(widgets)),
+            "each side of the arrow names the module that declared its type"
         ),
         other => panic!("expected a TypedValue, got {:?}", other),
     }

@@ -311,7 +311,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
-| [AST-4](ast-4.md) | task | — | open | A canonical type carries an unqualified name, so two types of one name are one type |
+| AST-4 | task | — | closed 2026-09-15 | A canonical type carries an unqualified name, so two types of one name are one type |
 | PERF-1 | task | — | closed 2026-08-25 | Reduce cloning in the `Layout` iterator |
 | TIDY-1 | task | — | closed 2026-08-25 | Make `Name`'s inner `String` private |
 | TIDY-2 | task | — | closed 2026-08-25 | Replace the tokenizer's keyword `HashMap` with a `match` |
