@@ -316,10 +316,19 @@ pub fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>) -> Op
 /// [`implicit_imports`](crate::compiler::default_imports::implicit_imports) drops
 /// an entry the file already names, rather than registering `Basics` twice over and
 /// turning every use of `+` into an `AmbiguousVariables`.
+///
+/// `package_declares_a_default` is the package-level question
+/// [`default_imports::declares_a_default`] answers, computed once by
+/// `compile_package` from the full module list and threaded down through
+/// `check_module`/`canonicalize` to here — the same answer
+/// `dependencies::add_default_import_edges` uses to decide this package's
+/// implicit edges. A module of such a package gets none of the eight, whatever
+/// it is named.
 pub fn new_environment(
     module_name: &ModuleName,
     interfaces: &HashMap<Name, Interface>,
     imports: &Vec<parser::Import>,
+    package_declares_a_default: bool,
 ) -> Result<RootEnvironment, Vec<EnvError>> {
     let mut env = RootEnvironment {
         module_name: module_name.clone(),
@@ -330,7 +339,8 @@ pub fn new_environment(
     };
     let mut errors = vec![];
 
-    let implicit = default_imports::implicit_imports(module_name.name(), imports, interfaces);
+    let implicit =
+        default_imports::implicit_imports(imports, interfaces, package_declares_a_default);
 
     let tagged = implicit
         .iter()
@@ -1112,7 +1122,7 @@ mod tests {
     #[test]
     fn new_no_imports() -> Result<(), Vec<EnvError>> {
         let interfaces = HashMap::new();
-        let env = new_environment(&module_name(), &interfaces, &vec![])?;
+        let env = new_environment(&module_name(), &interfaces, &vec![], false)?;
 
         assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
         assert_eq!(env.types.len(), 0, "types={:?}", env.types); // qual + explicit
@@ -1146,7 +1156,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = new_environment(&module_name(), &interfaces, &vec![])?;
+        let env = new_environment(&module_name(), &interfaces, &vec![], false)?;
 
         assert!(
             env.find_type(&"Maybe".into()).is_some(),
@@ -1168,11 +1178,14 @@ mod tests {
         Ok(())
     }
 
-    /// A module *on* the list receives none of it: `Basics` cannot implicitly
-    /// import `Basics`, and `Maybe` importing `Result` importing `Maybe` is the
-    /// cycle `dependencies` exists to reject.
+    /// A module of a package that declares one of the eight receives none of
+    /// them: `Basics` cannot implicitly import `Basics`, and `Maybe` importing
+    /// `Result` importing `Maybe` is the cycle `dependencies` exists to reject.
+    /// `package_declares_a_default: true` is how `new_environment` learns that —
+    /// see its doc comment — rather than `new_environment` inspecting `maybe`'s
+    /// own name.
     ///
-    /// Mutation-checked by dropping the `is_default` guard in
+    /// Mutation-checked by dropping the `package_declares_a_default` guard in
     /// `default_imports::implicit_imports`, which puts `Maybe` in its own scope.
     #[test]
     fn a_default_module_does_not_import_itself() -> Result<(), Vec<EnvError>> {
@@ -1182,7 +1195,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
         let maybe = ModuleName::new(PackageName::new("zelkova", "core"), "Maybe".into());
-        let env = new_environment(&maybe, &interfaces, &vec![])?;
+        let env = new_environment(&maybe, &interfaces, &vec![], true)?;
 
         assert_eq!(env.types.len(), 0, "types={:?}", env.types);
         assert_eq!(env.variables.len(), 0, "variables={:?}", env.variables);
@@ -1204,7 +1217,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
         let imports = vec![import("Maybe".into(), None, exposing_open())];
-        let env = new_environment(&module_name(), &interfaces, &imports)?;
+        let env = new_environment(&module_name(), &interfaces, &imports, false)?;
 
         match env.find_value(&"Maybe.map".into()) {
             Some(ValueType::Foreign(..)) => (),
@@ -1226,7 +1239,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = new_environment(&module_name(), &interfaces, &imports)?;
+        let env = new_environment(&module_name(), &interfaces, &imports, false)?;
 
         // Assert we have the expected
         assert!(
@@ -1309,7 +1322,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = new_environment(&module_name(), &interfaces, &imports)?;
+        let env = new_environment(&module_name(), &interfaces, &imports, false)?;
 
         // Lookup the expected values
         assert!(
@@ -1373,7 +1386,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = new_environment(&module_name(), &interfaces, &imports)?;
+        let env = new_environment(&module_name(), &interfaces, &imports, false)?;
 
         // Lookup the expected
         assert!(
@@ -1449,7 +1462,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = new_environment(&module_name(), &interfaces, &imports)?;
+        let env = new_environment(&module_name(), &interfaces, &imports, false)?;
 
         // Lookup the expected
         assert!(
@@ -1558,7 +1571,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = new_environment(&module_name(), &interfaces, &imports, false)
             .expect_err("an unknown module should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -1582,7 +1595,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = new_environment(&module_name(), &interfaces, &imports, false)
             .expect_err("an unknown module should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -1612,7 +1625,7 @@ mod tests {
         // no prefix at all — the last is the likeliest typo of the three.
         for typo in ["Js.Basicz", "Jz.Basics", "JsBasics"] {
             let imports = vec![import(typo.into(), None, exposing_open())];
-            let errors = new_environment(&module_name(), &interfaces, &imports)
+            let errors = new_environment(&module_name(), &interfaces, &imports, false)
                 .expect_err("an unknown module should not resolve");
             assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -1654,7 +1667,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = new_environment(&module_name(), &interfaces, &imports, false)
             .expect_err("an unknown exposed type should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -1697,7 +1710,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = new_environment(&module_name(), &interfaces, &imports, false)
             .expect_err("an unknown opaquely exposed type should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -1735,7 +1748,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = new_environment(&module_name(), &interfaces, &imports, false)
             .expect_err("an unknown exposed infix should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 

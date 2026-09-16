@@ -22,7 +22,7 @@ fn run(
 ) -> Result<zelkova_lang::compiler::canonical::Module, zelkova_lang::compiler::CompilationError> {
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
-    check_module(&test_package(), &interfaces, &parsed)
+    check_module(&test_package(), &interfaces, &parsed, false)
 }
 
 /// The type errors `source` produced, insisting that they *are* type errors.

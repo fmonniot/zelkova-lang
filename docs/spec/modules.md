@@ -734,25 +734,6 @@ written at the top of it, `Maybe` and `Just` likewise, and `List.map`, `Char.toU
 `String.length` are reachable under their qualified names. Nothing else is: a module that
 wants `Dict` imports it.
 
-```zel expect=ok package=defaults
-module Basics exposing (Int, (+), add)
-
-type Int = Int
-
-infix left 6 (+) = add
-
-add : Int -> Int -> Int
-add a b =
-  a
-```
-
-```zel expect=ok package=defaults
-module Main exposing (x)
-
-x : Int
-x = 1 + 2
-```
-
 The list is chosen so that the types appearing in ordinary type annotations are always
 writable. `Maybe` and `Result` are exposed with their constructors because matching on
 them is the ordinary way to use them, and a qualified `Maybe.Just` in every `case` branch
@@ -778,19 +759,35 @@ eight themselves, and not the modules beside them. `Basics` cannot import `Basic
 back: each is [an import cycle](#imports-may-not-form-a-cycle). Core's modules write every
 import they use, the way `Basics.zel`, `Maybe.zel` and `Bitwise.zel` already do.
 
+```zel expect=ok package=core-shaped
+module Basics exposing (Int, (+), add)
+
+type Int = Int
+
+infix left 6 (+) = add
+
+add : Int -> Int -> Int
+add a b =
+  a
+```
+
+```zel expect=canonical-error:VariableNotFound package=core-shaped
+module Main exposing (x)
+
+x : Int
+x = 1 + 2
+```
+
+`Main` is a module of the same package as `Basics` here, so it gets none of the eight and has
+to write `import Basics exposing (..)` for `+` to resolve, the way `Bitwise.zel` writes
+`import Basics exposing (Int)` for `Int` alone.
+
 Every module of every other package receives all eight, whatever it imports and whatever
 imports it. Core is a dependency of every package and dependencies run one way, so nothing you
 write can end up underneath one of the eight, and [no package but core may declare a module
 under one of their names](packages.md#two-modules-under-one-name-is-an-error). Why the exception
 is scoped to a package rather than judged from the import graph is
 [DEC-17](../decisions/dec-17.md).
-
-**Known gap:** the compiler does not decide this by package. It judges each module one entry at
-a time against the import graph as built so far, dropping only the entries that would close a
-cycle back — so inside `std/core`, `Bitwise` receives `Maybe`, `Result` and `Tuple`, `Js.Bitwise`
-receives those three and `Basics` besides, and the two facades `Basics` imports receive `Tuple`
-alone. No module names an entry it receives that way, so nothing compiles today that would not
-compile under the rule above. [`LANG-57`](../tickets/lang-57.md) is the ticket.
 
 **A module of `zelkova-core` receives the scalar type names without an import.** `Int`,
 `Float`, `Char`, `String` and `Bool` are in its scope with nothing written at the top of the

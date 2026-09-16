@@ -1,9 +1,0 @@
--- A second module exposing `add`, writing no import of its own. Nothing about
--- this file names `Basics` either, which is the point: the collision `Main`
--- hits below is between two modules, only one of which it actually imports.
-module Helper exposing (add)
-
-
-add : a -> a
-add x =
-  x

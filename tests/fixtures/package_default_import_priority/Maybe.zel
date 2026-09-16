@@ -1,8 +1,0 @@
--- A second module from the default import list, so that `Aux` has a lower-priority
--- entry available to it than `Basics`.
-module Maybe exposing (Maybe(..))
-
-import Zed
-
-
-type Maybe a = Just a | Nothing

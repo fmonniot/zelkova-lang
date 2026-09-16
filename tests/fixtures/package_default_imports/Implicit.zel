@@ -1,6 +1,0 @@
--- Nothing is written at the top of this file: `+` and `Int` arrive by default.
-module Implicit exposing (x)
-
-
-x : Int
-x = 1 + 2

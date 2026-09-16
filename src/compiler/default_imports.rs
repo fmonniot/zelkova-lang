@@ -26,32 +26,29 @@
 //!
 //! `Basics` cannot implicitly import `Basics`, and `Maybe` implicitly importing
 //! `Result` importing `Maybe` is exactly the loop
-//! [`dependencies`](crate::compiler::dependencies) exists to reject. Two rules keep
-//! the graph acyclic, and both are enforced here and in `ModuleWalker::new`:
+//! [`dependencies`](crate::compiler::dependencies) exists to reject. What keeps the
+//! graph acyclic is a property of the *package*, not of any one entry: `zelkova-core`
+//! — the package the eight belong to — is the exception, and it is all-or-nothing.
+//! No module of it receives any of the eight, not the eight themselves and not the
+//! facades they are built from, so nothing in the package can ever close a loop
+//! through an implicit edge. [`declares_a_default`] is that question, asked of a
+//! package by its module names — `PackageName` cannot yet answer it, since
+//! [`compile_package`](crate::compiler::compile_package) hardcodes one for every
+//! package it compiles. Every module of every other package receives all eight,
+//! whatever it imports and whatever imports it. [*The default
+//! imports*](../../../docs/spec/modules.md#the-default-imports) is the rule in full,
+//! and [`DEC-17`](../../../docs/decisions/dec-17.md) is why it is scoped to the
+//! package rather than judged from the import graph.
 //!
-//! 1. **A module named on the list receives no implicit imports** — [`is_default`].
-//!    Each of the eight writes the imports it needs, which is what `std/core`'s
-//!    `Basics.zel`, `Maybe.zel` and `Result.zel` already do.
-//! 2. **An implicit edge that would close a loop is not added.** `Basics` imports
-//!    the `Js.Basics` facade, so `Js.Basics` does not implicitly import `Basics`
-//!    back: the modules a default import is *built from* do not receive it.
-//!    `ModuleWalker::new` tests that edge by edge against the graph it has built so
-//!    far, so no addition can ever introduce a cycle that was not already written.
+//! `zelkova-core`'s own modules write every import they use — `Basics.zel`,
+//! `Maybe.zel`, `Result.zel` and `Bitwise.zel` already do — which is what makes the
+//! exception affordable: nothing in the package spends an entry it does not receive.
 //!
-//! Rule 2 reaches further than "built from", because the graph it consults includes
-//! the edges it has itself just added. A module no default import names can still
-//! lose an entry, when an implicit edge allocated for an *earlier* entry put it
-//! downstream of that one. `add_default_import_edges` allocates target by target in
-//! `DEFAULT_IMPORTS` order for exactly that reason — so a collision is decided by
-//! the list's priority rather than by what the modules are called — and its doc
-//! comment carries the argument that nothing beyond that priority is left to
-//! chance.
-//!
-//! The two rules agree with the availability check below rather than duplicating
-//! it. When rule 2 drops an edge `m → d`, it is because `d` already depends on `m`,
-//! which means `m` is checked *first* and `d`'s interface is not yet available when
-//! `m` is canonicalized — so [`implicit_imports`] skips the same import on its own,
-//! for its own reason. Whichever way a pair falls, both phases fall the same way.
+//! [`implicit_imports`] and `dependencies::add_default_import_edges` are asked the
+//! same question rather than each deriving their own answer: both take a
+//! `package_declares_a_default` argument computed once, from the same module names,
+//! so a package is exempt to `new_environment` exactly when it is to
+//! `ModuleWalker::new`.
 //!
 //! # An implicit import is never a diagnostic
 //!
@@ -208,27 +205,47 @@ impl DefaultImport {
 
 /// Whether `module` is one of the modules the default imports name.
 ///
-/// Such a module receives none of them: see rule 1 in this module's
-/// documentation.
+/// Such a module receives none of them — as a corollary of its package receiving
+/// none, since a package containing a module of this name is the one the list
+/// belongs to (see [`declares_a_default`] and this module's documentation).
 pub fn is_default(module: &Name) -> bool {
     DEFAULT_IMPORTS
         .iter()
         .any(|default| default.module == module.as_str())
 }
 
-/// The imports `module` gets without writing them, given what it *did* write and
+/// Whether a package declares one of the eight, given the names of every module
+/// it contains.
+///
+/// A package this is true for is `zelkova-core`, the package the eight belong to,
+/// and none of its modules receives any of them ([`implicit_imports`]) — the
+/// package is told apart by what it declares because
+/// [`compile_package`](crate::compiler::compile_package) hardcodes a
+/// `PackageName` for every package it compiles and cannot yet tell one from
+/// another by name.
+pub fn declares_a_default<'a>(names: impl IntoIterator<Item = &'a Name>) -> bool {
+    names.into_iter().any(is_default)
+}
+
+/// The imports a module gets without writing them, given what it *did* write and
 /// which interfaces are available to it.
 ///
-/// Empty for a module on the list itself. Otherwise one [`parser::Import`] per
-/// entry that `written` does not already name and that `interfaces` can satisfy —
-/// a written `import` of a default module **replaces** the implicit one, so
-/// `import Maybe as M` means `M.map` and nothing else.
+/// Empty whenever `package_declares_a_default` is set — a package that declares
+/// one of the eight gets none of them for any of its modules, including the ones
+/// named on the list themselves. That is why this no longer takes the module's
+/// own name: a module named on the list is exactly what makes its own package
+/// the exception ([`declares_a_default`]), so the caller's package-level answer
+/// already covers it and there is nothing left for a per-module check to add.
+/// Otherwise this returns one [`parser::Import`] per entry that `written` does
+/// not already name and that `interfaces` can satisfy — a written `import` of a
+/// default module **replaces** the implicit one, so `import Maybe as M` means
+/// `M.map` and nothing else.
 pub fn implicit_imports(
-    module: &Name,
     written: &[parser::Import],
     interfaces: &HashMap<Name, Interface>,
+    package_declares_a_default: bool,
 ) -> Vec<parser::Import> {
-    if is_default(module) {
+    if package_declares_a_default {
         return Vec::new();
     }
 
@@ -308,27 +325,40 @@ mod tests {
         let available = interfaces(vec![interface("Basics", false), interface("Tuple", false)]);
 
         assert_eq!(
-            names(&implicit_imports(&"Main".into(), &[], &available)),
+            names(&implicit_imports(&[], &available, false)),
             vec!["Basics".to_string(), "Tuple".to_string()]
         );
     }
 
-    /// A module on the list receives none of them — rule 1, which is what keeps
-    /// `Maybe` and `Result` from importing each other.
+    /// `LANG-57`: a module of a package that declares one of the eight gets none
+    /// of them — not only the modules named on the list, but every module beside
+    /// them too — while an otherwise identical module of a package that declares
+    /// none of the eight still gets everything it can satisfy.
     ///
-    /// Mutation-checked by dropping the `is_default` guard: `Maybe` then comes
-    /// back with `Basics` and `Result` implicitly imported.
+    /// Mutation-checked by dropping the `package_declares_a_default` guard in
+    /// `implicit_imports`: the `true` case then comes back with `Basics` (and
+    /// anything else `available` can satisfy) instead of nothing.
     #[test]
-    fn a_default_module_receives_no_implicit_imports() {
+    fn a_package_declaring_a_default_gets_no_implicit_imports() {
         let available = interfaces(vec![
             interface("Basics", false),
             interface("Maybe", true),
             interface("Result", true),
         ]);
 
-        assert!(implicit_imports(&"Maybe".into(), &[], &available).is_empty());
-        assert!(implicit_imports(&"Basics".into(), &[], &available).is_empty());
-        assert!(!implicit_imports(&"Widget".into(), &[], &available).is_empty());
+        assert!(implicit_imports(&[], &available, true).is_empty());
+        assert!(!implicit_imports(&[], &available, false).is_empty());
+    }
+
+    /// `declares_a_default` is a question about a package's whole set of module
+    /// names, true as soon as any one of them is on the list.
+    #[test]
+    fn declares_a_default_asks_about_the_whole_package() {
+        let core_shaped = [Name::new("Bitwise"), Name::new("Basics")];
+        let ordinary = [Name::new("Widget"), Name::new("Gadget")];
+
+        assert!(declares_a_default(core_shaped.iter()));
+        assert!(!declares_a_default(ordinary.iter()));
     }
 
     /// A written import of a default module replaces the implicit one, so the two
@@ -348,7 +378,7 @@ mod tests {
         }];
 
         assert_eq!(
-            names(&implicit_imports(&"Main".into(), &written, &available)),
+            names(&implicit_imports(&written, &available, false)),
             vec!["Tuple".to_string()]
         );
     }
@@ -366,10 +396,10 @@ mod tests {
         let without_type = interfaces(vec![interface("Maybe", false)]);
 
         assert_eq!(
-            names(&implicit_imports(&"Main".into(), &[], &with_type)),
+            names(&implicit_imports(&[], &with_type, false)),
             vec!["Maybe".to_string()]
         );
-        assert!(implicit_imports(&"Main".into(), &[], &without_type).is_empty());
+        assert!(implicit_imports(&[], &without_type, false).is_empty());
     }
 
     /// The shape each entry is turned into: `Basics` open, `Maybe` with its

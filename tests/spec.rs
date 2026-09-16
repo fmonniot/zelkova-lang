@@ -148,7 +148,7 @@ fn parse(source: &str) -> Result<parser::Module, parser::Error> {
 
 fn canonicalize(module: &parser::Module) -> Result<canonical::Module, Vec<canonical::Error>> {
     let interfaces = std::collections::HashMap::new();
-    canonical::canonicalize(&test_package(), &interfaces, module)
+    canonical::canonicalize(&test_package(), &interfaces, module, false)
 }
 
 /// The phases are called one at a time rather than through
@@ -494,8 +494,9 @@ fn canonicalize_tagged(
     package: &zelkova_lang::compiler::PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
+    declares_a_default: bool,
 ) -> Result<canonical::Module, (Name, Vec<canonical::Error>)> {
-    canonical::canonicalize(package, interfaces, source)
+    canonical::canonicalize(package, interfaces, source, declares_a_default)
         .map_err(|errors| (source.name.clone(), errors))
 }
 

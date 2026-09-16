@@ -33,7 +33,7 @@ pub fn parse_source(source: &str) -> parser::Module {
 pub fn canonicalize_standalone(source: &str) -> Result<canonical::Module, Vec<canonical::Error>> {
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
-    canonical::canonicalize(&test_package(), &interfaces, &parsed)
+    canonical::canonicalize(&test_package(), &interfaces, &parsed, false)
 }
 
 pub fn canonicalize_with_interfaces(
@@ -41,7 +41,7 @@ pub fn canonicalize_with_interfaces(
     interfaces: &HashMap<Name, Interface>,
 ) -> Result<canonical::Module, Vec<canonical::Error>> {
     let parsed = parse_source(source);
-    canonical::canonicalize(&test_package(), interfaces, &parsed)
+    canonical::canonicalize(&test_package(), interfaces, &parsed, false)
 }
 
 /// Build a minimal Maybe interface for use in tests that need it.

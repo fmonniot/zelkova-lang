@@ -1493,11 +1493,16 @@ impl From<Vec<Error>> for Error {
     }
 }
 
-/// Transform a given `parser::Module` into a `canonical::Module`
+/// Transform a given `parser::Module` into a `canonical::Module`.
+///
+/// `package_declares_a_default` is `check_module`'s own parameter, passed straight
+/// through to [`new_environment`] — see its doc comment for what it means and
+/// where it comes from.
 pub fn canonicalize(
     package: &PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
+    package_declares_a_default: bool,
 ) -> Result<Module, Vec<Error>> {
     let name = ModuleName {
         package: package.clone(),
@@ -1505,8 +1510,13 @@ pub fn canonicalize(
     };
 
     let mut errors: Vec<Error> = vec![];
-    let mut env =
-        new_environment(&name, interfaces, &source.imports).map_err(|e| vec![e.into()])?;
+    let mut env = new_environment(
+        &name,
+        interfaces,
+        &source.imports,
+        package_declares_a_default,
+    )
+    .map_err(|e| vec![e.into()])?;
 
     // `unsafe` is a claim about the companion standing behind a facade signature,
     // so it has nothing to say on a declaration with a body above it. The grammar
