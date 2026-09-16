@@ -243,7 +243,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-29 | task | — | closed 2026-09-15 | `unsafe` marks 45 `std/core` signatures and none of the chapter's own examples |
 | SPEC-30 | task | — | closed 2026-09-15 | `unsafe` outside a facade is rejected, and no chapter says so |
 | SPEC-31 | task | — | closed 2026-09-14 | A facade has no legitimate way to name `Int`, and `BUG-16` is what hides it |
-| [SPEC-32](spec-32.md) | task | — | open | A module is made ambiguous by an import it never wrote |
+| SPEC-32 | task | — | closed 2026-09-15 | A module is made ambiguous by an import it never wrote |
 | [SPEC-33](spec-33.md) | task | — | open | Which default imports a module gets is a fixed point over the whole package |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |

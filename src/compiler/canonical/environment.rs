@@ -15,11 +15,34 @@ pub enum ValueType {
     TopLevel,
     /// A value found through exactly one import, together with where it was
     /// declared in that module — `None` when the interface it came from cannot
-    /// say (a hand-built one, or one built before its file was known).
-    Foreign(ModuleName, Option<SourceSpan>, Type),
+    /// say (a hand-built one, or one built before its file was known) — and
+    /// whether that import was written or supplied by [the default import
+    /// list](ImportOrigin).
+    Foreign(ModuleName, Option<SourceSpan>, Type, ImportOrigin),
     /// A value exposed unqualified by more than one import — `AmbiguousVariables`
     /// once looked up — each candidate paired the same way as `Foreign`.
-    Foreigns(Vec<(ModuleName, Option<SourceSpan>)>),
+    Foreigns(Vec<(ModuleName, Option<SourceSpan>, ImportOrigin)>),
+}
+
+/// Whether a contributor to a module's scope was named by an `import` line the
+/// file wrote, or supplied by [the default import
+/// list](crate::compiler::default_imports) because the file wrote none for that
+/// module.
+///
+/// Carried alongside `ValueType::Foreign`/`Foreigns` purely for diagnostics:
+/// [`super::Error::AmbiguousVariables`]'s note calls a `Default` contributor out
+/// as implicit, since the collision it causes sits in a module the file never
+/// named — [*The default
+/// imports*](../../../docs/spec/modules.md#the-default-imports) states the rule
+/// that a default entry participates in ambiguity exactly as a written import
+/// does; this is what lets the diagnostic say which kind of import it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportOrigin {
+    /// Named by an `import` line in the module under check.
+    Written,
+    /// Not written by the module under check — supplied because the module
+    /// wrote no import for it.
+    Default,
 }
 
 /// An operator's `infix` declaration as the environment holds it: what it declares,
@@ -281,10 +304,13 @@ pub fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>) -> Op
 ///
 /// The implicit half comes first, and goes through `process_import` exactly as a
 /// written `import` does, so a name arriving through
-/// [`default_imports`](crate::compiler::default_imports) is indistinguishable from
-/// one the file named — including for `insert_foreign_value`, which is what makes
-/// two imports of one name ambiguous. That is also why a module that *writes* one
-/// of the default imports gets only what it wrote:
+/// [`default_imports`](crate::compiler::default_imports) resolves exactly like one
+/// the file named — including for `insert_foreign_value`, which is what makes two
+/// imports of one name ambiguous regardless of which half either came from. The
+/// only place the two are told apart is [`ImportOrigin`], carried alongside each
+/// candidate purely so `AmbiguousVariables`' note can say which contributor the
+/// module never wrote (SPEC-32). That is also why a module that *writes* one of
+/// the default imports gets only what it wrote:
 /// [`implicit_imports`](crate::compiler::default_imports::implicit_imports) drops
 /// an entry the file already names, rather than registering `Basics` twice over and
 /// turning every use of `+` into an `AmbiguousVariables`.
@@ -304,14 +330,22 @@ pub fn new_environment(
 
     let implicit = default_imports::implicit_imports(module_name.name(), imports, interfaces);
 
-    for parser::Import {
-        name,
-        alias,
-        exposing,
-        span,
-    } in implicit.iter().chain(imports)
+    let tagged = implicit
+        .iter()
+        .map(|import| (import, ImportOrigin::Default))
+        .chain(imports.iter().map(|import| (import, ImportOrigin::Written)));
+
+    for (
+        parser::Import {
+            name,
+            alias,
+            exposing,
+            span,
+        },
+        origin,
+    ) in tagged
     {
-        match process_import(&mut env, interfaces, name, alias, exposing, *span) {
+        match process_import(&mut env, interfaces, name, alias, exposing, *span, origin) {
             Ok(_) => (),
             Err(err) => {
                 errors.push(err);
@@ -339,6 +373,10 @@ fn process_import(
     // instead (`ERR-9`) — `bar` in `import Foo exposing (bar)`, not the line it
     // sits on.
     span: NodeSpan,
+    // Whether this import was written by the module under check or supplied by
+    // the default import list — carried onto every `ValueType::Foreign` this
+    // call produces, purely for `AmbiguousVariables`' diagnostic (SPEC-32).
+    origin: ImportOrigin,
 ) -> Result<(), EnvError> {
     let interface = interfaces.get(imported_module_name).ok_or_else(|| {
         // Module names live in a flat namespace and a dotted one — `Js.Basics` —
@@ -374,6 +412,7 @@ fn process_import(
             tpe.clone(),
             interface.source_span(*node_span),
             &interface.module_name,
+            origin,
         );
     }
 
@@ -401,6 +440,7 @@ fn process_import(
                     tpe.clone(),
                     interface.source_span(*node_span),
                     &interface.module_name,
+                    origin,
                 );
             }
 
@@ -443,6 +483,7 @@ fn process_import(
                             tpe.clone(),
                             interface.source_span(*node_span),
                             &interface.module_name,
+                            origin,
                         );
                     }
                     parser::ExposedKind::Upper(type_name, parser::Privacy::Private) => {
@@ -587,19 +628,23 @@ fn insert_foreign_value(
     tpe: Type,
     source: Option<SourceSpan>,
     module_name: &ModuleName,
+    origin: ImportOrigin,
 ) {
-    let vt = ValueType::Foreign(module_name.clone(), source, tpe.clone());
+    let vt = ValueType::Foreign(module_name.clone(), source, tpe.clone(), origin);
 
     // Can it be done more efficiently by using get_mut ?
     match env.variables.remove(&name) {
-        Some(ValueType::Foreign(module, prev_source, _)) => {
+        Some(ValueType::Foreign(module, prev_source, _, prev_origin)) => {
             env.variables.insert(
                 name,
-                ValueType::Foreigns(vec![(module_name.clone(), source), (module, prev_source)]),
+                ValueType::Foreigns(vec![
+                    (module_name.clone(), source, origin),
+                    (module, prev_source, prev_origin),
+                ]),
             );
         }
         Some(ValueType::Foreigns(mut vec)) => {
-            vec.push((module_name.clone(), source));
+            vec.push((module_name.clone(), source, origin));
             env.variables.insert(name, ValueType::Foreigns(vec));
         }
         None => {

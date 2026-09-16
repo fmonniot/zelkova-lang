@@ -769,6 +769,8 @@ An `import` of one of the eight **replaces** the implicit one, the way [an alias
 a module's own name](#imports): writing a line of the list out verbatim changes nothing,
 and `import Maybe as M` means `M.map` and no unqualified `Maybe`.
 
+A default entry participates in ambiguity exactly as a written import does.
+
 The eight modules receive none of the list themselves: `Basics` cannot import `Basics`,
 and `Maybe` and `Result` would import each other — [an import
 cycle](#imports-may-not-form-a-cycle) either way. They write the imports they need.

@@ -1,0 +1,12 @@
+-- A stand-in for `std/core`'s `Basics`, holding just enough to collide with
+-- `Helper` below on `add`. Every other module in this package receives this
+-- one by default, without writing `import Basics`.
+module Basics exposing (Int, add)
+
+
+type Int = Int
+
+
+add : Int -> Int -> Int
+add a b =
+  a
