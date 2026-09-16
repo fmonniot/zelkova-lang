@@ -622,22 +622,49 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
 ///
 /// `var_map` maps named type variables (e.g. "a") to consistent TypeVariable
 /// ids, so that `a -> a` produces the same variable on both sides.
+///
+/// # What this does with the module half of a name
+///
+/// Nothing, deliberately. A [`canonical::Type::Type`] names its declaration in
+/// full — `Widget.Size`, not `Size` (`AST-4`) — and every arm below reads only the
+/// unqualified half of it: `Type::Adt` carries that spelling, and so does the
+/// `adt_name` a constructor pattern is translated to, so the two sides of
+/// [`type_check`]'s environment go on meeting on the string they always met on.
+/// For a name that resolved, that half is the declaration's own spelling. For one
+/// that resolved to nothing it is the whole *written* spelling, dots and all,
+/// because `Type::from_parser_type` hands the undivided name to the module under
+/// check rather than splitting a module half off it — so an unresolved
+/// `Missing.Thing` still arrives here as `Missing.Thing` and does not collapse
+/// onto a local `Thing`.
+///
+/// The four scalar arms match a spelling too, so a module declaring its own `Bool`
+/// still annotates with the literal `Bool` and still fails to type check against
+/// its own constructors. That is `BUG-26`, and the qualified name this now
+/// receives is what it was waiting on.
 fn canonical_type_to_typer_type(
     tpe: &canonical::Type,
     var_map: &mut HashMap<String, TypeVariable>,
     counter: &mut u32,
 ) -> Option<Type> {
     match tpe {
-        canonical::Type::Type(name, args) if args.is_empty() && name.as_str() == "Int" => {
+        canonical::Type::Type(name, args)
+            if args.is_empty() && name.unqualified_name().as_str() == "Int" =>
+        {
             Some(Type::Literal(TypeLiteral::Int))
         }
-        canonical::Type::Type(name, args) if args.is_empty() && name.as_str() == "Bool" => {
+        canonical::Type::Type(name, args)
+            if args.is_empty() && name.unqualified_name().as_str() == "Bool" =>
+        {
             Some(Type::Literal(TypeLiteral::Bool))
         }
-        canonical::Type::Type(name, args) if args.is_empty() && name.as_str() == "Char" => {
+        canonical::Type::Type(name, args)
+            if args.is_empty() && name.unqualified_name().as_str() == "Char" =>
+        {
             Some(Type::Literal(TypeLiteral::Char))
         }
-        canonical::Type::Type(name, args) if args.is_empty() && name.as_str() == "Float" => {
+        canonical::Type::Type(name, args)
+            if args.is_empty() && name.unqualified_name().as_str() == "Float" =>
+        {
             Some(Type::Literal(TypeLiteral::Float))
         }
         canonical::Type::Variable(name) => {
@@ -669,7 +696,10 @@ fn canonical_type_to_typer_type(
                 .iter()
                 .map(|a| canonical_type_to_typer_type(a, var_map, counter))
                 .collect();
-            Some(Type::Adt(name.as_str().to_string(), converted?))
+            Some(Type::Adt(
+                name.unqualified_name().as_str().to_string(),
+                converted?,
+            ))
         }
     }
 }
@@ -784,8 +814,17 @@ fn translate_pattern(
             vec![],
         ),
         canonical::PatternKind::Constructor { ctor, args } => {
-            // Look up the parent union type to get its type variables.
-            let union_type = module_types.get(&ctor.tpe)?;
+            // Look up the parent union type to get its type variables. `module_types`
+            // is this module's own declarations, keyed by the bare name the `type`
+            // line wrote, so the constructor's qualified type name is narrowed to
+            // that half. Narrowing loses the module, so what the key finds is not
+            // necessarily the union the constructor came from: a constructor of an
+            // imported type finds nothing here only while this module declares no
+            // type of the same name, and finds the *local* declaration as soon as
+            // it does — leaving `adt_args` built from the wrong declaration's
+            // variables and `adt_name` collapsing the two. `ctor.tpe` is the
+            // qualified name that could tell them apart; keying on it is `BUG-26`.
+            let union_type = module_types.get(&ctor.tpe.unqualified_name())?;
 
             // Create fresh type vars for each ADT type parameter.
             let mut adt_var_map: HashMap<String, TypeVariable> = HashMap::new();
@@ -824,7 +863,7 @@ fn translate_pattern(
             }
 
             let kind = TermPatternKind::Constructor {
-                adt_name: ctor.tpe.as_str().to_string(),
+                adt_name: ctor.tpe.unqualified_name().as_str().to_string(),
                 adt_args,
                 bindings: bindings.clone(),
             };

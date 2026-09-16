@@ -1,7 +1,7 @@
 //! env module
 
 use super::{parser, Pattern, PatternKind};
-use super::{Infix, Interface, ModuleName, Name, Type, TypeConstructor, UnionType};
+use super::{Infix, Interface, ModuleName, Name, QualName, Type, TypeConstructor, UnionType};
 use crate::compiler::default_imports;
 use crate::compiler::position::NodeSpan;
 use crate::compiler::{PhaseError, SourceSpan, SpanLabel};
@@ -149,16 +149,18 @@ impl InfixDeclaration {
 /// A `type Maybe a = …` declaration is a type *constructor*: applying it to
 /// arguments is what produces a `Type`, and `Maybe` on its own is not one — there is
 /// no such thing as the type `Maybe` with `a` left dangling. Storing the fully
-/// applied `Type::Type("Maybe", [Variable("a")])` and handing it back verbatim on
+/// applied `Type::Type("Maybe.Maybe", [Variable("a")])` and handing it back verbatim on
 /// every lookup, which is what this replaced, conflated the two: it made every
 /// application of `Maybe` collapse to the same declaration-shaped type regardless of
 /// what was actually written, which is the defect `BUG-17` describes in full.
 ///
-/// `name` is the name the *declaration* uses, which is not always the name the
+/// `name` is the *declaration's* qualified name, which is never the name the
 /// lookup used: one union is inserted under every spelling an import makes
-/// available for it, so `Lib.Option` and `Option` are two keys onto one entry.
-/// `Type::from_parser_type` builds the canonical type out of this name rather than
-/// the written one, which is what keeps the two spellings unifiable.
+/// available for it, so `Lib.Option`, `Option` and an alias' `L.Option` are three
+/// keys onto one entry. `Type::from_parser_type` builds the canonical type out of
+/// this name rather than the written one, which is what keeps the three spellings
+/// unifiable — and what keeps two modules' `Size` apart, since the module is part
+/// of the name each records (`AST-4`).
 ///
 /// `variables` is the declaration's own type variables, in the order the `type`
 /// line wrote them — its length is the arity a written application is checked
@@ -170,7 +172,7 @@ impl InfixDeclaration {
 /// same map.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeArity {
-    pub name: Name,
+    pub name: QualName,
     pub variables: Vec<Name>,
 }
 
@@ -420,6 +422,7 @@ fn process_import(
         insert_foreign_union_type(
             env,
             Some(prefix),
+            &interface.module_name,
             union_name,
             &union.variables,
             union.variants.iter(),
@@ -454,6 +457,7 @@ fn process_import(
                 insert_foreign_union_type(
                     env,
                     None,
+                    &interface.module_name,
                     union_name,
                     &union.variables,
                     union.variants.iter(),
@@ -509,7 +513,7 @@ fn process_import(
                         env.types.insert(
                             type_name.clone(),
                             TypeArity {
-                                name: type_name.clone(),
+                                name: interface.module_name.qualify_name(type_name),
                                 variables: union.variables.clone(),
                             },
                         );
@@ -524,6 +528,7 @@ fn process_import(
                         insert_foreign_union_type(
                             env,
                             None,
+                            &interface.module_name,
                             type_name,
                             &union.variables,
                             union.variants.iter(),
@@ -592,9 +597,19 @@ fn imported_infix(interface: &Interface, infix: &Infix) -> InfixEntry {
     }
 }
 
+/// Register an imported union under one spelling — `qualifier` is the prefix the
+/// importing module reaches it by (the module's own name, or the alias it wrote),
+/// or `None` for the unqualified spelling an `exposing` list adds.
+///
+/// `declaring_module` is a separate parameter precisely because it is not the
+/// qualifier: the key a lookup uses is the spelling, and the [`TypeArity`] it
+/// finds records the declaration. `import Widget as W` inserts `W.Size` as a key
+/// and `Widget.Size` as the name, so an annotation written `W.Size` canonicalizes
+/// to the type `Widget` declared (`AST-4`).
 fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
     env: &mut RootEnvironment,
     qualifier: Option<&Name>,
+    declaring_module: &ModuleName,
     union_name: &Name,
     variables: &[Name],
     variants: I,
@@ -610,7 +625,7 @@ fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
     env.types.insert(
         qualify(union_name),
         TypeArity {
-            name: union_name.clone(),
+            name: declaring_module.qualify_name(union_name),
             variables: variables.to_vec(),
         },
     );
@@ -809,10 +824,14 @@ impl RootEnvironment {
 
     // TODO Use insert_foreign_union_type (and rename to remove the foreign part)
     pub fn insert_union_type(&mut self, name: Name, union: UnionType) {
+        // The declaration is the module under check's own, so this environment's
+        // module name is the one it belongs to (`AST-4`).
+        let qualified = self.module_name.qualify_name(&name);
+
         self.types.insert(
-            name.clone(),
+            name,
             TypeArity {
-                name,
+                name: qualified,
                 variables: union.variables,
             },
         );
@@ -1000,7 +1019,11 @@ mod tests {
     fn maybe_interface() -> (Name, Interface) {
         let type_var = |name: &str| Type::Variable(name.into());
 
-        let type_hk = |name: &str, params| Type::Type(name.into(), params);
+        // A type's canonical head names the module that declared it, so the
+        // `Maybe` this interface exports is `Maybe.Maybe`.
+        let type_hk = |name: &str, params| {
+            Type::Type(QualName::parse(format!("Maybe.{}", name)).unwrap(), params)
+        };
 
         let type_fun = |t1, t2| Type::Arrow(Box::new(t1), Box::new(t2));
 
@@ -1056,12 +1079,12 @@ mod tests {
                     TypeConstructor {
                         name: "Just".into(),
                         type_parameters: vec![Type::Variable("a".into())],
-                        tpe: "Maybe".into(),
+                        tpe: QualName::parse("Maybe.Maybe").unwrap(),
                     },
                     TypeConstructor {
                         name: "Nothing".into(),
                         type_parameters: vec![],
-                        tpe: "Maybe".into(),
+                        tpe: QualName::parse("Maybe.Maybe").unwrap(),
                     },
                 ],
             },

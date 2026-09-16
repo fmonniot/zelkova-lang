@@ -251,6 +251,7 @@ pub fn implicit_imports(
 mod tests {
     use super::*;
     use crate::compiler::canonical::{Type, TypeConstructor, UnionType};
+    use crate::compiler::name::QualName;
     use crate::compiler::{ModuleName, PackageName};
 
     /// An interface named `module`, declaring a union of the same name when
@@ -266,7 +267,9 @@ mod tests {
                     variants: vec![TypeConstructor {
                         name: "Just".into(),
                         type_parameters: vec![Type::Variable("a".into())],
-                        tpe: Name::new(module),
+                        // The union shares its module's name, so the declaration
+                        // it names is `Maybe.Maybe`.
+                        tpe: QualName::parse(format!("{}.{}", module, module)).unwrap(),
                     }],
                 },
             );

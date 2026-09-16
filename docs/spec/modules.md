@@ -819,8 +819,8 @@ unsafe twice : Int -> Int
 
 **Known gap:** the second block above is green for the wrong reason. Nothing supplies the
 scalar names yet; `Int` resolves to nothing there and a type is fabricated for it
-([`BUG-16`](../tickets/bug-16.md)), and the fabrication passes for `Basics`' `Int` only because
-a type is identified today by its unqualified name.
+([`BUG-16`](../tickets/bug-16.md)) — a type belonging to the facade's own module, and not the
+`Int` `Basics` declares.
 
 **Known gap:** `std/core` ships four of the eight, so `List`, `Char`, `String` and `Task`
 bring nothing. A program naming `String.length` is rejected where the name is used.

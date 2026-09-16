@@ -9,10 +9,12 @@ type error that names one type twice: "cannot match `Bool` with `Bool`").
 `module.types` entry at `Type::Adt(type_name, args)`.
 
 **Problem:** the two disagree about what a locally declared `Bool` is. The annotation side
-maps the bare name to `Type::Literal(TypeLiteral::Bool)`:
+reads the unqualified half of the name and maps it to `Type::Literal(TypeLiteral::Bool)`:
 
 ```rust
-canonical::Type::Type(name, args) if args.is_empty() && name.as_str() == "Bool" => {
+canonical::Type::Type(name, args)
+    if args.is_empty() && name.unqualified_name().as_str() == "Bool" =>
+{
     Some(Type::Literal(TypeLiteral::Bool))
 }
 ```
@@ -59,9 +61,8 @@ owner):** a [scalar type](../spec/types.md#scalar-types) is known by the **quali
 its declaration**, never by its spelling. A module declaring its own `Bool` declares an
 ordinary type that shares four letters with a scalar, and every phase treats it as one.
 
-**Depends on:** [AST-4](ast-4.md), which is where most of the work is. A canonical type carries
-a bare `Name`, so there is nothing for the typer to match a qualified name against until that
-lands.
+**Depends on:** AST-4, which was most of the work and is closed — the qualified name
+`canonical::Type::Type` now holds is what the typer matches against.
 
 **Blocks:** [LANG-58](lang-58.md) and [LANG-59](lang-59.md), both of which need the compiler to
 hold the scalar names before they can seed or check them.

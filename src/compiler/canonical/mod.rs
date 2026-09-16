@@ -263,8 +263,16 @@ pub struct TypeConstructor {
     pub name: Name,
     /// The types of the parameters
     pub type_parameters: Vec<Type>,
-    /// The type's name once constructed
-    pub tpe: Name,
+    /// The type's name once constructed, qualified by the module that declared
+    /// it — `Widget.Size` for a `type Size = …` written in `Widget`.
+    ///
+    /// Qualified for the same reason [`Type::Type`]'s head is (`AST-4`): a
+    /// constructor travels into every module that imports it, and the type it
+    /// builds has to stay the declaring module's type there. The `Type` this
+    /// field is turned into at a use site — `Expression::from_parser`'s
+    /// `TypeConstructor` arm — is built straight out of it, so the two agree by
+    /// construction.
+    pub tpe: QualName,
 }
 
 /// A canonical type.
@@ -303,7 +311,20 @@ pub struct TypeConstructor {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Variable(Name),
-    Type(Name, Vec<Type>),
+    /// A named type applied to its arguments, the name being the [`QualName`] of
+    /// the declaration it resolved to.
+    ///
+    /// The module is part of the identity of the type, not decoration on it: a
+    /// `type Size` in `Widget` and a `type Size` in `Gadget` are two types, and
+    /// two values of them are interchangeable nowhere. Carrying only the
+    /// spelling made them one value here, which is what `AST-4` closed.
+    ///
+    /// The name is the *declaration's*, never the spelling that reached it.
+    /// `import Widget as W` followed by `W.Size` records `Widget.Size`, the same
+    /// rule [name resolution](../../../docs/spec/name-resolution.md) states for
+    /// values: an alias names a route to a declaration and not a second
+    /// declaration.
+    Type(QualName, Vec<Type>),
     // Record
     // Unit
     Arrow(Box<Type>, Box<Type>),
@@ -331,9 +352,10 @@ impl Type {
                     // `name` resolves to a declared type: `args` is what was
                     // written after it, and has to match the declaration's own
                     // arity (`BUG-17`) — nothing else here re-derives that check.
-                    // The head is the *declaration's* name, not the one written:
-                    // `Lib.Option` and `Option` are two spellings of one entry, and
-                    // normalizing here is what lets the two unify downstream.
+                    // The head is the *declaration's* qualified name, not the one
+                    // written: `Lib.Option`, `Option` and an alias' `L.Option` are
+                    // three spellings of one entry, and every one of them records
+                    // the module that declared it.
                     Some(declared) if declared.arity() == args.len() => {
                         Ok(Type::Type(declared.name.clone(), args))
                     }
@@ -344,8 +366,20 @@ impl Type {
                         tpe.span,
                     )),
                     // `name` resolves to nothing: BUG-16 is the ticket for reporting
-                    // this instead of fabricating a type for it.
-                    None => Ok(Type::Type(name.clone(), args)),
+                    // this instead of fabricating a type for it. Until then the
+                    // fabricated head is attributed to the module under check —
+                    // the same fallback the `TypeConstructor` arm of
+                    // `Expression::from_parser` uses — and never to a module half
+                    // read off the written spelling. A written `W.Thing` says which
+                    // *route* was written and not which module declared anything:
+                    // under `import Widget as W` that half is an alias, and reading
+                    // it would fabricate a head in a module named `W`, inverting the
+                    // rule the `Some` arm above enforces. `qualify_name` does not
+                    // split the name it is handed, so a written `Missing.Thing`
+                    // stays one dotted unqualified half — which is what keeps it
+                    // distinct from a local `Thing` at the typer, exactly as it was
+                    // before the head became a `QualName`.
+                    None => Ok(Type::Type(env.module_name().qualify_name(name), args)),
                 }
             }
             parser::TypeKind::Arrow(t1, t2) => Ok(Type::Arrow(
@@ -1736,6 +1770,9 @@ fn do_types(
 ) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
     let iter = types.iter().map(|tpe| {
         let tpe_name = tpe.name.clone();
+        // The declaration is this module's, so this is where its variants learn
+        // which module the type they build belongs to (`AST-4`).
+        let qualified_tpe_name = env.module_name().qualify_name(&tpe_name);
         let variables = tpe.type_arguments.clone();
 
         trace!("do_types(in:{:?})", tpe);
@@ -1767,7 +1804,7 @@ fn do_types(
                     Ok(TypeConstructor {
                         name: name.clone(),
                         type_parameters,
-                        tpe: tpe_name.clone(),
+                        tpe: qualified_tpe_name.clone(),
                     })
                 }
                 parser::TypeKind::Variable(name) => Err(Error::InvalidVariant(
