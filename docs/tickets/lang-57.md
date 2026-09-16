@@ -65,11 +65,11 @@ and adds nothing. No ordinary package changes behaviour here.
    `default_imports`' *Where the cycle does not happen* to state the package rule — its rule 2
    and the propagation paragraph under it are the old rule written out.
 
-**Interaction with [`LANG-53`](lang-53.md):** that ticket seeds the five scalar names for a
+**Interaction with [`LANG-58`](lang-58.md):** that ticket seeds the five scalar names for a
 module that *dropped the `Basics` entry*; the chapter now gives them to every module of
 `zelkova-core`, which is the same set of modules under this ticket's rule and a larger one
-before it. Either ticket may land first. If `LANG-53` lands first, its trigger is rewritten
-here; if this lands first, `LANG-53` is written against the package answer from step 1 and its
+before it. Either ticket may land first. If `LANG-58` lands first, its trigger is rewritten
+here; if this lands first, `LANG-58` is written against the package answer from step 1 and its
 closing note about a coarser rule no longer applies.
 
 **Acceptance:** the probe above prints an empty set for all seven `std/core` modules, and

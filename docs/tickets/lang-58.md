@@ -1,4 +1,4 @@
-# LANG-53 · A module underneath `Basics` cannot name a scalar type
+# LANG-58 · A module underneath `Basics` cannot name a scalar type
 
 **Sizing:** medium. The rule is four lines in one function; establishing that the five names
 resolve without pulling `Basics`' interface into the graph is the work, and the acceptance
@@ -23,6 +23,9 @@ five names to nothing the rest of the compiler could tell apart from a fabricati
 
 **Blocks:** [BUG-16](bug-16.md). That ticket's fix turns `Js/Basics.zel` and `Js/Utils.zel` red
 with no available spelling until this lands.
+
+**Renumbered from LANG-53** on 2026-09-15: that ID had already been used and closed
+(`unsafe` marks a facade signature). See `docs/tickets/README.md`'s tombstone row.
 
 **Problem:** `unsafe idiv : Int -> Int -> Int` at `std/core/src/Js/Basics.zel:22` names a type
 the module has no way to reach. Writing `import Basics exposing (Int)` is [a

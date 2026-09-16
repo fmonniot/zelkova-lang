@@ -63,14 +63,14 @@ ordinary type that shares four letters with a scalar, and every phase treats it 
 a bare `Name`, so there is nothing for the typer to match a qualified name against until that
 lands.
 
-**Blocks:** [LANG-53](lang-53.md) and [LANG-54](lang-54.md), both of which need the compiler to
+**Blocks:** [LANG-58](lang-58.md) and [LANG-59](lang-59.md), both of which need the compiler to
 hold the scalar names before they can seed or check them.
 
 **Fix:** hold the five names the compiler knows — `Basics.Int`, `Basics.Float`, `Basics.Bool`,
 `Char.Char` and `String.String` — and have `canonical_type_to_typer_type` match on those rather
 than on `name.as_str()`. `TypeLiteral` has four variants and gains no fifth here: `String` is a
 scalar for [the boundary](../spec/interop.md#which-types-may-cross-the-boundary) and for
-[LANG-53](lang-53.md)'s seeding, and needs no typer arm until there is a string literal to give
+[LANG-58](lang-58.md)'s seeding, and needs no typer arm until there is a string literal to give
 a type to.
 
 This is the second of the two shapes this ticket used to weigh. The first — dropping

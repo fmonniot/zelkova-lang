@@ -11,8 +11,8 @@ what `find_type` hands back and which carries no module either;
 `src/compiler/typer/mod.rs` — `canonical_type_to_typer_type` at :625, the consumer that needs
 the missing half.
 
-**Blocks:** [BUG-26](bug-26.md), and through it [LANG-53](lang-53.md) and
-[LANG-54](lang-54.md).
+**Blocks:** [BUG-26](bug-26.md), and through it [LANG-58](lang-58.md) and
+[LANG-59](lang-59.md).
 
 **Problem:** canonicalization resolves a type name and then throws away what it resolved to.
 

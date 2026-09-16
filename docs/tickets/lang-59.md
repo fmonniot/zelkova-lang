@@ -1,4 +1,4 @@
-# LANG-54 · A scalar type's declaration is an ordinary union, so `Int` is a value and any body is accepted
+# LANG-59 · A scalar type's declaration is an ordinary union, so `Int` is a value and any body is accepted
 
 **Sizing:** small. One check at one site, plus the error variant it raises and the constructor
 registration it suppresses.
@@ -17,6 +17,9 @@ types*](../spec/types.md#scalar-types) states the rule.
 
 **Depends on:** [BUG-26](bug-26.md), and through it [AST-4](ast-4.md). The check has to fire on
 `Basics`' `Int` and not on a module's own, which needs the qualified name.
+
+**Renumbered from LANG-54** on 2026-09-15: that ID had already been used and closed (the
+interop modifier is `foreign`, not `javascript`). See `docs/tickets/README.md`'s tombstone row.
 
 **Problem:** `type Int = Int` at `std/core/src/Basics.zel:123` is read as a one-constructor
 union, so `do_types` registers a constructor `Int` and `Int` is a value of type `Int`. Nothing
