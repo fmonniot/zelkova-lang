@@ -416,7 +416,7 @@ yes = True
 
 **Known gap:** that block should be `expect=ok`. Inside `Basics` an annotation naming `Bool` is
 the scalar, while `True` and `False` have the type of an ordinary union, so the two do not match
-and the error reads *cannot match `Bool` with `Bool`*. [`BUG-26`](../tickets/bug-26.md) is the
+and the error reads *cannot match `Bool` with `Bool`*. [`LANG-60`](../tickets/lang-60.md) is the
 ticket.
 
 ## Type annotations

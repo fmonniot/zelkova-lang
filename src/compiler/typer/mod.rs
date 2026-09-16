@@ -829,7 +829,7 @@ fn translate_pattern(
             // type of the same name, and finds the *local* declaration as soon as
             // it does — leaving `adt_args` built from the wrong declaration's
             // variables and `adt_name` collapsing the two. `ctor.tpe` is the
-            // qualified name that could tell them apart; keying on it is `BUG-26`.
+            // qualified name that could tell them apart; keying on it is `BUG-35`.
             let union_type = module_types.get(&ctor.tpe.unqualified_name())?;
 
             // Create fresh type vars for each ADT type parameter.

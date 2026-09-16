@@ -199,6 +199,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-32](bug-32.md) | bug | medium | open | An exposed infix's unannotated backing function is silently dropped from the interface |
 | [BUG-33](bug-33.md) | bug | low | open | `SourceFileError::notes()` dumps `io::Error`'s `Debug` form instead of its `Display` form |
 | [BUG-34](bug-34.md) | bug | low | open | A failed sub-pass in `canonicalize` reports as if it found nothing, cascading into spurious errors from every later pass that depended on it |
+| [BUG-35](bug-35.md) | bug | medium | open | The typer identifies a union type by its unqualified name, so two modules' `Size` are one type |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -304,6 +305,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-57](lang-57.md) | task | — | open | The default imports are dropped entry by entry, not by package |
 | [LANG-58](lang-58.md) | task | — | open | A module underneath `Basics` cannot name a scalar type |
 | [LANG-59](lang-59.md) | task | — | open | A scalar type's declaration is an ordinary union, so `Int` is a value and any body is accepted |
+| [LANG-60](lang-60.md) | task | — | open | The typer gives `Bool` a literal type, so inside `Basics` it does not match `True` and `False` |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |

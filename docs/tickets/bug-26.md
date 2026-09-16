@@ -69,8 +69,8 @@ hold the scalar names before they can seed or check them.
 
 **Fix:** hold the five names the compiler knows — `Basics.Int`, `Basics.Float`, `Basics.Bool`,
 `Char.Char` and `String.String` — and have `canonical_type_to_typer_type` match on those rather
-than on `name.as_str()`. `TypeLiteral` has four variants and gains no fifth here: `String` is a
-scalar for [the boundary](../spec/interop.md#which-types-may-cross-the-boundary) and for
+than on `name.as_str()`. `TypeLiteral` gains no fifth variant here: `String` is a scalar for
+[the boundary](../spec/interop.md#which-types-may-cross-the-boundary) and for
 [LANG-58](lang-58.md)'s seeding, and needs no typer arm until there is a string literal to give
 a type to.
 
@@ -80,6 +80,10 @@ declarations in `std/core` — is ruled out by the same decision: a scalar's rep
 belongs to each target, and an opaque one has no constructors for an `Adt` to carry
 ([`DEC-15` decision
 2](../decisions/dec-15.md#2--a-scalar-type-is-declared-in-zelkova-and-an-opaque-ones-declaration-names-itself)).
+That argument covers the four *opaque* scalars and not `Bool`, which [decision
+5](../decisions/dec-15.md#5--bool-is-a-scalar-and-an-ordinary-union-and-both-at-once) makes an
+ordinary union with constructors. So this ticket leaves `TypeLiteral::Bool` in place only as the
+narrowest change; retiring it is [`LANG-60`](lang-60.md).
 [`LANG-41`](lang-41.md) is unaffected either way: retiring `Type::Number` leaves an integer
 literal with the type `Int`, which is `Basics.Int` under this fix.
 
@@ -102,20 +106,21 @@ that drop the `Basics` entry — so it cannot be sequenced away and lands here. 
    has no interface to find.
 2. `an_unresolved_qualified_scalar_name_is_not_the_scalar` (`tests/typer.rs`) re-points from
    `f : Basics.Int -> Int` to `f : Missing.Int -> Int`, because `Basics.Int` now resolves. The
-   test gets sharper rather than weaker: with the real `Basics` in scope, reading the written
-   module half off the unresolved name would make the module check clean, which is exactly
-   what it pins.
+   test still pins the written module half: read off, `Missing.Int` is not a scalar either, so
+   the module is still rejected, but as *cannot match `Int` with `Int`*, and the assertion on
+   the message goes red. (It does not check clean, as this ticket first predicted.)
 3. `LANG-55` folded in and closed with this ticket. Its two
    `Unqualified::Nothing` → `Unqualified::Type` fields are what make a bare `Char` resolve at
    all; without them `char_literal_has_type_char` and `tuple_triple_typechecks` have no
    spelling to use. Its own acceptance — a module resolving `Char` and `String` unqualified —
    has nothing to test against until this ticket's harness exists.
 4. The examples that cannot reach a hand-built interface are rewritten to declare a local
-   type: the fixture packages under `tests/fixtures/` and the `check_importer` pair in
-   `tests/pipeline.rs`, and the six `docs/spec/modules.md` blocks, which annotate `label : Int`
+   type: the fixture packages under `tests/fixtures/` and the six `docs/spec/modules.md` blocks, which annotate `label : Int`
    incidentally in a chapter about module headers. A `type Label = Label` in each states the
    same thing about `exposing` and stops relying on a spelling coincidence (language owner,
-   this session).
+   this session). `check_importer` in `tests/pipeline.rs` builds its own interface map, so it
+   takes `basics_interface()` instead of a rewrite of `privacy_lib`, whose export list is what
+   those tests are about.
 
 Measured, not predicted: with pieces 1-3 applied, `tests/typer.rs` is 27/27 green and
 `tests/compiler_tests.rs` unchanged; piece 4 is what the remaining 10 `tests/pipeline.rs`
@@ -130,16 +135,13 @@ Two tagged blocks go red and are retagged `expect=ok` with their paragraphs dele
 *Reserved words* section, and the `expect=type-error:UnificationFailed` block in
 [*Scalar types*](../spec/types.md#scalar-types).
 
-**Status, 2026-09-16:** the Fix and all four *Also in scope* pieces are committed on branch
-`fix/bug-26-scalar-by-qualified-name`, with `LANG-55` closed there, and every Acceptance check
-above passes except that nothing checks a facade boundary yet (`LANG-43`). Not merged and not
-closed, because the headline symptom survives in one module: **inside `Basics` itself**, `Bool`
-in an annotation is now `Basics.Bool` and becomes `Type::Literal(Bool)`, while `type_check`'s
-second pass still registers `True` and `False` at `Type::Adt("Bool", [])` and
-`translate_pattern` still matches them there. `module Basics exposing (Bool(..), yes)` with
-`yes : Bool` / `yes = True` fails with *cannot match `Bool` with `Bool`*;
-[*Scalar types*](../spec/types.md#scalar-types) pins it with a `**Known gap:**` block.
-`std/core` does not hit it today only because `Basics`' boolean functions are facade values.
-The call nobody has made yet is where that is fixed: the constructor and pattern side learning
-which unions are scalars (so a scalar union's constructors carry its `Type::Literal`), or
-`Bool` ceasing to be a `TypeLiteral` in the typer.
+**Scoped out, 2026-09-16 (language owner):** inside `Basics` itself the headline symptom
+survives this fix. `Bool` in an annotation there is `Basics.Bool`, which becomes
+`Type::Literal(Bool)`, while `True` and `False` are registered at the union's `Type::Adt`, so
+`yes : Bool` / `yes = True` fails with *cannot match `Bool` with `Bool`*. The answer is that the
+typer should not have a literal `Bool` at all — [DEC-15 decision
+5](../decisions/dec-15.md#5--bool-is-a-scalar-and-an-ordinary-union-and-both-at-once) already
+says so — and that is [`LANG-60`](lang-60.md), which depends on [`BUG-35`](bug-35.md): the typer
+identifying a union by its unqualified name. *Scalar types* pins the `Basics` case with a
+`**Known gap:**` block citing `LANG-60`. The facade-boundary half of the Acceptance above has no
+check to test against until [`LANG-43`](lang-43.md).
