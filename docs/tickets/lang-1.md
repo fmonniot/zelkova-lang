@@ -34,8 +34,10 @@ arrive instead as `ExpressionKind::TypeConstructor` and `PatternKind::Constructo
 which already exist and already work — `type Bool = True | False` and `case b of True -> …`
 compile today.
 
-`TypeLiteral::Bool` in the typer is a separate question from `Literal::Bool` and probably
-stays: it is how the *type* is represented, not the literal, and `if` still needs it.
+`TypeLiteral::Bool` in the typer is a separate question from `Literal::Bool`, and
+[`LANG-60`](lang-60.md) answers it: the type is `Basics.Bool`'s ordinary union, and `if` is
+checked against that ([`DEC-15`](../decisions/dec-15.md) decisions 1 and 5). Either ticket can
+land first.
 
 **Acceptance:** `true = 1` and `f true = 1` both compile, `true` and `false` behaving as
 ordinary lowercase identifiers with no special meaning. A `case` over a locally-declared

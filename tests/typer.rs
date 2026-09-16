@@ -21,7 +21,7 @@ fn run(
     source: &str,
 ) -> Result<zelkova_lang::compiler::canonical::Module, zelkova_lang::compiler::CompilationError> {
     let parsed = parse_source(source);
-    let interfaces = HashMap::new();
+    let interfaces = HashMap::from([basics_interface(), char_interface()]);
     check_module(&test_package(), &interfaces, &parsed)
 }
 
@@ -693,26 +693,116 @@ fn an_unresolved_qualified_type_name_is_not_a_local_type_of_the_same_stem() {
     );
 }
 
-/// The same rule against a scalar: `Basics.Int` is not `Int`.
+/// The same rule against a scalar: an unresolved `Missing.Int` is not `Basics.Int`.
 ///
-/// This is the sharper half of the pair, because `canonical_type_to_typer_type`'s
-/// four scalar arms match on a *spelling*. Were the written module half read off
-/// `Basics.Int`, the unqualified half left behind would be `Int` and the annotation
-/// would quietly become the literal `Int` type — a name that resolved to nothing
-/// widening what the type checker accepts.
+/// `Int` resolves to `Basics.Int` through the default imports, which is the scalar;
+/// `Missing.Int` resolves to nothing and keeps its whole written spelling, so the
+/// error names the two apart. (`Basics.Int` itself would resolve here, since
+/// [`basics_interface`] is in scope, and would check clean for the right reason.)
 ///
-/// Mutation-checked the same way as the test above: with the written half read off,
-/// this module checks clean.
+/// Mutation-checked the same way as the test above: with the written module half read
+/// off, the head becomes `Missing.Int`, which is still not a scalar, so the module is
+/// still rejected — but as "cannot match `Int` with `Int`", the message that names one
+/// type twice, and this assertion goes red.
 #[test]
 fn an_unresolved_qualified_scalar_name_is_not_the_scalar() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
-        f : Basics.Int -> Int
+        f : Missing.Int -> Int
         f x = x
     "#};
 
     assert_eq!(
         one_type_error(source).message(),
-        "cannot match `Int` with `Basics.Int`"
+        "cannot match `Int` with `Missing.Int`"
+    );
+}
+
+// ── A module's own type spelled like a scalar ─────────────────────────────────
+
+/// `BUG-26`'s module: declaring `Bool` and annotating with it type checks.
+///
+/// A scalar is known by the qualified name of its declaration, so this `Bool` is
+/// `Test.Bool` — an ordinary union, the same type its constructors `True` and
+/// `False` are registered at.
+///
+/// Mutation-checked by restoring the match on the unqualified half in
+/// `scalars::Scalar::declares`: the annotation becomes the literal `Bool`, and the
+/// module fails with "cannot match `Bool` with `Bool`".
+#[test]
+fn a_module_declaring_its_own_bool_annotates_with_it() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (Bool, not)
+
+        type Bool
+          = True
+          | False
+
+        not : Bool -> Bool
+        not b =
+          case b of
+            True ->
+              False
+
+            False ->
+              True
+    "#};
+
+    assert!(run(source).is_ok(), "{:?}", run(source).err());
+}
+
+/// The negative half: the same module's `case` still rejects a branch of the wrong
+/// type, so the positive half above is not passing because the annotation stopped
+/// constraining anything.
+///
+/// An integer literal is still `number` until `LANG-41`, which is the type the
+/// message names.
+///
+/// Mutation-checked by the same restoration: the annotation is then the literal
+/// `Bool`, which the `True` pattern already fails to match, so the one error is no
+/// longer about the branch.
+#[test]
+fn a_module_declaring_its_own_bool_still_rejects_a_wrong_branch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (Bool, not)
+
+        type Bool
+          = True
+          | False
+
+        not : Bool -> Bool
+        not b =
+          case b of
+            True ->
+              False
+
+            False ->
+              1
+    "#};
+
+    assert_eq!(
+        one_type_error(source).message(),
+        "cannot match `Bool` with `number`"
+    );
+}
+
+/// A module's own `Int` and `Basics`' `Int` are two types: an integer literal can
+/// be the second (it is `number` until `LANG-41`) and is never the first.
+///
+/// Mutation-checked by restoring the match on the unqualified half in
+/// `scalars::Scalar::declares`: the local `Int` becomes the literal `Int` and the
+/// module checks clean.
+#[test]
+fn a_module_declaring_its_own_int_does_not_get_the_scalar() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Int = MkInt
+        answer : Int
+        answer = 42
+    "#};
+
+    assert_eq!(
+        one_type_error(source).message(),
+        "cannot match `Int` with `number`"
     );
 }

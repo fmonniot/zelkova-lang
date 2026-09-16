@@ -364,7 +364,7 @@ module declaring its own `Int` declares an ordinary type that shares a name, sin
 declaration introduces a genuinely new type](#type-declarations): that `Int` is not the
 language's, no annotation mixes the two, and it may not cross a facade boundary as an `Int`.
 
-```zel expect=type-error:UnificationFailed
+```zel expect=ok
 module Example exposing (Int, zero)
 
 type Int
@@ -373,12 +373,6 @@ type Int
 zero : Int
 zero = Zero
 ```
-
-**Known gap:** that block should be `expect=ok`. The type checker reads `Int` in an annotation
-as its own scalar wherever the name appears, while `Zero` gets the type the module declared, so
-the two halves of a module declaring an `Int` do not match and the error reads *cannot match
-`Int` with `Int`*. [`BUG-26`](../tickets/bug-26.md) is the ticket, and `Float`, `Char` and
-`Bool` behave the same way.
 
 **Four of the five are opaque.** Nothing in the language builds or inspects an `Int`, a
 `Float`, a `Char` or a `String`: their values come from [literals](lexical-structure.md#literals)
@@ -406,12 +400,24 @@ to [the default imports](modules.md#the-default-imports), which is also where th
 covers arises — a [facade](interop.md) underneath `Basics`. It supplies the five type names and
 nothing else, so a module reaching `Bool` that way can annotate one and cannot write a `True`.
 
-**Not implemented:** none of the above is how the compiler behaves. A scalar is matched by
-spelling rather than by qualified name (`BUG-26`, above); nothing checks a scalar declaration's
-body, so `type Int = I32` in `Basics` is accepted; `Char` and `String` do not compile, so
-neither declares the scalar it is named for; and the two facades `Basics` imports name `Int`
-through a fabricated type ([`BUG-16`](../tickets/bug-16.md)) rather than through the rule
-above.
+**Not implemented:** nothing checks a scalar declaration's body, so `type Int = I32` in
+`Basics` is accepted; `Char` and `String` do not compile, so neither declares the scalar it is
+named for; and the two facades `Basics` imports name `Int` through a fabricated type
+([`BUG-16`](../tickets/bug-16.md)) rather than through the rule above.
+
+```zel expect=type-error:UnificationFailed
+module Basics exposing (Bool(..), yes)
+
+type Bool = True | False
+
+yes : Bool
+yes = True
+```
+
+**Known gap:** that block should be `expect=ok`. Inside `Basics` an annotation naming `Bool` is
+the scalar, while `True` and `False` have the type of an ordinary union, so the two do not match
+and the error reads *cannot match `Bool` with `Bool`*. [`LANG-60`](../tickets/lang-60.md) is the
+ticket.
 
 ## Type annotations
 

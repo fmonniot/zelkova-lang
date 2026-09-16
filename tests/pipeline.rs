@@ -136,7 +136,7 @@ fn module_with_union_type() {
         count = 42
     "#};
     let parsed = parse_source(source);
-    let interfaces = HashMap::new();
+    let interfaces = HashMap::from([basics_interface()]);
     let result = check_module(&test_package(), &interfaces, &parsed);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
@@ -1033,10 +1033,10 @@ fn ambiguous_import_labels_point_into_each_defining_module() {
 
     let a_source = std::fs::read_to_string(root.join("A.zel")).expect("fixture is readable");
     let b_source = std::fs::read_to_string(root.join("B.zel")).expect("fixture is readable");
-    let a_start = a_source.find("foo : Int").expect("A declares foo");
-    let a_end = a_source.find("foo = 1").expect("A defines foo") + "foo = 1".len();
-    let b_start = b_source.find("foo : Int").expect("B declares foo");
-    let b_end = b_source.find("foo = 2").expect("B defines foo") + "foo = 2".len();
+    let a_start = a_source.find("foo : LabelA").expect("A declares foo");
+    let a_end = a_source.find("foo = LabelA").expect("A defines foo") + "foo = LabelA".len();
+    let b_start = b_source.find("foo : LabelB").expect("B declares foo");
+    let b_end = b_source.find("foo = LabelB").expect("B defines foo") + "foo = LabelB".len();
 
     let error = compile_package(&root).expect_err("an ambiguous import must not compile");
 
@@ -1613,12 +1613,15 @@ fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
 /// One module's source checked into an `Interface`, and a second checked against
 /// it. `Lib` compiling is a precondition rather than part of what is asserted,
 /// so a failure there panics instead of returning.
+///
+/// Both are checked with [`basics_interface`] in scope, which is what gives their
+/// `Int` the scalar through the default imports.
 fn check_importer(lib: &str, main: &str) -> Result<(), CompilationError> {
     let pkg = test_package();
-    let lib_module = check_module(&pkg, &HashMap::new(), &parse_source(lib))
+    let mut interfaces: HashMap<Name, Interface> = HashMap::from([basics_interface()]);
+    let lib_module = check_module(&pkg, &interfaces, &parse_source(lib))
         .unwrap_or_else(|e| panic!("the exporting module should compile: {:?}", e));
 
-    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
     interfaces.insert(
         lib_module.name.name().clone(),
         lib_module.to_interface(None),

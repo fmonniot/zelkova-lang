@@ -17,9 +17,8 @@ by the language owner):** a module that drops the `Basics` entry receives `Int`,
 [*The default imports*](../spec/modules.md#the-default-imports) states the rule and [*Scalar
 types*](../spec/types.md#scalar-types) the concept behind it.
 
-**Depends on:** [BUG-26](bug-26.md), which is where the compiler comes to hold the five
-qualified names at all. Landing this first would bind the five names to nothing the rest of the
-compiler could tell apart from a fabrication.
+**Depends on:** `BUG-26`, which is closed — it is where the compiler came to hold the five
+qualified names at all, in `src/compiler/scalars.rs`.
 
 **Blocks:** [BUG-16](bug-16.md). That ticket's fix turns `Js/Basics.zel` and `Js/Utils.zel` red
 with no available spelling until this lands.

@@ -1,5 +1,8 @@
 module B exposing (..)
 
 
-foo : Int
-foo = 2
+type LabelB = LabelB
+
+
+foo : LabelB
+foo = LabelB

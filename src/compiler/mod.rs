@@ -56,6 +56,10 @@ pub mod exhaustiveness;
 pub mod name;
 pub mod parser;
 pub mod position;
+/// The five type names the compiler knows. Public for the same reason as
+/// `default_imports`: it is a rule about the language rather than an implementation
+/// detail of one phase.
+pub mod scalars;
 pub mod source;
 pub mod tuple;
 pub mod typer;
