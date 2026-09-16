@@ -190,7 +190,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-23 | bug | medium | closed 2026-09-12 | An `else` does not close a `case` block, so a `case` in a `then` arm is a layout error |
 | BUG-24 | bug | medium | closed 2026-09-13 | Two `.mjs` companions call helpers no file defines, so `modBy 0` and comparing functions are `ReferenceError`s |
 | BUG-25 | bug | medium | closed 2026-09-13 | Three of the four `Float -> Int` conversions never wrap, so `round nan` and `round 1.0e20` are not `Int`s |
-| [BUG-26](bug-26.md) | bug | medium | open | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
+| BUG-26 | bug | medium | closed 2026-09-16 | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
 | [BUG-27](bug-27.md) | bug | medium | open | A canonicalized infix operator is qualified under its own symbol, not the function its `infix` declaration names |
 | [BUG-28](bug-28.md) | bug | low | open | The `Tokenizer` never terminates on an unterminated character literal |
 | [BUG-29](bug-29.md) | bug | medium | open | A top-level declaration whose first token is not at column 1 fails to parse |
