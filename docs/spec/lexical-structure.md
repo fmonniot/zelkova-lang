@@ -282,7 +282,7 @@ ordinary union type and `True` and `False` are its constructors, resolved, impor
 shadowed like any other name. `Bool` is also [a scalar type](types.md#scalar-types), which is
 a claim about the representation a target gives it and not about its structure.
 
-```zel expect=type-error:UnificationFailed
+```zel expect=ok
 module Example exposing (Bool, not)
 
 type Bool
@@ -298,11 +298,6 @@ not b =
     False ->
       True
 ```
-
-**Known gap:** that block should be `expect=ok`. A scalar type is matched by spelling rather
-than [by the qualified name of its declaration](types.md#scalar-types), so the module's own
-`Bool` does not match the `True` and `False` the same module declared, and the error reads
-*cannot match `Bool` with `Bool`*. [`BUG-26`](../tickets/bug-26.md) is the ticket.
 
 So `true` is available as a variable name:
 

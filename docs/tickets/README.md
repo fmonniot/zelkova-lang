@@ -299,7 +299,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-52](lang-52.md) | task | — | open | Whitespace around a qualification dot is accepted, and records need it not to be |
 | LANG-53 | task | — | closed 2026-09-13 | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | LANG-54 | task | — | closed 2026-09-13 | The interop modifier is `foreign`, not `javascript` |
-| [LANG-55](lang-55.md) | task | — | open | The `Char` and `String` default imports bring their modules but not their types |
+| LANG-55 | task | — | closed 2026-09-16 | The `Char` and `String` default imports bring their modules but not their types |
 | [LANG-56](lang-56.md) | task | — | open | `std/core`'s JavaScript companions implement a 32-bit `Int` held in a number |
 | [LANG-57](lang-57.md) | task | — | open | The default imports are dropped entry by entry, not by package |
 | [LANG-58](lang-58.md) | task | — | open | A module underneath `Basics` cannot name a scalar type |

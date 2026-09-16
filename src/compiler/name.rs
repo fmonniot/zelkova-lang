@@ -131,6 +131,14 @@ impl QualName {
     pub fn unqualified_name(&self) -> Name {
         Name(self.name.clone())
     }
+
+    /// The module half, written out with its dots — `My.App` of `My.App.function`.
+    ///
+    /// The counterpart of [`QualName::unqualified_name`]; the two halves rejoined are
+    /// [`QualName::to_name`].
+    pub fn module_name(&self) -> Name {
+        Name(self.module.join("."))
+    }
 }
 
 impl From<&'static str> for QualName {

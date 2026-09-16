@@ -37,7 +37,8 @@
 //!
 use super::canonical;
 use super::canonical::Module;
-use crate::compiler::name::Name;
+use super::scalars;
+use crate::compiler::name::{Name, QualName};
 use crate::compiler::position::NodeSpan;
 use crate::compiler::tuple::Tuple;
 use crate::compiler::{PhaseError, SpanLabel};
@@ -623,50 +624,28 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
 /// `var_map` maps named type variables (e.g. "a") to consistent TypeVariable
 /// ids, so that `a -> a` produces the same variable on both sides.
 ///
-/// # What this does with the module half of a name
+/// # How a name decides which type it becomes
 ///
-/// Nothing, deliberately. A [`canonical::Type::Type`] names its declaration in
-/// full — `Widget.Size`, not `Size` (`AST-4`) — and every arm below reads only the
-/// unqualified half of it: `Type::Adt` carries that spelling, and so does the
-/// `adt_name` a constructor pattern is translated to, so the two sides of
-/// [`type_check`]'s environment go on meeting on the string they always met on.
-/// For a name that resolved, that half is the declaration's own spelling. For one
-/// that resolved to nothing it is the whole *written* spelling, dots and all,
-/// because `Type::from_parser_type` hands the undivided name to the module under
-/// check rather than splitting a module half off it — so an unresolved
-/// `Missing.Thing` still arrives here as `Missing.Thing` and does not collapse
-/// onto a local `Thing`.
+/// A [`canonical::Type::Type`] names its declaration in full — `Widget.Size`, not
+/// `Size` (`AST-4`) — and the whole of that name is what picks the arm. A nullary
+/// type whose qualified name is [a scalar the compiler
+/// knows](super::scalars) becomes the matching [`Type::Literal`]; everything else
+/// becomes a [`Type::Adt`].
 ///
-/// The four scalar arms match a spelling too, so a module declaring its own `Bool`
-/// still annotates with the literal `Bool` and still fails to type check against
-/// its own constructors. That is `BUG-26`, and the qualified name this now
-/// receives is what it was waiting on.
+/// `Type::Adt` then carries only the unqualified half, and so does the `adt_name` a
+/// constructor pattern is translated to, so the two sides of [`type_check`]'s
+/// environment meet on the string they always met on. For a name that resolved, that
+/// half is the declaration's own spelling. For one that resolved to nothing it is the
+/// whole *written* spelling, dots and all, because `Type::from_parser_type` hands the
+/// undivided name to the module under check rather than splitting a module half off
+/// it — so an unresolved `Missing.Thing` still arrives here as `Missing.Thing` and
+/// does not collapse onto a local `Thing`.
 fn canonical_type_to_typer_type(
     tpe: &canonical::Type,
     var_map: &mut HashMap<String, TypeVariable>,
     counter: &mut u32,
 ) -> Option<Type> {
     match tpe {
-        canonical::Type::Type(name, args)
-            if args.is_empty() && name.unqualified_name().as_str() == "Int" =>
-        {
-            Some(Type::Literal(TypeLiteral::Int))
-        }
-        canonical::Type::Type(name, args)
-            if args.is_empty() && name.unqualified_name().as_str() == "Bool" =>
-        {
-            Some(Type::Literal(TypeLiteral::Bool))
-        }
-        canonical::Type::Type(name, args)
-            if args.is_empty() && name.unqualified_name().as_str() == "Char" =>
-        {
-            Some(Type::Literal(TypeLiteral::Char))
-        }
-        canonical::Type::Type(name, args)
-            if args.is_empty() && name.unqualified_name().as_str() == "Float" =>
-        {
-            Some(Type::Literal(TypeLiteral::Float))
-        }
         canonical::Type::Variable(name) => {
             let tv = var_map.entry(name.as_str().to_string()).or_insert_with(|| {
                 *counter += 1;
@@ -692,6 +671,12 @@ fn canonical_type_to_typer_type(
             Some(Type::Tuple(elements))
         }
         canonical::Type::Type(name, args) => {
+            if args.is_empty() {
+                if let Some(literal) = scalar_literal(name) {
+                    return Some(Type::Literal(literal));
+                }
+            }
+
             let converted: Option<Vec<Type>> = args
                 .iter()
                 .map(|a| canonical_type_to_typer_type(a, var_map, counter))
@@ -702,6 +687,27 @@ fn canonical_type_to_typer_type(
             ))
         }
     }
+}
+
+/// The literal type the typer gives a [scalar](super::scalars), if `name` is the
+/// qualified name of one it has a literal type for.
+///
+/// Four of the five appear here. [`scalars::STRING`] does not: [`TypeLiteral`] gains a
+/// variant for it the day there is a string literal to give a type to, and a variant
+/// nothing constructs would be a type the unifier could name in an error and no source
+/// could produce.
+fn scalar_literal(name: &QualName) -> Option<TypeLiteral> {
+    const LITERALS: &[(scalars::Scalar, TypeLiteral)] = &[
+        (scalars::INT, TypeLiteral::Int),
+        (scalars::FLOAT, TypeLiteral::Float),
+        (scalars::BOOL, TypeLiteral::Bool),
+        (scalars::CHAR, TypeLiteral::Char),
+    ];
+
+    LITERALS
+        .iter()
+        .find(|(scalar, _)| scalar.declares(name))
+        .map(|(_, literal)| literal.clone())
 }
 
 /// Convert a canonical expression to a Term, keeping the position it was written at.

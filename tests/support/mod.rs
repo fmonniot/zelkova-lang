@@ -128,3 +128,74 @@ pub fn maybe_interface() -> (Name, Interface) {
 
     ("Maybe".into(), interface)
 }
+
+/// Build a minimal `Basics` interface declaring the three scalars it owns —
+/// `Basics.Int`, `Basics.Float` and `Basics.Bool` — and nothing else.
+///
+/// A scalar is known by the qualified name of its declaration, so a bare `Int` is the
+/// scalar only in a module whose `Int` resolves to `Basics.Int`. In a real compile
+/// the default imports give every module that; a standalone module handed to
+/// `check_module` has no `Basics` to import, and this is what stands in for it. Put
+/// it in the interface map and the implicit `import Basics exposing (..)` applies on
+/// its own.
+///
+/// `Int` and `Float` are opaque in `std/core`'s `Basics`, so they carry no
+/// constructors here; `Bool` carries `True` and `False`.
+pub fn basics_interface() -> (Name, Interface) {
+    let union = |name: &str, variants: &[&str]| canonical::UnionType {
+        // Hand-built, not canonicalized from source: no position behind it.
+        span: NodeSpan::none(),
+        variables: vec![],
+        variants: variants
+            .iter()
+            .map(|variant| canonical::TypeConstructor {
+                name: (*variant).into(),
+                type_parameters: vec![],
+                tpe: qual(&format!("Basics.{}", name)),
+            })
+            .collect(),
+    };
+
+    let mut unions = HashMap::new();
+    unions.insert("Int".into(), union("Int", &[]));
+    unions.insert("Float".into(), union("Float", &[]));
+    unions.insert("Bool".into(), union("Bool", &["True", "False"]));
+
+    let interface = Interface {
+        module_name: ModuleName::new(PackageName::new("zelkova", "core"), "Basics".into()),
+        values: HashMap::new(),
+        unions,
+        infixes: HashMap::new(),
+        infix_functions: HashMap::new(),
+        file: None,
+    };
+
+    ("Basics".into(), interface)
+}
+
+/// Build a minimal `Char` interface declaring the scalar `Char.Char`, opaque, for the
+/// same reason as [`basics_interface`]: the default imports bring `Char` unqualified,
+/// and a standalone module has no `Char` module to bring it from.
+pub fn char_interface() -> (Name, Interface) {
+    let mut unions = HashMap::new();
+    unions.insert(
+        "Char".into(),
+        canonical::UnionType {
+            // Hand-built, not canonicalized from source: no position behind it.
+            span: NodeSpan::none(),
+            variables: vec![],
+            variants: vec![],
+        },
+    );
+
+    let interface = Interface {
+        module_name: ModuleName::new(PackageName::new("zelkova", "core"), "Char".into()),
+        values: HashMap::new(),
+        unions,
+        infixes: HashMap::new(),
+        infix_functions: HashMap::new(),
+        file: None,
+    };
+
+    ("Char".into(), interface)
+}

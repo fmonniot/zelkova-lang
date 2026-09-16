@@ -1,5 +1,8 @@
 module Answer exposing (..)
 
 
-answer : Int
-answer = 42
+type Label = Label
+
+
+answer : Label
+answer = Label

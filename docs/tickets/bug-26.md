@@ -105,7 +105,7 @@ that drop the `Basics` entry — so it cannot be sequenced away and lands here. 
    test gets sharper rather than weaker: with the real `Basics` in scope, reading the written
    module half off the unresolved name would make the module check clean, which is exactly
    what it pins.
-3. [`LANG-55`](lang-55.md) folded in and closed with this ticket. Its two
+3. `LANG-55` folded in and closed with this ticket. Its two
    `Unqualified::Nothing` → `Unqualified::Type` fields are what make a bare `Char` resolve at
    all; without them `char_literal_has_type_char` and `tuple_triple_typechecks` have no
    spelling to use. Its own acceptance — a module resolving `Char` and `String` unqualified —
@@ -129,3 +129,17 @@ Two tagged blocks go red and are retagged `expect=ok` with their paragraphs dele
 `**Known gap:**` block in [`docs/spec/lexical-structure.md`](../spec/lexical-structure.md)'s
 *Reserved words* section, and the `expect=type-error:UnificationFailed` block in
 [*Scalar types*](../spec/types.md#scalar-types).
+
+**Status, 2026-09-16:** the Fix and all four *Also in scope* pieces are committed on branch
+`fix/bug-26-scalar-by-qualified-name`, with `LANG-55` closed there, and every Acceptance check
+above passes except that nothing checks a facade boundary yet (`LANG-43`). Not merged and not
+closed, because the headline symptom survives in one module: **inside `Basics` itself**, `Bool`
+in an annotation is now `Basics.Bool` and becomes `Type::Literal(Bool)`, while `type_check`'s
+second pass still registers `True` and `False` at `Type::Adt("Bool", [])` and
+`translate_pattern` still matches them there. `module Basics exposing (Bool(..), yes)` with
+`yes : Bool` / `yes = True` fails with *cannot match `Bool` with `Bool`*;
+[*Scalar types*](../spec/types.md#scalar-types) pins it with a `**Known gap:**` block.
+`std/core` does not hit it today only because `Basics`' boolean functions are facade values.
+The call nobody has made yet is where that is fixed: the constructor and pattern side learning
+which unions are scalars (so a scalar union's constructors carry its `Type::Literal`), or
+`Bool` ceasing to be a `TypeLiteral` in the typer.
