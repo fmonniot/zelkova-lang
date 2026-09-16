@@ -771,11 +771,6 @@ and `import Maybe as M` means `M.map` and no unqualified `Maybe`.
 
 A default entry participates in ambiguity exactly as a written import does.
 
-Qualifying the use, `Helper.add` or `Basics.add`, is the fix either way — the same fix [two
-written imports](#two-imports-exposing-the-same-name) already have. The diagnostic's note
-lists both contributors and marks the one the file never named as implicit, since a reader
-has no other way to learn that `Basics` was in scope at all.
-
 The eight modules receive none of the list themselves: `Basics` cannot import `Basics`,
 and `Maybe` and `Result` would import each other — [an import
 cycle](#imports-may-not-form-a-cycle) either way. They write the imports they need.
