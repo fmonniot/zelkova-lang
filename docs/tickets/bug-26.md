@@ -61,9 +61,8 @@ owner):** a [scalar type](../spec/types.md#scalar-types) is known by the **quali
 its declaration**, never by its spelling. A module declaring its own `Bool` declares an
 ordinary type that shares four letters with a scalar, and every phase treats it as one.
 
-**Depended on AST-4**, which was most of the work and is closed: `canonical::Type::Type` holds
-the `QualName` of the declaration it resolved to, so there is now a qualified name for the
-typer to match against.
+**Depends on:** AST-4, which was most of the work and is closed — the qualified name
+`canonical::Type::Type` now holds is what the typer matches against.
 
 **Blocks:** [LANG-58](lang-58.md) and [LANG-59](lang-59.md), both of which need the compiler to
 hold the scalar names before they can seed or check them.

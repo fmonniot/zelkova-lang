@@ -19,8 +19,7 @@ types*](../spec/types.md#scalar-types) the concept behind it.
 
 **Depends on:** [BUG-26](bug-26.md), which is where the compiler comes to hold the five
 qualified names at all. Landing this first would bind the five names to nothing the rest of the
-compiler could tell apart from a fabrication. AST-4, the prerequisite underneath BUG-26, is
-closed: a canonical type now carries the qualified name of the declaration it resolved to.
+compiler could tell apart from a fabrication.
 
 **Blocks:** [BUG-16](bug-16.md). That ticket's fix turns `Js/Basics.zel` and `Js/Utils.zel` red
 with no available spelling until this lands.

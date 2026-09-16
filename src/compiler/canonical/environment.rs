@@ -149,7 +149,7 @@ impl InfixDeclaration {
 /// A `type Maybe a = …` declaration is a type *constructor*: applying it to
 /// arguments is what produces a `Type`, and `Maybe` on its own is not one — there is
 /// no such thing as the type `Maybe` with `a` left dangling. Storing the fully
-/// applied `Type::Type("Maybe", [Variable("a")])` and handing it back verbatim on
+/// applied `Type::Type("Maybe.Maybe", [Variable("a")])` and handing it back verbatim on
 /// every lookup, which is what this replaced, conflated the two: it made every
 /// application of `Maybe` collapse to the same declaration-shaped type regardless of
 /// what was actually written, which is the defect `BUG-17` describes in full.
