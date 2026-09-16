@@ -367,17 +367,19 @@ impl Type {
                     )),
                     // `name` resolves to nothing: BUG-16 is the ticket for reporting
                     // this instead of fabricating a type for it. Until then the
-                    // fabricated head is attributed to the module under check,
-                    // unless the name was written qualified and can say for itself
-                    // which module it meant — the same fallback the `TypeConstructor`
-                    // arm of `Expression::from_parser` uses for a name it resolved.
-                    None => {
-                        let qualified = name
-                            .to_qual()
-                            .unwrap_or_else(|| env.module_name().qualify_name(name));
-
-                        Ok(Type::Type(qualified, args))
-                    }
+                    // fabricated head is attributed to the module under check —
+                    // the same fallback the `TypeConstructor` arm of
+                    // `Expression::from_parser` uses — and never to a module half
+                    // read off the written spelling. A written `W.Thing` says which
+                    // *route* was written and not which module declared anything:
+                    // under `import Widget as W` that half is an alias, and reading
+                    // it would fabricate a head in a module named `W`, inverting the
+                    // rule the `Some` arm above enforces. `qualify_name` does not
+                    // split the name it is handed, so a written `Missing.Thing`
+                    // stays one dotted unqualified half — which is what keeps it
+                    // distinct from a local `Thing` at the typer, exactly as it was
+                    // before the head became a `QualName`.
+                    None => Ok(Type::Type(env.module_name().qualify_name(name), args)),
                 }
             }
             parser::TypeKind::Arrow(t1, t2) => Ok(Type::Arrow(

@@ -1201,13 +1201,68 @@ fn two_modules_declaring_one_type_name_are_two_types() {
 
     let own = canonical::Type::Type(qual("Test.Size"), vec![]);
     let widgets = canonical::Type::Type(qual("Widget.Size"), vec![]);
-    assert_ne!(own, widgets, "the two `Size` declarations are two types");
 
     match module.values.get(&"resize".into()).unwrap() {
         canonical::Value::TypedValue { tpe, .. } => assert_eq!(
             *tpe,
             canonical::Type::Arrow(Box::new(own), Box::new(widgets)),
             "each side of the arrow names the module that declared its type"
+        ),
+        other => panic!("expected a TypedValue, got {:?}", other),
+    }
+}
+
+/// A type name that resolves to nothing is attributed to the module under check,
+/// alias or no alias.
+///
+/// `import Widget as W` followed by `W.Thing` names no declaration — `Widget`
+/// declares no `Thing` — so there is no declaring module to record, and `W` is not
+/// a candidate: it is a route, and reading it would fabricate a head in a module
+/// named `W`, the inverse of the rule the two tests above pin. `qualify_name` does
+/// not split the name it is given, so the whole written spelling stays the
+/// unqualified half, which is what keeps `W.Thing` distinct from a local `Thing`
+/// once the typer reads that half back (`tests/typer.rs`).
+///
+/// `BUG-16` is the ticket for rejecting the unresolved name rather than
+/// fabricating a type for it at all.
+///
+/// Mutation-checked by reading the written module half off the name first
+/// (`name.to_qual().unwrap_or_else(|| env.module_name().qualify_name(name))`):
+/// the head comes back as the module `W` with the name `Thing`.
+#[test]
+fn an_unresolved_type_name_is_attributed_to_the_module_under_check() {
+    let widget = canonicalize_standalone(indoc::indoc! {r#"
+        module Widget exposing (Size(..))
+        type Size = Small
+    "#})
+    .expect("Widget should canonicalize");
+
+    let mut interfaces = HashMap::new();
+    interfaces.insert(widget.name.name().clone(), widget.to_interface(None));
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        import Widget as W
+        f : W.Thing -> W.Thing
+        f x = x
+    "#};
+
+    let module = canonicalize_with_interfaces(source, &interfaces)
+        .expect("an unresolved type name is fabricated rather than reported (BUG-16)");
+
+    // `qual` would read this as the module `Test.W`; the head is the module `Test`
+    // holding the undivided spelling `W.Thing`.
+    let fabricated = canonical::Type::Type(
+        QualName::from_strs("W.Thing", std::iter::once("Test"))
+            .expect("a module prefix of one segment is a module"),
+        vec![],
+    );
+
+    match module.values.get(&"f".into()).unwrap() {
+        canonical::Value::TypedValue { tpe, .. } => assert_eq!(
+            *tpe,
+            canonical::Type::Arrow(Box::new(fabricated.clone()), Box::new(fabricated)),
+            "an alias is not a module, so the fabricated head is the module under check"
         ),
         other => panic!("expected a TypedValue, got {:?}", other),
     }
