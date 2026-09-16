@@ -769,40 +769,7 @@ An `import` of one of the eight **replaces** the implicit one, the way [an alias
 a module's own name](#imports): writing a line of the list out verbatim changes nothing,
 and `import Maybe as M` means `M.map` and no unqualified `Maybe`.
 
-**A default entry participates in ambiguity exactly as a written import does.** [Two
-imports exposing the same name](#two-imports-exposing-the-same-name) draws no distinction
-between the two: importing a module that exposes a name a default entry also exposes is two
-imports of one name, and the collision is reported the same way whichever import was never
-written. `Main` below writes only `import Helper exposing (add)` — the `Basics` entry it
-collides with never appears in the file at all.
-
-```zel expect=ok package=default-collision
-module Basics exposing (Int, add)
-
-type Int = Int
-
-add : Int -> Int -> Int
-add a b =
-  a
-```
-
-```zel expect=ok package=default-collision
-module Helper exposing (add)
-
-add : a -> a
-add x =
-  x
-```
-
-```zel expect=canonical-error:AmbiguousVariables package=default-collision
-module Main exposing (x)
-
-import Helper exposing (add)
-
-x : Int
-x =
-  add 1 2
-```
+A default entry participates in ambiguity exactly as a written import does.
 
 Qualifying the use, `Helper.add` or `Basics.add`, is the fix either way — the same fix [two
 written imports](#two-imports-exposing-the-same-name) already have. The diagnostic's note
