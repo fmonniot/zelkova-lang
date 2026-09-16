@@ -8,7 +8,7 @@ nothing says the declaration was skipped).
 constructors from `module.types` only, and which `continue`s past a value when
 `value_to_term_and_annotation` returns `None` or inference reports `UnboundVariable`;
 `translate_pattern`'s `PatternKind::Constructor` arm, which returns `None` when
-`module_types.get(&ctor.tpe.unqualified_name())` finds nothing; `canonical_expr_to_term`'s
+`module_types.get(&ctor.tpe)` finds nothing; `canonical_expr_to_term`'s
 `VarConstructor` arm, which looks the constructor up as an identifier in that same
 module-local environment. `src/compiler/mod.rs` — `check_module`, which holds the interfaces map
 and calls `typer::type_check(&canonical)` without it.
@@ -62,9 +62,9 @@ those: canonicalization resolved it and knows its declaration.
 `std/core` has one today: `Result.fromMaybe`'s `case maybe of Just v -> Ok v`
 (`std/core/src/Result.zel`) is skipped for this reason.
 
-Found while probing [`BUG-35`](bug-35.md), whose fix keys the pattern lookup on the
-constructor's qualified name. That stops an imported constructor finding a *local* type of the
-same name, and leaves it finding nothing, which is this ticket.
+Found while probing `BUG-35`, whose fix keys the pattern lookup on the constructor's qualified
+name. That stops an imported constructor finding a *local* type of the same name, and leaves it
+finding nothing, which is this ticket.
 
 **Fix:** give the typer the imported unions. Two placements, and this ticket does not pick:
 
@@ -78,9 +78,9 @@ same name, and leaves it finding nothing, which is this ticket.
   canonical type every phase shares, and whether `to_interface` should be the thing that writes
   it is part of the call.
 
-Either one needs [`BUG-35`](bug-35.md) first or alongside: registering two modules' constructors
-in one environment under today's unqualified `Type::Adt` would make every same-named imported
-type collide.
+Either one needed `BUG-35`, which is closed: registering two modules' constructors in one
+environment under an unqualified `Type::Adt` would have made every same-named imported type
+collide. `Type::Adt` now carries the declaring module, so it does not.
 
 Out of scope: `VarForeign`, a reference to an imported *value*, which `canonical_expr_to_term`
 also returns `None` for. It already carries its type from canonicalization and is a separate

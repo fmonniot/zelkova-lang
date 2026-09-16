@@ -21,9 +21,9 @@ states it, and [*`if … then … else`*](../spec/expressions.md#if--then--else)
 condition to be a `Bool` — which, by [decision
 1](../decisions/dec-15.md#1--a-scalar-type-is-known-by-its-qualified-name), is `Basics.Bool`.
 
-**Depends on:** [BUG-35](bug-35.md). While `Type::Adt` carries only an unqualified name, an `if`
-checked against `Adt("Bool")` would accept any module's own `type Bool`, which decision 1 rules
-out.
+**Depends on:** `BUG-35`, which is closed — `Type::Adt` carries the qualified name, so an `if`
+checked against `Adt(Basics.Bool)` does not accept a module's own `type Bool`, which decision 1
+rules out.
 
 **Problem:** the typer still has a literal type for `Bool`, a representation of the kind
 decision 2 reserves for the four *opaque* scalars. Since `BUG-26`, `Bool` in an annotation
