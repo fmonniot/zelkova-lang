@@ -401,9 +401,10 @@ others — which is what [`true` and `false` not being reserved
 words](lexical-structure.md#reserved-words) means. The compiler knows `Bool`'s representation
 and nothing about its structure, so the self-naming rule above does not reach it.
 
-**A module underneath `Basics` receives the scalar names without an import.** That rule belongs
+**A module of `zelkova-core` receives the scalar names without an import.** That rule belongs
 to [the default imports](modules.md#the-default-imports), which is also where the case it
-covers arises. It supplies the five type names and nothing else, so a module reaching `Bool`
+covers arises — a [facade](interop.md) underneath `Basics`, in the one package that cannot
+have the list. It supplies the five type names and nothing else, so a module reaching `Bool`
 that way can annotate one and cannot write a `True`.
 
 **Not implemented:** none of the above is how the compiler behaves. A scalar is matched by
