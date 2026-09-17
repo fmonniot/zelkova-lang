@@ -101,7 +101,7 @@ fn minimal_passing_module() {
     "#};
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
-    let result = check_module(&test_package(), &interfaces, &parsed);
+    let result = check_module(&test_package(), &interfaces, &parsed, false);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }
 
@@ -119,7 +119,7 @@ fn module_with_typed_and_untyped_values() {
     "#};
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
-    let result = check_module(&test_package(), &interfaces, &parsed);
+    let result = check_module(&test_package(), &interfaces, &parsed, false);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
     assert_eq!(module.values.len(), 3);
@@ -137,7 +137,7 @@ fn module_with_union_type() {
     "#};
     let parsed = parse_source(source);
     let interfaces = HashMap::from([basics_interface()]);
-    let result = check_module(&test_package(), &interfaces, &parsed);
+    let result = check_module(&test_package(), &interfaces, &parsed, false);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
     assert!(module.types.contains_key(&"Shape".into()));
@@ -158,7 +158,7 @@ fn module_importing_maybe_interface() {
         wrap x = Just x
     "#};
     let parsed = parse_source(source);
-    let result = check_module(&test_package(), &interfaces, &parsed);
+    let result = check_module(&test_package(), &interfaces, &parsed, false);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
     assert!(module.values.contains_key(&"wrap".into()));
@@ -179,7 +179,7 @@ fn check_module_interface_can_be_used_by_dependent() {
         wrap x = Some x
     "#};
     let parsed_a = parse_source(source_a);
-    let module_a = check_module(&pkg, &interfaces, &parsed_a).expect("Lib should compile");
+    let module_a = check_module(&pkg, &interfaces, &parsed_a, false).expect("Lib should compile");
     interfaces.insert(module_a.name.name().clone(), module_a.to_interface(None));
 
     // Second module: imports and uses Lib
@@ -190,7 +190,7 @@ fn check_module_interface_can_be_used_by_dependent() {
         answer = Some 42
     "#};
     let parsed_b = parse_source(source_b);
-    let result_b = check_module(&pkg, &interfaces, &parsed_b);
+    let result_b = check_module(&pkg, &interfaces, &parsed_b, false);
     assert!(result_b.is_ok(), "App should compile, got {:?}", result_b);
 }
 
@@ -206,7 +206,7 @@ fn check_module_fails_on_missing_import() {
     "#};
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
-    let result = check_module(&test_package(), &interfaces, &parsed);
+    let result = check_module(&test_package(), &interfaces, &parsed, false);
     assert!(result.is_err(), "expected Err for missing import, got Ok");
 }
 
@@ -221,7 +221,7 @@ fn stdlib_tuple_compiles() {
     }
     let parsed = parse_file(&path);
     let interfaces = HashMap::new();
-    let result = check_module(&std_package(), &interfaces, &parsed);
+    let result = check_module(&std_package(), &interfaces, &parsed, true);
     assert!(result.is_ok(), "Tuple.zel should compile, got {:?}", result);
 }
 
@@ -241,7 +241,7 @@ fn stdlib_basics_chain_compiles() {
             return;
         }
         let parsed = parse_file(&path);
-        let module = check_module(&pkg, &interfaces, &parsed)
+        let module = check_module(&pkg, &interfaces, &parsed, true)
             .unwrap_or_else(|e| panic!("{} failed: {:?}", js_module, e));
         interfaces.insert(module.name.name().clone(), module.to_interface(None));
     }
@@ -253,7 +253,7 @@ fn stdlib_basics_chain_compiles() {
         return;
     }
     let parsed_basics = parse_file(&basics_path);
-    let basics_module = check_module(&pkg, &interfaces, &parsed_basics)
+    let basics_module = check_module(&pkg, &interfaces, &parsed_basics, true)
         .unwrap_or_else(|e| panic!("Basics.zel failed: {:?}", e));
     interfaces.insert(
         basics_module.name.name().clone(),
@@ -267,7 +267,7 @@ fn stdlib_basics_chain_compiles() {
         return;
     }
     let parsed_maybe = parse_file(&maybe_path);
-    let maybe_module = check_module(&pkg, &interfaces, &parsed_maybe)
+    let maybe_module = check_module(&pkg, &interfaces, &parsed_maybe, true)
         .unwrap_or_else(|e| panic!("Maybe.zel failed: {:?}", e));
     interfaces.insert(
         maybe_module.name.name().clone(),
@@ -281,7 +281,7 @@ fn stdlib_basics_chain_compiles() {
         return;
     }
     let parsed_result = parse_file(&result_path);
-    let result_module = check_module(&pkg, &interfaces, &parsed_result)
+    let result_module = check_module(&pkg, &interfaces, &parsed_result, true)
         .unwrap_or_else(|e| panic!("Result.zel failed: {:?}", e));
     interfaces.insert(
         result_module.name.name().clone(),
@@ -475,7 +475,7 @@ fn stdlib_bitwise_compiles() {
             return;
         }
         let parsed = parse_file(&path);
-        let checked = check_module(&pkg, &interfaces, &parsed)
+        let checked = check_module(&pkg, &interfaces, &parsed, true)
             .unwrap_or_else(|e| panic!("{} failed: {:?}", module, e));
         interfaces.insert(checked.name.name().clone(), checked.to_interface(None));
     }
@@ -555,7 +555,7 @@ fn type_error_renders_as_an_error_naming_both_types() {
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
 
-    let error = check_module(&test_package(), &interfaces, &parsed)
+    let error = check_module(&test_package(), &interfaces, &parsed, false)
         .expect_err("`answer : Int` with a `Bool` body must not type-check");
 
     // The phase is part of the contract: a type error must not be reported as, say,
@@ -1114,46 +1114,83 @@ fn ambiguous_import_labels_point_into_each_defining_module() {
 
 // ── Test 22a: a default import is named as implicit in the ambiguity note ───
 
+/// A stand-in `Helper` interface exposing a polymorphic `add`, so it collides
+/// with `Basics.add` on name alone and not on type.
+fn helper_interface() -> (Name, Interface) {
+    use zelkova_lang::compiler::position::NodeSpan;
+
+    let mut values = HashMap::new();
+    values.insert(
+        "add".into(),
+        (
+            NodeSpan::none(),
+            canonical::Type::Arrow(
+                Box::new(canonical::Type::Variable("a".into())),
+                Box::new(canonical::Type::Variable("a".into())),
+            ),
+        ),
+    );
+
+    let interface = Interface {
+        module_name: zelkova_lang::compiler::ModuleName::new(
+            PackageName::new("zelkova", "core"),
+            "Helper".into(),
+        ),
+        values,
+        unions: HashMap::new(),
+        infixes: HashMap::new(),
+        infix_functions: HashMap::new(),
+        file: None,
+    };
+
+    ("Helper".into(), interface)
+}
+
 /// `SPEC-32`: colliding with a *default* import is `AmbiguousVariables`, the
 /// same as colliding with two written ones — `docs/spec/modules.md`'s *The
 /// default imports* section says a default entry participates in ambiguity
 /// exactly as a written import does. What is worth pinning at this layer is
-/// the note: a reader of `Main.zel` never wrote `import Basics`, so the note
-/// names it differently from `Helper`, which `Main.zel` did write.
+/// the note: a reader of `Main` never wrote `import Basics`, so the note names
+/// it differently from `Helper`, which `Main` did write.
 ///
-/// `Basics.zel` and `Helper.zel` both expose `add`; `Main.zel` writes only
-/// `import Helper exposing (add)`, so the `Basics` half of the collision is
-/// supplied by the default import list rather than written — the fixture is
-/// the ticket's reproduction verbatim.
+/// `Basics` and `Helper` both expose `add`; `Main` writes only `import Helper
+/// exposing (add)`, so the `Basics` half of the collision is supplied by the
+/// default import list rather than written — the ticket's reproduction, with
+/// both interfaces hand-built (`basics_interface_with_plus`, `helper_interface`) rather
+/// than real sibling modules: a real `Basics.zel` in `Main`'s own package would
+/// make that package the one the eight belong to (`LANG-57`), which gets none
+/// of them and could never reproduce this collision in the first place.
 ///
 /// Mutation-checked by reverting `ambiguous_note` to the old unconditional
 /// `"it is exposed by: {}".join(", ")` over every candidate's name: the
 /// assertion below goes red because the note no longer says "implicitly".
 #[test]
 fn ambiguous_variable_note_calls_out_the_implicit_default_import() {
-    let root = fixture_package("package_default_import_collision");
-    assert_eq!(
-        module_names(&root),
-        vec!["Basics.zel", "Helper.zel", "Main.zel"]
-    );
+    let mut interfaces = HashMap::new();
+    let (basics_name, basics_iface) = basics_interface_with_plus();
+    interfaces.insert(basics_name, basics_iface);
+    let (helper_name, helper_iface) = helper_interface();
+    interfaces.insert(helper_name, helper_iface);
 
-    let error = compile_package(&root)
+    let source = indoc::indoc! {r#"
+        module Main exposing (x)
+        import Helper exposing (add)
+        x : Int
+        x = add 1 2
+    "#};
+
+    let error = check_module(&test_package(), &interfaces, &parse_source(source), false)
         .expect_err("a name colliding with a default import must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
-    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
-
-    match unwrap_in_file(&errors[0]) {
+    match &error {
         CompilationError::Canonical(canonical_errors, module) => {
             assert_eq!(module, &Name::from("Main"));
             assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
         }
-        other => panic!("expected a Canonical error, got {:?}", other),
+        other => panic!("expected a Canonical error naming Main, got {:?}", other),
     }
 
-    let diagnostic = errors[0].as_diagnostic();
+    let diagnostic = error.as_diagnostic();
     assert_eq!(
         diagnostic.notes,
         vec!["it is exposed by: Helper, and implicitly by Basics".to_string()],
@@ -1562,7 +1599,7 @@ fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
 
     let pkg = test_package();
 
-    let widget_error = check_module(&pkg, &HashMap::new(), &parse_source(widget))
+    let widget_error = check_module(&pkg, &HashMap::new(), &parse_source(widget), false)
         .expect_err("an exposed, unannotated value must not compile");
 
     match &widget_error {
@@ -1582,7 +1619,7 @@ fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
     // `Widget` never checked, so there is no `Interface` for it in scope —
     // exactly what the real pipeline would have, since `check_in_order` only
     // inserts an `Interface` for a module that canonicalized.
-    let main_error = check_module(&pkg, &HashMap::new(), &parse_source(main))
+    let main_error = check_module(&pkg, &HashMap::new(), &parse_source(main), false)
         .expect_err("Main imports a module that never checked");
 
     match &main_error {
@@ -1619,7 +1656,7 @@ fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
 fn check_importer(lib: &str, main: &str) -> Result<(), CompilationError> {
     let pkg = test_package();
     let mut interfaces: HashMap<Name, Interface> = HashMap::from([basics_interface()]);
-    let lib_module = check_module(&pkg, &interfaces, &parse_source(lib))
+    let lib_module = check_module(&pkg, &interfaces, &parse_source(lib), false)
         .unwrap_or_else(|e| panic!("the exporting module should compile: {:?}", e));
 
     interfaces.insert(
@@ -1627,7 +1664,7 @@ fn check_importer(lib: &str, main: &str) -> Result<(), CompilationError> {
         lib_module.to_interface(None),
     );
 
-    check_module(&pkg, &interfaces, &parse_source(main)).map(|_| ())
+    check_module(&pkg, &interfaces, &parse_source(main), false).map(|_| ())
 }
 
 /// A module exposing three of its five declarations: a value, an opaque type and
@@ -2081,35 +2118,105 @@ fn foreign_names(value: &canonical::Value) -> Vec<String> {
     out
 }
 
-/// `LANG-8`: a module that writes no `import` at all still resolves `+`, and
-/// resolves it to `Basics`.
+/// A stand-in `Basics` interface exposing just enough to write `1 + 2`, for a
+/// test that needs `Basics` available as an already-checked dependency rather
+/// than as a real sibling module on disk.
 ///
-/// `Implicit.zel` in the fixture is three lines and none of them is an `import`,
-/// so `+` can only have arrived through the default import list. Asserting on the
-/// `VarForeign` rather than on `is_ok()` is the difference between "it compiled"
-/// and "it compiled because `Basics` was in scope": a module that resolved `+`
-/// some other way would satisfy the first and not the second.
+/// A real fixture module literally named `Basics` would make its own package
+/// the one the eight default imports belong to (`LANG-57`) — the package-level
+/// rule this file's `default_imports_resolve_without_an_import_line` exists to
+/// exercise the *opposite* side of — so that scenario can only be reproduced
+/// with a hand-built interface here, the same way `maybe_interface` in
+/// `tests/support/mod.rs` stands in for a real `Maybe.zel`.
+///
+/// Named apart from [`support::basics_interface`], which carries no values —
+/// this one adds `+`/`add` on purpose, and a plain `use support::*` item-level
+/// shadowing would otherwise hand every other call in this file the wrong one.
+fn basics_interface_with_plus() -> (Name, Interface) {
+    use zelkova_lang::compiler::position::NodeSpan;
+
+    let int_type = canonical::Type::Type(qual("Basics.Int"), vec![]);
+    let add_type = canonical::Type::Arrow(
+        Box::new(int_type.clone()),
+        Box::new(canonical::Type::Arrow(
+            Box::new(int_type.clone()),
+            Box::new(int_type.clone()),
+        )),
+    );
+
+    let mut values = HashMap::new();
+    values.insert("add".into(), (NodeSpan::none(), add_type));
+
+    let mut unions = HashMap::new();
+    unions.insert(
+        "Int".into(),
+        canonical::UnionType {
+            span: NodeSpan::none(),
+            variables: vec![],
+            variants: vec![canonical::TypeConstructor {
+                name: "Int".into(),
+                type_parameters: vec![],
+                tpe: qual("Basics.Int"),
+            }],
+        },
+    );
+
+    let mut infixes = HashMap::new();
+    infixes.insert(
+        "+".into(),
+        canonical::Infix {
+            associativity: canonical::Associativity::Left,
+            precedence: 6,
+            function_name: "add".into(),
+            span: NodeSpan::none(),
+        },
+    );
+
+    let interface = Interface {
+        module_name: zelkova_lang::compiler::ModuleName::new(
+            PackageName::new("zelkova", "core"),
+            "Basics".into(),
+        ),
+        values,
+        unions,
+        infixes,
+        infix_functions: HashMap::new(),
+        file: None,
+    };
+
+    ("Basics".into(), interface)
+}
+
+/// `LANG-8`: a module that writes no `import` at all still resolves `+`, and
+/// resolves it to `Basics`, in an ordinary package (`package_declares_a_default:
+/// false`).
+///
+/// Asserting on the `VarForeign` rather than on `is_ok()` is the difference
+/// between "it compiled" and "it compiled because `Basics` was in scope": a
+/// module that resolved `+` some other way would satisfy the first and not the
+/// second.
 ///
 /// Mutation-checked by dropping the `implicit` half of `new_environment`'s import
-/// loop: `Implicit` then fails with a `VariableNotFound` for `+` and never reaches
-/// `checked`, so `checked_value` panics.
+/// loop: this then fails to canonicalize with a `VariableNotFound` for `+`, and
+/// `unwrap_or_else` panics.
 #[test]
 fn default_imports_resolve_without_an_import_line() {
-    let root = fixture_package("package_default_imports");
-    assert_eq!(
-        module_names(&root),
-        vec!["Basics.zel", "Explicit.zel", "Implicit.zel"]
-    );
+    let (name, iface) = basics_interface_with_plus();
+    let mut interfaces = HashMap::new();
+    interfaces.insert(name, iface);
 
-    let source = std::fs::read_to_string(root.join("Implicit.zel")).expect("fixture is readable");
-    assert!(
-        !source.contains("import"),
-        "the point of this fixture is that `Implicit.zel` writes no import: {:?}",
-        source
-    );
+    let source = indoc::indoc! {r#"
+        module Implicit exposing (x)
+        x : Int
+        x = 1 + 2
+    "#};
 
-    let checked = check_fixture("package_default_imports");
-    let x = checked_value(&checked, "Implicit", "x");
+    let checked = check_module(&test_package(), &interfaces, &parse_source(source), false)
+        .unwrap_or_else(|e| panic!("expected the implicit default to resolve `+`: {:?}", e));
+    let x = checked
+        .values
+        .get(&Name::from("x"))
+        .expect("`Implicit` declares `x`");
 
     assert_eq!(
         foreign_names(x),
@@ -2142,46 +2249,6 @@ fn an_explicit_default_import_still_compiles() {
         foreign_names(y),
         vec!["Basics.add".to_string()],
         "a written default import must resolve the same way the implicit one does"
-    );
-}
-
-// ── Test 31: which default import wins does not depend on module names ──────
-
-/// `LANG-8`: a lower-priority implicit edge must not cost another module its
-/// `Basics`.
-///
-/// `add_default_import_edges` is greedy — it refuses an edge whose target already
-/// reaches the importer — so the edges it has already added are part of the graph
-/// the next test consults. Allocating them importer by importer in *name* order
-/// made that self-interference follow the alphabet: in this package `Aux` sorts
-/// first and its only available entry is `Maybe`, and the `Aux -> Maybe` edge then
-/// made `Basics` reach `Zed` through `Aux -> Maybe -> Zed`, so `Zed -> Basics` was
-/// refused and `Zed` lost the one import it needed. Renaming `Aux` to something
-/// after `Zed` made the same package compile.
-///
-/// Allocating target by target in `DEFAULT_IMPORTS` order instead settles every
-/// `Basics` edge before any `Maybe` edge exists to interfere, and within one
-/// target the importers cannot interfere with each other at all — see
-/// `add_default_import_edges`' doc comment for why.
-///
-/// Mutation-checked by restoring the old loop nesting (`for importer { for default
-/// }`): `Zed` then fails with a `VariableNotFound` for `+` and never reaches
-/// `checked`, so `checked_value` panics.
-#[test]
-fn a_low_priority_implicit_edge_does_not_cost_another_module_basics() {
-    let root = fixture_package("package_default_import_priority");
-    assert_eq!(
-        module_names(&root),
-        vec!["Aux.zel", "Basics.zel", "Maybe.zel", "Zed.zel"]
-    );
-
-    let checked = check_fixture("package_default_import_priority");
-    let z = checked_value(&checked, "Zed", "z");
-
-    assert_eq!(
-        foreign_names(z),
-        vec!["Basics.add".to_string()],
-        "`Zed` must keep its implicit `Basics` however its siblings are named"
     );
 }
 
@@ -2342,12 +2409,12 @@ fn check_importer_of_two(first: &str, second: &str, main: &str) -> Result<(), Co
     let mut interfaces: HashMap<Name, Interface> = HashMap::from([basics_interface()]);
 
     for lib in [first, second] {
-        let module = check_module(&pkg, &interfaces, &parse_source(lib))
+        let module = check_module(&pkg, &interfaces, &parse_source(lib), false)
             .unwrap_or_else(|e| panic!("an exporting module should compile: {:?}", e));
         interfaces.insert(module.name.name().clone(), module.to_interface(None));
     }
 
-    check_module(&pkg, &interfaces, &parse_source(main)).map(|_| ())
+    check_module(&pkg, &interfaces, &parse_source(main), false).map(|_| ())
 }
 
 /// A `Size` declared in `A` and a `Size` declared in `B` are two types, and a

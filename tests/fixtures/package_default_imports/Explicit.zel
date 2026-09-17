@@ -1,5 +1,6 @@
--- The same module, writing the default import out. It must mean the same thing
--- rather than registering `Basics` twice and making `+` ambiguous.
+-- Writing one of the eight default imports out by hand must mean the same thing
+-- as leaving it implicit, rather than registering `Basics` twice and making `+`
+-- ambiguous.
 module Explicit exposing (y)
 
 import Basics exposing (..)

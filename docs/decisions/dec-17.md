@@ -122,10 +122,6 @@ is scoped by package membership, which nothing has to remember to update.
 
 The rule is unobservable outside `zelkova-core`, which is what makes it a good rule and also
 means no test of an ordinary package can pin it: a package that does not contain `Basics`
-behaved identically under all three options. What the tests can hold is core's own sets, and
-that is what [`LANG-57`](../tickets/lang-57.md) asks for.
-
-Until that ticket lands the compiler still decides entry by entry, which the chapter carries as
-a **Known gap:**. Nothing in `std/core` names an entry it receives that way, so the two rules
-accept exactly the same tree today — the divergence is in what the compiler would do to a
-module nobody has written yet.
+behaved identically under all three options. What the tests hold instead is core's own sets —
+[`LANG-57`](../tickets/README.md) is the ticket that made the compiler decide this by package
+rather than one entry at a time.

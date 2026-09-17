@@ -303,7 +303,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-54 | task | — | closed 2026-09-13 | The interop modifier is `foreign`, not `javascript` |
 | LANG-55 | task | — | closed 2026-09-16 | The `Char` and `String` default imports bring their modules but not their types |
 | [LANG-56](lang-56.md) | task | — | open | `std/core`'s JavaScript companions implement a 32-bit `Int` held in a number |
-| [LANG-57](lang-57.md) | task | — | open | The default imports are dropped entry by entry, not by package |
+| LANG-57 | task | — | closed 2026-09-15 | The default imports are dropped entry by entry, not by package |
 | [LANG-58](lang-58.md) | task | — | open | A module underneath `Basics` cannot name a scalar type |
 | [LANG-59](lang-59.md) | task | — | open | A scalar type's declaration is an ordinary union, so `Int` is a value and any body is accepted |
 | LANG-60 | task | — | closed 2026-09-16 | The typer gives `Bool` a literal type, so inside `Basics` it does not match `True` and `False` |

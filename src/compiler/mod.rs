@@ -736,10 +736,20 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
 /// TODO canonicalization must happens before checkings, because type check (at least)
 /// will require access to other modules canonical representation.
 /// That probably mean moving the `canonical::canonicalize` call out of this function
+///
+/// `package_declares_a_default` says whether the package `source` belongs to
+/// declares one of the eight [default
+/// imports](default_imports) — see [`default_imports::declares_a_default`].
+/// `dependencies::ModuleWalker` computes it once, from the same module list it
+/// builds the import graph from, and hands it to every module it checks through
+/// this same parameter, which is why `check` in
+/// [`ModuleWalker::check_in_order`](dependencies::ModuleWalker::check_in_order)
+/// carries it too: `check_module` is normally reached only as that `fn` pointer.
 pub fn check_module(
     package: &PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
+    package_declares_a_default: bool,
 ) -> Result<canonical::Module, CompilationError> {
     // - desugar ~?~ *!*
     // Should I have an intermediate AST before type checking ?
@@ -751,8 +761,9 @@ pub fn check_module(
     // Each phase accumulates its own errors and hands back all of them; this is where
     // they are tagged with the module they came from, because a phase only ever sees
     // one module and has no reason to carry its name around.
-    let canonical = canonical::canonicalize(package, interfaces, source)
-        .map_err(|errors| CompilationError::Canonical(errors, source.name.clone()))?;
+    let canonical =
+        canonical::canonicalize(package, interfaces, source, package_declares_a_default)
+            .map_err(|errors| CompilationError::Canonical(errors, source.name.clone()))?;
 
     // - type checking and inference
     // TODO Here either type checks return the new types, or it take a mutable canonical

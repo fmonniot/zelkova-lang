@@ -1,8 +1,9 @@
 -- A stand-in for `std/core`'s `Basics`, holding just enough to write `1 + 2`.
 --
--- A package compiles on its own, so the default imports resolve
--- against the modules this package ships. That is why the fixture carries its
--- own `Basics` rather than reaching for the real one.
+-- A package containing a module named `Basics` is the package the eight default
+-- imports belong to, so none of its modules gets any of them implicitly — this
+-- fixture only exercises `Explicit.zel`, which writes the import out by hand.
+
 module Basics exposing (Int, (+), add)
 
 
