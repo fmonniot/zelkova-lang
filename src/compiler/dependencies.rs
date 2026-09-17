@@ -342,27 +342,6 @@ fn build_cycle(
 /// exists, and nothing but this graph decides which module is checked first — so
 /// without these edges whether `1 + 2` resolved would come down to the order the
 /// source files happened to load in.
-///
-/// No edge is added at all when `names` — every module of the package being
-/// compiled — includes one of the eight
-/// ([`default_imports::declares_a_default`]): that package is the one the list
-/// belongs to, and none of its modules receives any of them, not the eight
-/// themselves and not a facade one of them is built from ([*The default
-/// imports*](../../../docs/spec/modules.md#the-default-imports)). Every other
-/// package's modules receive all eight, and for those this pass was already a
-/// no-op before this guard existed: `ModuleWalker::new` builds one graph per
-/// package and drops imports of modules outside it, so a target from
-/// `DEFAULT_IMPORTS` is never a node in such a graph and `names.get(&target)`
-/// below finds nothing to add an edge to.
-///
-/// [`default_imports::implicit_imports`] is asked the same question rather than
-/// deriving its own answer, so a package is exempt here exactly when it is there.
-/// The `is_default` check and the `has_path_connecting` guard below predate that
-/// question and are kept rather than pruned now that it makes them unreachable in
-/// practice — they still hold if a package ever violated [the rule that only
-/// `zelkova-core` may declare a module under one of the eight
-/// names](../../../docs/spec/packages.md#two-modules-under-one-name-is-an-error),
-/// which nothing here checks.
 fn add_default_import_edges(graph: &mut DiGraph<&Module, ()>, names: &HashMap<&Name, NodeIndex>) {
     if crate::compiler::default_imports::declares_a_default(names.keys().copied()) {
         return;
