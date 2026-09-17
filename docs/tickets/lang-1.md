@@ -5,8 +5,12 @@
 **Location:** `src/compiler/parser/tokenizer.rs` (`keyword`, `Token::True`/`Token::False`),
 `src/compiler/parser/grammar.lalrpop` (the `extern` token list and `Lit`), the
 `Literal::Bool` variant in `src/compiler/parser/mod.rs` and its canonical counterparts
-(`canonical::ExpressionKind::Bool`, `canonical::PatternKind::Bool`), and
-`src/compiler/typer/mod.rs` around lines 634, 692 and 774.
+(`canonical::ExpressionKind::Bool`, `canonical::PatternKind::Bool`), and in
+`src/compiler/typer/mod.rs` the `TermKind::Bool` and `TypedTermKind::Bool` variants with
+the two arms that build them (`canonical_expr_to_term`'s `ExpressionKind::Bool`,
+`translate_pattern`'s `PatternKind::Bool`) plus the `TypedTermKind::Bool` arm in
+`src/compiler/typer/constraint.rs`. `typer::bool_type` is not one of them: an `if`
+condition still needs a `Bool` no source spelled.
 
 **Decided (SPEC-2, by the language owner):** Zelkova has no boolean literal syntax. `Bool` is
 an ordinary union type, `True` and `False` are its constructors, and they are resolved,
@@ -34,8 +38,10 @@ compile today.
 
 **Acceptance:** `true = 1` and `f true = 1` both compile, `true` and `false` behaving as
 ordinary lowercase identifiers with no special meaning. A `case` over a locally-declared
-`type Bool = True | False` still type-checks, and an `if` whose condition is `True` still
-type-checks. The `**Known gap:**` block in `docs/spec/lexical-structure.md`'s *Reserved
+`type Bool = True | False` still type-checks, and an `if` whose condition is `Basics.True`
+still type-checks. That qualification is the whole of what the paragraph above changes for
+this ticket: an `if` requires `Basics.Bool`, so a module's own `type Bool = True | False`
+does not satisfy one and is not the type to write the acceptance case against. The `**Known gap:**` block in `docs/spec/lexical-structure.md`'s *Reserved
 words* section goes red on the parse-error pin and is retagged `expect=ok`, its paragraph
 deleted.
 

@@ -394,7 +394,7 @@ whole of its definition, and `True` and `False` are constructors built and match
 others — which is what [`true` and `false` not being reserved
 words](lexical-structure.md#reserved-words) means. The compiler knows `Bool`'s representation
 and nothing about its structure, so the self-naming rule above does not reach it. `Bool` in an
-annotation is that union, `Basics` included:
+annotation is that union:
 
 ```zel expect=ok
 module Basics exposing (Bool(..), yes)
