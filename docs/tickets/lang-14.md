@@ -73,6 +73,15 @@ failing; and a collision between an unwrapped dependency and a local module repo
 module is compiled, naming both. `cargo run` must still print `parsed 8 modules` and list all
 eight.
 
+One collision case names a specific pair rather than any two modules: an unwrapped dependency
+declaring its own module `Basics` (with its own `type Int = Int`) against `zelkova-core`'s
+`Basics`, which is always unwrapped. `src/compiler/scalars.rs` recognises a scalar by a bare
+qualified name — `Basics.Int`, with no package in it anywhere ([`DEC-15` decision
+1](../decisions/dec-15.md#1--a-scalar-type-is-known-by-its-qualified-name)) — precisely because
+this ticket's collision rule is what keeps that name unambiguous before canonicalization ever
+runs. A test putting that pair through the same collision path is what pins the reasoning, not
+just the general case.
+
 **The two `expect=unimplemented` blocks in *The namespace* need a decision when this lands.**
 They import `AcmeWidgets.Size`, and a `docs/spec/` block is compiled against the modules of its
 own `package=` group and nothing else — so they will keep failing after this ticket, and their
