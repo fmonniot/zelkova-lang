@@ -119,9 +119,9 @@ mod tests {
 
     /// The two directions agree: the name a scalar writes is the one it recognises.
     ///
-    /// Mutation-checked by giving [`Scalar::qual_name`] the unqualified name only
-    /// (`QualName::in_module("", self.name)`): `declares` then rejects every scalar's
-    /// own name and the loop goes red.
+    /// Mutation-checked by giving [`Scalar::qual_name`] the wrong module
+    /// (`QualName::in_module("Example", self.name)`): `declares` then rejects every
+    /// scalar's own name and the loop goes red.
     #[test]
     fn a_scalar_recognises_the_name_it_writes() {
         for scalar in SCALARS {

@@ -1044,7 +1044,11 @@ pub enum TermPatternKind {
     Anything,
     /// Binds the scrutinee type to this name.
     Bind(String),
-    /// Matches a specific literal type; constrains the scrutinee to that type.
+    /// Matches one specific value; constrains the scrutinee to the type carried here.
+    ///
+    /// That type is a [`Type::Literal`] for an `Int` or a `Char` pattern, and the
+    /// [`Type::Adt`] [`bool_type`] builds for a `true`/`false` one — `Bool` is the union
+    /// `Basics` declares, not a literal type.
     Literal(Type),
     /// Matches an ADT constructor; carries the fresh ADT args and field bindings.
     Constructor {
