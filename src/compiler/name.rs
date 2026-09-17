@@ -119,6 +119,20 @@ impl QualName {
         }
     }
 
+    /// The name `name`, as declared by `module`.
+    ///
+    /// `module` is written out with its dots, the way a `module` header writes it, and
+    /// is split back into segments here. Unlike [`QualName::parse`] this cannot fail:
+    /// the two halves arrive separately, so there is no text to go looking for a module
+    /// in. It is how a name the compiler knows without reading it from a source file —
+    /// a [scalar](super::scalars) — becomes a `QualName`.
+    pub fn in_module(module: &str, name: &str) -> QualName {
+        QualName {
+            module: module.split('.').map(String::from).collect(),
+            name: name.to_string(),
+        }
+    }
+
     // TODO Write tests
     pub fn to_name(&self) -> Name {
         if !self.module.is_empty() {

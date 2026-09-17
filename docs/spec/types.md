@@ -393,7 +393,17 @@ naming anything but the type itself would describe a representation the language
 whole of its definition, and `True` and `False` are constructors built and matched like any
 others — which is what [`true` and `false` not being reserved
 words](lexical-structure.md#reserved-words) means. The compiler knows `Bool`'s representation
-and nothing about its structure, so the self-naming rule above does not reach it.
+and nothing about its structure, so the self-naming rule above does not reach it. `Bool` in an
+annotation is that union, `Basics` included:
+
+```zel expect=ok
+module Basics exposing (Bool(..), yes)
+
+type Bool = True | False
+
+yes : Bool
+yes = True
+```
 
 **A module of `zelkova-core` receives the scalar names without an import.** That rule belongs
 to [the default imports](modules.md#the-default-imports), which is also where the case it
@@ -404,20 +414,6 @@ nothing else, so a module reaching `Bool` that way can annotate one and cannot w
 `Basics` is accepted; `Char` and `String` do not compile, so neither declares the scalar it is
 named for; and the two facades `Basics` imports name `Int` through a fabricated type
 ([`BUG-16`](../tickets/bug-16.md)) rather than through the rule above.
-
-```zel expect=type-error:UnificationFailed
-module Basics exposing (Bool(..), yes)
-
-type Bool = True | False
-
-yes : Bool
-yes = True
-```
-
-**Known gap:** that block should be `expect=ok`. Inside `Basics` an annotation naming `Bool` is
-the scalar, while `True` and `False` have the type of an ordinary union, so the two do not match
-and the error reads *cannot match `Bool` with `Bool`*. [`LANG-60`](../tickets/lang-60.md) is the
-ticket.
 
 ## Type annotations
 

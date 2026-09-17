@@ -19,7 +19,9 @@
 //!   declared side, because that is the order the headline reads them out in (see
 //!   [`Constraint`]).
 
-use super::{Constraint, Reason, TermPatternKind, Type, TypeLiteral, TypedTerm, TypedTermKind};
+use super::{
+    bool_type, Constraint, Reason, TermPatternKind, Type, TypeLiteral, TypedTerm, TypedTermKind,
+};
 use crate::compiler::tuple::Tuple;
 
 pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
@@ -31,7 +33,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
         TypedTermKind::Bool(_) => {
             constraints.push(Constraint::new(
                 tpe.clone(),
-                Type::Literal(TypeLiteral::Bool),
+                bool_type(),
                 Reason::Literal,
                 span,
             ));
@@ -105,7 +107,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             // If put a constraint on the condition and the branches should resolve to the same type
             constraints.push(Constraint::new(
                 cond.tpe.clone(),
-                Type::Literal(TypeLiteral::Bool),
+                bool_type(),
                 Reason::IfCondition,
                 cond.span,
             ));
@@ -247,6 +249,19 @@ mod tests {
         Constraint::new(left, right, reason, NodeSpan::none())
     }
 
+    /// `Basics.Bool`, written out rather than taken from [`bool_type`].
+    ///
+    /// Which module declared the union is the whole of its identity, so an assertion
+    /// built from the function under test would hold for any name that function
+    /// picked — including a bare `Bool`, which would make every module's own `Bool`
+    /// an `if` condition ([`DEC-15`](../../../docs/decisions/dec-15.md) decision 1).
+    fn basics_bool() -> Type {
+        Type::Adt(
+            crate::compiler::name::QualName::parse("Basics.Bool").expect("a qualified name"),
+            vec![],
+        )
+    }
+
     #[test]
     fn constrains_int() {
         let t1 = Type::Variable(TypeVariable { id: 1 });
@@ -263,12 +278,8 @@ mod tests {
     fn constrains_bool() {
         let t1 = Type::Variable(TypeVariable { id: 1 });
 
-        // t1 === Bool
-        let expected = vec![constraint(
-            t1.clone(),
-            Type::Literal(TypeLiteral::Bool),
-            Reason::Literal,
-        )];
+        // t1 === Basics.Bool
+        let expected = vec![constraint(t1.clone(), basics_bool(), Reason::Literal)];
 
         let b = typed(t1, TypedTermKind::Bool(true));
 
@@ -348,7 +359,7 @@ mod tests {
         let t3 = Type::Variable(TypeVariable { id: 3 });
         let t4 = Type::Variable(TypeVariable { id: 4 });
 
-        // t2 === Bool (eg. the condition needs to be a boolean)
+        // t2 === Basics.Bool (eg. the condition needs to be a boolean)
         // t3 === t1   (eg. the if type is the same as the first branch)
         // t4 === t1   (eg. the if type is the same as the second branch)
         //
@@ -356,11 +367,7 @@ mod tests {
         // a condition reported as "every branch must have the same type" would be a
         // lie the types alone cannot catch.
         let expected = vec![
-            constraint(
-                t2.clone(),
-                Type::Literal(TypeLiteral::Bool),
-                Reason::IfCondition,
-            ),
+            constraint(t2.clone(), basics_bool(), Reason::IfCondition),
             constraint(t3.clone(), t1.clone(), Reason::IfBranch),
             constraint(t4.clone(), t1.clone(), Reason::IfBranch),
         ];

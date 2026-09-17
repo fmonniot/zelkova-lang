@@ -733,15 +733,19 @@ fn canonical_type_to_typer_type(
 /// The literal type the typer gives a [scalar](super::scalars), if `name` is the
 /// qualified name of one it has a literal type for.
 ///
-/// Four of the five appear here. [`scalars::STRING`] does not: [`TypeLiteral`] gains a
-/// variant for it the day there is a string literal to give a type to, and a variant
-/// nothing constructs would be a type the unifier could name in an error and no source
-/// could produce.
+/// Three of the five appear here. The other two do not:
+///
+/// - [`scalars::BOOL`] is a scalar *and* an ordinary union, so `Bool` in an annotation
+///   takes the [`Type::Adt`] path every other declaration takes and meets `True` and
+///   `False` there. [`bool_type`] is the same type, built for the three `Bool`s no
+///   source spells.
+/// - [`scalars::STRING`] would gain a [`TypeLiteral`] variant the day there is a string
+///   literal to give a type to; a variant nothing constructs would be a type the
+///   unifier could name in an error and no source could produce.
 fn scalar_literal(name: &QualName) -> Option<TypeLiteral> {
     const LITERALS: &[(scalars::Scalar, TypeLiteral)] = &[
         (scalars::INT, TypeLiteral::Int),
         (scalars::FLOAT, TypeLiteral::Float),
-        (scalars::BOOL, TypeLiteral::Bool),
         (scalars::CHAR, TypeLiteral::Char),
     ];
 
@@ -749,6 +753,23 @@ fn scalar_literal(name: &QualName) -> Option<TypeLiteral> {
         .iter()
         .find(|(scalar, _)| scalar.declares(name))
         .map(|(_, literal)| literal.clone())
+}
+
+/// The type of a `Bool`: the union [`scalars::BOOL`] names, with no arguments.
+///
+/// `Bool` is [a scalar and an ordinary union at
+/// once](../../../docs/spec/types.md#scalar-types) — the compiler knows its
+/// representation and nothing about its structure — so this is the very type
+/// `canonical_type_to_typer_type` produces for an annotation naming `Basics.Bool`, and
+/// the type `Basics` registers `True` and `False` at.
+///
+/// Three constructs need a `Bool` the source did not spell: an [`if`
+/// condition](../../../docs/spec/expressions.md#if--then--else), the `true`/`false`
+/// keywords, and a `true`/`false` pattern. They name `Basics.Bool` and nothing else, so
+/// a module declaring its own `type Bool` does not satisfy them
+/// ([`DEC-15`](../../../docs/decisions/dec-15.md) decisions 1 and 5).
+pub(super) fn bool_type() -> Type {
+    Type::Adt(scalars::BOOL.qual_name(), vec![])
 }
 
 /// Convert a canonical expression to a Term, keeping the position it was written at.
@@ -848,10 +869,7 @@ fn translate_pattern(
             // The binding's actual type will be unified with the scrutinee type in annotate.
             (TermPatternKind::Bind(name.as_str().to_string()), vec![])
         }
-        canonical::PatternKind::Bool(_) => (
-            TermPatternKind::Literal(Type::Literal(TypeLiteral::Bool)),
-            vec![],
-        ),
+        canonical::PatternKind::Bool(_) => (TermPatternKind::Literal(bool_type()), vec![]),
         canonical::PatternKind::Int(_) => (
             TermPatternKind::Literal(Type::Literal(TypeLiteral::Int)),
             vec![],
@@ -1108,10 +1126,15 @@ impl std::fmt::Debug for TypeVariable {
     }
 }
 
+/// The type of an [opaque scalar](../../../docs/spec/types.md#scalar-types): a type
+/// nothing in the language builds or inspects, whose values arrive as literals.
+///
+/// Three of the four are here — `String` waits on a string literal to give a type to.
+/// `Bool` is not one of them at all: it is a scalar *and* an ordinary union, so its
+/// type is a [`Type::Adt`] like any other union's, built by this module's `bool_type`.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum TypeLiteral {
     Int,
-    Bool,
     Char,
     Float,
 }
@@ -1279,7 +1302,6 @@ impl Type {
 
         match self {
             Type::Literal(TypeLiteral::Int) => write!(f, "Int"),
-            Type::Literal(TypeLiteral::Bool) => write!(f, "Bool"),
             Type::Literal(TypeLiteral::Char) => write!(f, "Char"),
             Type::Literal(TypeLiteral::Float) => write!(f, "Float"),
             Type::Number => write!(f, "number"),
@@ -1771,7 +1793,6 @@ mod tests {
 
         fn type_signature(&mut self, tpe: Type) -> String {
             match tpe {
-                Type::Literal(TypeLiteral::Bool) => "Bool".to_owned(),
                 Type::Literal(TypeLiteral::Int) => "Int".to_owned(),
                 Type::Literal(TypeLiteral::Char) => "Char".to_owned(),
                 Type::Literal(TypeLiteral::Float) => "Float".to_owned(),
@@ -2055,7 +2076,7 @@ mod tests {
         Type::Literal(TypeLiteral::Int)
     }
     fn bool_t() -> Type {
-        Type::Literal(TypeLiteral::Bool)
+        bool_type()
     }
     fn char_t() -> Type {
         Type::Literal(TypeLiteral::Char)

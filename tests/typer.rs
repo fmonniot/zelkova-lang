@@ -480,6 +480,64 @@ fn if_expression_types() {
     );
 }
 
+/// An `if` condition is a `Basics.Bool`, which is what an annotation naming `Bool`
+/// resolves to once `Basics` is in scope.
+///
+/// `if_expression_types` above reaches the same constraint from a `true` keyword; this
+/// one comes at it from the annotation, so the two sides of the `Bool` question — the
+/// type the typer produces on its own and the type a source spells — are both pinned.
+///
+/// Mutation-checked by giving `scalar_literal` back a `scalars::BOOL` row: the
+/// annotation is then a literal `Bool` and the condition an `Adt`, and the module
+/// fails with *cannot match `Bool` with `Bool`*.
+#[test]
+fn if_condition_may_be_an_annotated_bool() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        pick : Bool -> Int -> Int -> Int
+        pick c a b = if c then a else b
+    "#};
+
+    assert!(run(source).is_ok(), "{:?}", run(source).err());
+}
+
+/// A module's own `type Bool` is not the `Bool` an `if` asks for.
+///
+/// `Bool` is a scalar, and a scalar is `Basics`' declaration and no other
+/// (`DEC-15` decisions 1 and 5), so the condition of an `if` is `Basics.Bool`
+/// whatever else a module chooses to call `Bool`. The message names the module on
+/// both sides, because one word for two declarations would say nothing.
+///
+/// Mutation-checked by comparing the two names' unqualified halves in the unifier's
+/// `Adt`/`Adt` arm (`n1.unqualified_name() == n2.unqualified_name()`): the two
+/// `Bool`s then unify, the module checks clean, and `one_type_error` panics.
+#[test]
+fn if_condition_is_not_a_modules_own_bool() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (Bool, pick)
+
+        type Bool
+          = True
+          | False
+
+        pick : Bool -> Int -> Int -> Int
+        pick c a b =
+          if c then a else b
+    "#};
+
+    let error = one_type_error(source);
+
+    assert!(
+        matches!(error.kind, typer::ErrorKind::UnificationFailed { .. }),
+        "expected a unification failure, got {:?}",
+        error
+    );
+    assert_eq!(
+        error.message(),
+        "cannot match `Test.Bool` with `Basics.Bool`"
+    );
+}
+
 /// `if` with non-Bool condition should fail, pointing at the condition and saying
 /// which rule it broke.
 ///
@@ -726,9 +784,10 @@ fn an_unresolved_qualified_scalar_name_is_not_the_scalar() {
 /// `Test.Bool` — an ordinary union, the same type its constructors `True` and
 /// `False` are registered at.
 ///
-/// Mutation-checked by restoring the match on the unqualified half in
-/// `scalars::Scalar::declares`: the annotation becomes the literal `Bool`, and the
-/// module fails with "cannot match `Bool` with `Bool`".
+/// Mutation-checked by restoring both halves of a literal `Bool` — a
+/// `TypeLiteral::Bool` with a `scalar_literal` row, *and* the match on the
+/// unqualified half in `scalars::Scalar::declares` — so this `Bool` is taken for the
+/// scalar: the module then fails with "cannot match `Bool` with `Bool`".
 #[test]
 fn a_module_declaring_its_own_bool_annotates_with_it() {
     let source = indoc::indoc! {r#"
@@ -804,5 +863,68 @@ fn a_module_declaring_its_own_int_does_not_get_the_scalar() {
     assert_eq!(
         one_type_error(source).message(),
         "cannot match `Int` with `number`"
+    );
+}
+
+// ── `Bool` inside `Basics` ────────────────────────────────────────────────────
+
+/// `Basics`' `Bool` is the union `True` and `False` build, and an annotation naming
+/// it is that same union.
+///
+/// `Bool` is a scalar *and* an ordinary union (`DEC-15` decision 5): the compiler
+/// knows its representation and nothing about its structure, so every use of it goes
+/// through the ordinary union machinery — the annotation, the constructors it
+/// registers, and a `case` over them. `Basics` is the module where that has to hold,
+/// since it is the only one that both declares the type and can name its
+/// constructors.
+///
+/// Mutation-checked by giving `scalar_literal` back a `scalars::BOOL` row: `yes` then
+/// fails with *cannot match `Bool` with `Bool`*.
+#[test]
+fn basics_own_bool_is_the_union_its_constructors_build() {
+    let source = indoc::indoc! {r#"
+        module Basics exposing (Bool, yes, not)
+
+        type Bool
+          = True
+          | False
+
+        yes : Bool
+        yes = True
+
+        not : Bool -> Bool
+        not b =
+          case b of
+            True ->
+              False
+
+            False ->
+              True
+    "#};
+
+    assert!(run(source).is_ok(), "{:?}", run(source).err());
+}
+
+/// The negative half: `Basics`' `Bool` still rejects a value of another type, so the
+/// test above is not passing because the annotation stopped constraining anything.
+///
+/// An integer literal is still `number` until `LANG-41`, which is the type the
+/// message names.
+#[test]
+fn basics_own_bool_still_rejects_a_wrong_value() {
+    let source = indoc::indoc! {r#"
+        module Basics exposing (Bool, yes)
+
+        type Bool
+          = True
+          | False
+
+        yes : Bool
+        yes = 1
+    "#};
+
+    assert_eq!(
+        one_type_error(source).message(),
+        "cannot match `Bool` with `number`"
     );
 }

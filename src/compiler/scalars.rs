@@ -16,7 +16,8 @@
 //! # Why the list lives here and not in the typer
 //!
 //! The typer is the only reader today: [`typer::canonical_type_to_typer_type`] maps
-//! four of the five onto its own literal types. The list is nonetheless a fact about
+//! three of the five onto its own literal types, and `BOOL` names the union an `if`
+//! condition is checked against. The list is nonetheless a fact about
 //! the language rather than about type inference, and the same five names answer
 //! questions the typer never asks — which names a module underneath `Basics` receives
 //! without an import, and which declarations may name nothing but themselves. It sits
@@ -44,6 +45,16 @@ impl Scalar {
     /// ([`BUG-16`](../../../docs/tickets/bug-16.md)) in any module but `Basics`.
     pub fn declares(&self, name: &QualName) -> bool {
         name.unqualified_name().as_str() == self.name && name.module_name().as_str() == self.module
+    }
+
+    /// This scalar's declaration, as the qualified name every phase after
+    /// canonicalization spells a type with.
+    ///
+    /// The inverse of [`Scalar::declares`], and what a phase reaches for when it needs
+    /// to *name* a scalar rather than recognise one — the typer builds the type of an
+    /// `if` condition out of [`BOOL`] this way.
+    pub fn qual_name(&self) -> QualName {
+        QualName::in_module(self.module, self.name)
     }
 }
 
@@ -104,6 +115,25 @@ mod tests {
         assert_eq!(scalar_of(&qual("Basics.Bool")), Some(BOOL));
         assert_eq!(scalar_of(&qual("Char.Char")), Some(CHAR));
         assert_eq!(scalar_of(&qual("String.String")), Some(STRING));
+    }
+
+    /// The two directions agree: the name a scalar writes is the one it recognises.
+    ///
+    /// Mutation-checked by giving [`Scalar::qual_name`] the unqualified name only
+    /// (`QualName::in_module("", self.name)`): `declares` then rejects every scalar's
+    /// own name and the loop goes red.
+    #[test]
+    fn a_scalar_recognises_the_name_it_writes() {
+        for scalar in SCALARS {
+            assert!(
+                scalar.declares(&scalar.qual_name()),
+                "{:?} does not recognise its own qualified name",
+                scalar
+            );
+        }
+
+        assert_eq!(BOOL.qual_name(), qual("Basics.Bool"));
+        assert_eq!(CHAR.qual_name(), qual("Char.Char"));
     }
 
     /// The spelling alone decides nothing: the same four letters declared elsewhere

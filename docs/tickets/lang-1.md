@@ -19,25 +19,18 @@ values and no rule anywhere saying so. It also costs two names: `true` cannot be
 which [`docs/spec/lexical-structure.md`](../spec/lexical-structure.md#reserved-words) says it
 should be, and where that chapter's `**Known gap:**` block sits.
 
-Note a second-order effect that has to be answered rather than discovered: the typer maps a
-canonical type *named* `Bool` to `TypeLiteral::Bool` by string comparison
-(`typer/mod.rs:634`), ignoring which module declared it, and `Reason::IfCondition` requires an
-`if` condition to be that type. Once `True`/`False` are ordinary constructors, the type they
-build is whichever `Bool` was in scope. Decide whether `if` is defined against
-`Basics.Bool` specifically — which makes `Basics` privileged, and needs the implicit-import
-question the modules chapter will raise — or against any two-constructor type named `Bool`,
-which is what the string comparison accidentally implements today.
+A second-order effect is already answered: the typer has no literal `Bool` left, and
+`Reason::IfCondition` requires an `if` condition to be `Basics.Bool` — the union `Basics`
+declares, whatever else a module calls `Bool` ([`DEC-15`](../decisions/dec-15.md) decisions 1
+and 5, closed as LANG-60). So once `True`/`False` are ordinary constructors, the type they
+build has to be that union for an `if` to accept it, and `typer::bool_type` is the one place
+that name is written.
 
 **Approach:** delete the two keywords and the two `Lit` productions, then follow the type
 errors. `Literal::Bool` and its canonical/typer counterparts go with them; `True` and `False`
 arrive instead as `ExpressionKind::TypeConstructor` and `PatternKind::Constructor`, both of
 which already exist and already work — `type Bool = True | False` and `case b of True -> …`
 compile today.
-
-`TypeLiteral::Bool` in the typer is a separate question from `Literal::Bool`, and
-[`LANG-60`](lang-60.md) answers it: the type is `Basics.Bool`'s ordinary union, and `if` is
-checked against that ([`DEC-15`](../decisions/dec-15.md) decisions 1 and 5). Either ticket can
-land first.
 
 **Acceptance:** `true = 1` and `f true = 1` both compile, `true` and `false` behaving as
 ordinary lowercase identifiers with no special meaning. A `case` over a locally-declared
