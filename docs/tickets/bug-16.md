@@ -3,8 +3,6 @@
 **Severity:** medium (wrong behaviour under normal use — a misspelled type name is accepted
 silently and surfaces later, if at all, as a type error about something else).
 
-**Blocked by:** [LANG-58](lang-58.md). See *What is left, and why it waits* below.
-
 **Location:** `src/compiler/canonical/mod.rs` — `Type::from_parser_type`, the `None` arm of
 its `env.find_type(name)` match.
 
@@ -57,23 +55,20 @@ Two things go red on their own alongside it, both measured:
   has to assert on `PhaseError::message()` instead of on the variant. A unit test inside
   `environment.rs` is the only place the variant itself can be matched.
 
-**What is left, and why it waits:** [`LANG-58`](lang-58.md). `Js/Basics.zel` and
+**No longer blocked:** [`LANG-58`](README.md), closed, seeded the [scalar type
+names](../spec/types.md#scalar-types) into every module of a package exempt from [the default
+imports](../spec/modules.md#the-default-imports) — `zelkova-core` today. `Js/Basics.zel` and
 `Js/Utils.zel` name `Int`, `Float` and `Bool` with no `import` line, and they are exactly the
-two modules the [default imports](../spec/modules.md#the-default-imports) withhold `Basics`
-from — `Basics` imports both facades, so the implicit import back would be a cycle, and writing
-it by hand is the same cycle written out. Reporting the unresolved name rather than fabricating
-one therefore turns both modules red, with no spelling available, until `LANG-58` seeds the
-[scalar type names](../spec/types.md#scalar-types) into a module that dropped its `Basics`
-entry.
+two modules that package covers, so both now have a real, non-fabricated spelling for the three
+names this fix would otherwise take away from them. `SPEC-31` asked that question and
+[`DEC-15`](../decisions/dec-15.md) answers it; the shape `LANG-58` implemented is decision 3,
+and decision 1 settled `BUG-26` with it.
 
-`SPEC-31` asked that question and [`DEC-15`](../decisions/dec-15.md) answers it; the shape
-`LANG-58` implements is decision 3, and decision 1 settled `BUG-26` with it.
-
-Applying the fix on a branch to measure it: with the `do_types` change above, and with `Int`,
-`Float`, `Bool`, `Char` and `String` seeded into *every* scope — wider than `LANG-58` seeds,
-and used only to see what else moved — `cargo run` checks all eight modules and `cargo test
---workspace` is green with six `env.types.len()` assertions in `environment.rs` adjusted for
-the seeded names. So `LANG-58` aside, the rest of the fix costs nothing beyond those two items.
+Measuring the fix still needs the `do_types` change above applied on top: with it, and with the
+scalar names seeded the way `LANG-58` left them, `cargo run` should check all eight modules and
+`cargo test --workspace` should be green with the `environment.rs` assertions `LANG-58` already
+adjusted for the seeded names. Nothing has re-measured this since `LANG-58` landed, so treat it
+as expected rather than confirmed.
 
 **Acceptance:** `label : Nope` in a module that declares no `Nope` fails with the new error,
 and `label : a` (a type variable) still compiles — tests in `tests/compiler/canonical.rs`.

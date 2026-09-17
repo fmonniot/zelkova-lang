@@ -36,6 +36,23 @@ pub fn canonicalize_standalone(source: &str) -> Result<canonical::Module, Vec<ca
     canonical::canonicalize(&test_package(), &interfaces, &parsed, false)
 }
 
+/// Canonicalize `source` as a module of a package exempt from [the default
+/// imports](../../docs/spec/modules.md#the-default-imports) — `zelkova-core`'s
+/// own shape, `LANG-57`'s `package_declares_a_default: true` — with no
+/// interfaces available at all.
+///
+/// The empty interface map is the point: it is what tells apart a module that
+/// resolves `Int`/`Float`/`Bool` by seeding (`LANG-58`) from one that resolves
+/// them by importing `Basics`, since the second would have nothing here to
+/// import from.
+pub fn canonicalize_exempt_package(
+    source: &str,
+) -> Result<canonical::Module, Vec<canonical::Error>> {
+    let parsed = parse_source(source);
+    let interfaces = HashMap::new();
+    canonical::canonicalize(&test_package(), &interfaces, &parsed, true)
+}
+
 pub fn canonicalize_with_interfaces(
     source: &str,
     interfaces: &HashMap<Name, Interface>,

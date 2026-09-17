@@ -4,6 +4,7 @@ use super::{parser, Pattern, PatternKind};
 use super::{Infix, Interface, ModuleName, Name, QualName, Type, TypeConstructor, UnionType};
 use crate::compiler::default_imports;
 use crate::compiler::position::NodeSpan;
+use crate::compiler::scalars;
 use crate::compiler::{PhaseError, SourceSpan, SpanLabel};
 use crate::utils::{collect_accumulate, suggest};
 use log::trace;
@@ -323,7 +324,17 @@ pub fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>) -> Op
 /// `check_module`/`canonicalize` to here — the same answer
 /// `dependencies::add_default_import_edges` uses to decide this package's
 /// implicit edges. A module of such a package gets none of the eight, whatever
-/// it is named.
+/// it is named — and, in their place, the five scalar type names
+/// ([`LANG-58`](../../../docs/tickets/README.md), [`DEC-15` decision
+/// 3](../../../docs/decisions/dec-15.md#3--a-module-that-loses-the-basics-default-import-receives-the-scalar-type-names-in-its-place)):
+/// `Int`, `Float`, `Char`, `String` and `Bool`, bound to the qualified names
+/// [`scalars::SCALARS`] already holds rather than looked up in `Basics`'
+/// `Interface`. A facade underneath `Basics` — `Js.Basics`, `Js.Utils` — has no
+/// other way to name the types its signatures use, since writing the import
+/// out would be [a cycle](../../../docs/spec/modules.md#imports-may-not-form-a-cycle)
+/// and the implicit one is exactly what this package does not receive. Only
+/// the type names arrive this way: no constructor and no value, so a module
+/// reached by this can annotate a `Bool` and cannot write a `True`.
 pub fn new_environment(
     module_name: &ModuleName,
     interfaces: &HashMap<Name, Interface>,
@@ -338,6 +349,24 @@ pub fn new_environment(
         variables: HashMap::new(),
     };
     let mut errors = vec![];
+
+    // The compiler knows each scalar's qualified name and arity without
+    // reading the module that declares it (`scalars::SCALARS`), so seeding
+    // them here consults neither `interfaces` nor `Basics`' own declarations —
+    // doing either would recreate the dependency `add_default_import_edges`
+    // withholds for this package, and turn this into a diagnostic-free way
+    // back into the cycle the default imports are dropped to avoid.
+    if package_declares_a_default {
+        for scalar in scalars::SCALARS {
+            env.types.insert(
+                Name::new(scalar.name),
+                TypeArity {
+                    name: scalar.qual_name(),
+                    variables: vec![],
+                },
+            );
+        }
+    }
 
     let implicit =
         default_imports::implicit_imports(imports, interfaces, package_declares_a_default);
@@ -1252,8 +1281,15 @@ mod tests {
     /// see its doc comment — rather than `new_environment` inspecting `maybe`'s
     /// own name.
     ///
+    /// The five scalar names still arrive (`LANG-58`) — seeding them is a
+    /// separate question from the eight default imports, and answered `yes`
+    /// regardless of which module of the package this is — so `types` is not
+    /// empty; it holds exactly the five and none of `Maybe`'s own.
+    ///
     /// Mutation-checked by dropping the `package_declares_a_default` guard in
-    /// `default_imports::implicit_imports`, which puts `Maybe` in its own scope.
+    /// `default_imports::implicit_imports`, which puts `Maybe` in its own scope
+    /// and turns the `variables` assertion red (`andThen`, `map` and
+    /// `withDefault` would resolve).
     #[test]
     fn a_default_module_does_not_import_itself() -> Result<(), Vec<EnvError>> {
         let mut interfaces = HashMap::new();
@@ -1264,8 +1300,77 @@ mod tests {
         let maybe = ModuleName::new(PackageName::new("zelkova", "core"), "Maybe".into());
         let env = new_environment(&maybe, &interfaces, &vec![], true)?;
 
-        assert_eq!(env.types.len(), 0, "types={:?}", env.types);
+        let mut scalar_names: Vec<&str> = env.types.keys().map(Name::as_str).collect();
+        scalar_names.sort_unstable();
+        assert_eq!(
+            scalar_names,
+            vec!["Bool", "Char", "Float", "Int", "String"],
+            "types={:?}",
+            env.types
+        );
         assert_eq!(env.variables.len(), 0, "variables={:?}", env.variables);
+
+        Ok(())
+    }
+
+    /// `LANG-58`: a module of a package exempt from the default imports
+    /// resolves `Int`, `Float`, `Char`, `String` and `Bool` as types bound to
+    /// the qualified names `scalars::SCALARS` holds, with no interface for
+    /// `Basics` (or anything else) available to consult and no `import`
+    /// written. Only the type names arrive: no constructor, and no value.
+    ///
+    /// The empty `interfaces` map is load-bearing — if seeding looked `Basics`
+    /// up to resolve these names, there would be nothing here for it to find.
+    ///
+    /// Mutation-checked by removing the scalar-seeding block from
+    /// `new_environment`: every `find_type` below returns `None` instead of
+    /// `Some`.
+    #[test]
+    fn scalar_names_are_seeded_without_reading_any_interface() -> Result<(), Vec<EnvError>> {
+        let interfaces = HashMap::new();
+        let js_basics = ModuleName::new(PackageName::new("zelkova", "core"), "Js.Basics".into());
+        let env = new_environment(&js_basics, &interfaces, &vec![], true)?;
+
+        let int = env.find_type(&"Int".into()).expect("Int should be seeded");
+        assert_eq!(int.name, QualName::parse("Basics.Int").unwrap());
+        assert_eq!(int.arity(), 0);
+
+        let float = env
+            .find_type(&"Float".into())
+            .expect("Float should be seeded");
+        assert_eq!(float.name, QualName::parse("Basics.Float").unwrap());
+
+        let bool_ = env
+            .find_type(&"Bool".into())
+            .expect("Bool should be seeded");
+        assert_eq!(bool_.name, QualName::parse("Basics.Bool").unwrap());
+
+        let char_ = env
+            .find_type(&"Char".into())
+            .expect("Char should be seeded");
+        assert_eq!(char_.name, QualName::parse("Char.Char").unwrap());
+
+        let string = env
+            .find_type(&"String".into())
+            .expect("String should be seeded");
+        assert_eq!(string.name, QualName::parse("String.String").unwrap());
+
+        // Type names only: no constructor and no value comes with them.
+        assert!(
+            env.find_type_constructor(&"True".into()).is_none(),
+            "no constructor should be seeded for Bool"
+        );
+        assert!(
+            env.find_value(&"True".into()).is_none(),
+            "no value should be seeded for Bool"
+        );
+        assert_eq!(env.variables.len(), 0, "variables={:?}", env.variables);
+        assert_eq!(
+            env.constructors.len(),
+            0,
+            "constructors={:?}",
+            env.constructors
+        );
 
         Ok(())
     }
