@@ -9,9 +9,12 @@ constructors from `module.types` only, and which `continue`s past a value when
 `value_to_term_and_annotation` returns `None` or inference reports `UnboundVariable`;
 `translate_pattern`'s `PatternKind::Constructor` arm, which returns `None` when
 `module_types.get(&ctor.tpe)` finds nothing; `canonical_expr_to_term`'s
-`VarConstructor` arm, which looks the constructor up as an identifier in that same
-module-local environment. `src/compiler/mod.rs` — `check_module`, which holds the interfaces map
-and calls `typer::type_check(&canonical)` without it.
+`VarConstructor` arm, which *discards the canonical type it is handed* —
+`canonical::ExpressionKind::VarConstructor(QualName, Type)` carries the constructor's type and
+the arm matches it as `VarConstructor(qname, _)` — and looks the constructor up as an
+identifier in that same module-local environment instead. `src/compiler/mod.rs` —
+`check_module`, which holds the interfaces map and calls `typer::type_check(&canonical)`
+without it.
 
 **Problem:** the typer's environment is built from the module under check alone, and a
 constructor declared anywhere else is absent from it. What happens next depends on where the
@@ -78,6 +81,16 @@ finding nothing, which is this ticket.
   canonical type every phase shares, and whether `to_interface` should be the thing that writes
   it is part of the call.
 
+The expression side has a third option the pattern side does not, and whichever placement is
+picked has to say why it is not taken: translate `VarConstructor`'s carried type through
+`canonical_type_to_typer_type` and drop the identifier lookup entirely. For a *nullary*
+constructor that type is already right — `canonical/mod.rs` builds `Type::Type(ctor.tpe, [])` —
+so this alone would make the cross-module probe below fail with the message it asks for, with no
+interfaces in play. It is not enough on its own because the non-nullary branch beside it is
+admittedly wrong (its own `TODO` says the arrow is built out of the constructor's parameters
+with the result type in front), and because an expression that *applies* a constructor still
+needs the union's variables from somewhere.
+
 Either one needed `BUG-35`, which is closed: registering two modules' constructors in one
 environment under an unqualified `Type::Adt` would have made every same-named imported type
 collide. `Type::Adt` now carries the declaring module, so it does not.
@@ -92,6 +105,25 @@ builds them:
 - each of the five constructor probes above is rejected with a `CompilationError::Type` whose
   one error is a `UnificationFailed` with its primary label under the `'c'`;
 - the `if 'c'` probe is rejected with *cannot match `Bool` with `Char`*;
+- **inherited from `BUG-35`**, whose first acceptance case this is: with `A` and `B` each
+  declaring `type Size = S` and exposing it,
+
+  ```zel
+  module Main exposing (..)
+
+  import A
+  import B
+
+  x : A.Size
+  x = B.S
+  ```
+
+  is rejected with *cannot match `A.Size` with `B.Size`* (either order — unification is
+  symmetric). `BUG-35` made the two `Size`es two types and could not pin this, because the
+  declaration is skipped before they are ever compared: `B.S` becomes an identifier, the lookup
+  fails as `UnboundVariable`, and `type_check` `continue`s. It is the shortest probe that shows
+  the expression side reaching the unifier at all, so it belongs here rather than being lost
+  with `BUG-35`'s file;
 - mutation-check by restoring the local-only lookup in `translate_pattern` and the local-only
   registration in `type_check`'s second pass, and watching the pattern and expression tests go red.
 
