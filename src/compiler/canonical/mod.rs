@@ -14,6 +14,7 @@
 //!
 //! TODO Rename this to core ? I feel it's going to be te main internal representation of the language.
 use super::parser;
+use super::scalars;
 use super::Interface;
 use super::PhaseError;
 use super::SpanLabel;
@@ -1060,6 +1061,21 @@ pub enum Error {
     /// variant's own span rather than the declaration's, so the caret sits under
     /// the offending variant alone (`BUG-18`).
     InvalidVariant(InvalidVariantKind, NodeSpan),
+    /// An opaque scalar's `type` declaration — `Basics.Int`, `Basics.Float`,
+    /// `Char.Char` or `String.String` — whose body is something other than
+    /// exactly its own name with no arguments (`LANG-59`,
+    /// [`DEC-15` decision
+    /// 2](../../../docs/decisions/dec-15.md#2--a-scalar-type-is-declared-in-zelkova-and-an-opaque-ones-declaration-names-itself)).
+    /// Nothing in the language constructs or inspects a value of one of these
+    /// four, so the declaration exists to be read rather than built from, and a
+    /// body naming anything else — a different type, extra variants, arguments —
+    /// would describe a representation the language does not have.
+    ///
+    /// Carries the declaration's qualified name and the whole declaration's span
+    /// (`tpe.span`), the same position [`Error::InvalidVariant`] would rather than
+    /// a per-variant one — the check runs on the shape of the whole variant list,
+    /// not on one variant that is wrong among otherwise-good ones.
+    InvalidScalarDeclaration(QualName, NodeSpan),
 
     // Binding module
     InfixDeclared(Name, NodeSpan),
@@ -1210,6 +1226,12 @@ impl PhaseError for Error {
                         .to_owned()
                 }
             },
+            Error::InvalidScalarDeclaration(name, _) => format!(
+                "`{}` is an opaque scalar type, so its declaration must be exactly `type {} = {}`",
+                name.to_name(),
+                name.unqualified_name(),
+                name.unqualified_name()
+            ),
             Error::InfixDeclared(name, _) => format!(
                 "a `module foreign` facade cannot declare an infix operator, but declares `{}`",
                 name
@@ -1378,6 +1400,13 @@ impl PhaseError for Error {
                     InvalidVariantKind::Arrow => "a function type, written where a variant belongs",
                 },
             ),
+            Error::InvalidScalarDeclaration(name, span) => primary(
+                span,
+                &format!(
+                    "an opaque scalar's body must be exactly `{}`, with no other variant and no arguments",
+                    name.unqualified_name()
+                ),
+            ),
             Error::InfixDeclared(_, span) => primary(span, "declared here"),
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
             Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
@@ -1393,6 +1422,10 @@ impl PhaseError for Error {
         match self {
             Error::UnsafeOutsideFacade(..) => vec![
                 "`unsafe` asserts that the companion behind a facade signature is a function of its arguments and that it returns"
+                    .to_owned(),
+            ],
+            Error::InvalidScalarDeclaration(..) => vec![
+                "nothing in the language constructs or inspects a value of an opaque scalar, so its declaration exists to be read rather than built from"
                     .to_owned(),
             ],
             Error::AmbiguousVariables(_, candidates, _)
@@ -1786,6 +1819,40 @@ fn do_types(
         let variables = tpe.type_arguments.clone();
 
         trace!("do_types(in:{:?})", tpe);
+
+        // An opaque scalar's declaration writes only its own name and contributes
+        // no constructor (`LANG-59`, `DEC-15` decision 2): nothing in the language
+        // builds or inspects an `Int`, a `Float`, a `Char` or a `String`, so the
+        // only body worth accepting is the one that says so. This runs on the
+        // *qualified* name, the same way `scalars::Scalar::declares` always does —
+        // a module other than the one a scalar is declared in shares its spelling
+        // and nothing else (`BUG-26`), so its own `type Int = …` reaches the
+        // ordinary path below untouched.
+        if let Some(scalar) = scalars::opaque_scalar_of(&qualified_tpe_name) {
+            let is_self_naming = matches!(
+                tpe.variants.as_slice(),
+                [variant] if matches!(
+                    &variant.kind,
+                    parser::TypeKind::Unqualified(name, args) if *name == tpe_name && args.is_empty()
+                )
+            );
+
+            if !is_self_naming {
+                return Err(Error::InvalidScalarDeclaration(
+                    scalar.qual_name(),
+                    tpe.span,
+                ));
+            }
+
+            return Ok((
+                tpe_name,
+                UnionType {
+                    variables,
+                    variants: Vec::new(),
+                    span: tpe.span,
+                },
+            ));
+        }
 
         // A variant is a constructor name and its arguments, which the parser spells
         // `TypeKind::Unqualified`. It is the grammar's general `Type` production that

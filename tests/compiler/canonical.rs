@@ -2144,3 +2144,110 @@ fn unsafe_is_a_facade_constant_name() {
         other => panic!("expected a TypedValue for `unsafe`, got {:?}", other),
     }
 }
+
+// ── LANG-59: an opaque scalar's declaration is not an ordinary union ─────────
+//
+// `Basics.Int`, `Basics.Float`, `Char.Char` and `String.String` are opaque
+// (`DEC-15` decision 2): each is declared in Zelkova, but nothing in the
+// language builds or inspects a value of one, so the declaration writes only
+// the type's own name and contributes no constructor. `scalars::opaque_scalar_of`
+// recognises the four by qualified name, so these sources all declare `Basics`
+// — the one module whose `Int` and `Float` are the scalars rather than ordinary
+// types that share the spelling (`BUG-26`).
+//
+// All three below are mutation-checked by commenting out the
+// `if let Some(scalar) = scalars::opaque_scalar_of(...)` block `do_types` adds:
+// with it gone, `Int`'s declaration goes back to being an ordinary one-variant
+// union, and each assertion's comment says what that produces instead.
+
+/// `type Int = Int` in `Basics` registers the type but no `Int` constructor, so a
+/// declaration that writes `Int` as a value fails to resolve it.
+///
+/// Without the check, `Int` is an ordinary constructor and `useInt` canonicalizes
+/// cleanly — this goes green on the mutation described above.
+#[test]
+fn opaque_scalar_int_is_not_a_value_in_basics() {
+    let source = indoc::indoc! {r#"
+        module Basics exposing (Int, useInt)
+
+        type Int = Int
+
+        useInt : Int
+        useInt = Int
+    "#};
+
+    let errors =
+        canonicalize_standalone(source).expect_err("`Int` is a type, not a value, in `Basics`");
+
+    match errors.as_slice() {
+        [canonical::Error::VariantNotFound(name, _, _)] => {
+            assert_eq!(name.unqualified_name().as_str(), "Int");
+        }
+        other => panic!("expected one VariantNotFound, got {:?}", other),
+    }
+}
+
+/// `type Int = I32` in `Basics` is rejected: an opaque scalar's body must be
+/// exactly its own name, and `I32` is not `Int`.
+///
+/// Without the check, `I32` resolves to nothing and a type is fabricated for it
+/// (`BUG-16`) rather than reported — this test's `expect_err` starts panicking on
+/// the mutation described above, since the module then canonicalizes cleanly.
+#[test]
+fn opaque_scalar_int_rejects_a_body_other_than_itself() {
+    let source = indoc::indoc! {r#"
+        module Basics exposing (..)
+
+        type Int = I32
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("`Int`'s body must be exactly `Int`");
+
+    match errors.as_slice() {
+        [canonical::Error::InvalidScalarDeclaration(name, span)] => {
+            assert_eq!(name.to_name().as_str(), "Basics.Int");
+            let decl = "type Int = I32";
+            let start = source.find(decl).expect("source has the declaration");
+            assert_eq!(
+                span.to_range(),
+                Some(start..(start + decl.len())),
+                "the caret must cover the whole declaration"
+            );
+        }
+        other => panic!("expected one InvalidScalarDeclaration, got {:?}", other),
+    }
+}
+
+/// The check is keyed on the qualified name, not the spelling: a module that is
+/// not `Basics` declaring its own `Int` is an ordinary union, whose `Int` is a
+/// genuine constructor and a genuine value (`BUG-26`).
+///
+/// Without the check this would still pass — it pins the *complement*, not the
+/// fix itself, so it is mutation-checked differently: giving `opaque_scalar_of`
+/// `Example` instead of `Basics` as `INT`'s module turns it red, because `Int`
+/// then resolves to nothing here instead of to the constructor.
+#[test]
+fn a_non_basics_modules_int_is_an_ordinary_union() {
+    let source = indoc::indoc! {r#"
+        module Example exposing (Int, zero)
+
+        type Int = Int
+
+        zero : Int
+        zero = Int
+    "#};
+
+    let module = canonicalize_standalone(source)
+        .expect("Example's `Int` is an ordinary union, its constructor included");
+
+    let union = module
+        .types
+        .get(&"Int".into())
+        .expect("Int should be declared");
+    let names: Vec<_> = union.variants.iter().map(|v| v.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["Int"],
+        "Example's Int keeps its own constructor"
+    );
+}

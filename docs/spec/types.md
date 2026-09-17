@@ -389,6 +389,12 @@ type Int = Int
 Any other body is an error. The declaration is where a scalar's documentation lives, and a body
 naming anything but the type itself would describe a representation the language does not have.
 
+```zel expect=canonical-error:InvalidScalarDeclaration
+module Basics exposing (Int)
+
+type Int = I32
+```
+
 **`Bool` is a scalar and an ordinary union.** `type Bool = True | False` in `Basics` is the
 whole of its definition, and `True` and `False` are constructors built and matched like any
 others — which is what [`true` and `false` not being reserved
@@ -410,9 +416,8 @@ to [the default imports](modules.md#the-default-imports), which is also where th
 covers arises — a [facade](interop.md) underneath `Basics`. It supplies the five type names and
 nothing else, so a module reaching `Bool` that way can annotate one and cannot write a `True`.
 
-**Not implemented:** nothing checks a scalar declaration's body, so `type Int = I32` in
-`Basics` is accepted; `Char` and `String` do not compile, so neither declares the scalar it is
-named for; and the two facades `Basics` imports name `Int` through a fabricated type
+**Not implemented:** `Char` and `String` do not compile, so neither declares the scalar it is
+named for, and the two facades `Basics` imports name `Int` through a fabricated type
 ([`BUG-16`](../tickets/bug-16.md)) rather than through the rule above.
 
 ## Type annotations

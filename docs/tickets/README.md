@@ -305,7 +305,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-56](lang-56.md) | task | — | open | `std/core`'s JavaScript companions implement a 32-bit `Int` held in a number |
 | LANG-57 | task | — | closed 2026-09-15 | The default imports are dropped entry by entry, not by package |
 | [LANG-58](lang-58.md) | task | — | open | A module underneath `Basics` cannot name a scalar type |
-| [LANG-59](lang-59.md) | task | — | open | A scalar type's declaration is an ordinary union, so `Int` is a value and any body is accepted |
+| LANG-59 | task | — | closed 2026-09-17 | A scalar type's declaration is an ordinary union |
 | LANG-60 | task | — | closed 2026-09-16 | The typer gives `Bool` a literal type, so inside `Basics` it does not match `True` and `False` |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
