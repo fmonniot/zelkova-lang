@@ -64,11 +64,28 @@ names this fix would otherwise take away from them. `SPEC-31` asked that questio
 [`DEC-15`](../decisions/dec-15.md) answers it; the shape `LANG-58` implemented is decision 3,
 and decision 1 settled `BUG-26` with it.
 
-Measuring the fix still needs the `do_types` change above applied on top: with it, and with the
-scalar names seeded the way `LANG-58` left them, `cargo run` should check all eight modules and
-`cargo test --workspace` should be green with the `environment.rs` assertions `LANG-58` already
-adjusted for the seeded names. Nothing has re-measured this since `LANG-58` landed, so treat it
-as expected rather than confirmed.
+**Measured** (2026-09-17, on a scratch branch, discarded afterward): the `do_types` change
+above, `from_parser_type`'s `None` arm returning an error, and the scalar names widened to every
+scope — not just the package `LANG-58` seeds them in, purely to see what else moved — leave
+`cargo run` unchanged: it still checks all eight modules. `cargo test --workspace` is not simply
+green once the five `env.types.len()` assertions in `environment.rs` are bumped by five each,
+though — eleven more tests fail. One,
+`an_unresolved_type_name_is_attributed_to_the_module_under_check`, is this ticket's own anchor
+for the fabrication behaviour being replaced, so its failure is the fix working, not a new cost.
+The other ten are not about unresolved names at all: `function_multiple_parameters`,
+`foreign_facade_module`, `if_then_else_expression`,
+`qualified_and_unqualified_spellings_canonicalize_to_one_head`, `tuple_of_three_canonicalizes`,
+`tuple_of_two_canonicalizes`, `tuple_pattern_canonicalizes` and
+`tuple_pattern_of_three_canonicalizes` in `tests/compiler/canonical.rs`, plus
+`an_unresolved_qualified_scalar_name_is_not_the_scalar` and
+`an_unresolved_qualified_type_name_is_not_a_local_type_of_the_same_stem` in `tests/typer.rs`,
+each write a bare `Int`/`Char`/`Bool` with no `Basics` interface in scope and lean on today's
+fabrication — attributed to the module under check — purely incidentally, never asserting
+anything about it. Widening the seed resolves those names to `Basics.Int` and friends instead,
+so the whole-value assertions built against the old fabricated head stop matching. Implementing
+this fix for real has to update all ten of those call sites (and decide whether the scalar seed
+really should widen to every scope, which is a design question this ticket does not itself
+settle), not only the five `environment.rs` lines this paragraph used to name.
 
 **Acceptance:** `label : Nope` in a module that declares no `Nope` fails with the new error,
 and `label : a` (a type variable) still compiles — tests in `tests/compiler/canonical.rs`.

@@ -2330,3 +2330,54 @@ fn exempt_package_seeding_brings_no_constructor() {
         other => panic!("expected one VariantNotFound, got {:?}", other),
     }
 }
+
+/// A module of an exempt package that writes its own `import Basics exposing (Int)`
+/// is unaffected: `Int` resolves the same way the written import alone would produce,
+/// and the two scalars this module never imports — `Float` and `Bool` — still reach
+/// `Basics.Float` and `Basics.Bool` through the seed. This is the ticket's Acceptance
+/// clause "a module that keeps its `Basics` entry is unaffected", otherwise only
+/// exercised through the full `std/core` pipeline (`Bitwise.zel` keeps its own
+/// `import Basics exposing (Int)`) — here with a real `Basics` interface in scope,
+/// unlike the two tests above.
+///
+/// Mutation-checked by removing the scalar-seeding block from `new_environment`:
+/// `Int` still resolves correctly (the written import supplies it on its own), but
+/// `Float` and `Bool` — never imported here — fabricate `Test.Float`/`Test.Bool`
+/// instead (the shape `BUG-16` documents), and the assertion goes red.
+#[test]
+fn a_written_basics_import_coexists_with_the_seed() {
+    let source = indoc::indoc! {r#"
+        module Js.Basics exposing (compare)
+
+        import Basics exposing (Int)
+
+        compare : Int -> Float -> Bool
+        compare a b =
+          a
+    "#};
+
+    let mut interfaces = HashMap::new();
+    let (name, interface) = basics_interface();
+    interfaces.insert(name, interface);
+
+    let parsed = parse_source(source);
+    let module = canonical::canonicalize(&test_package(), &interfaces, &parsed, true)
+        .expect("the written import should not collide with the seed");
+
+    match module.values.get(&"compare".into()) {
+        Some(canonical::Value::TypedValue { tpe, .. }) => {
+            assert_eq!(
+                tpe,
+                &canonical::Type::Arrow(
+                    Box::new(canonical::Type::Type(qual("Basics.Int"), vec![])),
+                    Box::new(canonical::Type::Arrow(
+                        Box::new(canonical::Type::Type(qual("Basics.Float"), vec![])),
+                        Box::new(canonical::Type::Type(qual("Basics.Bool"), vec![])),
+                    )),
+                ),
+                "Int (seeded and imported), Float and Bool (seeded only) all resolve to Basics"
+            );
+        }
+        other => panic!("expected a TypedValue for `compare`, got {:?}", other),
+    }
+}
