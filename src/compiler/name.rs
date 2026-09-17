@@ -119,6 +119,28 @@ impl QualName {
         }
     }
 
+    /// The name `name`, as declared by `module`.
+    ///
+    /// `module` is written out with its dots, the way a `module` header writes it, and
+    /// is split back into segments here. It is how a name the compiler knows without
+    /// reading it from a source file — a [scalar](super::scalars) — becomes a
+    /// `QualName`.
+    ///
+    /// **`module` must be a non-empty module path.** That is a precondition on the
+    /// caller, not a check: this returns a `QualName` rather than an `Option` because
+    /// the two halves arrive separately and there is no text to go looking for a module
+    /// in, which is what keeps the scalar names off any `unwrap` path. It is *not* a
+    /// claim that every input is well formed — `in_module("", "Bool")` builds a name
+    /// that renders as `.Bool` and that [`Scalar::declares`](super::scalars::Scalar::declares)
+    /// recognises for nothing, where [`QualName::parse`] and [`QualName::from_strs`]
+    /// would both have returned `None`. Every caller passes a literal module path.
+    pub fn in_module(module: &str, name: &str) -> QualName {
+        QualName {
+            module: module.split('.').map(String::from).collect(),
+            name: name.to_string(),
+        }
+    }
+
     // TODO Write tests
     pub fn to_name(&self) -> Name {
         if !self.module.is_empty() {

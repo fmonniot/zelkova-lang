@@ -306,7 +306,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-57](lang-57.md) | task | — | open | The default imports are dropped entry by entry, not by package |
 | [LANG-58](lang-58.md) | task | — | open | A module underneath `Basics` cannot name a scalar type |
 | [LANG-59](lang-59.md) | task | — | open | A scalar type's declaration is an ordinary union, so `Int` is a value and any body is accepted |
-| [LANG-60](lang-60.md) | task | — | open | The typer gives `Bool` a literal type, so inside `Basics` it does not match `True` and `False` |
+| LANG-60 | task | — | closed 2026-09-16 | The typer gives `Bool` a literal type, so inside `Basics` it does not match `True` and `False` |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |

@@ -54,9 +54,6 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
     let Constraint { left, right, .. } = constraint;
     debug!("unify_one_constraint: {:?} to {:?}", left, right);
     match (left, right) {
-        (Type::Literal(TypeLiteral::Bool), Type::Literal(TypeLiteral::Bool)) => {
-            Ok(Substitution::empty())
-        }
         (Type::Literal(TypeLiteral::Int), Type::Literal(TypeLiteral::Int)) => {
             Ok(Substitution::empty())
         }
@@ -190,21 +187,44 @@ mod tests {
         assert_eq!(unify(constraints).unwrap(), Substitution::empty());
     }
 
+    /// A `Bool` is an ordinary union here like any other, so this goes through the
+    /// `Adt`/`Adt` arm and matches on the qualified name rather than on an arm of its
+    /// own.
     #[test]
     fn unifies_bools() {
-        let constraints = vec![constraint(
-            Type::Literal(TypeLiteral::Bool),
-            Type::Literal(TypeLiteral::Bool),
-        )];
+        let constraints = vec![constraint(bool_type(), bool_type())];
 
         assert_eq!(unify(constraints).unwrap(), Substitution::empty());
+    }
+
+    /// Two `Bool`s declared in different modules are two types, which is what an `if`
+    /// on a module's own `type Bool` runs into.
+    ///
+    /// Mutation-checked by comparing only the unqualified halves in the `Adt`/`Adt`
+    /// arm (`n1.unqualified_name() == n2.unqualified_name()`): the two unify and the
+    /// assertion goes red.
+    #[test]
+    fn a_bool_from_another_module_is_a_different_type() {
+        let local_bool = Type::Adt(
+            crate::compiler::name::QualName::parse("Example.Bool").expect("a qualified name"),
+            vec![],
+        );
+        let constraints = vec![constraint(local_bool, bool_type())];
+
+        match unify(constraints) {
+            Err(ErrorKind::UnificationFailed { left, right, .. }) => {
+                assert_eq!(format!("{}", left), "Bool");
+                assert_eq!(format!("{}", right), "Bool");
+            }
+            other => panic!("expected a unification failure, got {:?}", other),
+        }
     }
 
     #[test]
     fn unifies_functions() {
         let fun = Type::Fun {
-            param_tpe: Box::new(Type::Literal(TypeLiteral::Bool)),
-            return_tpe: Box::new(Type::Literal(TypeLiteral::Bool)),
+            param_tpe: Box::new(bool_type()),
+            return_tpe: Box::new(bool_type()),
         };
         let constraints = vec![constraint(fun.clone(), fun.clone())];
 
@@ -248,7 +268,7 @@ mod tests {
             // tvar1 -> bool
             Type::Fun {
                 param_tpe: Box::new(Type::Variable(tvar1.clone())),
-                return_tpe: Box::new(Type::Literal(TypeLiteral::Bool)),
+                return_tpe: Box::new(bool_type()),
             },
             // int -> tvar2
             Type::Fun {
@@ -257,9 +277,11 @@ mod tests {
             },
         )];
 
-        let sub = Substitution::one(tvar2, Type::Literal(TypeLiteral::Bool), cause()).merge(
-            Substitution::one(tvar1, Type::Literal(TypeLiteral::Int), cause()),
-        );
+        let sub = Substitution::one(tvar2, bool_type(), cause()).merge(Substitution::one(
+            tvar1,
+            Type::Literal(TypeLiteral::Int),
+            cause(),
+        ));
 
         assert_eq!(unify(constraints).unwrap(), sub);
     }
@@ -277,7 +299,7 @@ mod tests {
         let constraints = vec![Constraint::new(
             Type::Fun {
                 param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
-                return_tpe: Box::new(Type::Literal(TypeLiteral::Bool)),
+                return_tpe: Box::new(bool_type()),
             },
             Type::Fun {
                 param_tpe: Box::new(Type::Literal(TypeLiteral::Int)),
@@ -313,7 +335,7 @@ mod tests {
 
         let constraints = vec![
             Constraint::new(
-                Type::Literal(TypeLiteral::Bool),
+                bool_type(),
                 t1.clone(),
                 Reason::Annotation,
                 NodeSpan::none(),

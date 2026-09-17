@@ -287,8 +287,8 @@ broken for one commit of history.
 - **An `expect=ok` block also type checks**, so its body has to honour its annotation. A
   scalar is known by its qualified name, so with no `Basics` in scope a bare `Int` or `Bool`
   is not the scalar and an integer literal will not inhabit it. A local `type Bool` or `type
-  Int` is an ordinary union and annotates fine; inside a module named `Basics`, `Bool` does
-  not yet match `True`/`False` (`LANG-60`).
+  Int` is an ordinary union and annotates fine, and a block whose module *is* `Basics` gets
+  the scalars it declares there.
 - **Green does not mean every declaration was checked.** The typer skips silently what it
   cannot translate: a constructor or tuple pattern in a function head, a body reaching a
   foreign value or a form it does not model, a name the module does not itself bind, a
