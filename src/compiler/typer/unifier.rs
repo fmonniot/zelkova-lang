@@ -116,8 +116,8 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
         (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe, Side::Right, constraint),
         (tpe, Type::Variable(tvar)) => unify_variable(tvar, tpe, Side::Left, constraint),
         (left, right) => Err(ErrorKind::UnificationFailed {
-            left: left.clone(),
-            right: right.clone(),
+            left: Box::new(left.clone()),
+            right: Box::new(right.clone()),
             origin: Box::new(constraint.origin.clone()),
         }),
     }
@@ -149,7 +149,7 @@ fn unify_variable(
         _ => {
             if occurs(tvar, tpe) {
                 Err(ErrorKind::CircularType {
-                    tpe: tpe.clone(),
+                    tpe: Box::new(tpe.clone()),
                     origin: Box::new(constraint.origin.clone()),
                 })
             } else {
