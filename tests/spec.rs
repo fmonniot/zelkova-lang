@@ -311,6 +311,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             UnsafeOutsideFacade(..) => vec!["UnsafeOutsideFacade"],
             TypeArityMismatch(..) => vec!["TypeArityMismatch"],
             InvalidVariant(..) => vec!["InvalidVariant"],
+            InvalidScalarDeclaration(..) => vec!["InvalidScalarDeclaration"],
         }
     }
     errors.iter().flat_map(one).collect()

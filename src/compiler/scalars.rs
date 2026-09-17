@@ -100,6 +100,23 @@ pub fn scalar_of(name: &QualName) -> Option<Scalar> {
     SCALARS.iter().copied().find(|s| s.declares(name))
 }
 
+/// The four scalars whose declaration is **opaque** ([`DEC-15` decision
+/// 2](../../../docs/decisions/dec-15.md#2--a-scalar-type-is-declared-in-zelkova-and-an-opaque-ones-declaration-names-itself)):
+/// nothing in the language constructs or inspects a value of one, so each declares
+/// only its own name and contributes no constructor.
+///
+/// [`BOOL`] is deliberately absent. It is a scalar — the compiler knows its
+/// representation — but its declaration is `Basics`' genuine `type Bool = True |
+/// False`, and the self-naming rule does not reach it ([`DEC-15` decision
+/// 5](../../../docs/decisions/dec-15.md#5--bool-is-a-scalar-and-an-ordinary-union-and-both-at-once)).
+pub const OPAQUE_SCALARS: &[Scalar] = &[INT, FLOAT, CHAR, STRING];
+
+/// The opaque scalar `name` declares, if it declares one — `None` for [`BOOL`] even
+/// though [`scalar_of`] would answer it, since `BOOL` is not in [`OPAQUE_SCALARS`].
+pub fn opaque_scalar_of(name: &QualName) -> Option<Scalar> {
+    OPAQUE_SCALARS.iter().copied().find(|s| s.declares(name))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +161,18 @@ mod tests {
         assert_eq!(scalar_of(&qual("Js.Basics.Int")), None);
         assert_eq!(scalar_of(&qual("Basics.Char")), None);
         assert_eq!(scalar_of(&qual("Char.String")), None);
+    }
+
+    /// The four opaque scalars answer `opaque_scalar_of`; `Bool` is a scalar and
+    /// does not.
+    #[test]
+    fn bool_is_a_scalar_but_not_an_opaque_one() {
+        assert_eq!(opaque_scalar_of(&qual("Basics.Int")), Some(INT));
+        assert_eq!(opaque_scalar_of(&qual("Basics.Float")), Some(FLOAT));
+        assert_eq!(opaque_scalar_of(&qual("Char.Char")), Some(CHAR));
+        assert_eq!(opaque_scalar_of(&qual("String.String")), Some(STRING));
+
+        assert_eq!(scalar_of(&qual("Basics.Bool")), Some(BOOL));
+        assert_eq!(opaque_scalar_of(&qual("Basics.Bool")), None);
     }
 }
