@@ -18,8 +18,10 @@ carries that rule and the reasoning for it. What follows is the module's name an
 ```zel expect=ok
 module Widget exposing (label)
 
-label : Int
-label = 1
+type Label = Label
+
+label : Label
+label = Label
 ```
 
 A module name is one or more segments separated by `.`, each an uppercase-initial
@@ -32,8 +34,10 @@ the name resolves.
 ```zel expect=ok
 module Ui.Widget exposing (label)
 
-label : Int
-label = 1
+type Label = Label
+
+label : Label
+label = Label
 ```
 
 A lowercase segment is not a module name:
@@ -70,11 +74,13 @@ module Widget exposing
   , size
   )
 
-label : Int
-label = 1
+type Label = Label
 
-size : Int
-size = 2
+label : Label
+label = Label
+
+size : Label
+size = Label
 ```
 
 Continuing it in column 1 does not work, because a line starting in column 1 begins a new
@@ -131,8 +137,10 @@ type Color
 type Shape
   = Round
 
-label : Int
-label = 1
+type Label = Label
+
+label : Label
+label = Label
 
 infix left 6 (+) = add
 
@@ -180,8 +188,10 @@ A trailing comma is allowed, and means nothing:
 ```zel expect=ok
 module Widget exposing (label,)
 
-label : Int
-label = 1
+type Label = Label
+
+label : Label
+label = Label
 ```
 
 This is a deliberate divergence — most languages of this family reject it. A
@@ -598,8 +608,10 @@ label = Small
 ```zel expect=ok package=ambiguous
 module Gadget exposing (label)
 
-label : Int
-label = 1
+type Label = Label
+
+label : Label
+label = Label
 ```
 
 ```zel expect=canonical-error:AmbiguousVariables package=ambiguous
@@ -823,9 +835,7 @@ scalar names yet; `Int` resolves to nothing there and a type is fabricated for i
 bring nothing. A program naming `String.length` is rejected where the name is used.
 Naming `List` in a type annotation is *accepted* today, but only because an unknown type
 name is accepted anywhere ([`BUG-16`](../tickets/bug-16.md)) — not because the entry
-works. Each entry starts working on the day its module compiles — except `Char` and `String`,
-which would still bring only their qualified names, since `DEFAULT_IMPORTS` gives both entries
-no unqualified name at all ([`LANG-55`](../tickets/lang-55.md)).
+works. Each entry starts working on the day its module compiles.
 
 ## Packages
 

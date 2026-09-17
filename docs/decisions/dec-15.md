@@ -56,10 +56,10 @@ dependency the graph rejected is not created.
 Knowing the *qualified* name rather than the spelling is the load-bearing half. A module
 declaring its own `Int` declares an ordinary union that shares four letters with a scalar, and
 every phase treats it as one: no shadowing order, no precedence between a built-in and a
-declaration, nothing for a chapter to explain. [`BUG-26`](../tickets/bug-26.md) is that
-distinction missing — the typer reads four names as its own literal types wherever they appear
+declaration, nothing for a chapter to explain. `BUG-26` was that
+distinction missing — the typer read four names as its own literal types wherever they appeared
 (`src/compiler/typer/mod.rs:625-642`, matching on `name.as_str()`), so a module declaring
-`Bool = True | False` fails to unify with itself. This decision picks the second of the two
+`Bool = True | False` failed to unify with itself. This decision picks the second of the two
 fixes that ticket weighs and rules the first out.
 
 What it costs is the qualified name reaching the typer at all. `canonical::Type::Type` carries

@@ -37,7 +37,8 @@
 //!
 use super::canonical;
 use super::canonical::Module;
-use crate::compiler::name::Name;
+use super::scalars;
+use crate::compiler::name::{Name, QualName};
 use crate::compiler::position::NodeSpan;
 use crate::compiler::tuple::Tuple;
 use crate::compiler::{PhaseError, SpanLabel};
@@ -282,18 +283,20 @@ pub enum ErrorKind {
     /// first where the source had one. Neither is reliably "the type of the text the
     /// origin points at": by the time a constraint fails, unification has substituted
     /// into both sides and may have decomposed the pair the source actually wrote.
-    // The origins are boxed because an `ErrorKind` is the `Err` half of a `Result`
-    // threaded through the whole of `unify`, and every *successful* return pays for
-    // the size of the largest variant. `Origin` carries a `Cause` per side.
+    // The origins and the types are boxed because an `ErrorKind` is the `Err` half of
+    // a `Result` threaded through the whole of `unify`, and every *successful* return
+    // pays for the size of the largest variant. `Origin` carries a `Cause` per side,
+    // and a `Type` carries a whole `QualName` for every union it names.
     UnificationFailed {
-        left: Type,
-        right: Type,
+        left: Box<Type>,
+        right: Box<Type>,
         origin: Box<Origin>,
     },
     /// A type variable would have to occur inside its own solution.
     CircularType {
-        /// The type the variable would have had to contain itself in.
-        tpe: Type,
+        /// The type the variable would have had to contain itself in. Boxed for the
+        /// reason above.
+        tpe: Box<Type>,
         origin: Box<Origin>,
     },
     /// A name the typer's environment does not know. See [`type_check`] for why this
@@ -319,12 +322,36 @@ impl ErrorKind {
     fn message(&self) -> String {
         match self {
             ErrorKind::UnificationFailed { left, right, .. } => {
-                format!("cannot match `{}` with `{}`", left, right)
+                // Two modules may each declare a union of the same name, and the
+                // source spells both of them bare. Written that way the sentence
+                // uses one word for two declarations and says nothing; the module
+                // that declared each is what tells them apart, so both sides take
+                // it — both, because a sentence that qualifies one side and not the
+                // other reads as if only one of them had a module.
+                if AdtNames::for_all([left.as_ref(), right.as_ref()]) == AdtNames::Qualified {
+                    format!(
+                        "cannot match `{}` with `{}`",
+                        Qualified(left),
+                        Qualified(right)
+                    )
+                } else {
+                    format!("cannot match `{}` with `{}`", left, right)
+                }
             }
-            ErrorKind::CircularType { tpe, .. } => format!(
-                "circular type: a type variable would have to contain itself in `{}`",
-                tpe
-            ),
+            // One type, but it can hold the collision on its own: the variable's
+            // solution is built out of whatever it was unified against, which may
+            // be two same-named unions from two modules.
+            ErrorKind::CircularType { tpe, .. } => {
+                let tpe: &dyn std::fmt::Display = match AdtNames::for_all([tpe.as_ref()]) {
+                    AdtNames::Qualified => &Qualified(tpe),
+                    AdtNames::Unqualified => &**tpe,
+                };
+
+                format!(
+                    "circular type: a type variable would have to contain itself in `{}`",
+                    tpe
+                )
+            }
             ErrorKind::UnboundVariable { name, .. } => {
                 format!("cannot find a value named `{}`", name)
             }
@@ -521,8 +548,19 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
         }
     }
 
-    // Second pass: add constructor types to global from module.types
-    for (type_name, union_type) in &module.types {
+    // This module's unions, keyed by the qualified name that identifies each
+    // declaration rather than by the spelling the `type` line wrote. A constructor
+    // carries the qualified name of the type it builds, so this key is what decides
+    // whether the constructor in a pattern is one of *these* declarations' — see
+    // `translate_pattern`.
+    let module_types: ModuleTypes = module
+        .types
+        .iter()
+        .map(|(name, union_type)| (module.name.qualify_name(name), union_type))
+        .collect();
+
+    // Second pass: add constructor types to global from this module's unions
+    for (type_name, union_type) in &module_types {
         // Fresh type vars for each ADT type parameter (e.g. "a" in Maybe a)
         let mut adt_var_map: HashMap<String, TypeVariable> = HashMap::new();
         for tv_name in &union_type.variables {
@@ -536,7 +574,7 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
             .iter()
             .map(|v| Type::Variable(adt_var_map[v.as_str()].clone()))
             .collect();
-        let result_type = Type::Adt(type_name.as_str().to_string(), result_args);
+        let result_type = Type::Adt(type_name.clone(), result_args);
 
         for ctor in &union_type.variants {
             let ctor_type = if ctor.type_parameters.is_empty() {
@@ -580,7 +618,7 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
     let mut errors: Vec<Error> = vec![];
     for (name, value) in &module.values {
         let Some((term, annotation)) =
-            value_to_term_and_annotation(value, &module.types, &mut counter)
+            value_to_term_and_annotation(value, &module_types, &mut counter)
         else {
             continue; // unsupported construct — see this function's documentation
         };
@@ -612,6 +650,15 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
 
 // ── Translation helpers ───────────────────────────────────────────────────────
 
+/// The union declarations of the module under check, keyed by the qualified name of
+/// each declaration.
+///
+/// Keyed that way rather than by the spelling, so that a lookup answers "is this the
+/// declaration that module named?" and not "does this module declare something spelled
+/// like that?". The two differ for every imported constructor whose type shares a name
+/// with a local one, which is what `BUG-35` closed.
+type ModuleTypes<'a> = HashMap<QualName, &'a canonical::UnionType>;
+
 /// Convert a canonical type to the typer's simplified Type representation.
 /// The match covers all four `canonical::Type` variants — `Variable`, `Arrow`, `Tuple`
 /// (either arity), and `Type` including named types with parameters — and every arm's
@@ -623,50 +670,26 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
 /// `var_map` maps named type variables (e.g. "a") to consistent TypeVariable
 /// ids, so that `a -> a` produces the same variable on both sides.
 ///
-/// # What this does with the module half of a name
+/// # How a name decides which type it becomes
 ///
-/// Nothing, deliberately. A [`canonical::Type::Type`] names its declaration in
-/// full — `Widget.Size`, not `Size` (`AST-4`) — and every arm below reads only the
-/// unqualified half of it: `Type::Adt` carries that spelling, and so does the
-/// `adt_name` a constructor pattern is translated to, so the two sides of
-/// [`type_check`]'s environment go on meeting on the string they always met on.
-/// For a name that resolved, that half is the declaration's own spelling. For one
-/// that resolved to nothing it is the whole *written* spelling, dots and all,
-/// because `Type::from_parser_type` hands the undivided name to the module under
-/// check rather than splitting a module half off it — so an unresolved
-/// `Missing.Thing` still arrives here as `Missing.Thing` and does not collapse
-/// onto a local `Thing`.
+/// A [`canonical::Type::Type`] names its declaration in full — `Widget.Size`, not
+/// `Size` (`AST-4`) — and the whole of that name is what picks the arm. A nullary
+/// type whose qualified name is [a scalar the compiler
+/// knows](super::scalars) becomes the matching [`Type::Literal`]; everything else
+/// becomes a [`Type::Adt`], carrying that name whole.
 ///
-/// The four scalar arms match a spelling too, so a module declaring its own `Bool`
-/// still annotates with the literal `Bool` and still fails to type check against
-/// its own constructors. That is `BUG-26`, and the qualified name this now
-/// receives is what it was waiting on.
+/// For a name that resolved, that is the declaring module's. For one that resolved to
+/// nothing it is the module under check, applied to the whole *written* spelling, dots
+/// and all, because `Type::from_parser_type` hands the undivided name to
+/// `ModuleName::qualify_name` rather than splitting a module half off it — so an
+/// unresolved `Missing.Thing` written in `Test` arrives here as `Test.Missing.Thing`
+/// and does not collapse onto the local `Test.Thing`.
 fn canonical_type_to_typer_type(
     tpe: &canonical::Type,
     var_map: &mut HashMap<String, TypeVariable>,
     counter: &mut u32,
 ) -> Option<Type> {
     match tpe {
-        canonical::Type::Type(name, args)
-            if args.is_empty() && name.unqualified_name().as_str() == "Int" =>
-        {
-            Some(Type::Literal(TypeLiteral::Int))
-        }
-        canonical::Type::Type(name, args)
-            if args.is_empty() && name.unqualified_name().as_str() == "Bool" =>
-        {
-            Some(Type::Literal(TypeLiteral::Bool))
-        }
-        canonical::Type::Type(name, args)
-            if args.is_empty() && name.unqualified_name().as_str() == "Char" =>
-        {
-            Some(Type::Literal(TypeLiteral::Char))
-        }
-        canonical::Type::Type(name, args)
-            if args.is_empty() && name.unqualified_name().as_str() == "Float" =>
-        {
-            Some(Type::Literal(TypeLiteral::Float))
-        }
         canonical::Type::Variable(name) => {
             let tv = var_map.entry(name.as_str().to_string()).or_insert_with(|| {
                 *counter += 1;
@@ -692,16 +715,61 @@ fn canonical_type_to_typer_type(
             Some(Type::Tuple(elements))
         }
         canonical::Type::Type(name, args) => {
+            if args.is_empty() {
+                if let Some(literal) = scalar_literal(name) {
+                    return Some(Type::Literal(literal));
+                }
+            }
+
             let converted: Option<Vec<Type>> = args
                 .iter()
                 .map(|a| canonical_type_to_typer_type(a, var_map, counter))
                 .collect();
-            Some(Type::Adt(
-                name.unqualified_name().as_str().to_string(),
-                converted?,
-            ))
+            Some(Type::Adt(name.clone(), converted?))
         }
     }
+}
+
+/// The literal type the typer gives a [scalar](super::scalars), if `name` is the
+/// qualified name of one it has a literal type for.
+///
+/// Three of the five appear here. The other two do not:
+///
+/// - [`scalars::BOOL`] is a scalar *and* an ordinary union, so `Bool` in an annotation
+///   takes the [`Type::Adt`] path every other declaration takes and meets `True` and
+///   `False` there. [`bool_type`] is the same type, built for the three `Bool`s no
+///   source spells.
+/// - [`scalars::STRING`] would gain a [`TypeLiteral`] variant the day there is a string
+///   literal to give a type to; a variant nothing constructs would be a type the
+///   unifier could name in an error and no source could produce.
+fn scalar_literal(name: &QualName) -> Option<TypeLiteral> {
+    const LITERALS: &[(scalars::Scalar, TypeLiteral)] = &[
+        (scalars::INT, TypeLiteral::Int),
+        (scalars::FLOAT, TypeLiteral::Float),
+        (scalars::CHAR, TypeLiteral::Char),
+    ];
+
+    LITERALS
+        .iter()
+        .find(|(scalar, _)| scalar.declares(name))
+        .map(|(_, literal)| literal.clone())
+}
+
+/// The type of a `Bool`: the union [`scalars::BOOL`] names, with no arguments.
+///
+/// `Bool` is [a scalar and an ordinary union at
+/// once](../../../docs/spec/types.md#scalar-types) — the compiler knows its
+/// representation and nothing about its structure — so this is the very type
+/// `canonical_type_to_typer_type` produces for an annotation naming `Basics.Bool`, and
+/// the type `Basics` registers `True` and `False` at.
+///
+/// Three constructs need a `Bool` the source did not spell: an [`if`
+/// condition](../../../docs/spec/expressions.md#if--then--else), the `true`/`false`
+/// keywords, and a `true`/`false` pattern. They name `Basics.Bool` and nothing else, so
+/// a module declaring its own `type Bool` does not satisfy them
+/// ([`DEC-15`](../../../docs/decisions/dec-15.md) decisions 1 and 5).
+pub(super) fn bool_type() -> Type {
+    Type::Adt(scalars::BOOL.qual_name(), vec![])
 }
 
 /// Convert a canonical expression to a Term, keeping the position it was written at.
@@ -714,7 +782,7 @@ fn canonical_type_to_typer_type(
 /// sub-expression if the term that produced it remembers where it came from.
 fn canonical_expr_to_term(
     expr: &canonical::Expression,
-    module_types: &HashMap<Name, canonical::UnionType>,
+    module_types: &ModuleTypes,
     counter: &mut u32,
 ) -> Option<Term> {
     let kind = match &expr.kind {
@@ -792,7 +860,7 @@ fn canonical_expr_to_term(
 /// the caret belongs there rather than under the expression in the `case … of` line.
 fn translate_pattern(
     pattern: &canonical::Pattern,
-    module_types: &HashMap<Name, canonical::UnionType>,
+    module_types: &ModuleTypes,
     counter: &mut u32,
 ) -> Option<(TermPattern, Vec<(String, Type)>)> {
     let (kind, bindings) = match &pattern.kind {
@@ -801,10 +869,7 @@ fn translate_pattern(
             // The binding's actual type will be unified with the scrutinee type in annotate.
             (TermPatternKind::Bind(name.as_str().to_string()), vec![])
         }
-        canonical::PatternKind::Bool(_) => (
-            TermPatternKind::Literal(Type::Literal(TypeLiteral::Bool)),
-            vec![],
-        ),
+        canonical::PatternKind::Bool(_) => (TermPatternKind::Literal(bool_type()), vec![]),
         canonical::PatternKind::Int(_) => (
             TermPatternKind::Literal(Type::Literal(TypeLiteral::Int)),
             vec![],
@@ -814,17 +879,13 @@ fn translate_pattern(
             vec![],
         ),
         canonical::PatternKind::Constructor { ctor, args } => {
-            // Look up the parent union type to get its type variables. `module_types`
-            // is this module's own declarations, keyed by the bare name the `type`
-            // line wrote, so the constructor's qualified type name is narrowed to
-            // that half. Narrowing loses the module, so what the key finds is not
-            // necessarily the union the constructor came from: a constructor of an
-            // imported type finds nothing here only while this module declares no
-            // type of the same name, and finds the *local* declaration as soon as
-            // it does — leaving `adt_args` built from the wrong declaration's
-            // variables and `adt_name` collapsing the two. `ctor.tpe` is the
-            // qualified name that could tell them apart; keying on it is `BUG-26`.
-            let union_type = module_types.get(&ctor.tpe.unqualified_name())?;
+            // Look up the parent union to get its type variables. `ctor.tpe` names
+            // the declaration the constructor builds, module included, and
+            // `module_types` is keyed the same way — so this finds a union only when
+            // the constructor is one of this module's own. A constructor of an
+            // imported type finds nothing, and the whole declaration goes unchecked;
+            // giving the typer the imported unions is `BUG-36`.
+            let union_type = module_types.get(&ctor.tpe)?;
 
             // Create fresh type vars for each ADT type parameter.
             let mut adt_var_map: HashMap<String, TypeVariable> = HashMap::new();
@@ -863,7 +924,7 @@ fn translate_pattern(
             }
 
             let kind = TermPatternKind::Constructor {
-                adt_name: ctor.tpe.unqualified_name().as_str().to_string(),
+                adt_name: ctor.tpe.clone(),
                 adt_args,
                 bindings: bindings.clone(),
             };
@@ -897,7 +958,7 @@ struct Annotation {
 /// Returns None if any part of the value cannot be translated.
 fn value_to_term_and_annotation(
     value: &canonical::Value,
-    module_types: &HashMap<Name, canonical::UnionType>,
+    module_types: &ModuleTypes,
     counter: &mut u32,
 ) -> Option<(Term, Option<Annotation>)> {
     match value {
@@ -983,11 +1044,18 @@ pub enum TermPatternKind {
     Anything,
     /// Binds the scrutinee type to this name.
     Bind(String),
-    /// Matches a specific literal type; constrains the scrutinee to that type.
+    /// Matches one specific value; constrains the scrutinee to the type carried here.
+    ///
+    /// That type is a [`Type::Literal`] for an `Int` or a `Char` pattern, and the
+    /// [`Type::Adt`] [`bool_type`] builds for a `true`/`false` one — `Bool` is the union
+    /// `Basics` declares, not a literal type.
     Literal(Type),
     /// Matches an ADT constructor; carries the fresh ADT args and field bindings.
     Constructor {
-        adt_name: String,
+        /// The union the constructor builds, named by the module that declared it —
+        /// the same name the [`Type::Adt`] this pattern constrains the scrutinee to
+        /// is built from.
+        adt_name: QualName,
         adt_args: Vec<Type>,
         /// `(variable_name, its_type_var)` for each bound constructor argument.
         bindings: Vec<(String, Type)>,
@@ -1062,10 +1130,15 @@ impl std::fmt::Debug for TypeVariable {
     }
 }
 
+/// The type of an [opaque scalar](../../../docs/spec/types.md#scalar-types): a type
+/// nothing in the language builds or inspects, whose values arrive as literals.
+///
+/// Three of the four are here — `String` waits on a string literal to give a type to.
+/// `Bool` is not one of them at all: it is a scalar *and* an ordinary union, so its
+/// type is a [`Type::Adt`] like any other union's, built by this module's `bool_type`.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum TypeLiteral {
     Int,
-    Bool,
     Char,
     Float,
 }
@@ -1082,8 +1155,73 @@ pub enum Type {
         return_tpe: Box<Type>,
     },
     Tuple(Tuple<Type>),
-    /// A named algebraic data type, e.g. `Maybe Int` → `Adt("Maybe", [Literal(Int)])`.
-    Adt(String, Vec<Type>),
+    /// A named algebraic data type, e.g. `Maybe Int` declared in `Maybe` →
+    /// `Adt(Maybe.Maybe, [Literal(Int)])`.
+    ///
+    /// The name is the declaring module's, in full, because that is the identity of
+    /// the type: `Widget.Size` and `Gadget.Size` are two types and a value of one is
+    /// never a value of the other. The unifier's equality on this name is the only
+    /// thing keeping them apart, so narrowing it to the spelling — which is what the
+    /// typer used to carry — made every same-named declaration one type (`BUG-35`).
+    /// [`Display`](std::fmt::Display) still writes the unqualified half, since that is
+    /// how a module's source spells its own types.
+    Adt(QualName, Vec<Type>),
+}
+
+/// How the name of a [`Type::Adt`] is written out.
+///
+/// A type is normally quoted the way the source spells it, which for a union is its
+/// bare name. That is ambiguous exactly when one message names two declarations that
+/// share a spelling, and [`ErrorKind::message`] switches to the qualified form there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdtNames {
+    /// `Size`.
+    Unqualified,
+    /// `Widget.Size`.
+    Qualified,
+}
+
+impl AdtNames {
+    /// How the types a single message is about have to be written for that message
+    /// to distinguish the declarations it names.
+    ///
+    /// The question is not whether the *types* are spelled alike — `A.Size` against
+    /// `Lib.Size A.Size` renders as `Size` against `Size Size`, which differs as
+    /// text while still using one word for three declarations. It is whether any two
+    /// of the unions named anywhere in those types are different declarations with
+    /// the same bare name; if so every union in the sentence is qualified, since
+    /// qualifying only the colliding pair would read as if the rest had no module.
+    fn for_all<'a>(types: impl IntoIterator<Item = &'a Type>) -> AdtNames {
+        let mut names: Vec<&QualName> = Vec::new();
+
+        for tpe in types {
+            tpe.collect_adt_names(&mut names);
+        }
+
+        let collides = names.iter().enumerate().any(|(i, name)| {
+            names[i + 1..]
+                .iter()
+                .any(|other| *other != *name && other.unqualified_name() == name.unqualified_name())
+        });
+
+        if collides {
+            AdtNames::Qualified
+        } else {
+            AdtNames::Unqualified
+        }
+    }
+}
+
+/// A [`Type`] written with every union named by the module that declared it.
+///
+/// The counterpart of `Type`'s own [`Display`](std::fmt::Display), which writes the
+/// unqualified half.
+struct Qualified<'a>(&'a Type);
+
+impl std::fmt::Display for Qualified<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.write(f, AdtNames::Qualified)
+    }
 }
 
 impl std::fmt::Debug for Type {
@@ -1098,8 +1236,8 @@ impl std::fmt::Debug for Type {
             } => write!(f, "Fun({:?} -> {:?})", param_tpe, return_tpe),
             Type::Tuple(Tuple::Two(a, b)) => write!(f, "({:?}, {:?})", a, b),
             Type::Tuple(Tuple::Three(a, b, c)) => write!(f, "({:?}, {:?}, {:?})", a, b, c),
-            Type::Adt(name, args) if args.is_empty() => write!(f, "{}", name),
-            Type::Adt(name, args) => write!(f, "{}({:?})", name, args),
+            Type::Adt(name, args) if args.is_empty() => write!(f, "{}", name.to_name()),
+            Type::Adt(name, args) => write!(f, "{}({:?})", name.to_name(), args),
         }
     }
 }
@@ -1112,9 +1250,62 @@ impl std::fmt::Debug for Type {
 /// at all, so they are written `t3` — Elm's convention for an unsolved variable.
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.write(f, AdtNames::Unqualified)
+    }
+}
+
+impl Type {
+    /// Every union named anywhere in this type, outermost first, appended to `out`.
+    ///
+    /// A union's arguments are types in their own right and may name unions of their
+    /// own, so this recurses rather than reading the head alone. [`AdtNames::for_all`]
+    /// is what it exists for: deciding how to write a type means looking at every
+    /// name the rendering will contain, not only the one at the top.
+    fn collect_adt_names<'a>(&'a self, out: &mut Vec<&'a QualName>) {
+        match self {
+            Type::Literal(_) | Type::Number | Type::Variable(_) => {}
+            Type::Fun {
+                param_tpe,
+                return_tpe,
+            } => {
+                param_tpe.collect_adt_names(out);
+                return_tpe.collect_adt_names(out);
+            }
+            Type::Tuple(Tuple::Two(a, b)) => {
+                a.collect_adt_names(out);
+                b.collect_adt_names(out);
+            }
+            Type::Tuple(Tuple::Three(a, b, c)) => {
+                a.collect_adt_names(out);
+                b.collect_adt_names(out);
+                c.collect_adt_names(out);
+            }
+            Type::Adt(name, args) => {
+                out.push(name);
+                for arg in args {
+                    arg.collect_adt_names(out);
+                }
+            }
+        }
+    }
+
+    /// The body of both renderings: the same text either way, except for how a union
+    /// is named. See [`AdtNames`], and [`Display`](std::fmt::Display) for why unions
+    /// are normally written bare.
+    fn write(&self, f: &mut std::fmt::Formatter<'_>, names: AdtNames) -> std::fmt::Result {
+        /// The same, wrapped in parentheses.
+        fn parenthesised(
+            tpe: &Type,
+            f: &mut std::fmt::Formatter<'_>,
+            names: AdtNames,
+        ) -> std::fmt::Result {
+            write!(f, "(")?;
+            tpe.write(f, names)?;
+            write!(f, ")")
+        }
+
         match self {
             Type::Literal(TypeLiteral::Int) => write!(f, "Int"),
-            Type::Literal(TypeLiteral::Bool) => write!(f, "Bool"),
             Type::Literal(TypeLiteral::Char) => write!(f, "Char"),
             Type::Literal(TypeLiteral::Float) => write!(f, "Float"),
             Type::Number => write!(f, "number"),
@@ -1125,22 +1316,43 @@ impl std::fmt::Display for Type {
             Type::Fun {
                 param_tpe,
                 return_tpe,
-            } => match **param_tpe {
-                Type::Fun { .. } => write!(f, "({}) -> {}", param_tpe, return_tpe),
-                _ => write!(f, "{} -> {}", param_tpe, return_tpe),
-            },
-            Type::Tuple(Tuple::Two(a, b)) => write!(f, "( {}, {} )", a, b),
-            Type::Tuple(Tuple::Three(a, b, c)) => write!(f, "( {}, {}, {} )", a, b, c),
-            Type::Adt(name, args) if args.is_empty() => write!(f, "{}", name),
+            } => {
+                match **param_tpe {
+                    Type::Fun { .. } => parenthesised(param_tpe, f, names)?,
+                    _ => param_tpe.write(f, names)?,
+                }
+                write!(f, " -> ")?;
+                return_tpe.write(f, names)
+            }
+            Type::Tuple(Tuple::Two(a, b)) => {
+                write!(f, "( ")?;
+                a.write(f, names)?;
+                write!(f, ", ")?;
+                b.write(f, names)?;
+                write!(f, " )")
+            }
+            Type::Tuple(Tuple::Three(a, b, c)) => {
+                write!(f, "( ")?;
+                a.write(f, names)?;
+                write!(f, ", ")?;
+                b.write(f, names)?;
+                write!(f, ", ")?;
+                c.write(f, names)?;
+                write!(f, " )")
+            }
             Type::Adt(name, args) => {
-                write!(f, "{}", name)?;
+                match names {
+                    AdtNames::Unqualified => write!(f, "{}", name.unqualified_name())?,
+                    AdtNames::Qualified => write!(f, "{}", name.to_name())?,
+                }
                 for arg in args {
                     // Same reason as above: an argument that is itself applied or a
                     // function needs parentheses to stay the same type when re-read.
+                    write!(f, " ")?;
                     match arg {
-                        Type::Adt(_, inner) if !inner.is_empty() => write!(f, " ({})", arg)?,
-                        Type::Fun { .. } => write!(f, " ({})", arg)?,
-                        _ => write!(f, " {}", arg)?,
+                        Type::Adt(_, inner) if !inner.is_empty() => parenthesised(arg, f, names)?,
+                        Type::Fun { .. } => parenthesised(arg, f, names)?,
+                        _ => arg.write(f, names)?,
                     }
                 }
                 Ok(())
@@ -1585,7 +1797,6 @@ mod tests {
 
         fn type_signature(&mut self, tpe: Type) -> String {
             match tpe {
-                Type::Literal(TypeLiteral::Bool) => "Bool".to_owned(),
                 Type::Literal(TypeLiteral::Int) => "Int".to_owned(),
                 Type::Literal(TypeLiteral::Char) => "Char".to_owned(),
                 Type::Literal(TypeLiteral::Float) => "Float".to_owned(),
@@ -1627,11 +1838,11 @@ mod tests {
                         self.type_signature(*c)
                     )
                 }
-                Type::Adt(name, args) if args.is_empty() => name,
+                Type::Adt(name, args) if args.is_empty() => name.unqualified_name().to_string(),
                 Type::Adt(name, args) => {
                     let arg_strs: Vec<String> =
                         args.into_iter().map(|a| self.type_signature(a)).collect();
-                    format!("{} {}", name, arg_strs.join(" "))
+                    format!("{} {}", name.unqualified_name(), arg_strs.join(" "))
                 }
             }
         }
@@ -1776,13 +1987,100 @@ mod tests {
         assert!(infer(term, global).is_err());
     }
 
+    // --- A constructor pattern finds only this module's own unions ------------
+
+    /// The qualified name of `name` as declared by `module`.
+    fn qual(module: &str, name: &str) -> QualName {
+        QualName::parse(format!("{}.{}", module, name))
+            .expect("a module and a name make a qualified name")
+    }
+
+    /// `Main`'s own unions, as `translate_pattern` receives them: one nullary
+    /// `Main.Size`.
+    fn main_size() -> (QualName, canonical::UnionType) {
+        (
+            qual("Main", "Size"),
+            canonical::UnionType {
+                span: NodeSpan::none(),
+                variables: vec![],
+                variants: vec![canonical::TypeConstructor {
+                    name: "Big".into(),
+                    type_parameters: vec![],
+                    tpe: qual("Main", "Size"),
+                }],
+            },
+        )
+    }
+
+    /// A nullary constructor pattern for `name`, building the union `tpe`.
+    fn constructor_pattern(name: &str, tpe: QualName) -> canonical::Pattern {
+        canonical::Pattern {
+            span: NodeSpan::none(),
+            kind: canonical::PatternKind::Constructor {
+                ctor: canonical::TypeConstructor {
+                    name: name.into(),
+                    type_parameters: vec![],
+                    tpe,
+                },
+                args: vec![],
+            },
+        }
+    }
+
+    /// `A.S` builds `A.Size`, and a `Main` that happens to declare its own `Size`
+    /// is not where that union is found.
+    ///
+    /// `BUG-35`: the lookup narrowed the constructor's type to its unqualified half,
+    /// so `A.S` found `Main.Size` and the pattern was translated at the local type.
+    /// It now finds nothing, which is the whole-module gap `BUG-36` covers — the
+    /// declaration is skipped rather than checked against the wrong union — so this
+    /// has to be asserted here rather than through `type_check`.
+    ///
+    /// Mutation-checked by restoring the narrowed lookup
+    /// (`module_types` keyed by `Name`, `get(&ctor.tpe.unqualified_name())`): the
+    /// pattern is then translated and the assertion goes red.
+    #[test]
+    fn an_imported_constructor_does_not_find_a_local_type_of_the_same_name() {
+        let (name, union) = main_size();
+        let module_types: ModuleTypes = HashMap::from([(name, &union)]);
+        let mut counter = 0;
+
+        let pattern = constructor_pattern("S", qual("A", "Size"));
+
+        assert!(
+            translate_pattern(&pattern, &module_types, &mut counter).is_none(),
+            "`A.S` is not a constructor of `Main.Size`"
+        );
+    }
+
+    /// The other half: `Main`'s own constructor still finds `Main`'s own union, so
+    /// the test above is not passing because the lookup stopped finding anything.
+    #[test]
+    fn a_local_constructor_finds_its_own_type() {
+        let (name, union) = main_size();
+        let module_types: ModuleTypes = HashMap::from([(name, &union)]);
+        let mut counter = 0;
+
+        let pattern = constructor_pattern("Big", qual("Main", "Size"));
+
+        let (translated, _) = translate_pattern(&pattern, &module_types, &mut counter)
+            .expect("`Main.Big` is a constructor of `Main.Size`");
+
+        match translated.kind {
+            TermPatternKind::Constructor { adt_name, .. } => {
+                assert_eq!(adt_name, qual("Main", "Size"));
+            }
+            other => panic!("expected a constructor pattern, got {:?}", other),
+        }
+    }
+
     // --- Display for Type ---------------------------------------------------
 
     fn int_t() -> Type {
         Type::Literal(TypeLiteral::Int)
     }
     fn bool_t() -> Type {
-        Type::Literal(TypeLiteral::Bool)
+        bool_type()
     }
     fn char_t() -> Type {
         Type::Literal(TypeLiteral::Char)
@@ -1793,8 +2091,10 @@ mod tests {
             return_tpe: Box::new(ret),
         }
     }
+    /// A union declared in a module called `Widget`, which is never what `Display`
+    /// writes — the point of the tests below is that it writes the bare `name`.
     fn adt(name: &str, args: Vec<Type>) -> Type {
-        Type::Adt(name.to_string(), args)
+        Type::Adt(qual("Widget", name), args)
     }
 
     /// `Display for Type` is the text diagnostics quote back to the user, so its two
@@ -1848,5 +2148,52 @@ mod tests {
         for (tpe, expected) in cases {
             assert_eq!(format!("{}", tpe), expected, "rendering {:?}", tpe);
         }
+    }
+
+    /// `ErrorKind::CircularType` names one type, but the solution a variable would
+    /// have had to contain itself in is built out of everything it was unified
+    /// against — so one type is enough to hold two same-named declarations.
+    ///
+    /// Written by hand because no Zelkova source available today produces a circular
+    /// type at all: the constructs that do (`let`, lambdas) are unimplemented, and
+    /// `unifier.rs` is the only thing that raises the variant.
+    ///
+    /// Mutation-checked by quoting `tpe` through `Display` unconditionally, the way
+    /// the arm was first written, which reports *contain itself in `Box Size Size`*.
+    #[test]
+    fn a_circular_type_naming_two_modules_alike_qualifies_both() {
+        let tpe = Type::Adt(
+            qual("Lib", "Box"),
+            vec![
+                Type::Adt(qual("A", "Size"), vec![]),
+                Type::Adt(qual("B", "Size"), vec![]),
+            ],
+        );
+
+        let kind = ErrorKind::CircularType {
+            tpe: Box::new(tpe),
+            origin: Box::new(Origin::new(Reason::Annotation, NodeSpan::none())),
+        };
+
+        assert_eq!(
+            kind.message(),
+            "circular type: a type variable would have to contain itself in \
+             `Lib.Box A.Size B.Size`"
+        );
+    }
+
+    /// The counterpart: one declaration per spelling, so the type is quoted the way
+    /// the source writes it.
+    #[test]
+    fn a_circular_type_with_no_collision_stays_unqualified() {
+        let kind = ErrorKind::CircularType {
+            tpe: Box::new(adt("Box", vec![adt("Size", vec![])])),
+            origin: Box::new(Origin::new(Reason::Annotation, NodeSpan::none())),
+        };
+
+        assert_eq!(
+            kind.message(),
+            "circular type: a type variable would have to contain itself in `Box Size`"
+        );
     }
 }

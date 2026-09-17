@@ -190,7 +190,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-23 | bug | medium | closed 2026-09-12 | An `else` does not close a `case` block, so a `case` in a `then` arm is a layout error |
 | BUG-24 | bug | medium | closed 2026-09-13 | Two `.mjs` companions call helpers no file defines, so `modBy 0` and comparing functions are `ReferenceError`s |
 | BUG-25 | bug | medium | closed 2026-09-13 | Three of the four `Float -> Int` conversions never wrap, so `round nan` and `round 1.0e20` are not `Int`s |
-| [BUG-26](bug-26.md) | bug | medium | open | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
+| BUG-26 | bug | medium | closed 2026-09-16 | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
 | [BUG-27](bug-27.md) | bug | medium | open | A canonicalized infix operator is qualified under its own symbol, not the function its `infix` declaration names |
 | [BUG-28](bug-28.md) | bug | low | open | The `Tokenizer` never terminates on an unterminated character literal |
 | [BUG-29](bug-29.md) | bug | medium | open | A top-level declaration whose first token is not at column 1 fails to parse |
@@ -199,6 +199,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-32](bug-32.md) | bug | medium | open | An exposed infix's unannotated backing function is silently dropped from the interface |
 | [BUG-33](bug-33.md) | bug | low | open | `SourceFileError::notes()` dumps `io::Error`'s `Debug` form instead of its `Display` form |
 | [BUG-34](bug-34.md) | bug | low | open | A failed sub-pass in `canonicalize` reports as if it found nothing, cascading into spurious errors from every later pass that depended on it |
+| BUG-35 | bug | medium | closed 2026-09-16 | The typer identifies a union type by its unqualified name, so two modules' `Size` are one type |
+| [BUG-36](bug-36.md) | bug | medium | open | A value that matches or builds an imported constructor is never type checked |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -299,11 +301,12 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-52](lang-52.md) | task | — | open | Whitespace around a qualification dot is accepted, and records need it not to be |
 | LANG-53 | task | — | closed 2026-09-13 | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | LANG-54 | task | — | closed 2026-09-13 | The interop modifier is `foreign`, not `javascript` |
-| [LANG-55](lang-55.md) | task | — | open | The `Char` and `String` default imports bring their modules but not their types |
+| LANG-55 | task | — | closed 2026-09-16 | The `Char` and `String` default imports bring their modules but not their types |
 | [LANG-56](lang-56.md) | task | — | open | `std/core`'s JavaScript companions implement a 32-bit `Int` held in a number |
 | LANG-57 | task | — | closed 2026-09-15 | The default imports are dropped entry by entry, not by package |
 | [LANG-58](lang-58.md) | task | — | open | A module underneath `Basics` cannot name a scalar type |
 | [LANG-59](lang-59.md) | task | — | open | A scalar type's declaration is an ordinary union, so `Int` is a value and any body is accepted |
+| LANG-60 | task | — | closed 2026-09-16 | The typer gives `Bool` a literal type, so inside `Basics` it does not match `True` and `False` |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |

@@ -15,8 +15,8 @@ Zelkova — that declaration is where a reader finds out what the type is — an
 type's own name and contributes no constructor. [*Scalar
 types*](../spec/types.md#scalar-types) states the rule.
 
-**Depends on:** [BUG-26](bug-26.md). The check has to fire on `Basics`' `Int` and not on a
-module's own, which needs the qualified name.
+**Depends on:** `BUG-26`, which is closed. The check has to fire on `Basics`' `Int` and not on
+a module's own, which needs the qualified name `src/compiler/scalars.rs` holds.
 
 **Renumbered from LANG-54** on 2026-09-15: that ID had already been used and closed (the
 interop modifier is `foreign`, not `javascript`). See `docs/tickets/README.md`'s tombstone row.

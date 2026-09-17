@@ -1178,6 +1178,73 @@ mod tests {
         Ok(())
     }
 
+    /// The `Char` and `String` entries expose their types: a module that wrote no
+    /// import resolves `Char` and `String` unqualified, and reaches `String.length`
+    /// only qualified.
+    ///
+    /// Mutation-checked by setting both entries of `DEFAULT_IMPORTS` back to
+    /// `Unqualified::Nothing`: `Char` is no longer found.
+    #[test]
+    fn char_and_string_default_imports_expose_their_types() -> Result<(), Vec<EnvError>> {
+        // An opaque `type <module>` declared by `module`, plus a `length` for `String`.
+        let scalar_interface = |module: &str| {
+            let mut unions = HashMap::new();
+            unions.insert(
+                Name::new(module),
+                UnionType {
+                    span: NodeSpan::none(),
+                    variables: vec![],
+                    variants: vec![],
+                },
+            );
+
+            let mut values = HashMap::new();
+            values.insert(
+                "length".into(),
+                (
+                    NodeSpan::none(),
+                    Type::Type(QualName::parse("Basics.Int").unwrap(), vec![]),
+                ),
+            );
+
+            (
+                Name::new(module),
+                Interface {
+                    module_name: ModuleName::new(
+                        PackageName::new("zelkova", "core"),
+                        Name::new(module),
+                    ),
+                    values,
+                    unions,
+                    infixes: HashMap::new(),
+                    infix_functions: HashMap::new(),
+                    file: None,
+                },
+            )
+        };
+        let interfaces = HashMap::from([scalar_interface("Char"), scalar_interface("String")]);
+        let env = new_environment(&module_name(), &interfaces, &vec![], false)?;
+
+        assert!(
+            env.find_type(&"Char".into()).is_some(),
+            "type Char not found"
+        );
+        assert!(
+            env.find_type(&"String".into()).is_some(),
+            "type String not found"
+        );
+        assert!(
+            env.find_value(&"String.length".into()).is_some(),
+            "value String.length not found"
+        );
+        assert!(
+            env.find_value(&"length".into()).is_none(),
+            "`exposing (String)` names the type, not the module's values"
+        );
+
+        Ok(())
+    }
+
     /// A module of a package that declares one of the eight receives none of
     /// them: `Basics` cannot implicitly import `Basics`, and `Maybe` importing
     /// `Result` importing `Maybe` is the cycle `dependencies` exists to reject.

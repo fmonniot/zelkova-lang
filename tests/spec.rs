@@ -1731,7 +1731,7 @@ fn unimplemented_block_that_compiles_is_a_failure() {
 /// a test of its own rather than riding on a chapter block. Before `TEST-2` the tag went
 /// red the moment its construct parsed and canonicalized; it now stays green if the
 /// block is rejected anywhere, including for a type error unrelated to the feature the
-/// chapter says is missing. `BUG-26` is a live example of such an incidental error, and
+/// chapter says is missing. `BUG-26` was an example of such an incidental error, and
 /// the day `LANG-48` lands a `records.md` block carrying one would stay green as
 /// `unimplemented` instead of announcing that records arrived.
 ///

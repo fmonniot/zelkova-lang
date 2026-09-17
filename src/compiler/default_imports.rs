@@ -92,7 +92,7 @@ pub enum Unqualified {
 /// [`Unqualified::Type`] and [`Unqualified::TypeAndVariants`] name no type of
 /// their own because every entry using them exposes a type spelled exactly like
 /// its module — `List` from `List`, `Maybe` from `Maybe`, `Result` from `Result`,
-/// `Task` from `Task`.
+/// `Task` from `Task`, `Char` from `Char`, `String` from `String`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DefaultImport {
     pub module: &'static str,
@@ -104,8 +104,9 @@ pub struct DefaultImport {
 /// This is [*The default
 /// imports*](../../../docs/spec/modules.md#the-default-imports) verbatim, in the
 /// order the chapter writes them. `Maybe` and `Result` bring their constructors
-/// because matching on them is the ordinary way to use them; `List` and `Task`
-/// come as bare types because their modules' functions read better qualified.
+/// because matching on them is the ordinary way to use them; `List`, `Task`, `Char`
+/// and `String` come as bare types because their modules' functions read better
+/// qualified.
 pub const DEFAULT_IMPORTS: &[DefaultImport] = &[
     DefaultImport {
         module: "Basics",
@@ -129,11 +130,11 @@ pub const DEFAULT_IMPORTS: &[DefaultImport] = &[
     },
     DefaultImport {
         module: "Char",
-        unqualified: Unqualified::Nothing,
+        unqualified: Unqualified::Type,
     },
     DefaultImport {
         module: "String",
-        unqualified: Unqualified::Nothing,
+        unqualified: Unqualified::Type,
     },
     DefaultImport {
         module: "Tuple",
@@ -187,7 +188,8 @@ impl DefaultImport {
     ///
     /// The test for a [`Unqualified::Type`] or [`Unqualified::TypeAndVariants`]
     /// entry is that the interface declares a **union** of the module's own name.
-    /// That is what `Maybe`, `Result` and `List` are. It is an assumption about
+    /// That is what `Maybe`, `Result` and `List` are, and `Char` and `String`, whose
+    /// declarations in `std/core` are each a one-constructor union of their own name. It is an assumption about
     /// [`Task`](../../../docs/spec/evaluation-semantics.md#effects), which is not
     /// ported yet and which the chapter does not oblige to be a union: if `Task`
     /// arrives as anything else — a type alias, or a type the compiler knows

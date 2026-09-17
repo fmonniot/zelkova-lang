@@ -67,7 +67,7 @@ one therefore turns both modules red, with no spelling available, until `LANG-58
 entry.
 
 `SPEC-31` asked that question and [`DEC-15`](../decisions/dec-15.md) answers it; the shape
-`LANG-58` implements is decision 3, and decision 1 settles [`BUG-26`](bug-26.md) with it.
+`LANG-58` implements is decision 3, and decision 1 settled `BUG-26` with it.
 
 Applying the fix on a branch to measure it: with the `do_types` change above, and with `Int`,
 `Float`, `Bool`, `Char` and `String` seeded into *every* scope — wider than `LANG-58` seeds,

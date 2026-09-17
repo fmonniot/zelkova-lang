@@ -136,7 +136,7 @@ fn module_with_union_type() {
         count = 42
     "#};
     let parsed = parse_source(source);
-    let interfaces = HashMap::new();
+    let interfaces = HashMap::from([basics_interface()]);
     let result = check_module(&test_package(), &interfaces, &parsed, false);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
@@ -1033,10 +1033,10 @@ fn ambiguous_import_labels_point_into_each_defining_module() {
 
     let a_source = std::fs::read_to_string(root.join("A.zel")).expect("fixture is readable");
     let b_source = std::fs::read_to_string(root.join("B.zel")).expect("fixture is readable");
-    let a_start = a_source.find("foo : Int").expect("A declares foo");
-    let a_end = a_source.find("foo = 1").expect("A defines foo") + "foo = 1".len();
-    let b_start = b_source.find("foo : Int").expect("B declares foo");
-    let b_end = b_source.find("foo = 2").expect("B defines foo") + "foo = 2".len();
+    let a_start = a_source.find("foo : LabelA").expect("A declares foo");
+    let a_end = a_source.find("foo = LabelA").expect("A defines foo") + "foo = LabelA".len();
+    let b_start = b_source.find("foo : LabelB").expect("B declares foo");
+    let b_end = b_source.find("foo = LabelB").expect("B defines foo") + "foo = LabelB".len();
 
     let error = compile_package(&root).expect_err("an ambiguous import must not compile");
 
@@ -1156,7 +1156,7 @@ fn helper_interface() -> (Name, Interface) {
 /// `Basics` and `Helper` both expose `add`; `Main` writes only `import Helper
 /// exposing (add)`, so the `Basics` half of the collision is supplied by the
 /// default import list rather than written — the ticket's reproduction, with
-/// both interfaces hand-built (`basics_interface`, `helper_interface`) rather
+/// both interfaces hand-built (`basics_interface_with_plus`, `helper_interface`) rather
 /// than real sibling modules: a real `Basics.zel` in `Main`'s own package would
 /// make that package the one the eight belong to (`LANG-57`), which gets none
 /// of them and could never reproduce this collision in the first place.
@@ -1167,7 +1167,7 @@ fn helper_interface() -> (Name, Interface) {
 #[test]
 fn ambiguous_variable_note_calls_out_the_implicit_default_import() {
     let mut interfaces = HashMap::new();
-    let (basics_name, basics_iface) = basics_interface();
+    let (basics_name, basics_iface) = basics_interface_with_plus();
     interfaces.insert(basics_name, basics_iface);
     let (helper_name, helper_iface) = helper_interface();
     interfaces.insert(helper_name, helper_iface);
@@ -1650,12 +1650,15 @@ fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
 /// One module's source checked into an `Interface`, and a second checked against
 /// it. `Lib` compiling is a precondition rather than part of what is asserted,
 /// so a failure there panics instead of returning.
+///
+/// Both are checked with [`basics_interface`] in scope, which is what gives their
+/// `Int` the scalar through the default imports.
 fn check_importer(lib: &str, main: &str) -> Result<(), CompilationError> {
     let pkg = test_package();
-    let lib_module = check_module(&pkg, &HashMap::new(), &parse_source(lib), false)
+    let mut interfaces: HashMap<Name, Interface> = HashMap::from([basics_interface()]);
+    let lib_module = check_module(&pkg, &interfaces, &parse_source(lib), false)
         .unwrap_or_else(|e| panic!("the exporting module should compile: {:?}", e));
 
-    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
     interfaces.insert(
         lib_module.name.name().clone(),
         lib_module.to_interface(None),
@@ -2125,7 +2128,11 @@ fn foreign_names(value: &canonical::Value) -> Vec<String> {
 /// exercise the *opposite* side of — so that scenario can only be reproduced
 /// with a hand-built interface here, the same way `maybe_interface` in
 /// `tests/support/mod.rs` stands in for a real `Maybe.zel`.
-fn basics_interface() -> (Name, Interface) {
+///
+/// Named apart from [`support::basics_interface`], which carries no values —
+/// this one adds `+`/`add` on purpose, and a plain `use support::*` item-level
+/// shadowing would otherwise hand every other call in this file the wrong one.
+fn basics_interface_with_plus() -> (Name, Interface) {
     use zelkova_lang::compiler::position::NodeSpan;
 
     let int_type = canonical::Type::Type(qual("Basics.Int"), vec![]);
@@ -2194,7 +2201,7 @@ fn basics_interface() -> (Name, Interface) {
 /// `unwrap_or_else` panics.
 #[test]
 fn default_imports_resolve_without_an_import_line() {
-    let (name, iface) = basics_interface();
+    let (name, iface) = basics_interface_with_plus();
     let mut interfaces = HashMap::new();
     interfaces.insert(name, iface);
 
@@ -2391,3 +2398,196 @@ fn an_untyped_backing_function_is_reported_under_its_own_name() {
         "cannot find a value named `Lib.add`"
     );
 }
+
+// ── Test 33: two modules' same-named types are two types ─────────────────────
+
+/// Two exporting modules checked into `Interface`s, and a third checked against
+/// both. The same shape as [`check_importer`], for the case where telling two
+/// declarations apart needs two of them in scope at once.
+fn check_importer_of_two(first: &str, second: &str, main: &str) -> Result<(), CompilationError> {
+    let pkg = test_package();
+    let mut interfaces: HashMap<Name, Interface> = HashMap::from([basics_interface()]);
+
+    for lib in [first, second] {
+        let module = check_module(&pkg, &interfaces, &parse_source(lib), false)
+            .unwrap_or_else(|e| panic!("an exporting module should compile: {:?}", e));
+        interfaces.insert(module.name.name().clone(), module.to_interface(None));
+    }
+
+    check_module(&pkg, &interfaces, &parse_source(main), false).map(|_| ())
+}
+
+/// A `Size` declared in `A` and a `Size` declared in `B` are two types, and a
+/// function may not return the one it was handed.
+///
+/// `BUG-35`: the typer used to identify a union by its unqualified name, so both
+/// annotations became the one type and this checked clean.
+///
+/// Mutation-checked by comparing only the unqualified halves in
+/// `unify_one_constraint`'s `Adt`/`Adt` arm — `n1.unqualified_name() ==
+/// n2.unqualified_name()` — which makes the two unify again and `expect_err` panic.
+#[test]
+fn two_modules_same_named_types_do_not_unify() {
+    let error = check_importer_of_two(SIZE_A, SIZE_B, CROSSES_TWO_SIZES)
+        .expect_err("`A.Size` and `B.Size` are two types");
+
+    let CompilationError::Type(errors, module) = &error else {
+        panic!("expected a Type error, got {:?}", error);
+    };
+    assert_eq!(module, &Name::from("Main"));
+    assert_eq!(errors.len(), 1, "expected one type error, got {:?}", errors);
+
+    // The variant, not merely `is_err`: the point of the change is that the two
+    // types are compared and disagree, which is what `UnificationFailed` reports.
+    assert!(
+        matches!(
+            errors[0].kind,
+            zelkova_lang::compiler::typer::ErrorKind::UnificationFailed { .. }
+        ),
+        "expected a unification failure, got {:?}",
+        errors[0].kind
+    );
+
+    // Unification is symmetric, so which side each type lands on is not part of
+    // the contract; that both are named with the module that declared them is.
+    let message = errors[0].message();
+    assert!(
+        message == "cannot match `A.Size` with `B.Size`"
+            || message == "cannot match `B.Size` with `A.Size`",
+        "both types must be named by their module, got {:?}",
+        message
+    );
+}
+
+/// The same module with one annotation changed, so that both sides name `A.Size`:
+/// the two types agree, and nothing is reported.
+///
+/// Without this, the test above would also pass on a typer that rejected every
+/// `Adt` pair outright.
+#[test]
+fn a_type_from_another_module_unifies_with_itself() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import A
+        import B
+
+        f : A.Size -> A.Size
+        f s = s
+    "#};
+
+    assert!(
+        check_importer_of_two(SIZE_A, SIZE_B, main).is_ok(),
+        "`A.Size` is `A.Size`"
+    );
+}
+
+/// The ambiguity is in the names a message *contains*, not in the two whole
+/// renderings: here the sides read `Size` and `Size Size`, so they differ as text
+/// while still naming three declarations with one word.
+///
+/// Comparing the renderings for equality — which is what the first form of
+/// `ErrorKind::message` did — leaves this sentence saying nothing, so the check is
+/// made on the union names collected out of both sides instead.
+///
+/// Mutation-checked by restoring that comparison (`if l == r`), which puts both
+/// sides down the unqualified arm and reports *cannot match `Size Size` with
+/// `Size`*.
+#[test]
+fn a_shared_spelling_is_qualified_even_when_the_two_heads_differ() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import A
+        import Lib
+
+        f : A.Size -> Lib.Size A.Size
+        f s = s
+    "#};
+
+    let error = check_importer_of_two(SIZE_A, SIZE_LIB, main)
+        .expect_err("`A.Size` is not `Lib.Size A.Size`");
+
+    let CompilationError::Type(errors, _) = &error else {
+        panic!("expected a Type error, got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one type error, got {:?}", errors);
+
+    let message = errors[0].message();
+    assert!(
+        message == "cannot match `A.Size` with `Lib.Size A.Size`"
+            || message == "cannot match `Lib.Size A.Size` with `A.Size`",
+        "every `Size` in the sentence must be named by its module, got {:?}",
+        message
+    );
+}
+
+/// The counterpart: two unions whose spellings do not collide are still quoted the
+/// way the source writes them, so qualifying is not simply always on.
+#[test]
+fn types_that_share_no_spelling_stay_unqualified() {
+    let lib = indoc::indoc! {r#"
+        module Lib exposing (Box(..))
+        type Box a = Wrap a
+    "#};
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import A
+        import Lib
+
+        f : A.Size -> Lib.Box A.Size
+        f s = s
+    "#};
+
+    let error =
+        check_importer_of_two(SIZE_A, lib, main).expect_err("`A.Size` is not `Lib.Box A.Size`");
+
+    let CompilationError::Type(errors, _) = &error else {
+        panic!("expected a Type error, got {:?}", error);
+    };
+
+    let message = errors[0].message();
+    assert!(
+        message == "cannot match `Size` with `Box Size`"
+            || message == "cannot match `Box Size` with `Size`",
+        "nothing is ambiguous here, so both sides keep the source's spelling, got {:?}",
+        message
+    );
+}
+
+/// A module declaring a nullary `Size`. [`SIZE_B`] is the same declaration under
+/// another module's name, which is the whole point: the two differ only in the half
+/// the typer used to throw away.
+const SIZE_A: &str = indoc::indoc! {r#"
+    module A exposing (Size(..))
+    type Size = S
+"#};
+
+/// See [`SIZE_A`].
+const SIZE_B: &str = indoc::indoc! {r#"
+    module B exposing (Size(..))
+    type Size = S
+"#};
+
+/// A third `Size`, this one taking a parameter, so that a mismatch against
+/// [`SIZE_A`]'s can be written with two *different* heads.
+const SIZE_LIB: &str = indoc::indoc! {r#"
+    module Lib exposing (Size(..))
+    type Size a = Wrap a
+"#};
+
+/// A declaration whose annotation names both modules' `Size`.
+///
+/// No constructor appears in it, deliberately: a value that mentions an *imported*
+/// constructor is skipped by the typer altogether (`BUG-36`), so it could not show
+/// the two types being compared.
+const CROSSES_TWO_SIZES: &str = indoc::indoc! {r#"
+    module Main exposing (..)
+
+    import A
+    import B
+
+    f : A.Size -> B.Size
+    f s = s
+"#};

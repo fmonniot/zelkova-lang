@@ -162,7 +162,7 @@ nothing about a class parses, so all eleven of the chapter's class-and-constrain
 And when it landed it *did* tighten `expect=ok` to mean "and type checks", against what this
 decision assumed. What the narrower half was protecting against — a wave of retagging — came
 to four blocks out of 330, and every one of the four was worth knowing about: an unreported
-compiler bug ([`BUG-26`](../tickets/bug-26.md)), an example that was never a well-typed program
+compiler bug (`BUG-26`), an example that was never a well-typed program
 at all, and two blocks demonstrating a type-level claim their tag could not reach.
 
 **Decision 2 was extended, not overturned.** `SPEC-14` settled two further body forms, both
