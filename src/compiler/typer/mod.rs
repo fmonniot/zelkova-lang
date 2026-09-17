@@ -322,26 +322,36 @@ impl ErrorKind {
     fn message(&self) -> String {
         match self {
             ErrorKind::UnificationFailed { left, right, .. } => {
-                let (l, r) = (left.to_string(), right.to_string());
-
                 // Two modules may each declare a union of the same name, and the
                 // source spells both of them bare. Written that way the sentence
-                // names one type twice and says nothing; the module that declared
-                // each is what tells them apart, so both sides take it.
-                if l == r {
+                // uses one word for two declarations and says nothing; the module
+                // that declared each is what tells them apart, so both sides take
+                // it — both, because a sentence that qualifies one side and not the
+                // other reads as if only one of them had a module.
+                if AdtNames::for_all([left.as_ref(), right.as_ref()]) == AdtNames::Qualified {
                     format!(
                         "cannot match `{}` with `{}`",
                         Qualified(left),
                         Qualified(right)
                     )
                 } else {
-                    format!("cannot match `{}` with `{}`", l, r)
+                    format!("cannot match `{}` with `{}`", left, right)
                 }
             }
-            ErrorKind::CircularType { tpe, .. } => format!(
-                "circular type: a type variable would have to contain itself in `{}`",
-                tpe
-            ),
+            // One type, but it can hold the collision on its own: the variable's
+            // solution is built out of whatever it was unified against, which may
+            // be two same-named unions from two modules.
+            ErrorKind::CircularType { tpe, .. } => {
+                let tpe: &dyn std::fmt::Display = match AdtNames::for_all([tpe.as_ref()]) {
+                    AdtNames::Qualified => &Qualified(tpe),
+                    AdtNames::Unqualified => &**tpe,
+                };
+
+                format!(
+                    "circular type: a type variable would have to contain itself in `{}`",
+                    tpe
+                )
+            }
             ErrorKind::UnboundVariable { name, .. } => {
                 format!("cannot find a value named `{}`", name)
             }
@@ -1134,7 +1144,7 @@ pub enum Type {
 /// How the name of a [`Type::Adt`] is written out.
 ///
 /// A type is normally quoted the way the source spells it, which for a union is its
-/// bare name. That is ambiguous exactly when a message names two declarations that
+/// bare name. That is ambiguous exactly when one message names two declarations that
 /// share a spelling, and [`ErrorKind::message`] switches to the qualified form there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AdtNames {
@@ -1142,6 +1152,37 @@ enum AdtNames {
     Unqualified,
     /// `Widget.Size`.
     Qualified,
+}
+
+impl AdtNames {
+    /// How the types a single message is about have to be written for that message
+    /// to distinguish the declarations it names.
+    ///
+    /// The question is not whether the *types* are spelled alike — `A.Size` against
+    /// `Lib.Size A.Size` renders as `Size` against `Size Size`, which differs as
+    /// text while still using one word for three declarations. It is whether any two
+    /// of the unions named anywhere in those types are different declarations with
+    /// the same bare name; if so every union in the sentence is qualified, since
+    /// qualifying only the colliding pair would read as if the rest had no module.
+    fn for_all<'a>(types: impl IntoIterator<Item = &'a Type>) -> AdtNames {
+        let mut names: Vec<&QualName> = Vec::new();
+
+        for tpe in types {
+            tpe.collect_adt_names(&mut names);
+        }
+
+        let collides = names.iter().enumerate().any(|(i, name)| {
+            names[i + 1..]
+                .iter()
+                .any(|other| *other != *name && other.unqualified_name() == name.unqualified_name())
+        });
+
+        if collides {
+            AdtNames::Qualified
+        } else {
+            AdtNames::Unqualified
+        }
+    }
 }
 
 /// A [`Type`] written with every union named by the module that declared it.
@@ -1187,6 +1228,40 @@ impl std::fmt::Display for Type {
 }
 
 impl Type {
+    /// Every union named anywhere in this type, outermost first, appended to `out`.
+    ///
+    /// A union's arguments are types in their own right and may name unions of their
+    /// own, so this recurses rather than reading the head alone. [`AdtNames::for_all`]
+    /// is what it exists for: deciding how to write a type means looking at every
+    /// name the rendering will contain, not only the one at the top.
+    fn collect_adt_names<'a>(&'a self, out: &mut Vec<&'a QualName>) {
+        match self {
+            Type::Literal(_) | Type::Number | Type::Variable(_) => {}
+            Type::Fun {
+                param_tpe,
+                return_tpe,
+            } => {
+                param_tpe.collect_adt_names(out);
+                return_tpe.collect_adt_names(out);
+            }
+            Type::Tuple(Tuple::Two(a, b)) => {
+                a.collect_adt_names(out);
+                b.collect_adt_names(out);
+            }
+            Type::Tuple(Tuple::Three(a, b, c)) => {
+                a.collect_adt_names(out);
+                b.collect_adt_names(out);
+                c.collect_adt_names(out);
+            }
+            Type::Adt(name, args) => {
+                out.push(name);
+                for arg in args {
+                    arg.collect_adt_names(out);
+                }
+            }
+        }
+    }
+
     /// The body of both renderings: the same text either way, except for how a union
     /// is named. See [`AdtNames`], and [`Display`](std::fmt::Display) for why unions
     /// are normally written bare.
@@ -2048,5 +2123,52 @@ mod tests {
         for (tpe, expected) in cases {
             assert_eq!(format!("{}", tpe), expected, "rendering {:?}", tpe);
         }
+    }
+
+    /// `ErrorKind::CircularType` names one type, but the solution a variable would
+    /// have had to contain itself in is built out of everything it was unified
+    /// against — so one type is enough to hold two same-named declarations.
+    ///
+    /// Written by hand because no Zelkova source available today produces a circular
+    /// type at all: the constructs that do (`let`, lambdas) are unimplemented, and
+    /// `unifier.rs` is the only thing that raises the variant.
+    ///
+    /// Mutation-checked by quoting `tpe` through `Display` unconditionally, the way
+    /// the arm was first written, which reports *contain itself in `Box Size Size`*.
+    #[test]
+    fn a_circular_type_naming_two_modules_alike_qualifies_both() {
+        let tpe = Type::Adt(
+            qual("Lib", "Box"),
+            vec![
+                Type::Adt(qual("A", "Size"), vec![]),
+                Type::Adt(qual("B", "Size"), vec![]),
+            ],
+        );
+
+        let kind = ErrorKind::CircularType {
+            tpe: Box::new(tpe),
+            origin: Box::new(Origin::new(Reason::Annotation, NodeSpan::none())),
+        };
+
+        assert_eq!(
+            kind.message(),
+            "circular type: a type variable would have to contain itself in \
+             `Lib.Box A.Size B.Size`"
+        );
+    }
+
+    /// The counterpart: one declaration per spelling, so the type is quoted the way
+    /// the source writes it.
+    #[test]
+    fn a_circular_type_with_no_collision_stays_unqualified() {
+        let kind = ErrorKind::CircularType {
+            tpe: Box::new(adt("Box", vec![adt("Size", vec![])])),
+            origin: Box::new(Origin::new(Reason::Annotation, NodeSpan::none())),
+        };
+
+        assert_eq!(
+            kind.message(),
+            "circular type: a type variable would have to contain itself in `Box Size`"
+        );
     }
 }

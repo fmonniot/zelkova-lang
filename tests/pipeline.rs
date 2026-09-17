@@ -2361,7 +2361,7 @@ fn check_importer_of_two(first: &str, second: &str, main: &str) -> Result<(), Co
 /// n2.unqualified_name()` — which makes the two unify again and `expect_err` panic.
 #[test]
 fn two_modules_same_named_types_do_not_unify() {
-    let error = check_importer_of_two(size_lib("A"), size_lib("B"), CROSSES_TWO_SIZES)
+    let error = check_importer_of_two(SIZE_A, SIZE_B, CROSSES_TWO_SIZES)
         .expect_err("`A.Size` and `B.Size` are two types");
 
     let CompilationError::Type(errors, module) = &error else {
@@ -2410,25 +2410,105 @@ fn a_type_from_another_module_unifies_with_itself() {
     "#};
 
     assert!(
-        check_importer_of_two(size_lib("A"), size_lib("B"), main).is_ok(),
+        check_importer_of_two(SIZE_A, SIZE_B, main).is_ok(),
         "`A.Size` is `A.Size`"
     );
 }
 
-/// A module declaring a nullary `Size`, under whichever name it is given.
-fn size_lib(module: &str) -> &'static str {
-    match module {
-        "A" => indoc::indoc! {r#"
-            module A exposing (Size(..))
-            type Size = S
-        "#},
-        "B" => indoc::indoc! {r#"
-            module B exposing (Size(..))
-            type Size = S
-        "#},
-        other => panic!("no `Size` module named {}", other),
-    }
+/// The ambiguity is in the names a message *contains*, not in the two whole
+/// renderings: here the sides read `Size` and `Size Size`, so they differ as text
+/// while still naming three declarations with one word.
+///
+/// Comparing the renderings for equality — which is what the first form of
+/// `ErrorKind::message` did — leaves this sentence saying nothing, so the check is
+/// made on the union names collected out of both sides instead.
+///
+/// Mutation-checked by restoring that comparison (`if l == r`), which puts both
+/// sides down the unqualified arm and reports *cannot match `Size Size` with
+/// `Size`*.
+#[test]
+fn a_shared_spelling_is_qualified_even_when_the_two_heads_differ() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import A
+        import Lib
+
+        f : A.Size -> Lib.Size A.Size
+        f s = s
+    "#};
+
+    let error = check_importer_of_two(SIZE_A, SIZE_LIB, main)
+        .expect_err("`A.Size` is not `Lib.Size A.Size`");
+
+    let CompilationError::Type(errors, _) = &error else {
+        panic!("expected a Type error, got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one type error, got {:?}", errors);
+
+    let message = errors[0].message();
+    assert!(
+        message == "cannot match `A.Size` with `Lib.Size A.Size`"
+            || message == "cannot match `Lib.Size A.Size` with `A.Size`",
+        "every `Size` in the sentence must be named by its module, got {:?}",
+        message
+    );
 }
+
+/// The counterpart: two unions whose spellings do not collide are still quoted the
+/// way the source writes them, so qualifying is not simply always on.
+#[test]
+fn types_that_share_no_spelling_stay_unqualified() {
+    let lib = indoc::indoc! {r#"
+        module Lib exposing (Box(..))
+        type Box a = Wrap a
+    "#};
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import A
+        import Lib
+
+        f : A.Size -> Lib.Box A.Size
+        f s = s
+    "#};
+
+    let error =
+        check_importer_of_two(SIZE_A, lib, main).expect_err("`A.Size` is not `Lib.Box A.Size`");
+
+    let CompilationError::Type(errors, _) = &error else {
+        panic!("expected a Type error, got {:?}", error);
+    };
+
+    let message = errors[0].message();
+    assert!(
+        message == "cannot match `Size` with `Box Size`"
+            || message == "cannot match `Box Size` with `Size`",
+        "nothing is ambiguous here, so both sides keep the source's spelling, got {:?}",
+        message
+    );
+}
+
+/// A module declaring a nullary `Size`. [`SIZE_B`] is the same declaration under
+/// another module's name, which is the whole point: the two differ only in the half
+/// the typer used to throw away.
+const SIZE_A: &str = indoc::indoc! {r#"
+    module A exposing (Size(..))
+    type Size = S
+"#};
+
+/// See [`SIZE_A`].
+const SIZE_B: &str = indoc::indoc! {r#"
+    module B exposing (Size(..))
+    type Size = S
+"#};
+
+/// A third `Size`, this one taking a parameter, so that a mismatch against
+/// [`SIZE_A`]'s can be written with two *different* heads.
+const SIZE_LIB: &str = indoc::indoc! {r#"
+    module Lib exposing (Size(..))
+    type Size a = Wrap a
+"#};
 
 /// A declaration whose annotation names both modules' `Size`.
 ///
