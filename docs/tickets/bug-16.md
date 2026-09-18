@@ -3,8 +3,6 @@
 **Severity:** medium (wrong behaviour under normal use — a misspelled type name is accepted
 silently and surfaces later, if at all, as a type error about something else).
 
-**Blocked by:** [LANG-58](lang-58.md). See *What is left, and why it waits* below.
-
 **Location:** `src/compiler/canonical/mod.rs` — `Type::from_parser_type`, the `None` arm of
 its `env.find_type(name)` match.
 
@@ -57,23 +55,37 @@ Two things go red on their own alongside it, both measured:
   has to assert on `PhaseError::message()` instead of on the variant. A unit test inside
   `environment.rs` is the only place the variant itself can be matched.
 
-**What is left, and why it waits:** [`LANG-58`](lang-58.md). `Js/Basics.zel` and
+**No longer blocked:** [`LANG-58`](README.md), closed, seeded the [scalar type
+names](../spec/types.md#scalar-types) into every module of a package exempt from [the default
+imports](../spec/modules.md#the-default-imports) — `zelkova-core` today. `Js/Basics.zel` and
 `Js/Utils.zel` name `Int`, `Float` and `Bool` with no `import` line, and they are exactly the
-two modules the [default imports](../spec/modules.md#the-default-imports) withhold `Basics`
-from — `Basics` imports both facades, so the implicit import back would be a cycle, and writing
-it by hand is the same cycle written out. Reporting the unresolved name rather than fabricating
-one therefore turns both modules red, with no spelling available, until `LANG-58` seeds the
-[scalar type names](../spec/types.md#scalar-types) into a module that dropped its `Basics`
-entry.
+two modules that package covers, so both now have a real, non-fabricated spelling for the three
+names this fix would otherwise take away from them. `SPEC-31` asked that question and
+[`DEC-15`](../decisions/dec-15.md) answers it; the shape `LANG-58` implemented is decision 3,
+and decision 1 settled `BUG-26` with it.
 
-`SPEC-31` asked that question and [`DEC-15`](../decisions/dec-15.md) answers it; the shape
-`LANG-58` implements is decision 3, and decision 1 settled `BUG-26` with it.
-
-Applying the fix on a branch to measure it: with the `do_types` change above, and with `Int`,
-`Float`, `Bool`, `Char` and `String` seeded into *every* scope — wider than `LANG-58` seeds,
-and used only to see what else moved — `cargo run` checks all eight modules and `cargo test
---workspace` is green with six `env.types.len()` assertions in `environment.rs` adjusted for
-the seeded names. So `LANG-58` aside, the rest of the fix costs nothing beyond those two items.
+**Measured** (2026-09-17, on a scratch branch, discarded afterward): the `do_types` change
+above, `from_parser_type`'s `None` arm returning an error, and the scalar names widened to every
+scope — not just the package `LANG-58` seeds them in, purely to see what else moved — leave
+`cargo run` unchanged: it still checks all eight modules. `cargo test --workspace` is not simply
+green once the five `env.types.len()` assertions in `environment.rs` are bumped by five each,
+though — eleven more tests fail. One,
+`an_unresolved_type_name_is_attributed_to_the_module_under_check`, is this ticket's own anchor
+for the fabrication behaviour being replaced, so its failure is the fix working, not a new cost.
+The other ten are not about unresolved names at all: `function_multiple_parameters`,
+`foreign_facade_module`, `if_then_else_expression`,
+`qualified_and_unqualified_spellings_canonicalize_to_one_head`, `tuple_of_three_canonicalizes`,
+`tuple_of_two_canonicalizes`, `tuple_pattern_canonicalizes` and
+`tuple_pattern_of_three_canonicalizes` in `tests/compiler/canonical.rs`, plus
+`an_unresolved_qualified_scalar_name_is_not_the_scalar` and
+`an_unresolved_qualified_type_name_is_not_a_local_type_of_the_same_stem` in `tests/typer.rs`,
+each write a bare `Int`/`Char`/`Bool` with no `Basics` interface in scope and lean on today's
+fabrication — attributed to the module under check — purely incidentally, never asserting
+anything about it. Widening the seed resolves those names to `Basics.Int` and friends instead,
+so the whole-value assertions built against the old fabricated head stop matching. Implementing
+this fix for real has to update all ten of those call sites (and decide whether the scalar seed
+really should widen to every scope, which is a design question this ticket does not itself
+settle), not only the five `environment.rs` lines this paragraph used to name.
 
 **Acceptance:** `label : Nope` in a module that declares no `Nope` fails with the new error,
 and `label : a` (a type variable) still compiles — tests in `tests/compiler/canonical.rs`.

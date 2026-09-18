@@ -417,8 +417,7 @@ covers arises — a [facade](interop.md) underneath `Basics`. It supplies the fi
 nothing else, so a module reaching `Bool` that way can annotate one and cannot write a `True`.
 
 **Not implemented:** `Char` and `String` do not compile, so neither declares the scalar it is
-named for, and the two facades `Basics` imports name `Int` through a fabricated type
-([`BUG-16`](../tickets/bug-16.md)) rather than through the rule above.
+named for.
 
 ## Type annotations
 

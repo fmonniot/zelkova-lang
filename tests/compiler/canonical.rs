@@ -2251,3 +2251,133 @@ fn a_non_basics_modules_int_is_an_ordinary_union() {
         "Example's Int keeps its own constructor"
     );
 }
+
+// ── LANG-58: scalar names reach a module of an exempt package ────────────────
+//
+// `zelkova-core` — the package `Basics` belongs to — receives none of the
+// eight default imports (`LANG-57`), and a facade underneath `Basics` such as
+// `Js/Basics.zel` has no import that could reach `Basics`' own declaration of
+// `Int`, `Float` and `Bool` without closing a cycle. The compiler seeds the
+// five scalar names directly instead, bound to the qualified names
+// `scalars::SCALARS` holds (`DEC-15` decision 3, re-scoped by `DEC-17`).
+//
+// Both tests go through `canonicalize_exempt_package`, whose interfaces map is
+// empty — proof that seeding does not consult `Basics`' `Interface`.
+
+/// `Int`, `Float` and `Bool` resolve to `Basics.Int`, `Basics.Float` and
+/// `Basics.Bool` in a module with no import at all, as long as its package is
+/// exempt from the default imports.
+///
+/// Mutation-checked by removing the scalar-seeding block from
+/// `new_environment`: each head below becomes `Test.<Name>` (the fabrication
+/// `BUG-16` documents for a name that resolves to nothing) instead of
+/// `Basics.<Name>`, and the assertion goes red.
+#[test]
+fn scalar_types_resolve_in_an_exempt_package_with_no_import() {
+    let source = indoc::indoc! {r#"
+        module Js.Basics exposing (equal)
+
+        equal : Int -> Float -> Bool
+        equal a b =
+          a
+    "#};
+
+    let module =
+        canonicalize_exempt_package(source).expect("the seeded scalar names should resolve");
+
+    match module.values.get(&"equal".into()) {
+        Some(canonical::Value::TypedValue { tpe, .. }) => {
+            assert_eq!(
+                tpe,
+                &canonical::Type::Arrow(
+                    Box::new(canonical::Type::Type(qual("Basics.Int"), vec![])),
+                    Box::new(canonical::Type::Arrow(
+                        Box::new(canonical::Type::Type(qual("Basics.Float"), vec![])),
+                        Box::new(canonical::Type::Type(qual("Basics.Bool"), vec![])),
+                    )),
+                )
+            );
+        }
+        other => panic!("expected a TypedValue for `equal`, got {:?}", other),
+    }
+}
+
+/// The seeded names are type names only: a module of an exempt package can
+/// annotate a `Bool` and cannot write a `True` — the scalar seeding brings no
+/// constructor and no value ([`DEC-15` decision
+/// 4](../../docs/decisions/dec-15.md#4--the-scalar-names-arrive-without-their-values)).
+///
+/// Mutation-checked by also seeding `Basics`' constructors in
+/// `new_environment` (inserting `True`/`False` into `env.constructors`
+/// alongside the type names): `canonicalize_exempt_package` then succeeds and
+/// this `expect_err` panics.
+#[test]
+fn exempt_package_seeding_brings_no_constructor() {
+    let source = indoc::indoc! {r#"
+        module Js.Basics exposing (yes)
+
+        yes : Bool
+        yes = True
+    "#};
+
+    let errors = canonicalize_exempt_package(source)
+        .expect_err("`True` should not resolve: only the type name is seeded");
+
+    match errors.as_slice() {
+        [canonical::Error::VariantNotFound(name, _, _)] => {
+            assert_eq!(name.unqualified_name().as_str(), "True");
+        }
+        other => panic!("expected one VariantNotFound, got {:?}", other),
+    }
+}
+
+/// A module of an exempt package that writes its own `import Basics exposing (Int)`
+/// is unaffected: `Int` resolves the same way the written import alone would produce,
+/// and the two scalars this module never imports — `Float` and `Bool` — still reach
+/// `Basics.Float` and `Basics.Bool` through the seed. This is the ticket's Acceptance
+/// clause "a module that keeps its `Basics` entry is unaffected", otherwise only
+/// exercised through the full `std/core` pipeline (`Bitwise.zel` keeps its own
+/// `import Basics exposing (Int)`) — here with a real `Basics` interface in scope,
+/// unlike the two tests above.
+///
+/// Mutation-checked by removing the scalar-seeding block from `new_environment`:
+/// `Int` still resolves correctly (the written import supplies it on its own), but
+/// `Float` and `Bool` — never imported here — fabricate `Test.Float`/`Test.Bool`
+/// instead (the shape `BUG-16` documents), and the assertion goes red.
+#[test]
+fn a_written_basics_import_coexists_with_the_seed() {
+    let source = indoc::indoc! {r#"
+        module Js.Basics exposing (compare)
+
+        import Basics exposing (Int)
+
+        compare : Int -> Float -> Bool
+        compare a b =
+          a
+    "#};
+
+    let mut interfaces = HashMap::new();
+    let (name, interface) = basics_interface();
+    interfaces.insert(name, interface);
+
+    let parsed = parse_source(source);
+    let module = canonical::canonicalize(&test_package(), &interfaces, &parsed, true)
+        .expect("the written import should not collide with the seed");
+
+    match module.values.get(&"compare".into()) {
+        Some(canonical::Value::TypedValue { tpe, .. }) => {
+            assert_eq!(
+                tpe,
+                &canonical::Type::Arrow(
+                    Box::new(canonical::Type::Type(qual("Basics.Int"), vec![])),
+                    Box::new(canonical::Type::Arrow(
+                        Box::new(canonical::Type::Type(qual("Basics.Float"), vec![])),
+                        Box::new(canonical::Type::Type(qual("Basics.Bool"), vec![])),
+                    )),
+                ),
+                "Int (seeded and imported), Float and Bool (seeded only) all resolve to Basics"
+            );
+        }
+        other => panic!("expected a TypedValue for `compare`, got {:?}", other),
+    }
+}
