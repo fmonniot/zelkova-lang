@@ -1,0 +1,12 @@
+-- A stand-in for `std/core`'s `Basics`, so that `Mismatch.zel` can annotate an
+-- `Int`.
+--
+-- A package containing a module named `Basics` is the package the eight default
+-- imports belong to, so none of its modules gets any of them implicitly. What
+-- they get instead is the five scalar type names, seeded without an import,
+-- which is what makes the `Int` in `Mismatch.zel` resolve.
+
+module Basics exposing (Int)
+
+
+type Int = Int

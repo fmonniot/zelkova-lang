@@ -720,62 +720,6 @@ fn tuple_triple_against_pair_annotation_is_a_mismatch() {
     assert_eq!(type_errors(source).len(), 1);
 }
 
-// ── A type name that resolves to nothing ──────────────────────────────────────
-
-/// A type name written qualified that resolves to nothing stays distinct from a
-/// local declaration of its unqualified half.
-///
-/// Neither name is reported — `BUG-16` is the ticket for rejecting an unresolved
-/// type name rather than fabricating a type for it — so all the typer has to tell
-/// the two apart is the string `Type::from_parser_type` fabricated. The `None` arm
-/// there hands the whole written spelling to `ModuleName::qualify_name`, which does
-/// not split it, so `Missing.Thing` survives as one dotted unqualified half and
-/// never collapses onto the local `Thing`.
-///
-/// Mutation-checked by reading the module half off the written name instead
-/// (`name.to_qual().unwrap_or_else(|| env.module_name().qualify_name(name))`, which
-/// is what this replaced): the head becomes `Missing.Thing`, the typer reads back
-/// `Thing`, and the module checks clean.
-#[test]
-fn an_unresolved_qualified_type_name_is_not_a_local_type_of_the_same_stem() {
-    let source = indoc::indoc! {r#"
-        module Test exposing (..)
-        type Thing = T
-        f : Missing.Thing -> Thing
-        f x = x
-    "#};
-
-    assert_eq!(
-        one_type_error(source).message(),
-        "cannot match `Thing` with `Missing.Thing`"
-    );
-}
-
-/// The same rule against a scalar: an unresolved `Missing.Int` is not `Basics.Int`.
-///
-/// `Int` resolves to `Basics.Int` through the default imports, which is the scalar;
-/// `Missing.Int` resolves to nothing and keeps its whole written spelling, so the
-/// error names the two apart. (`Basics.Int` itself would resolve here, since
-/// [`basics_interface`] is in scope, and would check clean for the right reason.)
-///
-/// Mutation-checked the same way as the test above: with the written module half read
-/// off, the head becomes `Missing.Int`, which is still not a scalar, so the module is
-/// still rejected — but as "cannot match `Int` with `Int`", the message that names one
-/// type twice, and this assertion goes red.
-#[test]
-fn an_unresolved_qualified_scalar_name_is_not_the_scalar() {
-    let source = indoc::indoc! {r#"
-        module Test exposing (..)
-        f : Missing.Int -> Int
-        f x = x
-    "#};
-
-    assert_eq!(
-        one_type_error(source).message(),
-        "cannot match `Int` with `Missing.Int`"
-    );
-}
-
 // ── A module's own type spelled like a scalar ─────────────────────────────────
 
 /// `BUG-26`'s module: declaring `Bool` and annotating with it type checks.

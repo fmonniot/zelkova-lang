@@ -118,7 +118,7 @@ fn module_with_typed_and_untyped_values() {
         add a b = a
     "#};
     let parsed = parse_source(source);
-    let interfaces = HashMap::new();
+    let interfaces = HashMap::from([basics_interface()]);
     let result = check_module(&test_package(), &interfaces, &parsed, false);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
@@ -169,7 +169,9 @@ fn module_importing_maybe_interface() {
 #[test]
 fn check_module_interface_can_be_used_by_dependent() {
     let pkg = test_package();
-    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
+    // `App` annotates an `Option Int`, so `Basics` has to be resolvable for the
+    // `Int` inside it as much as `Lib` does for the `Option` around it.
+    let mut interfaces: HashMap<Name, Interface> = HashMap::from([basics_interface()]);
 
     // First module: defines a local Maybe
     let source_a = indoc::indoc! {r#"
@@ -553,7 +555,7 @@ fn type_error_renders_as_an_error_naming_both_types() {
         answer = true
     "#};
     let parsed = parse_source(source);
-    let interfaces = HashMap::new();
+    let interfaces = HashMap::from([basics_interface()]);
 
     let error = check_module(&test_package(), &interfaces, &parsed, false)
         .expect_err("`answer : Int` with a `Bool` body must not type-check");
@@ -653,7 +655,7 @@ fn canonical_error_renders_as_prose_naming_the_missing_module() {
 #[test]
 fn type_error_labels_the_expression_that_disagrees() {
     let root = fixture_package("package_type_error");
-    assert_eq!(module_names(&root), vec!["Mismatch.zel"]);
+    assert_eq!(module_names(&root), vec!["Basics.zel", "Mismatch.zel"]);
 
     let source = std::fs::read_to_string(root.join("Mismatch.zel")).expect("fixture is readable");
     let annotation = "answer : Int";
@@ -1222,7 +1224,10 @@ fn ambiguous_variable_note_calls_out_the_implicit_default_import() {
 #[test]
 fn ambiguous_imported_operators_are_labeled_in_their_own_module() {
     let root = fixture_package("package_imported_operator_ambiguity");
-    assert_eq!(module_names(&root), vec!["Ops.zel", "User.zel"]);
+    assert_eq!(
+        module_names(&root),
+        vec!["Basics.zel", "Ops.zel", "User.zel"]
+    );
 
     let ops_source = std::fs::read_to_string(root.join("Ops.zel")).expect("fixture is readable");
     let lt_decl = ops_source

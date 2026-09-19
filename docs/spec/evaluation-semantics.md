@@ -653,15 +653,10 @@ reporting a missing file apart from a broken companion, is `String -> Task (Resu
 
 **Not implemented:** the `read` block under
 [Where a `Task` comes from](#where-a-task-comes-from) does not parse, a type argument having to be
-a bare name today ([`LANG-9`](../tickets/lang-9.md)). `zelkova-core` declares no `Task` and no
-`Failure`, no facade wrapper is generated, and nothing runs a program at all — the pipeline ends
-at type checking, so there is no runtime for a `Task` to be handed to
+a bare name today ([`LANG-9`](../tickets/lang-9.md)). `zelkova-core` declares no `Task`, no
+`Failure` and no `String`, no facade wrapper is generated, and nothing runs a program at all —
+the pipeline ends at type checking, so there is no runtime for a `Task` to be handed to
 ([`GEN-1`](../tickets/gen-1.md)).
-
-**Known gap:** the `Failure` block above compiles, and should not: `String` names no type the
-build has, and an unresolved type name is invented rather than reported
-([`BUG-16`](../tickets/bug-16.md)). It goes red when `BUG-16` lands, and green again once
-`zelkova-core` declares `String`.
 
 ## When a program aborts
 

@@ -199,12 +199,20 @@ tooMany : Maybe Size Size
 tooMany = Nothing
 ```
 
-**Known gap:** a variant argument naming a type declared in the *same* module should be held
-to the same count and is not. The check runs wherever the name already resolves at the point
-the application is canonicalized — every annotation, and a `type` declaration's variant
-arguments when the head is imported — but canonicalization builds all of a module's `type`
-declarations before recording any of them, so `type W a = W Maybe a` beside `type Maybe a =
-...` is accepted, while the same shape over an imported `Maybe` is rejected.
+The count is checked wherever a type name is applied, and a variant's arguments are no
+exception — a module's own declarations are in scope for each other, so a sibling named in a
+variant is held to its own arity:
+
+```zel expect=canonical-error:TypeArityMismatch
+module Example exposing (Maybe, W)
+
+type Maybe a
+  = Just a
+  | Nothing
+
+type W a
+  = W Maybe a
+```
 
 ### An applied type still means what it says
 

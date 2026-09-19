@@ -494,13 +494,20 @@ grow s =
   s
 ```
 
-**Known gap:** that block states the rule rather than testing it. It compiles unchanged
-with the `exposing (Size)` dropped, because an annotation naming a type nothing brings
-into scope is accepted ([`docs/tickets/bug-16.md`](../tickets/bug-16.md)).
-
 An `exposing (..)` on an import brings in everything the module exposes, unqualified. A
 bare `import Widget` with no `exposing` clause brings in nothing unqualified, and means
-the same as `import Widget exposing ()`.
+the same as `import Widget exposing ()`. `Widget.Size` is then the only spelling of the
+type, and the bare `Size` names nothing:
+
+```zel expect=canonical-error:TypeNotFound package=variants
+module Narrow exposing (grow)
+
+import Widget
+
+grow : Size -> Size
+grow s =
+  s
+```
 
 An entry naming something the imported module does not expose is an error, and the
 diagnostic points at the entry rather than at the whole `import` line:
@@ -827,10 +834,8 @@ unsafe twice : Int -> Int
 ```
 
 **Known gap:** `std/core` ships four of the eight, so `List`, `Char`, `String` and `Task`
-bring nothing. A program naming `String.length` is rejected where the name is used.
-Naming `List` in a type annotation is *accepted* today, but only because an unknown type
-name is accepted anywhere ([`BUG-16`](../tickets/bug-16.md)) — not because the entry
-works. Each entry starts working on the day its module compiles.
+bring nothing: a program naming `String.length` or annotating a `List` is rejected where
+the name is written. Each entry starts working on the day its module compiles.
 
 ## Packages
 

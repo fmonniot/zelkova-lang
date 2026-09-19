@@ -40,9 +40,9 @@ pub struct Scalar {
 impl Scalar {
     /// Whether `name` is this scalar's declaration.
     ///
-    /// Both halves have to match. `Example.Int` is not [`INT`], and neither is a
-    /// name fabricated for an `Int` that resolved to nothing
-    /// ([`BUG-16`](../../../docs/tickets/bug-16.md)) in any module but `Basics`.
+    /// Both halves have to match: `Example.Int` is not [`INT`]. An `Int` that
+    /// resolves to nothing never reaches here at all — canonicalization rejects
+    /// the name rather than building a type out of it.
     pub fn declares(&self, name: &QualName) -> bool {
         name.unqualified_name().as_str() == self.name && name.module_name().as_str() == self.module
     }

@@ -133,10 +133,8 @@ program has to write. `Test` is not on that list and could not be: it is drawn f
 ## What nothing checks
 
 The mechanism has no implementation and this decision did not give it one. Every block the
-chapters gained is held only to failing to compile, or — for the three that name `Task` in a
-facade signature — to compiling for a reason unrelated to effects: an unresolved type name is
-invented rather than reported ([`BUG-16`](../tickets/bug-16.md)), so `Task` is read as a type the
-build does not have. Those three go red when `BUG-16` lands and green again once `zelkova-core`
-declares the type, which is the only accountability any of this carries until
-[`GEN-1`](../tickets/gen-1.md) emits a runtime and [`LANG-15`](../tickets/lang-15.md) grows a
-`tests/` root.
+chapters gained is held only to failing to compile — the three that name `Task` in a facade
+signature among them, since a type argument has to be a bare name today
+([`LANG-9`](../tickets/lang-9.md)) and `Task (Result Failure a)` is not. That is the only
+accountability any of this carries until [`GEN-1`](../tickets/gen-1.md) emits a runtime and
+[`LANG-15`](../tickets/lang-15.md) grows a `tests/` root.

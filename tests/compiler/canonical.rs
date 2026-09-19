@@ -10,6 +10,7 @@ use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::name::QualName;
 use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::tuple::Tuple;
+use zelkova_lang::compiler::Interface;
 
 #[path = "../support/mod.rs"]
 mod support;
@@ -18,14 +19,45 @@ use support::*;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/// `Type::Type("Test.Int", [])` — the canonical representation of an unresolved
-/// `Int` (no Basics import in these tests).
+/// `Type::Type("Basics.Int", [])` — a bare `Int` in a module that can see
+/// `Basics`.
 ///
-/// A canonical type names the module that declared it. Nothing declares `Int`
-/// here, so `from_parser_type` attributes the head it fabricates to the module
-/// under check — every source in this file is `module Test`.
+/// A canonical type names the module that declared it, so the three scalar
+/// helpers here are only what a source spelling `Int`, `Char` or `Bool`
+/// canonicalizes to when something in scope declares that name. That is what
+/// [`canonicalize_with_scalars`] arranges; a module handed an empty interface
+/// map has no `Int` at all and is rejected for naming one.
 fn int_t() -> canonical::Type {
-    canonical::Type::Type(qual("Test.Int"), vec![])
+    canonical::Type::Type(qual("Basics.Int"), vec![])
+}
+
+fn char_t() -> canonical::Type {
+    canonical::Type::Type(qual("Char.Char"), vec![])
+}
+
+fn bool_t() -> canonical::Type {
+    canonical::Type::Type(qual("Basics.Bool"), vec![])
+}
+
+/// Canonicalize `source` with `Basics` and `Char` available, so a bare `Int`,
+/// `Float`, `Bool` or `Char` in it resolves to the scalar it names.
+///
+/// Neither module is imported by the sources below: the default imports bring
+/// both in unqualified as soon as their interfaces exist, which is exactly what
+/// a module of a real package gets.
+fn canonicalize_with_scalars(source: &str) -> Result<canonical::Module, Vec<canonical::Error>> {
+    canonicalize_with_interfaces(source, &scalar_interfaces())
+}
+
+/// The interface map [`canonicalize_with_scalars`] uses, for a test that needs
+/// to add an interface of its own beside it.
+fn scalar_interfaces() -> HashMap<zelkova_lang::compiler::name::Name, Interface> {
+    let mut interfaces = HashMap::new();
+    let (name, interface) = basics_interface();
+    interfaces.insert(name, interface);
+    let (name, interface) = char_interface();
+    interfaces.insert(name, interface);
+    interfaces
 }
 
 // `canonical::Expression` and `canonical::Pattern` are each a `NodeSpan` beside a
@@ -143,7 +175,7 @@ fn function_multiple_parameters() {
         add : Int -> Int -> Int
         add a b = a
     "#};
-    let module = canonicalize_standalone(source).expect("should canonicalize");
+    let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
     assert_eq!(
         module.values.get(&"add".into()).unwrap(),
@@ -317,7 +349,7 @@ fn if_then_else_expression() {
         max : Int -> Int -> Int
         max a b = if true then a else b
     "#};
-    let module = canonicalize_standalone(source).expect("should canonicalize");
+    let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
     assert_eq!(
         module.values.get(&"max".into()).unwrap(),
@@ -548,7 +580,7 @@ fn foreign_facade_module() {
         module foreign Test exposing (add)
         add : Int -> Int -> Int
     "#};
-    let module = canonicalize_standalone(source).expect("should canonicalize");
+    let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
     // A facade's values get a placeholder body of Bool(true) (see TODO in
     // canonical/mod.rs — the compiler doesn't yet have a dedicated binding
@@ -633,7 +665,7 @@ fn tuple_of_two_canonicalizes() {
         pair : (Int, Char)
         pair = (1, 'a')
     "#};
-    let module = canonicalize_standalone(source).expect("should canonicalize");
+    let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
     assert_eq!(
         module.values.get(&"pair".into()).unwrap(),
@@ -644,10 +676,7 @@ fn tuple_of_two_canonicalizes() {
             name: "pair".into(),
             patterns: vec![],
             body: c_tuple(Tuple::two(c_int(1), c_char('a'),)),
-            tpe: canonical::Type::Tuple(Tuple::two(
-                int_t(),
-                canonical::Type::Type(qual("Test.Char"), vec![]),
-            )),
+            tpe: canonical::Type::Tuple(Tuple::two(int_t(), char_t())),
         }
     );
 }
@@ -665,7 +694,7 @@ fn tuple_of_three_canonicalizes() {
         triple : (Int, Char, Bool)
         triple = (1, 'a', 3)
     "#};
-    let module = canonicalize_standalone(source).expect("should canonicalize");
+    let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
     assert_eq!(
         module.values.get(&"triple".into()).unwrap(),
@@ -676,11 +705,7 @@ fn tuple_of_three_canonicalizes() {
             name: "triple".into(),
             patterns: vec![],
             body: c_tuple(Tuple::three(c_int(1), c_char('a'), c_int(3),)),
-            tpe: canonical::Type::Tuple(Tuple::three(
-                int_t(),
-                canonical::Type::Type(qual("Test.Char"), vec![]),
-                canonical::Type::Type(qual("Test.Bool"), vec![]),
-            )),
+            tpe: canonical::Type::Tuple(Tuple::three(int_t(), char_t(), bool_t())),
         }
     );
 }
@@ -697,7 +722,7 @@ fn tuple_pattern_canonicalizes() {
         first : (Int, Char) -> Int
         first (a, b) = a
     "#};
-    let module = canonicalize_standalone(source).expect("should canonicalize");
+    let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
     let value = module.values.get(&"first".into()).unwrap();
     let patterns = match value {
@@ -709,10 +734,7 @@ fn tuple_pattern_canonicalizes() {
         patterns,
         &vec![(
             p_tuple(Tuple::two(p_var("a"), p_var("b"),)),
-            canonical::Type::Tuple(Tuple::two(
-                int_t(),
-                canonical::Type::Type(qual("Test.Char"), vec![]),
-            )),
+            canonical::Type::Tuple(Tuple::two(int_t(), char_t())),
         )]
     );
 }
@@ -734,7 +756,7 @@ fn tuple_pattern_of_three_canonicalizes() {
         first : (Int, Char, Bool) -> Int
         first (a, b, c) = a
     "#};
-    let module = canonicalize_standalone(source).expect("should canonicalize");
+    let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
     let value = module.values.get(&"first".into()).unwrap();
     let patterns = match value {
@@ -746,11 +768,7 @@ fn tuple_pattern_of_three_canonicalizes() {
         patterns,
         &vec![(
             p_tuple(Tuple::three(p_var("a"), p_var("b"), p_var("c"),)),
-            canonical::Type::Tuple(Tuple::three(
-                int_t(),
-                canonical::Type::Type(qual("Test.Char"), vec![]),
-                canonical::Type::Type(qual("Test.Bool"), vec![]),
-            )),
+            canonical::Type::Tuple(Tuple::three(int_t(), char_t(), bool_t())),
         )]
     );
 }
@@ -1095,8 +1113,8 @@ fn opaque_import_of_a_parameterised_type_keeps_its_arity() {
 /// coming back as `Maybe.Maybe` and `Test.Maybe`.
 #[test]
 fn qualified_and_unqualified_spellings_canonicalize_to_one_head() {
+    let mut interfaces = scalar_interfaces();
     let (iface_name, iface) = maybe_interface();
-    let mut interfaces = HashMap::new();
     interfaces.insert(iface_name, iface);
 
     let source = indoc::indoc! {r#"
@@ -1212,25 +1230,19 @@ fn two_modules_declaring_one_type_name_are_two_types() {
     }
 }
 
-/// A type name that resolves to nothing is attributed to the module under check,
-/// alias or no alias.
+/// A qualified type name that resolves to nothing is reported, and the name the
+/// error carries is the whole written spelling.
 ///
 /// `import Widget as W` followed by `W.Thing` names no declaration — `Widget`
-/// declares no `Thing` — so there is no declaring module to record, and `W` is not
-/// a candidate: it is a route, and reading it would fabricate a head in a module
-/// named `W`, the inverse of the rule the two tests above pin. `qualify_name` does
-/// not split the name it is given, so the whole written spelling stays the
-/// unqualified half, which is what keeps `W.Thing` distinct from a local `Thing`
-/// once the typer reads that half back (`tests/typer.rs`).
+/// declares no `Thing` — and `W` is a route rather than a module, so there is no
+/// module half to peel off and report separately. Quoting the spelling back is
+/// what lets the reader find it in their own source.
 ///
-/// `BUG-16` is the ticket for rejecting the unresolved name rather than
-/// fabricating a type for it at all.
-///
-/// Mutation-checked by reading the written module half off the name first
-/// (`name.to_qual().unwrap_or_else(|| env.module_name().qualify_name(name))`):
-/// the head comes back as the module `W` with the name `Thing`.
+/// Mutation-checked by restoring the `None` arm's
+/// `Ok(Type::Type(env.module_name().qualify_name(name), args))`: the module
+/// canonicalizes cleanly again and `expect_err` panics.
 #[test]
-fn an_unresolved_type_name_is_attributed_to_the_module_under_check() {
+fn an_unresolved_qualified_type_name_is_reported_as_written() {
     let widget = canonicalize_standalone(indoc::indoc! {r#"
         module Widget exposing (Size(..))
         type Size = Small
@@ -1247,25 +1259,134 @@ fn an_unresolved_type_name_is_attributed_to_the_module_under_check() {
         f x = x
     "#};
 
-    let module = canonicalize_with_interfaces(source, &interfaces)
-        .expect("an unresolved type name is fabricated rather than reported (BUG-16)");
+    let errors = canonicalize_with_interfaces(source, &interfaces)
+        .expect_err("`W.Thing` names no declaration");
+    // `from_parser_type` walks the annotation with `?`, so one annotation
+    // yields one error however many times it names the type.
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
 
-    // `qual` would read this as the module `Test.W`; the head is the module `Test`
-    // holding the undivided spelling `W.Thing`.
-    let fabricated = canonical::Type::Type(
-        QualName::from_strs("W.Thing", std::iter::once("Test"))
-            .expect("a module prefix of one segment is a module"),
-        vec![],
-    );
-
-    match module.values.get(&"f".into()).unwrap() {
-        canonical::Value::TypedValue { tpe, .. } => assert_eq!(
-            *tpe,
-            canonical::Type::Arrow(Box::new(fabricated.clone()), Box::new(fabricated)),
-            "an alias is not a module, so the fabricated head is the module under check"
+    match &errors[0] {
+        canonical::Error::TypeNotFound(name, _) => assert_eq!(
+            name.as_str(),
+            "W.Thing",
+            "the alias is part of the spelling, not a module to be peeled off"
         ),
-        other => panic!("expected a TypedValue, got {:?}", other),
+        other => panic!("expected TypeNotFound, got {:?}", other),
     }
+}
+
+// ── BUG-16: a type name that resolves to nothing is an error ─────────────────
+
+/// An annotation naming a type nothing in scope declares is rejected, and the
+/// caret sits under the name.
+///
+/// Mutation-checked by restoring the `None` arm's
+/// `Ok(Type::Type(env.module_name().qualify_name(name), args))`: the module
+/// canonicalizes cleanly again and `expect_err` panics.
+#[test]
+fn an_undeclared_type_name_in_an_annotation_is_error() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (label)
+        label : Nope
+        label = 1
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("`Nope` is declared nowhere");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::TypeNotFound(name, _) => assert_eq!(name.as_str(), "Nope"),
+        other => panic!("expected TypeNotFound, got {:?}", other),
+    }
+
+    let start = source.find("Nope").expect("source names `Nope`");
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + "Nope".len()),
+        "the caret must sit under the name that resolved to nothing"
+    );
+}
+
+/// A type *variable* resolves through nothing and is not an unresolved type
+/// name: it is bound by the annotation it appears in.
+///
+/// Mutation-checked by raising `TypeNotFound` from `from_parser_type`'s
+/// `TypeKind::Variable` arm as well: this test goes red and
+/// `typed_identity_function` with it.
+#[test]
+fn a_type_variable_is_not_an_undeclared_type_name() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (label)
+        label : a -> a
+        label x = x
+    "#};
+
+    canonicalize_standalone(source).expect("a type variable resolves to nothing by design");
+}
+
+/// A `type` declaration may name any type its own module declares, itself
+/// included — `type Never = JustOneMore Never` is `Basics`' own.
+///
+/// Mutation-checked by deleting the `insert_declared_type` loop `canonicalize`
+/// runs before `do_types`: both declarations are then canonicalized against an
+/// environment that has not heard of either, and each variant's argument is a
+/// `TypeNotFound`.
+#[test]
+fn a_type_declaration_may_name_its_own_module_s_types() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Never = JustOneMore Never
+        type Chain = Link Never
+    "#};
+
+    let module = canonicalize_standalone(source)
+        .expect("a declaration names the types its own module declares");
+
+    let never = canonical::Type::Type(qual("Test.Never"), vec![]);
+
+    let argument_of = |type_name: &str, variant: usize| {
+        module.types.get(&type_name.into()).unwrap().variants[variant]
+            .type_parameters
+            .clone()
+    };
+
+    assert_eq!(
+        argument_of("Never", 0),
+        vec![never.clone()],
+        "a declaration names itself"
+    );
+    assert_eq!(
+        argument_of("Chain", 0),
+        vec![never],
+        "a declaration names a sibling written above it"
+    );
+}
+
+/// The same, for a sibling declared *below* the one naming it — a file's
+/// declarations are one scope rather than a sequence.
+///
+/// Mutation-checked the same way: with the pre-registration loop gone, `Flag`
+/// is unknown at the point `Holder` is canonicalized and this goes red while
+/// the test above keeps passing on its `Chain` half only by accident of order.
+#[test]
+fn a_type_declaration_may_name_a_type_declared_below_it() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Holder = Holds Flag
+        type Flag = Up | Down
+    "#};
+
+    let module =
+        canonicalize_standalone(source).expect("a declaration names a sibling written below it");
+
+    assert_eq!(
+        module.types.get(&"Holder".into()).unwrap().variants[0].type_parameters,
+        vec![canonical::Type::Type(qual("Test.Flag"), vec![])]
+    );
 }
 
 // ── Extra: an annotation with no body points at the annotation ───────────────
@@ -2068,7 +2189,7 @@ fn unsafe_facade_signature_is_marked() {
         unsafe idiv : Int -> Int -> Int
         fdiv : Int -> Int -> Int
     "#};
-    let module = canonicalize_standalone(source).expect("should canonicalize");
+    let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
     let marked = |name: &str| match module.values.get(&name.into()) {
         Some(canonical::Value::TypedValue { marked_unsafe, .. }) => *marked_unsafe,
@@ -2098,7 +2219,7 @@ fn unsafe_outside_a_facade_is_error() {
         twice x = x
     "#};
 
-    let errors = canonicalize_standalone(source)
+    let errors = canonicalize_with_scalars(source)
         .expect_err("`unsafe` outside a `module foreign` facade must not compile");
     assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -2130,7 +2251,7 @@ fn unsafe_is_a_facade_constant_name() {
         module foreign Test exposing (unsafe)
         unsafe : Int
     "#};
-    let module = canonicalize_standalone(source).expect("should canonicalize");
+    let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
     match module.values.get(&"unsafe".into()) {
         Some(canonical::Value::TypedValue {
@@ -2190,9 +2311,9 @@ fn opaque_scalar_int_is_not_a_value_in_basics() {
 /// `type Int = I32` in `Basics` is rejected: an opaque scalar's body must be
 /// exactly its own name, and `I32` is not `Int`.
 ///
-/// Without the check, `I32` resolves to nothing and a type is fabricated for it
-/// (`BUG-16`) rather than reported — this test's `expect_err` starts panicking on
-/// the mutation described above, since the module then canonicalizes cleanly.
+/// Without the check, `I32` is read as an ordinary constructor — a variant's own
+/// name is never resolved as a type — so the module canonicalizes cleanly and
+/// this test's `expect_err` starts panicking on the mutation described above.
 #[test]
 fn opaque_scalar_int_rejects_a_body_other_than_itself() {
     let source = indoc::indoc! {r#"
@@ -2269,9 +2390,8 @@ fn a_non_basics_modules_int_is_an_ordinary_union() {
 /// exempt from the default imports.
 ///
 /// Mutation-checked by removing the scalar-seeding block from
-/// `new_environment`: each head below becomes `Test.<Name>` (the fabrication
-/// `BUG-16` documents for a name that resolves to nothing) instead of
-/// `Basics.<Name>`, and the assertion goes red.
+/// `new_environment`: with nothing declaring any of the three, each becomes a
+/// `TypeNotFound` and `expect` panics.
 #[test]
 fn scalar_types_resolve_in_an_exempt_package_with_no_import() {
     let source = indoc::indoc! {r#"
@@ -2342,8 +2462,8 @@ fn exempt_package_seeding_brings_no_constructor() {
 ///
 /// Mutation-checked by removing the scalar-seeding block from `new_environment`:
 /// `Int` still resolves correctly (the written import supplies it on its own), but
-/// `Float` and `Bool` — never imported here — fabricate `Test.Float`/`Test.Bool`
-/// instead (the shape `BUG-16` documents), and the assertion goes red.
+/// `Float` and `Bool` — never imported here — become `TypeNotFound` and `expect`
+/// panics.
 #[test]
 fn a_written_basics_import_coexists_with_the_seed() {
     let source = indoc::indoc! {r#"

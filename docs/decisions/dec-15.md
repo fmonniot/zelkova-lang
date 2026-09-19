@@ -15,11 +15,11 @@ is withheld for that same cycle: a module `Basics` depends on is exactly the cas
 imports](../spec/modules.md#the-default-imports) drop the `Basics` entry for. So no spelling,
 written or implicit, puts `Int` in either file's scope.
 
-Both compile anyway, because an unresolved type name is fabricated rather than reported
-([`BUG-16`](../tickets/bug-16.md)) — and the fabrication happens to be right, since the
-compiler identifies a type by its unqualified name, which makes the invented `Int` and
-`Basics`' `Int` the same type. Fixing `BUG-16` turns both files red, which is why that ticket
-waited on this one.
+Both compiled anyway, because an unresolved type name was fabricated rather than reported
+([`BUG-16`](../tickets/README.md)) — and the fabrication happened to be right, since the
+compiler identified a type by its unqualified name, which made the invented `Int` and
+`Basics`' `Int` the same type. Fixing `BUG-16` would have turned both files red, which is why
+that ticket waited on this one.
 
 `Js/Bitwise.zel` is the control. Also a facade, also naming `Int` in every signature, also
 carrying no `import` line — but `Basics` does not import it, so it keeps its `Basics` entry and
@@ -189,8 +189,8 @@ and moving the import moves the cycle.
 
 ## What nothing checks
 
-All of it. No pass implements any of the five decisions today: the typer matches four scalars
-by spelling, `canonical::Type::Type` carries no qualified name, nothing recognises a
-self-naming declaration, and the two facades resolve `Int` through `BUG-16`'s fabrication.
-`Js/Basics.zel` and `Js/Utils.zel` compile for the wrong reason and will keep doing so until
-the tickets `SPEC-31` leaves behind land, in the order they name.
+All of it, when this was written. No pass implemented any of the five decisions then: the
+typer matched four scalars by spelling, `canonical::Type::Type` carried no qualified name,
+nothing recognised a self-naming declaration, and the two facades resolved `Int` through the
+fabrication [`BUG-16`](../tickets/README.md) described. The tickets `SPEC-31` left behind are
+what closed each of those, in the order they name.

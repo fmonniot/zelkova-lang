@@ -9,16 +9,14 @@ namespace, how an instance reaches another module, and which module is allowed t
 `src/compiler/dependencies.rs` — `ModuleWalker::check_in_order`, which is the driver that
 builds each interface and hands it to the next module.
 
-**Depends on:** [LANG-38](lang-38.md) for the declarations to exist at all; and
-[BUG-16](bug-16.md), which would quietly sabotage instance-head resolution and is worth reading
-together with this ticket:
+**Depends on:** [LANG-38](lang-38.md) for the declarations to exist at all.
 
-- **BUG-16** — an unresolved type name is invented rather than reported, so
-  `instance Comparable Widgt` would fabricate `Widgt` and declare an instance for a type that
-  does not exist. The orphan rule then passes it, because the fabricated type has no declaring
-  module to compare against.
-
-It is not optional. Land it first.
+BUG-16 was the first of a pair that would have sabotaged instance-head resolution, and is
+fixed. An unresolved type name used to be invented rather than reported, so
+`instance Comparable Widgt` would have fabricated `Widgt` and declared an instance for a type
+that does not exist, and the orphan rule would have passed it — the fabricated type having no
+declaring module to compare against. `canonical::Error::TypeNotFound` is what an instance head
+naming nothing now raises.
 
 BUG-17 was the second of that pair and is fixed. A type application's arguments used to be
 discarded when its head resolved, which would have made `instance Comparable (Maybe Int)` and

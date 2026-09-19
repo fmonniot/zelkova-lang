@@ -102,9 +102,9 @@ LANG-38  `class` / `instance` declarations, and a `where` block of members
   │        the chapter
   │
 LANG-39  resolution, the instance environment, and the orphan rule
-  │      ← BUG-16 is a HARD prerequisite: it invents a type for a misspelt
-  │        instance head rather than reporting it. BUG-17, which made two
-  │        instance heads indistinguishable, is fixed.
+  │      ← BUG-16, which invented a type for a misspelt instance head, and
+  │        BUG-17, which made two instance heads indistinguishable, are
+  │        both fixed.
   │
 LANG-40  the solver: obligations are collected, deferred and discharged
   │      ← LANG-12 is a HARD prerequisite. Without rigid annotation
@@ -180,7 +180,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-13 | bug | medium | closed 2026-09-12 | Block comments are lexed only at the start of a line, swallow the rest of their closing line, do not nest, and are accepted unterminated |
 | BUG-14 | bug | medium | closed 2026-09-12 | A top-level value with no type annotation never reaches the module's interface |
 | BUG-15 | bug | medium | closed 2026-09-14 | An imported operator is unresolvable unless the function behind it is also in scope |
-| [BUG-16](bug-16.md) | bug | medium | open | An unresolved type name is invented rather than reported |
+| BUG-16 | bug | — | closed 2026-09-19 | An unresolved type name is invented rather than reported |
 | BUG-17 | bug | high | closed 2026-09-10 | A type application's arguments are discarded when its head resolves |
 | BUG-18 | bug | medium | closed 2026-09-13 | A variant that is not a constructor application is silently dropped |
 | BUG-19 | bug | medium | closed 2026-09-12 | A line whose first token starts with `-` leaves the tokenizer measuring indentation mid-line |
