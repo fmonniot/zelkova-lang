@@ -101,8 +101,8 @@ receives `Int`, `Float`, `Bool`, `Char` and `String`, bound to the five names de
 holds.
 
 They are bindings to those names, not new types. `Js.Basics`' `Int` *is* `Basics.Int` — the
-same type, by construction rather than by the coincidence of unqualified identity that makes
-the fabricated one work today. The rule is the import that cannot be written, written by the
+same type, by construction rather than by the coincidence of unqualified identity that made
+the fabricated one work then. The rule is the import that cannot be written, written by the
 compiler out of what it already knows.
 
 It scopes itself. A module underneath `Basics` can only be a module of the package that
