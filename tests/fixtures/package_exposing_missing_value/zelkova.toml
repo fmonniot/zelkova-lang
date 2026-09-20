@@ -1,0 +1,7 @@
+name = "package-exposing-missing-value"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

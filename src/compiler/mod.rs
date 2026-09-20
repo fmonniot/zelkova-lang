@@ -6,7 +6,8 @@
 //! Note: We don't manage interfaces and external modules. We try to keep them
 //! in mind, so they can be relatively easily added later on.
 //!
-//! 1. Start at the src/ folder. We name it root. (later on defined in a `zelkova.toml` manifest)
+//! 1. Read the package's `zelkova.toml` manifest, and derive its source root as `src/`
+//!    beside it.
 //! 2. Collect all `*.zelkova` files with their path name relatives to the root.
 //! 3. Create a `SourceFiles` mapping from `ModuleName` to `parser::Module`.
 //!     1. module names are deduced from file name
@@ -53,6 +54,10 @@ pub mod dependencies;
 // that defines it has to be nameable. It also puts the last phase module on the
 // same footing as `canonical`, `typer` and `parser`.
 pub mod exhaustiveness;
+/// `zelkova.toml`: reading it, and the shape it has to have. Public for the same
+/// reason as `source` and `dependencies` — `manifest::ManifestError` is reachable
+/// from the public `CompilationError::Manifest`.
+pub mod manifest;
 pub mod name;
 pub mod parser;
 pub mod position;
@@ -69,20 +74,66 @@ use position::{BytePos, NodeSpan, Span};
 use source::files::{SourceFileError, SourceFileId};
 
 // TODO Move PackageName and ModuleName into the name module
-/// A package name is composed of an author and project name and is written as `author/project`.
+/// A package name: one flat identifier, ASCII lowercase letters, digits and hyphens,
+/// starting with a letter, with every hyphen followed by a letter —
+/// [`docs/spec/packages.md`](../../docs/spec/packages.md#the-manifest)'s whole rule for
+/// `name`. That shape is what keeps a package name and a module name from ever being
+/// confused (one is lowercase-with-hyphens, the other uppercase-with-dots), and what makes
+/// the namespace a package's name derives unambiguous.
+///
+/// The only way to build one is [`PackageName::new`], which rejects anything that does not
+/// match the rule — there is no way to hold a `PackageName` that manifest validation would
+/// have refused.
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
-pub struct PackageName {
-    author: String,
-    project: String,
-}
+pub struct PackageName(String);
+
+/// `PackageName::new` refused this string; it names the input so a caller can report it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidPackageName(pub String);
 
 impl PackageName {
-    pub fn new<S: Into<String>>(author: S, project: S) -> PackageName {
-        PackageName {
-            author: author.into(),
-            project: project.into(),
+    /// Build a `PackageName`, or say why `name` is not one.
+    pub fn new<S: Into<String>>(name: S) -> Result<PackageName, InvalidPackageName> {
+        let name = name.into();
+        if is_legal_package_name(&name) {
+            Ok(PackageName(name))
+        } else {
+            Err(InvalidPackageName(name))
         }
     }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for PackageName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// ASCII lowercase letters, digits and hyphens; starts with a letter; every hyphen is
+/// immediately followed by a letter (so no leading, trailing or doubled hyphen, and no
+/// hyphen before a digit).
+fn is_legal_package_name(name: &str) -> bool {
+    match name.chars().next() {
+        Some(c) if c.is_ascii_lowercase() => {}
+        _ => return false,
+    }
+
+    for (i, c) in name.char_indices() {
+        if c == '-' {
+            match name[i + 1..].chars().next() {
+                Some(next) if next.is_ascii_lowercase() => {}
+                _ => return false,
+            }
+        } else if !(c.is_ascii_lowercase() || c.is_ascii_digit()) {
+            return false;
+        }
+    }
+
+    true
 }
 
 /// A module name represent
@@ -107,10 +158,7 @@ impl ModuleName {
     }
 
     fn as_human_string(&self) -> String {
-        format!(
-            "{}/{}:{}",
-            self.package.author, self.package.project, self.name
-        )
+        format!("{}:{}", self.package, self.name)
     }
 }
 
@@ -410,6 +458,19 @@ fn phase_diagnostic<E: PhaseError>(
 /// [`PhaseError`]; see that trait for why no variant here carries a span.
 #[derive(Debug)]
 pub enum CompilationError {
+    /// The package's `zelkova.toml` is missing, malformed, or fails one of its own
+    /// field-level rules (an illegal `name`, a dependency entry naming no source, …).
+    ///
+    /// Raised before [`LoadingFiles`](CompilationError::LoadingFiles) even runs — a
+    /// package's source root is derived from its manifest, so there is nothing to walk
+    /// until the manifest is known good — with one exception:
+    /// [`PrivateModuleNotFound`](manifest::ManifestError::PrivateModuleNotFound) needs the
+    /// package's parsed modules and is pushed after them.
+    ///
+    /// It carries no [`SourceFileId`] either way. A manifest error's location is a byte
+    /// range in `zelkova.toml`, and that file is never read into the database, so each
+    /// error names its manifest in its own message instead.
+    Manifest(Vec<manifest::ManifestError>),
     LoadingFiles(Vec<SourceFileError>),
     Source(parser::Error, SourceFileId),
     Canonical(Vec<canonical::Error>, Name),
@@ -476,6 +537,15 @@ impl CompilationError {
             CompilationError::InFile(inner, id) => inner.as_diagnostic_in(Some(*id)),
             // The one phase that carries spans renders its own labelled diagnostic.
             CompilationError::Source(err, file_id) => err.diagnostic(*file_id),
+            // Only `PrivateModuleNotFound` ever reaches this arm: every other
+            // `ManifestError` is raised before the file database exists and goes back to
+            // the caller unrendered. That one is pushed after parsing, so a database does
+            // exist here — but the location this error wants is a byte range in
+            // `zelkova.toml`, which is not a file that database holds, so it renders with
+            // no label and each error names itself and its manifest in a note.
+            CompilationError::Manifest(errors) => Diagnostic::error()
+                .with_message("Error in the package manifest")
+                .with_notes(errors.iter().flat_map(|e| e.message_and_notes()).collect()),
             // Loading failures are not attached to a module — there is no module yet,
             // and each error names its own file instead.
             CompilationError::LoadingFiles(errors) => Diagnostic::error()
@@ -553,9 +623,16 @@ impl From<Vec<SourceFileError>> for CompilationError {
     }
 }
 
-// TODO Ultimately we will pass a manifest content instead of a raw path
-// (eg. something akin to elm.json or package.json)
-pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
+impl From<Vec<manifest::ManifestError>> for CompilationError {
+    fn from(errors: Vec<manifest::ManifestError>) -> Self {
+        CompilationError::Manifest(errors)
+    }
+}
+
+/// Compile the package rooted at `package_dir` — a directory holding a `zelkova.toml`
+/// manifest beside a `src/` source root, per
+/// [`docs/spec/packages.md`](../../docs/spec/packages.md#what-a-package-is).
+pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
     // Error reporter
     let mut writer = StandardStream::stderr(ColorChoice::Auto);
     let config = codespan_reporting::term::Config {
@@ -578,14 +655,22 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
         let _ = writeln!(&mut writer, " {}", text);
     };
 
-    // Step 1: package_path parameter
+    // Step 1: read and validate the manifest. Like the source loading right after it,
+    // a bad manifest cannot be deferred to the usual accumulate-and-render path: the
+    // source root itself is derived from the manifest, so there is nothing to load —
+    // and no file database yet to render a diagnostic against — until the manifest is
+    // known good. It goes back to the caller unrendered, the same as a
+    // `load_package_sources` failure.
+    debug!("phase: read package manifest");
+    let manifest = manifest::load(package_dir)?;
+    let src_root = package_dir.join("src");
 
     // Step 2 and 3.a
     debug!("phase: load package sources");
     // Loading is the one phase whose errors cannot be deferred: without the loaded
     // files there is no `Files` database to render any diagnostic against, this one
     // included. It is returned unrendered and the caller reports it.
-    let sources = source::load_package_sources(package_path)?;
+    let sources = source::load_package_sources(&src_root)?;
 
     // Further steps will produce errors. We aggregate them here and report them at the
     // end of the compilation phase, rather than stopping on the first one, so that a
@@ -636,6 +721,34 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
     // TODO Verify modules name match file system.
     // TODO Include this into the parser::parse() function (w/ module name as argument) ?
 
+    // `private-modules` can only be checked against the package's real modules once they
+    // are parsed, which is why this lives here rather than inside `manifest::load` — every
+    // other manifest error is known from the manifest text alone. Nothing yet reads the
+    // list to keep an import out (`LANG-14`); this only rejects an entry naming a module
+    // the package never had in the first place.
+    //
+    // A file that failed to parse contributes no module, so with any parse failure the list
+    // of modules the package holds is known to be short. Checking against it then blames the
+    // manifest for the parser's failure, and the parse error is already on its way to the
+    // user, so the check is skipped entirely rather than run on a list it cannot trust.
+    if parse_failures == 0 {
+        let held_modules: std::collections::HashSet<&Name> =
+            modules.iter().map(|m| &m.name).collect();
+        let missing_private_modules: Vec<manifest::ManifestError> = manifest
+            .private_modules
+            .iter()
+            .filter(|name| !held_modules.contains(name))
+            .cloned()
+            .map(|name| manifest::ManifestError::PrivateModuleNotFound {
+                manifest_path: package_dir.join(manifest::MANIFEST_FILE_NAME),
+                name,
+            })
+            .collect();
+        if !missing_private_modules.is_empty() {
+            errors.push(CompilationError::Manifest(missing_private_modules));
+        }
+    }
+
     debug!("phase: Build module dependency graph");
     // Step 4
     // A cycle leaves us with no order to check the modules in, so the check phase is
@@ -649,8 +762,7 @@ pub fn compile_package(package_path: &Path) -> Result<(), CompilationError> {
         }
     };
 
-    // TODO Load those information from somewhere
-    let package_name = PackageName::new("zelkova", "core");
+    let package_name = manifest.name;
     let mut interfaces = std::collections::HashMap::new();
 
     debug!("phase: Check modules");
@@ -782,6 +894,49 @@ pub fn check_module(
 mod tests {
     use super::*;
     use codespan_reporting::diagnostic::Severity;
+
+    /// Every clause of the package-name rule, accepted and rejected side by side.
+    ///
+    /// The hyphen half is the reason this table exists: a name is read left to right and
+    /// each hyphen has to be followed by an ASCII lowercase letter, which is what keeps
+    /// `acme-widgets` from colliding with a package called `acme` holding a `widgets`
+    /// something. `Not_Legal`, the only rejection the pipeline tests reach, fails on its
+    /// first character and never enters the loop at all.
+    ///
+    /// Mutation-checked by dropping the `is_ascii_lowercase()` guard on the character
+    /// after a hyphen (`a-`, `a--b` and `a-1` go green) and, separately, by starting the
+    /// first-character check from `is_ascii_alphanumeric()` (`1a` goes green).
+    #[test]
+    fn a_package_name_is_lowercase_ascii_with_hyphens_between_letters() {
+        let cases = [
+            ("a", true),
+            ("core", true),
+            ("zelkova-core", true),
+            ("a-b-c", true),
+            ("html2", true),
+            ("a1-b2", true),
+            ("", false),
+            ("-a", false),
+            ("a-", false),
+            ("a--b", false),
+            ("a-1", false),
+            ("1a", false),
+            ("Core", false),
+            ("Not_Legal", false),
+            ("with space", false),
+            ("zelkøva", false),
+        ];
+
+        for (name, legal) in cases {
+            assert_eq!(
+                is_legal_package_name(name),
+                legal,
+                "{:?} should {} a legal package name",
+                name,
+                if legal { "be" } else { "not be" }
+            );
+        }
+    }
 
     /// Canonicalization failures are errors, and used to be rendered as warnings.
     ///

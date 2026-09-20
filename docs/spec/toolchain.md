@@ -240,11 +240,9 @@ run is not a test that passed.
 
 ## The compiler's interface
 
-**Known gap:** the compiler today takes a source directory rather than a package root, reads no
-manifest, and has the package it compiles hardcoded — `cargo run` compiles `std/core/src` and
-nothing else. It prints one line per module it parsed and one per module that checked, and exits
-non-zero if any phase reported an error, which is the one part of its behaviour that matches
-what a toolchain needs of it ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
+**Known gap:** the compiler compiles one package and resolves nothing — `cargo run` compiles
+`std/core` and no dependency of it. Resolving a graph of several packages is
+[`docs/tickets/lang-14.md`](../tickets/lang-14.md)'s.
 
 **Provisional:** what it becomes is a compiler pointed at a package root — the directory holding
 `zelkova.toml` — which resolves, compiles every module of `src/`, and writes its output beside

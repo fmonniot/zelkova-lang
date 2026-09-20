@@ -16,6 +16,7 @@ use codespan_reporting::diagnostic::{LabelStyle, Severity};
 use codespan_reporting::files::SimpleFile;
 use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::dependencies::{self, ModuleWalker};
+use zelkova_lang::compiler::manifest;
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::source::load_package_sources;
 use zelkova_lang::compiler::{
@@ -29,7 +30,7 @@ use support::*;
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn std_package() -> PackageName {
-    PackageName::new("zelkova", "core")
+    PackageName::new("zelkova-core").unwrap()
 }
 
 fn parse_file(path: &Path) -> parser::Module {
@@ -48,12 +49,22 @@ fn std_src() -> std::path::PathBuf {
     Path::new(&manifest).join("std/core/src")
 }
 
+/// `std/core`, the package directory `compile_package` now takes — `zelkova.toml`
+/// beside `src/`, as opposed to [`std_src`], which stays pointed at the source
+/// root itself for the tests here that parse individual files or drive
+/// `load_package_sources` directly.
+fn std_package_root() -> std::path::PathBuf {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    Path::new(&manifest).join("std/core")
+}
+
 /// Root of one of the small package fixtures under `tests/fixtures/`.
 ///
-/// `compile_package` takes a package directory, so the whole-package tests need
-/// real directories on disk rather than the source strings the other layers use.
-/// These fixtures stay small and single-purpose; `std/core/src` is exercised
-/// separately by `stdlib_package_compiles`.
+/// `compile_package` takes a package directory — `zelkova.toml` beside `src/` —
+/// so the whole-package tests need real directories on disk rather than the
+/// source strings the other layers use. These fixtures stay small and
+/// single-purpose; `std/core` is exercised separately by
+/// `stdlib_package_compiles`.
 fn fixture_package(name: &str) -> std::path::PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     Path::new(&manifest).join("tests/fixtures").join(name)
@@ -341,7 +352,10 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
     // silently losing it would leave that regression with a repro that proves
     // nothing. It does not change what this test checks: one broken module is
     // still exactly one error.
-    assert_eq!(module_names(&root), vec!["Broken.zel", "Fine.zel"]);
+    assert_eq!(
+        module_names(&root.join("src")),
+        vec!["Broken.zel", "Fine.zel"]
+    );
 
     let result = compile_package(&root);
 
@@ -386,7 +400,7 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
 #[test]
 fn check_in_order_keeps_passing_siblings_with_the_real_checker() {
     let root = fixture_package("package_canonicalize_fails");
-    let sources = load_package_sources(&root)
+    let sources = load_package_sources(&root.join("src"))
         .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
 
     let modules: Vec<parser::Module> = sources
@@ -488,7 +502,7 @@ fn stdlib_bitwise_compiles() {
 
 // ── Test 13: the standard library is a package that compiles ─────────────────
 
-/// `std/core/src` — what `cargo run` compiles — must compile cleanly.
+/// `std/core` — what `cargo run` compiles — must compile cleanly.
 ///
 /// This is the smoke test as an assertion. Until `Bitwise.zel` stopped importing
 /// `Elm.Kernel.Bitwise` the standard library was a package that always failed, so
@@ -521,7 +535,7 @@ fn stdlib_package_compiles() {
         ]
     );
 
-    let result = compile_package(&src);
+    let result = compile_package(&std_package_root());
 
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }
@@ -655,9 +669,13 @@ fn canonical_error_renders_as_prose_naming_the_missing_module() {
 #[test]
 fn type_error_labels_the_expression_that_disagrees() {
     let root = fixture_package("package_type_error");
-    assert_eq!(module_names(&root), vec!["Basics.zel", "Mismatch.zel"]);
+    assert_eq!(
+        module_names(&root.join("src")),
+        vec!["Basics.zel", "Mismatch.zel"]
+    );
 
-    let source = std::fs::read_to_string(root.join("Mismatch.zel")).expect("fixture is readable");
+    let source = std::fs::read_to_string(root.join("src").join("Mismatch.zel"))
+        .expect("fixture is readable");
     let annotation = "answer : Int";
     let annotation_start = source
         .find(annotation)
@@ -726,7 +744,8 @@ fn type_error_labels_the_expression_that_disagrees() {
 fn missing_import_labels_the_import_line() {
     let root = fixture_package("package_canonicalize_fails");
 
-    let source = std::fs::read_to_string(root.join("Broken.zel")).expect("fixture is readable");
+    let source =
+        std::fs::read_to_string(root.join("src").join("Broken.zel")).expect("fixture is readable");
     let line = "import NonExistent exposing (..)";
     let start = source.find(line).expect("fixture imports NonExistent");
 
@@ -766,9 +785,10 @@ fn missing_import_labels_the_import_line() {
 #[test]
 fn unknown_variable_labels_the_identifier() {
     let root = fixture_package("package_unknown_variable");
-    assert_eq!(module_names(&root), vec!["Unknown.zel"]);
+    assert_eq!(module_names(&root.join("src")), vec!["Unknown.zel"]);
 
-    let source = std::fs::read_to_string(root.join("Unknown.zel")).expect("fixture is readable");
+    let source =
+        std::fs::read_to_string(root.join("src").join("Unknown.zel")).expect("fixture is readable");
     let identifier = "mystery";
     let start = source
         .find(identifier)
@@ -823,9 +843,10 @@ fn unknown_variable_labels_the_identifier() {
 #[test]
 fn unknown_constructor_labels_the_pattern() {
     let root = fixture_package("package_unknown_constructor");
-    assert_eq!(module_names(&root), vec!["Ctor.zel"]);
+    assert_eq!(module_names(&root.join("src")), vec!["Ctor.zel"]);
 
-    let source = std::fs::read_to_string(root.join("Ctor.zel")).expect("fixture is readable");
+    let source =
+        std::fs::read_to_string(root.join("src").join("Ctor.zel")).expect("fixture is readable");
     let constructor = "Purple";
     let start = source
         .find(constructor)
@@ -871,9 +892,10 @@ fn unknown_constructor_labels_the_pattern() {
 #[test]
 fn grouped_canonical_error_keeps_every_label() {
     let root = fixture_package("package_two_unknown_constructors");
-    assert_eq!(module_names(&root), vec!["Grouped.zel"]);
+    assert_eq!(module_names(&root.join("src")), vec!["Grouped.zel"]);
 
-    let source = std::fs::read_to_string(root.join("Grouped.zel")).expect("fixture is readable");
+    let source =
+        std::fs::read_to_string(root.join("src").join("Grouped.zel")).expect("fixture is readable");
     let ranges: Vec<_> = ["Purple", "Crimson"]
         .iter()
         .map(|ctor| {
@@ -944,9 +966,10 @@ fn grouped_canonical_error_keeps_every_label() {
 #[test]
 fn case_bodied_declaration_label_stops_at_the_case() {
     let root = fixture_package("package_case_type_error");
-    assert_eq!(module_names(&root), vec!["CaseBody.zel"]);
+    assert_eq!(module_names(&root.join("src")), vec!["CaseBody.zel"]);
 
-    let source = std::fs::read_to_string(root.join("CaseBody.zel")).expect("fixture is readable");
+    let source = std::fs::read_to_string(root.join("src").join("CaseBody.zel"))
+        .expect("fixture is readable");
     let annotation = "classify : Color -> Color";
     let annotation_start = source
         .find(annotation)
@@ -1031,10 +1054,15 @@ fn case_bodied_declaration_label_stops_at_the_case() {
 #[test]
 fn ambiguous_import_labels_point_into_each_defining_module() {
     let root = fixture_package("package_ambiguous_import");
-    assert_eq!(module_names(&root), vec!["A.zel", "B.zel", "Main.zel"]);
+    assert_eq!(
+        module_names(&root.join("src")),
+        vec!["A.zel", "B.zel", "Main.zel"]
+    );
 
-    let a_source = std::fs::read_to_string(root.join("A.zel")).expect("fixture is readable");
-    let b_source = std::fs::read_to_string(root.join("B.zel")).expect("fixture is readable");
+    let a_source =
+        std::fs::read_to_string(root.join("src").join("A.zel")).expect("fixture is readable");
+    let b_source =
+        std::fs::read_to_string(root.join("src").join("B.zel")).expect("fixture is readable");
     let a_start = a_source.find("foo : LabelA").expect("A declares foo");
     let a_end = a_source.find("foo = LabelA").expect("A defines foo") + "foo = LabelA".len();
     let b_start = b_source.find("foo : LabelB").expect("B declares foo");
@@ -1135,7 +1163,7 @@ fn helper_interface() -> (Name, Interface) {
 
     let interface = Interface {
         module_name: zelkova_lang::compiler::ModuleName::new(
-            PackageName::new("zelkova", "core"),
+            PackageName::new("zelkova-core").unwrap(),
             "Helper".into(),
         ),
         values,
@@ -1225,11 +1253,12 @@ fn ambiguous_variable_note_calls_out_the_implicit_default_import() {
 fn ambiguous_imported_operators_are_labeled_in_their_own_module() {
     let root = fixture_package("package_imported_operator_ambiguity");
     assert_eq!(
-        module_names(&root),
+        module_names(&root.join("src")),
         vec!["Basics.zel", "Ops.zel", "User.zel"]
     );
 
-    let ops_source = std::fs::read_to_string(root.join("Ops.zel")).expect("fixture is readable");
+    let ops_source =
+        std::fs::read_to_string(root.join("src").join("Ops.zel")).expect("fixture is readable");
     let lt_decl = ops_source
         .find("infix non 4 (<)")
         .expect("Ops declares `<`");
@@ -1385,10 +1414,15 @@ fn cross_module_labels_render_without_the_checked_module_file() {
 #[test]
 fn dependency_cycle_labels_each_import() {
     let root = fixture_package("package_dependency_cycle");
-    assert_eq!(module_names(&root), vec!["CycleA.zel", "CycleB.zel"]);
+    assert_eq!(
+        module_names(&root.join("src")),
+        vec!["CycleA.zel", "CycleB.zel"]
+    );
 
-    let a_source = std::fs::read_to_string(root.join("CycleA.zel")).expect("fixture is readable");
-    let b_source = std::fs::read_to_string(root.join("CycleB.zel")).expect("fixture is readable");
+    let a_source =
+        std::fs::read_to_string(root.join("src").join("CycleA.zel")).expect("fixture is readable");
+    let b_source =
+        std::fs::read_to_string(root.join("src").join("CycleB.zel")).expect("fixture is readable");
     let a_import = "import CycleB exposing (..)";
     let b_import = "import CycleA exposing (..)";
     let a_start = a_source.find(a_import).expect("CycleA imports CycleB");
@@ -1472,9 +1506,10 @@ fn dependency_cycle_labels_each_import() {
 #[test]
 fn missing_exposed_import_name_labels_the_name_alone() {
     let root = fixture_package("package_exposing_missing_value");
-    assert_eq!(module_names(&root), vec!["Lib.zel", "Main.zel"]);
+    assert_eq!(module_names(&root.join("src")), vec!["Lib.zel", "Main.zel"]);
 
-    let source = std::fs::read_to_string(root.join("Main.zel")).expect("fixture is readable");
+    let source =
+        std::fs::read_to_string(root.join("src").join("Main.zel")).expect("fixture is readable");
     let identifier = "missing";
     let start = source
         .find(identifier)
@@ -1529,9 +1564,10 @@ fn missing_exposed_import_name_labels_the_name_alone() {
 #[test]
 fn export_not_found_labels_the_exposed_name_alone() {
     let root = fixture_package("package_export_not_found");
-    assert_eq!(module_names(&root), vec!["Main.zel"]);
+    assert_eq!(module_names(&root.join("src")), vec!["Main.zel"]);
 
-    let source = std::fs::read_to_string(root.join("Main.zel")).expect("fixture is readable");
+    let source =
+        std::fs::read_to_string(root.join("src").join("Main.zel")).expect("fixture is readable");
     // The exposed name for an operator, `(<+>)`, includes its wrapping parens —
     // there is no way to write a bare operator in an exposing list, so the parens
     // are as much "the name the user wrote" as the symbol between them.
@@ -1994,28 +2030,37 @@ fn backing_function_of_an_exposed_operator_stays_unimportable_by_name() {
     );
 }
 
-// ── Test 28: a missing package root is reported, not compiled as success ─────
+// ── Test 28: a missing source root is reported, not compiled as success ──────
 
-/// `BUG-21`: `load_package_sources` walked the package root with `WalkDir` and
+/// `BUG-21`: `load_package_sources` walked the source root with `WalkDir` and
 /// discarded every `Err` the walk produced (`.filter_map(|r| r.ok())`). A root
 /// that doesn't exist makes `WalkDir` yield exactly one `Err` and then stop, so
-/// that discard turned a missing package root into an empty `SourceFiles` —
+/// that discard turned a missing source root into an empty `SourceFiles` —
 /// zero modules, zero errors, and `compile_package` returning `Ok(())`.
+///
+/// `LANG-13` moved what this pins from "the package root does not exist" to "the
+/// package root exists, with a manifest, but has no `src/`": `compile_package` now
+/// reads the manifest before ever deriving `src/`, so a package root that is
+/// missing outright is caught by [`compile_package_reports_a_missing_manifest`]
+/// instead, one step earlier. `package_missing_src` is a fixture with a valid
+/// `zelkova.toml` and no `src/` directory at all, which is what still reaches
+/// `load_package_sources` on a path that does not exist.
 ///
 /// Mutation-checked by restoring the `filter_map(|r| r.ok())` discard in
 /// `load_package_sources` (`src/compiler/source/mod.rs`): with the walk error
-/// thrown away, `compile_package` returns `Ok(())` on this same missing root,
-/// and `expect_err` below panics.
+/// thrown away, `compile_package` returns `Ok(())` on this same fixture, and
+/// `expect_err` below panics.
 #[test]
-fn compile_package_reports_a_missing_root() {
-    let root = fixture_package("this-package-root-does-not-exist");
+fn compile_package_reports_a_missing_source_root() {
+    let root = fixture_package("package_missing_src");
+    let src_root = root.join("src");
     assert!(
-        !root.exists(),
-        "fixture path must not exist for this test to mean anything"
+        !src_root.exists(),
+        "fixture must have no `src/` for this test to mean anything"
     );
 
-    let error = compile_package(&root)
-        .expect_err("a package root that does not exist must not compile as success");
+    let error =
+        compile_package(&root).expect_err("a package with no `src/` must not compile as success");
 
     let CompilationError::LoadingFiles(errors) = &error else {
         panic!(
@@ -2032,9 +2077,178 @@ fn compile_package_reports_a_missing_root() {
 
     let message = errors[0].message();
     assert!(
-        message.contains(&root.to_string_lossy().to_string()),
-        "expected the missing root's path in the error message, got {:?}",
+        message.contains(&src_root.to_string_lossy().to_string()),
+        "expected the missing `src/` path in the error message, got {:?}",
         message
+    );
+}
+
+// ── Test 28a: a package with no manifest is reported, not compiled as success ─
+
+/// `LANG-13`'s first acceptance check: a package directory with no `zelkova.toml`
+/// is a `CompilationError` naming the missing manifest, raised before the file
+/// database exists (so it comes back as `CompilationError::Manifest`, not
+/// wrapped in `InFile`, the same way a `LoadingFiles` failure is unrendered).
+///
+/// `package_missing_manifest` holds nothing but a `README.md` explaining why —
+/// no `zelkova.toml`, no `src/` — so a compile that got this far without failing
+/// would have had to skip the manifest check entirely.
+///
+/// Mutation-checked by neutralising `manifest::load`'s `NotFound` arm to fall
+/// through to `Unreadable` instead of `Missing`: the variant match below goes
+/// red while `is_err()` alone would not have noticed.
+#[test]
+fn compile_package_reports_a_missing_manifest() {
+    let root = fixture_package("package_missing_manifest");
+
+    let error =
+        compile_package(&root).expect_err("a package with no manifest must not compile as success");
+
+    let CompilationError::Manifest(errors) = &error else {
+        panic!(
+            "expected Err(CompilationError::Manifest(..)), got {:?}",
+            error
+        );
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    match &errors[0] {
+        manifest::ManifestError::Missing { manifest_path } => {
+            assert_eq!(manifest_path, &root.join("zelkova.toml"));
+        }
+        other => panic!("expected ManifestError::Missing, got {:?}", other),
+    }
+
+    let message = errors[0].message();
+    assert!(
+        message.contains("zelkova.toml"),
+        "expected the missing manifest to be named, got {:?}",
+        message
+    );
+}
+
+// ── Test 28b: an illegal package name is reported, not compiled as success ───
+
+/// `LANG-13`'s second acceptance check: a manifest whose `name` is not a legal
+/// package name is a `CompilationError` naming the field.
+///
+/// `package_invalid_name` declares `name = "Not_Legal"` — uppercase and an
+/// underscore, neither of which a package name may hold.
+///
+/// Mutation-checked by asserting on the variant and the offending string rather
+/// than `is_err()` alone: with `is_legal_package_name` accepting everything, the
+/// fixture — which has no `src/` at all — fails one step later instead, as
+/// `LoadingFiles`, and it is the `let CompilationError::Manifest(..) = … else`
+/// below that catches it rather than `expect_err`.
+#[test]
+fn compile_package_reports_an_invalid_package_name() {
+    let root = fixture_package("package_invalid_name");
+
+    let error = compile_package(&root)
+        .expect_err("a manifest with an illegal package name must not compile as success");
+
+    let CompilationError::Manifest(errors) = &error else {
+        panic!(
+            "expected Err(CompilationError::Manifest(..)), got {:?}",
+            error
+        );
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    match &errors[0] {
+        manifest::ManifestError::InvalidName { name, .. } => assert_eq!(name, "Not_Legal"),
+        other => panic!("expected ManifestError::InvalidName, got {:?}", other),
+    }
+
+    let message = errors[0].message();
+    assert!(
+        message.contains("Not_Legal"),
+        "expected the offending name in the message, got {:?}",
+        message
+    );
+}
+
+// ── Test 28c: `private-modules` naming a module the package never had ────────
+
+/// `private-modules` is read and validated, per `LANG-13`'s approach — every entry
+/// has to name a module the package actually holds — even though nothing yet
+/// *enforces* it against an import (`LANG-14`).
+///
+/// Unlike a missing or malformed manifest, this check needs the package's real
+/// module list, which is only known once sources are parsed — so it cannot be
+/// raised by `manifest::load` itself, and reaches `compile_package`'s ordinary
+/// error accumulation (`CompilationError::Many`) rather than the unrendered path
+/// the other manifest failures take. `package_private_module_not_found` declares
+/// `private-modules = ["Ghost"]` and holds one real module, `Answer`.
+///
+/// Mutation-checked by making the `held_modules.contains(name)` filter in
+/// `compile_package` always `true` (as if every name were held): the
+/// `PrivateModuleNotFound` push never happens and `expect_err` panics.
+#[test]
+fn compile_package_reports_a_private_module_that_does_not_exist() {
+    let root = fixture_package("package_private_module_not_found");
+    assert_eq!(module_names(&root.join("src")), vec!["Answer.zel"]);
+
+    let error = compile_package(&root)
+        .expect_err("a `private-modules` entry naming no real module must not compile as success");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+
+    let CompilationError::Manifest(manifest_errors) = &errors[0] else {
+        panic!("expected a CompilationError::Manifest, got {:?}", errors[0]);
+    };
+    assert_eq!(
+        manifest_errors.len(),
+        1,
+        "expected one error, got {:?}",
+        manifest_errors
+    );
+    match &manifest_errors[0] {
+        manifest::ManifestError::PrivateModuleNotFound { name, .. } => {
+            assert_eq!(name, &Name::from("Ghost"));
+        }
+        other => panic!("expected PrivateModuleNotFound, got {:?}", other),
+    }
+}
+
+// ── Test 28d: a parse failure does not become a manifest error too ───────────
+
+/// A module that fails to parse contributes nothing to the list of modules the
+/// package holds, so a `private-modules` entry naming it would read as an entry
+/// naming a module that does not exist — one broken file reported twice, once
+/// truthfully and once as the manifest's fault.
+///
+/// `package_private_module_parse_failure` declares `private-modules = ["Broken"]`
+/// and holds exactly one module, `Broken`, which does not parse. The only error is
+/// the parse error.
+///
+/// Mutation-checked by removing the `parse_failures == 0` guard around the
+/// `private-modules` check in `compile_package`: a second
+/// `CompilationError::Manifest` joins the parse error and the length assertion
+/// below fails.
+#[test]
+fn a_parse_failure_does_not_also_report_its_module_as_unheld() {
+    let root = fixture_package("package_private_module_parse_failure");
+    assert_eq!(module_names(&root.join("src")), vec!["Broken.zel"]);
+
+    let error = compile_package(&root).expect_err("`Broken.zel` does not parse");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(
+        errors.len(),
+        1,
+        "the parse error is the only error the package has, got {:?}",
+        errors
+    );
+    assert!(
+        matches!(errors[0], CompilationError::Source(..)),
+        "expected the parse error alone, got {:?}",
+        errors[0]
     );
 }
 
@@ -2048,7 +2262,7 @@ fn compile_package_reports_a_missing_root() {
 /// `check_in_order_keeps_passing_siblings_with_the_real_checker` uses.
 fn check_fixture(name: &str) -> Vec<canonical::Module> {
     let root = fixture_package(name);
-    let sources = load_package_sources(&root)
+    let sources = load_package_sources(&root.join("src"))
         .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
     let modules: Vec<parser::Module> = sources
         .iter()
@@ -2179,7 +2393,7 @@ fn basics_interface_with_plus() -> (Name, Interface) {
 
     let interface = Interface {
         module_name: zelkova_lang::compiler::ModuleName::new(
-            PackageName::new("zelkova", "core"),
+            PackageName::new("zelkova-core").unwrap(),
             "Basics".into(),
         ),
         values,

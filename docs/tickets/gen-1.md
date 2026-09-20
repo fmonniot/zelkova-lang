@@ -40,10 +40,9 @@ nothing holds it to that.
    computes that order today — `dependencies.rs` orders *modules*, not declarations within one —
    and [`LANG-35`](lang-35.md) is the sibling ticket for the cycle among them that nothing
    currently rejects.
-5. **Where output goes.** There is no manifest and no build directory
-   ([`LANG-13`](lang-13.md)); `cargo run` compiles `std/core/src` and prints. What file layout
-   the emitted modules take, and how a companion `.mjs` is found and referenced from the module
-   that imports its facade, is undecided.
+5. **Where output goes.** There is no build directory; `cargo run` compiles `std/core` and
+   prints. What file layout the emitted modules take, and how a companion `.mjs` is found and
+   referenced from the module that imports its facade, is undecided.
 
 Rules from [`evaluation-semantics.md`](../spec/evaluation-semantics.md) that constrain the
 output rather than the design, and that a first version has to honour or say it does not:

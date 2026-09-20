@@ -1,0 +1,7 @@
+name = "package-canonicalize-fails"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

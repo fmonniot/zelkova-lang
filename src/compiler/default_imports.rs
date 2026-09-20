@@ -32,9 +32,12 @@
 //! No module of it receives any of the eight, not the eight themselves and not the
 //! facades they are built from, so nothing in the package can ever close a loop
 //! through an implicit edge. [`declares_a_default`] is that question, asked of a
-//! package by its module names — `PackageName` cannot yet answer it, since
-//! [`compile_package`](crate::compiler::compile_package) hardcodes one for every
-//! package it compiles. Every module of every other package receives all eight,
+//! package by its module names rather than by its [`PackageName`](crate::compiler::PackageName):
+//! [`compile_package`](crate::compiler::compile_package) reads a package's declared
+//! name from its manifest, but only ever compiles one package at a time, so
+//! nothing here compares against it — `zelkova-core` is told apart by what it
+//! contains, not by what its manifest calls it. Every module of every other
+//! package receives all eight,
 //! whatever it imports and whatever imports it. [*The default
 //! imports*](../../../docs/spec/modules.md#the-default-imports) is the rule in full,
 //! and [`DEC-17`](../../../docs/decisions/dec-17.md) is why it is scoped to the
@@ -221,10 +224,9 @@ pub fn is_default(module: &Name) -> bool {
 ///
 /// A package this is true for is `zelkova-core`, the package the eight belong to,
 /// and none of its modules receives any of them ([`implicit_imports`]) — the
-/// package is told apart by what it declares because
-/// [`compile_package`](crate::compiler::compile_package) hardcodes a
-/// `PackageName` for every package it compiles and cannot yet tell one from
-/// another by name.
+/// package is told apart by what it declares, not by its `PackageName`, because
+/// [`compile_package`](crate::compiler::compile_package) only ever compiles one
+/// package at a time and has no second package's name to compare against.
 pub fn declares_a_default<'a>(names: impl IntoIterator<Item = &'a Name>) -> bool {
     names.into_iter().any(is_default)
 }
@@ -298,7 +300,7 @@ mod tests {
             Name::new(module),
             Interface {
                 module_name: ModuleName::new(
-                    PackageName::new("zelkova", "core"),
+                    PackageName::new("zelkova-core").unwrap(),
                     Name::new(module),
                 ),
                 values: HashMap::new(),

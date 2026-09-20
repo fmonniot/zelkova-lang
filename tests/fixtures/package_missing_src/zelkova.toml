@@ -1,0 +1,7 @@
+name = "package-missing-src"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

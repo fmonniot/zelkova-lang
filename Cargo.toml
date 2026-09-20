@@ -20,6 +20,8 @@ unic-ucd-category = "0.9"
 lalrpop-util = "0.23.1"
 walkdir = "2.5"
 petgraph = "0.8"
+toml = "1.1.6"
+serde = { version = "1.0.229", features = ["derive"] }
 
 [dev-dependencies]
 indoc = "2.0"

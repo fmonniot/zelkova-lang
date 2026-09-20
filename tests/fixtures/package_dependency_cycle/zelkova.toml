@@ -1,0 +1,7 @@
+name = "package-dependency-cycle"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

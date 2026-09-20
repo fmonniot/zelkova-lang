@@ -1,0 +1,7 @@
+name = "package-private-module-parse-failure"
+version = "0.1.0"
+private-modules = ["Broken"]
+
+[dependencies]
+
+[test-dependencies]
