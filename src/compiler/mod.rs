@@ -1102,10 +1102,18 @@ fn compile_in_build(
     // reason it does not is that the parsed header is what every other phase calls a
     // module by.
     //
-    // Both roots are in that list, because they share one set of names: `src/Model.zel`
-    // and `tests/Model.zel` are both `Model`, and that is the same collision as two
-    // modules of one root answering to one name
+    // Whichever roots this build walked are in that list, because the two share one set
+    // of names: `src/Model.zel` and `tests/Model.zel` are both `Model`, and the chapter
+    // calls that the same error as two modules of one root answering to one name
     // (`docs/spec/packages.md#source-roots`).
+    //
+    // It is not found by the same builds, though. A collision within `src/` fails every
+    // build; one that spans the roots — and equally one between a `dependencies` module
+    // and a `test-dependencies` module — is found only when the tests are compiled,
+    // because that is the only build in which both halves are here to collide. A
+    // `tests/` root is read [when this package's own tests are run and at no other
+    // time](../../docs/spec/packages.md#tests), so an ordinary build has not read the
+    // second file and has nothing to report.
     let visible = match resolve::visible_modules(package, &local_modules, &dependencies) {
         Ok(visible) => visible,
         // As with the uncompiled-dependency arm above, the diagnostic is the whole

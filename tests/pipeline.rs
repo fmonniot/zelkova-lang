@@ -3654,10 +3654,20 @@ fn a_package_with_no_test_modules_compiles_with_its_tests() {
 /// nothing: a compiler that never compiles `tests/` passes the second, and one that
 /// always does passes the first.
 ///
-/// Mutation-checked by dropping the `TestRoot::Compiled` guard on the `tests/` entry
-/// of `compile_in_build`'s `roots` list, which turns the first half green-to-red in
-/// reverse — the build then fails whether or not its tests were asked for, and the
-/// `compile_package` assertion below goes red.
+/// Mutation-checked once per half, because no single line carries both.
+///
+/// The first half — a failing test module fails the build that compiled it — goes red
+/// when the `tests/` entry of `compile_in_build`'s `roots` list is never pushed
+/// (`if false { roots.push(..) }`), and no other test of this file does.
+///
+/// The second half — a build that did not ask for the tests root does not read it —
+/// goes red when `compile_package` is changed to pass `TestRoot::Compiled`. Dropping
+/// the `TestRoot::Compiled` guard on that `roots` entry does *not* turn it red: the
+/// `TestRoot::Skipped` arm above has already left `test_modules` empty, so the extra
+/// pass walks nothing. Neither does dropping that arm on its own, since the `roots`
+/// guard then still holds the pass back. Two lines guard this behaviour and the test
+/// is red only when the guarding stops entirely, which is what passing
+/// `TestRoot::Compiled` does.
 #[test]
 fn a_test_module_that_does_not_check_fails_only_when_tests_are_compiled() {
     let root = fixture_package("package_broken_test");
