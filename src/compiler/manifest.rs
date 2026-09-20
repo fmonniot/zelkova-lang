@@ -98,7 +98,13 @@ pub enum GitPin {
 /// required by the spec, so its absence is itself a [`ManifestError`], which is what leaving
 /// off `#[serde(default)]` on the others gets for free: a missing `dependencies` table fails
 /// to deserialize with "missing field" rather than silently becoming empty.
+///
+/// `deny_unknown_fields` closes the same door from the other side. The spec's six fields are
+/// the whole of a manifest, so a key that is not one of them is a misspelling (`mian = "App"`
+/// would otherwise read as a library with no entry point) or a field a newer spec added and
+/// this compiler cannot honour.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawManifest {
     name: String,
     version: String,
@@ -129,10 +135,16 @@ fn wrapped_by_default() -> bool {
     true
 }
 
-/// Every way `load` can fail. Raised before the file database exists — like
-/// [`SourceFileError`](super::source::files::SourceFileError), a manifest error has no
-/// [`Span`](super::position::Span) to render, only a path and a message — so it goes back to
-/// the caller unrendered, the same way loading errors already do.
+/// Every way reading a manifest can fail.
+///
+/// Like [`SourceFileError`](super::source::files::SourceFileError), a manifest error has no
+/// [`Span`](super::position::Span) to render: the location it would want is a byte range in
+/// `zelkova.toml`, which is not a file the [`Files`](super::source::files::Files) database
+/// holds. Every variant therefore carries the `manifest_path` it was found in, so that its
+/// [`message`](PhaseError::message) can name the file on its own — which is the whole of the
+/// location a reader gets, and is why every variant but
+/// [`PrivateModuleNotFound`](ManifestError::PrivateModuleNotFound) goes back to the caller
+/// unrendered, the same way loading errors already do.
 #[derive(Debug)]
 pub enum ManifestError {
     /// No `zelkova.toml` at all beside `src/`.
@@ -150,21 +162,35 @@ pub enum ManifestError {
     },
     /// `name` is not ASCII lowercase letters, digits and hyphens, starting with a letter,
     /// with every hyphen followed by a letter.
-    InvalidName { name: String },
+    InvalidName {
+        manifest_path: PathBuf,
+        name: String,
+    },
     /// `version` is not exactly three non-negative integers separated by dots.
-    InvalidVersion { version: String },
+    InvalidVersion {
+        manifest_path: PathBuf,
+        version: String,
+    },
     /// A key of `dependencies` or `test-dependencies` is not a legal package name.
-    InvalidDependencyName { table: &'static str, name: String },
+    InvalidDependencyName {
+        manifest_path: PathBuf,
+        table: &'static str,
+        name: String,
+    },
     /// An entry of `dependencies` or `test-dependencies` does not name exactly one source,
     /// or pairs that source with a field it does not take.
     InvalidDependencyEntry {
+        manifest_path: PathBuf,
         table: &'static str,
         package: String,
         reason: String,
     },
     /// One package name in both `dependencies` and `test-dependencies` — the spec allows a
     /// name in at most one of the two.
-    DependencyListedTwice { name: String },
+    DependencyListedTwice {
+        manifest_path: PathBuf,
+        name: String,
+    },
     /// `private-modules` names a module this package does not hold.
     ///
     /// Unlike every other variant here, this one cannot be raised by [`load`]: knowing what
@@ -172,7 +198,7 @@ pub enum ManifestError {
     /// has already been accepted. `compile_package` builds this once it has parsed every
     /// module, and folds it into the normal per-package error accumulation rather than the
     /// unrendered path the rest of this enum takes.
-    PrivateModuleNotFound { name: Name },
+    PrivateModuleNotFound { manifest_path: PathBuf, name: Name },
 }
 
 impl PhaseError for ManifestError {
@@ -197,31 +223,61 @@ impl PhaseError for ManifestError {
                 manifest_path.display(),
                 message
             ),
-            ManifestError::InvalidName { name } => format!(
-                "`{}` is not a legal package name: a package name is ASCII lowercase letters, \
-                 digits and hyphens, starting with a letter, with every hyphen followed by a \
-                 letter",
+            ManifestError::InvalidName {
+                manifest_path,
+                name,
+            } => format!(
+                "`{}` declares the name `{}`, which is not a legal package name: a package name \
+                 is ASCII lowercase letters, digits and hyphens, starting with a letter, with \
+                 every hyphen followed by a letter",
+                manifest_path.display(),
                 name
             ),
-            ManifestError::InvalidVersion { version } => format!(
-                "`{}` is not a legal version: a version is exactly three non-negative integers \
-                 separated by dots",
+            ManifestError::InvalidVersion {
+                manifest_path,
+                version,
+            } => format!(
+                "`{}` declares the version `{}`, which is not a legal version: a version is \
+                 exactly three non-negative integers separated by dots",
+                manifest_path.display(),
                 version
             ),
-            ManifestError::InvalidDependencyName { table, name } => {
-                format!("`{}` in `[{}]` is not a legal package name", name, table)
-            }
+            ManifestError::InvalidDependencyName {
+                manifest_path,
+                table,
+                name,
+            } => format!(
+                "`{}` in `[{}]` of `{}` is not a legal package name",
+                name,
+                table,
+                manifest_path.display()
+            ),
             ManifestError::InvalidDependencyEntry {
+                manifest_path,
                 table,
                 package,
                 reason,
-            } => format!("`{}` in `[{}]` {}", package, table, reason),
-            ManifestError::DependencyListedTwice { name } => format!(
-                "`{}` is listed in both `dependencies` and `test-dependencies`",
+            } => format!(
+                "`{}` in `[{}]` of `{}` {}",
+                package,
+                table,
+                manifest_path.display(),
+                reason
+            ),
+            ManifestError::DependencyListedTwice {
+                manifest_path,
+                name,
+            } => format!(
+                "`{}` lists `{}` in both `dependencies` and `test-dependencies`",
+                manifest_path.display(),
                 name
             ),
-            ManifestError::PrivateModuleNotFound { name } => format!(
-                "`private-modules` names `{}`, which this package does not hold",
+            ManifestError::PrivateModuleNotFound {
+                manifest_path,
+                name,
+            } => format!(
+                "`private-modules` in `{}` names `{}`, which this package does not hold",
+                manifest_path.display(),
                 name
             ),
         }
@@ -263,12 +319,16 @@ pub fn load(package_dir: &Path) -> Result<Manifest, Vec<ManifestError>> {
 
     let name = PackageName::new(raw.name.clone());
     if name.is_err() {
-        errors.push(ManifestError::InvalidName { name: raw.name });
+        errors.push(ManifestError::InvalidName {
+            manifest_path: manifest_path.clone(),
+            name: raw.name,
+        });
     }
 
     let version = Version::parse(&raw.version);
     if version.is_none() {
         errors.push(ManifestError::InvalidVersion {
+            manifest_path: manifest_path.clone(),
             version: raw.version,
         });
     }
@@ -278,7 +338,7 @@ pub fn load(package_dir: &Path) -> Result<Manifest, Vec<ManifestError>> {
 
     let mut dependencies = HashMap::new();
     for (package, raw_dep) in raw.dependencies {
-        match validate_dependency("dependencies", package, raw_dep) {
+        match validate_dependency(&manifest_path, "dependencies", package, raw_dep) {
             Ok((name, dep)) => {
                 dependencies.insert(name, dep);
             }
@@ -288,7 +348,7 @@ pub fn load(package_dir: &Path) -> Result<Manifest, Vec<ManifestError>> {
 
     let mut test_dependencies = HashMap::new();
     for (package, raw_dep) in raw.test_dependencies {
-        match validate_dependency("test-dependencies", package, raw_dep) {
+        match validate_dependency(&manifest_path, "test-dependencies", package, raw_dep) {
             Ok((name, dep)) => {
                 test_dependencies.insert(name, dep);
             }
@@ -299,6 +359,7 @@ pub fn load(package_dir: &Path) -> Result<Manifest, Vec<ManifestError>> {
     for shared in dependencies.keys() {
         if test_dependencies.contains_key(shared) {
             errors.push(ManifestError::DependencyListedTwice {
+                manifest_path: manifest_path.clone(),
                 name: shared.as_str().to_string(),
             });
         }
@@ -321,17 +382,20 @@ pub fn load(package_dir: &Path) -> Result<Manifest, Vec<ManifestError>> {
 /// [`ManifestError`] naming why it is not one. `table` names which of the two maps `package`
 /// came from, purely so the message can say where to look.
 fn validate_dependency(
+    manifest_path: &Path,
     table: &'static str,
     package: String,
     raw: RawDependency,
 ) -> Result<(PackageName, Dependency), ManifestError> {
     let name =
         PackageName::new(package.clone()).map_err(|_| ManifestError::InvalidDependencyName {
+            manifest_path: manifest_path.to_path_buf(),
             table,
             name: package.clone(),
         })?;
 
     let entry_error = |reason: &str| ManifestError::InvalidDependencyEntry {
+        manifest_path: manifest_path.to_path_buf(),
         table,
         package: package.clone(),
         reason: reason.to_string(),
@@ -439,8 +503,56 @@ mod tests {
 
         assert_eq!(errors.len(), 1, "got {:?}", errors);
         match &errors[0] {
-            ManifestError::InvalidName { name } => assert_eq!(name, "Not_Legal"),
+            ManifestError::InvalidName {
+                manifest_path,
+                name,
+            } => {
+                assert_eq!(name, "Not_Legal");
+                assert_eq!(manifest_path, &dir.path().join(MANIFEST_FILE_NAME));
+            }
             other => panic!("expected InvalidName, got {:?}", other),
+        }
+
+        // The sentence the user is shown has to carry the file as well as the field, since
+        // it is the only location a manifest error ever gets.
+        let message = errors[0].message();
+        assert!(
+            message.contains("Not_Legal") && message.contains(MANIFEST_FILE_NAME),
+            "expected the name and the manifest path in the message, got {:?}",
+            message
+        );
+    }
+
+    /// A key that is not one of the manifest's six fields is reported rather than ignored:
+    /// `mian = "App"` is a misspelt `main`, and a manifest reader that shrugs at it reads the
+    /// package as a library.
+    #[test]
+    fn an_unknown_key_is_rejected() {
+        let dir = tempdir();
+        write_manifest(
+            dir.path(),
+            r#"
+                name = "todo"
+                version = "0.1.0"
+                mian = "App"
+                private-modules = []
+
+                [dependencies]
+
+                [test-dependencies]
+            "#,
+        );
+
+        let errors = load(dir.path()).expect_err("`mian` is not a manifest field");
+
+        assert_eq!(errors.len(), 1, "got {:?}", errors);
+        match &errors[0] {
+            ManifestError::Malformed { message, .. } => assert!(
+                message.contains("mian"),
+                "expected the unknown key to be named, got {:?}",
+                message
+            ),
+            other => panic!("expected Malformed, got {:?}", other),
         }
     }
 
