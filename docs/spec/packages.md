@@ -135,10 +135,6 @@ module the package actually holds.
 **`test-dependencies`** is the same table for packages the tests need and the package itself
 does not; see [Tests](#tests). It is required and may likewise be empty.
 
-A manifest is not source text, so no tagged example in this chapter holds the compiler to
-any of the above — `compile_package` reading and validating it is exercised by
-`tests/pipeline.rs` instead.
-
 ## What a package exposes
 
 Every module of a package under `src/` is importable from outside it, except the ones
@@ -584,6 +580,8 @@ carries no payload, so a program reaching `main` has said what to do with each o
 A package can be both. `main` and `private-modules` are independent, so a program may also be
 depended on as a library, and the module holding `main` may be one of the private ones.
 
-**Not implemented:** nothing yet turns a package into something that runs. `zelkova-core`
-declares no `Task` either, and the block above fails earlier than that: `()` has
-[no production](types.md#the-unit-type), so it does not parse.
+**Not implemented:** `main` is read and nothing checks what it names, so a `main` naming a
+module the package does not hold, or one exposing no value called `main`, is accepted. Nothing
+yet turns a package into something that runs either: `zelkova-core` declares no `Task`, and the
+block above fails earlier than that — `()` has [no production](types.md#the-unit-type), so it
+does not parse.

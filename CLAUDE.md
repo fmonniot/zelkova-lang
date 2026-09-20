@@ -19,7 +19,7 @@ maintains is the one the next reader trusts.
 ```sh
 cargo test --workspace         # full suite: unit tests + tests/ + the tools/ crates'
 cargo build
-cargo run                      # compiles std/core/src/ — the de-facto smoke test
+cargo run                      # compiles std/core — the de-facto smoke test
 cargo run -p spec-site -- --out site   # renders the site locally; open site/index.html
 cargo fmt --all
 cargo clippy --workspace --all-features
@@ -83,6 +83,7 @@ package directory; `check_module` runs the per-module phases.
 
 | Phase | Where | State |
 |---|---|---|
+| Manifest | `src/compiler/manifest.rs` | reads and validates `zelkova.toml` before anything else; the package's name and its `src/` root come from it. Errors are `CompilationError::Manifest` and go back unrendered |
 | Source loading | `src/compiler/source/` | walks a package dir for `.zel`, maps paths to module names |
 | Tokenizing | `src/compiler/parser/tokenizer.rs` | hand-written, Unicode-aware lexer producing `Spanned<Position, Token>` |
 | Layout | `src/compiler/parser/layout.rs` | offside rule; injects `OpenBlock`/`CloseBlock`. 2-space indent, no tabs |
@@ -190,8 +191,9 @@ Implemented: modules with `exposing`/`import`/`as`, union types, pattern matchin
 interop via facades with companion `.mjs` files, `--` and `{- -}` comments.
 
 Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, the
-unit type, type aliases, effects (`Task`, and the `main` and test discovery built on it), and
-the `zelkova.toml` package manifest. **Multi-clause function declarations** — a deliberate
+unit type, type aliases, and effects (`Task`, and the `main` and test discovery built on it —
+the manifest's `main` field is read, but nothing checks what it names).
+**Multi-clause function declarations** — a deliberate
 divergence from Elm — parse but are rejected by canonicalization
 (`Error::MultipleBindingsUnsupported`); `LANG-20` is the ticket. The standard library under
 `std/core/src/` carries `.ignored` files for modules that do not compile yet.
