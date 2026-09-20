@@ -1,0 +1,13 @@
+# `dep_core` with one value on top of it. A module that receives the default
+# imports reaches `Flag` and `on` without writing an import, and a module of a
+# package the exemption applies to reaches neither — which is what makes the
+# exemption observable from outside `zelkova-core`. A *value* rather than a type,
+# because a scalar type name is seeded for an exempt package's modules anyway
+# (`LANG-58`) and would resolve either way.
+name = "zelkova-core"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

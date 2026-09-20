@@ -1,0 +1,9 @@
+# `Hidden` is package-internal, so nothing outside this package can import it. The
+# module under `tests/` is not outside it, and imports it.
+name = "package-test-root"
+version = "0.1.0"
+private-modules = ["Hidden"]
+
+[dependencies]
+
+[test-dependencies]

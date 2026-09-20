@@ -1,0 +1,7 @@
+module AppTest exposing (checked)
+
+import App
+
+
+checked : App.Task
+checked = App.missing

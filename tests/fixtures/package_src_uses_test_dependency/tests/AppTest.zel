@@ -1,0 +1,7 @@
+module AppTest exposing (checked)
+
+import AcmeExpect.Expect
+
+
+checked : AcmeExpect.Expect.Assertion
+checked = AcmeExpect.Expect.pass

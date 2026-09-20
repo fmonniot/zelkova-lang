@@ -67,11 +67,6 @@ pub struct ResolvedPackage {
 }
 
 impl ResolvedPackage {
-    /// The package's source root, `src/` beside its manifest.
-    pub fn src_root(&self) -> PathBuf {
-        self.root.join("src")
-    }
-
     /// The path of this package's manifest, which is the location every error about it
     /// names.
     pub fn manifest_path(&self) -> PathBuf {
@@ -91,10 +86,14 @@ impl ResolvedPackage {
 /// How a module came to be visible in the package being compiled, which is the whole of
 /// what a collision diagnostic has to say about each of the two modules claiming one
 /// name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OriginKind {
-    /// Declared by the package being compiled.
-    Local,
+    /// Declared by the package being compiled, in the file named — `src/Model.zel`.
+    ///
+    /// The file is part of the answer because a package's two source roots share one
+    /// set of module names, so naming the package is not enough to say which of two
+    /// local modules a collision is about.
+    Local { file: String },
     /// A public module of a dependency seen unwrapped, so it is named by its own name.
     Unwrapped,
     /// A public module of a wrapped dependency, named through that package's namespace.
@@ -124,8 +123,8 @@ impl ModuleOrigin {
     /// is the one thing the collision's headline — which quotes the spelling — does not
     /// already say.
     fn describe(&self) -> String {
-        let how = match self.kind {
-            OriginKind::Local => "a module of this package".to_string(),
+        let how = match &self.kind {
+            OriginKind::Local { file } => format!("`{}`, a module of this package", file),
             OriginKind::Unwrapped => "imported unwrapped".to_string(),
             OriginKind::Namespaced => {
                 format!("module `{}`, imported under its namespace", self.module)
@@ -149,6 +148,20 @@ pub struct DependencyModules<'a> {
     pub package: &'a ResolvedPackage,
     pub wrapped: bool,
     pub modules: Vec<Name>,
+}
+
+/// One module the package being compiled declares: the name its header gives it, and
+/// the file it was written in as [`SourceFile::package_path`](super::source::SourceFile::package_path)
+/// renders it — `src/Model.zel`.
+///
+/// The file travels with the name because the package's two source roots share one set
+/// of names: `src/Model.zel` and `tests/Model.zel` are both `Model`, and that is the
+/// same error as declaring one name twice under one root. Saying which files claimed
+/// the name is the whole of what makes that error actionable.
+#[derive(Debug, Clone)]
+pub struct LocalModule {
+    pub name: Name,
+    pub file: String,
 }
 
 /// Every way resolving a build, or naming the modules in one, can fail.
@@ -325,6 +338,13 @@ impl PhaseError for Error {
 /// by the caller, which is why the root package's own manifest errors are not among
 /// what this can report.
 ///
+/// The root package's `test-dependencies` are part of the build, and no other
+/// package's are: a package listed there is available to that package's `tests/` and is
+/// [not resolved by anyone depending on
+/// it](../../../docs/spec/packages.md#test-dependencies). The rest of the rules apply to
+/// the union of the two maps, so one version of each package and an acyclic graph are
+/// settled once for the whole build rather than again when the tests are run.
+///
 /// Every failure is collected rather than returned at the first one: a build whose
 /// manifests name three missing directories says so once.
 pub fn resolve(root: &Path, manifest: Manifest) -> Result<Vec<ResolvedPackage>, Vec<Error>> {
@@ -340,13 +360,54 @@ pub fn resolve(root: &Path, manifest: Manifest) -> Result<Vec<ResolvedPackage>, 
         manifest,
     };
 
-    resolver.visit(root_package, &mut Vec::new());
+    resolver.visit(root_package, true, &mut Vec::new());
 
     if resolver.errors.is_empty() {
         Ok(resolver.order)
     } else {
         Err(resolver.errors)
     }
+}
+
+/// The packages of `build` that nothing but a `test-dependencies` entry reaches.
+///
+/// [`resolve`] walks the union of the two maps whether or not the tests are being
+/// compiled, because one version of each package and an acyclic graph are properties of
+/// the whole build rather than of one entry point
+/// ([*`test-dependencies`*](../../../docs/spec/packages.md#test-dependencies)). What
+/// comes back here is the other half of that: which of the packages it found are in the
+/// build for the tests alone, so a build that did not ask for the tests can leave them
+/// uncompiled instead of parsing, checking and reporting on a package it cannot import.
+///
+/// Reachability is followed through `dependencies` only, starting from `root`. A package
+/// written in both maps is not possible — the manifest rejects that — but a package
+/// reached through both, as a `test-dependency` here and an ordinary dependency of
+/// something else, is: it comes back out of this set, because an ordinary build needs it.
+pub fn test_only_packages<'a>(
+    build: &'a [ResolvedPackage],
+    root: &'a PackageName,
+) -> std::collections::HashSet<PackageName> {
+    let by_name: HashMap<&PackageName, &ResolvedPackage> = build
+        .iter()
+        .map(|package| (&package.name, package))
+        .collect();
+
+    let mut reached: std::collections::HashSet<&PackageName> = std::collections::HashSet::new();
+    let mut queue: Vec<&'a PackageName> = vec![root];
+    while let Some(name) = queue.pop() {
+        if !reached.insert(name) {
+            continue;
+        }
+        if let Some(package) = by_name.get(name) {
+            queue.extend(package.manifest.dependencies.keys());
+        }
+    }
+
+    build
+        .iter()
+        .filter(|package| !reached.contains(&package.name))
+        .map(|package| package.name.clone())
+        .collect()
 }
 
 /// The directory as it will be compared against every other directory in the build.
@@ -379,7 +440,16 @@ impl Resolver {
     /// cycle, or because it closes on a *different* package of the same name, which is
     /// one name given two sources. Either way the walk stops here rather than following
     /// the chain round forever.
-    fn visit(&mut self, package: ResolvedPackage, stack: &mut Vec<(PackageName, PathBuf)>) {
+    ///
+    /// `with_test_dependencies` is true for the root package alone, because only that
+    /// package's tests are ever compiled. A dependency's `test-dependencies` are none of
+    /// this build's business and are not followed.
+    fn visit(
+        &mut self,
+        package: ResolvedPackage,
+        with_test_dependencies: bool,
+        stack: &mut Vec<(PackageName, PathBuf)>,
+    ) {
         if let Some(at) = stack.iter().position(|(name, _)| name == &package.name) {
             if stack[at].1 == package.root {
                 self.errors.push(Error::Cycle(
@@ -412,11 +482,14 @@ impl Resolver {
         // order every run — a `HashMap`'s iteration order is not one a user should see.
         let mut entries: Vec<(&PackageName, &super::manifest::Dependency)> =
             package.manifest.dependencies.iter().collect();
+        if with_test_dependencies {
+            entries.extend(package.manifest.test_dependencies.iter());
+        }
         entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
 
         for (name, dependency) in entries {
             if let Some(dependency) = self.obtain(&package, name, &dependency.source) {
-                self.visit(dependency, stack);
+                self.visit(dependency, false, stack);
             }
         }
 
@@ -514,7 +587,7 @@ impl Resolver {
 /// reported, not just the first.
 pub fn visible_modules(
     package: &ResolvedPackage,
-    local_modules: &[Name],
+    local_modules: &[LocalModule],
     dependencies: &[DependencyModules<'_>],
 ) -> Result<HashMap<Name, ModuleOrigin>, Vec<Error>> {
     let mut names: HashMap<Name, ModuleOrigin> = HashMap::new();
@@ -534,17 +607,22 @@ pub fn visible_modules(
         };
 
     // The package's own modules first, so that a collision between one of them and a
-    // dependency's reads with the local module as the name already claimed.
-    let mut local: Vec<&Name> = local_modules.iter().collect();
-    local.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+    // dependency's reads with the local module as the name already claimed. The sort is
+    // stable, so two modules answering to one name keep the order they were given —
+    // `src/` before `tests/`, which is the order a collision between the two roots reads
+    // best in.
+    let mut local: Vec<&LocalModule> = local_modules.iter().collect();
+    local.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
     for module in local {
         claim(
-            module.clone(),
+            module.name.clone(),
             ModuleOrigin {
                 package: package.name.clone(),
                 version: package.manifest.version.clone(),
-                module: module.clone(),
-                kind: OriginKind::Local,
+                module: module.name.clone(),
+                kind: OriginKind::Local {
+                    file: module.file.clone(),
+                },
             },
             &mut errors,
         );
@@ -636,6 +714,70 @@ mod tests {
         }
     }
 
+    /// The same package, with `names` written in its `test-dependencies`. What the
+    /// entries say does not matter to `test_only_packages`, which follows
+    /// `dependencies` alone — they are here so the manifest reads the way the one
+    /// `resolve` walked did.
+    fn with_test_dependencies(mut package: ResolvedPackage, names: Vec<&str>) -> ResolvedPackage {
+        package.manifest.test_dependencies = names
+            .into_iter()
+            .map(|name| {
+                (
+                    PackageName::new(name).unwrap(),
+                    Dependency {
+                        source: Source::Path {
+                            path: format!("../{}", name),
+                        },
+                        wrapped: true,
+                    },
+                )
+            })
+            .collect();
+        package
+    }
+
+    /// A package the root reaches only through `test-dependencies` is in the build for
+    /// the tests alone. One that an ordinary `dependencies` chain also reaches is not,
+    /// whichever map named it first — an ordinary build needs it.
+    ///
+    /// Mutation-checked by seeding the walk with every package of the build rather than
+    /// with the root: the first assertion then comes back empty.
+    #[test]
+    fn a_package_only_the_test_dependencies_reach_is_test_only() {
+        let root = with_test_dependencies(
+            package("todo", vec![("acme-widgets", true)]),
+            vec!["acme-expect"],
+        );
+        let widgets = package("acme-widgets", vec![]);
+        let expect = package("acme-expect", vec![]);
+
+        let build = vec![widgets, expect, root.clone()];
+        let test_only = test_only_packages(&build, &root.name);
+
+        let expected: std::collections::HashSet<PackageName> =
+            std::iter::once(PackageName::new("acme-expect").unwrap()).collect();
+        assert_eq!(test_only, expected);
+
+        // The same build, with the ordinary dependency reaching `acme-expect` too.
+        let widgets = package("acme-widgets", vec![("acme-expect", true)]);
+        let expect = package("acme-expect", vec![]);
+        let build = vec![expect, widgets, root.clone()];
+
+        assert!(test_only_packages(&build, &root.name).is_empty());
+    }
+
+    /// The package's own modules, as `visible_modules` takes them: a name and the file
+    /// it was declared in. The file is only ever read back out of a collision note.
+    fn local(modules: &[&str]) -> Vec<LocalModule> {
+        modules
+            .iter()
+            .map(|name| LocalModule {
+                name: Name::new(*name),
+                file: format!("src/{}.zel", name),
+            })
+            .collect()
+    }
+
     fn dependency<'a>(
         package: &'a ResolvedPackage,
         wrapped: bool,
@@ -661,7 +803,7 @@ mod tests {
 
         let wrapped = visible_modules(
             &todo,
-            &[Name::new("Model")],
+            &local(&["Model"]),
             &[dependency(&widgets, true, &["Size", "Style.Dark"])],
         )
         .expect("no collision");
@@ -673,7 +815,7 @@ mod tests {
 
         let unwrapped = visible_modules(
             &todo,
-            &[Name::new("Model")],
+            &local(&["Model"]),
             &[dependency(&widgets, false, &["Size", "Style.Dark"])],
         )
         .expect("no collision");
@@ -737,7 +879,7 @@ mod tests {
 
         let errors = visible_modules(
             &todo,
-            &[Name::new("Size")],
+            &local(&["Size"]),
             &[dependency(&widgets, false, &["Size"])],
         )
         .expect_err("the local module and the dependency both claim `Size`");
@@ -761,7 +903,7 @@ mod tests {
 
         let names = visible_modules(
             &todo,
-            &[Name::new("Size")],
+            &local(&["Size"]),
             &[
                 dependency(&widgets, true, &["Size"]),
                 dependency(&ui, true, &["Size"]),

@@ -85,9 +85,9 @@ phases.
 
 | Phase | Where | State |
 |---|---|---|
-| Manifest | `src/compiler/manifest.rs` | reads and validates `zelkova.toml` before anything else; the package's name and its `src/` root come from it. Errors are `CompilationError::Manifest` and go back unrendered |
-| Package resolution | `src/compiler/resolve.rs` | follows `dependencies` to the other packages (`path` sources only — a `git` one is reported, not fetched) and orders them dependencies-first; then, per package, builds the one map of module names it can import and reports a name two modules both answer to. Steps below run once per package |
-| Source loading | `src/compiler/source/` | walks a package dir for `.zel`, maps paths to module names |
+| Manifest | `src/compiler/manifest.rs` | reads and validates `zelkova.toml` before anything else; the package's name and its two source roots come from it. Errors are `CompilationError::Manifest` and go back unrendered |
+| Package resolution | `src/compiler/resolve.rs` | follows `dependencies`, plus the root package's `test-dependencies`, to the other packages (`path` sources only — a `git` one is reported, not fetched) and orders them dependencies-first; then, per package, builds the one map of module names it can import and reports a name two modules both answer to. Steps below run once per package |
+| Source loading | `src/compiler/source/` | walks a package's two source roots for `.zel`, maps each path to a module name under its own root. `tests/` is walked for the package whose tests were asked for and for no other |
 | Tokenizing | `src/compiler/parser/tokenizer.rs` | hand-written, Unicode-aware lexer producing `Spanned<Position, Token>` |
 | Layout | `src/compiler/parser/layout.rs` | offside rule; injects `OpenBlock`/`CloseBlock`. 2-space indent, no tabs |
 | Parsing | `src/compiler/parser/grammar.lalrpop` | LALRPOP grammar → `parser::Module`. Compiled by `build.rs` |

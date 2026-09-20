@@ -1,0 +1,11 @@
+-- Nothing here reaches the test-dependency, and nothing could: its modules are
+-- held out of the environment `src/` is checked against.
+module App exposing (Task(..), start)
+
+
+type Task
+  = Task
+
+
+start : Task
+start = Task

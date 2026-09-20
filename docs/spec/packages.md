@@ -544,6 +544,10 @@ What a `Test` holds — a name, a check, a group of other tests — belongs to `
 any library built on it. How a runner is invoked and what it reports is
 [the toolchain's](toolchain.md#running-a-packages-tests).
 
+**Not implemented:** there is no `zelkova-test` package, so nothing declares the `Test` a
+test's type has to be, and no runner finds or runs the values that have it
+([`docs/tickets/lang-63.md`](../tickets/lang-63.md)).
+
 ### `test-dependencies`
 
 `test-dependencies` maps package names to entries of exactly the shape `dependencies` takes.
@@ -557,9 +561,6 @@ A package name appears in at most one of the two maps. Anything already in
 The rest of the resolution rules are unchanged and apply to the union of the two maps. The
 graph stays acyclic, at most one version of each package is in the build, only direct
 dependencies are usable, and `zelkova.lock` records what was chosen for both.
-
-**Not implemented:** the compiler has one source root and no notion of a test at all
-([`docs/tickets/lang-15.md`](../tickets/lang-15.md)), and there is no `zelkova-test` package.
 
 ## Programs
 

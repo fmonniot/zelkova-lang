@@ -1,0 +1,9 @@
+module App exposing (Task(..), start)
+
+
+type Task
+  = Task
+
+
+start : Task
+start = Task

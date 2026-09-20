@@ -1,0 +1,11 @@
+module Basics exposing (Int, Flag, on)
+
+
+type Int = Int
+
+
+type Flag = On | Off
+
+
+on : Flag
+on = On

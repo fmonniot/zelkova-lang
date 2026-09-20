@@ -1,0 +1,9 @@
+# The package the `test-dependencies` fixtures write in that map: it is what a
+# module under `tests/` may import and a module under `src/` may not.
+name = "acme-expect"
+version = "2.0.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

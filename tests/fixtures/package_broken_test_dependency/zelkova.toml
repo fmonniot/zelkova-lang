@@ -1,0 +1,11 @@
+# A `test-dependency` that does not compile. It is resolved into every build of
+# this package, and compiled only by the build that asked for the tests — the
+# other one cannot import a single module of it.
+name = "package-broken-test-dependency"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies.acme-broken]
+path = "../dep_broken"

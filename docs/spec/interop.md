@@ -470,9 +470,8 @@ check.
 
 **Not implemented:** none of this runs. The `zel` block fails on the parentheses in its result
 type ([`LANG-9`](../tickets/lang-9.md)), and [`()` is not recognised](types.md#the-unit-type) in
-either position. A package has one source root and no notion of a test
-([`LANG-15`](../tickets/lang-15.md)), nothing declares `Task` or `Failure`, no wrapper is
-generated around an effectful call ([`GEN-1`](../tickets/gen-1.md),
-[`GEN-2`](../tickets/gen-2.md)), and there is no runner to find a `Test`. Until there is, a
-companion test under `tests/` is a `.mjs` file that the target's own test runner is pointed at
-directly, and the facade half of the pair is not written yet.
+either position. Nothing declares `Task` or `Failure`, no wrapper is generated around an
+effectful call ([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)), and there is no
+runner to find a `Test` ([`LANG-63`](../tickets/lang-63.md)). Until there is, a companion test
+under `tests/` is a `.mjs` file that the target's own test runner is pointed at directly, and
+the facade half of the pair is not written yet.
