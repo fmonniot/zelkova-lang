@@ -43,10 +43,10 @@ only surfaces if the importer then tries to use one of `Opaque`'s constructors, 
 unrelated-looking "cannot find a type constructor" error far from the line that actually asked
 for something it wasn't given.
 
-This is a different condition from `BUG-16` (open): `BUG-16` is `interface.unions.get(type_name)`
-returning `None` — a name the interface does not know about at all — and its proposed fix is
-exactly the existence check this arm already has. This ticket's gap is a name the interface
-*does* know, but only opaquely, being asked for transparently. The sibling
+This is a different condition from `BUG-16` (closed): `BUG-16` was
+`interface.unions.get(type_name)` returning `None` — a name the interface does not know about
+at all — and its fix is exactly the existence check this arm already has. This ticket's gap is
+a name the interface *does* know, but only opaquely, being asked for transparently. The sibling
 `Upper(_, Privacy::Private)` arm (a bare `Foo` entry, asking for the type opaquely) is
 unaffected: it reads `interface.unions.get(type_name).map(|u| u.variables.clone())` and never
 looks at `variants`, so asking opaquely for an opaquely-exposed type is exactly right — the

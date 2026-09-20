@@ -69,8 +69,11 @@
 //! settling the question
 //! `docs/spec/conventions.md` records). Each block keeps its **own** `expect=`, so an
 //! example can show one module compiling and its importer failing. A block with no
-//! `package=` is a package of one, compiled with no interfaces at all, exactly as
-//! before.
+//! `package=` is a package of one.
+//!
+//! Either way the package is compiled against one interface it did not write —
+//! [`stdlib_interfaces`]'s stand-in `Basics`, which is what puts the scalar type
+//! names in a chapter's reach.
 //!
 //! A `zel` block with no `expect=`, an unrecognised `expect=` value, or an
 //! unrecognised key in its info string, is a hard failure. The extraction and evaluation logic below is written to take an arbitrary
@@ -147,8 +150,35 @@ fn parse(source: &str) -> Result<parser::Module, parser::Error> {
 }
 
 fn canonicalize(module: &parser::Module) -> Result<canonical::Module, Vec<canonical::Error>> {
-    let interfaces = std::collections::HashMap::new();
-    canonical::canonicalize(&test_package(), &interfaces, module, false)
+    let declared = std::slice::from_ref(&module.name);
+    canonical::canonicalize(
+        &test_package(),
+        &stdlib_interfaces(declared),
+        module,
+        zelkova_lang::compiler::default_imports::declares_a_default(declared),
+    )
+}
+
+/// `Basics` as a stand-in [`Interface`], so a chapter may name `Int`, `Float` or
+/// `Bool` the way one is named in a real module.
+///
+/// A block is compiled against the interfaces of its own `package=` group and
+/// nothing else, so without this the standard library does not exist for it and
+/// [the default imports](../docs/spec/modules.md#the-default-imports) have
+/// nothing to bring in. `Basics` is the only one needed: it declares three of the
+/// five [scalar types](../docs/spec/types.md#scalar-types), and the other two
+/// reach a block declaring one of the eight through the seeding that block's own
+/// package gets.
+///
+/// `declared` is every module the block or group declares. A group writing its
+/// own `Basics` is the package the eight default imports belong to, so it gets
+/// neither the implicit imports nor a stand-in for the module it declares
+/// itself.
+fn stdlib_interfaces(declared: &[Name]) -> HashMap<Name, Interface> {
+    vec![support::basics_interface()]
+        .into_iter()
+        .filter(|(name, _)| !declared.contains(name))
+        .collect()
 }
 
 /// The phases are called one at a time rather than through
@@ -310,6 +340,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             NoTypeInBinding(..) => vec!["NoTypeInBinding"],
             UnsafeOutsideFacade(..) => vec!["UnsafeOutsideFacade"],
             TypeArityMismatch(..) => vec!["TypeArityMismatch"],
+            TypeNotFound(..) => vec!["TypeNotFound"],
             InvalidVariant(..) => vec!["InvalidVariant"],
             InvalidScalarDeclaration(..) => vec!["InvalidScalarDeclaration"],
         }
@@ -615,7 +646,8 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
         }
     };
 
-    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
+    let declared: Vec<Name> = modules.iter().map(|m| m.name.clone()).collect();
+    let mut interfaces = stdlib_interfaces(&declared);
     let (checked, failures) = walker.check_in_order(
         &test_package(),
         &mut interfaces,

@@ -78,9 +78,9 @@ you have seen it fail*).
   arguments has something to recurse into. What still bounds it is
   [`LANG-9`](lang-9.md): a parenthesised argument does not parse, so `Maybe (a -> a)` cannot be
   written yet — the walk is ready for it before the grammar is.
-- **[`BUG-16`](bug-16.md)** means an unresolved type name is invented rather than reported, so a
-  facade naming a type that does not exist passes this check as an admitted `Type::Type`. That is
-  `BUG-16`'s to fix, not this ticket's, and neither blocks the other.
+- **`BUG-16`** is fixed, so a facade naming a type that does not exist is rejected by
+  canonicalization and never reaches this check. What arrives here is always a name something
+  declared.
 - **[`DEC-12`](../decisions/dec-12.md) decisions 1 and 7** add a rule about the *shape* of a
   facade's result, which is a different check from the admitted-types walk and belongs beside it.
   A facade declares `Task (Result Failure a)` unless its signature is marked

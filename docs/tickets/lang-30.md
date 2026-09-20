@@ -48,9 +48,8 @@ type grows a "more than one provider" case, and the lookup site raises when it l
   `Type::from_parser_type`, `Pattern::from_parser` and the `TypeConstructor` arm of
   `Expression::from_parser`. The constructor sites raise `AmbiguousVariants`, which already
   exists and already renders. The type site needs a new variant, since ambiguity in a type
-  expression is not a variant of anything — and note that `from_parser_type` currently invents a
-  type on a miss ([`BUG-16`](bug-16.md)), so the two touch the same match and are worth
-  sequencing rather than merging.
+  expression is not a variant of anything — `canonical::Error::TypeNotFound`, which `BUG-16`
+  added to the same match for a name that resolves to nothing, is the shape to follow.
 - **Operators.** `env.infixes` maps to an `InfixEntry`; the same wrapper applies. The lookup
   is `Environment::find_infix`, whose one caller is `resolve_infix_operator` in
   `canonical/mod.rs` — that is where an ambiguous operator would be raised, and it already

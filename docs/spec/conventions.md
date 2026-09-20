@@ -36,9 +36,20 @@ count of specific errors spelled out as a word.
 
 ## More than one module: `package=`
 
-A block holds a single module, and by default it is compiled alone, against no interfaces
-at all. A block may also carry a second tag, `package=<label>`, beside its `expect=` — an
-info string reading ```` ```zel expect=ok package=alias ````.
+A block holds a single module, and by default it is compiled alone, as a package of one. A
+block may also carry a second tag, `package=<label>`, beside its `expect=` — an info string
+reading ```` ```zel expect=ok package=alias ````.
+
+Either way, the package is compiled against one interface it did not write: a stand-in
+`Basics`, which is what lets a block name `Int`, `Float` or `Bool` without declaring or
+importing them. A package of one gets exactly the interface a `package=` group does.
+
+A package whose modules name one of the eight [default
+imports](modules.md#the-default-imports) — `Basics` itself, or `List`, `Maybe`, `Result`,
+`Task`, `Char`, `String` or `Tuple` — is the same case a real module of that name is: it
+receives none of the eight, and gets the five scalar type names directly instead of importing
+them. `module Task exposing (Failure(..))` is such a block today; naming any of the other
+seven has the same effect.
 
 Blocks sharing one label, **within one chapter**, are one package. They are parsed
 together, ordered by their imports, canonicalized in that order against each other's

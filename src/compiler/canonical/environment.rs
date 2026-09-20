@@ -861,19 +861,33 @@ impl RootEnvironment {
         self.variables.insert(name, ValueType::TopLevel);
     }
 
-    // TODO Use insert_foreign_union_type (and rename to remove the foreign part)
-    pub fn insert_union_type(&mut self, name: Name, union: UnionType) {
+    /// Register a `type` declaration of the module under check by name and
+    /// arity alone, before anything has canonicalized its body.
+    ///
+    /// A declared type name is in scope throughout its own module, so the
+    /// bodies being canonicalized may already name it — a declaration naming
+    /// itself (`type Never = JustOneMore Never`) or a sibling declared further
+    /// down the file. Only the arity is needed for that, and the `type` line
+    /// carries it, so the whole set can be registered up front and each entry's
+    /// constructors filled in by [`insert_union_type`](Self::insert_union_type)
+    /// once the bodies exist.
+    pub fn insert_declared_type(&mut self, name: &Name, variables: Vec<Name>) {
         // The declaration is the module under check's own, so this environment's
         // module name is the one it belongs to (`AST-4`).
-        let qualified = self.module_name.qualify_name(&name);
+        let qualified = self.module_name.qualify_name(name);
 
         self.types.insert(
-            name,
+            name.clone(),
             TypeArity {
                 name: qualified,
-                variables: union.variables,
+                variables,
             },
         );
+    }
+
+    // TODO Use insert_foreign_union_type (and rename to remove the foreign part)
+    pub fn insert_union_type(&mut self, name: Name, union: UnionType) {
+        self.insert_declared_type(&name, union.variables);
 
         for tctor in union.variants {
             self.constructors.insert(tctor.name.clone(), tctor.clone());

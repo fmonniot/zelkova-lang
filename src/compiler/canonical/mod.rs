@@ -366,21 +366,14 @@ impl Type {
                         args.len(),
                         tpe.span,
                     )),
-                    // `name` resolves to nothing: BUG-16 is the ticket for reporting
-                    // this instead of fabricating a type for it. Until then the
-                    // fabricated head is attributed to the module under check —
-                    // the same fallback the `TypeConstructor` arm of
-                    // `Expression::from_parser` uses — and never to a module half
-                    // read off the written spelling. A written `W.Thing` says which
-                    // *route* was written and not which module declared anything:
-                    // under `import Widget as W` that half is an alias, and reading
-                    // it would fabricate a head in a module named `W`, inverting the
-                    // rule the `Some` arm above enforces. `qualify_name` does not
-                    // split the name it is handed, so a written `Missing.Thing`
-                    // stays one dotted unqualified half — which is what keeps it
-                    // distinct from a local `Thing` at the typer, exactly as it was
-                    // before the head became a `QualName`.
-                    None => Ok(Type::Type(env.module_name().qualify_name(name), args)),
+                    // `name` resolves to nothing, so there is no type here to
+                    // build one out of. The name is reported as written, dotted
+                    // prefix and all: a written `W.Thing` says which *route* was
+                    // written and not which module declared anything — under
+                    // `import Widget as W` that half is an alias — so there is no
+                    // module to attribute it to, and quoting the spelling back is
+                    // what lets the reader find it in their own source.
+                    None => Err(Error::TypeNotFound(name.clone(), tpe.span)),
                 }
             }
             parser::TypeKind::Arrow(t1, t2) => Ok(Type::Arrow(
@@ -1056,6 +1049,17 @@ pub enum Error {
     /// `tpe.span` — the whole application, so the caret covers every argument
     /// along with the name (`BUG-17`).
     TypeArityMismatch(Name, usize, usize, NodeSpan),
+    /// A type name written in a type expression that nothing in scope declares:
+    /// the name exactly as it was written, and `tpe.span` — the application, so
+    /// the caret covers the name along with whatever it was applied to.
+    ///
+    /// The declarations of the module under check are in scope here as much as
+    /// its imports are, so this is a name neither half offers. Only the
+    /// `TypeKind::Unqualified` arm of [`Type::from_parser_type`] raises it: a
+    /// type *variable* arrives as `TypeKind::Variable` and is bound by the
+    /// annotation it appears in, so it resolves through nothing and cannot
+    /// reach here.
+    TypeNotFound(Name, NodeSpan),
     /// Something other than a constructor name and its arguments written in a
     /// `type` declaration's variant position: what was written there, and that
     /// variant's own span rather than the declaration's, so the caret sits under
@@ -1212,6 +1216,9 @@ impl PhaseError for Error {
                 type_argument_count(*declared),
                 type_argument_count(*written)
             ),
+            Error::TypeNotFound(name, _) => {
+                format!("cannot find a type named `{}`", name)
+            }
             Error::InvalidVariant(kind, _) => match kind {
                 InvalidVariantKind::LowercaseName(name) => format!(
                     "`{}` is not a constructor name: a constructor name begins with an uppercase letter",
@@ -1392,6 +1399,7 @@ impl PhaseError for Error {
                     type_argument_count(*written)
                 ),
             ),
+            Error::TypeNotFound(_, span) => primary(span, "no type of this name is in scope"),
             Error::InvalidVariant(kind, span) => primary(
                 span,
                 match kind {
@@ -1649,6 +1657,18 @@ pub fn canonicalize(
                 errors.extend(err);
                 HashMap::new()
             });
+
+        // Every `type` declaration of this module is in scope for every one of
+        // them, its own body included, so all of their names are registered
+        // before any body is canonicalized. Doing it as `do_types` produced each
+        // union instead would make a declaration resolvable only from the ones
+        // written below it, and leave a self-referential declaration —
+        // `type Never = JustOneMore Never` — naming a type nothing has heard of.
+        // The name and its arity are all a use site needs; `insert_union_type`
+        // below fills the constructors in once the bodies are built.
+        for tpe in source.types.iter() {
+            env.insert_declared_type(&tpe.name, tpe.type_arguments.clone());
+        }
 
         let types = do_types(&env, &source.types).unwrap_or_else(|err| {
             errors.extend(err);

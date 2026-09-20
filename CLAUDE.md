@@ -161,8 +161,10 @@ it describes.
 - `tests/support/mod.rs` holds the shared helpers — `test_package()`, `parse_source()`,
   `canonicalize_standalone()`, `canonicalize_with_interfaces()`, `maybe_interface()`,
   `basics_interface()`, `char_interface()`. Reach for these before writing a new harness. A
-  bare `Int` is the scalar only where it resolves to `Basics.Int`, so a standalone module
-  checked against an empty interface map has no scalars — put `basics_interface()` in the map. Top-level test binaries (`tests/typer.rs`,
+  type name that resolves to nothing is a canonicalization error, so a standalone module
+  checked against an empty interface map cannot name `Int`, `Char` or `Bool` at all — put
+  `basics_interface()` and `char_interface()` in the map, which is also what makes a bare
+  `Int` the scalar `Basics.Int` rather than some other declaration of the same spelling. Top-level test binaries (`tests/typer.rs`,
   `tests/pipeline.rs`) get them with a plain `mod support;`; files nested under
   `tests/compiler/` need `#[path = "../support/mod.rs"]`.
 - Three layers exist: `tests/compiler/canonical.rs` (source string → `canonical::Module`
