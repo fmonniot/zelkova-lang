@@ -1,0 +1,11 @@
+# Depends on `acme-mid` and on nothing else. `acme-widgets` is in the build,
+# because `acme-mid` depends on it, and is not importable here: only a package
+# written in this manifest's own `dependencies` is.
+name = "package-transitive-dependency"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-mid]
+path = "../dep_mid"
+
+[test-dependencies]

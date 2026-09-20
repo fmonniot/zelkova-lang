@@ -1,0 +1,14 @@
+module Lib exposing (Tag(..), tag, size)
+
+import AcmeWidgets.Size
+
+
+type Tag = Tag
+
+
+tag : Tag
+tag = Tag
+
+
+size : AcmeWidgets.Size.Size
+size = AcmeWidgets.Size.small

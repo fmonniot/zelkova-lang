@@ -1,0 +1,5 @@
+module B exposing (Thing(..))
+
+
+type Thing
+  = Thing

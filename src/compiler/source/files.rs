@@ -1,9 +1,9 @@
-use crate::compiler::PhaseError;
+use crate::compiler::{PackageName, PhaseError};
 use codespan_reporting::files::{Error as FilesError, Files, SimpleFile};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct SourceFileId(usize);
 
 // This should probably implements `Files` directly instead of relying on SimpleFile
@@ -13,18 +13,36 @@ pub struct SourceFile {
     module_name: String,
     #[allow(dead_code)]
     relative_path: PathBuf,
-    /// `Files` implementation with the name being the relative path within the package
+    /// `Files` implementation. Its name is what a diagnostic's location line shows: the
+    /// path relative to the package's source root, prefixed with `package:` when the
+    /// database holds a whole build (see [`SourceFile::load`]).
     file: SimpleFile<String, String>,
 }
 
 impl SourceFile {
-    /// Load a `SourceFile` from the file system
-    pub fn load(abs_path: PathBuf, root: &Path) -> Result<SourceFile, SourceFileError> {
-        SourceFile::load_private(&abs_path, root)
+    /// Load a `SourceFile` from the file system.
+    ///
+    /// `package` is the name of the package `root` is the source root of, and is what
+    /// the rendered file name is prefixed with. It is `Some` whenever the file joins a
+    /// database that holds more than one package's files: a path relative to a
+    /// package's own `src/` is not unique across a build — two packages may each hold a
+    /// `Size.zel` — so without it a diagnostic cannot say which package it is about.
+    /// `None` is for a database of exactly one source root, where the relative path is
+    /// unique and the prefix would be noise.
+    pub fn load(
+        abs_path: PathBuf,
+        root: &Path,
+        package: Option<&PackageName>,
+    ) -> Result<SourceFile, SourceFileError> {
+        SourceFile::load_private(&abs_path, root, package)
             .map_err(|error| SourceFileError { error, abs_path })
     }
 
-    fn load_private(abs_path: &PathBuf, root: &Path) -> Result<SourceFile, SourceFileErrorType> {
+    fn load_private(
+        abs_path: &PathBuf,
+        root: &Path,
+        package: Option<&PackageName>,
+    ) -> Result<SourceFile, SourceFileErrorType> {
         let relative_path = abs_path.strip_prefix(root)?.to_path_buf();
 
         let file_name = relative_path
@@ -36,12 +54,20 @@ impl SourceFile {
             .trim_end_matches(".zel")
             .replace(std::path::MAIN_SEPARATOR, ".");
 
+        // `package:path`, the same shape `ModuleName` renders a module in, so the two
+        // halves of a diagnostic — the `[package:Module]` headline and the file its
+        // labels point into — name the package the same way.
+        let rendered_name = match package {
+            Some(package) => format!("{}:{}", package, file_name),
+            None => file_name,
+        };
+
         let source = std::fs::read_to_string(abs_path)?;
 
         Ok(SourceFile {
             module_name,
             relative_path,
-            file: SimpleFile::new(file_name, source),
+            file: SimpleFile::new(rendered_name, source),
         })
     }
 
@@ -244,7 +270,7 @@ mod tests {
         );
         let abs_path = Path::new("/Users/francoismonniot/Projects/github.com/fmonniot/zelkova-lang/std/core/src/Platform/Cmd.zel");
 
-        let res = SourceFile::load(abs_path.to_path_buf(), root_path);
+        let res = SourceFile::load(abs_path.to_path_buf(), root_path, None);
         println!("{:?}", res);
     }
 }

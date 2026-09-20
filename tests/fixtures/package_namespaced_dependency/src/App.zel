@@ -1,0 +1,7 @@
+module App exposing (start)
+
+import AcmeWidgets.Size
+
+
+start : AcmeWidgets.Size.Size
+start = AcmeWidgets.Size.small

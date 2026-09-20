@@ -1,0 +1,5 @@
+module Lib exposing (answer)
+
+
+answer : Int
+answer = 1

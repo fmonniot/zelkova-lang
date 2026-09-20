@@ -1,0 +1,9 @@
+# A second package answering to `zelkova-core`, so that one build can reach two of
+# them and the name can be shown to be the build's and not each manifest's.
+name = "zelkova-core"
+version = "0.2.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

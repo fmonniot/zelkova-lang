@@ -1,0 +1,9 @@
+name = "package-unwrapped-namespace-absent"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-widgets]
+path = "../dep_widgets"
+wrapped = false
+
+[test-dependencies]

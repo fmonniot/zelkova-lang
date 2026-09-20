@@ -1,0 +1,11 @@
+# The middle package of the `app -> acme-mid -> acme-widgets` chain. It writes
+# `acme-widgets` in its own `dependencies`, so `AcmeWidgets.Size` is importable
+# here — and nowhere upstream of here, unless that package writes it too.
+name = "acme-mid"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-widgets]
+path = "../dep_widgets"
+
+[test-dependencies]

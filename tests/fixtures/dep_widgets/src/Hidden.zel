@@ -1,0 +1,9 @@
+module Hidden exposing (Secret(..), secret)
+
+
+type Secret
+  = Secret
+
+
+secret : Secret
+secret = Secret

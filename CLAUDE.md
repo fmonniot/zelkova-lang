@@ -78,12 +78,15 @@ them.
 
 ## Architecture
 
-The pipeline is documented at the top of `src/compiler/mod.rs`. `compile_package` walks a
-package directory; `check_module` runs the per-module phases.
+The pipeline is documented at the top of `src/compiler/mod.rs`. `compile_package` is pointed
+at a package directory and compiles that package and everything it depends on;
+`compile_in_build` is one package of that build, and `check_module` runs the per-module
+phases.
 
 | Phase | Where | State |
 |---|---|---|
 | Manifest | `src/compiler/manifest.rs` | reads and validates `zelkova.toml` before anything else; the package's name and its `src/` root come from it. Errors are `CompilationError::Manifest` and go back unrendered |
+| Package resolution | `src/compiler/resolve.rs` | follows `dependencies` to the other packages (`path` sources only — a `git` one is reported, not fetched) and orders them dependencies-first; then, per package, builds the one map of module names it can import and reports a name two modules both answer to. Steps below run once per package |
 | Source loading | `src/compiler/source/` | walks a package dir for `.zel`, maps paths to module names |
 | Tokenizing | `src/compiler/parser/tokenizer.rs` | hand-written, Unicode-aware lexer producing `Spanned<Position, Token>` |
 | Layout | `src/compiler/parser/layout.rs` | offside rule; injects `OpenBlock`/`CloseBlock`. 2-space indent, no tabs |

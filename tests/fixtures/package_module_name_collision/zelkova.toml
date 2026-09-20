@@ -1,0 +1,9 @@
+name = "package-module-name-collision"
+version = "0.4.1"
+private-modules = []
+
+[dependencies.acme-widgets]
+path = "../dep_widgets"
+wrapped = false
+
+[test-dependencies]

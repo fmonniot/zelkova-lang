@@ -3,7 +3,8 @@
 **Sizing:** medium for the root and the manifest field; the runner itself is blocked and is
 not part of this ticket. Sequence it after `LANG-13`, which is what gives a package a manifest
 for `test-dependencies` to be a field of, and after `LANG-14`, which is what makes a
-dependency resolvable at all.
+dependency resolvable at all. Both have landed, so the manifest and the resolved set of
+packages this builds on already exist.
 
 **Location:** `src/compiler/source/mod.rs` — `load_package_sources` takes one `root` and walks
 it, so a package is exactly one directory of `.zel` files; `SourceFile::load` derives a
@@ -34,7 +35,7 @@ today `std/core/src`, which is a source root standing in for a package. There is
 test-only, and no runner. A package that wants to test itself today has no place to put the
 test and no way to depend on a library for it.
 
-**Approach:** after `LANG-13` and `LANG-14`.
+**Approach:**
 
 1. `load_package_sources` takes the package root and walks `src/` and `tests/` separately,
    deriving each module's name relative to *its own* root, and tags every `SourceFile` with

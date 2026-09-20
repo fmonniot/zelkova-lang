@@ -141,6 +141,9 @@ Every module of a package under `src/` is importable from outside it, except the
 `private-modules` names. Those are **package-internal**: importable from other modules of the
 same package and from nowhere else.
 
+From outside the package, a package-internal module is indistinguishable from one the
+package does not hold: the name reaches nothing, and the error says so in those terms.
+
 A `module foreign` facade is never importable from outside, whatever the manifest says,
 because its guarantees are about a companion file that ships with the package that declares
 it — [Foreign interoperability](interop.md) is where that rule and its reasoning live.
@@ -159,10 +162,6 @@ module foreign Core.Widget exposing (measure)
 
 unsafe measure : Int -> Int
 ```
-
-**Not implemented:** nothing consults `private-modules`, because nothing in the compiler
-represents a package other than the one being compiled
-([`docs/tickets/lang-14.md`](../tickets/lang-14.md)).
 
 ## Dependencies
 
@@ -262,6 +261,10 @@ How a source is fetched, where the fetched copy is kept, and what a build does w
 is unavailable are matters for the toolchain rather than the language, and the
 [toolchain appendix](toolchain.md) describes them.
 
+**Not implemented:** only a `path` source is obtained. A `git` entry is read and validated, and
+then reported as a source the compiler cannot fetch, so a build that has one compiles nothing
+([`docs/tickets/lang-61.md`](../tickets/lang-61.md)).
+
 ### `wrapped`
 
 An entry may also carry `wrapped`, which is `true` unless written, and which decides
@@ -288,6 +291,11 @@ manifest: the manifest says what is acceptable and the lock file says what was c
 build is reproducible without the manifest having to be rewritten to pin it. Its contents are
 [in the toolchain appendix](toolchain.md#resolution-and-zelkovalock).
 
+**Not implemented:** nothing writes or reads a `zelkova.lock`, and no version constraint is
+checked. A `path` source carries no constraint to check and is the only source obtained today,
+so every package in a build is at the version its own manifest declares
+([`docs/tickets/lang-61.md`](../tickets/lang-61.md)).
+
 ### Only direct dependencies are usable
 
 Only a package listed in `dependencies` is importable within this package.
@@ -307,6 +315,11 @@ Its version is the compiler's.
 It is seen unwrapped, in every package. So `Basics` is `Basics` and `List` is `List` everywhere in the language. The names of
 core's public modules are therefore taken in every package — a module of your own called
 `List` would be [a second module answering to one name](#two-modules-under-one-name-is-an-error).
+
+**Not implemented:** the compiler carries no copy of `zelkova-core`, so a package that needs
+one writes it in `dependencies` like any other and the names above are taken only in a package
+that does ([`docs/tickets/lang-62.md`](../tickets/lang-62.md)). The rest of the rule holds: a
+package of that name is seen unwrapped whatever the entry naming it says.
 
 ## Imports across a package boundary
 
@@ -338,7 +351,7 @@ write its own: inside `acme-widgets`, `Size` is `Size`, and `AcmeWidgets.Size` n
 A module's name within its package is the one thing its file path decides, and the namespace
 is added at the boundary by whoever crosses it.
 
-```zel expect=unimplemented
+```zel expect=fragment
 module App exposing (start)
 
 import AcmeWidgets.Size
@@ -351,7 +364,7 @@ The prefix an import brings into scope is the module's name as written, here all
 `AcmeWidgets.Size`. `as` shortens it, exactly as it does for a neighbour, and is how a file
 that leans on one module of a dependency keeps its uses short:
 
-```zel expect=unimplemented
+```zel expect=fragment
 module App exposing (start)
 
 import AcmeWidgets.Size as Size
@@ -469,6 +482,12 @@ type in a public signature is part of the package's interface, and a package tha
 dependency's type there has made that dependency part of what it asks of its users. Wrapping
 the type in one of its own is how a package chooses not to.
 
+**Not implemented:** a type's identity is its module and its own name, with no package in it
+(`QualName`, `src/compiler/name.rs`), and a module's name is unique only within its package. So
+a package holding its own `Size` and depending, wrapped, on `acme-widgets` has two distinct
+unions that the compiler reads as one: `Size.Size` and `AcmeWidgets.Size.Size` unify, and the
+build reports success ([`docs/tickets/bug-37.md`](../tickets/bug-37.md)).
+
 ### Two modules under one name is an error
 
 Two wrapped dependencies cannot collide, whatever they contain, and that is what the namespace
@@ -490,11 +509,6 @@ It is not reported at an `import` line, and not only in the files that would hav
 ambiguous. The manifest is what created the ambiguity and the manifest is what has to change —
 by wrapping one of the two, or by renaming the package's own module — so a build that has no
 coherent answer for a name is stopped before any file is read for one.
-
-**Not implemented:** the compiler compiles one package and has no representation of another,
-so no namespace is ever applied, nothing is unwrappable, and the two blocks above that import
-`AcmeWidgets.Size` fail on a module that cannot be found
-([`docs/tickets/lang-14.md`](../tickets/lang-14.md)).
 
 ## Tests
 

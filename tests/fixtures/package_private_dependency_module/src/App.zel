@@ -1,0 +1,7 @@
+module App exposing (start)
+
+import AcmeWidgets.Hidden
+
+
+start : AcmeWidgets.Hidden.Secret
+start = AcmeWidgets.Hidden.secret

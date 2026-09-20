@@ -1,0 +1,10 @@
+module Size exposing (Size(..), small)
+
+
+type Size
+  = Small
+  | Large
+
+
+small : Size
+small = Small

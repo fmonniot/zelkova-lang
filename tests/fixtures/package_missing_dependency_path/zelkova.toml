@@ -1,0 +1,8 @@
+name = "package-missing-dependency-path"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-widgets]
+path = "../nowhere"
+
+[test-dependencies]

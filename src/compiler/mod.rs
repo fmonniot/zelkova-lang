@@ -3,11 +3,18 @@
 //!
 //!# How to compile a package ?
 //!
-//! Note: We don't manage interfaces and external modules. We try to keep them
-//! in mind, so they can be relatively easily added later on.
+//! Note: an interface is built for every module that checks and kept for whatever
+//! imports it, within this package and in the packages that depend on it. What is
+//! still missing is emitting one, so a dependency is compiled from source on every
+//! build.
 //!
-//! 1. Read the package's `zelkova.toml` manifest, and derive its source root as `src/`
-//!    beside it.
+//! 1. Read the package's `zelkova.toml` manifest, and resolve the build: every package
+//!    reachable through `dependencies`, each ordered after the packages it depends on.
+//!    Steps 2 to 6 then run once per package, and each package's source root is `src/`
+//!    beside its own manifest. Before a package's modules are checked, the whole map of
+//!    module names it can import is built — its own, plus each direct dependency's public
+//!    modules under that package's namespace or, unwrapped, under their own names — and a
+//!    name two modules both answer to stops that package there.
 //! 2. Collect all `*.zelkova` files with their path name relatives to the root.
 //! 3. Create a `SourceFiles` mapping from `ModuleName` to `parser::Module`.
 //!     1. module names are deduced from file name
@@ -61,6 +68,10 @@ pub mod manifest;
 pub mod name;
 pub mod parser;
 pub mod position;
+/// Which packages a build is made from, and what each module is called inside the
+/// package that imports it. Public for the same reason as `manifest`:
+/// `resolve::Error` is reachable from the public `CompilationError::Resolution`.
+pub mod resolve;
 /// The five type names the compiler knows. Public for the same reason as
 /// `default_imports`: it is a rule about the language rather than an implementation
 /// detail of one phase.
@@ -72,6 +83,7 @@ pub mod typer;
 use name::{Name, QualName};
 use position::{BytePos, NodeSpan, Span};
 use source::files::{SourceFileError, SourceFileId};
+use source::SourceFiles;
 
 // TODO Move PackageName and ModuleName into the name module
 /// A package name: one flat identifier, ASCII lowercase letters, digits and hyphens,
@@ -104,6 +116,33 @@ impl PackageName {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// The prefix this package's modules are named through from outside it: the name
+    /// split at its hyphens, each piece capitalised, joined —
+    /// [*The namespace*](../../docs/spec/packages.md#the-namespace). `acme-widgets` is
+    /// `AcmeWidgets`, `todo` is `Todo`.
+    ///
+    /// It is a [`Name`] and not a [`PackageName`]: what comes back is a module-name
+    /// prefix, and the whole point of the shape rule above is that the two are never
+    /// confusable. Distinct package names give distinct namespaces, which is what lets
+    /// two wrapped dependencies keep out of each other's way with nothing checked.
+    ///
+    /// A package never writes its own namespace, so nothing inside the package being
+    /// compiled goes through here: [`resolve::visible_modules`] is the one caller, and
+    /// it applies this only to a *dependency*'s modules.
+    pub fn namespace(&self) -> Name {
+        let mut namespace = String::with_capacity(self.0.len());
+
+        for piece in self.0.split('-') {
+            let mut characters = piece.chars();
+            if let Some(first) = characters.next() {
+                namespace.extend(first.to_uppercase());
+                namespace.push_str(characters.as_str());
+            }
+        }
+
+        Name::new(namespace)
     }
 }
 
@@ -187,7 +226,13 @@ pub struct SourceSpan {
 /// All `Interface` indices are using non-qualified names. To get the qualified
 /// version, simply use `I.module_name.qualify_name(&name)`.
 // TODO Union types will need a way to reflect that some type constructor are private
-#[derive(Debug)]
+//
+// `Clone` because one interface reaches more than one place: a public module of a
+// dependency is inserted into the environment of every package that imports it, under
+// whichever spelling that package names it by (`resolve::visible_modules`). The
+// interface itself is the same either way — a spelling is the importer's, and what an
+// `Interface` carries is the module's own name.
+#[derive(Debug, Clone)]
 pub struct Interface {
     pub module_name: ModuleName,
     /// Each value's type, paired with where its declaration (annotation and body
@@ -471,6 +516,18 @@ pub enum CompilationError {
     /// range in `zelkova.toml`, and that file is never read into the database, so each
     /// error names its manifest in its own message instead.
     Manifest(Vec<manifest::ManifestError>),
+    /// The build could not be resolved: a dependency that could not be obtained or
+    /// read, a circular package graph, or two modules answering to one name in one
+    /// package.
+    ///
+    /// Like [`Manifest`](CompilationError::Manifest) it carries no
+    /// [`SourceFileId`]: what each of these errors is about is a `zelkova.toml`, which
+    /// is not a file the database holds, so each names its manifest in its own message.
+    /// The graph half is raised before any source is loaded and goes back to the caller
+    /// unrendered; the name-collision half is pushed onto `compile_package`'s
+    /// accumulator once the packages' modules are known, and stops that package being
+    /// compiled.
+    Resolution(Vec<resolve::Error>),
     LoadingFiles(Vec<SourceFileError>),
     Source(parser::Error, SourceFileId),
     Canonical(Vec<canonical::Error>, Name),
@@ -546,6 +603,23 @@ impl CompilationError {
             CompilationError::Manifest(errors) => Diagnostic::error()
                 .with_message("Error in the package manifest")
                 .with_notes(errors.iter().flat_map(|e| e.message_and_notes()).collect()),
+            // A resolution error is about a manifest, the same as the arm above, and
+            // renders the same way: no label, because `zelkova.toml` is not in the file
+            // database. A lone error keeps its own headline — the collision message
+            // names both the module and the package, and burying it under a summary
+            // line would cost the user the one sentence that says what to change.
+            CompilationError::Resolution(errors) => match errors.as_slice() {
+                [only] => Diagnostic::error()
+                    .with_message(only.message())
+                    .with_notes(only.notes()),
+                many => Diagnostic::error()
+                    .with_message(format!(
+                        "{} error{} while resolving the build",
+                        many.len(),
+                        if many.len() == 1 { "" } else { "s" }
+                    ))
+                    .with_notes(many.iter().flat_map(|e| e.message_and_notes()).collect()),
+            },
             // Loading failures are not attached to a module — there is no module yet,
             // and each error names its own file instead.
             CompilationError::LoadingFiles(errors) => Diagnostic::error()
@@ -629,9 +703,20 @@ impl From<Vec<manifest::ManifestError>> for CompilationError {
     }
 }
 
+impl From<Vec<resolve::Error>> for CompilationError {
+    fn from(errors: Vec<resolve::Error>) -> Self {
+        CompilationError::Resolution(errors)
+    }
+}
+
 /// Compile the package rooted at `package_dir` — a directory holding a `zelkova.toml`
 /// manifest beside a `src/` source root, per
-/// [`docs/spec/packages.md`](../../docs/spec/packages.md#what-a-package-is).
+/// [`docs/spec/packages.md`](../../docs/spec/packages.md#what-a-package-is) — and every
+/// package it depends on.
+///
+/// A package is compiled from source the same way whether it is the one asked for or a
+/// dependency of it, and the whole build shares one file database and one error
+/// accumulator: an error in any package of it makes this return `Err`.
 pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
     // Error reporter
     let mut writer = StandardStream::stderr(ColorChoice::Auto);
@@ -655,22 +740,23 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
         let _ = writeln!(&mut writer, " {}", text);
     };
 
-    // Step 1: read and validate the manifest. Like the source loading right after it,
-    // a bad manifest cannot be deferred to the usual accumulate-and-render path: the
-    // source root itself is derived from the manifest, so there is nothing to load —
-    // and no file database yet to render a diagnostic against — until the manifest is
-    // known good. It goes back to the caller unrendered, the same as a
-    // `load_package_sources` failure.
+    // Step 1: read and validate the root package's manifest. This is the one failure
+    // that cannot be deferred to the usual accumulate-and-render path, because it
+    // happens before that path exists: the source root itself is derived from the
+    // manifest, so there is no build to walk, no accumulator and no file database yet.
+    // It goes back to the caller unrendered. Every failure after the accumulator below
+    // is created goes onto it instead, this package's source loading included.
     debug!("phase: read package manifest");
     let manifest = manifest::load(package_dir)?;
-    let src_root = package_dir.join("src");
 
-    // Step 2 and 3.a
-    debug!("phase: load package sources");
-    // Loading is the one phase whose errors cannot be deferred: without the loaded
-    // files there is no `Files` database to render any diagnostic against, this one
-    // included. It is returned unrendered and the caller reports it.
-    let sources = source::load_package_sources(&src_root)?;
+    // Step 1b: resolve the build. Every package reachable from this one's
+    // `dependencies`, each ordered after the packages it depends on, so an
+    // `Interface` a package needs always exists by the time that package is
+    // compiled. A dependency's own manifest is read here, so this is raised before any
+    // source is loaded and goes back unrendered for the same reason the manifest above
+    // does.
+    debug!("phase: resolve the build");
+    let build = resolve::resolve(package_dir, manifest)?;
 
     // Further steps will produce errors. We aggregate them here and report them at the
     // end of the compilation phase, rather than stopping on the first one, so that a
@@ -682,6 +768,154 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
     // what makes this function return `Ok`.
     let mut errors: Vec<CompilationError> = vec![];
 
+    // One file database for the whole build, so that a diagnostic about any module of
+    // any package renders against the file it was written in. `SourceFileId` is an
+    // index into this one database, and it travels inside `Interface`s that outlive
+    // the package they came from (`ERR-5`), which is exactly why there is one
+    // database and not one per package.
+    let mut sources = SourceFiles::new();
+
+    // What each compiled package offers its dependents: its public modules'
+    // `Interface`s, keyed by the module's name *within* that package. The spelling a
+    // depending package reaches one by — `AcmeWidgets.Size`, or `Size` when it
+    // unwraps — belongs to that package alone and is applied by `compile_in_build`.
+    let mut published: HashMap<PackageName, HashMap<Name, Interface>> = HashMap::new();
+
+    for package in &build {
+        debug!("phase: compile package {}", package.name);
+
+        if let Some(public) = compile_in_build(
+            package,
+            &build,
+            &published,
+            &mut sources,
+            &mut errors,
+            &mut print_status,
+        ) {
+            published.insert(package.name.clone(), public);
+        }
+    }
+
+    // Step 6
+    // emit interfaces and generate code
+    debug!("phase: codegen");
+
+    // Step 7: report everything we accumulated, then let that accumulation decide the
+    // return value. Rendering the errors and returning `Ok` regardless was `BUG-1`.
+    for error in &errors {
+        // A rendering failure must not mask the compilation failure we are about to
+        // return, and there is nowhere left to report it to, so it is dropped.
+        let _ = term::emit_to_write_style(
+            &mut writer.lock(),
+            &config,
+            &sources,
+            &error.as_diagnostic(),
+        );
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(CompilationError::Many(errors))
+    }
+}
+
+/// Compile one package of a resolved build, and hand back what it offers its
+/// dependents.
+///
+/// `published` holds what every package compiled before this one offers — this
+/// package's dependencies among them, since [`resolve::resolve`] orders a package
+/// after everything it depends on. `sources` and `errors` are the build's, not this
+/// package's: every module of every package renders against one file database, and
+/// every error from any package makes the build fail.
+///
+/// `None` means nothing here was compiled and this package publishes nothing. It
+/// always comes with at least one error already pushed onto `errors` — a dependency
+/// that did not compile, sources that could not be read, a name claimed twice, or a
+/// failure in one of this package's own modules — so a package that publishes nothing
+/// can never be read as one that compiled. A package whose modules failed publishes
+/// nothing for the same reason: its dependents would otherwise be checked against half
+/// an interface and report errors belonging to a module they never wrote.
+///
+/// There is deliberately no error return. Every way this can fail is a diagnostic about
+/// one package of a build whose other packages may already have accumulated diagnostics
+/// of their own, and a `Result` here is an invitation to `?` those out of
+/// [`compile_package`] past its reporting loop — which is the "nothing is rendered and
+/// then dropped" the accumulator exists to prevent.
+fn compile_in_build(
+    package: &resolve::ResolvedPackage,
+    build: &[resolve::ResolvedPackage],
+    published: &HashMap<PackageName, HashMap<Name, Interface>>,
+    sources: &mut SourceFiles,
+    errors: &mut Vec<CompilationError>,
+    print_status: &mut impl FnMut(bool, String),
+) -> Option<HashMap<Name, Interface>> {
+    let errors_before = errors.len();
+
+    // Step 1: what this package is compiled against. Only its *direct* dependencies:
+    // a package listed in a dependency's manifest and not in this one's is in the
+    // build and is not importable here
+    // (`docs/spec/packages.md#only-direct-dependencies-are-usable`).
+    //
+    // Sorted so that a build reports two broken entries in the same order every run.
+    let mut entries: Vec<(&PackageName, &manifest::Dependency)> =
+        package.manifest.dependencies.iter().collect();
+    entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
+
+    let mut dependencies: Vec<resolve::DependencyModules<'_>> = Vec::new();
+    for (name, entry) in entries {
+        let resolved = build.iter().find(|candidate| &candidate.name == name);
+        let public = published.get(name);
+
+        match (resolved, public) {
+            (Some(resolved), Some(public)) => dependencies.push(resolve::DependencyModules {
+                package: resolved,
+                wrapped: entry.wrapped,
+                modules: public.keys().cloned().collect(),
+            }),
+            // The dependency is in the build — resolution succeeded, or we would not
+            // be here — and did not compile. Its own diagnostics say why; this one
+            // says which package was left uncompiled because of it, so a user reading
+            // a wall of errors from a dependency knows why nothing was said about the
+            // package they asked for.
+            //
+            // No status line goes with it. A status line reports a phase this package
+            // got through; a package abandoned before its first phase has none, and the
+            // diagnostic already says the same sentence in the same words.
+            _ => {
+                errors.push(CompilationError::Resolution(vec![
+                    resolve::Error::DependencyNotCompiled {
+                        package: package.name.clone(),
+                        dependency: name.clone(),
+                    },
+                ]));
+                return None;
+            }
+        }
+    }
+
+    // Step 2 and 3.a
+    debug!("phase: load package sources");
+    // A package whose sources cannot be read is not compiled, and nothing of it is
+    // published — but the failure is accumulated like any other rather than returned,
+    // because by the time we get here other packages of the build may already have
+    // pushed diagnostics onto `errors` and returning would carry this one past the
+    // reporting loop and drop theirs ("nothing is rendered and then dropped").
+    //
+    // A loading error names a path and has no span, so it renders against the shared
+    // database whether or not this package contributed a single file to it.
+    let file_ids = match source::load_package_sources_into(
+        &package.src_root(),
+        Some(&package.name),
+        sources,
+    ) {
+        Ok(file_ids) => file_ids,
+        Err(error) => {
+            errors.push(error);
+            return None;
+        }
+    };
+
     // Step 3.b
     debug!("phase: parse package sources");
     let mut modules: Vec<parser::Module> = vec![];
@@ -691,7 +925,7 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
     // wrap the check errors in `InFile`, which is what lets their labels render.
     let mut module_files: HashMap<Name, SourceFileId> = HashMap::new();
     let mut parse_failures = 0;
-    for (id, file) in sources.iter() {
+    for (id, file) in sources.iter().filter(|(id, _)| file_ids.contains(id)) {
         match parser::parse(file.file()) {
             Ok(module) => {
                 module_files.insert(module.name.clone(), id);
@@ -723,9 +957,8 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
 
     // `private-modules` can only be checked against the package's real modules once they
     // are parsed, which is why this lives here rather than inside `manifest::load` — every
-    // other manifest error is known from the manifest text alone. Nothing yet reads the
-    // list to keep an import out (`LANG-14`); this only rejects an entry naming a module
-    // the package never had in the first place.
+    // other manifest error is known from the manifest text alone. What the list is *for*
+    // is a few lines down: a module it names is kept out of what this package publishes.
     //
     // A file that failed to parse contributes no module, so with any parse failure the list
     // of modules the package holds is known to be short. Checking against it then blames the
@@ -734,18 +967,63 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
     if parse_failures == 0 {
         let held_modules: std::collections::HashSet<&Name> =
             modules.iter().map(|m| &m.name).collect();
-        let missing_private_modules: Vec<manifest::ManifestError> = manifest
+        let missing_private_modules: Vec<manifest::ManifestError> = package
+            .manifest
             .private_modules
             .iter()
             .filter(|name| !held_modules.contains(name))
             .cloned()
             .map(|name| manifest::ManifestError::PrivateModuleNotFound {
-                manifest_path: package_dir.join(manifest::MANIFEST_FILE_NAME),
+                manifest_path: package.manifest_path(),
                 name,
             })
             .collect();
         if !missing_private_modules.is_empty() {
             errors.push(CompilationError::Manifest(missing_private_modules));
+        }
+    }
+
+    // Step 3.d: the whole map of module names this package can import, built before
+    // anything is canonicalized. A name two modules both answer to is the manifest's
+    // doing, not any one file's, so it is reported here and no module of the package is
+    // canonicalized, type checked or checked for exhaustiveness
+    // (`docs/spec/packages.md#two-modules-under-one-name-is-an-error`).
+    //
+    // The files have been read and parsed by this point, because `local_modules` is
+    // taken from the parsed module headers. `SourceFile` derives a module name from the
+    // relative path alone, so this could run one step earlier, against the walk; the
+    // reason it does not is that the parsed header is what every other phase calls a
+    // module by.
+    let local_modules: Vec<Name> = modules.iter().map(|m| m.name.clone()).collect();
+    let visible = match resolve::visible_modules(package, &local_modules, &dependencies) {
+        Ok(visible) => visible,
+        // As with the uncompiled-dependency arm above, the diagnostic is the whole
+        // report: a second, shorter copy on the status line said nothing it does not.
+        Err(collisions) => {
+            errors.push(CompilationError::Resolution(collisions));
+            return None;
+        }
+    };
+
+    // Each dependency's public modules enter the environment under the spelling this
+    // package names them by, and under no other: a wrapped dependency's `Size` is
+    // `AcmeWidgets.Size` here and nothing else, an unwrapped one's is `Size` and
+    // nothing else. The `Interface` is the same either way — it carries the module's
+    // own name, never the spelling — which is what keeps two packages that spell one
+    // dependency differently agreeing about every type in it.
+    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
+    for (spelling, origin) in &visible {
+        if origin.package == package.name {
+            // This package's own modules are inserted by `check_in_order` as each one
+            // is checked, under the name it declares.
+            continue;
+        }
+
+        if let Some(interface) = published
+            .get(&origin.package)
+            .and_then(|modules| modules.get(&origin.module))
+        {
+            interfaces.insert(spelling.clone(), interface.clone());
         }
     }
 
@@ -761,9 +1039,6 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
             None
         }
     };
-
-    let package_name = manifest.name;
-    let mut interfaces = std::collections::HashMap::new();
 
     debug!("phase: Check modules");
 
@@ -781,7 +1056,7 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
         // knows both the module and its file, so `check_in_order` takes the map and
         // stamps it onto every interface it inserts as it goes.
         let (can_mods, check_errors) =
-            walker.check_in_order(&package_name, &mut interfaces, &module_files, check_module);
+            walker.check_in_order(&package.name, &mut interfaces, &module_files, check_module);
 
         if check_errors.is_empty() {
             print_status(
@@ -819,28 +1094,38 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
         }
     }
 
-    // Step 6
-    // emit interfaces and generate code
-    debug!("phase: codegen");
-
-    // Step 7: report everything we accumulated, then let that accumulation decide the
-    // return value. Rendering the errors and returning `Ok` regardless was `BUG-1`.
-    for error in &errors {
-        // A rendering failure must not mask the compilation failure we are about to
-        // return, and there is nowhere left to report it to, so it is dropped.
-        let _ = term::emit_to_write_style(
-            &mut writer.lock(),
-            &config,
-            &sources,
-            &error.as_diagnostic(),
-        );
+    if errors.len() != errors_before {
+        return None;
     }
 
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(CompilationError::Many(errors))
-    }
+    // Step 6: what this package offers whoever depends on it. Every module of `src/`
+    // except the ones `private-modules` names and every `module foreign` facade, which
+    // is package-internal by its own declaration whatever the manifest says
+    // (`docs/spec/packages.md#what-a-package-exposes`, `docs/spec/interop.md`). A name
+    // that would have reached one of those is simply absent from a dependent's map, so
+    // it fails there as a module that does not exist.
+    let facades: std::collections::HashSet<&Name> = modules
+        .iter()
+        .filter(|module| module.binding_foreign)
+        .map(|module| &module.name)
+        .collect();
+    let private: std::collections::HashSet<&Name> =
+        package.manifest.private_modules.iter().collect();
+
+    let public = interfaces
+        .into_iter()
+        // The map still holds the dependencies' interfaces seeded above; a package
+        // publishes its own modules and nothing else, which is what stops it
+        // re-exporting a dependency's module as one of its own
+        // (`docs/spec/packages.md#what-a-package-boundary-cannot-rename`).
+        .filter(|(name, interface)| {
+            interface.module_name.package == package.name
+                && !facades.contains(name)
+                && !private.contains(name)
+        })
+        .collect();
+
+    Some(public)
 }
 
 /// Take a parsed module file within the ecosystem and apply all checks to it
