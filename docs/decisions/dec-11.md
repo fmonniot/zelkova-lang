@@ -137,4 +137,4 @@ chapters gained is held only to failing to compile — the three that name `Task
 signature among them, since a type argument has to be a bare name today
 ([`LANG-9`](../tickets/lang-9.md)) and `Task (Result Failure a)` is not. That is the only
 accountability any of this carries until [`GEN-1`](../tickets/gen-1.md) emits a runtime and a
-runner runs a package's tests.
+runner runs a package's tests ([`LANG-63`](../tickets/lang-63.md)).

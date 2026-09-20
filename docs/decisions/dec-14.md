@@ -98,7 +98,8 @@ settles how a companion is found and emitted.
 ## 4 — The layout is adopted before anything can run it
 
 Nothing above runs: no wrapper is generated around an effectful call
-([`GEN-1`](../tickets/gen-1.md)), and there is no `zelkova-test` and no runner.
+([`GEN-1`](../tickets/gen-1.md)), and there is no `zelkova-test` and no runner
+([`LANG-63`](../tickets/lang-63.md)).
 
 The alternative was to place the file where decision 1's runner-up put it and move it when the
 runner arrives. That buys a sibling import for a year and costs two normative rules — an interim
@@ -127,4 +128,5 @@ a package's `src/` at all, and it is [`GEN-1`](../tickets/gen-1.md)'s.
 All of it. No compiler pass, no test and no harness observes any of the four decisions above, and
 the spec section they produced is held only to failing to parse on its modifier. A `.mjs`
 companion is not a module, so the compiler walking `tests/` does not observe it either: until a
-runner runs what is under there, the rule is kept by whoever places the next file.
+runner runs what is under there ([`LANG-63`](../tickets/lang-63.md)), the rule is kept by
+whoever places the next file.

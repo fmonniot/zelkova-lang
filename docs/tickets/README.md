@@ -311,6 +311,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-60 | task | — | closed 2026-09-16 | The typer gives `Bool` a literal type, so inside `Basics` it does not match `True` and `False` |
 | [LANG-61](lang-61.md) | task | — | open | A `git` dependency is not fetched, and nothing writes or reads `zelkova.lock` |
 | [LANG-62](lang-62.md) | task | — | open | The compiler carries no copy of `zelkova-core`, so a package has to write it in `dependencies` |
+| [LANG-63](lang-63.md) | task | — | open | Nothing declares `Test`, and nothing runs a package's tests |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
