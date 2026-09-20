@@ -1,0 +1,7 @@
+name = "package-private-module-not-found"
+version = "0.1.0"
+private-modules = ["Ghost"]
+
+[dependencies]
+
+[test-dependencies]

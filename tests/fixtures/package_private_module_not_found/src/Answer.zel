@@ -1,0 +1,6 @@
+module Answer exposing (..)
+
+type Label = Label
+
+answer : Label
+answer = Label

@@ -1047,7 +1047,7 @@ mod tests {
     use crate::compiler::canonical::*;
 
     fn module_name() -> ModuleName {
-        ModuleName::new(PackageName::new("author", "project"), "module".into())
+        ModuleName::new(PackageName::new("author-project").unwrap(), "module".into())
     }
 
     fn import(name: Name, alias: Option<Name>, exposing: parser::Exposing) -> parser::Import {
@@ -1144,7 +1144,7 @@ mod tests {
         );
 
         let interface = Interface {
-            module_name: ModuleName::new(PackageName::new("zelkova", "core"), "Maybe".into()),
+            module_name: ModuleName::new(PackageName::new("zelkova-core").unwrap(), "Maybe".into()),
             values,
             unions,
             infixes: HashMap::new(),
@@ -1254,7 +1254,7 @@ mod tests {
                 Name::new(module),
                 Interface {
                     module_name: ModuleName::new(
-                        PackageName::new("zelkova", "core"),
+                        PackageName::new("zelkova-core").unwrap(),
                         Name::new(module),
                     ),
                     values,
@@ -1311,7 +1311,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let maybe = ModuleName::new(PackageName::new("zelkova", "core"), "Maybe".into());
+        let maybe = ModuleName::new(PackageName::new("zelkova-core").unwrap(), "Maybe".into());
         let env = new_environment(&maybe, &interfaces, &vec![], true)?;
 
         let mut scalar_names: Vec<&str> = env.types.keys().map(Name::as_str).collect();
@@ -1342,7 +1342,10 @@ mod tests {
     #[test]
     fn scalar_names_are_seeded_without_reading_any_interface() -> Result<(), Vec<EnvError>> {
         let interfaces = HashMap::new();
-        let js_basics = ModuleName::new(PackageName::new("zelkova", "core"), "Js.Basics".into());
+        let js_basics = ModuleName::new(
+            PackageName::new("zelkova-core").unwrap(),
+            "Js.Basics".into(),
+        );
         let env = new_environment(&js_basics, &interfaces, &vec![], true)?;
 
         let int = env.find_type(&"Int".into()).expect("Int should be seeded");
@@ -1734,7 +1737,7 @@ mod tests {
         );
 
         let interface = Interface {
-            module_name: ModuleName::new(PackageName::new("test", "project"), "Ops".into()),
+            module_name: ModuleName::new(PackageName::new("test-project").unwrap(), "Ops".into()),
             values: HashMap::new(),
             unions: HashMap::new(),
             infixes,

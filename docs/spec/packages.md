@@ -36,11 +36,6 @@ versions a build was resolved to. It is not written by hand and says nothing the
 does not already permit; the [toolchain appendix](toolchain.md#resolution-and-zelkovalock)
 is where it is described.
 
-**Not implemented:** the compiler reads no manifest. It is handed a source directory
-directly, and the name of the package it is compiling is fixed at the call site rather than
-declared — so every module it compiles, from any directory, belongs to one package with a
-name nothing wrote down ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
-
 ## Source roots
 
 A package has two fixed source roots: `src/` and `tests/`.
@@ -140,9 +135,9 @@ module the package actually holds.
 **`test-dependencies`** is the same table for packages the tests need and the package itself
 does not; see [Tests](#tests). It is required and may likewise be empty.
 
-**Not implemented:** no part of this is read ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)).
-A manifest is not source text, so no tagged example can hold the compiler to any of it, and
-the ticket carries the obligation to rewrite this section when it lands.
+A manifest is not source text, so no tagged example in this chapter holds the compiler to
+any of the above — `compile_package` reading and validating it is exercised by
+`tests/pipeline.rs` instead.
 
 ## What a package exposes
 
@@ -589,7 +584,6 @@ carries no payload, so a program reaching `main` has said what to do with each o
 A package can be both. `main` and `private-modules` are independent, so a program may also be
 depended on as a library, and the module holding `main` may be one of the private ones.
 
-**Not implemented:** the field is not read, and nothing yet turns a package into something
-that runs ([`docs/tickets/lang-13.md`](../tickets/lang-13.md)). `zelkova-core` declares no
-`Task` either, and the block above fails earlier than that: `()` has
+**Not implemented:** nothing yet turns a package into something that runs. `zelkova-core`
+declares no `Task` either, and the block above fails earlier than that: `()` has
 [no production](types.md#the-unit-type), so it does not parse.

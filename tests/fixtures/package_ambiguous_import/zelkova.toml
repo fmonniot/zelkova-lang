@@ -1,0 +1,7 @@
+name = "package-ambiguous-import"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

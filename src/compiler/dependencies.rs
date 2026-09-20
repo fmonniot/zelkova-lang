@@ -613,7 +613,7 @@ mod tests {
     }
 
     fn assert_walker_processed_order(walker: ModuleWalker, expected: Vec<&str>) {
-        let name = crate::compiler::PackageName::new("author", "project");
+        let name = crate::compiler::PackageName::new("author-project").unwrap();
         let mut ifaces = HashMap::new();
         let module_files = HashMap::new();
         let (modules, errors): (Vec<canonical::Module>, Vec<()>) =
@@ -1019,7 +1019,7 @@ mod tests {
         let module_files = HashMap::new();
         let walker = ModuleWalker::new(&modules, &module_files).expect("no errors here");
 
-        let name = crate::compiler::PackageName::new("author", "project");
+        let name = crate::compiler::PackageName::new("author-project").unwrap();
         let mut ifaces = HashMap::new();
         let (successes, errors) =
             walker.check_in_order(&name, &mut ifaces, &module_files, dummy_check_fails_for_b);

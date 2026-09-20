@@ -4,7 +4,7 @@ fn main() {
     env_logger::init();
 
     // Will need more love than that :p
-    if let Err(err) = compiler::compile_package("std/core/src".as_ref()) {
+    if let Err(err) = compiler::compile_package("std/core".as_ref()) {
         // `compile_package` renders a diagnostic for every error it accumulated and
         // hands them back as `Many`, so re-printing those here would only repeat what
         // the user just read. Errors raised before the file database exists — package

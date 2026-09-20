@@ -1,0 +1,7 @@
+name = "package-imported-operator-ambiguity"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

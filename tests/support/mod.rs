@@ -22,7 +22,7 @@ pub fn qual(name: &str) -> QualName {
 }
 
 pub fn test_package() -> PackageName {
-    PackageName::new("test", "project")
+    PackageName::new("test-project").unwrap()
 }
 
 pub fn parse_source(source: &str) -> parser::Module {
@@ -135,7 +135,7 @@ pub fn maybe_interface() -> (Name, Interface) {
     );
 
     let interface = Interface {
-        module_name: ModuleName::new(PackageName::new("zelkova", "core"), "Maybe".into()),
+        module_name: ModuleName::new(PackageName::new("zelkova-core").unwrap(), "Maybe".into()),
         values,
         unions,
         infixes: HashMap::new(),
@@ -179,7 +179,7 @@ pub fn basics_interface() -> (Name, Interface) {
     unions.insert("Bool".into(), union("Bool", &["True", "False"]));
 
     let interface = Interface {
-        module_name: ModuleName::new(PackageName::new("zelkova", "core"), "Basics".into()),
+        module_name: ModuleName::new(PackageName::new("zelkova-core").unwrap(), "Basics".into()),
         values: HashMap::new(),
         unions,
         infixes: HashMap::new(),
@@ -206,7 +206,7 @@ pub fn char_interface() -> (Name, Interface) {
     );
 
     let interface = Interface {
-        module_name: ModuleName::new(PackageName::new("zelkova", "core"), "Char".into()),
+        module_name: ModuleName::new(PackageName::new("zelkova-core").unwrap(), "Char".into()),
         values: HashMap::new(),
         unions,
         infixes: HashMap::new(),

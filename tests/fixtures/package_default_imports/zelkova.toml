@@ -1,0 +1,7 @@
+name = "package-default-imports"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]
