@@ -1,0 +1,7 @@
+module App exposing (start)
+
+import AppTest
+
+
+start : AppTest.Fixture
+start = AppTest.fixture

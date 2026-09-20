@@ -263,7 +263,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-12](lang-12.md) | task | — | open | An annotation more general than its body is accepted and silently specialised |
 | LANG-13 | task | — | closed 2026-09-19 | A package has no manifest, and its name is hardcoded |
 | LANG-14 | task | — | closed 2026-09-20 | Nothing implements a package boundary |
-| [LANG-15](lang-15.md) | task | — | open | A package has no test root, and nothing runs a package's tests |
+| LANG-15 | task | — | closed 2026-09-20 | A package has no test root, and nothing runs a package's tests |
 | [LANG-16](lang-16.md) | task | — | open | A constructor pattern may not nest, and may not be parenthesised in a `case` branch |
 | [LANG-17](lang-17.md) | task | — | open | A constructor pattern's arity is never checked |
 | [LANG-18](lang-18.md) | task | — | open | A pattern may bind the same name more than once |

@@ -1,0 +1,7 @@
+module HiddenTest exposing (checked)
+
+import Hidden
+
+
+checked : Hidden.Secret
+checked = Hidden.secret

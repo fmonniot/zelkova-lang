@@ -1,0 +1,8 @@
+name = "package-test-dependency"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies.acme-expect]
+path = "../dep_expect"

@@ -9,12 +9,14 @@
 //! build.
 //!
 //! 1. Read the package's `zelkova.toml` manifest, and resolve the build: every package
-//!    reachable through `dependencies`, each ordered after the packages it depends on.
-//!    Steps 2 to 6 then run once per package, and each package's source root is `src/`
-//!    beside its own manifest. Before a package's modules are checked, the whole map of
-//!    module names it can import is built — its own, plus each direct dependency's public
-//!    modules under that package's namespace or, unwrapped, under their own names — and a
-//!    name two modules both answer to stops that package there.
+//!    reachable through `dependencies`, plus the root package's `test-dependencies`, each
+//!    ordered after the packages it depends on. Steps 2 to 6 then run once per package,
+//!    over the two source roots — `src/` and, for the root package when its tests were
+//!    asked for, `tests/` — beside its own manifest. Before a package's modules are
+//!    checked, the whole map of module names it can import is built — its own, plus each
+//!    direct dependency's public modules under that package's namespace or, unwrapped,
+//!    under their own names — and a name two modules both answer to stops that package
+//!    there.
 //! 2. Collect all `*.zelkova` files with their path name relatives to the root.
 //! 3. Create a `SourceFiles` mapping from `ModuleName` to `parser::Module`.
 //!     1. module names are deduced from file name
@@ -709,15 +711,52 @@ impl From<Vec<resolve::Error>> for CompilationError {
     }
 }
 
+/// Which of the root package's source roots a build compiles.
+///
+/// A package has two, `src/` and `tests/`, and only the first is ever compiled for a
+/// package that is being depended on: a dependency's `tests/` is not read, not resolved
+/// and not observable ([*Tests*](../../docs/spec/packages.md#tests)). So this is a
+/// property of the build rather than of a package, and it applies to the package the
+/// compiler was pointed at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TestRoot {
+    /// `src/` alone.
+    Skipped,
+    /// Both roots. The modules under `tests/` are checked against the package's own
+    /// modules — the private ones included — and the public modules of both dependency
+    /// maps.
+    Compiled,
+}
+
 /// Compile the package rooted at `package_dir` — a directory holding a `zelkova.toml`
 /// manifest beside a `src/` source root, per
 /// [`docs/spec/packages.md`](../../docs/spec/packages.md#what-a-package-is) — and every
 /// package it depends on.
 ///
-/// A package is compiled from source the same way whether it is the one asked for or a
+/// Its `tests/` root is not compiled; [`compile_package_with_tests`] is that build. A
+/// package is compiled from source the same way whether it is the one asked for or a
 /// dependency of it, and the whole build shares one file database and one error
 /// accumulator: an error in any package of it makes this return `Err`.
 pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
+    compile(package_dir, TestRoot::Skipped)
+}
+
+/// [`compile_package`], compiling the package's `tests/` root as well as its `src/`.
+///
+/// This is what running a package's own tests needs, and the only thing that ever reads
+/// a `tests/` root: the tests of the build's other packages are not compiled, because
+/// nothing outside a package reads its tests
+/// ([*Running a package's tests*](../../docs/spec/toolchain.md#running-a-packages-tests)).
+/// A package holding no `tests/` at all compiles exactly as it does through
+/// [`compile_package`].
+///
+/// It compiles the tests and does not run them: what makes a declaration a test is
+/// [its type](../../docs/spec/packages.md#what-a-test-is), and there is no runner.
+pub fn compile_package_with_tests(package_dir: &Path) -> Result<(), CompilationError> {
+    compile(package_dir, TestRoot::Compiled)
+}
+
+fn compile(package_dir: &Path, tests: TestRoot) -> Result<(), CompilationError> {
     // Error reporter
     let mut writer = StandardStream::stderr(ColorChoice::Auto);
     let config = codespan_reporting::term::Config {
@@ -748,11 +787,17 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
     // is created goes onto it instead, this package's source loading included.
     debug!("phase: read package manifest");
     let manifest = manifest::load(package_dir)?;
+    // The package the compiler was pointed at, which is the one whose `tests/` root
+    // this build compiles — every other package in the build is here because something
+    // depends on it, and a dependency's tests are never compiled.
+    let root_package = manifest.name.clone();
 
-    // Step 1b: resolve the build. Every package reachable from this one's
-    // `dependencies`, each ordered after the packages it depends on, so an
+    // Step 1b: resolve the build. Every package reachable from this one's two dependency
+    // maps, each ordered after the packages it depends on, so an
     // `Interface` a package needs always exists by the time that package is
-    // compiled. A dependency's own manifest is read here, so this is raised before any
+    // compiled. The union is resolved whether or not the tests are being compiled, so
+    // that one version of each package and an acyclic graph are settled once for the
+    // build. A dependency's own manifest is read here, so this is raised before any
     // source is loaded and goes back unrendered for the same reason the manifest above
     // does.
     debug!("phase: resolve the build");
@@ -784,10 +829,17 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
     for package in &build {
         debug!("phase: compile package {}", package.name);
 
+        let tests = if package.name == root_package {
+            tests
+        } else {
+            TestRoot::Skipped
+        };
+
         if let Some(public) = compile_in_build(
             package,
             &build,
             &published,
+            tests,
             &mut sources,
             &mut errors,
             &mut print_status,
@@ -829,6 +881,15 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
 /// package's: every module of every package renders against one file database, and
 /// every error from any package makes the build fail.
 ///
+/// `tests` says whether this package's `tests/` root is compiled beside its `src/`. It
+/// is [`TestRoot::Compiled`] for the package the compiler was pointed at, when the
+/// caller asked for tests, and for no other package in the build. The two roots are
+/// walked, parsed and checked separately, because they are two environments: a module
+/// under `tests/` sees the package's own modules, the private ones included, and the
+/// public modules of both dependency maps, while a module under `src/` sees neither a
+/// test module nor a `test-dependency`'s — an import naming one is a module that does
+/// not exist, the same as a private module of another package.
+///
 /// `None` means nothing here was compiled and this package publishes nothing. It
 /// always comes with at least one error already pushed onto `errors` — a dependency
 /// that did not compile, sources that could not be read, a name claimed twice, or a
@@ -846,6 +907,7 @@ fn compile_in_build(
     package: &resolve::ResolvedPackage,
     build: &[resolve::ResolvedPackage],
     published: &HashMap<PackageName, HashMap<Name, Interface>>,
+    tests: TestRoot,
     sources: &mut SourceFiles,
     errors: &mut Vec<CompilationError>,
     print_status: &mut impl FnMut(bool, String),
@@ -857,9 +919,18 @@ fn compile_in_build(
     // build and is not importable here
     // (`docs/spec/packages.md#only-direct-dependencies-are-usable`).
     //
+    // `test-dependencies` join them when this package's tests are compiled, and are
+    // resolved into the build whether or not they are
+    // (`docs/spec/packages.md#test-dependencies`). What keeps one out of `src/` is not
+    // that it is missing from the build but that its modules are held back from the
+    // environment `src/` is checked against, a few steps below.
+    //
     // Sorted so that a build reports two broken entries in the same order every run.
     let mut entries: Vec<(&PackageName, &manifest::Dependency)> =
         package.manifest.dependencies.iter().collect();
+    if tests == TestRoot::Compiled {
+        entries.extend(package.manifest.test_dependencies.iter());
+    }
     entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
 
     let mut dependencies: Vec<resolve::DependencyModules<'_>> = Vec::new();
@@ -904,32 +975,63 @@ fn compile_in_build(
     //
     // A loading error names a path and has no span, so it renders against the shared
     // database whether or not this package contributed a single file to it.
-    let file_ids = match source::load_package_sources_into(
-        &package.src_root(),
-        Some(&package.name),
-        sources,
-    ) {
+    //
+    // The two roots are walked separately, because a module's name is its path under
+    // its own root. `tests/` is walked only for the package whose tests are being
+    // compiled, and a package that holds no `tests/` directory at all is a package with
+    // no tests rather than a failure — unlike `src/`, which every package has.
+    let load_root = |root: source::SourceRoot, sources: &mut SourceFiles| {
+        source::load_package_sources_into(&package.root, root, Some(&package.name), sources)
+    };
+
+    let src_ids = match load_root(source::SourceRoot::Src, sources) {
         Ok(file_ids) => file_ids,
         Err(error) => {
             errors.push(error);
             return None;
         }
     };
+    let test_ids = match tests {
+        TestRoot::Skipped => Vec::new(),
+        TestRoot::Compiled => match load_root(source::SourceRoot::Tests, sources) {
+            Ok(file_ids) => file_ids,
+            Err(error) => {
+                errors.push(error);
+                return None;
+            }
+        },
+    };
 
     // Step 3.b
     debug!("phase: parse package sources");
     let mut modules: Vec<parser::Module> = vec![];
+    let mut test_modules: Vec<parser::Module> = vec![];
     // Which file each module was parsed from. This is the only point in the compiler
     // where both halves are in scope at once — a phase is handed a module and never
     // learns where it came from — so the mapping is recorded here and used below to
     // wrap the check errors in `InFile`, which is what lets their labels render.
     let mut module_files: HashMap<Name, SourceFileId> = HashMap::new();
+    // Every module this package declares, with the file that declared it. A name two
+    // files both answer to loses one of them in the map above, so the collision check
+    // is given this list instead, in the order the roots were walked: `src/` first.
+    let mut local_modules: Vec<resolve::LocalModule> = vec![];
     let mut parse_failures = 0;
-    for (id, file) in sources.iter().filter(|(id, _)| file_ids.contains(id)) {
+    for (id, file) in sources
+        .iter()
+        .filter(|(id, _)| src_ids.contains(id) || test_ids.contains(id))
+    {
         match parser::parse(file.file()) {
             Ok(module) => {
                 module_files.insert(module.name.clone(), id);
-                modules.push(module);
+                local_modules.push(resolve::LocalModule {
+                    name: module.name.clone(),
+                    file: file.package_path(),
+                });
+                if test_ids.contains(&id) {
+                    test_modules.push(module);
+                } else {
+                    modules.push(module);
+                }
             }
             Err(err) => {
                 parse_failures += 1;
@@ -938,15 +1040,15 @@ fn compile_in_build(
         }
     }
 
+    let parsed = modules.len() + test_modules.len();
     if parse_failures == 0 {
-        print_status(true, format!("parsed {} modules", modules.len()));
+        print_status(true, format!("parsed {} modules", parsed));
     } else {
         print_status(
             false,
             format!(
                 "parsed {} modules, {} failed to parse",
-                modules.len(),
-                parse_failures
+                parsed, parse_failures
             ),
         );
     }
@@ -959,6 +1061,11 @@ fn compile_in_build(
     // are parsed, which is why this lives here rather than inside `manifest::load` — every
     // other manifest error is known from the manifest text alone. What the list is *for*
     // is a few lines down: a module it names is kept out of what this package publishes.
+    //
+    // It is checked against `src/` alone. The list says what the package does not ship,
+    // and a test module is not shipped by anything, so naming one there names a module
+    // this package does not hold — the same answer whether or not the tests are being
+    // compiled.
     //
     // A file that failed to parse contributes no module, so with any parse failure the list
     // of modules the package holds is known to be short. Checking against it then blames the
@@ -994,7 +1101,11 @@ fn compile_in_build(
     // relative path alone, so this could run one step earlier, against the walk; the
     // reason it does not is that the parsed header is what every other phase calls a
     // module by.
-    let local_modules: Vec<Name> = modules.iter().map(|m| m.name.clone()).collect();
+    //
+    // Both roots are in that list, because they share one set of names: `src/Model.zel`
+    // and `tests/Model.zel` are both `Model`, and that is the same collision as two
+    // modules of one root answering to one name
+    // (`docs/spec/packages.md#source-roots`).
     let visible = match resolve::visible_modules(package, &local_modules, &dependencies) {
         Ok(visible) => visible,
         // As with the uncompiled-dependency arm above, the diagnostic is the whole
@@ -1012,6 +1123,15 @@ fn compile_in_build(
     // own name, never the spelling — which is what keeps two packages that spell one
     // dependency differently agreeing about every type in it.
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
+    // A `test-dependency`'s modules are available to `tests/` and to nothing else, so
+    // they are held back here and added to the environment for the tests pass alone. A
+    // module of `src/` naming one finds no module of that name.
+    let mut test_interfaces: HashMap<Name, Interface> = HashMap::new();
+    let test_only: std::collections::HashSet<&PackageName> = match tests {
+        TestRoot::Skipped => std::collections::HashSet::new(),
+        TestRoot::Compiled => package.manifest.test_dependencies.keys().collect(),
+    };
+
     for (spelling, origin) in &visible {
         if origin.package == package.name {
             // This package's own modules are inserted by `check_in_order` as each one
@@ -1023,74 +1143,119 @@ fn compile_in_build(
             .get(&origin.package)
             .and_then(|modules| modules.get(&origin.module))
         {
-            interfaces.insert(spelling.clone(), interface.clone());
+            if test_only.contains(&origin.package) {
+                test_interfaces.insert(spelling.clone(), interface.clone());
+            } else {
+                interfaces.insert(spelling.clone(), interface.clone());
+            }
         }
     }
 
-    debug!("phase: Build module dependency graph");
-    // Step 4
-    // A cycle leaves us with no order to check the modules in, so the check phase is
-    // skipped — but the error goes through the same reporting path as the others
-    // instead of returning early unrendered.
-    let walker = match dependencies::ModuleWalker::new(&modules, &module_files) {
-        Ok(walker) => Some(walker),
-        Err(err) => {
-            errors.push(err.into());
-            None
+    // Whether this package declares one of the eight default imports, and so receives
+    // none of them. It is a question about the package, and each root holds only part
+    // of one, so it is asked here — over both — rather than by each root's walker.
+    let package_declares_a_default = default_imports::declares_a_default(
+        modules.iter().chain(test_modules.iter()).map(|m| &m.name),
+    );
+
+    // Steps 4 and 5, once per source root. Two passes rather than one walk over both,
+    // because the two roots are two environments: `src/` is checked knowing nothing of
+    // `tests/`, and `tests/` is checked against everything `src/` published to this
+    // package — the private modules included, since `interfaces` holds every module of
+    // the package and the `private-modules` filter applies only to what is published.
+    let mut roots: Vec<(source::SourceRoot, &[parser::Module])> =
+        vec![(source::SourceRoot::Src, &modules)];
+    if tests == TestRoot::Compiled {
+        roots.push((source::SourceRoot::Tests, &test_modules));
+    }
+
+    for (root, root_modules) in roots {
+        if root == source::SourceRoot::Tests {
+            // A package whose own modules did not check cannot say anything true about
+            // its tests: every one of them would be blamed for a type the package never
+            // managed to declare.
+            if errors.len() != errors_before {
+                break;
+            }
+
+            interfaces.extend(std::mem::take(&mut test_interfaces));
         }
-    };
 
-    debug!("phase: Check modules");
+        debug!("phase: Build module dependency graph ({})", root);
+        // A cycle leaves us with no order to check the modules in, so the check phase is
+        // skipped — but the error goes through the same reporting path as the others
+        // instead of returning early unrendered.
+        let walker = match dependencies::ModuleWalker::new_for_root(
+            root_modules,
+            &module_files,
+            package_declares_a_default,
+        ) {
+            Ok(walker) => Some(walker),
+            Err(err) => {
+                errors.push(err.into());
+                None
+            }
+        };
 
-    // Step 5: Follow graph and call check_module on each
-    if let Some(walker) = walker {
-        // `check_in_order` checks every module regardless of earlier failures and
-        // hands back both halves: the modules that checked, and the errors from the
-        // ones that didn't (see `docs/tickets/README.md`, `BUG-2`). Both are reported
-        // here, and the errors still flow into `errors` below so a failing module
-        // keeps making this function return `Err` — only the previously-discarded
-        // successes are new.
-        //
-        // `module_files` is also how each checked module's `Interface` learns which
-        // file it came from (`Interface::file`, `ERR-5`): this is the one place that
-        // knows both the module and its file, so `check_in_order` takes the map and
-        // stamps it onto every interface it inserts as it goes.
-        let (can_mods, check_errors) =
-            walker.check_in_order(&package.name, &mut interfaces, &module_files, check_module);
+        debug!("phase: Check modules ({})", root);
 
-        if check_errors.is_empty() {
-            print_status(
-                true,
-                format!(
-                    "checked modules: {:#?}",
-                    can_mods
-                        .iter()
-                        .map(|m| m.name.as_human_string())
-                        .collect::<Vec<_>>()
-                ),
-            );
-        } else {
-            print_status(
-                false,
-                format!(
-                    "checked modules: {:#?} ({} failed to check)",
-                    can_mods
-                        .iter()
-                        .map(|m| m.name.as_human_string())
-                        .collect::<Vec<_>>(),
-                    check_errors.len()
-                ),
-            );
-            // Tag each error with the file its module was read from, so the spans its
-            // phase produced have something to point into. A module with no entry —
-            // there is none today, since only a module that parsed can be checked —
-            // stays unwrapped and renders exactly as it did before spans existed.
-            errors.extend(check_errors.into_iter().map(|error| {
-                match error.module().and_then(|name| module_files.get(name)) {
-                    Some(id) => CompilationError::InFile(Box::new(error), *id),
-                    None => error,
-                }
-            }));
+        // Step 5: Follow graph and call check_module on each
+        if let Some(walker) = walker {
+            // `check_in_order` checks every module regardless of earlier failures and
+            // hands back both halves: the modules that checked, and the errors from the
+            // ones that didn't (see `docs/tickets/README.md`, `BUG-2`). Both are reported
+            // here, and the errors still flow into `errors` below so a failing module
+            // keeps making this function return `Err` — only the previously-discarded
+            // successes are new.
+            //
+            // `module_files` is also how each checked module's `Interface` learns which
+            // file it came from (`Interface::file`, `ERR-5`): this is the one place that
+            // knows both the module and its file, so `check_in_order` takes the map and
+            // stamps it onto every interface it inserts as it goes.
+            let (can_mods, check_errors) =
+                walker.check_in_order(&package.name, &mut interfaces, &module_files, check_module);
+
+            let what = match root {
+                source::SourceRoot::Src => "modules",
+                source::SourceRoot::Tests => "test modules",
+            };
+
+            if check_errors.is_empty() {
+                print_status(
+                    true,
+                    format!(
+                        "checked {}: {:#?}",
+                        what,
+                        can_mods
+                            .iter()
+                            .map(|m| m.name.as_human_string())
+                            .collect::<Vec<_>>()
+                    ),
+                );
+            } else {
+                print_status(
+                    false,
+                    format!(
+                        "checked {}: {:#?} ({} failed to check)",
+                        what,
+                        can_mods
+                            .iter()
+                            .map(|m| m.name.as_human_string())
+                            .collect::<Vec<_>>(),
+                        check_errors.len()
+                    ),
+                );
+                // Tag each error with the file its module was read from, so the spans its
+                // phase produced have something to point into. A module with no entry —
+                // there is none today, since only a module that parsed can be checked —
+                // stays unwrapped and renders exactly as it did before spans existed.
+                errors.extend(check_errors.into_iter().map(|error| {
+                    match error.module().and_then(|name| module_files.get(name)) {
+                        Some(id) => CompilationError::InFile(Box::new(error), *id),
+                        None => error,
+                    }
+                }));
+            }
         }
     }
 
@@ -1111,6 +1276,10 @@ fn compile_in_build(
         .collect();
     let private: std::collections::HashSet<&Name> =
         package.manifest.private_modules.iter().collect();
+    // A module of `tests/` is not part of what the package ships, and nothing outside
+    // the package can observe that it exists at all.
+    let test_module_names: std::collections::HashSet<&Name> =
+        test_modules.iter().map(|module| &module.name).collect();
 
     let public = interfaces
         .into_iter()
@@ -1122,6 +1291,7 @@ fn compile_in_build(
             interface.module_name.package == package.name
                 && !facades.contains(name)
                 && !private.contains(name)
+                && !test_module_names.contains(name)
         })
         .collect();
 

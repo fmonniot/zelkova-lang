@@ -1,0 +1,9 @@
+# The module under `tests/` does not check. It is a failure when this package's tests
+# are compiled, and nothing at all when they are not.
+name = "package-broken-test"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

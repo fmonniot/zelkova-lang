@@ -97,8 +97,7 @@ settles how a companion is found and emitted.
 
 ## 4 — The layout is adopted before anything can run it
 
-Nothing above runs: `tests/` is not a root the compiler knows
-([`LANG-15`](../tickets/lang-15.md)), no wrapper is generated around an effectful call
+Nothing above runs: no wrapper is generated around an effectful call
 ([`GEN-1`](../tickets/gen-1.md)), and there is no `zelkova-test` and no runner.
 
 The alternative was to place the file where decision 1's runner-up put it and move it when the
@@ -126,5 +125,6 @@ a package's `src/` at all, and it is [`GEN-1`](../tickets/gen-1.md)'s.
 ## What nothing checks
 
 All of it. No compiler pass, no test and no harness observes any of the four decisions above, and
-the spec section they produced is held only to failing to parse on its modifier. Until
-`LANG-15` gives `tests/` a meaning, the rule is kept by whoever places the next file.
+the spec section they produced is held only to failing to parse on its modifier. A `.mjs`
+companion is not a module, so the compiler walking `tests/` does not observe it either: until a
+runner runs what is under there, the rule is kept by whoever places the next file.

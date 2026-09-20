@@ -20,10 +20,11 @@ use zelkova_lang::compiler::manifest;
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::resolve;
 use zelkova_lang::compiler::source::{
-    load_package_sources, load_package_sources_into, SourceFiles,
+    load_package_sources, load_package_sources_into, SourceFiles, SourceRoot,
 };
 use zelkova_lang::compiler::{
-    check_module, compile_package, parser, CompilationError, Interface, PackageName, PhaseError,
+    check_module, compile_package, compile_package_with_tests, parser, CompilationError, Interface,
+    PackageName, PhaseError,
 };
 
 mod support;
@@ -73,17 +74,23 @@ fn fixture_package(name: &str) -> std::path::PathBuf {
     Path::new(&manifest).join("tests/fixtures").join(name)
 }
 
-/// The `.zel` modules `compile_package` would pick up under `root`, sorted.
+/// The `.zel` modules `compile_package` would pick up under one source root of the
+/// package at `package_dir`, sorted, each named as a diagnostic names it.
 ///
 /// An *existing* root holding no `.zel` files at all still loads as zero sources
 /// and zero errors, indistinguishable from a package with no modules. Any test
 /// that reads a green `compile_package` as evidence the modules were fine has to
-/// establish first that there were modules. (A root that doesn't exist is a
+/// establish first that there were modules. (A `src/` that doesn't exist is a
 /// different case: `load_package_sources` reports that as an error — see
-/// `BUG-21` in `docs/tickets/README.md`.)
-fn module_names(root: &Path) -> Vec<String> {
-    let sources = load_package_sources(root)
-        .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
+/// `BUG-21` in `docs/tickets/README.md`. A missing `tests/` is neither: it is a
+/// package with no tests.)
+fn module_names(package_dir: &Path, root: SourceRoot) -> Vec<String> {
+    let sources = load_package_sources(package_dir, root).unwrap_or_else(|e| {
+        panic!(
+            "failed to load {} sources from {:?}: {:?}",
+            root, package_dir, e
+        )
+    });
     let mut names: Vec<String> = sources
         .iter()
         .map(|(_, file)| file.file().name().clone())
@@ -356,8 +363,8 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
     // nothing. It does not change what this test checks: one broken module is
     // still exactly one error.
     assert_eq!(
-        module_names(&root.join("src")),
-        vec!["Broken.zel", "Fine.zel"]
+        module_names(&root, SourceRoot::Src),
+        vec!["src/Broken.zel", "src/Fine.zel"]
     );
 
     let result = compile_package(&root);
@@ -403,7 +410,7 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
 #[test]
 fn check_in_order_keeps_passing_siblings_with_the_real_checker() {
     let root = fixture_package("package_canonicalize_fails");
-    let sources = load_package_sources(&root.join("src"))
+    let sources = load_package_sources(&root, SourceRoot::Src)
         .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
 
     let modules: Vec<parser::Module> = sources
@@ -522,19 +529,17 @@ fn stdlib_bitwise_compiles() {
 /// fail this list; extend it, do not weaken it.
 #[test]
 fn stdlib_package_compiles() {
-    let src = std_src();
-
     assert_eq!(
-        module_names(&src),
+        module_names(&std_package_root(), SourceRoot::Src),
         vec![
-            "Basics.zel",
-            "Bitwise.zel",
-            "Js/Basics.zel",
-            "Js/Bitwise.zel",
-            "Js/Utils.zel",
-            "Maybe.zel",
-            "Result.zel",
-            "Tuple.zel",
+            "src/Basics.zel",
+            "src/Bitwise.zel",
+            "src/Js/Basics.zel",
+            "src/Js/Bitwise.zel",
+            "src/Js/Utils.zel",
+            "src/Maybe.zel",
+            "src/Result.zel",
+            "src/Tuple.zel",
         ]
     );
 
@@ -673,8 +678,8 @@ fn canonical_error_renders_as_prose_naming_the_missing_module() {
 fn type_error_labels_the_expression_that_disagrees() {
     let root = fixture_package("package_type_error");
     assert_eq!(
-        module_names(&root.join("src")),
-        vec!["Basics.zel", "Mismatch.zel"]
+        module_names(&root, SourceRoot::Src),
+        vec!["src/Basics.zel", "src/Mismatch.zel"]
     );
 
     let source = std::fs::read_to_string(root.join("src").join("Mismatch.zel"))
@@ -788,7 +793,10 @@ fn missing_import_labels_the_import_line() {
 #[test]
 fn unknown_variable_labels_the_identifier() {
     let root = fixture_package("package_unknown_variable");
-    assert_eq!(module_names(&root.join("src")), vec!["Unknown.zel"]);
+    assert_eq!(
+        module_names(&root, SourceRoot::Src),
+        vec!["src/Unknown.zel"]
+    );
 
     let source =
         std::fs::read_to_string(root.join("src").join("Unknown.zel")).expect("fixture is readable");
@@ -846,7 +854,7 @@ fn unknown_variable_labels_the_identifier() {
 #[test]
 fn unknown_constructor_labels_the_pattern() {
     let root = fixture_package("package_unknown_constructor");
-    assert_eq!(module_names(&root.join("src")), vec!["Ctor.zel"]);
+    assert_eq!(module_names(&root, SourceRoot::Src), vec!["src/Ctor.zel"]);
 
     let source =
         std::fs::read_to_string(root.join("src").join("Ctor.zel")).expect("fixture is readable");
@@ -895,7 +903,10 @@ fn unknown_constructor_labels_the_pattern() {
 #[test]
 fn grouped_canonical_error_keeps_every_label() {
     let root = fixture_package("package_two_unknown_constructors");
-    assert_eq!(module_names(&root.join("src")), vec!["Grouped.zel"]);
+    assert_eq!(
+        module_names(&root, SourceRoot::Src),
+        vec!["src/Grouped.zel"]
+    );
 
     let source =
         std::fs::read_to_string(root.join("src").join("Grouped.zel")).expect("fixture is readable");
@@ -969,7 +980,10 @@ fn grouped_canonical_error_keeps_every_label() {
 #[test]
 fn case_bodied_declaration_label_stops_at_the_case() {
     let root = fixture_package("package_case_type_error");
-    assert_eq!(module_names(&root.join("src")), vec!["CaseBody.zel"]);
+    assert_eq!(
+        module_names(&root, SourceRoot::Src),
+        vec!["src/CaseBody.zel"]
+    );
 
     let source = std::fs::read_to_string(root.join("src").join("CaseBody.zel"))
         .expect("fixture is readable");
@@ -1058,8 +1072,8 @@ fn case_bodied_declaration_label_stops_at_the_case() {
 fn ambiguous_import_labels_point_into_each_defining_module() {
     let root = fixture_package("package_ambiguous_import");
     assert_eq!(
-        module_names(&root.join("src")),
-        vec!["A.zel", "B.zel", "Main.zel"]
+        module_names(&root, SourceRoot::Src),
+        vec!["src/A.zel", "src/B.zel", "src/Main.zel"]
     );
 
     let a_source =
@@ -1256,8 +1270,8 @@ fn ambiguous_variable_note_calls_out_the_implicit_default_import() {
 fn ambiguous_imported_operators_are_labeled_in_their_own_module() {
     let root = fixture_package("package_imported_operator_ambiguity");
     assert_eq!(
-        module_names(&root.join("src")),
-        vec!["Basics.zel", "Ops.zel", "User.zel"]
+        module_names(&root, SourceRoot::Src),
+        vec!["src/Basics.zel", "src/Ops.zel", "src/User.zel"]
     );
 
     let ops_source =
@@ -1418,8 +1432,8 @@ fn cross_module_labels_render_without_the_checked_module_file() {
 fn dependency_cycle_labels_each_import() {
     let root = fixture_package("package_dependency_cycle");
     assert_eq!(
-        module_names(&root.join("src")),
-        vec!["CycleA.zel", "CycleB.zel"]
+        module_names(&root, SourceRoot::Src),
+        vec!["src/CycleA.zel", "src/CycleB.zel"]
     );
 
     let a_source =
@@ -1509,7 +1523,10 @@ fn dependency_cycle_labels_each_import() {
 #[test]
 fn missing_exposed_import_name_labels_the_name_alone() {
     let root = fixture_package("package_exposing_missing_value");
-    assert_eq!(module_names(&root.join("src")), vec!["Lib.zel", "Main.zel"]);
+    assert_eq!(
+        module_names(&root, SourceRoot::Src),
+        vec!["src/Lib.zel", "src/Main.zel"]
+    );
 
     let source =
         std::fs::read_to_string(root.join("src").join("Main.zel")).expect("fixture is readable");
@@ -1567,7 +1584,7 @@ fn missing_exposed_import_name_labels_the_name_alone() {
 #[test]
 fn export_not_found_labels_the_exposed_name_alone() {
     let root = fixture_package("package_export_not_found");
-    assert_eq!(module_names(&root.join("src")), vec!["Main.zel"]);
+    assert_eq!(module_names(&root, SourceRoot::Src), vec!["src/Main.zel"]);
 
     let source =
         std::fs::read_to_string(root.join("src").join("Main.zel")).expect("fixture is readable");
@@ -2208,7 +2225,7 @@ fn compile_package_reports_an_invalid_package_name() {
 #[test]
 fn compile_package_reports_a_private_module_that_does_not_exist() {
     let root = fixture_package("package_private_module_not_found");
-    assert_eq!(module_names(&root.join("src")), vec!["Answer.zel"]);
+    assert_eq!(module_names(&root, SourceRoot::Src), vec!["src/Answer.zel"]);
 
     let error = compile_package(&root)
         .expect_err("a `private-modules` entry naming no real module must not compile as success");
@@ -2253,7 +2270,7 @@ fn compile_package_reports_a_private_module_that_does_not_exist() {
 #[test]
 fn a_parse_failure_does_not_also_report_its_module_as_unheld() {
     let root = fixture_package("package_private_module_parse_failure");
-    assert_eq!(module_names(&root.join("src")), vec!["Broken.zel"]);
+    assert_eq!(module_names(&root, SourceRoot::Src), vec!["src/Broken.zel"]);
 
     let error = compile_package(&root).expect_err("`Broken.zel` does not parse");
 
@@ -2283,7 +2300,7 @@ fn a_parse_failure_does_not_also_report_its_module_as_unheld() {
 /// `check_in_order_keeps_passing_siblings_with_the_real_checker` uses.
 fn check_fixture(name: &str) -> Vec<canonical::Module> {
     let root = fixture_package(name);
-    let sources = load_package_sources(&root.join("src"))
+    let sources = load_package_sources(&root, SourceRoot::Src)
         .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
     let modules: Vec<parser::Module> = sources
         .iter()
@@ -2876,8 +2893,8 @@ fn a_dependencys_module_is_imported_under_its_namespace() {
     let root = fixture_package("package_namespaced_dependency");
 
     assert_eq!(
-        module_names(&root.join("src")),
-        vec!["App.zel".to_string()],
+        module_names(&root, SourceRoot::Src),
+        vec!["src/App.zel".to_string()],
         "the fixture must hold the module this test is about"
     );
 
@@ -2947,8 +2964,8 @@ fn an_unwrapped_dependency_is_named_by_its_own_names() {
     let root = fixture_package("package_unwrapped_dependency");
 
     assert_eq!(
-        module_names(&root.join("src")),
-        vec!["App.zel".to_string()],
+        module_names(&root, SourceRoot::Src),
+        vec!["src/App.zel".to_string()],
         "the fixture must hold the module this test is about"
     );
 
@@ -3379,13 +3396,15 @@ fn a_file_in_a_shared_database_is_named_by_its_package() {
 
     let mut sources = SourceFiles::new();
     load_package_sources_into(
-        &fixture_package("dep_widgets").join("src"),
+        &fixture_package("dep_widgets"),
+        SourceRoot::Src,
         Some(&widgets),
         &mut sources,
     )
     .expect("the fixture loads");
     load_package_sources_into(
-        &fixture_package("package_module_name_collision").join("src"),
+        &fixture_package("package_module_name_collision"),
+        SourceRoot::Src,
         Some(&collision),
         &mut sources,
     )
@@ -3404,13 +3423,259 @@ fn a_file_in_a_shared_database_is_named_by_its_package() {
         names
     );
     assert!(
-        names.contains(&"acme-widgets:Size.zel".to_string()),
+        names.contains(&"acme-widgets:src/Size.zel".to_string()),
         "a file has to name the package it belongs to, got {:?}",
         names
     );
     assert!(
-        names.contains(&"package-module-name-collision:Size.zel".to_string()),
+        names.contains(&"package-module-name-collision:src/Size.zel".to_string()),
         "a file has to name the package it belongs to, got {:?}",
         names
+    );
+}
+
+// ── The second source root ───────────────────────────────────────────────────
+
+/// Every diagnostic message a failed `compile_package` produced, phase errors
+/// included.
+fn diagnostic_messages(error: &CompilationError) -> Vec<String> {
+    accumulated(error)
+        .into_iter()
+        .map(|error| unwrap_in_file(error).as_diagnostic().message)
+        .collect()
+}
+
+/// `LANG-15`: a module under `tests/` may import any module of its own package, the
+/// ones `private-modules` names included. A package whose internals could only be
+/// tested through its public surface would be pushed into exposing them.
+///
+/// The fixture's `Hidden` is private and `tests/HiddenTest.zel` annotates and calls
+/// through it, so the name has to resolve as a module, as a type and as a value.
+///
+/// Mutation-checked by giving the tests pass an environment built from what the
+/// package *publishes* rather than the live `interfaces` map `compile_in_build`
+/// carries over from `src/` — the private module then reaches the test module no
+/// longer and this goes red. That the tests root is compiled at all is pinned
+/// separately, by
+/// [`a_test_module_that_does_not_check_fails_only_when_tests_are_compiled`]: a
+/// compiler that never compiles `tests/` passes this test.
+#[test]
+fn a_test_module_imports_a_private_module_of_its_own_package() {
+    let root = fixture_package("package_test_root");
+
+    assert_eq!(
+        module_names(&root, SourceRoot::Src),
+        vec!["src/Hidden.zel".to_string()],
+        "the fixture must hold the private module this test is about"
+    );
+    assert_eq!(
+        module_names(&root, SourceRoot::Tests),
+        vec!["tests/HiddenTest.zel".to_string()],
+        "the fixture must hold the test module this test is about"
+    );
+
+    let result = compile_package_with_tests(&root);
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+/// Nothing may import a test module, and a `src/` module naming one fails as a module
+/// that does not exist — the same answer a private module of another package gives,
+/// and for the same reason: the name is absent from the map that `src/` is checked
+/// against.
+///
+/// Mutation-checked by seeding the tests root's modules into the `src/` pass (walking
+/// both roots in one `check_in_order` call): `AppTest` then resolves and the fixture
+/// compiles.
+#[test]
+fn a_src_module_may_not_import_a_test_module() {
+    let root = fixture_package("package_src_imports_test");
+
+    assert_eq!(
+        module_names(&root, SourceRoot::Tests),
+        vec!["tests/AppTest.zel".to_string()],
+        "the fixture must hold the test module `App` reaches for"
+    );
+
+    let error = compile_package_with_tests(&root)
+        .expect_err("a module of `src/` must not reach a module of `tests/`");
+
+    let messages = diagnostic_messages(&error);
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("cannot find a module named `AppTest`")),
+        "expected the import to fail as an unknown module, got {:?}",
+        messages
+    );
+}
+
+/// The two roots share one set of module names: `src/Model.zel` and `tests/Model.zel`
+/// are both `Model`, which is the same error as two modules of one root answering to
+/// one name. Both files are named, because the package name alone cannot say which of
+/// the two to change.
+///
+/// Mutation-checked by giving `visible_modules` the `src/` modules alone: the
+/// collision disappears and the fixture compiles.
+#[test]
+fn one_module_name_under_both_roots_names_both_files() {
+    let root = fixture_package("package_name_under_both_roots");
+
+    let error =
+        compile_package_with_tests(&root).expect_err("`Model` is declared under both source roots");
+
+    let errors = resolution_errors(&error);
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+    assert!(
+        matches!(errors[0], resolve::Error::ModuleNameCollision { .. }),
+        "expected a module name collision, got {:?}",
+        errors[0]
+    );
+
+    let notes = errors[0].notes();
+    assert!(
+        notes.iter().any(|n| n.contains("src/Model.zel"))
+            && notes.iter().any(|n| n.contains("tests/Model.zel")),
+        "both files must be named, got {:?}",
+        notes
+    );
+}
+
+/// A package name belongs to at most one of the two dependency maps. Writing it in
+/// both is rejected when the manifest is read, before any source is loaded.
+///
+/// Mutation-checked by dropping the `DependencyListedTwice` loop in `manifest::load`:
+/// the fixture then compiles, since both entries name the same directory.
+#[test]
+fn a_package_named_in_both_dependency_maps_is_rejected() {
+    let root = fixture_package("package_dependency_listed_twice");
+
+    let error = compile_package(&root)
+        .expect_err("`acme-widgets` is written in both `dependencies` and `test-dependencies`");
+
+    let CompilationError::Manifest(errors) = &error else {
+        panic!(
+            "expected Err(CompilationError::Manifest(..)), got {:?}",
+            error
+        );
+    };
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+    assert!(
+        matches!(
+            errors[0],
+            manifest::ManifestError::DependencyListedTwice { .. }
+        ),
+        "expected DependencyListedTwice, got {:?}",
+        errors[0]
+    );
+    assert!(
+        errors[0].message().contains("acme-widgets"),
+        "the package written twice must be named, got {:?}",
+        errors[0].message()
+    );
+}
+
+/// A package written in `test-dependencies` is available to `tests/`: the fixture's
+/// test module annotates and calls through `AcmeExpect.Expect`, which is a module of
+/// a package `dependencies` does not mention.
+///
+/// Mutation-checked by dropping the `test-dependencies` arm of `compile_in_build`'s
+/// dependency entries: `AcmeExpect.Expect` then names nothing and this goes red while
+/// its counterpart below stays green.
+#[test]
+fn a_test_dependency_reaches_the_tests_root() {
+    let root = fixture_package("package_test_dependency");
+
+    let result = compile_package_with_tests(&root);
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+/// …and to nothing else. The same import written in `src/` reaches no module, because
+/// a `test-dependency`'s modules are held out of the environment `src/` is checked
+/// against.
+///
+/// Mutation-checked by seeding the test-dependencies' interfaces into `interfaces`
+/// rather than `test_interfaces` in `compile_in_build`: the fixture then compiles.
+#[test]
+fn a_test_dependency_does_not_reach_the_src_root() {
+    let root = fixture_package("package_src_uses_test_dependency");
+
+    let error = compile_package_with_tests(&root)
+        .expect_err("a test-dependency is not importable from `src/`");
+
+    let messages = diagnostic_messages(&error);
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("cannot find a module named `AcmeExpect.Expect`")),
+        "expected the import to fail as an unknown module, got {:?}",
+        messages
+    );
+}
+
+/// A package that holds no tests compiles as one. `package_checks` has no `tests/`
+/// directory at all and `std/core` has one holding a companion `.mjs` and no `.zel`,
+/// so between them both ways of holding no test modules are covered — and neither is
+/// the missing-source-root failure a package with no `src/` is.
+///
+/// Mutation-checked by dropping the `SourceRoot::Tests` early return in
+/// `load_package_sources_into`: `package_checks` then fails with `tests/` reported as
+/// a path that does not exist.
+#[test]
+fn a_package_with_no_test_modules_compiles_with_its_tests() {
+    let no_root = fixture_package("package_checks");
+    assert!(
+        !no_root.join("tests").exists(),
+        "the fixture must have no `tests/` for this test to mean anything"
+    );
+
+    let result = compile_package_with_tests(&no_root);
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    let core = std_package_root();
+    assert!(
+        core.join("tests").exists(),
+        "`std/core` must have a `tests/` for this half to mean anything"
+    );
+    assert_eq!(
+        module_names(&core, SourceRoot::Tests),
+        Vec::<String>::new(),
+        "`std/core/tests` holds a companion and no module"
+    );
+
+    let result = compile_package_with_tests(&core);
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+/// A module under `tests/` is checked like any other, and a failure in one is a
+/// failure of the build that compiled it. A build that did not ask for the tests root
+/// never reads the same file.
+///
+/// The two halves are one test because either alone can be satisfied by doing
+/// nothing: a compiler that never compiles `tests/` passes the second, and one that
+/// always does passes the first.
+///
+/// Mutation-checked by dropping the `TestRoot::Compiled` guard on the `tests/` entry
+/// of `compile_in_build`'s `roots` list, which turns the first half green-to-red in
+/// reverse — the build then fails whether or not its tests were asked for, and the
+/// `compile_package` assertion below goes red.
+#[test]
+fn a_test_module_that_does_not_check_fails_only_when_tests_are_compiled() {
+    let root = fixture_package("package_broken_test");
+
+    let error = compile_package_with_tests(&root)
+        .expect_err("`AppTest` names a value `App` does not declare");
+
+    let messages = diagnostic_messages(&error);
+    assert!(
+        messages.iter().any(|m| m.contains("[AppTest]")),
+        "the failing test module must be named, got {:?}",
+        messages
+    );
+
+    let result = compile_package(&root);
+    assert!(
+        result.is_ok(),
+        "a build that did not ask for the tests root must not read it, got {:?}",
+        result
     );
 }

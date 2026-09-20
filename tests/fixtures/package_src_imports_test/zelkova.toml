@@ -1,0 +1,9 @@
+# `App` imports the module under `tests/`. Nothing may import a test module, and a
+# name that reaches one reaches nothing at all.
+name = "package-src-imports-test"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

@@ -558,8 +558,8 @@ The rest of the resolution rules are unchanged and apply to the union of the two
 graph stays acyclic, at most one version of each package is in the build, only direct
 dependencies are usable, and `zelkova.lock` records what was chosen for both.
 
-**Not implemented:** the compiler has one source root and no notion of a test at all
-([`docs/tickets/lang-15.md`](../tickets/lang-15.md)), and there is no `zelkova-test` package.
+**Not implemented:** there is no `zelkova-test` package, so nothing declares the `Test` a
+test's type has to be, and no runner finds or runs the values that have it.
 
 ## Programs
 

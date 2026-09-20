@@ -10,11 +10,9 @@
 //! the package's files, so [`load`] returns the names as written.
 //!
 //! Reading a manifest is where a build starts and not what it is:
-//! [`resolve`](super::resolve) is what follows `dependencies` to the other packages and
-//! decides what each module is called in each of them. `test-dependencies` is validated here
-//! and resolved nowhere, since no test root runs anything
-//! ([`LANG-15`](../../../docs/tickets/README.md)), and `main` is validated and never read,
-//! since there is no `Task` for a program's entry point to hold.
+//! [`resolve`](super::resolve) is what follows both dependency maps to the other packages
+//! and decides what each module is called in each of them. `main` is validated here and read
+//! nowhere, since there is no `Task` for a program's entry point to hold.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

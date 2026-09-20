@@ -1,0 +1,7 @@
+module App exposing (start)
+
+import AcmeExpect.Expect
+
+
+start : AcmeExpect.Expect.Assertion
+start = AcmeExpect.Expect.pass

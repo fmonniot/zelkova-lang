@@ -34,10 +34,10 @@ pub struct ModuleWalker<'a> {
     modules: Vec<&'a Module>,
     /// Whether the package these modules belong to declares one of the eight
     /// default imports ([`default_imports::declares_a_default`](crate::compiler::default_imports::declares_a_default)),
-    /// computed once here from the same module names `add_default_import_edges`
-    /// consults for the import graph. `check_in_order` hands this to every
-    /// `check` call so `implicit_imports` is asked the same question, rather than
-    /// each module recomputing it from a module list it never sees.
+    /// asked once of the package and used for both the import graph
+    /// (`add_default_import_edges`) and every `check` call `check_in_order` makes, so
+    /// `implicit_imports` is asked the same question rather than each module
+    /// recomputing it from a module list it never sees.
     declares_a_default: bool,
 }
 
@@ -342,8 +342,16 @@ fn build_cycle(
 /// exists, and nothing but this graph decides which module is checked first — so
 /// without these edges whether `1 + 2` resolved would come down to the order the
 /// source files happened to load in.
-fn add_default_import_edges(graph: &mut DiGraph<&Module, ()>, names: &HashMap<&Name, NodeIndex>) {
-    if crate::compiler::default_imports::declares_a_default(names.keys().copied()) {
+///
+/// `package_declares_a_default` is the package's own answer, taken from every module of
+/// both its source roots: a package that declares one of the eight receives none of
+/// them, and `names` here is one root's worth of modules rather than the package's.
+fn add_default_import_edges(
+    graph: &mut DiGraph<&Module, ()>,
+    names: &HashMap<&Name, NodeIndex>,
+    package_declares_a_default: bool,
+) {
+    if package_declares_a_default {
         return;
     }
 
@@ -389,6 +397,33 @@ impl<'a> ModuleWalker<'a> {
         modules: &'a [Module],
         module_files: &HashMap<Name, SourceFileId>,
     ) -> Result<ModuleWalker<'a>, Error> {
+        // Whether the package declares a default is a question about the package, and
+        // this is the answer for a caller whose `modules` are the whole of one.
+        let declares_a_default =
+            crate::compiler::default_imports::declares_a_default(modules.iter().map(|m| &m.name));
+
+        ModuleWalker::new_for_root(modules, module_files, declares_a_default)
+    }
+
+    /// A walker over the modules of *one* of a package's two source roots.
+    ///
+    /// A package has a `src/` and a `tests/`, and each is walked and checked on its own,
+    /// so the modules handed here are half a package and cannot answer a question about
+    /// the whole of one. `package_declares_a_default` is that question — whether this
+    /// package declares one of the eight [default
+    /// imports](crate::compiler::default_imports) and so receives none of them — asked
+    /// once by [`compile_package`](crate::compiler::compile_package) over both roots,
+    /// which is the only place that has seen both.
+    ///
+    /// The import graph is built from `modules` alone either way. An import naming a
+    /// module of the other root resolves through an
+    /// [`Interface`](crate::compiler::Interface) or not at all, the same as an import
+    /// naming another package's module.
+    pub fn new_for_root(
+        modules: &'a [Module],
+        module_files: &HashMap<Name, SourceFileId>,
+        package_declares_a_default: bool,
+    ) -> Result<ModuleWalker<'a>, Error> {
         let mut graph = DiGraph::new();
 
         let mut names = HashMap::new();
@@ -415,13 +450,7 @@ impl<'a> ModuleWalker<'a> {
             }
         }
 
-        // Computed from the same `names` map `add_default_import_edges` consults,
-        // before it can filter or reorder that map, so this is the package's own
-        // answer regardless of which modules end up connected.
-        let declares_a_default =
-            crate::compiler::default_imports::declares_a_default(names.keys().copied());
-
-        add_default_import_edges(&mut graph, &names);
+        add_default_import_edges(&mut graph, &names, package_declares_a_default);
 
         // Find the strongly connected graphs (scc), if there are more than one node per scc
         // it means there is a circular dependency.
@@ -434,7 +463,7 @@ impl<'a> ModuleWalker<'a> {
 
             Ok(ModuleWalker {
                 modules,
-                declares_a_default,
+                declares_a_default: package_declares_a_default,
             })
         } else {
             // `partition` above already established every component here has more
@@ -1069,7 +1098,11 @@ mod tests {
         }
 
         let before = graph.edge_count();
-        add_default_import_edges(&mut graph, &idx_of);
+        // The same question `ModuleWalker::new` asks of a whole package: these names
+        // are the package here, so they are what it is asked of.
+        let declares_a_default =
+            crate::compiler::default_imports::declares_a_default(idx_of.keys().copied());
+        add_default_import_edges(&mut graph, &idx_of, declares_a_default);
 
         let mut added: Vec<(usize, usize)> = graph
             .edge_indices()

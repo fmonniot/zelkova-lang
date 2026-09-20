@@ -1,0 +1,9 @@
+module AppTest exposing (Fixture(..), fixture)
+
+
+type Fixture
+  = Fixture
+
+
+fixture : Fixture
+fixture = Fixture

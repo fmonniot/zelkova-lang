@@ -6,44 +6,83 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct SourceFileId(usize);
 
+/// One of a package's two source roots, as
+/// [*Source roots*](../../../../docs/spec/packages.md#source-roots) fixes them: `src/`
+/// is what the package ships, `tests/` is compiled when this package's own tests are
+/// run. Neither is configurable and there is no third.
+///
+/// Every [`SourceFile`] carries the one it was walked from, because the two roots share
+/// one set of module names: `src/Model.zel` and `tests/Model.zel` are both `Model`, and
+/// a diagnostic about that has to say which file it means.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum SourceRoot {
+    Src,
+    Tests,
+}
+
+impl SourceRoot {
+    /// The directory this root is, under the package directory holding `zelkova.toml`.
+    pub fn directory(self) -> &'static str {
+        match self {
+            SourceRoot::Src => "src",
+            SourceRoot::Tests => "tests",
+        }
+    }
+}
+
+impl std::fmt::Display for SourceRoot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.directory())
+    }
+}
+
 // This should probably implements `Files` directly instead of relying on SimpleFile
 #[derive(Debug)] // TODO Implement Debug manually (don't want to embedded the entire source code)
 pub struct SourceFile {
     #[allow(dead_code)]
     module_name: String,
-    #[allow(dead_code)]
+    /// Which of the package's two source roots this file was walked from, and its path
+    /// under that root. Together they are [`SourceFile::package_path`], the file's place
+    /// in its package.
+    root: SourceRoot,
     relative_path: PathBuf,
     /// `Files` implementation. Its name is what a diagnostic's location line shows: the
-    /// path relative to the package's source root, prefixed with `package:` when the
-    /// database holds a whole build (see [`SourceFile::load`]).
+    /// file's path within its package, prefixed with `package:` when the database holds
+    /// a whole build (see [`SourceFile::load`]).
     file: SimpleFile<String, String>,
 }
 
 impl SourceFile {
     /// Load a `SourceFile` from the file system.
     ///
-    /// `package` is the name of the package `root` is the source root of, and is what
-    /// the rendered file name is prefixed with. It is `Some` whenever the file joins a
+    /// `root_dir` is the directory the file was walked from and `root` says which of the
+    /// package's two source roots that is; a module's name is its path under its own
+    /// root, so the two roots are walked separately and each file is named relative to
+    /// the one it came from.
+    ///
+    /// `package` is the name of the package `root_dir` belongs to, and is what the
+    /// rendered file name is prefixed with. It is `Some` whenever the file joins a
     /// database that holds more than one package's files: a path relative to a
     /// package's own `src/` is not unique across a build — two packages may each hold a
     /// `Size.zel` — so without it a diagnostic cannot say which package it is about.
-    /// `None` is for a database of exactly one source root, where the relative path is
-    /// unique and the prefix would be noise.
+    /// `None` is for a database of exactly one package, where the prefix would be noise.
     pub fn load(
         abs_path: PathBuf,
-        root: &Path,
+        root_dir: &Path,
+        root: SourceRoot,
         package: Option<&PackageName>,
     ) -> Result<SourceFile, SourceFileError> {
-        SourceFile::load_private(&abs_path, root, package)
+        SourceFile::load_private(&abs_path, root_dir, root, package)
             .map_err(|error| SourceFileError { error, abs_path })
     }
 
     fn load_private(
         abs_path: &PathBuf,
-        root: &Path,
+        root_dir: &Path,
+        root: SourceRoot,
         package: Option<&PackageName>,
     ) -> Result<SourceFile, SourceFileErrorType> {
-        let relative_path = abs_path.strip_prefix(root)?.to_path_buf();
+        let relative_path = abs_path.strip_prefix(root_dir)?.to_path_buf();
 
         let file_name = relative_path
             .to_str()
@@ -54,18 +93,21 @@ impl SourceFile {
             .trim_end_matches(".zel")
             .replace(std::path::MAIN_SEPARATOR, ".");
 
+        let package_path = format!("{}/{}", root, file_name);
+
         // `package:path`, the same shape `ModuleName` renders a module in, so the two
         // halves of a diagnostic — the `[package:Module]` headline and the file its
         // labels point into — name the package the same way.
         let rendered_name = match package {
-            Some(package) => format!("{}:{}", package, file_name),
-            None => file_name,
+            Some(package) => format!("{}:{}", package, package_path),
+            None => package_path,
         };
 
         let source = std::fs::read_to_string(abs_path)?;
 
         Ok(SourceFile {
             module_name,
+            root,
             relative_path,
             file: SimpleFile::new(rendered_name, source),
         })
@@ -73,6 +115,16 @@ impl SourceFile {
 
     pub fn file(&self) -> &SimpleFile<String, String> {
         &self.file
+    }
+
+    /// Where this file sits in its package: the source root it was walked from and its
+    /// path under that root, as `src/Model.zel`.
+    ///
+    /// This is the half of the rendered name that belongs to the package rather than to
+    /// the build, and it is what a diagnostic about the package's own layout — two
+    /// modules answering to one name — names each file by.
+    pub fn package_path(&self) -> String {
+        format!("{}/{}", self.root, self.relative_path.display())
     }
 }
 
@@ -270,7 +322,7 @@ mod tests {
         );
         let abs_path = Path::new("/Users/francoismonniot/Projects/github.com/fmonniot/zelkova-lang/std/core/src/Platform/Cmd.zel");
 
-        let res = SourceFile::load(abs_path.to_path_buf(), root_path, None);
+        let res = SourceFile::load(abs_path.to_path_buf(), root_path, SourceRoot::Src, None);
         println!("{:?}", res);
     }
 }

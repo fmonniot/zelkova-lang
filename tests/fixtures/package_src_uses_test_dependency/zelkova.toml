@@ -1,0 +1,10 @@
+# `acme-expect` is a test-dependency, and `src/App.zel` imports it: available to
+# `tests/` and to nothing else means the name reaches nothing here.
+name = "package-src-uses-test-dependency"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies.acme-expect]
+path = "../dep_expect"

@@ -1,0 +1,9 @@
+module Expect exposing (Assertion(..), pass)
+
+
+type Assertion
+  = Pass
+
+
+pass : Assertion
+pass = Pass

@@ -1,0 +1,11 @@
+# `acme-widgets` is written in both maps. A package name belongs to at most one of
+# them; anything already in `dependencies` is usable from `tests/` as it stands.
+name = "package-dependency-listed-twice"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-widgets]
+path = "../dep_widgets"
+
+[test-dependencies.acme-widgets]
+path = "../dep_widgets"
