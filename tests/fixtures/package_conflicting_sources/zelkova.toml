@@ -1,0 +1,12 @@
+name = "package-conflicting-sources"
+version = "0.1.0"
+private-modules = []
+
+# `acme-uses-core-fork` reaches a different `zelkova-core` than this entry does.
+[dependencies.zelkova-core]
+path = "../dep_core"
+
+[dependencies.acme-uses-core-fork]
+path = "../dep_uses_core_fork"
+
+[test-dependencies]

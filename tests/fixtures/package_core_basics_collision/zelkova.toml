@@ -1,0 +1,14 @@
+name = "package-core-basics-collision"
+version = "0.1.0"
+private-modules = []
+
+# `zelkova-core` is seen unwrapped whatever this entry says, and `acme-basics`
+# is unwrapped here too — so both offer a module named `Basics`.
+[dependencies.zelkova-core]
+path = "../dep_core"
+
+[dependencies.acme-basics]
+path = "../dep_rival_basics"
+wrapped = false
+
+[test-dependencies]

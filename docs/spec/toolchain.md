@@ -240,9 +240,10 @@ run is not a test that passed.
 
 ## The compiler's interface
 
-**Known gap:** the compiler compiles one package and resolves nothing — `cargo run` compiles
-`std/core` and no dependency of it. Resolving a graph of several packages is
-[`docs/tickets/lang-14.md`](../tickets/lang-14.md)'s.
+**Known gap:** the compiler is pointed at a package root, reads that package's manifest, and
+compiles every package reachable from it through a `path` entry, dependencies first. None of
+the rest of this appendix exists: nothing is fetched, nothing is cached, and no `zelkova.lock`
+is read or written ([`docs/tickets/README.md`](../tickets/README.md)).
 
 **Provisional:** what it becomes is a compiler pointed at a package root — the directory holding
 `zelkova.toml` — which resolves, compiles every module of `src/`, and writes its output beside

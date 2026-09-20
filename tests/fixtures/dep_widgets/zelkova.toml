@@ -1,0 +1,10 @@
+# The dependency the package-boundary fixtures import. `Hidden` is what a
+# dependent must not be able to reach; `Native` is a facade, which is
+# package-internal by its own declaration whatever this list says.
+name = "acme-widgets"
+version = "1.2.0"
+private-modules = ["Hidden"]
+
+[dependencies]
+
+[test-dependencies]

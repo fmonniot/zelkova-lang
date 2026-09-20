@@ -3,7 +3,7 @@ use codespan_reporting::files::{Error as FilesError, Files, SimpleFile};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct SourceFileId(usize);
 
 // This should probably implements `Files` directly instead of relying on SimpleFile

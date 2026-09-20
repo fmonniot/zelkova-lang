@@ -1,0 +1,7 @@
+module App exposing (start)
+
+import Size
+
+
+start : Size.Size
+start = Size.small

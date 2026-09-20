@@ -1,0 +1,10 @@
+# Stands in for the real `std/core` at the size these fixtures need: one module
+# named `Basics`, declaring the scalar `Int`. It is named `zelkova-core` because
+# that name is what makes a dependency seen unwrapped in every package.
+name = "zelkova-core"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

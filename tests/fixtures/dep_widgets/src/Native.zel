@@ -1,0 +1,5 @@
+module foreign Native exposing (measure)
+
+import Size exposing (Size)
+
+unsafe measure : Size -> Size

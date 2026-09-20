@@ -1,0 +1,11 @@
+name = "package-unwrapped-dependency"
+version = "0.1.0"
+
+private-modules = []
+
+# unwrapped: `Size` is on every other line in this package
+[dependencies.acme-widgets]
+path = "../dep_widgets"
+wrapped = false
+
+[test-dependencies]

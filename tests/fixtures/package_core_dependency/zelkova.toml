@@ -1,0 +1,10 @@
+# `zelkova-core` has to be written out, since the compiler carries no copy of its
+# own. It is seen unwrapped regardless, so `Basics` is `Basics` here.
+name = "package-core-dependency"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../dep_core"
+
+[test-dependencies]

@@ -1,0 +1,9 @@
+# `../dep_core` holds a package declaring the name `zelkova-core`, not this key.
+name = "package-name-mismatch"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-widgets]
+path = "../dep_core"
+
+[test-dependencies]

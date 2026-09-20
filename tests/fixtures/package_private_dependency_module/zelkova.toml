@@ -1,0 +1,8 @@
+name = "package-private-dependency-module"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-widgets]
+path = "../dep_widgets"
+
+[test-dependencies]

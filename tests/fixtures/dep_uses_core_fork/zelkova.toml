@@ -1,0 +1,8 @@
+name = "acme-uses-core-fork"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../dep_core_fork"
+
+[test-dependencies]

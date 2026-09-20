@@ -1,0 +1,4 @@
+module Basics exposing (Int)
+
+
+type Int = Int

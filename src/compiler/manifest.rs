@@ -7,13 +7,14 @@
 //! `dependencies`/`test-dependencies` entry naming exactly one source. `private_modules` is
 //! checked against the modules the package actually holds by [`compile_package`]'s caller,
 //! once source loading has produced that list — this module only knows the manifest, never
-//! the package's files, so [`load`] returns the names as written and nothing consults them
-//! yet ([`LANG-14`](../../../docs/tickets/README.md)).
+//! the package's files, so [`load`] returns the names as written.
 //!
-//! Nothing here reads `dependencies`/`test-dependencies`/`main` beyond validating their shape:
-//! no second package exists to resolve against ([`LANG-14`](../../../docs/tickets/README.md)),
-//! no test root runs anything ([`LANG-15`](../../../docs/tickets/README.md)), and there is no
-//! `Task` for a program's entry point to hold.
+//! Reading a manifest is where a build starts and not what it is:
+//! [`resolve`](super::resolve) is what follows `dependencies` to the other packages and
+//! decides what each module is called in each of them. `test-dependencies` is validated here
+//! and resolved nowhere, since no test root runs anything
+//! ([`LANG-15`](../../../docs/tickets/README.md)), and `main` is validated and never read,
+//! since there is no `Task` for a program's entry point to hold.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -50,6 +51,14 @@ pub struct Version {
     pub major: u64,
     pub minor: u64,
     pub patch: u64,
+}
+
+/// The three integers, dot-separated, exactly as a manifest writes them. A diagnostic
+/// naming a package names the version it was resolved to beside it.
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
 }
 
 impl Version {

@@ -1,0 +1,9 @@
+# A package declaring a module named `Basics` of its own. Unwrapped by whoever
+# depends on it, that module answers to the same name `zelkova-core`'s does.
+name = "acme-basics"
+version = "3.0.1"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

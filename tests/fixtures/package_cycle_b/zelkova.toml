@@ -1,0 +1,8 @@
+name = "package-cycle-b"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.package-cycle-a]
+path = "../package_cycle_a"
+
+[test-dependencies]
