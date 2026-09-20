@@ -653,10 +653,12 @@ reporting a missing file apart from a broken companion, is `String -> Task (Resu
 
 **Not implemented:** the `read` block under
 [Where a `Task` comes from](#where-a-task-comes-from) does not parse, a type argument having to be
-a bare name today ([`LANG-9`](../tickets/lang-9.md)). `zelkova-core` declares no `Task`, no
-`Failure` and no `String`, no facade wrapper is generated, and nothing runs a program at all —
-the pipeline ends at type checking, so there is no runtime for a `Task` to be handed to
-([`GEN-1`](../tickets/gen-1.md)).
+a bare name today ([`LANG-9`](../tickets/lang-9.md)). `zelkova-core` declares no `Task` and no
+`Failure`; the block above compiles by naming `module Task`, which puts it in the core package
+and gets it the [scalar type names](types.md#scalar-types) — `String` included — directly rather
+than through an [import](modules.md#the-default-imports) `zelkova-core` does not ship. No facade
+wrapper is generated, and nothing runs a program at all — the pipeline ends at type checking, so
+there is no runtime for a `Task` to be handed to ([`GEN-1`](../tickets/gen-1.md)).
 
 ## When a program aborts
 
