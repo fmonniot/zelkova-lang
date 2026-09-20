@@ -338,7 +338,7 @@ pub fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>) -> Op
 pub fn new_environment(
     module_name: &ModuleName,
     interfaces: &HashMap<Name, Interface>,
-    imports: &Vec<parser::Import>,
+    imports: &[parser::Import],
     package_declares_a_default: bool,
 ) -> Result<RootEnvironment, Vec<EnvError>> {
     let mut env = RootEnvironment {
