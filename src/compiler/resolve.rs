@@ -15,9 +15,11 @@
 //!    for an unwrapped dependency, under their own names — and reports a name two
 //!    modules both answer to.
 //!
-//! The collision check is here, and runs before compilation, because the manifest is
-//! what creates the ambiguity and the manifest is what has to change: a build with no
-//! coherent answer for a name is stopped before any file is read for one.
+//! The collision check is here, rather than in the phase that would trip over the
+//! ambiguity, because the manifest is what creates it and the manifest is what has to
+//! change. A package with no coherent answer for a name is stopped before any of its
+//! modules is canonicalized — its files are read and parsed first, since the map is
+//! keyed by the names the module headers declare.
 //!
 //! # What this obtains, and what it does not
 //!
@@ -257,10 +259,9 @@ impl PhaseError for Error {
                 declared,
                 path,
             } => format!(
-                "`{}` in `{}` names `{}`, but the package in `{}` declares the name `{}`",
+                "the dependency `{}` in `{}` resolves to `{}`, which declares the name `{}`",
                 expected,
                 manifest_path.display(),
-                expected,
                 path.display(),
                 declared
             ),

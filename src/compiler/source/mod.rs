@@ -2,15 +2,20 @@ pub mod files;
 
 pub use files::{SourceFile, SourceFiles};
 
-use super::CompilationError;
+use super::{CompilationError, PackageName};
 use files::SourceFileError;
 use std::path::Path;
 use walkdir::WalkDir;
 
+/// Walk one source root into a database of its own.
+///
+/// Nothing else can be in that database, so a file is named by its path relative to
+/// `root` and nothing more — see [`load_package_sources_into`] for the build case,
+/// where that name is not unique.
 // We don't support non-UTF8 characters in path
 pub fn load_package_sources(root: &Path) -> Result<SourceFiles, CompilationError> {
     let mut sources = SourceFiles::new();
-    load_package_sources_into(root, &mut sources)?;
+    load_package_sources_into(root, None, &mut sources)?;
     Ok(sources)
 }
 
@@ -24,11 +29,17 @@ pub fn load_package_sources(root: &Path) -> Result<SourceFiles, CompilationError
 /// [`load_package_sources`] is the same walk over a database of its own, which is what
 /// a caller compiling exactly one source root wants.
 ///
+/// `package` names the package `root` belongs to, and every caller sharing a database
+/// across packages has to pass it: a path relative to a package's own `src/` is not
+/// unique in a build — two packages may each hold a `Size.zel` — so without it a
+/// diagnostic cannot say which package it is about.
+///
 /// The ids come back rather than the files themselves: `files` is borrowed mutably for
 /// the walk, and the caller needs it borrowed immutably afterwards to read the sources
 /// back out.
 pub fn load_package_sources_into(
     root: &Path,
+    package: Option<&PackageName>,
     sources: &mut SourceFiles,
 ) -> Result<Vec<files::SourceFileId>, CompilationError> {
     let mut loaded = vec![];
@@ -49,7 +60,7 @@ pub fn load_package_sources_into(
                     _ => continue,
                 }
 
-                match SourceFile::load(path, root) {
+                match SourceFile::load(path, root, package) {
                     Ok(src) => {
                         loaded.push(sources.add_file(src));
                     }

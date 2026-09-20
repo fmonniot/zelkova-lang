@@ -1,0 +1,8 @@
+module App exposing (start)
+
+
+type Label = Label
+
+
+start : Label
+start = Label

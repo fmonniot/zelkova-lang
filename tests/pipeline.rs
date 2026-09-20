@@ -19,7 +19,9 @@ use zelkova_lang::compiler::dependencies::{self, ModuleWalker};
 use zelkova_lang::compiler::manifest;
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::resolve;
-use zelkova_lang::compiler::source::load_package_sources;
+use zelkova_lang::compiler::source::{
+    load_package_sources, load_package_sources_into, SourceFiles,
+};
 use zelkova_lang::compiler::{
     check_module, compile_package, parser, CompilationError, Interface, PackageName, PhaseError,
 };
@@ -2047,6 +2049,13 @@ fn backing_function_of_an_exposed_operator_stays_unimportable_by_name() {
 /// `zelkova.toml` and no `src/` directory at all, which is what still reaches
 /// `load_package_sources` on a path that does not exist.
 ///
+/// The loading failure now arrives inside `CompilationError::Many`, because
+/// loading a package's sources happens once per package *inside* the build's error
+/// accumulator: a package that cannot be read pushes its failure onto that vector
+/// and publishes nothing, rather than returning out of `compile_package` past the
+/// packages whose diagnostics are already on it. See
+/// [`a_package_that_cannot_be_read_does_not_hide_an_earlier_packages_errors`].
+///
 /// Mutation-checked by restoring the `filter_map(|r| r.ok())` discard in
 /// `load_package_sources` (`src/compiler/source/mod.rs`): with the walk error
 /// thrown away, `compile_package` returns `Ok(())` on this same fixture, and
@@ -2063,10 +2072,20 @@ fn compile_package_reports_a_missing_source_root() {
     let error =
         compile_package(&root).expect_err("a package with no `src/` must not compile as success");
 
-    let CompilationError::LoadingFiles(errors) = &error else {
+    let CompilationError::Many(accumulated) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(
+        accumulated.len(),
+        1,
+        "expected exactly one accumulated error, got {:?}",
+        accumulated
+    );
+
+    let CompilationError::LoadingFiles(errors) = &accumulated[0] else {
         panic!(
-            "expected Err(CompilationError::LoadingFiles(..)), got {:?}",
-            error
+            "expected CompilationError::LoadingFiles(..), got {:?}",
+            accumulated[0]
         );
     };
     assert_eq!(
@@ -3213,5 +3232,185 @@ fn a_path_dependency_that_is_not_there_names_the_directory() {
         path.ends_with("nowhere"),
         "the path looked in must be named, got {:?}",
         path
+    );
+}
+
+/// A package whose dependency did not compile is not compiled either, and says which
+/// dependency that was.
+///
+/// The dependency's own diagnostics say what went wrong inside it; this one is the
+/// reason nothing is said about the package the compiler was actually pointed at. It
+/// is also what keeps the publish-nothing rule honest: `acme-broken` publishes no
+/// interface, so without this arm `App` would be checked against a package that
+/// exists in the build and offers no modules, and would fail on an import instead.
+///
+/// Mutation-checked by dropping the `_ =>` arm of the `(resolved, public)` match in
+/// `compile_in_build` — with the dependency simply skipped, the build reports only
+/// `acme-broken`'s own error and never names `package-dependency-not-compiled`.
+#[test]
+fn a_package_whose_dependency_did_not_compile_is_not_compiled() {
+    let root = fixture_package("package_dependency_not_compiled");
+
+    let error = compile_package(&root).expect_err("`acme-broken` does not canonicalize");
+
+    let errors = resolution_errors(&error);
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    let resolve::Error::DependencyNotCompiled {
+        package,
+        dependency,
+    } = errors[0]
+    else {
+        panic!("expected an uncompiled dependency, got {:?}", errors[0]);
+    };
+
+    assert_eq!(package.as_str(), "package-dependency-not-compiled");
+    assert_eq!(dependency.as_str(), "acme-broken");
+
+    // The dependency's own failure is reported too, and not replaced by the sentence
+    // above: a user has to be able to see *why* `acme-broken` did not compile.
+    let canonicalization_failed = accumulated(&error)
+        .into_iter()
+        .any(|error| matches!(unwrap_in_file(error), CompilationError::Canonical(..)));
+    assert!(
+        canonicalization_failed,
+        "`acme-broken`'s own diagnostic must survive alongside the one about its \
+         dependent, got {:?}",
+        error
+    );
+}
+
+/// A package whose sources cannot be read does not take the diagnostics of the
+/// packages compiled before it with it.
+///
+/// Loading a package's sources happens once per package, inside the loop that
+/// accumulates the build's errors. Returning that failure out of `compile_package`
+/// carried it past the reporting loop at the end and dropped everything already on
+/// the accumulator — "nothing is rendered and then dropped", which the second
+/// standing invariant names outright. The fixture has two sibling dependencies that
+/// fail in two different ways, so exactly one of them is the one that used to be
+/// lost.
+///
+/// Mutation-checked by restoring the `?` on `load_package_sources_into` in
+/// `compile_in_build` (and the `Result` return it needs): `acme-broken`'s
+/// canonicalization error disappears from what comes back, and the `Many` assertion
+/// below goes red.
+#[test]
+fn a_package_that_cannot_be_read_does_not_hide_an_earlier_packages_errors() {
+    let root = fixture_package("package_two_failing_dependencies");
+
+    let error = compile_package(&root).expect_err("neither dependency compiles");
+
+    let reported = accumulated(&error);
+
+    let loading_failed = reported
+        .iter()
+        .any(|error| matches!(unwrap_in_file(error), CompilationError::LoadingFiles(..)));
+    assert!(
+        loading_failed,
+        "`acme-no-src` has no `src/`, so its loading failure must be reported, got {:?}",
+        error
+    );
+
+    let canonicalization_failed = reported
+        .iter()
+        .any(|error| matches!(unwrap_in_file(error), CompilationError::Canonical(..)));
+    assert!(
+        canonicalization_failed,
+        "`acme-broken`'s canonicalization error must survive the sibling package's \
+         loading failure, got {:?}",
+        error
+    );
+}
+
+/// Only the packages a manifest's own `dependencies` names are importable. A
+/// transitive one is in the build and is not reachable by name.
+///
+/// `acme-widgets` is compiled here — `acme-mid` depends on it and imports it — so
+/// this is not a package missing from the build, but one deliberately absent from
+/// `package-transitive-dependency`'s map of names.
+///
+/// Mutation-checked by seeding `compile_in_build`'s `interfaces` from `published`
+/// directly instead of from `visible`: every package in the build becomes importable
+/// from every other, the fixture compiles, and this goes red while every other
+/// boundary test stays green.
+#[test]
+fn a_transitive_dependency_is_not_importable() {
+    let root = fixture_package("package_transitive_dependency");
+
+    // The middle package really does reach `acme-widgets`, so what fails below is the
+    // boundary rule and not a broken chain.
+    assert!(
+        compile_package(&fixture_package("dep_mid")).is_ok(),
+        "`acme-mid` writes `acme-widgets` in its own dependencies and must compile"
+    );
+
+    let error =
+        compile_package(&root).expect_err("`acme-widgets` is not a dependency of this package");
+
+    let messages: Vec<String> = accumulated(&error)
+        .into_iter()
+        .map(|error| unwrap_in_file(error).as_diagnostic().message)
+        .collect();
+
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("AcmeWidgets.Size")),
+        "the import that reached across two boundaries must be named, got {:?}",
+        messages
+    );
+}
+
+/// Two packages' same-named files are told apart in a diagnostic.
+///
+/// A build shares one file database, and a file is named in it by the path relative
+/// to its own package's `src/`. Two packages may each hold a `Size.zel`, so that name
+/// alone cannot say which package a diagnostic is about; the package it belongs to is
+/// prefixed onto it.
+///
+/// Mutation-checked by ignoring `load_package_sources_into`'s `package` argument in
+/// `SourceFile::load_private`: both files render as `Size.zel` and the inequality
+/// below goes red.
+#[test]
+fn a_file_in_a_shared_database_is_named_by_its_package() {
+    let widgets = PackageName::new("acme-widgets").unwrap();
+    let collision = PackageName::new("package-module-name-collision").unwrap();
+
+    let mut sources = SourceFiles::new();
+    load_package_sources_into(
+        &fixture_package("dep_widgets").join("src"),
+        Some(&widgets),
+        &mut sources,
+    )
+    .expect("the fixture loads");
+    load_package_sources_into(
+        &fixture_package("package_module_name_collision").join("src"),
+        Some(&collision),
+        &mut sources,
+    )
+    .expect("the fixture loads");
+
+    let names: Vec<String> = sources
+        .iter()
+        .map(|(_, file)| file.file().name().clone())
+        .filter(|name| name.ends_with("Size.zel"))
+        .collect();
+
+    assert_eq!(
+        names.len(),
+        2,
+        "both fixtures must hold a `Size.zel` for this test to mean anything, got {:?}",
+        names
+    );
+    assert!(
+        names.contains(&"acme-widgets:Size.zel".to_string()),
+        "a file has to name the package it belongs to, got {:?}",
+        names
+    );
+    assert!(
+        names.contains(&"package-module-name-collision:Size.zel".to_string()),
+        "a file has to name the package it belongs to, got {:?}",
+        names
     );
 }

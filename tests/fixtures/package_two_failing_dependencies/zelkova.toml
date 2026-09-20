@@ -1,0 +1,15 @@
+# Two sibling dependencies that both fail, in two different ways: `acme-broken`
+# accumulates a canonicalization error, and `acme-no-src` cannot be loaded at all.
+# Both diagnostics have to reach the user — the loading failure used to return out
+# of `compile_package` and take the other one with it.
+name = "package-two-failing-dependencies"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-broken]
+path = "../dep_broken"
+
+[dependencies.acme-no-src]
+path = "../dep_no_src"
+
+[test-dependencies]

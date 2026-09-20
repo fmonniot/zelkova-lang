@@ -1,0 +1,9 @@
+# A dependency whose manifest is fine and whose `src/` directory does not exist,
+# so loading its sources fails once the build is already under way.
+name = "acme-no-src"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

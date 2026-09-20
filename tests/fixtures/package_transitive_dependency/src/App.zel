@@ -1,0 +1,8 @@
+module App exposing (start)
+
+import AcmeMid.Lib
+import AcmeWidgets.Size
+
+
+start : AcmeMid.Lib.Tag
+start = AcmeMid.Lib.tag

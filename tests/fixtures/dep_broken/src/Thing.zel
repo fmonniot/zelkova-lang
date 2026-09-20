@@ -1,0 +1,5 @@
+module Thing exposing (Thing(..))
+
+
+type Thing
+  = Thing Nope.Nope

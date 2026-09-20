@@ -1,0 +1,11 @@
+# Depends on a package that does not compile. Nothing here is compiled either:
+# `acme-broken` publishes no interface, so `App` would be checked against half a
+# package.
+name = "package-dependency-not-compiled"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-broken]
+path = "../dep_broken"
+
+[test-dependencies]

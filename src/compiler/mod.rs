@@ -740,12 +740,12 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
         let _ = writeln!(&mut writer, " {}", text);
     };
 
-    // Step 1: read and validate the root package's manifest. Like the source loading
-    // further down, a bad manifest cannot be deferred to the usual
-    // accumulate-and-render path: the source root itself is derived from the manifest,
-    // so there is nothing to load — and no file database yet to render a diagnostic
-    // against — until the manifest is known good. It goes back to the caller unrendered,
-    // the same as a `load_package_sources` failure.
+    // Step 1: read and validate the root package's manifest. This is the one failure
+    // that cannot be deferred to the usual accumulate-and-render path, because it
+    // happens before that path exists: the source root itself is derived from the
+    // manifest, so there is no build to walk, no accumulator and no file database yet.
+    // It goes back to the caller unrendered. Every failure after the accumulator below
+    // is created goes onto it instead, this package's source loading included.
     debug!("phase: read package manifest");
     let manifest = manifest::load(package_dir)?;
 
@@ -791,7 +791,7 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
             &mut sources,
             &mut errors,
             &mut print_status,
-        )? {
+        ) {
             published.insert(package.name.clone(), public);
         }
     }
@@ -829,13 +829,19 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
 /// package's: every module of every package renders against one file database, and
 /// every error from any package makes the build fail.
 ///
-/// `Ok(None)` means nothing here was compiled and this package publishes nothing. It
+/// `None` means nothing here was compiled and this package publishes nothing. It
 /// always comes with at least one error already pushed onto `errors` — a dependency
-/// that did not compile, a name claimed twice, or a failure in one of this package's
-/// own modules — so a package that publishes nothing can never be read as one that
-/// compiled. A package whose modules failed publishes nothing for the same reason: its
-/// dependents would otherwise be checked against half an interface and report errors
-/// belonging to a module they never wrote.
+/// that did not compile, sources that could not be read, a name claimed twice, or a
+/// failure in one of this package's own modules — so a package that publishes nothing
+/// can never be read as one that compiled. A package whose modules failed publishes
+/// nothing for the same reason: its dependents would otherwise be checked against half
+/// an interface and report errors belonging to a module they never wrote.
+///
+/// There is deliberately no error return. Every way this can fail is a diagnostic about
+/// one package of a build whose other packages may already have accumulated diagnostics
+/// of their own, and a `Result` here is an invitation to `?` those out of
+/// [`compile_package`] past its reporting loop — which is the "nothing is rendered and
+/// then dropped" the accumulator exists to prevent.
 fn compile_in_build(
     package: &resolve::ResolvedPackage,
     build: &[resolve::ResolvedPackage],
@@ -843,7 +849,7 @@ fn compile_in_build(
     sources: &mut SourceFiles,
     errors: &mut Vec<CompilationError>,
     print_status: &mut impl FnMut(bool, String),
-) -> Result<Option<HashMap<Name, Interface>>, CompilationError> {
+) -> Option<HashMap<Name, Interface>> {
     let errors_before = errors.len();
 
     // Step 1: what this package is compiled against. Only its *direct* dependencies:
@@ -872,6 +878,10 @@ fn compile_in_build(
             // says which package was left uncompiled because of it, so a user reading
             // a wall of errors from a dependency knows why nothing was said about the
             // package they asked for.
+            //
+            // No status line goes with it. A status line reports a phase this package
+            // got through; a package abandoned before its first phase has none, and the
+            // diagnostic already says the same sentence in the same words.
             _ => {
                 errors.push(CompilationError::Resolution(vec![
                     resolve::Error::DependencyNotCompiled {
@@ -879,24 +889,32 @@ fn compile_in_build(
                         dependency: name.clone(),
                     },
                 ]));
-                print_status(
-                    false,
-                    format!(
-                        "`{}` was not compiled: its dependency `{}` did not",
-                        package.name, name
-                    ),
-                );
-                return Ok(None);
+                return None;
             }
         }
     }
 
     // Step 2 and 3.a
     debug!("phase: load package sources");
-    // Loading is the one phase whose errors cannot be deferred: without the loaded
-    // files there is no `Files` database to render any diagnostic against, this one
-    // included. It is returned unrendered and the caller reports it.
-    let file_ids = source::load_package_sources_into(&package.src_root(), sources)?;
+    // A package whose sources cannot be read is not compiled, and nothing of it is
+    // published — but the failure is accumulated like any other rather than returned,
+    // because by the time we get here other packages of the build may already have
+    // pushed diagnostics onto `errors` and returning would carry this one past the
+    // reporting loop and drop theirs ("nothing is rendered and then dropped").
+    //
+    // A loading error names a path and has no span, so it renders against the shared
+    // database whether or not this package contributed a single file to it.
+    let file_ids = match source::load_package_sources_into(
+        &package.src_root(),
+        Some(&package.name),
+        sources,
+    ) {
+        Ok(file_ids) => file_ids,
+        Err(error) => {
+            errors.push(error);
+            return None;
+        }
+    };
 
     // Step 3.b
     debug!("phase: parse package sources");
@@ -967,23 +985,23 @@ fn compile_in_build(
 
     // Step 3.d: the whole map of module names this package can import, built before
     // anything is canonicalized. A name two modules both answer to is the manifest's
-    // doing, not any one file's, so it is reported here and the package is not
-    // compiled at all — a build with no coherent answer for a name is stopped before
-    // any file is read for one
+    // doing, not any one file's, so it is reported here and no module of the package is
+    // canonicalized, type checked or checked for exhaustiveness
     // (`docs/spec/packages.md#two-modules-under-one-name-is-an-error`).
+    //
+    // The files have been read and parsed by this point, because `local_modules` is
+    // taken from the parsed module headers. `SourceFile` derives a module name from the
+    // relative path alone, so this could run one step earlier, against the walk; the
+    // reason it does not is that the parsed header is what every other phase calls a
+    // module by.
     let local_modules: Vec<Name> = modules.iter().map(|m| m.name.clone()).collect();
     let visible = match resolve::visible_modules(package, &local_modules, &dependencies) {
         Ok(visible) => visible,
+        // As with the uncompiled-dependency arm above, the diagnostic is the whole
+        // report: a second, shorter copy on the status line said nothing it does not.
         Err(collisions) => {
             errors.push(CompilationError::Resolution(collisions));
-            print_status(
-                false,
-                format!(
-                    "`{}` was not compiled: two modules answer to one name in it",
-                    package.name
-                ),
-            );
-            return Ok(None);
+            return None;
         }
     };
 
@@ -1077,7 +1095,7 @@ fn compile_in_build(
     }
 
     if errors.len() != errors_before {
-        return Ok(None);
+        return None;
     }
 
     // Step 6: what this package offers whoever depends on it. Every module of `src/`
@@ -1107,7 +1125,7 @@ fn compile_in_build(
         })
         .collect();
 
-    Ok(Some(public))
+    Some(public)
 }
 
 /// Take a parsed module file within the ecosystem and apply all checks to it

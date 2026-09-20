@@ -1,0 +1,7 @@
+module App exposing (start)
+
+import AcmeBroken.Thing
+
+
+start : AcmeBroken.Thing.Thing
+start = AcmeBroken.Thing.Thing

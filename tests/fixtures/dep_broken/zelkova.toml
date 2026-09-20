@@ -1,0 +1,9 @@
+# A dependency that does not compile: `Thing` names a type that resolves to
+# nothing, so canonicalization fails and this package publishes no interface.
+name = "acme-broken"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]
