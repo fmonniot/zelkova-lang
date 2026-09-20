@@ -3730,3 +3730,42 @@ fn a_test_module_named_after_a_default_import_does_not_exempt_the_package() {
         result
     );
 }
+
+/// A package reached only through `test-dependencies` is resolved into every build of
+/// its dependent and compiled by the build that asked for the tests alone.
+///
+/// The version and cycle rules are settled over the union of the two maps, so the
+/// package has to be *resolved* either way (`docs/spec/packages.md`'s
+/// *`test-dependencies`*). Compiling it is a
+/// different question, and the answer is the same one `src/` gets: a build that did not
+/// ask for the tests cannot import a single module of it, so parsing and checking it
+/// would only give that build a way to fail on a package it never reached for.
+///
+/// The fixture's test-dependency is `dep_broken`, which fails canonicalization, so the
+/// two builds are told apart by their outcome rather than by a status line.
+///
+/// Mutation-checked by dropping the `test_only` skip in `compile`'s build loop:
+/// `compile_package` then fails with `acme-broken`'s own canonicalization error.
+#[test]
+fn a_test_dependency_is_compiled_only_when_the_tests_are() {
+    let root = fixture_package("package_broken_test_dependency");
+
+    let result = compile_package(&root);
+    assert!(
+        result.is_ok(),
+        "a build that did not ask for the tests must not compile a test-dependency, got {:?}",
+        result
+    );
+
+    let error = compile_package_with_tests(&root)
+        .expect_err("the test-dependency does not compile, and this build compiles it");
+
+    let messages = diagnostic_messages(&error);
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("cannot find a type named `Nope.Nope`")),
+        "the test-dependency's own error must be what fails this build, got {:?}",
+        messages
+    );
+}

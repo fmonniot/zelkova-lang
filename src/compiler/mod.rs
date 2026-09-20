@@ -10,9 +10,11 @@
 //!
 //! 1. Read the package's `zelkova.toml` manifest, and resolve the build: every package
 //!    reachable through `dependencies`, plus the root package's `test-dependencies`, each
-//!    ordered after the packages it depends on. Steps 2 to 6 then run once per package,
-//!    over the two source roots — `src/` and, for the root package when its tests were
-//!    asked for, `tests/` — beside its own manifest. Before a package's modules are
+//!    ordered after the packages it depends on. Steps 2 to 6 then run once per package —
+//!    bar the ones only `test-dependencies` reaches, which a build that did not ask for
+//!    the tests resolves and leaves uncompiled — over the two source roots: `src/` and,
+//!    for the root package when its tests were
+//!    asked for, `tests/`, beside its own manifest. Before a package's modules are
 //!    checked, the whole map of module names it can import is built — its own, plus each
 //!    direct dependency's public modules under that package's namespace or, unwrapped,
 //!    under their own names — and a name two modules both answer to stops that package
@@ -803,6 +805,18 @@ fn compile(package_dir: &Path, tests: TestRoot) -> Result<(), CompilationError> 
     debug!("phase: resolve the build");
     let build = resolve::resolve(package_dir, manifest)?;
 
+    // Resolved is not compiled. A package reached only through `test-dependencies` is in
+    // the build so that the version and cycle rules can be settled over the union, and a
+    // build that did not ask for the tests has no use for anything it holds: no module
+    // here can import one, since a `test-dependency`'s modules are held out of the
+    // environment `src/` is checked against. Compiling it anyway would parse and check a
+    // package the user never reached for, print its status lines, and fail this build on
+    // an error inside it.
+    let test_only = match tests {
+        TestRoot::Compiled => std::collections::HashSet::new(),
+        TestRoot::Skipped => resolve::test_only_packages(&build, &root_package),
+    };
+
     // Further steps will produce errors. We aggregate them here and report them at the
     // end of the compilation phase, rather than stopping on the first one, so that a
     // single broken module doesn't hide the diagnostics of every other module.
@@ -827,6 +841,14 @@ fn compile(package_dir: &Path, tests: TestRoot) -> Result<(), CompilationError> 
     let mut published: HashMap<PackageName, HashMap<Name, Interface>> = HashMap::new();
 
     for package in &build {
+        if test_only.contains(&package.name) {
+            debug!(
+                "phase: skip package {} — reached through `test-dependencies` alone",
+                package.name
+            );
+            continue;
+        }
+
         debug!("phase: compile package {}", package.name);
 
         let tests = if package.name == root_package {

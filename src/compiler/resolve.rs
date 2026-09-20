@@ -369,6 +369,47 @@ pub fn resolve(root: &Path, manifest: Manifest) -> Result<Vec<ResolvedPackage>, 
     }
 }
 
+/// The packages of `build` that nothing but a `test-dependencies` entry reaches.
+///
+/// [`resolve`] walks the union of the two maps whether or not the tests are being
+/// compiled, because one version of each package and an acyclic graph are properties of
+/// the whole build rather than of one entry point
+/// ([*`test-dependencies`*](../../../docs/spec/packages.md#test-dependencies)). What
+/// comes back here is the other half of that: which of the packages it found are in the
+/// build for the tests alone, so a build that did not ask for the tests can leave them
+/// uncompiled instead of parsing, checking and reporting on a package it cannot import.
+///
+/// Reachability is followed through `dependencies` only, starting from `root`. A package
+/// written in both maps is not possible — the manifest rejects that — but a package
+/// reached through both, as a `test-dependency` here and an ordinary dependency of
+/// something else, is: it comes back out of this set, because an ordinary build needs it.
+pub fn test_only_packages<'a>(
+    build: &'a [ResolvedPackage],
+    root: &'a PackageName,
+) -> std::collections::HashSet<PackageName> {
+    let by_name: HashMap<&PackageName, &ResolvedPackage> = build
+        .iter()
+        .map(|package| (&package.name, package))
+        .collect();
+
+    let mut reached: std::collections::HashSet<&PackageName> = std::collections::HashSet::new();
+    let mut queue: Vec<&'a PackageName> = vec![root];
+    while let Some(name) = queue.pop() {
+        if !reached.insert(name) {
+            continue;
+        }
+        if let Some(package) = by_name.get(name) {
+            queue.extend(package.manifest.dependencies.keys());
+        }
+    }
+
+    build
+        .iter()
+        .filter(|package| !reached.contains(&package.name))
+        .map(|package| package.name.clone())
+        .collect()
+}
+
 /// The directory as it will be compared against every other directory in the build.
 ///
 /// Two entries reaching one package by different relative paths are the same package,
@@ -671,6 +712,58 @@ mod tests {
                 test_dependencies: HashMap::new(),
             },
         }
+    }
+
+    /// The same package, with `names` written in its `test-dependencies`. What the
+    /// entries say does not matter to `test_only_packages`, which follows
+    /// `dependencies` alone — they are here so the manifest reads the way the one
+    /// `resolve` walked did.
+    fn with_test_dependencies(mut package: ResolvedPackage, names: Vec<&str>) -> ResolvedPackage {
+        package.manifest.test_dependencies = names
+            .into_iter()
+            .map(|name| {
+                (
+                    PackageName::new(name).unwrap(),
+                    Dependency {
+                        source: Source::Path {
+                            path: format!("../{}", name),
+                        },
+                        wrapped: true,
+                    },
+                )
+            })
+            .collect();
+        package
+    }
+
+    /// A package the root reaches only through `test-dependencies` is in the build for
+    /// the tests alone. One that an ordinary `dependencies` chain also reaches is not,
+    /// whichever map named it first — an ordinary build needs it.
+    ///
+    /// Mutation-checked by seeding the walk with every package of the build rather than
+    /// with the root: the first assertion then comes back empty.
+    #[test]
+    fn a_package_only_the_test_dependencies_reach_is_test_only() {
+        let root = with_test_dependencies(
+            package("todo", vec![("acme-widgets", true)]),
+            vec!["acme-expect"],
+        );
+        let widgets = package("acme-widgets", vec![]);
+        let expect = package("acme-expect", vec![]);
+
+        let build = vec![widgets, expect, root.clone()];
+        let test_only = test_only_packages(&build, &root.name);
+
+        let expected: std::collections::HashSet<PackageName> =
+            std::iter::once(PackageName::new("acme-expect").unwrap()).collect();
+        assert_eq!(test_only, expected);
+
+        // The same build, with the ordinary dependency reaching `acme-expect` too.
+        let widgets = package("acme-widgets", vec![("acme-expect", true)]);
+        let expect = package("acme-expect", vec![]);
+        let build = vec![expect, widgets, root.clone()];
+
+        assert!(test_only_packages(&build, &root.name).is_empty());
     }
 
     /// The package's own modules, as `visible_modules` takes them: a name and the file
