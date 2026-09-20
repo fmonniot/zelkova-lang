@@ -263,7 +263,7 @@ is unavailable are matters for the toolchain rather than the language, and the
 
 **Not implemented:** only a `path` source is obtained. A `git` entry is read and validated, and
 then reported as a source the compiler cannot fetch, so a build that has one compiles nothing
-([`docs/tickets/README.md`](../tickets/README.md)).
+([`docs/tickets/lang-61.md`](../tickets/lang-61.md)).
 
 ### `wrapped`
 
@@ -294,7 +294,7 @@ build is reproducible without the manifest having to be rewritten to pin it. Its
 **Not implemented:** nothing writes or reads a `zelkova.lock`, and no version constraint is
 checked. A `path` source carries no constraint to check and is the only source obtained today,
 so every package in a build is at the version its own manifest declares
-([`docs/tickets/README.md`](../tickets/README.md)).
+([`docs/tickets/lang-61.md`](../tickets/lang-61.md)).
 
 ### Only direct dependencies are usable
 
@@ -318,7 +318,7 @@ core's public modules are therefore taken in every package — a module of your 
 
 **Not implemented:** the compiler carries no copy of `zelkova-core`, so a package that needs
 one writes it in `dependencies` like any other and the names above are taken only in a package
-that does ([`docs/tickets/README.md`](../tickets/README.md)). The rest of the rule holds: a
+that does ([`docs/tickets/lang-62.md`](../tickets/lang-62.md)). The rest of the rule holds: a
 package of that name is seen unwrapped whatever the entry naming it says.
 
 ## Imports across a package boundary
@@ -350,11 +350,6 @@ The namespace is not a directory and does not appear under `src/`. Nor does a pa
 write its own: inside `acme-widgets`, `Size` is `Size`, and `AcmeWidgets.Size` names nothing.
 A module's name within its package is the one thing its file path decides, and the namespace
 is added at the boundary by whoever crosses it.
-
-The two blocks below are `expect=fragment`, which is a fact about the checker and not about
-the language: it compiles a block against the modules of its own `package=` group, and a
-package with a dependency is the one arrangement it cannot build. Both examples are checked
-as real packages under `tests/fixtures/` instead.
 
 ```zel expect=fragment
 module App exposing (start)
@@ -486,6 +481,12 @@ That cost falls on whoever exposes the type, and it is the design pressure it lo
 type in a public signature is part of the package's interface, and a package that puts a
 dependency's type there has made that dependency part of what it asks of its users. Wrapping
 the type in one of its own is how a package chooses not to.
+
+**Not implemented:** a type's identity is its module and its own name, with no package in it
+(`QualName`, `src/compiler/name.rs`), and a module's name is unique only within its package. So
+a package holding its own `Size` and depending, wrapped, on `acme-widgets` has two distinct
+unions that the compiler reads as one: `Size.Size` and `AcmeWidgets.Size.Size` unify, and the
+build reports success ([`docs/tickets/bug-37.md`](../tickets/bug-37.md)).
 
 ### Two modules under one name is an error
 

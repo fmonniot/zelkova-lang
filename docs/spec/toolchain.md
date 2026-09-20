@@ -240,10 +240,10 @@ run is not a test that passed.
 
 ## The compiler's interface
 
-**Known gap:** the compiler is pointed at a package root, reads that package's manifest, and
-compiles every package reachable from it through a `path` entry, dependencies first. None of
-the rest of this appendix exists: nothing is fetched, nothing is cached, and no `zelkova.lock`
-is read or written ([`docs/tickets/README.md`](../tickets/README.md)).
+**Known gap:** nothing is fetched, nothing is cached, and no `zelkova.lock` is read or written
+([`docs/tickets/lang-61.md`](../tickets/lang-61.md)), so none of the rest of this appendix
+exists. What does: the compiler is pointed at a package root, reads that package's manifest,
+and compiles every package reachable from it through a `path` entry, dependencies first.
 
 **Provisional:** what it becomes is a compiler pointed at a package root — the directory holding
 `zelkova.toml` — which resolves, compiles every module of `src/`, and writes its output beside
