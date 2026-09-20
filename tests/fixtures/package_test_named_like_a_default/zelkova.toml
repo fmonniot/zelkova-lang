@@ -1,0 +1,11 @@
+# A package holding a `tests/List.zel` — a test module answering to one of the
+# eight default imports' names. It declares no default import under `src/`, so it
+# receives all eight, and the file under `tests/` must not change that.
+name = "package-test-named-like-a-default"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../dep_core_flag"
+
+[test-dependencies]

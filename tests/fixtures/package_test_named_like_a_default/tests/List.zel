@@ -1,0 +1,6 @@
+-- Named after one of the eight default imports, and under `tests/` rather than
+-- `src/`. It holds nothing else: the name is the whole point of the file.
+module List exposing (Marker)
+
+
+type Marker = Marker

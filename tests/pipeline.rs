@@ -3679,3 +3679,44 @@ fn a_test_module_that_does_not_check_fails_only_when_tests_are_compiled() {
         result
     );
 }
+
+/// A file under `tests/` does not change what a module of `src/` means.
+///
+/// Whether the package declares one of the eight default imports is asked of `src/`
+/// alone, so a test module named `List` leaves the package receiving all eight. It has
+/// to: the same `src/` module is compiled by both entry points, and a build that
+/// compiles the tests cannot give it a different environment from one that does not.
+///
+/// The fixture reaches `Flag` and `on` — a type and a *value* of its `Basics` — without
+/// writing an import. A value, because a scalar type name is seeded for a module of an
+/// exempt package (`LANG-58`), so a bare `Int` would resolve whichever answer the
+/// question got.
+///
+/// Mutation-checked by asking the question over both roots
+/// (`modules.iter().chain(test_modules.iter())` in `compile_in_build`): the
+/// `compile_package_with_tests` half then fails with `cannot find a value named
+/// `App.on``, while the `compile_package` half stays green.
+#[test]
+fn a_test_module_named_after_a_default_import_does_not_exempt_the_package() {
+    let root = fixture_package("package_test_named_like_a_default");
+
+    assert_eq!(
+        module_names(&root, SourceRoot::Tests),
+        vec!["tests/List.zel".to_string()],
+        "the fixture must hold the test module named after a default import"
+    );
+
+    let result = compile_package(&root);
+    assert!(
+        result.is_ok(),
+        "`src/` receives the default imports, got {:?}",
+        result
+    );
+
+    let result = compile_package_with_tests(&root);
+    assert!(
+        result.is_ok(),
+        "compiling the tests must not change what `src/` resolves, got {:?}",
+        result
+    );
+}

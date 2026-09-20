@@ -1152,11 +1152,21 @@ fn compile_in_build(
     }
 
     // Whether this package declares one of the eight default imports, and so receives
-    // none of them. It is a question about the package, and each root holds only part
-    // of one, so it is asked here — over both — rather than by each root's walker.
-    let package_declares_a_default = default_imports::declares_a_default(
-        modules.iter().chain(test_modules.iter()).map(|m| &m.name),
-    );
+    // none of them. It is asked here rather than by each root's walker because both
+    // roots have to get the same answer: a test module is checked against the same
+    // `Basics` a `src/` module is.
+    //
+    // It is asked of `src/` alone, and deliberately. A build that compiles the tests
+    // and one that does not have to agree about what a `src/` module means, and they
+    // cannot if a file under `tests/` can move the answer — `tests/List.zel` would make
+    // this package look like `zelkova-core` to `compile_package_with_tests` and not to
+    // `compile_package`, so the same `src/` module would resolve `Int` in one build and
+    // not in the other. `src/` is also the whole of what the exemption is for: it
+    // exists so that no module of `zelkova-core` can close an implicit import cycle
+    // (`DEC-17`), and a test module cannot be on such a cycle, because nothing imports
+    // one.
+    let package_declares_a_default =
+        default_imports::declares_a_default(modules.iter().map(|m| &m.name));
 
     // Steps 4 and 5, once per source root. Two passes rather than one walk over both,
     // because the two roots are two environments: `src/` is checked knowing nothing of

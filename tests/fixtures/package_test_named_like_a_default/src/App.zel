@@ -1,0 +1,7 @@
+-- `Flag` and `on` are reached without an import, so this module compiles only if
+-- the package received the default imports.
+module App exposing (answer)
+
+
+answer : Flag
+answer = on
