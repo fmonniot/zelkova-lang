@@ -2136,9 +2136,10 @@ fn compile_package_reports_a_missing_manifest() {
 /// underscore, neither of which a package name may hold.
 ///
 /// Mutation-checked by asserting on the variant and the offending string rather
-/// than `is_err()` alone: a version of `is_legal_package_name` that accepted
-/// everything would leave this fixture compiling (an empty `src/`, so nothing
-/// else would fail), and `expect_err` would panic.
+/// than `is_err()` alone: with `is_legal_package_name` accepting everything, the
+/// fixture — which has no `src/` at all — fails one step later instead, as
+/// `LoadingFiles`, and it is the `let CompilationError::Manifest(..) = … else`
+/// below that catches it rather than `expect_err`.
 #[test]
 fn compile_package_reports_an_invalid_package_name() {
     let root = fixture_package("package_invalid_name");
@@ -2155,7 +2156,7 @@ fn compile_package_reports_an_invalid_package_name() {
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     match &errors[0] {
-        manifest::ManifestError::InvalidName { name } => assert_eq!(name, "Not_Legal"),
+        manifest::ManifestError::InvalidName { name, .. } => assert_eq!(name, "Not_Legal"),
         other => panic!("expected ManifestError::InvalidName, got {:?}", other),
     }
 
@@ -2206,11 +2207,49 @@ fn compile_package_reports_a_private_module_that_does_not_exist() {
         manifest_errors
     );
     match &manifest_errors[0] {
-        manifest::ManifestError::PrivateModuleNotFound { name } => {
+        manifest::ManifestError::PrivateModuleNotFound { name, .. } => {
             assert_eq!(name, &Name::from("Ghost"));
         }
         other => panic!("expected PrivateModuleNotFound, got {:?}", other),
     }
+}
+
+// ── Test 28d: a parse failure does not become a manifest error too ───────────
+
+/// A module that fails to parse contributes nothing to the list of modules the
+/// package holds, so a `private-modules` entry naming it would read as an entry
+/// naming a module that does not exist — one broken file reported twice, once
+/// truthfully and once as the manifest's fault.
+///
+/// `package_private_module_parse_failure` declares `private-modules = ["Broken"]`
+/// and holds exactly one module, `Broken`, which does not parse. The only error is
+/// the parse error.
+///
+/// Mutation-checked by removing the `parse_failures == 0` guard around the
+/// `private-modules` check in `compile_package`: a second
+/// `CompilationError::Manifest` joins the parse error and the length assertion
+/// below fails.
+#[test]
+fn a_parse_failure_does_not_also_report_its_module_as_unheld() {
+    let root = fixture_package("package_private_module_parse_failure");
+    assert_eq!(module_names(&root.join("src")), vec!["Broken.zel"]);
+
+    let error = compile_package(&root).expect_err("`Broken.zel` does not parse");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
+    };
+    assert_eq!(
+        errors.len(),
+        1,
+        "the parse error is the only error the package has, got {:?}",
+        errors
+    );
+    assert!(
+        matches!(errors[0], CompilationError::Source(..)),
+        "expected the parse error alone, got {:?}",
+        errors[0]
+    );
 }
 
 // ── Test 29: the default imports reach a module that wrote none ─────────────

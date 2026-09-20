@@ -463,8 +463,13 @@ pub enum CompilationError {
     ///
     /// Raised before [`LoadingFiles`](CompilationError::LoadingFiles) even runs — a
     /// package's source root is derived from its manifest, so there is nothing to walk
-    /// until the manifest is known good — and for the same reason it carries no
-    /// [`SourceFileId`]: there is no file database yet to render one against.
+    /// until the manifest is known good — with one exception:
+    /// [`PrivateModuleNotFound`](manifest::ManifestError::PrivateModuleNotFound) needs the
+    /// package's parsed modules and is pushed after them.
+    ///
+    /// It carries no [`SourceFileId`] either way. A manifest error's location is a byte
+    /// range in `zelkova.toml`, and that file is never read into the database, so each
+    /// error names its manifest in its own message instead.
     Manifest(Vec<manifest::ManifestError>),
     LoadingFiles(Vec<SourceFileError>),
     Source(parser::Error, SourceFileId),
@@ -532,8 +537,12 @@ impl CompilationError {
             CompilationError::InFile(inner, id) => inner.as_diagnostic_in(Some(*id)),
             // The one phase that carries spans renders its own labelled diagnostic.
             CompilationError::Source(err, file_id) => err.diagnostic(*file_id),
-            // Same reasoning as `LoadingFiles`, one step earlier: there is no module and
-            // no file database yet, so each error names itself in a note.
+            // Only `PrivateModuleNotFound` ever reaches this arm: every other
+            // `ManifestError` is raised before the file database exists and goes back to
+            // the caller unrendered. That one is pushed after parsing, so a database does
+            // exist here — but the location this error wants is a byte range in
+            // `zelkova.toml`, which is not a file that database holds, so it renders with
+            // no label and each error names itself and its manifest in a note.
             CompilationError::Manifest(errors) => Diagnostic::error()
                 .with_message("Error in the package manifest")
                 .with_notes(errors.iter().flat_map(|e| e.message_and_notes()).collect()),
@@ -717,16 +726,27 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
     // other manifest error is known from the manifest text alone. Nothing yet reads the
     // list to keep an import out (`LANG-14`); this only rejects an entry naming a module
     // the package never had in the first place.
-    let held_modules: std::collections::HashSet<&Name> = modules.iter().map(|m| &m.name).collect();
-    let missing_private_modules: Vec<manifest::ManifestError> = manifest
-        .private_modules
-        .iter()
-        .filter(|name| !held_modules.contains(name))
-        .cloned()
-        .map(|name| manifest::ManifestError::PrivateModuleNotFound { name })
-        .collect();
-    if !missing_private_modules.is_empty() {
-        errors.push(CompilationError::Manifest(missing_private_modules));
+    //
+    // A file that failed to parse contributes no module, so with any parse failure the list
+    // of modules the package holds is known to be short. Checking against it then blames the
+    // manifest for the parser's failure, and the parse error is already on its way to the
+    // user, so the check is skipped entirely rather than run on a list it cannot trust.
+    if parse_failures == 0 {
+        let held_modules: std::collections::HashSet<&Name> =
+            modules.iter().map(|m| &m.name).collect();
+        let missing_private_modules: Vec<manifest::ManifestError> = manifest
+            .private_modules
+            .iter()
+            .filter(|name| !held_modules.contains(name))
+            .cloned()
+            .map(|name| manifest::ManifestError::PrivateModuleNotFound {
+                manifest_path: package_dir.join(manifest::MANIFEST_FILE_NAME),
+                name,
+            })
+            .collect();
+        if !missing_private_modules.is_empty() {
+            errors.push(CompilationError::Manifest(missing_private_modules));
+        }
     }
 
     debug!("phase: Build module dependency graph");
@@ -874,6 +894,49 @@ pub fn check_module(
 mod tests {
     use super::*;
     use codespan_reporting::diagnostic::Severity;
+
+    /// Every clause of the package-name rule, accepted and rejected side by side.
+    ///
+    /// The hyphen half is the reason this table exists: a name is read left to right and
+    /// each hyphen has to be followed by an ASCII lowercase letter, which is what keeps
+    /// `acme-widgets` from colliding with a package called `acme` holding a `widgets`
+    /// something. `Not_Legal`, the only rejection the pipeline tests reach, fails on its
+    /// first character and never enters the loop at all.
+    ///
+    /// Mutation-checked by dropping the `is_ascii_lowercase()` guard on the character
+    /// after a hyphen (`a-`, `a--b` and `a-1` go green) and, separately, by starting the
+    /// first-character check from `is_ascii_alphanumeric()` (`1a` goes green).
+    #[test]
+    fn a_package_name_is_lowercase_ascii_with_hyphens_between_letters() {
+        let cases = [
+            ("a", true),
+            ("core", true),
+            ("zelkova-core", true),
+            ("a-b-c", true),
+            ("html2", true),
+            ("a1-b2", true),
+            ("", false),
+            ("-a", false),
+            ("a-", false),
+            ("a--b", false),
+            ("a-1", false),
+            ("1a", false),
+            ("Core", false),
+            ("Not_Legal", false),
+            ("with space", false),
+            ("zelkøva", false),
+        ];
+
+        for (name, legal) in cases {
+            assert_eq!(
+                is_legal_package_name(name),
+                legal,
+                "{:?} should {} a legal package name",
+                name,
+                if legal { "be" } else { "not be" }
+            );
+        }
+    }
 
     /// Canonicalization failures are errors, and used to be rendered as warnings.
     ///
