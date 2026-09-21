@@ -1,7 +1,7 @@
 # LANG-65 · Three more `std/core` JavaScript functions still read an `Int` as a number
 
 **Sizing:** small-to-medium — one mechanical fix, and one that raises the same shape of
-question [LANG-64](lang-64.md) settled for the three shifts, for a function it does not cover.
+question [LANG-64](README.md) settled for the three shifts, for a function it does not cover.
 
 **Location:** `std/core/src/Js/Basics.mjs` — `toFloat`, `pow` — and `std/core/src/Js/Utils.mjs`
 — `_Utils_isOrdered`, which backs `compare`, `lt`, `le`, `gt` and `ge`.
@@ -29,7 +29,7 @@ throwing:
   and it needs the `BigInt` half to use `**`, which itself throws on a negative exponent
   (`Exponent must be non-negative`). Whether `2 ^ -1` (`Int` base, negative `Int` exponent) has
   an `Int` answer at all is a real question with no `docs/spec/` or `DEC-16` answer today — the
-  same shape of question [LANG-64](lang-64.md) settled for a negative shift count, not a detail
+  same shape of question [LANG-64](README.md) settled for a negative shift count, not a detail
   this ticket should quietly pick.
 - **`_Utils_isOrdered`** (`Js/Utils.mjs`) admits `typeof v === 'number' | 'string' | 'boolean'`.
   An `Int` is now `typeof v === 'bigint'`, so `compare`, `lt`, `le`, `gt` and `ge` — all built on
@@ -52,12 +52,13 @@ touching any of `toFloat`, `pow`, or ordering two `Int`s.
   `DEC-16` decision 2 already accepted for `Float`.
 - `pow`: dispatch on `typeof a` the way `add`/`sub`/`mul` do, keeping `Math.pow` for the `Float`
   case. The `Int` case needs its sibling question answered first — what a negative `Int`
-  exponent means — and [LANG-64](lang-64.md) does not answer it: a shift count below zero names
+  exponent means — and [LANG-64](README.md) does not answer it: a shift count below zero names
   no answer at all, where `2 ^ -1` has a real one (`0.5`) that `Int` has no room for, which is
   the shape [An operation with no answer](../spec/evaluation-semantics.md#an-operation-with-no-answer)
   addresses rather than the shape a clamped count does. So this ticket should land the `Float`
   and non-negative-`Int` cases and either resolve the negative-exponent question itself (if it
-  turns out simple) or split it into its own ticket the way LANG-64 was split off. Don't guess.
+  turns out simple) or split it into its own ticket the way LANG-64 was split off from LANG-56.
+  Don't guess.
 - `_Utils_isOrdered`: add `'bigint'` to the admitted `typeof` set. `_Utils_cmp`'s primitive
   branch (`x === y`, `x < y`) already does the right thing for two `BigInt`s with no further
   change, since JavaScript's `<`/`===` work across same-typed `BigInt` operands the same way

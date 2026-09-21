@@ -34,8 +34,8 @@
 //           the range. These prove nothing about the fix itself, so do not
 //           read a green one as a pinned new behaviour.
 //
-// What a *negative* shift count means is unsettled — `DEC-16` decision 6
-// records the question — so nothing below passes one.
+// A shift count is read clamped into `0 .. 64` (`DEC-16` decision 6,
+// `LANG-64`), so a negative count reads as 0, the identity.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -79,10 +79,27 @@ test('PINS shiftLeftBy wraps at 64 bits', () => {
 
 // docs/decisions/dec-16.md decision 6: a count is a number of positions, and a
 // 64-bit pattern moved 64 of them has nothing left. JavaScript's operators
-// masked the count to five bits and answered `1` to `1 >>> 32`.
-test('PINS a shift of 64 or more is 0', () => {
+// masked the count to five bits and answered `1` to `1 >>> 32`. Both of
+// these fill with zero, so "nothing left" reads as `0`; `shiftRightBy`'s own
+// version of the same claim is the GUARD just above, since it fills with the
+// topmost bit instead.
+test('PINS a shift of 64 or more is 0, for shiftLeftBy and shiftRightZfBy', () => {
     assert.equal(shiftLeftBy(64n, 1n), 0n);
     assert.equal(shiftRightZfBy(64n, -1n), 0n);
+});
+
+// docs/decisions/dec-16.md decision 6 (LANG-64): a shift count is read
+// clamped into `0 .. 64`, so a count below 0 reads as 0, the identity.
+// Verified red against the pre-LANG-64 companion, where a negative count
+// instead reversed the shift's direction: `shiftLeftBy(-1n, 8n)` was `4n`
+// (a right shift), `shiftRightBy(-1n, 32n)` was `64n` (a left shift), and
+// `shiftRightZfBy(-1n, -32n)` was `-64n` (a negative answer out of a
+// zero-fill shift, the reversal happening after the operand was already
+// read unsigned).
+test('PINS a negative count reads as 0, the identity', () => {
+    assert.equal(shiftLeftBy(-1n, 8n), 8n);
+    assert.equal(shiftRightBy(-1n, 32n), 32n);
+    assert.equal(shiftRightZfBy(-1n, -32n), -32n);
 });
 
 test('GUARD shiftRightBy fills with the topmost bit', () => {
@@ -90,6 +107,19 @@ test('GUARD shiftRightBy fills with the topmost bit', () => {
     assert.equal(shiftRightBy(2n, 32n), 8n);
     assert.equal(shiftRightBy(1n, -32n), -16n);
     assert.equal(shiftRightBy(62n, INT_MIN), -2n);
+});
+
+// DEC-16 decision 6 corrected: a shift of 64 or more leaves nothing of the
+// pattern, but `shiftRightBy` fills with the operand's own topmost bit
+// rather than zero, so that reads as the bit copied across all 64
+// positions — `-1` for a negative operand — not `0` the way the other two
+// read it. Already true of the pre-LANG-64 bound (it clamped the positive
+// side the same way); this GUARDs the corrected claim rather than pinning a
+// behaviour change.
+test('GUARD shiftRightBy at 64 or more fills from the topmost bit, not 0', () => {
+    assert.equal(shiftRightBy(64n, -32n), -1n);
+    assert.equal(shiftRightBy(100n, -32n), -1n);
+    assert.equal(shiftRightBy(64n, 32n), 0n);
 });
 
 test('PINS shiftRightZfBy fills with zeros from bit 63', () => {
@@ -131,11 +161,11 @@ test('PINS every shift lands back in the Int range', () => {
 // bound anything, so an offset large enough (an ordinary in-range `Int`, well
 // short of `Int`'s own bound) makes that intermediate allocation throw
 // `RangeError: Maximum BigInt size exceeded` before the mask ever runs. Every
-// shift below used to throw; now it must not, and DEC-16 decision 6 already
-// predicts the answer: an offset whose magnitude is 64 or more behaves like
-// an offset of exactly 64 in the same direction (a negative offset still
-// reverses direction — LANG-64 owns what that means, this only bounds it).
-test('PINS a large-magnitude offset does not throw and matches an offset of exactly 64 in the same direction', () => {
+// shift below used to throw; now it must not. A positive large-magnitude
+// offset clamps to 64, the same as an offset of exactly 64 (DEC-16 decision
+// 6); a negative one clamps to 0 (LANG-64), the identity, not to an offset
+// of `-64` the way the pre-LANG-64 reversal reading would have answered.
+test('PINS a large-magnitude offset does not throw, clamps to 64 when positive and to the identity when negative', () => {
     const LARGE = 2_000_000_000n;
 
     for (const a of [INT_MIN, -1n, 0n, 1n, INT_MAX]) {
@@ -147,12 +177,12 @@ test('PINS a large-magnitude offset does not throw and matches an offset of exac
         assert.doesNotThrow(() => shiftRightZfBy(-LARGE, a));
 
         assert.equal(shiftLeftBy(LARGE, a), shiftLeftBy(64n, a));
-        assert.equal(shiftLeftBy(-LARGE, a), shiftLeftBy(-64n, a));
+        assert.equal(shiftLeftBy(-LARGE, a), a);
 
         assert.equal(shiftRightBy(LARGE, a), shiftRightBy(64n, a));
-        assert.equal(shiftRightBy(-LARGE, a), shiftRightBy(-64n, a));
+        assert.equal(shiftRightBy(-LARGE, a), a);
 
         assert.equal(shiftRightZfBy(LARGE, a), shiftRightZfBy(64n, a));
-        assert.equal(shiftRightZfBy(-LARGE, a), shiftRightZfBy(-64n, a));
+        assert.equal(shiftRightZfBy(-LARGE, a), a);
     }
 });

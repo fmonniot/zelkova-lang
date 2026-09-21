@@ -18,11 +18,13 @@ zeros in from the left, and reads the result back as a signed `Int`
 (DEC-16 decision 6). That outer mask is what makes a shift of `0` the identity
 rather than `2^64 - 1`.
 
-What a *negative* shift count means is not settled, for any of the three, and
-`DEC-16` decision 6 is where the question is recorded. Under `BigInt` a
-negative count reverses the shift's direction, so `shiftRightZfBy -1 8` is a
-right shift that shifted left; the masks below keep the answer an `Int`
-whatever the count turns out to mean.
+A shift count is a number of positions, and it is read clamped into `0 .. 64`
+(DEC-16 decision 6, LANG-64): a count of 64 or more leaves nothing of the
+64-bit pattern, and a count below 0 reads as 0, the identity, there being no
+such thing as a negative number of positions. Under `BigInt` a negative count
+would otherwise reverse the shift's direction, so `shiftRightZfBy -1 8` would
+be a right shift that shifted left; `_Bitwise_boundOffset` below is what
+keeps every count read this way before any shift runs.
 */
 
 // BASIC OPERATIONS
@@ -45,17 +47,17 @@ export function complement(a) { return ~a }
 // negative — makes that intermediate allocation itself throw `RangeError:
 // Maximum BigInt size exceeded`.
 //
-// DEC-16 decision 6 already settles that a 64-bit pattern moved 64 positions
-// has nothing left, so an offset whose magnitude is 64 or more answers the
-// same as an offset of exactly 64, in whichever direction the sign already
-// picked — a negative offset still reverses direction (LANG-64 owns what
-// that reversal *means*; this guard only stops the crash, the same shape as
-// `idiv`/`remainderBy`'s zero-divisor guard). Bounding the magnitude here,
-// before the native operator sees it, removes the unbounded allocation
-// without changing any in-range answer.
+// DEC-16 decision 6 (LANG-64) is the rule this implements, not just guards
+// against a crash: a shift count is a number of positions, read clamped into
+// `0 .. 64`. An offset of 64 or more leaves nothing of the 64-bit pattern, so
+// it reads as 64; an offset below 0 names no such thing as a negative number
+// of positions, so it reads as 0, the identity. Clamping here, before the
+// native operator sees it, also removes the unbounded allocation above — the
+// same shape as `idiv`/`remainderBy`'s zero-divisor guard — without changing
+// any answer in `0 .. 64`.
 function _Bitwise_boundOffset(offset) {
+  if (offset < 0n) return 0n;
   if (offset > 64n) return 64n;
-  if (offset < -64n) return -64n;
   return offset;
 }
 
