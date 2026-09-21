@@ -2,16 +2,17 @@
 
 **Sizing:** medium. One predicate emitter per admitted type form, plus the call-site wiring that
 runs it, plus the two destinations a failing check has. Bigger if it is taken before
-[`GEN-1`](gen-1.md) has settled how a value is represented, because half of this ticket *is* that
-representation read back.
+[`GEN-1`](gen-1.md)'s program has settled how a value is represented, because half of this
+ticket *is* that representation read back.
 
-**Depends on:** [`GEN-1`](gen-1.md) — there is no code generation phase to emit anything from
-until it lands. Sibling rather than part of it: `GEN-1` is a whole phase and this is a bounded
-piece of output that can be written, tested and reviewed on its own, against one chapter section.
+**Depends on:** [`GEN-12`](gen-12.md), which emits the facade call site this wraps a check
+around, and [`LANG-43`](lang-43.md). Sibling to [`GEN-1`](gen-1.md)'s program rather than a
+member of it: this is a bounded piece of output that can be written, tested and reviewed on its
+own, against one chapter section.
 
-**Location:** the backend module `GEN-1` creates under `src/compiler/`, at whatever it emits for a
-`module javascript` facade's call site. `std/core/src/Js/*.mjs` are the companions the emitted
-checks sit in front of.
+**Location:** the backend module [`GEN-9`](gen-9.md) creates under `src/compiler/`, at whatever
+[`GEN-12`](gen-12.md) emits for a `module foreign` facade's call site. `std/core/src/Js/*.mjs`
+are the companions the emitted checks sit in front of.
 
 **Problem:** [Foreign interoperability](../spec/interop.md#which-types-may-cross-the-boundary)
 admits a type into a facade signature exactly when the compiler can emit a **predicate** for
@@ -42,15 +43,20 @@ every phase downstream of the boundary is entitled to believe it.
    hands back. Whether an argument on its way *out* to JavaScript is also checked is a separate
    question: it is checked already, in the sense that the type checker proved it, so the case for
    spending time on it is weaker. Say which was chosen.
-3. **The predicates themselves**, one per form the chapter admits: `Int` (a number, and a whole
-   one the [32-bit range](../spec/evaluation-semantics.md#numbers) holds), `Float`, `Bool`,
+3. **The predicates themselves**, one per form the chapter admits: `Int` (a `bigint` the
+   [64-bit range](../spec/evaluation-semantics.md#numbers) holds — [`DEC-16`
+   decision 5](../decisions/dec-16.md#5--on-javascript-an-int-is-a-bigint)), `Float`, `Bool`,
    `Char`, `String`, a tuple, a record, a list, and a union type — the last reading the `$` field
    against the declaration's constructor set and checking each argument against the predicate of
    the type that constructor declares for it. The union encoding is
    [published in the chapter](../spec/interop.md#a-union-crosses-as-a-tagged-value) and this
-   is the ticket that makes it true; the record and list encodings belong to
-   [`SPEC-21`](spec-21.md) and [`SPEC-22`](spec-22.md) and to `GEN-1`, and this ticket inherits
-   whatever they settle rather than deciding it.
+   is the ticket that makes it true. **A record and a list have no published encoding**:
+   [Records](../spec/records.md) and [Lists](../spec/lists.md) specify the constructs and
+   neither says what one looks like across a boundary, which
+   [the chapter states outright](../spec/interop.md#which-types-may-cross-the-boundary) and
+   leaves to code generation. So this ticket inherits whatever [`GEN-1`](gen-1.md)'s program
+   settles for them rather than deciding it — and neither is reachable until
+   [`LANG-47`](lang-47.md) and [`LANG-44`](lang-44.md) make one writable at all.
 4. **Recursion and cost.** A predicate for a recursive union is a recursive walk, and it
    terminates because a Zelkova value is immutable and holds no cycle. It costs the size of the
    value at each crossing, which the chapter states rather than hides; a first version should

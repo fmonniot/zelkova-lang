@@ -117,3 +117,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-15](dec-15.md) | The scalar types are declared in Zelkova and known by qualified name: five decisions | live; 3 re-scoped by DEC-17 |
 | [DEC-16](dec-16.md) | `Int` is 64 bits on every target: six decisions | live |
 | [DEC-17](dec-17.md) | The default imports are decided by package, not by the import graph: three decisions | live |
+| [DEC-18](dec-18.md) | How Zelkova is compiled: seven decisions | live |
