@@ -2605,6 +2605,46 @@ fn mutual_dependency_between_two_bindings_is_rejected() {
     assert_eq!(labels[1].span.to_range(), b_start..(b_start + b_decl.len()));
 }
 
+/// `a = (a, b)` beside `b = a`: `a` has a self-loop (it names itself in its
+/// own tuple) *and* is part of the two-member `{a, b}` cycle (`a` reaches
+/// `b`, `b` reaches `a`). The two used to be reported as separate
+/// `SelfDependency` errors — a length-1 one for `a`'s self-loop and a
+/// length-2 one for the `{a, b}` cycle — even though they describe the same
+/// underlying cycle. Only the length-2 report should survive.
+///
+/// Mutation-checked by reverting the `in_larger_scc` guard in
+/// `check_self_dependency` (letting the self-loop pass fire for every node
+/// with a self-edge regardless of SCC membership): this test goes red,
+/// `errors.len()` back to 2.
+#[test]
+fn self_loop_inside_a_larger_cycle_is_reported_once() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        a = (a, b)
+        b = a
+    "#};
+
+    let errors = canonicalize_standalone(source)
+        .expect_err("a still has no value before the cycle it is part of resolves");
+    assert_eq!(
+        errors.len(),
+        1,
+        "a's self-loop and its membership in the {{a, b}} cycle are the same \
+         defect and must be reported once, got {:?}",
+        errors
+    );
+
+    match &errors[0] {
+        canonical::Error::SelfDependency(path) => {
+            assert_eq!(
+                path.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+                vec!["a", "b"]
+            );
+        }
+        other => panic!("expected SelfDependency, got {:?}", other),
+    }
+}
+
 /// `y = f y`: `f` is an ordinary function (it names a parameter), so it is
 /// never a node of the graph and the reference to it is never an edge — but
 /// `y` also names itself in the same application, and that occurrence is a

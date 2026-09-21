@@ -23,6 +23,7 @@ use crate::utils::collect_accumulate;
 use log::{debug, trace};
 use petgraph::graph::{DiGraph, NodeIndex};
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 mod environment;
 /// Part of [`Error::AmbiguousVariables`] and [`Error::AmbiguousVariants`]'s public
@@ -1107,11 +1108,11 @@ pub enum Error {
     /// declaration's span (`Value::span()`) — length 1 for a self-loop
     /// (`x = x`), length 2 or more for a cycle running through several
     /// bindings (`a = b` beside `b = a`). `labels()` gives the first entry the
-    /// primary label and every other entry a secondary one; which member of
-    /// the cycle ends up first is only what [`check_self_dependency`] found
-    /// first (a strongly-connected component has no distinguished start), so
-    /// callers should not read anything into the order beyond "reported" vs.
-    /// "also part of it".
+    /// primary label and every other entry a secondary one; for a
+    /// length-2-or-more cycle, [`check_self_dependency`] sorts the members by
+    /// name before building this list, so the primary label is always the
+    /// alphabetically-first member of the cycle — deterministic, not an
+    /// artifact of traversal order.
     ///
     /// A binding that names a parameter is never a member of this cycle: its
     /// value is the function, not evaluated until applied, so it may depend on
@@ -1862,7 +1863,10 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
 ///
 /// A self-loop is reported directly: `tarjan_scc` puts a single node in its
 /// own component whether or not it has an edge back to itself, so a
-/// one-binding cycle would otherwise slip past the `len() > 1` check below.
+/// one-binding cycle would otherwise slip past the `len() > 1` check below —
+/// but only when that node is not *also* part of a larger component, since a
+/// node can have a self-loop and still belong to a bigger cycle (`a = (a,
+/// b)` beside `b = a`), and that member should be named once, not twice.
 /// Every larger strongly-connected component is reported as one
 /// [`Error::SelfDependency`], its members in a name-sorted order so the
 /// diagnostic does not depend on `values`' `HashMap` iteration order.
@@ -1897,9 +1901,22 @@ fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>
     }
 
     let mut errors = Vec::new();
+    let sccs = petgraph::algo::tarjan_scc(&graph);
+
+    // A node that also sits in a larger strongly-connected component gets its
+    // cycle reported once, below, alongside the rest of that component — not
+    // again here as a length-1 `SelfDependency` naming it alone. `a = (a, b)`
+    // beside `b = a` is exactly this: `a` has a self-loop *and* is part of the
+    // two-member `{a, b}` cycle, and the two used to be reported separately.
+    let in_larger_scc: HashSet<NodeIndex> = sccs
+        .iter()
+        .filter(|members| members.len() > 1)
+        .flatten()
+        .copied()
+        .collect();
 
     for idx in graph.node_indices() {
-        if graph.contains_edge(idx, idx) {
+        if graph.contains_edge(idx, idx) && !in_larger_scc.contains(&idx) {
             let name = graph[idx];
             errors.push(Error::SelfDependency(vec![(
                 name.clone(),
@@ -1908,10 +1925,7 @@ fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>
         }
     }
 
-    for members in petgraph::algo::tarjan_scc(&graph)
-        .iter()
-        .filter(|members| members.len() > 1)
-    {
+    for members in sccs.iter().filter(|members| members.len() > 1) {
         let mut names: Vec<&Name> = members.iter().map(|&idx| graph[idx]).collect();
         names.sort_by(|l, r| l.as_str().cmp(r.as_str()));
 
