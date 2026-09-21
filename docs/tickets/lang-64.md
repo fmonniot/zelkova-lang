@@ -1,61 +1,132 @@
-# LANG-64 · What a negative shift count means is undecided
+# LANG-64 · A shift count is clamped into `0 .. 64`
 
-**Sizing:** small — one decision, then a one-line change to up to three functions.
+**Sizing:** small — one helper changes; the rest is the prose and the examples that describe it.
 
-**Location:** `std/core/src/Js/Bitwise.mjs` — `shiftLeftBy`, `shiftRightBy`, `shiftRightZfBy`.
+**Decided:** 2026-09-20, by the language owner. This ticket was filed with three readings and no
+pick, because picking changes what three `std/core` functions promise. It now carries the pick,
+the argument for it, and the work that follows.
 
-**Depends on:** [LANG-56](lang-56.md), which carries `std/core`'s two JavaScript companions to
-the 64-bit `BigInt` representation of `Int` [DEC-16](../decisions/dec-16.md) settled. This
-ticket is the one question LANG-56 deliberately did not answer.
+**Location:** `std/core/src/Js/Bitwise.mjs` — `_Bitwise_boundOffset` and the file header;
+`std/core/src/Bitwise.zel` — the doc comments for `shiftLeftBy`, `shiftRightBy` and
+`shiftRightZfBy`; `docs/decisions/dec-16.md` — decision 6;
+`std/core/tests/Js/BitwiseChecks.mjs`.
 
-**Found:** while implementing LANG-56. Its own text said "ask before picking; nothing else in
-either file depends on the answer," so LANG-56 shipped the port and masking without picking,
-and this ticket is where the question now lives — [DEC-16 decision
-6](../decisions/dec-16.md#6--a-shift-reads-its-operand-as-a-fixed-64-bit-pattern) records it in
-prose but names no ticket, since none existed yet when it was written.
+**Depends on:** `LANG-56` (closed 2026-09-20), which carried `std/core`'s two JavaScript
+companions to the 64-bit `BigInt` representation of `Int` that
+[DEC-16](../decisions/dec-16.md) settled. Its own text said "ask before picking; nothing else in
+either file depends on the answer," so it shipped the port and the masking without picking, and
+left the question here.
 
-**Problem:** JavaScript's `<<`, `>>` and `>>>` mask their shift count to five bits and coerce
-their operands to 32 bits, so a negative count on a 32-bit operand never had an unambiguous
-reading — `8 << -1` is `8 << 31` after masking, an implementation artifact rather than a chosen
-answer. Once the operands are `BigInt` (LANG-56), the mask is gone: JavaScript defines a
-negative `BigInt` shift count as reversing the shift's direction, so `a << -1n` is `a >> 1n` and
-vice versa. That is a real, working answer — not a throw — and it is silently the one you get by
-doing nothing, unless the language decides otherwise.
+## The rule
 
-`shiftRightZfBy` sharpens it further because it has no native operator at all (`BigInt` has no
-`>>>`); LANG-56 built it from `BigInt.asUintN`/`asIntN` and `>>`, so its negative-count behaviour
-is exactly whatever `>>`'s is, by construction rather than by any argument that it should be.
+**A shift count is a number of positions, and it is read clamped into `0 .. 64`.**
 
-Concretely, today (post-LANG-56) `shiftRightZfBy -1 8` returns `16n` — a "zero-fill right shift"
-that shifted left. Nothing checked this in either direction: LANG-56's test additions
-deliberately pass no negative count.
+- A count of **64 or more** reads as 64. This half is already
+  [DEC-16 decision 6](../decisions/dec-16.md#6--a-shift-reads-its-operand-as-a-fixed-64-bit-pattern):
+  a 64-bit pattern moved 64 positions has nothing of itself left, so a larger count has nothing
+  further to do.
+- A count **below 0** reads as 0, which is the identity. There is no such thing as a negative
+  number of positions, and the nearest count that does exist is none at all.
 
-**Options, none picked:**
+```zel
+shiftLeftBy    -1   5 ==  5
+shiftRightBy   -1  32 == 32
+shiftRightZfBy -1 -32 == -32
+```
 
-1. **Keep JavaScript's reversal.** Cheapest — it's what fifth-column `>>`/`<<` on `BigInt`
-   already does, so all three functions need no change once the rest of LANG-56 lands. Costs
-   coherence: nothing in `docs/spec/` currently describes a shift as bidirectional, and a reader
-   of `Bitwise.zel`'s docs has no reason to expect `shiftLeftBy -1 x` to shift right.
-2. **Treat a negative count as an error.** Matches the "no answer" shape [An operation with no
-   answer](../spec/evaluation-semantics.md#an-operation-with-no-answer) uses for division by
-   zero — but that section's operations are total by returning `0`, not by raising, so this
-   would be a new failure shape for `std/core` to justify, and it needs an answer for what a
-   facade call does when the JavaScript side throws (nothing currently unwinds a JS exception
-   back through a facade boundary — that is undesigned).
-3. **Define it as shifting by the count's absolute value in the same direction** — i.e. a
-   negative count behaves as if it were positive, and the sign is ignored rather than read as a
-   direction. Closest to "there is no such thing as a negative shift," but silently discarding
-   a sign a caller wrote is its own kind of surprising.
+No positive count changes. A count of 0 was already the identity for all three, including
+`shiftRightZfBy`, whose outer mask is what makes it so.
 
-Picking is a language decision — it changes what three `std/core` functions promise — not an
-implementation detail, so this ticket does not choose. Whichever is picked, name it in
-[DEC-16 decision 6](../decisions/dec-16.md#6--a-shift-reads-its-operand-as-a-fixed-64-bit-pattern)
-(the section already narrates the question) and in `Bitwise.zel`'s doc comments for the three
-functions, none of which currently says anything about a negative count.
+## Why this reading, and not the other three
 
-**Acceptance:** DEC-16 decision 6 states which of the above (or another option) was chosen, and
-why. `Bitwise.zel`'s doc comments for `shiftLeftBy`, `shiftRightBy` and `shiftRightZfBy` each
-gain a worked example with a negative count matching the decision. `Js/Bitwise.mjs` implements
-it — a no-op if option 1 is picked, a guard if option 2 or 3 is. A `node --test` check in
-`std/core/tests/Js/BitwiseChecks.mjs` pins the chosen behaviour for at least one negative count
-per function.
+**Reversal — do nothing, and let `BigInt`'s own `<<`/`>>` answer.** This is what the tree does
+today, and it costs each of the three functions its own name. `shiftLeftBy -1 8` is `4` and
+`shiftLeftBy -64 -32` is `-1`: a left shift that went right. `shiftRightBy -1 8` is `16`, a
+right shift that filled from the right with zeros rather than with the topmost bit its doc
+comment promises. `shiftRightZfBy -1 -32` is `-64` — a negative answer out of a zero-fill shift,
+because the reversal happens after `BigInt.asUintN` has already read the operand as unsigned.
+Three doc comments would have to stop saying what their functions do. The one place this reading
+exists in the wild is Haskell's `Data.Bits`, and it attaches it to `shift`, whose name names no
+direction, keeping `shiftL` and `shiftR` unidirectional.
+
+**An error.** Closed by the language before this ticket was filed, not by this decision:
+[Two outcomes](../spec/evaluation-semantics.md#two-outcomes) says a well-typed program produces a
+value or does not terminate, and nothing in the language throws. A throwing shift would be a new
+outcome for every program, and it would also need an answer for what a facade call does when the
+JavaScript side throws, which nothing designs today.
+
+**Ignoring the sign — shift by the count's magnitude.** The sign is something the caller wrote.
+This is the only reading under which two counts a caller could compute answer alike for no reason
+the language can state, and the caller who wrote `-1` by accident is given a confident answer to
+a question they did not ask.
+
+Clamping keeps every name true. It invents nothing at the top end — a count of 100 really does
+leave nothing, exactly as 64 does — and at the bottom end it names the nearest count that exists
+rather than naming a value the way `n // 0 == 0` has to. It gives the count one reading across
+its whole range, with no jump at either boundary: for `shiftLeftBy`, counts `-2, -1, 0, 1, 2`
+answer `x, x, x, 2x, 4x`. And it turns `_Bitwise_boundOffset` — which exists today only to stop
+V8 materialising an enormous intermediate `BigInt` before the outer mask can run — into the
+implementation of a language rule rather than a companion-local repair.
+
+## A correction that comes with it
+
+DEC-16 decision 6 says, in bold, "**A shift of 64 or more is `0`.**" That is true of
+`shiftLeftBy` and `shiftRightZfBy` and **false of `shiftRightBy`**, which fills with the topmost
+bit: `shiftRightBy 64 -32` is `-1`, and so is `shiftRightBy 100 -32`. The check that looks like
+it pins the sentence — `PINS a shift of 64 or more is 0` in `BitwiseChecks.mjs` — passes only
+because it tests the other two functions.
+
+The clamp cannot be stated without fixing this, since it says a count above 64 reads as 64 and
+the reader then needs the answer at 64. So the sentence becomes a claim about the *pattern* —
+nothing of the original is left after 64 positions — and each function's own fill rule names the
+value that leaves.
+
+## What to change
+
+- **`docs/decisions/dec-16.md`, decision 6.** State the clamp in both directions, with the
+  argument above for it and against the three readings. Correct the "64 or more" sentence. Drop
+  the closing paragraph that says the meaning is unsettled and cites this ticket — that citation
+  is checked, see **Acceptance**. Nothing outside this file cites the section's own anchor
+  (`#6--a-shift-reads-its-operand-as-a-fixed-64-bit-pattern`), and this file is deleted on close,
+  so the heading may be reworded — but `decision_cross_references_resolve` checks anchors, so
+  re-grep before renaming it.
+- **`std/core/src/Js/Bitwise.mjs`.** `_Bitwise_boundOffset` becomes a clamp into `0 .. 64`:
+  `if (offset < 0n) return 0n; if (offset > 64n) return 64n; return offset;`. Its comment stops
+  describing the negative half as a placeholder for an undecided question and states the rule;
+  the file header's closing paragraph ("What a *negative* shift count means is not settled")
+  goes the same way. What the guard is still *for* — V8 throwing `RangeError: Maximum BigInt
+  size exceeded` on the unmasked intermediate — stays, because it is why the clamp is written
+  where it is rather than left to the mask.
+- **`std/core/src/Bitwise.zel`.** Each of the three doc comments gains a negative-count line in
+  its worked examples, matching the three above. None of them says anything about a negative
+  count today.
+- **`std/core/tests/Js/BitwiseChecks.mjs`.** The header note "nothing below passes one" goes.
+  `PINS a large-magnitude offset does not throw and matches an offset of exactly 64 in the same
+  direction` asserts `shift(-LARGE, a) === shift(-64n, a)`, which is the reversal reading — under
+  the clamp every negative offset answers `shift(0n, a)`, which is `a`. Add a check per function
+  pinning at least one negative count.
+
+**Not in scope:** nothing goes into `docs/spec/`. No chapter states what `Bitwise`'s functions
+do — the spec describes the language, and these three are `std/core`'s. The rule's user-facing
+home is `Bitwise.zel`'s doc comments and its argued home is DEC-16, which is where decision 6
+already put the rest of the shift semantics.
+
+## Acceptance
+
+- DEC-16 decision 6 states the clamp in both directions and argues it against reversal, an
+  error, and discarding the sign.
+- Decision 6 no longer claims a shift of 64 or more is `0` for `shiftRightBy`.
+- `Bitwise.zel`'s doc comments for `shiftLeftBy`, `shiftRightBy` and `shiftRightZfBy` each show a
+  negative count, matching the decision.
+- `Js/Bitwise.mjs` clamps a count into `0 .. 64`, and no shift reverses direction for any count.
+- `node --test 'std/core/tests/**/*.mjs'` passes, with a check per shift pinning a negative
+  count. Each of those checks is **verified red** against the current companion first —
+  `shiftLeftBy(-1n, 8n)` is `4n` today and `8n` after — and the `-LARGE` assertions in the
+  large-magnitude check are updated rather than left asserting the old reading.
+- `cargo test --test spec` is green. Deleting this file on close turns
+  `decision_cross_references_resolve` red until decision 6's last paragraph, which links
+  `../tickets/lang-64.md`, is rewritten; that rewrite is part of the same change.
+- [LANG-65](lang-65.md) cites this ticket four times as an open question — including for its own
+  negative-`Int`-exponent case in `pow`, which this decision does **not** settle (`2 ^ -1` has a
+  real answer outside `Int`, where a negative shift count has none inside it). Those references
+  are updated to cite the settled rule as a precedent, not a pending one.

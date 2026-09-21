@@ -1,12 +1,12 @@
 # LANG-65 · Three more `std/core` JavaScript functions still read an `Int` as a number
 
-**Sizing:** small-to-medium — one mechanical fix, and one that repeats a decision
-[LANG-64](lang-64.md) is already making for a different pair of functions.
+**Sizing:** small-to-medium — one mechanical fix, and one that raises the same shape of
+question [LANG-64](lang-64.md) settled for the three shifts, for a function it does not cover.
 
 **Location:** `std/core/src/Js/Basics.mjs` — `toFloat`, `pow` — and `std/core/src/Js/Utils.mjs`
 — `_Utils_isOrdered`, which backs `compare`, `lt`, `le`, `gt` and `ge`.
 
-**Depends on:** [LANG-56](lang-56.md), which carries `std/core`'s two `Basics`/`Bitwise`
+**Depends on:** `LANG-56` (closed 2026-09-20), which carried `std/core`'s two `Basics`/`Bitwise`
 companions to the 64-bit `BigInt` representation of `Int` [DEC-16](../decisions/dec-16.md)
 settled, but named its own scope as `add`, `sub`, `mul`, `idiv`, `remainderBy`, `modBy`,
 `truncate`, `ceiling`, `floor`, `round` and `Js/Bitwise.mjs`. These three were left out.
@@ -29,8 +29,8 @@ throwing:
   and it needs the `BigInt` half to use `**`, which itself throws on a negative exponent
   (`Exponent must be non-negative`). Whether `2 ^ -1` (`Int` base, negative `Int` exponent) has
   an `Int` answer at all is a real question with no `docs/spec/` or `DEC-16` answer today — the
-  same shape of open decision [LANG-64](lang-64.md) is filing for a negative shift count, not a
-  detail this ticket should quietly pick.
+  same shape of question [LANG-64](lang-64.md) settled for a negative shift count, not a detail
+  this ticket should quietly pick.
 - **`_Utils_isOrdered`** (`Js/Utils.mjs`) admits `typeof v === 'number' | 'string' | 'boolean'`.
   An `Int` is now `typeof v === 'bigint'`, so `compare`, `lt`, `le`, `gt` and `ge` — all built on
   `_Utils_cmp`, which calls `_Utils_isOrdered` — refuse to order two `Int`s and fall through to
@@ -51,10 +51,13 @@ touching any of `toFloat`, `pow`, or ordering two `Int`s.
   `BigInt` in `Int`'s admitted range never loses precision differently than the `2^53` limit
   `DEC-16` decision 2 already accepted for `Float`.
 - `pow`: dispatch on `typeof a` the way `add`/`sub`/`mul` do, keeping `Math.pow` for the `Float`
-  case. The `Int` case needs [LANG-64](lang-64.md)'s sibling question answered first — what a
-  negative `Int` exponent means — so this ticket should land the `Float` and non-negative-`Int`
-  cases and either resolve the negative-exponent question itself (if it turns out simple) or
-  split it into its own ticket the way LANG-64 did for shifts. Don't guess.
+  case. The `Int` case needs its sibling question answered first — what a negative `Int`
+  exponent means — and [LANG-64](lang-64.md) does not answer it: a shift count below zero names
+  no answer at all, where `2 ^ -1` has a real one (`0.5`) that `Int` has no room for, which is
+  the shape [An operation with no answer](../spec/evaluation-semantics.md#an-operation-with-no-answer)
+  addresses rather than the shape a clamped count does. So this ticket should land the `Float`
+  and non-negative-`Int` cases and either resolve the negative-exponent question itself (if it
+  turns out simple) or split it into its own ticket the way LANG-64 was split off. Don't guess.
 - `_Utils_isOrdered`: add `'bigint'` to the admitted `typeof` set. `_Utils_cmp`'s primitive
   branch (`x === y`, `x < y`) already does the right thing for two `BigInt`s with no further
   change, since JavaScript's `<`/`===` work across same-typed `BigInt` operands the same way
@@ -65,4 +68,4 @@ and `BasicsChecks.mjs`) shows `toFloat(10n) === 6.14 - 3.14` is false but `toFlo
 holds as a `Number`; `compare(3n, 5n)`, `lt(3n, 5n)`, `ge(5n, 5n)` etc. answer instead of
 throwing; and `pow` either has a committed answer for a negative `Int` exponent with a test
 pinning it, or this ticket closes with that case split into a new ticket the way LANG-64 was
-split from LANG-56.
+split off from `LANG-56`.

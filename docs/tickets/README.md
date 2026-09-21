@@ -364,7 +364,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-61](lang-61.md) | task | — | open | A `git` dependency is not fetched, and nothing writes or reads `zelkova.lock` |
 | [LANG-62](lang-62.md) | task | — | open | The compiler carries no copy of `zelkova-core`, so a package has to write it in `dependencies` |
 | [LANG-63](lang-63.md) | task | — | open | Nothing declares `Test`, and nothing runs a package's tests |
-| [LANG-64](lang-64.md) | task | — | open | What a negative shift count means is undecided |
+| [LANG-64](lang-64.md) | task | — | open | A shift count is clamped into `0 .. 64` |
 | [LANG-65](lang-65.md) | task | — | open | Three more `std/core` JavaScript functions still read an `Int` as a number |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
