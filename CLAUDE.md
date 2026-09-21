@@ -35,8 +35,8 @@ failure or a panic is a regression you introduced. `tests/pipeline.rs::stdlib_pa
 pins the same thing as a test.
 
 `cargo test` never loads a `.mjs` companion. A companion's checks belong to the package that
-ships it, under that package's own `tests/` root — `std/core/tests/Js/UtilsChecks.mjs` is the
-only one so far — and run with `node --test 'std/core/tests/**/*.mjs'`, not wired into CI. Where
+ships it, under that package's own `tests/` root — `std/core/tests/Js/` holds the ones that
+exist — and run with `node --test 'std/core/tests/**/*.mjs'`, not wired into CI. Where
 such a file goes and why is [*Testing a companion*](docs/spec/interop.md#testing-a-companion);
 each file's header says what it covers.
 

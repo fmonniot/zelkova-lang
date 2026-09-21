@@ -150,9 +150,9 @@ those resolve.
 Three tickets that already existed are prerequisites rather than members:
 `LANG-35` builds the declaration graph `GEN-7` sorts, [`BUG-27`](bug-27.md) puts
 an infix operator back in touch with the function its `infix` declaration names, and
-[`LANG-56`](lang-56.md) brings `std/core`'s two companions to the 64-bit `Int`
-[`DEC-16`](../decisions/dec-16.md) settled — without it the first emitted program computes wrong
-arithmetic.
+`LANG-56` brought `std/core`'s two companions to the 64-bit `Int`
+[`DEC-16`](../decisions/dec-16.md) settled — without it the first emitted program would compute
+wrong arithmetic.
 
 ```
 GEN-3   the typer hands back the types it solved
@@ -356,7 +356,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-53 | task | — | closed 2026-09-13 | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | LANG-54 | task | — | closed 2026-09-13 | The interop modifier is `foreign`, not `javascript` |
 | LANG-55 | task | — | closed 2026-09-16 | The `Char` and `String` default imports bring their modules but not their types |
-| [LANG-56](lang-56.md) | task | — | open | `std/core`'s JavaScript companions implement a 32-bit `Int` held in a number |
+| LANG-56 | task | — | closed 2026-09-20 | `std/core`'s JavaScript companions implement a 32-bit `Int` held in a number |
 | LANG-57 | task | — | closed 2026-09-15 | The default imports are dropped entry by entry, not by package |
 | LANG-58 | task | — | closed 2026-09-17 | A module underneath `Basics` cannot name a scalar type |
 | LANG-59 | task | — | closed 2026-09-17 | A scalar type's declaration is an ordinary union |

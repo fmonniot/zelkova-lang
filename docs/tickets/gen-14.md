@@ -26,8 +26,8 @@ the most common review finding there is.
 
 **Problem:** every ticket in the program is graded by eye until this lands. The Rust tests
 assert emitted *text*, which pins what the emitter writes and says nothing about whether the
-writing runs. [`LANG-56`](lang-56.md) is the standing example of what that costs — its own
-**Note** says it has no red test behind it, because nothing loads a `.mjs`.
+writing runs. `LANG-56` is the standing example of what that costs — it landed with no Rust
+test behind it, because nothing in `cargo test` loads a `.mjs`.
 
 **Approach:** a fixture package with a `zelkova.toml` and a handful of modules, compiled by a
 step that emits it into a build directory, followed by `node --test` over assertions that import
