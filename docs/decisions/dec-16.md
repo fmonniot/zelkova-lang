@@ -151,4 +151,5 @@ What a *negative* count means is unsettled, and it belongs to `shiftLeftBy` and 
 as much as to this one — under `BigInt` a negative count reverses a shift's direction, so
 `shiftRightZfBy -1 8` is a right shift that shifted left. `std/core`'s companion masks every
 shift's result into the range, so whatever the count is decided to mean the answer is an `Int`;
-the meaning itself is still to be settled, and no ticket carries it.
+the meaning itself is still to be settled, and [`LANG-64`](../tickets/lang-64.md) carries the
+question.

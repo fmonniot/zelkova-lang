@@ -83,7 +83,6 @@ test('PINS shiftLeftBy wraps at 64 bits', () => {
 test('PINS a shift of 64 or more is 0', () => {
     assert.equal(shiftLeftBy(64n, 1n), 0n);
     assert.equal(shiftRightZfBy(64n, -1n), 0n);
-    assert.equal(shiftRightZfBy(32n, 1n), 0n);
 });
 
 test('GUARD shiftRightBy fills with the topmost bit', () => {
@@ -97,6 +96,10 @@ test('PINS shiftRightZfBy fills with zeros from bit 63', () => {
     assert.equal(shiftRightZfBy(1n, 32n), 16n);
     assert.equal(shiftRightZfBy(2n, 32n), 8n);
     assert.equal(shiftRightZfBy(1n, -32n), 9223372036854775792n);
+    // A 1-bit value has nothing left once it has been shifted past its own
+    // width, the same claim decision 6 makes for a full 64-bit pattern, just
+    // reached at a smaller offset because there was less to shift out.
+    assert.equal(shiftRightZfBy(32n, 1n), 0n);
 });
 
 // The outer mask is a no-op for every offset of 1 or more — a zero-filled
