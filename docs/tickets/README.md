@@ -148,7 +148,7 @@ spec chapters and seven decision entries cite `gen-1.md`, and `cargo test --test
 those resolve.
 
 Three tickets that already existed are prerequisites rather than members:
-`LANG-35` builds the declaration graph `GEN-7` sorts, [`BUG-27`](bug-27.md) puts
+`LANG-35` builds the declaration graph `GEN-7` sorts, `BUG-27` put
 an infix operator back in touch with the function its `infix` declaration names, and
 `LANG-56` brought `std/core`'s two companions to the 64-bit `Int`
 [`DEC-16`](../decisions/dec-16.md) settled — without it the first emitted program would compute
@@ -243,7 +243,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-24 | bug | medium | closed 2026-09-13 | Two `.mjs` companions call helpers no file defines, so `modBy 0` and comparing functions are `ReferenceError`s |
 | BUG-25 | bug | medium | closed 2026-09-13 | Three of the four `Float -> Int` conversions never wrap, so `round nan` and `round 1.0e20` are not `Int`s |
 | BUG-26 | bug | medium | closed 2026-09-16 | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
-| [BUG-27](bug-27.md) | bug | medium | open | A canonicalized infix operator is qualified under its own symbol, not the function its `infix` declaration names |
+| BUG-27 | bug | medium | closed 2026-09-21 | A canonicalized infix operator is qualified under its own symbol, not the function its `infix` declaration names |
 | [BUG-28](bug-28.md) | bug | low | open | The `Tokenizer` never terminates on an unterminated character literal |
 | [BUG-29](bug-29.md) | bug | medium | open | A top-level declaration whose first token is not at column 1 fails to parse |
 | [BUG-30](bug-30.md) | bug | medium | open | An `Upper(..)` import entry does not check the type was exposed transparently |

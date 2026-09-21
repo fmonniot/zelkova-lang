@@ -966,6 +966,14 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
         self.parent.module_name()
     }
 
+    /// A plain lookup in this scope's own bindings, falling back to the
+    /// parent's `find_value` unchanged — the key handed in is the key looked
+    /// up, at both levels, with no redirect or alias in between (audited for
+    /// `BUG-27`, closed: the class of bug that ticket described needs a
+    /// lookup that lands on a *different* name than the one passed in, and
+    /// nothing on this path does that. `self.variables` only ever holds
+    /// [`ValueType::Local`] entries a pattern bound directly, under their own
+    /// name — see [`ScopedEnvironment::expose_pattern`]).
     fn find_value(&self, name: &Name) -> Option<&ValueType> {
         self.variables.get(name).or(self.parent.find_value(name))
     }
