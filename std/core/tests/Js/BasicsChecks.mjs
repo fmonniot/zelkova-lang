@@ -220,8 +220,20 @@ test('PINS toFloat returns a Number, not the BigInt it was handed', () => {
     assert.equal(toFloat(10n) === 10, true);
 });
 
-test('PINS toFloat is exact past 2^53, within the 64-bit Int range', () => {
+test('PINS toFloat converts a large BigInt to the double a Number literal of the same value would be', () => {
+    // `10^18` factors as `5^18 * 2^18`; `5^18` fits in 42 bits, so this
+    // particular value happens to survive the conversion exactly. That is a
+    // property of this one value, not of `toFloat` in general — see the next
+    // test.
     assert.equal(toFloat(1000000000000000000n), 1e18);
+});
+
+test('PINS toFloat loses precision above 2^53, as DEC-16 decision 2 accepts', () => {
+    // INT_MAX (2^63 - 1) is not exactly representable as a double: the
+    // nearest one is 2^63, one past INT_MAX. A `toFloat` that preserved
+    // 64-bit precision (e.g. by clamping to the nearest representable value
+    // below INT_MAX, or by throwing) would fail this assertion.
+    assert.equal(toFloat(INT_MAX), 9223372036854775808);
 });
 
 test('PINS pow computes on two Ints instead of throwing', () => {
