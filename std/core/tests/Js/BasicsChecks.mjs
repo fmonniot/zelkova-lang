@@ -49,6 +49,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     add, sub, mul, idiv, modBy, remainderBy, round, floor, ceiling, truncate,
+    toFloat, pow,
 } from '../../src/Js/Basics.mjs';
 
 // INT ARITHMETIC (LANG-56)
@@ -202,4 +203,50 @@ test('PINS round, floor and ceiling keep their rounding direction in range', () 
 test('PINS truncate keeps rounding toward zero', () => {
     assert.equal(truncate(1.9), 1n);
     assert.equal(truncate(-1.9), -1n);
+});
+
+// TO FLOAT AND POW (LANG-65)
+//
+// `toFloat` used to be `return x`, so it handed back the `BigInt` argument
+// unchanged rather than the `Float` (a JavaScript number) its signature
+// promises. `pow` used to be `Math.pow`, which throws on two `BigInt`
+// operands ("Cannot convert a BigInt to a number").
+
+test('PINS toFloat returns a Number, not the BigInt it was handed', () => {
+    assert.equal(typeof toFloat(10n), 'number');
+    // A BigInt and a Number are never `===`, so this only holds once toFloat
+    // has actually converted rather than returned its `bigint` argument
+    // unchanged.
+    assert.equal(toFloat(10n) === 10, true);
+});
+
+test('PINS toFloat is exact past 2^53, within the 64-bit Int range', () => {
+    assert.equal(toFloat(1000000000000000000n), 1e18);
+});
+
+test('PINS pow computes on two Ints instead of throwing', () => {
+    assert.equal(pow(3n, 2n), 9n);
+    assert.equal(pow(3n, 0n), 1n);
+    assert.equal(typeof pow(3n, 2n), 'bigint');
+});
+
+test('PINS pow wraps an Int result at 64 bits', () => {
+    assert.equal(pow(2n, 64n), 0n);
+    assert.equal(pow(2n, 63n), INT_MIN);
+});
+
+// `pow` backed both Int and Float arithmetic even before this fix, since
+// `Math.pow` already handled two numbers — this only pins that dispatching
+// on `typeof a` did not disturb it.
+test('GUARD pow still computes on Floats', () => {
+    assert.equal(pow(2.0, 0.5), Math.SQRT2);
+    assert.equal(pow(3.0, 3.0), 27.0);
+});
+
+// A negative Int exponent has no committed answer yet (LANG-66): `**` throws
+// on a negative BigInt exponent, and pow does not catch it. This pins that
+// today's behaviour is "throws", not some silently invented value, so a
+// later fix for LANG-66 is what has to touch this test, not an accident.
+test('PINS pow still throws on a negative Int exponent, pending LANG-66', () => {
+    assert.throws(() => pow(2n, -1n), /Exponent must be positive/);
 });

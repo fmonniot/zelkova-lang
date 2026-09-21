@@ -23,10 +23,6 @@ It's not a language designed for high-perf or high-reach applications :)
 // brought back into it with `BigInt.asIntN(64, ..)`, the way `| 0` used to
 // bring one back into 32 bits.
 //
-// `toFloat` and `pow` are the two exports below that still read an `Int` as a
-// number; `DEC-16` decision 5 is the representation they have yet to be
-// brought to.
-//
 // `add`, `sub` and `mul` back both `Int` and `Float` arithmetic: `Basics.zel`
 // declares each of them `a -> a -> a` and means either. The operand's own
 // JavaScript type is what tells the two apart — an `Int` is a `bigint`, a
@@ -36,7 +32,21 @@ export function add(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a +
 export function sub(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a - b) : a - b }
 export function mul(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a * b) : a * b }
 export function fdiv(a, b) { return a / b }
-export const pow = Math.pow
+
+// `pow` is declared `a -> a -> a` the same way, and dispatches the same way:
+// a `Float` operand keeps `Math.pow`, IEEE's own answer, and a `bigint`
+// operand uses `**`, masked back into 64 bits the way `add`/`sub`/`mul` are,
+// since a power can leave the range that arithmetic can't reach on its own.
+//
+// A negative `Int` exponent is not handled here. `2 ^ -1` has a real answer
+// (`0.5`) that `Int` has no room for — unlike `n // 0`
+// (docs/spec/evaluation-semantics.md#an-operation-with-no-answer), no value
+// has been chosen to stand in for it, and choosing one is `LANG-66`. `**`
+// itself throws on a negative `BigInt` exponent, so `pow` still throws on
+// that case until `LANG-66` settles it.
+export function pow(a, b) {
+  return typeof a === 'bigint' ? BigInt.asIntN(64, a ** b) : Math.pow(a, b);
+}
 
 // docs/spec/evaluation-semantics.md#an-operation-with-no-answer defines
 // `n // 0` to be `0`. `BigInt` division by zero throws, so the divisor is
@@ -80,7 +90,11 @@ export function modBy(modulus, x) {
 
 // MORE MATH
 
-export function toFloat(x) { return x }
+// `Basics.zel` types `toFloat` `Int -> Float`, and a `Float` is a JavaScript
+// number, not a `BigInt`. `Number` on a `BigInt` in `Int`'s admitted range
+// never loses precision differently than the `2^53` limit a `Float` already
+// has (`DEC-16` decision 2).
+export function toFloat(x) { return Number(x) }
 export function isInfinite(n) { return n === Infinity || n === -Infinity }
 
 // docs/spec/evaluation-semantics.md#converting-a-float-to-an-int defines a

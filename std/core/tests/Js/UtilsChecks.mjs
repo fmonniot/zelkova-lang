@@ -159,6 +159,28 @@ test('GUARD the comparison operators still answer on numbers', () => {
     assert.equal(ge(2, 2), true);
 });
 
+// COMPARE — Ints (LANG-65)
+//
+// An `Int` crosses as a `bigint` (docs/spec/interop.md#which-types-may-cross-
+// the-boundary), which `_Utils_isOrdered` did not admit: `compare`, `lt`,
+// `le`, `gt` and `ge` fell through to the tuple-arity branch and threw
+// `cmpError` on two `Int`s, the same throw a genuinely unorderable value
+// gets.
+
+test('PINS compare orders two Ints instead of throwing', () => {
+    assert.equal(compare(3n, 5n), -1);
+    assert.equal(compare(5n, 5n), 0);
+    assert.equal(compare(5n, 3n), 1);
+});
+
+test('PINS the comparison operators answer on two Ints instead of throwing', () => {
+    assert.equal(lt(3n, 5n), true);
+    assert.equal(le(5n, 5n), true);
+    assert.equal(gt(5n, 3n), true);
+    assert.equal(ge(5n, 5n), true);
+    assert.equal(lt(5n, 3n), false);
+});
+
 // APPEND
 
 test('GUARD append concatenates two strings', () => {

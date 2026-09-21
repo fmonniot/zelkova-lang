@@ -130,9 +130,15 @@ function _Utils_tupleArity(v) {
 // them. A function is not one of them: `f < g` compares two values that have
 // no order and answers anyway, and `_Utils_eqHelp` above already refuses a
 // function for equality.
+//
+// An `Int` crosses the JavaScript boundary as a `bigint`, not a `number`
+// (docs/spec/interop.md#which-types-may-cross-the-boundary), so it needs its
+// own admitted `typeof`. `<` and `===` already compare two `bigint`s the way
+// they compare two numbers, so `_Utils_cmp`'s primitive branch needs no
+// change of its own to read them.
 function _Utils_isOrdered(v) {
     var t = typeof v;
-    return t === 'number' || t === 'string' || t === 'boolean';
+    return t === 'number' || t === 'string' || t === 'boolean' || t === 'bigint';
 }
 
 // Names a value the way the errors below talk about values, so a failure says
