@@ -122,3 +122,34 @@ test('PINS every shift lands back in the Int range', () => {
         }
     }
 });
+
+// Review finding on the PR that introduced these companions: `<<`/`>>` build
+// their unmasked result before the outer `BigInt.asIntN(64, ..)` mask can
+// bound anything, so an offset large enough (an ordinary in-range `Int`, well
+// short of `Int`'s own bound) makes that intermediate allocation throw
+// `RangeError: Maximum BigInt size exceeded` before the mask ever runs. Every
+// shift below used to throw; now it must not, and DEC-16 decision 6 already
+// predicts the answer: an offset whose magnitude is 64 or more behaves like
+// an offset of exactly 64 in the same direction (a negative offset still
+// reverses direction — LANG-64 owns what that means, this only bounds it).
+test('PINS a large-magnitude offset does not throw and matches an offset of exactly 64 in the same direction', () => {
+    const LARGE = 2_000_000_000n;
+
+    for (const a of [INT_MIN, -1n, 0n, 1n, INT_MAX]) {
+        assert.doesNotThrow(() => shiftLeftBy(LARGE, a));
+        assert.doesNotThrow(() => shiftLeftBy(-LARGE, a));
+        assert.doesNotThrow(() => shiftRightBy(LARGE, a));
+        assert.doesNotThrow(() => shiftRightBy(-LARGE, a));
+        assert.doesNotThrow(() => shiftRightZfBy(LARGE, a));
+        assert.doesNotThrow(() => shiftRightZfBy(-LARGE, a));
+
+        assert.equal(shiftLeftBy(LARGE, a), shiftLeftBy(64n, a));
+        assert.equal(shiftLeftBy(-LARGE, a), shiftLeftBy(-64n, a));
+
+        assert.equal(shiftRightBy(LARGE, a), shiftRightBy(64n, a));
+        assert.equal(shiftRightBy(-LARGE, a), shiftRightBy(-64n, a));
+
+        assert.equal(shiftRightZfBy(LARGE, a), shiftRightZfBy(64n, a));
+        assert.equal(shiftRightZfBy(-LARGE, a), shiftRightZfBy(-64n, a));
+    }
+});

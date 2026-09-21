@@ -37,8 +37,34 @@ export function complement(a) { return ~a }
 // The offset comes first so that the functions partially apply the way the
 // `Bitwise` docs describe them: `shiftLeftBy 1 5 == 10` shifts 5 by one bit.
 
-export function shiftLeftBy(offset, a) { return BigInt.asIntN(64, a << offset) }
-export function shiftRightBy(offset, a) { return BigInt.asIntN(64, a >> offset) }
+// `<<` and `>>` on a `BigInt` do not mask their count the way JavaScript's
+// 32-bit bitwise operators do, so the outer `BigInt.asIntN(64, ..)` mask below
+// cannot help: V8 has to materialize the shifted value, at its full unmasked
+// magnitude, before that mask ever runs. An offset with a large enough
+// magnitude — reachable with an entirely ordinary in-range `Int`, positive or
+// negative — makes that intermediate allocation itself throw `RangeError:
+// Maximum BigInt size exceeded`.
+//
+// DEC-16 decision 6 already settles that a 64-bit pattern moved 64 positions
+// has nothing left, so an offset whose magnitude is 64 or more answers the
+// same as an offset of exactly 64, in whichever direction the sign already
+// picked — a negative offset still reverses direction (LANG-64 owns what
+// that reversal *means*; this guard only stops the crash, the same shape as
+// `idiv`/`remainderBy`'s zero-divisor guard). Bounding the magnitude here,
+// before the native operator sees it, removes the unbounded allocation
+// without changing any in-range answer.
+function _Bitwise_boundOffset(offset) {
+  if (offset > 64n) return 64n;
+  if (offset < -64n) return -64n;
+  return offset;
+}
+
+export function shiftLeftBy(offset, a) {
+  return BigInt.asIntN(64, a << _Bitwise_boundOffset(offset));
+}
+export function shiftRightBy(offset, a) {
+  return BigInt.asIntN(64, a >> _Bitwise_boundOffset(offset));
+}
 export function shiftRightZfBy(offset, a) {
-  return BigInt.asIntN(64, BigInt.asUintN(64, a) >> offset);
+  return BigInt.asIntN(64, BigInt.asUintN(64, a) >> _Bitwise_boundOffset(offset));
 }
