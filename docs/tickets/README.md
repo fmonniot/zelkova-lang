@@ -148,7 +148,7 @@ spec chapters and seven decision entries cite `gen-1.md`, and `cargo test --test
 those resolve.
 
 Three tickets that already existed are prerequisites rather than members:
-[`LANG-35`](README.md) builds the declaration graph `GEN-7` sorts, [`BUG-27`](bug-27.md) puts
+`LANG-35` builds the declaration graph `GEN-7` sorts, [`BUG-27`](bug-27.md) puts
 an infix operator back in touch with the function its `infix` declaration names, and
 [`LANG-56`](lang-56.md) brings `std/core`'s two companions to the 64-bit `Int`
 [`DEC-16`](../decisions/dec-16.md) settled — without it the first emitted program computes wrong
