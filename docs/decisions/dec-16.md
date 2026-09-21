@@ -128,13 +128,13 @@ with `BigInt.asIntN(64, ..)` (`LANG-56`).
 no `>>>`: an unsigned right shift has no meaning on a type with no width. Decision 6 gives it
 one.
 
-## 6 — A shift reads its operand as a fixed 64-bit pattern
+## 6 — A shift reads its operand as a fixed 64-bit pattern, and its count clamped into `0 .. 64`
 
 `shiftRightZfBy` fills from the left with zeros, which needs a width to fill from. The width is
 named by the operation rather than borrowed from the representation: the operand is read as a
-64-bit two's-complement pattern, shifted, and the result read back as a signed `Int`.
-
-Two things follow that the 32-bit version did not have.
+64-bit two's-complement pattern, shifted, and the result read back as a signed `Int`. The count
+is a number of positions, and it is read clamped into `0 .. 64` — the three things below follow,
+and none of them held for the 32-bit version.
 
 **Every result is an `Int`.** `Bitwise.zel` documents `shiftRightZfBy 1 -32` as `2147483632`, a
 value deliberately outside `Int`'s 32-bit range and matching Elm — reachable only because a
@@ -143,13 +143,26 @@ above, so the result is read back into the range, and it fits without anything b
 shift by one or more leaves at most 63 significant bits. A shift by zero is the identity, which
 is what reading the pattern back gives.
 
-**A shift of 64 or more is `0`.** JavaScript's `>>>` masks its count to five bits, so `1 >>> 32`
-is `1` and not `0`. `BigInt` does not mask, and naming the width does not reintroduce it: a
-count is a number of positions, and a 64-bit pattern moved 64 positions has nothing left.
+**A count of 64 or more leaves nothing of the pattern.** JavaScript's `>>>` masks its count to
+five bits, so `1 >>> 32` is `1` and not `0`. `BigInt` does not mask, and naming the width does
+not reintroduce it: a 64-bit pattern moved 64 positions has nothing of itself left. For
+`shiftLeftBy` and `shiftRightZfBy`, whose fill is zero either way, that reads as `0` at any count
+of 64 or more. `shiftRightBy` fills with the operand's own topmost bit instead, so at 64 or more
+it reads as that bit copied across all 64 positions — `0` for a non-negative operand, `-1` for a
+negative one: `shiftRightBy 64 -32` is `-1`, and so is `shiftRightBy 100 -32`. The pattern is
+exhausted the same way for all three; only the fill rule differs in which value that leaves.
 
-What a *negative* count means is unsettled, and it belongs to `shiftLeftBy` and `shiftRightBy`
-as much as to this one — under `BigInt` a negative count reverses a shift's direction, so
-`shiftRightZfBy -1 8` is a right shift that shifted left. `std/core`'s companion masks every
-shift's result into the range, so whatever the count is decided to mean the answer is an `Int`;
-the meaning itself is still to be settled, and [`LANG-64`](../tickets/lang-64.md) carries the
-question.
+**A count below 0 reads as 0, which is the identity.** There is no such thing as a negative
+number of positions, and the nearest count that does exist is none at all. Three other readings
+were weighed and cost more: letting `BigInt`'s own `<<`/`>>` answer reverses the shift's
+direction and costs each function its own name — `shiftLeftBy -1 8` becomes a right shift, and
+`shiftRightZfBy -1 8` a zero-fill shift that answers negative, because the reversal happens after
+the operand has already been read unsigned; throwing is closed off by
+[Two outcomes](../spec/evaluation-semantics.md#two-outcomes), since nothing in the language
+throws and a well-typed program produces a value or does not terminate; and shifting by the
+count's magnitude answers a `-1` a caller wrote and a `-1` a caller never meant alike, for no
+reason the language can state. Clamping gives the count one reading across its whole range, with
+no jump at either boundary: for `shiftLeftBy`, counts `-2, -1, 0, 1, 2` answer `x, x, x, 2x, 4x`.
+It also turns `std/core`'s `_Bitwise_boundOffset` guard — which exists to stop V8 materialising
+an enormous intermediate `BigInt` before the outer mask can run — into the implementation of
+this rule rather than a companion-local repair.
