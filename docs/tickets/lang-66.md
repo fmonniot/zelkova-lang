@@ -3,7 +3,7 @@
 **Sizing:** small — one decision, then a one-line change to `pow`.
 
 **Location:** `std/core/src/Js/Basics.mjs` — `pow`; `std/core/src/Basics.zel` — `pow`'s doc
-comment; `docs/decisions/dec-16.md` — a new decision, or an addition to decision 5.
+comment; `docs/decisions/dec-16.md` — a new decision.
 
 **Depends on:** [LANG-65](README.md), which brought `pow` to the 64-bit `BigInt` representation
 of `Int` [DEC-16](../decisions/dec-16.md) settled, for its `Float` operand and its non-negative

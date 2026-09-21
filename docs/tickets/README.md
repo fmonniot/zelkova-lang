@@ -367,6 +367,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-64 | task | — | closed 2026-09-20 | A shift count is clamped into `0 .. 64` |
 | LANG-65 | task | — | closed 2026-09-21 | Three more `std/core` JavaScript functions still read an `Int` as a number |
 | [LANG-66](lang-66.md) | task | — | open | What a negative `Int` exponent means for `pow` is undecided |
+| [LANG-67](lang-67.md) | task | — | open | `pow`'s `bigint` branch can materialize an astronomically large intermediate before masking |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
