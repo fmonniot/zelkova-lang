@@ -130,6 +130,55 @@ at runtime — a constraint on code generation, which has not started. It is rec
 `docs/spec/type-classes.md` and `docs/spec/interop.md`, and [`GEN-1`](gen-1.md) inherits it
 from there rather than it being filed twice.
 
+## Active work: code generation
+
+`GEN-3` through `GEN-14` are one body of work, filed together after the language owner settled
+the design on 2026-09-20. The goal is that **a Zelkova program runs**: the pipeline currently
+ends at type checking, so nothing the compiler accepts has ever been executed, and every rule in
+[`docs/spec/evaluation-semantics.md`](../spec/evaluation-semantics.md) is one the compiler
+neither enforces nor implements.
+
+[`GEN-1`](gen-1.md) is the index rather than a unit of work — it carries the eight decisions the
+children inherit, and the order they land in. Read it before picking any of them up; none of
+them re-argues a decision, and several would look arbitrary without it. It keeps its name
+because two spec chapters and seven decision entries cite `gen-1.md`, and
+`cargo test --test spec` checks those resolve.
+
+Three tickets that already existed are prerequisites rather than members:
+[`LANG-35`](lang-35.md) builds the declaration graph `GEN-7` sorts, [`BUG-27`](bug-27.md) puts
+an infix operator back in touch with the function its `infix` declaration names, and
+[`LANG-56`](lang-56.md) brings `std/core`'s two companions to the 64-bit `Int`
+[`DEC-16`](../decisions/dec-16.md) settled — without it the first emitted program computes wrong
+arithmetic.
+
+```
+GEN-3   the typer hands back the types it solved
+  │
+GEN-4   the backend IR
+  ├── GEN-5   a `case` becomes a decision tree
+  ├── GEN-6   a self tail call is marked
+  └── GEN-7   parameterless bindings get an initialisation order   ← LANG-35 first
+  │
+GEN-8   the JavaScript runtime module   (independent; any time before GEN-9)
+  │
+GEN-9   emit a module
+  ├── GEN-10  emit a `case`
+  ├── GEN-11  emit the tail-call loop
+  └── GEN-12  emit an `unsafe` facade call, and place its companion
+  │
+GEN-13  write the build
+  │
+GEN-14  the end-to-end check under node   ← converges with TEST-3's CI job
+```
+
+Three more are filed unscheduled, to keep context that would otherwise be rediscovered:
+[`GEN-15`](gen-15.md) the WebAssembly backend, whose constraints are what shape `GEN-4`'s IR;
+[`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets, blocked on `Task`
+existing at all; and [`GEN-17`](gen-17.md) a `zelkova` binary that compiles and runs, which
+[`LANG-63`](lang-63.md) and [`GEN-14`](gen-14.md) both point at.
+[`GEN-2`](gen-2.md), the boundary predicates, sequences after `GEN-12` and
+[`LANG-43`](lang-43.md) as it always did.
+
 ## Recovering a closed ticket
 
 The tombstone's job is not to link anywhere. It is to tell you that
@@ -316,6 +365,21 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |
+| [GEN-3](gen-3.md) | task | — | open | The typer hands back the types it solved |
+| [GEN-4](gen-4.md) | task | — | open | The backend IR |
+| [GEN-5](gen-5.md) | task | — | open | A `case` becomes a decision tree in the IR |
+| [GEN-6](gen-6.md) | task | — | open | A self tail call is marked in the IR |
+| [GEN-7](gen-7.md) | task | — | open | Parameterless bindings get an initialisation order |
+| [GEN-8](gen-8.md) | task | — | open | The JavaScript runtime module |
+| [GEN-9](gen-9.md) | task | — | open | Emit a module |
+| [GEN-10](gen-10.md) | task | — | open | Emit a `case` |
+| [GEN-11](gen-11.md) | task | — | open | Emit the tail-call loop |
+| [GEN-12](gen-12.md) | task | — | open | Emit an `unsafe` facade call, and place its companion |
+| [GEN-13](gen-13.md) | task | — | open | Write the build |
+| [GEN-14](gen-14.md) | task | — | open | The end-to-end check under node |
+| [GEN-15](gen-15.md) | task | — | open | The WebAssembly backend |
+| [GEN-16](gen-16.md) | task | — | open | The wrapper an effectful facade's call site gets |
+| [GEN-17](gen-17.md) | task | — | open | A `zelkova` binary that compiles and runs |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
