@@ -79,7 +79,7 @@ shiftRightBy =
 
     shiftRightZfBy 1  32 == 16
     shiftRightZfBy 2  32 == 8
-    shiftRightZfBy 1 -32 == 2147483632
+    shiftRightZfBy 1 -32 == 9223372036854775792
 
 This is called an [logical right shift][lrs], often written `>>>`, and
 sometimes called a zero-fill right shift because it fills empty spots with

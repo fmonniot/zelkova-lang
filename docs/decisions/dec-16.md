@@ -121,8 +121,8 @@ table](../spec/interop.md#which-types-may-cross-the-boundary) checks a crossing 
 
 This lands on companions rather than on programs. A companion handing back a JavaScript number
 converts — `BigInt(Date.now())` — and one taking an `Int` receives a `BigInt`.
-[`LANG-56`](../tickets/lang-56.md) is `std/core`'s companions, which implement 32-bit arithmetic
-on numbers today.
+`std/core`'s companions carry an `Int` as a `BigInt` and mask each result back into the range
+with `BigInt.asIntN(64, ..)` (`LANG-56`).
 
 `Bitwise` is where the cost is sharpest. `BigInt` supports `&`, `|`, `^`, `<<` and `>>`, and has
 no `>>>`: an unsigned right shift has no meaning on a type with no width. Decision 6 gives it
@@ -148,5 +148,8 @@ is `1` and not `0`. `BigInt` does not mask, and naming the width does not reintr
 count is a number of positions, and a 64-bit pattern moved 64 positions has nothing left.
 
 What a *negative* count means is unsettled, and it belongs to `shiftLeftBy` and `shiftRightBy`
-as much as to this one — under `BigInt` a negative count reverses a shift's direction.
-[`LANG-56`](../tickets/lang-56.md) carries the question.
+as much as to this one — under `BigInt` a negative count reverses a shift's direction, so
+`shiftRightZfBy -1 8` is a right shift that shifted left. `std/core`'s companion masks every
+shift's result into the range, so whatever the count is decided to mean the answer is an `Int`;
+the meaning itself is still to be settled, and [`LANG-64`](../tickets/lang-64.md) carries the
+question.

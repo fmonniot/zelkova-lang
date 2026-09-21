@@ -13,47 +13,95 @@ It's not a language designed for high-perf or high-reach applications :)
 
 
 // MATH
-export function add(a, b) { return a + b }
-export function sub(a, b) { return a - b }
-export function mul(a, b) { return a * b }
+
+// An `Int` reaches this file as a `BigInt`
+// (docs/spec/interop.md#which-types-may-cross-the-boundary), because a
+// JavaScript number is a binary64 and is exact on integers only to `2^53`.
+// `Int` arithmetic wraps at 64 bits
+// (docs/spec/evaluation-semantics.md#numbers) and `BigInt` is arbitrary
+// precision, so an `Int` result whose arithmetic can leave the range is
+// brought back into it with `BigInt.asIntN(64, ..)`, the way `| 0` used to
+// bring one back into 32 bits.
+//
+// `toFloat` and `pow` are the two exports below that still read an `Int` as a
+// number; `DEC-16` decision 5 is the representation they have yet to be
+// brought to.
+//
+// `add`, `sub` and `mul` back both `Int` and `Float` arithmetic: `Basics.zel`
+// declares each of them `a -> a -> a` and means either. The operand's own
+// JavaScript type is what tells the two apart — an `Int` is a `bigint`, a
+// `Float` a number — and a `Float` keeps IEEE's answer, which is what the
+// bare operator already computes.
+export function add(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a + b) : a + b }
+export function sub(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a - b) : a - b }
+export function mul(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a * b) : a * b }
 export function fdiv(a, b) { return a / b }
-export function idiv(a, b) { return (a / b) | 0 }
 export const pow = Math.pow
 
 // docs/spec/evaluation-semantics.md#an-operation-with-no-answer defines
-// `remainderBy 0 n` to be `0`, keeping the operation total the same way `idiv`
-// already is: `(a / 0) | 0` is `0`.
-export function remainderBy(a, b) { return a === 0 ? 0 : b % a }
+// `n // 0` to be `0`. `BigInt` division by zero throws, so the divisor is
+// tested rather than the answer falling out of the arithmetic.
+//
+// `BigInt` division truncates toward zero, which is what `//` computes. The
+// mask covers the one division that leaves the range: `-2^63 // -1` is `2^63`,
+// which wraps to `-2^63`.
+export function idiv(a, b) {
+  if (b === 0n) {
+    return 0n;
+  }
+  return BigInt.asIntN(64, a / b);
+}
+
+// docs/spec/evaluation-semantics.md#an-operation-with-no-answer defines
+// `remainderBy 0 n` to be `0`. `%` on a zero divisor throws for a `BigInt` the
+// way `/` does, so this guard is the same one `idiv` needs.
+//
+// A remainder is smaller in magnitude than the divisor, so it is in range by
+// construction and nothing is masked here.
+export function remainderBy(a, b) { return a === 0n ? 0n : b % a }
 
 // https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/divmodnote-letter.pdf
 //
 // docs/spec/evaluation-semantics.md#an-operation-with-no-answer defines
 // `modBy 0 n` to be `0`.
+//
+// The correction adds a remainder to a modulus of the opposite sign, so it
+// lands between the two and the mask never fires; it is there so that no `Int`
+// arithmetic in this file stands unwrapped.
 export function modBy(modulus, x) {
-  if (modulus === 0) {
-    return 0;
+  if (modulus === 0n) {
+    return 0n;
   }
   let answer = x % modulus;
-  return ((answer > 0 && modulus < 0) || (answer < 0 && modulus > 0))
-    ? answer + modulus
+  return ((answer > 0n && modulus < 0n) || (answer < 0n && modulus > 0n))
+    ? BigInt.asIntN(64, answer + modulus)
     : answer;
 }
 
 // MORE MATH
 
 export function toFloat(x) { return x }
-export function truncate(n) { return n | 0 }
 export function isInfinite(n) { return n === Infinity || n === -Infinity }
 
 // docs/spec/evaluation-semantics.md#converting-a-float-to-an-int defines a
-// conversion to `Int` as rounding and then wrapping into 32 bits, with `nan`
-// and both infinities landing on 0. `Math.ceil`/`Math.floor`/`Math.round`
-// hand back a JavaScript number with none of that, so the `| 0` here is the
-// wrap `truncate` already gets from `n | 0` doing double duty as both the
-// rounding and the wrap.
-export function ceiling(n) { return Math.ceil(n) | 0 }
-export function floor(n) { return Math.floor(n) | 0 }
-export function round(n) { return Math.round(n) | 0 }
+// conversion to `Int` as rounding and then wrapping into 64 bits, with `nan`
+// and both infinities landing on 0.
+//
+// The four conversions below are that rule in two steps: a `Math` function
+// that rounds the way the conversion's name says, then this helper for the
+// wrap. `BigInt` throws on a value that is not an integer, and on `nan` and
+// both infinities, so the non-finite cases are answered before it is reached.
+function _Basics_wrapToInt(rounded) {
+  if (!Number.isFinite(rounded)) {
+    return 0n;
+  }
+  return BigInt.asIntN(64, BigInt(rounded));
+}
+
+export function truncate(n) { return _Basics_wrapToInt(Math.trunc(n)) }
+export function ceiling(n) { return _Basics_wrapToInt(Math.ceil(n)) }
+export function floor(n) { return _Basics_wrapToInt(Math.floor(n)) }
+export function round(n) { return _Basics_wrapToInt(Math.round(n)) }
 export const sqrt = Math.sqrt;
 export const log = Math.log;
 export const isNotANumber = isNaN;

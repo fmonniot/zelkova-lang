@@ -185,8 +185,8 @@ the tail-call marking, the initialisation order, and the *text* each module emit
 behavioural half is JavaScript, run by `node --test`, in the shape [Testing a
 companion](../spec/interop.md#testing-a-companion) already established for `.mjs` files. Text
 assertions alone would be a backend checked entirely by eye, which is what
-[`LANG-56`](../tickets/lang-56.md) documents the cost of: its own note records that it has no
-red test behind it because nothing loads a `.mjs`.
+`LANG-56` documented the cost of: it landed with no Rust test behind it, because nothing in
+`cargo test` loads a `.mjs`.
 
 This converges rather than duplicating. [`TEST-3`](../tickets/test-3.md) is already open to put
 the existing companion checks in CI; one job runs both and its glob widens.
