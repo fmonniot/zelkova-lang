@@ -2501,3 +2501,226 @@ fn a_written_basics_import_coexists_with_the_seed() {
         other => panic!("expected a TypedValue for `compare`, got {:?}", other),
     }
 }
+
+// ── Scenario 14: A parameterless binding may not depend on itself (LANG-35) ──
+//
+// `docs/spec/evaluation-semantics.md`'s *A binding may not depend on itself*:
+// a parameterless binding is evaluated once, before the program runs, in
+// dependency order, so a cycle among parameterless bindings — one binding
+// long or several — describes no such order. A binding with parameters is
+// untouched: its value is the function, not evaluated until applied.
+
+/// `x = x`: the shortest possible cycle, and the one
+/// [`canonical::Error::SelfDependency`]'s message special-cases.
+///
+/// Mutation-checked by short-circuiting `check_self_dependency` to always
+/// return `Ok(())`: this test goes red, `canonicalize_standalone` starts
+/// returning `Ok`.
+#[test]
+fn self_reference_is_rejected() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        x = x
+    "#};
+
+    let errors =
+        canonicalize_standalone(source).expect_err("a binding cannot depend on its own value");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::SelfDependency(path) => {
+            assert_eq!(
+                path.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+                vec!["x"],
+                "a one-binding cycle names only that binding"
+            );
+        }
+        other => panic!("expected SelfDependency, got {:?}", other),
+    }
+
+    let declaration = "x = x";
+    let start = source
+        .find(declaration)
+        .expect("source declares it on its own line");
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert!(labels[0].primary, "the only label must be the primary one");
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + declaration.len()),
+        "the caret must sit under the whole binding, not just one occurrence of `x`"
+    );
+}
+
+/// `a = b` beside `b = a`: a cycle running through two bindings rather than
+/// one. `path` is reported in a name-sorted order so the test does not depend
+/// on `values`' `HashMap` iteration order — see `check_self_dependency`'s doc
+/// comment.
+///
+/// Mutation-checked by hardcoding `filter(|members| members.len() > 2)` in
+/// `check_self_dependency` (so only a three-or-more cycle is ever reported):
+/// this test goes red, `canonicalize_standalone` starts returning `Ok`.
+#[test]
+fn mutual_dependency_between_two_bindings_is_rejected() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        a = b
+        b = a
+    "#};
+
+    let errors = canonicalize_standalone(source)
+        .expect_err("two bindings that depend on each other have no order to evaluate them in");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::SelfDependency(path) => {
+            assert_eq!(
+                path.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+                vec!["a", "b"]
+            );
+        }
+        other => panic!("expected SelfDependency, got {:?}", other),
+    }
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 2, "expected two labels, got {:?}", labels);
+    assert!(labels[0].primary, "the first label must be the primary one");
+    assert!(!labels[1].primary, "the second label must be secondary");
+
+    let a_decl = "a = b";
+    let a_start = source
+        .find(a_decl)
+        .expect("source declares it on its own line");
+    assert_eq!(labels[0].span.to_range(), a_start..(a_start + a_decl.len()));
+
+    let b_decl = "b = a";
+    let b_start = source
+        .find(b_decl)
+        .expect("source declares it on its own line");
+    assert_eq!(labels[1].span.to_range(), b_start..(b_start + b_decl.len()));
+}
+
+/// `a = (a, b)` beside `b = a`: `a` has a self-loop (it names itself in its
+/// own tuple) *and* is part of the two-member `{a, b}` cycle (`a` reaches
+/// `b`, `b` reaches `a`). The two used to be reported as separate
+/// `SelfDependency` errors — a length-1 one for `a`'s self-loop and a
+/// length-2 one for the `{a, b}` cycle — even though they describe the same
+/// underlying cycle. Only the length-2 report should survive.
+///
+/// Mutation-checked by reverting the `in_larger_scc` guard in
+/// `check_self_dependency` (letting the self-loop pass fire for every node
+/// with a self-edge regardless of SCC membership): this test goes red,
+/// `errors.len()` back to 2.
+#[test]
+fn self_loop_inside_a_larger_cycle_is_reported_once() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        a = (a, b)
+        b = a
+    "#};
+
+    let errors = canonicalize_standalone(source)
+        .expect_err("a still has no value before the cycle it is part of resolves");
+    assert_eq!(
+        errors.len(),
+        1,
+        "a's self-loop and its membership in the {{a, b}} cycle are the same \
+         defect and must be reported once, got {:?}",
+        errors
+    );
+
+    match &errors[0] {
+        canonical::Error::SelfDependency(path) => {
+            assert_eq!(
+                path.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+                vec!["a", "b"]
+            );
+        }
+        other => panic!("expected SelfDependency, got {:?}", other),
+    }
+}
+
+/// `y = f y`: `f` is an ordinary function (it names a parameter), so it is
+/// never a node of the graph and the reference to it is never an edge — but
+/// `y` also names itself in the same application, and that occurrence is a
+/// self-loop regardless of what else the expression does.
+///
+/// Mutation-checked by dropping the `Apply` arm from `collect_top_level_refs`
+/// (so only the outermost expression node is ever inspected): this test goes
+/// red, since `y`'s own reference to itself is nested one `Apply` deep and
+/// would never be visited.
+#[test]
+fn self_dependency_through_a_function_argument_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        f n = n
+        y = f y
+    "#};
+
+    let errors =
+        canonicalize_standalone(source).expect_err("y still has no value before it needs its own");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::SelfDependency(path) => {
+            assert_eq!(
+                path.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+                vec!["y"],
+                "f names a parameter, so it is never part of the cycle"
+            );
+        }
+        other => panic!("expected SelfDependency, got {:?}", other),
+    }
+}
+
+/// `f n = f n`: a function may call itself, because its body only runs once
+/// applied — must stay accepted.
+///
+/// Mutation-checked by dropping the `is_parameterless` guard in
+/// `check_self_dependency` (making every binding, regardless of its
+/// parameters, a node): this test goes red on the self-loop `f` now forms.
+#[test]
+fn self_recursive_function_is_accepted() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        f n = f n
+    "#};
+
+    canonicalize_standalone(source)
+        .expect("a function may call itself: its body only runs when applied");
+}
+
+/// Mutual recursion between two function bindings must stay accepted, for the
+/// same reason a single self-recursive function does.
+#[test]
+fn mutual_recursion_between_two_functions_is_accepted() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        isEven n = isOdd n
+        isOdd n = isEven n
+    "#};
+
+    canonicalize_standalone(source).expect("two functions may call each other freely");
+}
+
+/// A parameterless binding that merely *mentions* a recursive function — as
+/// opposed to depending on its own value — must stay accepted: referencing a
+/// function binding is referencing a value that already exists, not a cycle
+/// among parameterless bindings.
+#[test]
+fn mentioning_a_recursive_function_is_accepted() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        f n = f n
+        mentionsRecursive = f
+    "#};
+
+    canonicalize_standalone(source).expect(
+        "mentioning a recursive function is not itself a cycle among parameterless bindings",
+    );
+}

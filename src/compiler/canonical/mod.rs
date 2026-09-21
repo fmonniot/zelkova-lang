@@ -21,7 +21,9 @@ use super::SpanLabel;
 use super::{ModuleName, PackageName};
 use crate::utils::collect_accumulate;
 use log::{debug, trace};
+use petgraph::graph::{DiGraph, NodeIndex};
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 mod environment;
 /// Part of [`Error::AmbiguousVariables`] and [`Error::AmbiguousVariants`]'s public
@@ -1096,6 +1098,31 @@ pub enum Error {
     /// can be written.
     UnsafeOutsideFacade(Name, NodeSpan),
 
+    /// A parameterless binding whose value depends on itself, directly or
+    /// through other parameterless bindings — [evaluation
+    /// semantics](../../../docs/spec/evaluation-semantics.md#a-binding-may-not-depend-on-itself):
+    /// such a binding is evaluated once, before the program runs, in
+    /// dependency order, and a cycle among them describes no such order.
+    ///
+    /// One entry per binding in the cycle, each paired with its own
+    /// declaration's span (`Value::span()`) — length 1 for a self-loop
+    /// (`x = x`), length 2 or more for a cycle running through several
+    /// bindings (`a = b` beside `b = a`). `labels()` gives the first entry the
+    /// primary label and every other entry a secondary one; for a
+    /// length-2-or-more cycle, [`check_self_dependency`] sorts the members by
+    /// name before building this list, so the primary label is always the
+    /// alphabetically-first member of the cycle — deterministic, not an
+    /// artifact of traversal order.
+    ///
+    /// A binding that names a parameter is never a member of this cycle: its
+    /// value is the function, not evaluated until applied, so it may depend on
+    /// itself or on a parameterless binding freely. `f n = f n`, mutual
+    /// recursion between two functions, and a parameterless binding that
+    /// merely *mentions* a recursive function are all untouched by this check
+    /// — only a reference to another *parameterless* binding is ever an edge
+    /// of the graph [`check_self_dependency`] walks.
+    SelfDependency(Vec<(Name, NodeSpan)>),
+
     // Utility error
     Many(Vec<Error>),
 }
@@ -1255,6 +1282,22 @@ impl PhaseError for Error {
                 "`{}` is marked `unsafe`, which only a signature in a `module foreign` facade may be",
                 name
             ),
+            // A one-binding cycle reads better as its own sentence than as "a
+            // cycle of length one" — see the enum's own doc comment.
+            Error::SelfDependency(path) => match path.as_slice() {
+                [(name, _)] => format!(
+                    "`{}` is a parameterless binding whose value depends on itself",
+                    name
+                ),
+                members => {
+                    let names: Vec<String> =
+                        members.iter().map(|(name, _)| name.to_string()).collect();
+                    format!(
+                        "{} are parameterless bindings that depend on each other, so none of them has a value before the others need it",
+                        names.join(", ")
+                    )
+                }
+            },
             Error::Many(errors) => match errors.as_slice() {
                 [only] => only.message(),
                 many => format!("{} errors while canonicalizing this module", many.len()),
@@ -1419,6 +1462,29 @@ impl PhaseError for Error {
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
             Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
             Error::UnsafeOutsideFacade(_, span) => primary(span, "marked `unsafe` here"),
+            Error::SelfDependency(path) => path
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (name, span))| {
+                    let message = if path.len() == 1 {
+                        format!("`{}` refers to its own value here", name)
+                    } else if i == 0 {
+                        format!(
+                            "`{}` depends, directly or through another binding, on itself",
+                            name
+                        )
+                    } else {
+                        format!("`{}` is also part of the cycle", name)
+                    };
+
+                    span.span().map(|s| SpanLabel {
+                        span: s,
+                        message,
+                        primary: i == 0,
+                        file: None,
+                    })
+                })
+                .collect(),
             // A group has no position of its own; the errors it swallowed do.
             Error::EnvironmentErrors(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
             Error::Many(errors) => errors.iter().flat_map(|e| e.labels()).collect(),
@@ -1691,6 +1757,15 @@ pub fn canonicalize(
         (infixes, types, values)
     };
 
+    // A parameterless binding's value has to exist before it can be used, so a
+    // cycle among parameterless bindings — one binding long or several — is an
+    // error (`docs/spec/evaluation-semantics.md#a-binding-may-not-depend-on-itself`).
+    // Independent of exports, so this runs regardless of what `do_exports` below
+    // finds.
+    if let Err(err) = check_self_dependency(&values) {
+        errors.extend(err);
+    }
+
     // We do exports at the end, and verify that all exported value do
     // have a reference within the current module
     let exports = do_exports(&source.exposing, &env, &values).unwrap_or_else(|err| {
@@ -1707,6 +1782,163 @@ pub fn canonicalize(
             values,
             binding_foreign: source.binding_foreign,
         })
+    } else {
+        Err(errors)
+    }
+}
+
+/// Whether `value` names no parameter — the only kind of binding
+/// [`check_self_dependency`] puts in its graph. Both `Value` variants carry
+/// their patterns under a different shape (`Vec<Pattern>` vs. `Vec<(Pattern,
+/// Type)>`), so this is the one place that reaches past the difference to ask
+/// how many there are.
+fn is_parameterless(value: &Value) -> bool {
+    match value {
+        Value::Value { patterns, .. } => patterns.is_empty(),
+        Value::TypedValue { patterns, .. } => patterns.is_empty(),
+    }
+}
+
+/// Every `VarTopLevel` reference `expr` makes, walking every subexpression a
+/// body can hold — a reference is a reference wherever it sits, including
+/// inside a `case` branch or an `if` arm
+/// (`docs/spec/evaluation-semantics.md#a-binding-may-not-depend-on-itself`).
+///
+/// `VarTopLevel` is the only expression kind this needs to look for: it is
+/// what `Expression::from_parser`'s `Variable` arm produces for a name
+/// `Environment::find_value` resolves to `ValueType::TopLevel`, which
+/// `insert_top_level_value` sets only for a declaration of *this* module — a
+/// local pattern binding resolves to `VarLocal` and an imported name to
+/// `VarForeign`, neither of which this pass has any business following.
+fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
+    match &expr.kind {
+        ExpressionKind::VarTopLevel(qual) => out.push(qual.unqualified_name()),
+        ExpressionKind::VarLocal(_)
+        | ExpressionKind::VarKernel(_)
+        | ExpressionKind::VarForeign(_, _)
+        | ExpressionKind::VarConstructor(_, _)
+        | ExpressionKind::Char(_)
+        | ExpressionKind::Int(_)
+        | ExpressionKind::Float(_)
+        | ExpressionKind::Bool(_) => {}
+        ExpressionKind::Apply(a, b) => {
+            collect_top_level_refs(a, out);
+            collect_top_level_refs(b, out);
+        }
+        ExpressionKind::If(cond, then, els) => {
+            collect_top_level_refs(cond, out);
+            collect_top_level_refs(then, out);
+            collect_top_level_refs(els, out);
+        }
+        ExpressionKind::Case(scrutinee, branches) => {
+            collect_top_level_refs(scrutinee, out);
+            for branch in branches {
+                collect_top_level_refs(&branch.expression, out);
+            }
+        }
+        ExpressionKind::Tuple(tuple) => {
+            for e in tuple.iter() {
+                collect_top_level_refs(e, out);
+            }
+        }
+    }
+}
+
+/// `LANG-35`: a strict, parameterless binding is evaluated once, before the
+/// program runs, in dependency order — so a cycle among parameterless
+/// bindings describes no such order, however long it runs (one binding, `x =
+/// x`, included).
+///
+/// Builds a graph whose nodes are this module's parameterless value
+/// declarations ([`is_parameterless`]) and whose edges are the
+/// [`collect_top_level_refs`] each one's body makes to another parameterless
+/// declaration — a reference to a binding with parameters is a reference to a
+/// value that already exists (its own body runs only once applied), so it is
+/// never a node and never an edge, which is what lets `isEven`/`isOdd` and
+/// `f n = f n` through untouched. A reference to an imported name is likewise
+/// never an edge: it never canonicalizes to `VarTopLevel` in the first place
+/// (see [`collect_top_level_refs`]), and a cross-module cycle is
+/// [`dependencies::ModuleWalker`](super::dependencies::ModuleWalker)'s to
+/// report.
+///
+/// A self-loop is reported directly: `tarjan_scc` puts a single node in its
+/// own component whether or not it has an edge back to itself, so a
+/// one-binding cycle would otherwise slip past the `len() > 1` check below —
+/// but only when that node is not *also* part of a larger component, since a
+/// node can have a self-loop and still belong to a bigger cycle (`a = (a,
+/// b)` beside `b = a`), and that member should be named once, not twice.
+/// Every larger strongly-connected component is reported as one
+/// [`Error::SelfDependency`], its members in a name-sorted order so the
+/// diagnostic does not depend on `values`' `HashMap` iteration order.
+fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>> {
+    let mut graph: DiGraph<&Name, ()> = DiGraph::new();
+    let mut nodes: HashMap<&Name, NodeIndex> = HashMap::new();
+
+    for (name, value) in values.iter() {
+        if is_parameterless(value) {
+            let idx = graph.add_node(name);
+            nodes.insert(name, idx);
+        }
+    }
+
+    for (name, value) in values.iter() {
+        let Some(&from) = nodes.get(name) else {
+            continue;
+        };
+
+        let body = match value {
+            Value::Value { body, .. } | Value::TypedValue { body, .. } => body,
+        };
+
+        let mut refs = Vec::new();
+        collect_top_level_refs(body, &mut refs);
+
+        for referenced in &refs {
+            if let Some(&to) = nodes.get(referenced) {
+                graph.add_edge(from, to, ());
+            }
+        }
+    }
+
+    let mut errors = Vec::new();
+    let sccs = petgraph::algo::tarjan_scc(&graph);
+
+    // A node that also sits in a larger strongly-connected component gets its
+    // cycle reported once, below, alongside the rest of that component — not
+    // again here as a length-1 `SelfDependency` naming it alone. `a = (a, b)`
+    // beside `b = a` is exactly this: `a` has a self-loop *and* is part of the
+    // two-member `{a, b}` cycle, and the two used to be reported separately.
+    let in_larger_scc: HashSet<NodeIndex> = sccs
+        .iter()
+        .filter(|members| members.len() > 1)
+        .flatten()
+        .copied()
+        .collect();
+
+    for idx in graph.node_indices() {
+        if graph.contains_edge(idx, idx) && !in_larger_scc.contains(&idx) {
+            let name = graph[idx];
+            errors.push(Error::SelfDependency(vec![(
+                name.clone(),
+                values[name].span(),
+            )]));
+        }
+    }
+
+    for members in sccs.iter().filter(|members| members.len() > 1) {
+        let mut names: Vec<&Name> = members.iter().map(|&idx| graph[idx]).collect();
+        names.sort_by(|l, r| l.as_str().cmp(r.as_str()));
+
+        let path = names
+            .into_iter()
+            .map(|name| (name.clone(), values[name].span()))
+            .collect();
+
+        errors.push(Error::SelfDependency(path));
+    }
+
+    if errors.is_empty() {
+        Ok(())
     } else {
         Err(errors)
     }

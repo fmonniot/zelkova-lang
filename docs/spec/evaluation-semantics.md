@@ -200,16 +200,15 @@ Under strict evaluation a parameterless binding's value has to exist before the 
 used. **A cycle among parameterless bindings is an error**, whether it is one binding long or
 runs through several.
 
-```zel expect=ok
+```zel expect=canonical-error:SelfDependency
 module Example exposing ()
 
 x =
   x
 ```
 
-**Known gap:** that is accepted, and so is `a = b` beside `b = a`. Nothing computes an
-initialisation order, so nothing notices there is no order to compute.
-[`LANG-35`](../tickets/lang-35.md) is the ticket, and this block goes red when it lands.
+`a = b` beside `b = a` is rejected the same way: the cycle runs through two bindings instead of
+one, but neither has a value the other can use.
 
 The restriction is on parameterless bindings only. A function may call itself, and two functions
 may call each other, because neither body runs until the function is applied:

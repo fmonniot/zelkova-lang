@@ -1,15 +1,15 @@
 # GEN-7 · Parameterless bindings get an initialisation order
 
-**Sizing:** small, if [`LANG-35`](lang-35.md) has landed — it is the same graph, and this is the
+**Sizing:** small, if [`LANG-35`](README.md) has landed — it is the same graph, and this is the
 topological order over it rather than the cycle check. Medium if taken first, because then the
 graph is built here and `LANG-35` has to be rewritten around it.
 
-**Depends on:** [`GEN-4`](gen-4.md), and [`LANG-35`](lang-35.md) — see below.
+**Depends on:** [`GEN-4`](gen-4.md), and [`LANG-35`](README.md) — see below.
 
 **Part of:** [`GEN-1`](gen-1.md).
 
 **Location:** the IR module [`GEN-4`](gen-4.md) defines, which holds a module's declarations and
-no order over them. `src/compiler/canonical/mod.rs` — where [`LANG-35`](lang-35.md) builds the
+no order over them. `src/compiler/canonical/mod.rs` — where [`LANG-35`](README.md) builds the
 graph this reads. `src/compiler/dependencies.rs` orders **modules** and is not it: the order
 here is between declarations inside one module.
 
@@ -27,7 +27,7 @@ the function, and its body runs when the function is applied.
 happen to sit in a `HashMap` — which is what `canonical::Module::values` is — would read a
 binding before it was initialised, differently on different runs.
 
-**Take [`LANG-35`](lang-35.md) first.** It builds a graph over exactly these declarations, with
+**Take [`LANG-35`](README.md) first.** It builds a graph over exactly these declarations, with
 exactly these edges, to report a cycle among them; this ticket needs the same graph to ask a
 different question of it. Two graphs built from one rule is the case `CLAUDE.md` warns about
 under *A doc comment describes what the code at that site does* — the copy nobody maintains is
@@ -52,7 +52,7 @@ and has no Zelkova body to place, so it is evaluated on whatever schedule the ta
 [*Facade constants*](../spec/interop.md#facade-constants) says so explicitly, and promises
 nothing about when. A facade module has no parameterless declarations to sort for this purpose.
 
-**Not in this ticket:** rejecting a cycle ([`LANG-35`](lang-35.md)) and emitting the bindings in
+**Not in this ticket:** rejecting a cycle ([`LANG-35`](README.md)) and emitting the bindings in
 the order ([`GEN-9`](gen-9.md)).
 
 **Acceptance:** a test over the chapter's own example — `base`, `shifted` and `other` — asserts
