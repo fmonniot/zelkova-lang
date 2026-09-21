@@ -148,7 +148,7 @@ spec chapters and seven decision entries cite `gen-1.md`, and `cargo test --test
 those resolve.
 
 Three tickets that already existed are prerequisites rather than members:
-[`LANG-35`](lang-35.md) builds the declaration graph `GEN-7` sorts, [`BUG-27`](bug-27.md) puts
+[`LANG-35`](README.md) builds the declaration graph `GEN-7` sorts, [`BUG-27`](bug-27.md) puts
 an infix operator back in touch with the function its `infix` declaration names, and
 [`LANG-56`](lang-56.md) brings `std/core`'s two companions to the 64-bit `Int`
 [`DEC-16`](../decisions/dec-16.md) settled — without it the first emitted program computes wrong
@@ -335,7 +335,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-32](lang-32.md) | task | — | open | A module may declare one type twice, and the second silently replaces the first |
 | [LANG-33](lang-33.md) | task | — | open | There is no `let … in` production, so a local binding cannot be written |
 | [LANG-34](lang-34.md) | task | — | open | There is no lambda production, so `\x -> x` is read as an operator |
-| [LANG-35](lang-35.md) | task | — | open | A parameterless binding may depend on itself, and nothing notices |
+| LANG-35 | task | — | closed 2026-09-20 | A parameterless binding may depend on itself, and nothing notices |
 | [LANG-36](lang-36.md) | task | — | open | `std/core`'s `Basics` documents three semantics the language does not have |
 | [LANG-37](lang-37.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
 | [LANG-38](lang-38.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |

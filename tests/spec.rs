@@ -343,6 +343,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             TypeNotFound(..) => vec!["TypeNotFound"],
             InvalidVariant(..) => vec!["InvalidVariant"],
             InvalidScalarDeclaration(..) => vec!["InvalidScalarDeclaration"],
+            SelfDependency(..) => vec!["SelfDependency"],
         }
     }
     errors.iter().flat_map(one).collect()
