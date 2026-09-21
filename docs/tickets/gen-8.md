@@ -10,7 +10,7 @@ changes beyond making the file reachable.
 named the way `std/core/tests/Js/UtilsChecks.mjs` is. Nothing in `src/` yet; [`GEN-13`](gen-13.md)
 is what copies the file into a build.
 
-**Decided ([`GEN-1`](gen-1.md) decision 2):** a declaration is emitted as a plain n-ary
+**Decided ([`DEC-18` decision 3](../decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)):** a declaration is emitted as a plain n-ary
 JavaScript function and a saturated call at a known callee is a direct call. Everything else —
 an application that supplies too few arguments, or one whose callee is a value rather than a
 known declaration — goes through a helper. That helper, and the abort, are the only code the

@@ -16,7 +16,7 @@ the typer can be written until it answers with something.
 collected from. `src/compiler/mod.rs` — `check_module`, which calls `type_check` for its errors
 alone and hands back the `canonical::Module`.
 
-**Decided ([`GEN-1`](gen-1.md) decision 1):** the backend consumes a typed IR, and the typer
+**Decided ([`DEC-18` decision 1](../decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)):** the backend consumes a typed IR, and the typer
 produces it, because the typer is the only phase that knows a node's type. A type added after
 the fact is one a WebAssembly backend cannot use: it is static, and polymorphism reaches it
 through the same monomorphisation

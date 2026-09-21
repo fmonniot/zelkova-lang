@@ -14,7 +14,7 @@ the typer hand back.
 stop discarding things. A new `src/compiler/ir/` for the moved definitions.
 `src/compiler/canonical/mod.rs` — `ExpressionKind` and `Value`, the input side.
 
-**Decided ([`GEN-1`](gen-1.md) decisions 1 and 7):** one IR, produced by the typer, consumed by
+**Decided ([`DEC-18` decision 1](../decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it) and [`DEC-18` decision 2](../decisions/dec-18.md#2--one-ir-serves-both-targets-and-javascript-is-written-first)):** one IR, produced by the typer, consumed by
 both backends. It carries a type on every node, because WebAssembly is statically typed and
 polymorphism reaches it through the monomorphisation
 [`DEC-2` decision 7](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed)
@@ -37,7 +37,7 @@ Three more are missing for the same reason:
 
 - **Arity.** `value_to_term_and_annotation` wraps a body in one nested `Fun` per parameter, so a
   declaration of two parameters is a function returning a function, and its arity has to be
-  counted back off the spine. [`GEN-1`](gen-1.md) decision 2 emits a plain n-ary function, and
+  counted back off the spine. [`DEC-18` decision 3](../decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper) emits a plain n-ary function, and
   needs the arity as a fact rather than a shape.
 - **Saturation.** `Apply` is one argument at a time. A call site that supplies every argument a
   known callee takes emits a direct call; one that does not goes through the runtime's `$curry`.

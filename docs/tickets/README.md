@@ -138,11 +138,14 @@ ends at type checking, so nothing the compiler accepts has ever been executed, a
 [`docs/spec/evaluation-semantics.md`](../spec/evaluation-semantics.md) is one the compiler
 neither enforces nor implements.
 
-[`GEN-1`](gen-1.md) is the index rather than a unit of work — it carries the eight decisions the
-children inherit, and the order they land in. Read it before picking any of them up; none of
-them re-argues a decision, and several would look arbitrary without it. It keeps its name
-because two spec chapters and seven decision entries cite `gen-1.md`, and
-`cargo test --test spec` checks those resolve.
+[`GEN-1`](gen-1.md) is the index rather than a unit of work — it carries the rules the children
+inherit and the order they land in, and [`DEC-18`](../decisions/dec-18.md) holds the seven
+decisions behind them and the alternatives each was chosen over. Read both before picking any of
+them up; none of the children re-argues a decision, and several would look arbitrary without one.
+`DEC-18` is the half that survives this program: `GEN-1` is deleted with its children, which is
+why the argument is not in it. `GEN-1` keeps its name and title through the rewrite because two
+spec chapters and seven decision entries cite `gen-1.md`, and `cargo test --test spec` checks
+those resolve.
 
 Three tickets that already existed are prerequisites rather than members:
 [`LANG-35`](lang-35.md) builds the declaration graph `GEN-7` sorts, [`BUG-27`](bug-27.md) puts

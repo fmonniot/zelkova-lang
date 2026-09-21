@@ -13,7 +13,7 @@ assertions beside it, run by `node --test`. `.github/workflows/rust.yml` is wher
 and [`TEST-3`](test-3.md) is either the ticket that created that job or the ticket this one
 completes — check which has landed.
 
-**Decided ([`GEN-1`](gen-1.md) decision 6):** emission is checked in two halves. Everything
+**Decided ([`DEC-18` decision 6](../decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node)):** emission is checked in two halves. Everything
 testable without running JavaScript is a Rust test, and those are already written by the tickets
 that added each piece. The behavioural half — that the emitted program computes the right value
 — is a JavaScript test under `node --test`, in the shape

@@ -13,7 +13,7 @@ into the layout this decides.
 of the build. `src/main.rs`, which calls `compile_package("std/core")`, prints and writes
 nothing. `.gitignore`.
 
-**Decided ([`GEN-1`](gen-1.md) decision 5, and
+**Decided ([`DEC-18` decision 5](../decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest), and
 [*The compiler's interface*](../spec/toolchain.md#the-compilers-interface)):** output goes to
 `build/js/<package-name>/<module path>.mjs`, beside the **root** package's manifest and never
 beside a source it read. One emitted file per Zelkova module.

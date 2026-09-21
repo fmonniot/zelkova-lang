@@ -17,7 +17,7 @@ is evaluated, branches are tried in the order written, and the body of the first
 evaluated, never another. This ticket adds no rule; it must not reorder or merge tests, because
 the order is the semantics.
 
-The representation each test reads is [`GEN-1`](gen-1.md) decision 3's: a union value's
+The representation each test reads is the one [`GEN-1`](gen-1.md) collects: a union value's
 constructor is its `$` field, a tuple is an array, and a `Bool` is a JavaScript boolean rather
 than a tagged object — so a `case` on a `Bool` tests the value itself.
 

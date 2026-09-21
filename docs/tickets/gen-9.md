@@ -13,7 +13,7 @@ and module structure first, expressions second.
 yet — this ticket produces a module's JavaScript as text, which is what makes it testable in
 Rust.
 
-**Decided ([`GEN-1`](gen-1.md) decisions 2, 3 and 4):**
+**Decided ([`DEC-18` decision 3](../decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper) and [`DEC-18` decision 4](../decisions/dec-18.md#4--a-constructor-of-no-arguments-is-hoisted-to-one-module-level-constant), and the representations [`GEN-1`](gen-1.md) collects):**
 
 - A declaration of *n* parameters is `function f(a, b, …)`. A **saturated** call at a known
   callee is `f(a, b)`; anything else goes through the runtime's `$curry`.
