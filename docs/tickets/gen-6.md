@@ -3,11 +3,11 @@
 **Sizing:** small. One walk over a declaration's body with a notion of tail position, setting a
 flag. No emission and no rewriting.
 
-**Depends on:** [`GEN-4`](gen-4.md).
+**Depends on:** `GEN-4`, closed — the IR is `src/compiler/ir/`.
 
 **Part of:** [`GEN-1`](gen-1.md).
 
-**Location:** the declaration and `Apply` nodes of the IR [`GEN-4`](gen-4.md) defines, and a new
+**Location:** the declaration and `Apply` nodes of the IR in `src/compiler/ir/`, and a new
 pass beside the one [`GEN-5`](gen-5.md) adds.
 
 **Decided ([`docs/spec/evaluation-semantics.md`](../spec/evaluation-semantics.md#recursion-and-tail-calls)):**
@@ -35,7 +35,7 @@ Nothing in the tree has a notion of tail position at all.
 **Approach:** walk each declaration's body carrying one bit — whether the node being visited is
 in tail position — seeded true at the body and propagated by the chapter's four rules and no
 others. Mark an `Apply` when it is in tail position, its callee is the enclosing declaration,
-and it is saturated ([`GEN-4`](gen-4.md) carries both facts). An unsaturated self call in tail
+and it is saturated (`ir::Declaration::arity` and `ir::Saturation` carry both facts). An unsaturated self call in tail
 position is not a jump: it produces a function value rather than re-entering, so it is a call
 like any other.
 

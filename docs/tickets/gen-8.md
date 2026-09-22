@@ -3,7 +3,7 @@
 **Sizing:** small. One hand-written `.mjs` with two helpers in it, and its own tests. No Rust
 changes beyond making the file reachable.
 
-**Part of:** [`GEN-1`](gen-1.md). Independent of [`GEN-4`](gen-4.md) through
+**Part of:** [`GEN-1`](gen-1.md). Independent of `GEN-4` through
 [`GEN-7`](gen-7.md) — it can be written at any point before [`GEN-9`](gen-9.md) needs it.
 
 **Location:** a new `runtime/js/zelkova.mjs`, with `runtime/js/tests/` beside it for its checks,

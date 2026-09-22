@@ -38,6 +38,10 @@
 use super::canonical;
 use super::canonical::Module;
 use super::scalars;
+use crate::compiler::ir::{
+    Constructor, Reference, ReferenceKind, Saturation, Solved, Term, TermKind, TermPattern,
+    TermPatternKind, TypeBinder, TypedTerm, TypedTermKind,
+};
 use crate::compiler::name::{Name, QualName};
 use crate::compiler::position::NodeSpan;
 use crate::compiler::tuple::Tuple;
@@ -481,80 +485,6 @@ impl PhaseError for Error {
     }
 }
 
-/// What the typer has to say about one declaration.
-///
-/// A phase that answers with types has to answer for *every* declaration it was given,
-/// including the ones it could not type: a caller handed only the ones that worked
-/// cannot tell a declaration the typer verified from one it walked past, and emitting
-/// code for the second is a miscompile. So the three ways a declaration goes untyped
-/// each get a variant, and [`type_check`] returns one entry per declaration either way.
-#[derive(Debug)]
-pub enum Solved {
-    /// The declaration's typed term, with the final substitution applied to every node
-    /// — the *zonk*. Its own `tpe` is the declaration's type; each node below it
-    /// carries the type inference solved for that sub-expression.
-    Typed(TypedTerm),
-    /// A declaration of a `module foreign` facade, whose body is a synthetic
-    /// placeholder rather than anything the user wrote. Nothing about it is inferred.
-    ///
-    /// This variant carries nothing, so [`Solved::typed`] answers `None` for it: the
-    /// declaration's type is the signature the facade declares, and it stays where
-    /// canonicalization put it, on `canonical::Value::TypedValue`'s `tpe`. A consumer
-    /// reading these entries is walking the same `canonical::Module` the map was
-    /// solved from — [`type_check`] takes one and keys the map the way its `values`
-    /// is keyed — so the signature is one lookup away, and repeating it here would be
-    /// a second copy of it rather than something inference established.
-    NoBody,
-    /// `value_to_term_and_annotation` could not translate the declaration into the
-    /// typer's term language — a `VarKernel` or `VarForeign` reference, a constructor
-    /// or tuple pattern in a function head, a nested pattern inside a `case`. Nothing
-    /// about the declaration was checked.
-    ///
-    /// Not an [`Error`]: it is a gap in the typer rather than a mistake in the source,
-    /// and reporting it would fail 53 of the declarations in `std/core/src` that are
-    /// simply beyond today's inference. What it wants is a warning, which the compiler
-    /// does not have yet (`ERR-8`, see `docs/tickets/README.md`) — hence the span, so
-    /// that the warning has a caret the day it exists. *Which* of the four constructs
-    /// tripped it is not carried: `value_to_term_and_annotation` answers `Option`, so
-    /// the reason does not survive the return, and giving it one belongs with the
-    /// reshape in `GEN-4` rather than here.
-    Untranslatable {
-        /// Where the declaration was written, annotation and body together — the only
-        /// position available, since the construct that stopped the translation is not
-        /// reported back.
-        span: NodeSpan,
-    },
-    /// Inference reached a name the typer's environment does not hold, and nothing
-    /// about the declaration was checked.
-    ///
-    /// That environment is assembled from *this module alone*: its own annotated
-    /// values and its own type constructors. Anything that crossed a module boundary
-    /// is absent even though canonicalization resolved it perfectly well —
-    /// `Maybe.isJust` referring to `True`, which `Basics` declares, or
-    /// `Basics.negate` referring to `-`, which the infix declaration aliases to `sub`.
-    /// Five declarations in `std/core/src` hit this today and not one of them is a
-    /// mistake in the source, which is why this is not an [`Error`] either; closing
-    /// the hole is `BUG-36`. A name that genuinely does not exist is caught earlier,
-    /// by canonicalization, as `canonical::Error::VariableNotFound`, with a caret
-    /// under the name.
-    UnboundName {
-        /// The name as inference looked it up.
-        name: String,
-        /// Where it was written.
-        span: NodeSpan,
-    },
-}
-
-impl Solved {
-    /// The typed term, for a declaration that has one.
-    pub fn typed(&self) -> Option<&TypedTerm> {
-        match self {
-            Solved::Typed(term) => Some(term),
-            _ => None,
-        }
-    }
-}
-
 /// Type check one canonical module and hand back what it solved, reporting every value
 /// whose inference produced a reportable error rather than stopping at the first — the
 /// shape `compile_package` is built to accumulate.
@@ -615,19 +545,12 @@ pub fn type_check(module: &Module) -> Result<HashMap<Name, Solved>, Vec<Error>> 
         }
     }
 
-    // This module's unions, keyed by the qualified name that identifies each
-    // declaration rather than by the spelling the `type` line wrote. A constructor
-    // carries the qualified name of the type it builds, so this key is what decides
-    // whether the constructor in a pattern is one of *these* declarations' — see
-    // `translate_pattern`.
-    let module_types: ModuleTypes = module
-        .types
-        .iter()
-        .map(|(name, union_type)| (module.name.qualify_name(name), union_type))
-        .collect();
+    // What the canonical AST is read against: this module's unions, its constructors
+    // and the arity of each of its declarations. See [`Translation`].
+    let translation = Translation::of(module);
 
     // Second pass: add constructor types to global from this module's unions
-    for (type_name, union_type) in &module_types {
+    for (type_name, union_type) in &translation.module_types {
         // Fresh type vars for each ADT type parameter (e.g. "a" in Maybe a)
         let mut adt_var_map: HashMap<String, TypeVariable> = HashMap::new();
         for tv_name in &union_type.variables {
@@ -686,7 +609,7 @@ pub fn type_check(module: &Module) -> Result<HashMap<Name, Solved>, Vec<Error>> 
     let mut solved: HashMap<Name, Solved> = HashMap::new();
     for (name, value) in &module.values {
         let Some((term, annotation)) =
-            value_to_term_and_annotation(value, &module_types, &mut counter)
+            value_to_term_and_annotation(value, &translation, &mut counter)
         else {
             // Unsupported construct: nothing was checked, and the entry says so
             // rather than the declaration going missing — see [`Solved`].
@@ -743,6 +666,125 @@ pub fn type_check(module: &Module) -> Result<HashMap<Name, Solved>, Vec<Error>> 
 /// with a local one, which is what `BUG-35` closed.
 type ModuleTypes<'a> = HashMap<QualName, &'a canonical::UnionType>;
 
+/// Everything the translation from the canonical AST reads besides the expression in
+/// front of it.
+///
+/// Each of the three answers a question the canonical node cannot: which union a
+/// constructor belongs to and where in it, and how many arguments a call has to supply
+/// before it is a direct call. All three are facts of the *module*, which is why they
+/// are gathered once here — the declaration being translated is the only thing that
+/// changes between calls.
+///
+/// Every one of them is about the module under check and none about its imports. The
+/// typer's environment is built the same way, so a declaration reaching for an imported
+/// union or an imported value goes untyped today whatever this holds; giving the typer
+/// the imported interfaces is `BUG-36`.
+struct Translation<'a> {
+    /// This module's unions, keyed by the qualified name that identifies each
+    /// declaration rather than by the spelling the `type` line wrote. A constructor
+    /// carries the qualified name of the type it builds, so this key is what decides
+    /// whether the constructor in a pattern is one of *these* declarations' — see
+    /// [`translate_pattern`]. The two keys differ for every imported constructor whose
+    /// type shares a name with a local one, which is what `BUG-35` closed.
+    module_types: ModuleTypes<'a>,
+    /// This module's constructors, keyed the way a `VarConstructor` spells one, each
+    /// with the place in its declaration both backends need.
+    constructors: HashMap<QualName, Constructor>,
+    /// How many parameters each of this module's declarations was written with.
+    ///
+    /// This is the callee's arity at a call site naming one of them, which is what
+    /// decides an application's [`Saturation`]. The rule itself — parameter count, not
+    /// arrow count — is [`canonical::Value::arity`], which `ir::build` reads too.
+    arities: HashMap<Name, usize>,
+}
+
+impl<'a> Translation<'a> {
+    fn of(module: &'a Module) -> Translation<'a> {
+        let module_types: ModuleTypes<'a> = module
+            .types
+            .iter()
+            .map(|(name, union_type)| (module.name.qualify_name(name), union_type))
+            .collect();
+
+        let constructors = constructors_of(&module_types);
+
+        let arities = module
+            .values
+            .iter()
+            .map(|(name, value)| (name.clone(), value.arity()))
+            .collect();
+
+        Translation {
+            module_types,
+            constructors,
+            arities,
+        }
+    }
+
+    /// A translation that knows this module's unions and nothing else: no arity is
+    /// known, so every application it produces is [`Saturation::Partial`].
+    #[cfg(test)]
+    fn of_types(module_types: ModuleTypes<'a>) -> Translation<'a> {
+        let constructors = constructors_of(&module_types);
+
+        Translation {
+            module_types,
+            constructors,
+            arities: HashMap::new(),
+        }
+    }
+
+    /// How many arguments the callee of an application spine takes, when this module
+    /// knows.
+    ///
+    /// `None` is what makes an application [`Saturation::Partial`], and it is the honest
+    /// answer three times over: a local is a value rather than a declaration and has no
+    /// arity at all; an imported value's arity belongs to the module that declared it
+    /// and is not in the canonical AST here; and a callee that is itself an expression —
+    /// the result of a `case`, say — is a value too. A backend that cannot prove a call
+    /// saturated goes through `$curry`, which is correct for every one of them.
+    fn callee_arity(&self, callee: &canonical::Expression) -> Option<usize> {
+        match &callee.kind {
+            canonical::ExpressionKind::VarTopLevel(qname) => {
+                self.arities.get(&qname.unqualified_name()).copied()
+            }
+            canonical::ExpressionKind::VarConstructor(qname, _) => {
+                self.constructors.get(qname).map(|ctor| ctor.arity)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Every constructor of `module_types`, keyed the way a `VarConstructor` spells one:
+/// the constructor's name qualified by the module that declared the union it builds.
+fn constructors_of(module_types: &ModuleTypes) -> HashMap<QualName, Constructor> {
+    let mut constructors = HashMap::new();
+
+    for (union, union_type) in module_types {
+        for variant in crate::compiler::ir::variants_of(union_type) {
+            // A union is named by its declaring module, so that module is where its
+            // constructors are named from too. `qualify_with_name` only declines an
+            // empty name, which a parsed declaration never has.
+            let Some(name) = variant.name.qualify_with_name(&union.module_name()) else {
+                continue;
+            };
+
+            constructors.insert(
+                name,
+                Constructor {
+                    union: union.clone(),
+                    name: variant.name,
+                    index: variant.index,
+                    arity: variant.arity,
+                },
+            );
+        }
+    }
+
+    constructors
+}
+
 /// Convert a canonical type to the typer's simplified Type representation.
 /// The match covers all four `canonical::Type` variants — `Variable`, `Arrow`, `Tuple`
 /// (either arity), and `Type` including named types with parameters — and every arm's
@@ -768,7 +810,7 @@ type ModuleTypes<'a> = HashMap<QualName, &'a canonical::UnionType>;
 /// `ModuleName::qualify_name` rather than splitting a module half off it — so an
 /// unresolved `Missing.Thing` written in `Test` arrives here as `Test.Missing.Thing`
 /// and does not collapse onto the local `Test.Thing`.
-fn canonical_type_to_typer_type(
+pub(crate) fn canonical_type_to_typer_type(
     tpe: &canonical::Type,
     var_map: &mut HashMap<String, TypeVariable>,
     counter: &mut u32,
@@ -858,15 +900,29 @@ pub(super) fn bool_type() -> Type {
 
 /// Convert a canonical expression to a Term, keeping the position it was written at.
 ///
-/// Returns None for constructs the inference engine doesn't yet handle
-/// (VarKernel, VarForeign, complex patterns inside Case).
+/// Returns None for constructs the inference engine doesn't yet handle (a `VarKernel`
+/// reference, a constructor of a union this module does not declare, complex patterns
+/// inside a `Case`).
 ///
 /// Every arm attaches `expr.span` to the term it builds. That is the whole of what
 /// `ERR-4` needed from this function: a constraint can only point at a
 /// sub-expression if the term that produced it remembers where it came from.
+///
+/// # What is recorded here and nowhere else
+///
+/// This is the only moment at which a reference's *kind* is known. A local, a
+/// top-level, an imported value and a constructor are four different things to emit,
+/// and the spelling each leaves behind is bare for one of them and qualified for the
+/// rest — so a backend handed only the string could not tell them apart
+/// ([`DEC-18` decision
+/// 1](../../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
+/// Each becomes a [`Reference`] carrying both the lookup key inference uses and what
+/// the name is. An application spine records the same way whether it is
+/// [saturated](Saturation), which is a question about the spine and not about any one
+/// `Apply` node.
 fn canonical_expr_to_term(
     expr: &canonical::Expression,
-    module_types: &ModuleTypes,
+    translation: &Translation,
     counter: &mut u32,
 ) -> Option<Term> {
     let kind = match &expr.kind {
@@ -879,23 +935,74 @@ fn canonical_expr_to_term(
         canonical::ExpressionKind::Char(c) => TermKind::Char(*c),
         canonical::ExpressionKind::Float(f) => TermKind::Float(*f),
         canonical::ExpressionKind::VarLocal(name) => {
-            TermKind::Identifier(name.as_str().to_string())
+            TermKind::Identifier(Reference::local(name.as_str()))
         }
-        canonical::ExpressionKind::VarTopLevel(qname) => {
-            TermKind::Identifier(qname.to_name().as_str().to_string())
+        canonical::ExpressionKind::VarTopLevel(qname) => TermKind::Identifier(Reference {
+            name: qname.to_name().as_str().to_string(),
+            kind: ReferenceKind::TopLevel(qname.clone()),
+        }),
+        // A value another module declares. Inference has no type for it — its
+        // environment holds this module alone (`BUG-36`) — so the declaration around it
+        // comes back `Solved::UnboundName` and never reaches a backend. The kind is
+        // recorded regardless, because this is the only place it is available.
+        canonical::ExpressionKind::VarForeign(qname, _) => TermKind::Identifier(Reference {
+            name: qname.to_name().as_str().to_string(),
+            kind: ReferenceKind::Foreign(qname.clone()),
+        }),
+        // A constructor builds a tagged value rather than reading a binding, so it
+        // carries its place in its declaration. That place comes from the union, and
+        // only this module's unions are in hand: a constructor of an imported type
+        // finds nothing and the whole declaration goes untranslated, exactly as
+        // `translate_pattern` already does for a constructor *pattern*.
+        canonical::ExpressionKind::VarConstructor(qname, _) => {
+            let ctor = translation.constructors.get(qname)?;
+
+            TermKind::Identifier(Reference {
+                name: qname.to_name().as_str().to_string(),
+                kind: ReferenceKind::Constructor(ctor.clone()),
+            })
         }
-        canonical::ExpressionKind::Apply(f, a) => {
-            let fun = canonical_expr_to_term(f, module_types, counter)?;
-            let arg = canonical_expr_to_term(a, module_types, counter)?;
-            TermKind::Apply {
-                fun: Box::new(fun),
-                arg: Box::new(arg),
+        // The spine is walked as a whole rather than one node at a time, because
+        // whether a call is saturated is a fact about the callee and the number of
+        // arguments reaching it. Each node keeps its own canonical span, so a type
+        // error still points where it did.
+        canonical::ExpressionKind::Apply(_, _) => {
+            let (callee, applications) = spine(expr);
+            let arity = translation.callee_arity(callee);
+
+            let mut term = canonical_expr_to_term(callee, translation, counter)?;
+
+            for (supplied, application) in applications.iter().enumerate() {
+                // `spine` collects `Apply` nodes and nothing else.
+                let canonical::ExpressionKind::Apply(_, argument) = &application.kind else {
+                    return None;
+                };
+
+                let argument = canonical_expr_to_term(argument, translation, counter)?;
+                // The node that consumes the callee's last argument is the direct
+                // call; everything before it is a partial application and everything
+                // after it applies whatever that call returned.
+                let saturation = match arity {
+                    Some(arity) if arity == supplied + 1 => Saturation::Saturated,
+                    _ => Saturation::Partial,
+                };
+
+                term = Term {
+                    span: application.span,
+                    kind: TermKind::Apply {
+                        fun: Box::new(term),
+                        arg: Box::new(argument),
+                        saturation,
+                    },
+                };
             }
+
+            return Some(term);
         }
         canonical::ExpressionKind::If(cond, t, f) => {
-            let cond = canonical_expr_to_term(cond, module_types, counter)?;
-            let t = canonical_expr_to_term(t, module_types, counter)?;
-            let f = canonical_expr_to_term(f, module_types, counter)?;
+            let cond = canonical_expr_to_term(cond, translation, counter)?;
+            let t = canonical_expr_to_term(t, translation, counter)?;
+            let f = canonical_expr_to_term(f, translation, counter)?;
             TermKind::If {
                 cond: Box::new(cond),
                 true_branch: Box::new(t),
@@ -904,18 +1011,18 @@ fn canonical_expr_to_term(
         }
         canonical::ExpressionKind::Tuple(tuple) => {
             let elements = tuple
-                .try_map(|elem| canonical_expr_to_term(elem, module_types, counter).ok_or(()))
+                .try_map(|elem| canonical_expr_to_term(elem, translation, counter).ok_or(()))
                 .ok()?;
             TermKind::Tuple(elements)
         }
         canonical::ExpressionKind::Case(scrutinee_expr, branches) => {
-            let scrutinee = canonical_expr_to_term(scrutinee_expr, module_types, counter)?;
+            let scrutinee = canonical_expr_to_term(scrutinee_expr, translation, counter)?;
             let term_branches: Vec<(TermPattern, Box<Term>)> = branches
                 .iter()
                 .map(|cb| {
                     let (pattern, _bindings) =
-                        translate_pattern(&cb.pattern, module_types, counter)?;
-                    let body = canonical_expr_to_term(&cb.expression, module_types, counter)?;
+                        translate_pattern(&cb.pattern, translation, counter)?;
+                    let body = canonical_expr_to_term(&cb.expression, translation, counter)?;
                     Some((pattern, Box::new(body)))
                 })
                 .collect::<Option<Vec<_>>>()?;
@@ -924,12 +1031,6 @@ fn canonical_expr_to_term(
                 branches: term_branches,
             }
         }
-        // Constructors are resolved as identifiers looked up in the global env.
-        canonical::ExpressionKind::VarConstructor(qname, _) => {
-            TermKind::Identifier(qname.to_name().as_str().to_string())
-        }
-        // VarForeign: not in the module's global env, skip
-        canonical::ExpressionKind::VarForeign(_, _) => return None,
         // Not yet supported: VarKernel
         _ => return None,
     };
@@ -940,6 +1041,27 @@ fn canonical_expr_to_term(
     })
 }
 
+/// An application spine: what is being applied, and the `Apply` nodes that apply it,
+/// innermost first.
+///
+/// `f a b` is `Apply(Apply(f, a), b)` in the canonical AST, and one `Apply` node on its
+/// own cannot say whether the call it is part of supplies everything `f` takes. This is
+/// what turns the nesting back into a callee and a count. `applications[i]` supplies the
+/// `i + 1`th argument, and the last of them is `expr` itself.
+fn spine(expr: &canonical::Expression) -> (&canonical::Expression, Vec<&canonical::Expression>) {
+    let mut applications = Vec::new();
+    let mut callee = expr;
+
+    while let canonical::ExpressionKind::Apply(fun, _) = &callee.kind {
+        applications.push(callee);
+        callee = fun;
+    }
+
+    applications.reverse();
+
+    (callee, applications)
+}
+
 /// Translate a canonical pattern into a `TermPattern` plus any variable bindings
 /// introduced by the pattern.  Returns `None` for unsupported pattern shapes.
 ///
@@ -948,7 +1070,7 @@ fn canonical_expr_to_term(
 /// the caret belongs there rather than under the expression in the `case … of` line.
 fn translate_pattern(
     pattern: &canonical::Pattern,
-    module_types: &ModuleTypes,
+    translation: &Translation,
     counter: &mut u32,
 ) -> Option<(TermPattern, Vec<(String, Type)>)> {
     let (kind, bindings) = match &pattern.kind {
@@ -973,7 +1095,15 @@ fn translate_pattern(
             // the constructor is one of this module's own. A constructor of an
             // imported type finds nothing, and the whole declaration goes unchecked;
             // giving the typer the imported unions is `BUG-36`.
-            let union_type = module_types.get(&ctor.tpe)?;
+            let union_type = translation.module_types.get(&ctor.tpe)?;
+
+            // Which case of that union this pattern matches. Unification needs only
+            // the union; a decision tree and a WIT `variant` both need the case, and
+            // the declaration is the only thing that can say where it sits.
+            let index = union_type
+                .variants
+                .iter()
+                .position(|variant| variant.name == ctor.name)?;
 
             // Create fresh type vars for each ADT type parameter.
             let mut adt_var_map: HashMap<String, TypeVariable> = HashMap::new();
@@ -1012,7 +1142,12 @@ fn translate_pattern(
             }
 
             let kind = TermPatternKind::Constructor {
-                adt_name: ctor.tpe.clone(),
+                ctor: Constructor {
+                    union: ctor.tpe.clone(),
+                    name: ctor.name.clone(),
+                    index,
+                    arity: ctor.type_parameters.len(),
+                },
                 adt_args,
                 bindings: bindings.clone(),
             };
@@ -1046,12 +1181,12 @@ struct Annotation {
 /// Returns None if any part of the value cannot be translated.
 fn value_to_term_and_annotation(
     value: &canonical::Value,
-    module_types: &ModuleTypes,
+    translation: &Translation,
     counter: &mut u32,
 ) -> Option<(Term, Option<Annotation>)> {
     match value {
         canonical::Value::Value { patterns, body, .. } => {
-            let body_term = canonical_expr_to_term(body, module_types, counter)?;
+            let body_term = canonical_expr_to_term(body, translation, counter)?;
             let term = wrap_with_patterns(patterns.iter(), body_term)?;
             Some((term, None))
         }
@@ -1062,7 +1197,7 @@ fn value_to_term_and_annotation(
             annotation_span,
             ..
         } => {
-            let body_term = canonical_expr_to_term(body, module_types, counter)?;
+            let body_term = canonical_expr_to_term(body, translation, counter)?;
             let pattern_iter = patterns.iter().map(|(p, _)| p);
             let term = wrap_with_patterns(pattern_iter, body_term)?;
             let mut var_map = HashMap::new();
@@ -1105,109 +1240,17 @@ fn wrap_with_patterns<'a>(
     Some(term)
 }
 
-// First try of an implementation. Not linked to the rest of the code base for simplicity's sake.
-//
-// It is no longer *quite* that: the term language is still simplified — names degrade
-// to `String`, anything inference does not need is dropped — but every node carries
-// the [`NodeSpan`] of the canonical node it was built from, because an error found
-// down here has to be able to say where in the user's source it happened (`ERR-4`).
+// The term language inference runs on is [`crate::compiler::ir`], and it is no longer
+// only inference's. Every node carries the [`NodeSpan`] of the canonical node it was
+// built from, so an error found down here can say where in the user's source it
+// happened (`ERR-4`), and each carries what a backend reads off it — the kind of name a
+// reference is, a call's saturation, a constructor's place in its declaration — because
+// the translation below is the only place those are known. Inference reads none of
+// them.
 
 mod annotate;
 mod constraint;
 mod unifier;
-
-/// Simplified pattern used inside the typer's Term, and where it was written.
-///
-/// Same shape as the parser and canonical ASTs — a span beside a kind — so a reader
-/// matches on `&p.kind`.
-#[derive(Debug, Clone)]
-pub struct TermPattern {
-    pub span: NodeSpan,
-    pub kind: TermPatternKind,
-}
-
-#[derive(Debug, Clone)]
-pub enum TermPatternKind {
-    /// Matches anything without binding.
-    Anything,
-    /// Binds the scrutinee type to this name.
-    Bind(String),
-    /// Matches one specific value; constrains the scrutinee to the type carried here.
-    ///
-    /// That type is a [`Type::Literal`] for an `Int` or a `Char` pattern, and the
-    /// [`Type::Adt`] [`bool_type`] builds for a `true`/`false` one — `Bool` is the union
-    /// `Basics` declares, not a literal type.
-    Literal(Type),
-    /// Matches an ADT constructor; carries the fresh ADT args and field bindings.
-    Constructor {
-        /// The union the constructor builds, named by the module that declared it —
-        /// the same name the [`Type::Adt`] this pattern constrains the scrutinee to
-        /// is built from.
-        adt_name: QualName,
-        adt_args: Vec<Type>,
-        /// `(variable_name, its_type_var)` for each bound constructor argument.
-        bindings: Vec<(String, Type)>,
-    },
-}
-
-/// An untyped term, and where the expression it was translated from was written.
-///
-/// In zelkova that source is the canonical AST. The span is what every constraint
-/// generated from this term inherits, and therefore what a type error draws its
-/// caret under; [`NodeSpan::none`] — a term built by hand, in a test — costs nothing
-/// but the caret.
-#[derive(Debug, Clone)] // TODO Remove clone when not needed anymore
-pub struct Term {
-    pub span: NodeSpan,
-    pub kind: TermKind,
-}
-
-impl Term {
-    /// A term with no position: hand-built, never translated from source.
-    #[cfg(test)]
-    fn bare(kind: TermKind) -> Term {
-        Term {
-            span: NodeSpan::none(),
-            kind,
-        }
-    }
-}
-
-#[derive(Debug, Clone)] // TODO Remove clone when not needed anymore
-pub enum TermKind {
-    // literals
-    Bool(bool),
-    /// An integer literal, at the width [`Int` *is*](../../../docs/spec/evaluation-semantics.md#numbers)
-    /// ([`DEC-16`](../../../docs/decisions/dec-16.md)). Inference never reads the value
-    /// — every literal is a `number` whatever it says — but code generation does.
-    Int(i64),
-    Char(char),
-    Float(f64),
-    Identifier(String), // VAR
-    Fun {
-        param: String,
-        body: Box<Term>,
-    },
-    Apply {
-        fun: Box<Term>,
-        arg: Box<Term>,
-    },
-    If {
-        cond: Box<Term>,
-        true_branch: Box<Term>,
-        false_branch: Box<Term>,
-    },
-    Let {
-        binding: String,
-        value: Box<Term>,
-        body: Box<Term>,
-    },
-    Tuple(Tuple<Term>),
-    Case {
-        scrutinee: Box<Term>,
-        branches: Vec<(TermPattern, Box<Term>)>,
-    },
-}
 
 // TODO Copy ?
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -1452,68 +1495,6 @@ impl Type {
     }
 }
 
-#[derive(Debug, Clone)]
-/// Bind a name and a type together.
-/// Used in function and let expression
-pub struct TypeBinder {
-    pub name: String,
-    pub tpe: Type,
-}
-
-impl TypeBinder {
-    fn new(name: String, tpe: Type) -> TypeBinder {
-        TypeBinder { name, tpe }
-    }
-}
-
-/// Like a [Term] but with an associated [Type], and still with its position.
-/// Any term introducing a name will have a TypeBinder instead.
-///
-/// This is what [`type_check`] hands back for a declaration it typed, and the types on
-/// it are the *solved* ones: `infer_annotated` applies `unify`'s final substitution to
-/// every node before returning. Between `annotate` and that point they are inference
-/// variables and mean nothing on their own.
-#[derive(Debug)]
-pub struct TypedTerm {
-    pub span: NodeSpan,
-    pub tpe: Type,
-    pub kind: TypedTermKind,
-}
-
-#[derive(Debug)]
-pub enum TypedTermKind {
-    /// See [`TermKind::Int`] for the width.
-    Int(i64),
-    Bool(bool),
-    Char(char),
-    Float(f64),
-    // TODO Do I want to keep this name ? Or named Variable ? Something else ?
-    Identifier(String), // This is basically a TypeBinder
-    Fun {
-        param: TypeBinder,
-        body: Box<TypedTerm>,
-    },
-    Apply {
-        fun: Box<TypedTerm>,
-        arg: Box<TypedTerm>,
-    },
-    If {
-        cond: Box<TypedTerm>,
-        true_branch: Box<TypedTerm>,
-        false_branch: Box<TypedTerm>,
-    },
-    Let {
-        binding: TypeBinder,
-        value: Box<TypedTerm>,
-        body: Box<TypedTerm>,
-    },
-    Tuple(Tuple<TypedTerm>),
-    Case {
-        scrutinee: Box<TypedTerm>,
-        branches: Vec<(TermPattern, Box<TypedTerm>)>,
-    },
-}
-
 /// Two types that have to match, and why.
 ///
 /// # What the two sides mean
@@ -1694,9 +1675,14 @@ impl Substitution {
                 param: self.apply_binder(param),
                 body: Box::new(self.apply_term(*body)),
             },
-            TypedTermKind::Apply { fun, arg } => TypedTermKind::Apply {
+            TypedTermKind::Apply {
+                fun,
+                arg,
+                saturation,
+            } => TypedTermKind::Apply {
                 fun: Box::new(self.apply_term(*fun)),
                 arg: Box::new(self.apply_term(*arg)),
+                saturation,
             },
             TypedTermKind::If {
                 cond,
@@ -1760,11 +1746,11 @@ impl Substitution {
             kind @ (TermPatternKind::Anything | TermPatternKind::Bind(_)) => kind,
             TermPatternKind::Literal(tpe) => TermPatternKind::Literal(self.apply_type(&tpe)),
             TermPatternKind::Constructor {
-                adt_name,
+                ctor,
                 adt_args,
                 bindings,
             } => TermPatternKind::Constructor {
-                adt_name,
+                ctor,
                 adt_args: adt_args.iter().map(|a| self.apply_type(a)).collect(),
                 bindings: bindings
                     .into_iter()
@@ -1962,7 +1948,7 @@ mod tests {
         Term::bare(TermKind::Int(i))
     }
     fn var(n: &str) -> Term {
-        Term::bare(TermKind::Identifier(n.to_string()))
+        Term::bare(TermKind::Identifier(Reference::local(n)))
     }
     fn fun(arg: &str, body: Term) -> Term {
         Term::bare(TermKind::Fun {
@@ -1981,6 +1967,7 @@ mod tests {
         Term::bare(TermKind::Apply {
             fun: Box::new(fun),
             arg: Box::new(arg),
+            saturation: Saturation::Partial,
         })
     }
     fn let_(binding: &str, value: Term, body: Term) -> Term {
@@ -2236,6 +2223,74 @@ mod tests {
         }
     }
 
+    /// The four things `canonical::ExpressionKind` calls a name stay four things in the
+    /// IR.
+    ///
+    /// They used to be one: every one of them became `TermKind::Identifier(String)`, and
+    /// the string is bare for a local and qualified for the other three, so nothing
+    /// downstream could tell a parameter from an import from a constructor
+    /// ([`DEC-18` decision
+    /// 1](../../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
+    ///
+    /// Written against hand-built canonical expressions rather than against source,
+    /// which the IR tests in `tests/ir.rs` use for the other three. The imported one is
+    /// why: the typer's environment holds this module alone, so a declaration
+    /// mentioning an imported value comes back `Solved::UnboundName` and never reaches
+    /// an `ir::Module` at all (`BUG-36`). This is the level at which all four are
+    /// observable together.
+    ///
+    /// Mutation-checked by giving the `VarForeign` and `VarTopLevel` arms of
+    /// `canonical_expr_to_term` the same `ReferenceKind`, which is the collapse this
+    /// pins: the two assertions naming them then read the same value.
+    #[test]
+    fn the_four_kinds_of_name_stay_apart() {
+        let (union_name, union) = main_size();
+        let translation = Translation::of_types(HashMap::from([(union_name.clone(), &union)]));
+
+        let reference = |kind: canonical::ExpressionKind| {
+            let mut counter = 0;
+            let expression = canonical::Expression::bare(kind);
+
+            match canonical_expr_to_term(&expression, &translation, &mut counter) {
+                Some(Term {
+                    kind: TermKind::Identifier(reference),
+                    ..
+                }) => reference,
+                other => panic!("expected a name, got {:?}", other),
+            }
+        };
+
+        assert_eq!(
+            reference(canonical::ExpressionKind::VarLocal("size".into())).kind,
+            ReferenceKind::Local
+        );
+        assert_eq!(
+            reference(canonical::ExpressionKind::VarTopLevel(qual("Main", "size"))).kind,
+            ReferenceKind::TopLevel(qual("Main", "size"))
+        );
+        assert_eq!(
+            reference(canonical::ExpressionKind::VarForeign(
+                qual("Lib", "size"),
+                canonical::Type::Variable("a".into())
+            ))
+            .kind,
+            ReferenceKind::Foreign(qual("Lib", "size"))
+        );
+        assert_eq!(
+            reference(canonical::ExpressionKind::VarConstructor(
+                qual("Main", "Big"),
+                canonical::Type::Type(union_name.clone(), vec![])
+            ))
+            .kind,
+            ReferenceKind::Constructor(Constructor {
+                union: union_name,
+                name: "Big".into(),
+                index: 0,
+                arity: 0,
+            })
+        );
+    }
+
     /// `A.S` builds `A.Size`, and a `Main` that happens to declare its own `Size`
     /// is not where that union is found.
     ///
@@ -2251,13 +2306,13 @@ mod tests {
     #[test]
     fn an_imported_constructor_does_not_find_a_local_type_of_the_same_name() {
         let (name, union) = main_size();
-        let module_types: ModuleTypes = HashMap::from([(name, &union)]);
+        let translation = Translation::of_types(HashMap::from([(name, &union)]));
         let mut counter = 0;
 
         let pattern = constructor_pattern("S", qual("A", "Size"));
 
         assert!(
-            translate_pattern(&pattern, &module_types, &mut counter).is_none(),
+            translate_pattern(&pattern, &translation, &mut counter).is_none(),
             "`A.S` is not a constructor of `Main.Size`"
         );
     }
@@ -2267,17 +2322,17 @@ mod tests {
     #[test]
     fn a_local_constructor_finds_its_own_type() {
         let (name, union) = main_size();
-        let module_types: ModuleTypes = HashMap::from([(name, &union)]);
+        let translation = Translation::of_types(HashMap::from([(name, &union)]));
         let mut counter = 0;
 
         let pattern = constructor_pattern("Big", qual("Main", "Size"));
 
-        let (translated, _) = translate_pattern(&pattern, &module_types, &mut counter)
+        let (translated, _) = translate_pattern(&pattern, &translation, &mut counter)
             .expect("`Main.Big` is a constructor of `Main.Size`");
 
         match translated.kind {
-            TermPatternKind::Constructor { adt_name, .. } => {
-                assert_eq!(adt_name, qual("Main", "Size"));
+            TermPatternKind::Constructor { ctor, .. } => {
+                assert_eq!(ctor.union, qual("Main", "Size"));
             }
             other => panic!("expected a constructor pattern, got {:?}", other),
         }

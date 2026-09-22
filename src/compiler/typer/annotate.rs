@@ -33,17 +33,33 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                 },
             )
         }
-        TermKind::Identifier(name) => match types.by_name(&name) {
+        TermKind::Identifier(reference) => match types.by_name(&reference.name) {
             // The one error `annotate` can raise, and the span is the whole of what
             // `ERR-4` changed about it: the name is underlined where it was written.
-            None => return Err(ErrorKind::UnboundVariable { name, span }),
-            Some(tpe) => (tpe, TypedTermKind::Identifier(name)),
+            None => {
+                return Err(ErrorKind::UnboundVariable {
+                    name: reference.name,
+                    span,
+                })
+            }
+            Some(tpe) => (tpe, TypedTermKind::Identifier(reference)),
         },
-        TermKind::Apply { fun, arg } => {
+        TermKind::Apply {
+            fun,
+            arg,
+            saturation,
+        } => {
             let fun = Box::new(annotate(*fun, types)?);
             let arg = Box::new(annotate(*arg, types)?);
 
-            (types.fresh_var(), TypedTermKind::Apply { fun, arg })
+            (
+                types.fresh_var(),
+                TypedTermKind::Apply {
+                    fun,
+                    arg,
+                    saturation,
+                },
+            )
         }
         TermKind::If {
             cond,

@@ -80,7 +80,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             constraints.extend(collect(body));
         }
         TypedTermKind::Identifier(_) => (),
-        TypedTermKind::Apply { fun, arg } => {
+        TypedTermKind::Apply { fun, arg, .. } => {
             let param_tpe = Box::new(arg.tpe.clone());
             let return_tpe = Box::new(tpe.clone());
             // The span is the *applied* expression's, not the whole application's:
@@ -181,11 +181,9 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                             pattern.span,
                         ));
                     }
-                    TermPatternKind::Constructor {
-                        adt_name, adt_args, ..
-                    } => {
+                    TermPatternKind::Constructor { ctor, adt_args, .. } => {
                         constraints.push(Constraint::new(
-                            Type::Adt(adt_name.clone(), adt_args.clone()),
+                            Type::Adt(ctor.union.clone(), adt_args.clone()),
                             scrutinee.tpe.clone(),
                             Reason::CasePattern,
                             pattern.span,
@@ -227,6 +225,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::compiler::ir::{Reference, Saturation};
     use crate::compiler::position::NodeSpan;
     use crate::compiler::typer::*;
 
@@ -242,7 +241,7 @@ mod tests {
     }
 
     fn identifier(tpe: Type, name: &str) -> TypedTerm {
-        typed(tpe, TypedTermKind::Identifier(name.to_owned()))
+        typed(tpe, TypedTermKind::Identifier(Reference::local(name)))
     }
 
     fn constraint(left: Type, right: Type, reason: Reason) -> Constraint {
@@ -346,6 +345,7 @@ mod tests {
             TypedTermKind::Apply {
                 fun: Box::new(fun),
                 arg: Box::new(arg),
+                saturation: Saturation::Partial,
             },
         );
 

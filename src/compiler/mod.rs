@@ -29,7 +29,8 @@
 //!     2. Verify there is no cyclic relation between modules
 //! 5. Following the deps graph,
 //!     1. canonicalize each modules
-//!     1. check each module (type check, exhaustiveness, etc…)
+//!     1. check each module (type check, exhaustiveness, etc…), and build the `ir::Module`
+//!        a backend reads out of the canonical module and what the typer solved
 //!     1. Bonus point to parallelize the tree branches which are not dependent on each others
 //! 6. Once we have a module with all checks passing, create its interface and emit AST/interface
 //! 7. Report. Each phase returns every error it found, `check_module` tags those with
@@ -65,6 +66,10 @@ pub mod dependencies;
 // that defines it has to be nameable. It also puts the last phase module on the
 // same footing as `canonical`, `typer` and `parser`.
 pub mod exhaustiveness;
+/// The intermediate representation code generation reads, and what the typer solved
+/// for one module. Public because it is the compiler's hand-off to a backend and
+/// `check_module` returns one.
+pub mod ir;
 /// `zelkova.toml`: reading it, and the shape it has to have. Public for the same
 /// reason as `source` and `dependencies` — `manifest::ManifestError` is reachable
 /// from the public `CompilationError::Manifest`.
@@ -1268,7 +1273,7 @@ fn compile_in_build(
                         what,
                         can_mods
                             .iter()
-                            .map(|m| m.name.as_human_string())
+                            .map(|m| m.canonical.name.as_human_string())
                             .collect::<Vec<_>>()
                     ),
                 );
@@ -1280,7 +1285,7 @@ fn compile_in_build(
                         what,
                         can_mods
                             .iter()
-                            .map(|m| m.name.as_human_string())
+                            .map(|m| m.canonical.name.as_human_string())
                             .collect::<Vec<_>>(),
                         check_errors.len()
                     ),
@@ -1357,7 +1362,7 @@ pub fn check_module(
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
     package_declares_a_default: bool,
-) -> Result<canonical::Module, CompilationError> {
+) -> Result<CheckedModule, CompilationError> {
     // - desugar ~?~ *!*
     // Should I have an intermediate AST before type checking ?
     // This could actually be useful to have something optimized for
@@ -1374,21 +1379,87 @@ pub fn check_module(
 
     // - type checking and inference
     //
-    // The typer answers with the types it solved — one `typer::Solved` per declaration,
+    // The typer answers with the types it solved — one `ir::Solved` per declaration,
     // carrying a type on every node of the ones it could type and saying why for the
-    // ones it could not. Nothing downstream reads them yet: `GEN-4` is what reshapes
-    // them into the backend IR and threads them out of here, and until then they are
-    // dropped here. Not logged on the way out, either — `infer_annotated` already dumps
-    // each declaration's term under `debug`, and `typer::type_check` is `pub`, so a test
-    // that wants the map calls it directly.
-    typer::type_check(&canonical)
+    // ones it could not. Not logged on the way out: `infer_annotated` already dumps each
+    // declaration's term under `debug`, and `typer::type_check` is `pub`, so a test that
+    // wants the map calls it directly.
+    let solved = typer::type_check(&canonical)
         .map_err(|errors| CompilationError::Type(errors, source.name.clone()))?;
 
     // verify in pattern matching branches that all variants are covered
     exhaustiveness::check(&canonical)
         .map_err(|errors| CompilationError::Exhaustiveness(errors, source.name.clone()))?;
 
-    Ok(canonical)
+    // - the shape a backend reads. Built here because this is the last frame holding
+    // both the canonical module and what the typer solved from it, and nothing after
+    // this point needs either half separately.
+    let ir = ir::build(&canonical, solved);
+
+    Ok(CheckedModule { canonical, ir })
+}
+
+/// One module that passed every check, in both the forms the compiler still needs it.
+///
+/// The two halves answer different questions and neither is derivable from the other.
+/// [`canonical`](Self::canonical) is what an [`Interface`] is built from, so the modules
+/// that import this one are checked against it; [`ir`](Self::ir) is what a backend
+/// reads, and carries the solved types, the name kinds, the arities and the constructor
+/// positions that emission needs and name resolution never did.
+#[derive(Debug)]
+pub struct CheckedModule {
+    pub canonical: canonical::Module,
+    pub ir: ir::Module,
+}
+
+impl CheckedModule {
+    /// This module's [`Interface`] — [`canonical::Module::to_interface`], which is the
+    /// half of a checked module that crosses a module boundary.
+    ///
+    /// Inherent so that a caller holding a `CheckedModule` reaches it without importing
+    /// [`Checked`]; the body is that trait's, so there is only one to keep correct.
+    pub fn to_interface(&self, file: Option<SourceFileId>) -> Interface {
+        Checked::to_interface(self, file)
+    }
+}
+
+/// What [`dependencies::ModuleWalker::check_in_order`] needs of whatever its checker
+/// hands back: a name to key the module by, and the interface the modules after it are
+/// checked against.
+///
+/// It is a trait because the walker drives more than one checker. The compiler's is
+/// [`check_module`], which answers with a [`CheckedModule`]; `tests/spec.rs` drives the
+/// same walker with a checker that only canonicalizes, because a spec example is judged
+/// on the errors each phase reports and there is nothing to emit from it.
+pub trait Checked {
+    /// The module's own name, package included.
+    fn name(&self) -> &ModuleName;
+
+    /// The trimmed-down view the modules that import this one are checked against.
+    ///
+    /// `file` is where this module was read from, when the caller knows it — see
+    /// [`Interface::file`].
+    fn to_interface(&self, file: Option<SourceFileId>) -> Interface;
+}
+
+impl Checked for canonical::Module {
+    fn name(&self) -> &ModuleName {
+        &self.name
+    }
+
+    fn to_interface(&self, file: Option<SourceFileId>) -> Interface {
+        canonical::Module::to_interface(self, file)
+    }
+}
+
+impl Checked for CheckedModule {
+    fn name(&self) -> &ModuleName {
+        &self.canonical.name
+    }
+
+    fn to_interface(&self, file: Option<SourceFileId>) -> Interface {
+        self.canonical.to_interface(file)
+    }
 }
 
 #[cfg(test)]

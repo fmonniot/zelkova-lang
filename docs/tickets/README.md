@@ -157,7 +157,7 @@ wrong arithmetic.
 ```
 GEN-3   the typer hands back the types it solved   ── closed
   │
-GEN-4   the backend IR
+GEN-4   the backend IR   ── closed
   ├── GEN-5   a `case` becomes a decision tree
   ├── GEN-6   a self tail call is marked
   └── GEN-7   parameterless bindings get an initialisation order   ← LANG-35 first
@@ -175,7 +175,8 @@ GEN-14  the end-to-end check under node   ← converges with TEST-3's CI job
 ```
 
 Three more are filed unscheduled, to keep context that would otherwise be rediscovered:
-[`GEN-15`](gen-15.md) the WebAssembly backend, whose constraints are what shape `GEN-4`'s IR;
+[`GEN-15`](gen-15.md) the WebAssembly backend, whose constraints are what shape the IR in
+`src/compiler/ir/`;
 [`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets, blocked on `Task`
 existing at all; and [`GEN-17`](gen-17.md) a `zelkova` binary that compiles and runs, which
 [`LANG-63`](lang-63.md) and [`GEN-14`](gen-14.md) both point at.
@@ -373,7 +374,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |
 | GEN-3 | task | — | closed 2026-09-21 | The typer hands back the types it solved |
-| [GEN-4](gen-4.md) | task | — | open | The backend IR |
+| GEN-4 | task | — | closed 2026-09-21 | The backend IR |
 | [GEN-5](gen-5.md) | task | — | open | A `case` becomes a decision tree in the IR |
 | [GEN-6](gen-6.md) | task | — | open | A self tail call is marked in the IR |
 | [GEN-7](gen-7.md) | task | — | open | Parameterless bindings get an initialisation order |

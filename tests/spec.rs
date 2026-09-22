@@ -19,10 +19,11 @@
 //!   to be deleted by hand on the day its ticket landed instead of going red on its
 //!   own. What the tag does *not* promise is that every declaration was checked:
 //!   [`typer::type_check`] raises no error for a declaration whose function head holds
-//!   a constructor or tuple pattern, one whose body reaches a `VarForeign` or an
-//!   expression form its term language does not model, one that hits an
-//!   `ErrorKind::UnboundVariable`, or any `binding_foreign` module whole. It marks each
-//!   of those in the types it returns — a `typer::Solved` that is not `Typed` — and
+//!   a constructor or tuple pattern, one that names a constructor of a union this
+//!   module does not declare, one whose body uses an expression form its term language
+//!   does not model, one that hits an `ErrorKind::UnboundVariable` — every reference to
+//!   another module's value does — or any `binding_foreign` module whole. It marks each
+//!   of those in the types it returns — an `ir::Solved` that is not `Typed` — and
 //!   this harness reads only the errors, so the distinction does not reach a verdict.
 //!   Across `docs/spec/` that is roughly one declaration in ten, so a green
 //!   `expect=ok` block may still hold an annotation its body contradicts —

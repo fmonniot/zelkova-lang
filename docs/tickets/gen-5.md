@@ -3,11 +3,11 @@
 **Sizing:** medium. One pass over a `case` node, plus its tests. Patterns are shallow today,
 which caps how hard the algorithm has to be — see the note on nesting below.
 
-**Depends on:** [`GEN-4`](gen-4.md).
+**Depends on:** `GEN-4`, closed — the IR is `src/compiler/ir/`.
 
 **Part of:** [`GEN-1`](gen-1.md).
 
-**Location:** the `Case` node of the IR [`GEN-4`](gen-4.md) defines, and the pass that lowers
+**Location:** the `Case` node of the IR in `src/compiler/ir/`, and the pass that lowers
 it. `src/compiler/exhaustiveness.rs` is the neighbour this is **not**: that phase decides
 whether a `case` covers its type and inspects nothing today ([`LANG-19`](lang-19.md)); this one
 decides what order the branches are tested in.

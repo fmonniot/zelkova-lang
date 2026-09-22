@@ -23,8 +23,8 @@ use zelkova_lang::compiler::source::{
     load_package_sources, load_package_sources_into, SourceFiles, SourceRoot,
 };
 use zelkova_lang::compiler::{
-    check_module, compile_package, compile_package_with_tests, parser, CompilationError, Interface,
-    PackageName, PhaseError,
+    check_module, compile_package, compile_package_with_tests, parser, CheckedModule,
+    CompilationError, Interface, PackageName, PhaseError,
 };
 
 mod support;
@@ -143,7 +143,7 @@ fn module_with_typed_and_untyped_values() {
     let result = check_module(&test_package(), &interfaces, &parsed, false);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
-    assert_eq!(module.values.len(), 3);
+    assert_eq!(module.canonical.values.len(), 3);
 }
 
 // ── Test 3: Module with union type ───────────────────────────────────────────
@@ -161,7 +161,7 @@ fn module_with_union_type() {
     let result = check_module(&test_package(), &interfaces, &parsed, false);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
-    assert!(module.types.contains_key(&"Shape".into()));
+    assert!(module.canonical.types.contains_key(&"Shape".into()));
 }
 
 // ── Test 4: Module importing Maybe (using manually-built interface) ───────────
@@ -182,7 +182,7 @@ fn module_importing_maybe_interface() {
     let result = check_module(&test_package(), &interfaces, &parsed, false);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
-    assert!(module.values.contains_key(&"wrap".into()));
+    assert!(module.canonical.values.contains_key(&"wrap".into()));
 }
 
 // ── Test 5: check_module produces a valid interface usable by dependents ─────
@@ -203,7 +203,10 @@ fn check_module_interface_can_be_used_by_dependent() {
     "#};
     let parsed_a = parse_source(source_a);
     let module_a = check_module(&pkg, &interfaces, &parsed_a, false).expect("Lib should compile");
-    interfaces.insert(module_a.name.name().clone(), module_a.to_interface(None));
+    interfaces.insert(
+        module_a.canonical.name.name().clone(),
+        module_a.to_interface(None),
+    );
 
     // Second module: imports and uses Lib
     let source_b = indoc::indoc! {r#"
@@ -266,7 +269,10 @@ fn stdlib_basics_chain_compiles() {
         let parsed = parse_file(&path);
         let module = check_module(&pkg, &interfaces, &parsed, true)
             .unwrap_or_else(|e| panic!("{} failed: {:?}", js_module, e));
-        interfaces.insert(module.name.name().clone(), module.to_interface(None));
+        interfaces.insert(
+            module.canonical.name.name().clone(),
+            module.to_interface(None),
+        );
     }
 
     // Basics depends on Js.Basics and Js.Utils
@@ -279,7 +285,7 @@ fn stdlib_basics_chain_compiles() {
     let basics_module = check_module(&pkg, &interfaces, &parsed_basics, true)
         .unwrap_or_else(|e| panic!("Basics.zel failed: {:?}", e));
     interfaces.insert(
-        basics_module.name.name().clone(),
+        basics_module.canonical.name.name().clone(),
         basics_module.to_interface(None),
     );
 
@@ -293,7 +299,7 @@ fn stdlib_basics_chain_compiles() {
     let maybe_module = check_module(&pkg, &interfaces, &parsed_maybe, true)
         .unwrap_or_else(|e| panic!("Maybe.zel failed: {:?}", e));
     interfaces.insert(
-        maybe_module.name.name().clone(),
+        maybe_module.canonical.name.name().clone(),
         maybe_module.to_interface(None),
     );
 
@@ -307,7 +313,7 @@ fn stdlib_basics_chain_compiles() {
     let result_module = check_module(&pkg, &interfaces, &parsed_result, true)
         .unwrap_or_else(|e| panic!("Result.zel failed: {:?}", e));
     interfaces.insert(
-        result_module.name.name().clone(),
+        result_module.canonical.name.name().clone(),
         result_module.to_interface(None),
     );
 
@@ -437,7 +443,7 @@ fn check_in_order_keeps_passing_siblings_with_the_real_checker() {
 
     let checked_names: Vec<String> = checked
         .iter()
-        .map(|m| m.name.name().as_str().to_string())
+        .map(|m| m.canonical.name.name().as_str().to_string())
         .collect();
     assert_eq!(
         checked_names,
@@ -503,7 +509,10 @@ fn stdlib_bitwise_compiles() {
         let parsed = parse_file(&path);
         let checked = check_module(&pkg, &interfaces, &parsed, true)
             .unwrap_or_else(|e| panic!("{} failed: {:?}", module, e));
-        interfaces.insert(checked.name.name().clone(), checked.to_interface(None));
+        interfaces.insert(
+            checked.canonical.name.name().clone(),
+            checked.to_interface(None),
+        );
     }
 
     assert!(interfaces.contains_key(&"Js.Bitwise".into()));
@@ -1721,7 +1730,7 @@ fn check_importer(lib: &str, main: &str) -> Result<(), CompilationError> {
         .unwrap_or_else(|e| panic!("the exporting module should compile: {:?}", e));
 
     interfaces.insert(
-        lib_module.name.name().clone(),
+        lib_module.canonical.name.name().clone(),
         lib_module.to_interface(None),
     );
 
@@ -2298,7 +2307,7 @@ fn a_parse_failure_does_not_also_report_its_module_as_unheld() {
 /// so a test that has to look *inside* a checked module drives the walker with the
 /// real `check_module` instead — the same seam
 /// `check_in_order_keeps_passing_siblings_with_the_real_checker` uses.
-fn check_fixture(name: &str) -> Vec<canonical::Module> {
+fn check_fixture(name: &str) -> Vec<CheckedModule> {
     let root = fixture_package(name);
     let sources = load_package_sources(&root, SourceRoot::Src)
         .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
@@ -2332,14 +2341,15 @@ fn check_fixture(name: &str) -> Vec<canonical::Module> {
 /// whenever the *other* one broke. A module that failed to check is simply absent
 /// here, which is a failure of the test that asked for it and of no other.
 fn checked_value<'a>(
-    modules: &'a [canonical::Module],
+    modules: &'a [CheckedModule],
     module: &str,
     value: &str,
 ) -> &'a canonical::Value {
     modules
         .iter()
-        .find(|m| m.name.name() == &Name::from(module))
+        .find(|m| m.canonical.name.name() == &Name::from(module))
         .unwrap_or_else(|| panic!("`{}` should have checked, and did not", module))
+        .canonical
         .values
         .get(&Name::from(value))
         .unwrap_or_else(|| panic!("`{}` declares `{}`", module, value))
@@ -2471,6 +2481,7 @@ fn default_imports_resolve_without_an_import_line() {
     let checked = check_module(&test_package(), &interfaces, &parse_source(source), false)
         .unwrap_or_else(|e| panic!("expected the implicit default to resolve `+`: {:?}", e));
     let x = checked
+        .canonical
         .values
         .get(&Name::from("x"))
         .expect("`Implicit` declares `x`");
@@ -2668,7 +2679,10 @@ fn check_importer_of_two(first: &str, second: &str, main: &str) -> Result<(), Co
     for lib in [first, second] {
         let module = check_module(&pkg, &interfaces, &parse_source(lib), false)
             .unwrap_or_else(|e| panic!("an exporting module should compile: {:?}", e));
-        interfaces.insert(module.name.name().clone(), module.to_interface(None));
+        interfaces.insert(
+            module.canonical.name.name().clone(),
+            module.to_interface(None),
+        );
     }
 
     check_module(&pkg, &interfaces, &parse_source(main), false).map(|_| ())

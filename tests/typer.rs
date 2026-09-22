@@ -11,8 +11,8 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
+use zelkova_lang::compiler::ir::{Solved, TypedTerm, TypedTermKind};
 use zelkova_lang::compiler::name::Name;
-use zelkova_lang::compiler::typer::{Solved, TypedTerm, TypedTermKind};
 use zelkova_lang::compiler::{check_module, typer, CompilationError, PhaseError, SpanLabel};
 
 mod support;
@@ -21,7 +21,7 @@ use support::*;
 
 fn run(
     source: &str,
-) -> Result<zelkova_lang::compiler::canonical::Module, zelkova_lang::compiler::CompilationError> {
+) -> Result<zelkova_lang::compiler::CheckedModule, zelkova_lang::compiler::CompilationError> {
     let parsed = parse_source(source);
     let interfaces = HashMap::from([basics_interface(), char_interface()]);
     check_module(&test_package(), &interfaces, &parsed, false)
@@ -30,8 +30,9 @@ fn run(
 /// What the typer solved for `source`, one entry per declaration.
 ///
 /// Goes through `canonicalize` and `typer::type_check` directly rather than through
-/// [`run`], because `check_module` keeps the solved types to itself: it holds them and
-/// hands back the canonical module, and `GEN-4` is what threads them onward.
+/// [`run`], which reshapes what the typer solved into an `ir::Module` and keeps only
+/// the declarations that have one — these tests are about the entries themselves,
+/// including the ones that never become a declaration.
 fn solved(source: &str) -> HashMap<Name, Solved> {
     let interfaces = HashMap::from([basics_interface(), char_interface()]);
     let canonical = canonicalize_with_interfaces(source, &interfaces)
@@ -1030,7 +1031,7 @@ fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
 /// synthetic placeholder body, so there is nothing for inference to do — but the
 /// entries still have to be there. An empty map would read, to whatever consumes it, as
 /// a facade that declares nothing, which is exactly the confusion [`Solved`] exists to
-/// prevent: `GEN-4` emits a declaration per facade signature.
+/// prevent: `ir::build` emits a declaration per facade signature.
 ///
 /// Mutation-checked by returning `Ok(HashMap::new())` from `type_check`'s
 /// `binding_foreign` branch: the count and both lookups go red. `cargo run` and

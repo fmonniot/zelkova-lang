@@ -29,8 +29,8 @@ place in its declaration.
 
 **2 — One IR, both targets, JavaScript first**
 ([decision 2](../decisions/dec-18.md#2--one-ir-serves-both-targets-and-javascript-is-written-first)).
-[`GEN-15`](gen-15.md) holds the WebAssembly questions, unscheduled; [`GEN-4`](gen-4.md)'s doc
-comment states what the IR owes it.
+[`GEN-15`](gen-15.md) holds the WebAssembly questions, unscheduled; `src/compiler/ir/`'s module
+doc comment states what the IR owes it.
 
 **3 — A declaration emits as a plain n-ary JavaScript function**
 ([decision 3](../decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
@@ -96,7 +96,7 @@ LANG-56   std/core's companions carry an Int at 64 bits      ── prerequisite
    │
 GEN-3   the typer hands back the types it solved   ── closed
    │
-GEN-4   the backend IR
+GEN-4   the backend IR   ── closed
    ├── GEN-5   a `case` becomes a decision tree
    ├── GEN-6   a self tail call is marked
    └── GEN-7   parameterless bindings get an initialisation order
