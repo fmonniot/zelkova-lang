@@ -1882,20 +1882,31 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
 /// [`initialisation_order`] (`GEN-7`), which asks for a topological order over it — one
 /// edge set read by two passes, rather than two graphs built from the same rule (the case
 /// `CLAUDE.md`'s *A doc comment describes what the code at that site does* warns against).
+///
+/// Nodes are added in name-sorted order, not `values`' raw `HashMap` iteration order.
+/// `petgraph::algo::toposort` only orders an edge's source before its target; among nodes
+/// with no edge between them — two independent top-level constants, say — its output
+/// falls out of `node_identifiers()`, which for a `Graph` is node-insertion order. Reading
+/// `values` in `HashMap` order would make that order, and therefore `initialisation_order`
+/// and `check_self_dependency`'s cycle report, depend on `values`' hash seed rather than
+/// on anything in the source.
 fn dependency_graph(
     values: &HashMap<Name, Value>,
 ) -> (DiGraph<&Name, ()>, HashMap<&Name, NodeIndex>) {
     let mut graph: DiGraph<&Name, ()> = DiGraph::new();
     let mut nodes: HashMap<&Name, NodeIndex> = HashMap::new();
 
-    for (name, value) in values.iter() {
+    let mut sorted: Vec<(&Name, &Value)> = values.iter().collect();
+    sorted.sort_by(|(l, _), (r, _)| l.as_str().cmp(r.as_str()));
+
+    for &(name, value) in &sorted {
         if is_parameterless(value) {
             let idx = graph.add_node(name);
             nodes.insert(name, idx);
         }
     }
 
-    for (name, value) in values.iter() {
+    for &(name, value) in &sorted {
         let Some(&from) = nodes.get(name) else {
             continue;
         };
@@ -1983,6 +1994,11 @@ fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>
 /// (`docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once`).
 /// Reads the same edges [`check_self_dependency`] (`LANG-35`) walks to reject a cycle, and
 /// asks a topological sort of them instead.
+///
+/// Deterministic: two runs of the compiler over one unchanged module produce the same
+/// order, including among bindings with no edge between them (two independent top-level
+/// constants, say) — [`dependency_graph`] reads `module.values` in name-sorted order for
+/// exactly this reason, rather than the raw order its backing `HashMap` iterates in.
 ///
 /// Assumes [`dependency_graph`] is acyclic here. `check_module` only reaches `ir::build` —
 /// this function's sole caller — after `canonicalize` returned `Ok`, and `canonicalize`

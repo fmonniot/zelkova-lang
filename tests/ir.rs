@@ -536,6 +536,75 @@ fn a_reference_to_a_function_is_not_an_edge_in_the_initialisation_order() {
     );
 }
 
+/// `GEN-7`: parameterless bindings with no edge between them at all — `a` through `e`
+/// below each reference nothing but a literal — still come back in the same order on
+/// every run, not whatever order `values`' backing `HashMap` happened to iterate them in.
+/// `petgraph::algo::toposort` only orders an edge's source before its target, so among
+/// five bindings unconstrained by any edge, the order falls out of `dependency_graph`'s
+/// node-insertion order; declaring them out of alphabetical order here (`c`, `e`, `a`,
+/// `d`, `b`) checks that the result tracks name order rather than source order.
+///
+/// With no edges, `initialisation_order`'s two reversals — `toposort`'s own DFS-finish
+/// reversal, then this function's edge-direction reversal — cancel out, so a name-sorted
+/// insertion order comes back as plain name-sorted output: `a` .. `e`.
+///
+/// Mutation-checked by reverting `dependency_graph`'s node insertion to raw `HashMap`
+/// order (dropping the sort added for this fix): the exact-list assertion below pins one
+/// specific order out of the 5! = 120 raw `HashMap` orders reachable across process runs,
+/// so — unlike an assertion that only compares two runs to each other, which would pass
+/// on a nondeterministic build whenever a single run happens to iterate consistently with
+/// itself — it fails on all but the roughly one in 120 unlucky runs where raw order
+/// already happens to be alphabetical. Five bindings, not three, is deliberate: with only
+/// three (1-in-6) a false pass from a nondeterministic build shows up often enough in
+/// practice to make a single run of this check unconvincing.
+#[test]
+fn independent_parameterless_bindings_come_back_in_name_sorted_order() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (a, b, c, d, e)
+
+        c : Int
+        c =
+          3
+
+        e : Int
+        e =
+          5
+
+        a : Int
+        a =
+          1
+
+        d : Int
+        d =
+          4
+
+        b : Int
+        b =
+          2
+    "#});
+
+    let order: Vec<String> = module
+        .initialisation_order
+        .iter()
+        .map(|name| name.as_str().to_string())
+        .collect();
+
+    assert_eq!(
+        order,
+        vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string(),
+            "e".to_string(),
+        ],
+        "independent bindings have no edge between them, so the only correct order is a \
+         fixed, name-sorted one — not whatever `HashMap` iteration happened to visit them \
+         in: got {:?}",
+        order
+    );
+}
+
 /// Every value of the canonical module reaches the IR, as a declaration or as one it
 /// could not build.
 ///
