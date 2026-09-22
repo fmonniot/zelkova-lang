@@ -373,6 +373,236 @@ fn a_facade_declaration_has_a_signature_and_no_body() {
     );
 
     assert_eq!(declaration(&module, "constant").arity, 0);
+    assert!(
+        module.initialisation_order.is_empty(),
+        "a facade constant is evaluated on whatever schedule the target gives it, not this \
+         one, so a facade module has nothing to schedule here: got {:?}",
+        module.initialisation_order
+    );
+}
+
+/// `GEN-7`: a top-level binding that names no parameters is initialised only after every
+/// parameterless binding its own body mentions, so `base` — the chapter's own example —
+/// comes before `shifted` whichever order the two declarations are written in
+/// (`docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once`).
+/// `other` takes a parameter and never enters the order at all.
+///
+/// Mutation-checked by replacing `canonical::initialisation_order`'s topological sort with
+/// the declarations in their `HashMap` order (`values.keys().cloned().collect()`): one of
+/// the two source orderings below puts `shifted` before `base`, so its half of the loop
+/// goes red.
+#[test]
+fn a_parameterless_binding_is_initialised_after_what_it_mentions() {
+    let written_base_first = indoc! {r#"
+        module Test exposing ()
+
+        type Colour
+          = Red
+          | Green
+
+        base =
+          Red
+
+        shifted =
+          other base
+
+        other c =
+          case c of
+            Red ->
+              Green
+
+            Green ->
+              Red
+    "#};
+
+    let written_shifted_first = indoc! {r#"
+        module Test exposing ()
+
+        type Colour
+          = Red
+          | Green
+
+        shifted =
+          other base
+
+        base =
+          Red
+
+        other c =
+          case c of
+            Red ->
+              Green
+
+            Green ->
+              Red
+    "#};
+
+    for source in [written_base_first, written_shifted_first] {
+        let module = ir_of(source);
+        let order: Vec<String> = module
+            .initialisation_order
+            .iter()
+            .map(|name| name.as_str().to_string())
+            .collect();
+
+        let base_pos = order.iter().position(|n| n == "base").unwrap_or_else(|| {
+            panic!(
+                "`base` should be in the initialisation order, got {:?}",
+                order
+            )
+        });
+        let shifted_pos = order
+            .iter()
+            .position(|n| n == "shifted")
+            .unwrap_or_else(|| {
+                panic!(
+                    "`shifted` should be in the initialisation order, got {:?}",
+                    order
+                )
+            });
+
+        assert!(
+            base_pos < shifted_pos,
+            "`base` should be initialised before `shifted`, got {:?}",
+            order
+        );
+        assert!(
+            !order.contains(&"other".to_string()),
+            "`other` takes a parameter and is never scheduled, got {:?}",
+            order
+        );
+    }
+}
+
+/// `GEN-7`: a module whose declarations all take parameters has nothing to schedule — the
+/// order only ever holds parameterless bindings, and this module declares none.
+///
+/// Mutation-checked by dropping the `is_parameterless` filter `canonical`'s shared
+/// dependency graph builds its nodes from: `first` and `second` would then both appear.
+#[test]
+fn a_module_of_only_functions_has_an_empty_initialisation_order() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (first, second)
+
+        first : Int -> Int
+        first a =
+          a
+
+        second : Int -> Int -> Int
+        second a b =
+          first a
+    "#});
+
+    assert!(
+        module.initialisation_order.is_empty(),
+        "a module of only functions has nothing to initialise, got {:?}",
+        module.initialisation_order
+    );
+}
+
+/// `GEN-7`: a reference to a binding with parameters is not an edge — that value already
+/// exists as a function, so it is never a node in the graph being sorted and never
+/// constrains when the parameterless binding that calls it may run. `usesHelper` mentions
+/// only `helper`, a function, so it has no dependency at all and is the whole order.
+///
+/// Mutation-checked by dropping the `is_parameterless` filter `canonical`'s shared
+/// dependency graph builds its nodes from: `helper` would then be a node too, and the
+/// exact-list assertion below would fail.
+#[test]
+fn a_reference_to_a_function_is_not_an_edge_in_the_initialisation_order() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (usesHelper, helper)
+
+        helper : Int -> Int
+        helper a =
+          a
+
+        usesHelper : Int
+        usesHelper =
+          helper 1
+    "#});
+
+    let order: Vec<String> = module
+        .initialisation_order
+        .iter()
+        .map(|name| name.as_str().to_string())
+        .collect();
+
+    assert_eq!(
+        order,
+        vec!["usesHelper".to_string()],
+        "`helper` takes a parameter and is never scheduled, so it may be initialised first \
+         (there being nothing else to initialise)"
+    );
+}
+
+/// `GEN-7`: parameterless bindings with no edge between them at all — `a` through `e`
+/// below each reference nothing but a literal — still come back in the same order on
+/// every run, not whatever order `values`' backing `HashMap` happened to iterate them in.
+/// `petgraph::algo::toposort` only orders an edge's source before its target, so among
+/// five bindings unconstrained by any edge, the order falls out of `dependency_graph`'s
+/// node-insertion order; declaring them out of alphabetical order here (`c`, `e`, `a`,
+/// `d`, `b`) checks that the result tracks name order rather than source order.
+///
+/// With no edges, `initialisation_order`'s two reversals — `toposort`'s own DFS-finish
+/// reversal, then this function's edge-direction reversal — cancel out, so a name-sorted
+/// insertion order comes back as plain name-sorted output: `a` .. `e`.
+///
+/// Mutation-checked by reverting `dependency_graph`'s node insertion to raw `HashMap`
+/// order (dropping the sort added for this fix): the exact-list assertion below pins one
+/// specific order out of the 5! = 120 raw `HashMap` orders reachable across process runs,
+/// so — unlike an assertion that only compares two runs to each other, which would pass
+/// on a nondeterministic build whenever a single run happens to iterate consistently with
+/// itself — it fails on all but the roughly one in 120 unlucky runs where raw order
+/// already happens to be alphabetical. Five bindings, not three, is deliberate: with only
+/// three (1-in-6) a false pass from a nondeterministic build shows up often enough in
+/// practice to make a single run of this check unconvincing.
+#[test]
+fn independent_parameterless_bindings_come_back_in_name_sorted_order() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (a, b, c, d, e)
+
+        c : Int
+        c =
+          3
+
+        e : Int
+        e =
+          5
+
+        a : Int
+        a =
+          1
+
+        d : Int
+        d =
+          4
+
+        b : Int
+        b =
+          2
+    "#});
+
+    let order: Vec<String> = module
+        .initialisation_order
+        .iter()
+        .map(|name| name.as_str().to_string())
+        .collect();
+
+    assert_eq!(
+        order,
+        vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string(),
+            "e".to_string(),
+        ],
+        "independent bindings have no edge between them, so the only correct order is a \
+         fixed, name-sorted one — not whatever `HashMap` iteration happened to visit them \
+         in: got {:?}",
+        order
+    );
 }
 
 /// Every value of the canonical module reaches the IR, as a declaration or as one it

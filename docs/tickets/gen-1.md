@@ -99,7 +99,7 @@ GEN-3   the typer hands back the types it solved   ── closed
 GEN-4   the backend IR   ── closed
    ├── GEN-5   a `case` becomes a decision tree
    ├── GEN-6   a self tail call is marked
-   └── GEN-7   parameterless bindings get an initialisation order
+   └── GEN-7   parameterless bindings get an initialisation order   ── closed
    │
 GEN-8   the JavaScript runtime module
    │
