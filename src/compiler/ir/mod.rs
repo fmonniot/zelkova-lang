@@ -58,13 +58,14 @@
 //!
 //! # What is not here yet
 //!
-//! Three tickets each add a field or a pass over this shape and are deliberately not
+//! Two tickets each add a field or a pass over this shape and are deliberately not
 //! written into it: a `case` becomes a decision tree
-//! ([`GEN-5`](../../../docs/tickets/gen-5.md)), a self tail call is marked
-//! ([`GEN-6`](../../../docs/tickets/gen-6.md)), and parameterless bindings get an
-//! initialisation order ([`GEN-7`](../../../docs/tickets/gen-7.md)). [`Module`] holds its
-//! declarations in a `Vec` sorted by name, which is a deterministic order and not an
-//! evaluation order; `GEN-7` is what puts the second one on it.
+//! ([`GEN-5`](../../../docs/tickets/gen-5.md)), and a self tail call is marked
+//! ([`GEN-6`](../../../docs/tickets/gen-6.md)). [`Module`] holds its declarations in a
+//! `Vec` sorted by name, which is a deterministic order and not an evaluation order;
+//! [`Module::initialisation_order`] is the evaluation order, over the parameterless ones
+//! alone, and [`GEN-9`](../../../docs/tickets/gen-9.md) is what still has to emit
+//! declarations in it.
 
 use std::collections::HashMap;
 
@@ -97,8 +98,8 @@ pub struct Module {
     ///
     /// Sorted so that two runs of the compiler over one unchanged module produce the
     /// same order — `canonical::Module::values` is a `HashMap` and yields none. It is
-    /// not an evaluation order: [`GEN-7`](../../../docs/tickets/gen-7.md) is what works
-    /// out which parameterless binding has to be initialised before which.
+    /// not an evaluation order: [`initialisation_order`](Self::initialisation_order) is
+    /// what works out which parameterless declaration has to be initialised before which.
     pub declarations: Vec<Declaration>,
     /// The declarations that have no IR, and therefore cannot be emitted.
     ///
@@ -108,6 +109,21 @@ pub struct Module {
     /// 1](../../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)
     /// is about. Every value of the canonical module is in one list or the other.
     pub unchecked: Vec<Unchecked>,
+    /// The names of [`declarations`](Self::declarations) that take no parameter, in the
+    /// order they must be initialised: each only after every parameterless declaration its
+    /// own body mentions
+    /// (`docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once`).
+    /// Empty for a module whose declarations all take parameters, and for a `module
+    /// foreign` facade, whose constants are evaluated on whatever schedule the target
+    /// gives them (`docs/spec/interop.md#facade-constants`).
+    ///
+    /// [`canonical::initialisation_order`] computes it, reusing the dependency graph
+    /// `canonical::canonicalize` already built to reject a cycle (`LANG-35`) rather than
+    /// building a second one from the same rule; see that function's doc comment for the
+    /// acyclic assumption this relies on and which phase discharges it.
+    /// [`GEN-9`](../../../docs/tickets/gen-9.md) is what emits declarations in this order —
+    /// this only computes it.
+    pub initialisation_order: Vec<Name>,
 }
 
 /// A union declaration: the type a constructor builds, and the constructors that build
@@ -602,12 +618,15 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
         }
     }
 
+    let initialisation_order = canonical::initialisation_order(module);
+
     Module {
         name: module.name.clone(),
         foreign: module.binding_foreign,
         unions,
         declarations,
         unchecked,
+        initialisation_order,
     }
 }
 

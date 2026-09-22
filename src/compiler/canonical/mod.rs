@@ -1868,33 +1868,23 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
     }
 }
 
-/// `LANG-35`: a strict, parameterless binding is evaluated once, before the
-/// program runs, in dependency order — so a cycle among parameterless
-/// bindings describes no such order, however long it runs (one binding, `x =
-/// x`, included).
+/// `LANG-35`'s dependency graph over `values`' parameterless bindings: one node per
+/// [`is_parameterless`] declaration, and an edge from `u` to `v` for every
+/// [`collect_top_level_refs`] reference `u`'s body makes to another parameterless
+/// declaration `v` — a reference to a binding with parameters is a reference to a value
+/// that already exists (its own body runs only once applied), so it is never a node and
+/// never an edge, which is what lets `isEven`/`isOdd` and `f n = f n` through untouched. A
+/// reference to an imported name is likewise never an edge: it never canonicalizes to
+/// `VarTopLevel` in the first place (see [`collect_top_level_refs`]), and a cross-module
+/// cycle is [`dependencies::ModuleWalker`](super::dependencies::ModuleWalker)'s to report.
 ///
-/// Builds a graph whose nodes are this module's parameterless value
-/// declarations ([`is_parameterless`]) and whose edges are the
-/// [`collect_top_level_refs`] each one's body makes to another parameterless
-/// declaration — a reference to a binding with parameters is a reference to a
-/// value that already exists (its own body runs only once applied), so it is
-/// never a node and never an edge, which is what lets `isEven`/`isOdd` and
-/// `f n = f n` through untouched. A reference to an imported name is likewise
-/// never an edge: it never canonicalizes to `VarTopLevel` in the first place
-/// (see [`collect_top_level_refs`]), and a cross-module cycle is
-/// [`dependencies::ModuleWalker`](super::dependencies::ModuleWalker)'s to
-/// report.
-///
-/// A self-loop is reported directly: `tarjan_scc` puts a single node in its
-/// own component whether or not it has an edge back to itself, so a
-/// one-binding cycle would otherwise slip past the `len() > 1` check below —
-/// but only when that node is not *also* part of a larger component, since a
-/// node can have a self-loop and still belong to a bigger cycle (`a = (a,
-/// b)` beside `b = a`), and that member should be named once, not twice.
-/// Every larger strongly-connected component is reported as one
-/// [`Error::SelfDependency`], its members in a name-sorted order so the
-/// diagnostic does not depend on `values`' `HashMap` iteration order.
-fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>> {
+/// Shared by [`check_self_dependency`], which asks whether this graph has a cycle, and
+/// [`initialisation_order`] (`GEN-7`), which asks for a topological order over it — one
+/// edge set read by two passes, rather than two graphs built from the same rule (the case
+/// `CLAUDE.md`'s *A doc comment describes what the code at that site does* warns against).
+fn dependency_graph(
+    values: &HashMap<Name, Value>,
+) -> (DiGraph<&Name, ()>, HashMap<&Name, NodeIndex>) {
     let mut graph: DiGraph<&Name, ()> = DiGraph::new();
     let mut nodes: HashMap<&Name, NodeIndex> = HashMap::new();
 
@@ -1923,6 +1913,26 @@ fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>
             }
         }
     }
+
+    (graph, nodes)
+}
+
+/// `LANG-35`: a strict, parameterless binding is evaluated once, before the
+/// program runs, in dependency order — so a cycle among parameterless
+/// bindings describes no such order, however long it runs (one binding, `x =
+/// x`, included).
+///
+/// Walks [`dependency_graph`] for a cycle. A self-loop is reported directly:
+/// `tarjan_scc` puts a single node in its own component whether or not it has an edge
+/// back to itself, so a one-binding cycle would otherwise slip past the `len() > 1` check
+/// below — but only when that node is not *also* part of a larger component, since a
+/// node can have a self-loop and still belong to a bigger cycle (`a = (a,
+/// b)` beside `b = a`), and that member should be named once, not twice.
+/// Every larger strongly-connected component is reported as one
+/// [`Error::SelfDependency`], its members in a name-sorted order so the
+/// diagnostic does not depend on `values`' `HashMap` iteration order.
+fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>> {
+    let (graph, _nodes) = dependency_graph(values);
 
     let mut errors = Vec::new();
     let sccs = petgraph::algo::tarjan_scc(&graph);
@@ -1966,6 +1976,50 @@ fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>
     } else {
         Err(errors)
     }
+}
+
+/// `GEN-7`: the order `module`'s parameterless bindings must be initialised in — each
+/// only after every parameterless binding its own body mentions
+/// (`docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once`).
+/// Reads the same edges [`check_self_dependency`] (`LANG-35`) walks to reject a cycle, and
+/// asks a topological sort of them instead.
+///
+/// Assumes [`dependency_graph`] is acyclic here. `check_module` only reaches `ir::build` —
+/// this function's sole caller — after `canonicalize` returned `Ok`, and `canonicalize`
+/// calls `check_self_dependency` on this same value map first, turning any cycle into
+/// `Error::SelfDependency` and aborting before `ir::build` runs; that call is what
+/// discharges the assumption. A cycle found here regardless (which should be unreachable)
+/// does not panic — this codebase holds `panic!`/`unwrap()`/`expect()` off every non-test
+/// path — it falls back to a name-sorted order instead.
+///
+/// An edge `u -> v` means `u`'s body references `v`, so `petgraph::algo::toposort`'s
+/// natural order — every edge's source before its target — would place the referencing
+/// binding before the one it depends on, backwards from what initialisation needs; this
+/// reverses that order so a dependency comes out before what depends on it.
+///
+/// A `module foreign` facade has no parameterless declarations to order for this purpose:
+/// `unsafe pi : Float` names a foreign binding directly, with no Zelkova body to place,
+/// and is evaluated on whatever schedule the target gives it
+/// (`docs/spec/interop.md#facade-constants`), so this returns the empty list for one
+/// without inspecting its (structurally parameterless, but synthetic) values.
+pub(crate) fn initialisation_order(module: &Module) -> Vec<Name> {
+    if module.binding_foreign {
+        return Vec::new();
+    }
+
+    let (graph, nodes) = dependency_graph(&module.values);
+
+    let mut order = match petgraph::algo::toposort(&graph, None) {
+        Ok(order) => order,
+        Err(_cycle) => {
+            let mut indices: Vec<NodeIndex> = nodes.values().copied().collect();
+            indices.sort_by(|&l, &r| graph[l].as_str().cmp(graph[r].as_str()));
+            indices
+        }
+    };
+    order.reverse();
+
+    order.into_iter().map(|idx| graph[idx].clone()).collect()
 }
 
 fn do_values(
