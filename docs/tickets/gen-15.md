@@ -28,7 +28,7 @@ constructor, carrying its arguments as a payload.
 
 **Problem:** nothing targets WebAssembly, which is the eventual target the project is for.
 
-**What the IR already owes this backend**, and why [`GEN-4`](gen-4.md) is shaped as it is:
+**What the IR already owes this backend**, and why `src/compiler/ir/` is shaped as it is:
 
 - **Types on every node.** WebAssembly is statically typed. A representation class — i64, f64, a
   reference, and for a reference which layout — is read off a node's type, and there is nothing

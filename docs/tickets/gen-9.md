@@ -4,7 +4,7 @@
 plus a module's shape. Split further only if it will not fit: the natural seam is declarations
 and module structure first, expressions second.
 
-**Depends on:** [`GEN-4`](gen-4.md), [`GEN-7`](gen-7.md) (the initialisation order) and
+**Depends on:** `GEN-4`, closed — the IR is `src/compiler/ir/` — [`GEN-7`](gen-7.md) (the initialisation order) and
 [`GEN-8`](gen-8.md) (the runtime it calls into).
 
 **Part of:** [`GEN-1`](gen-1.md).

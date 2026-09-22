@@ -4,11 +4,11 @@
 topological order over it rather than the cycle check. Medium if taken first, because then the
 graph is built here and `LANG-35` has to be rewritten around it.
 
-**Depends on:** [`GEN-4`](gen-4.md), and [`LANG-35`](README.md) — see below.
+**Depends on:** `GEN-4`, closed — the IR is `src/compiler/ir/` — and [`LANG-35`](README.md), see below.
 
 **Part of:** [`GEN-1`](gen-1.md).
 
-**Location:** the IR module [`GEN-4`](gen-4.md) defines, which holds a module's declarations and
+**Location:** `ir::Module` in `src/compiler/ir/`, which holds a module's declarations and
 no order over them. `src/compiler/canonical/mod.rs` — where [`LANG-35`](README.md) builds the
 graph this reads. `src/compiler/dependencies.rs` orders **modules** and is not it: the order
 here is between declarations inside one module.

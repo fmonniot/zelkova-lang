@@ -514,7 +514,7 @@ impl<'a> ModuleWalker<'a> {
     /// the answer for its own package rather than recomputing it from a module
     /// list a phase never sees.
     #[allow(clippy::type_complexity)]
-    pub fn check_in_order<E>(
+    pub fn check_in_order<M: crate::compiler::Checked, E>(
         &self,
         package: &crate::compiler::PackageName,
         interfaces: &mut HashMap<Name, crate::compiler::Interface>,
@@ -524,8 +524,8 @@ impl<'a> ModuleWalker<'a> {
             interfaces: &HashMap<Name, crate::compiler::Interface>,
             source: &crate::compiler::parser::Module,
             declares_a_default: bool,
-        ) -> Result<super::canonical::Module, E>,
-    ) -> (Vec<crate::compiler::canonical::Module>, Vec<E>) {
+        ) -> Result<M, E>,
+    ) -> (Vec<M>, Vec<E>) {
         let mut modules = Vec::new();
         let mut errors = Vec::new();
 
@@ -534,7 +534,7 @@ impl<'a> ModuleWalker<'a> {
                 Ok(m) => {
                     // Once we have successfuly checked a module, we can add it to the available interfaces
                     // for the following modules.
-                    let iface_name = m.name.name().clone();
+                    let iface_name = m.name().name().clone();
                     // Driver code, so this is where the module's file is known: the
                     // interface carries it so a *later* module's diagnostic can point
                     // back into this one's source (`ERR-5`).
@@ -557,7 +557,9 @@ mod tests {
     use super::*;
     use crate::compiler::parser::{Exposing, Import};
     use crate::compiler::position::NodeSpan;
-    use crate::compiler::{canonical, parser, Interface, ModuleName, Name, PackageName};
+    use crate::compiler::{
+        canonical, parser, CheckedModule, Interface, ModuleName, Name, PackageName,
+    };
 
     fn module<S: Into<String>>(name: S, deps: Vec<S>) -> Module {
         let imports = deps
@@ -601,15 +603,18 @@ mod tests {
     /// An empty canonical module standing in for whatever the real checker would
     /// have produced. Shared by the checkers below, which differ only in which
     /// modules they refuse.
-    fn dummy_module(package: &PackageName, source: &parser::Module) -> canonical::Module {
-        canonical::Module {
+    fn dummy_module(package: &PackageName, source: &parser::Module) -> CheckedModule {
+        let canonical = canonical::Module {
             name: ModuleName::new(package.clone(), source.name.clone()),
             exports: canonical::Exports::Everything,
             infixes: HashMap::new(),
             types: HashMap::new(),
             values: HashMap::new(),
             binding_foreign: false,
-        }
+        };
+        let ir = crate::compiler::ir::build(&canonical, HashMap::new());
+
+        CheckedModule { canonical, ir }
     }
 
     fn dummy_check(
@@ -617,7 +622,7 @@ mod tests {
         _interfaces: &HashMap<Name, Interface>,
         source: &parser::Module,
         _declares_a_default: bool,
-    ) -> Result<canonical::Module, ()> {
+    ) -> Result<CheckedModule, ()> {
         Ok(dummy_module(package, source))
     }
 
@@ -633,7 +638,7 @@ mod tests {
         _interfaces: &HashMap<Name, Interface>,
         source: &parser::Module,
         _declares_a_default: bool,
-    ) -> Result<canonical::Module, Name> {
+    ) -> Result<CheckedModule, Name> {
         if source.name.as_str() == "b" {
             Err(source.name.clone())
         } else {
@@ -645,14 +650,14 @@ mod tests {
         let name = crate::compiler::PackageName::new("author-project").unwrap();
         let mut ifaces = HashMap::new();
         let module_files = HashMap::new();
-        let (modules, errors): (Vec<canonical::Module>, Vec<()>) =
+        let (modules, errors): (Vec<CheckedModule>, Vec<()>) =
             walker.check_in_order(&name, &mut ifaces, &module_files, dummy_check);
 
         assert_eq!(errors, Vec::new());
         assert_eq!(
             modules
                 .into_iter()
-                .map(|m| m.name.name().as_str().to_string())
+                .map(|m| m.canonical.name.name().as_str().to_string())
                 .collect::<Vec<_>>(),
             expected
                 .into_iter()
@@ -1061,7 +1066,7 @@ mod tests {
         assert_eq!(
             successes
                 .into_iter()
-                .map(|m| m.name.name().as_str().to_string())
+                .map(|m| m.canonical.name.name().as_str().to_string())
                 .collect::<Vec<_>>(),
             vec!["a".to_string(), "c".to_string()],
             "expected the non-failing modules to still be returned"
