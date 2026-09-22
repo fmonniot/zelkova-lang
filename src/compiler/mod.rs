@@ -1377,11 +1377,12 @@ pub fn check_module(
     // The typer answers with the types it solved — one `typer::Solved` per declaration,
     // carrying a type on every node of the ones it could type and saying why for the
     // ones it could not. Nothing downstream reads them yet: `GEN-4` is what reshapes
-    // them into the backend IR and threads them out of here, and until then this is
-    // where they stop.
-    let solved = typer::type_check(&canonical)
+    // them into the backend IR and threads them out of here, and until then they are
+    // dropped here. Not logged on the way out, either — `infer_annotated` already dumps
+    // each declaration's term under `debug`, and `typer::type_check` is `pub`, so a test
+    // that wants the map calls it directly.
+    typer::type_check(&canonical)
         .map_err(|errors| CompilationError::Type(errors, source.name.clone()))?;
-    debug!("solved types for {}: {:#?}", source.name, solved);
 
     // verify in pattern matching branches that all variants are covered
     exhaustiveness::check(&canonical)

@@ -24,8 +24,8 @@ there and are not repeated here.
 ([`DEC-18` decision 1](../decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
 Today's `Term` grows into that IR rather than a third tree appearing beside it. It carries a
 type on every node, the four name kinds the canonical AST distinguishes and
-`translate_expression` currently flattens, explicit arity, saturation, and a constructor's place
-in its declaration.
+`canonical_expr_to_term` currently flattens, explicit arity, saturation, and a constructor's
+place in its declaration.
 
 **2 — One IR, both targets, JavaScript first**
 ([decision 2](../decisions/dec-18.md#2--one-ir-serves-both-targets-and-javascript-is-written-first)).

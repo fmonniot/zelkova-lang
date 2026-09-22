@@ -42,11 +42,12 @@ Three candidates: read the canonical AST directly; lower it to a fresh untyped I
 typer; or grow the typer's own `Term` into the IR, carrying the types it solved.
 
 **Reading the canonical AST loses information the front end had.** It is shaped for name
-resolution, and the typer's own translation already demonstrates the cost: `translate_expression`
-collapses `VarLocal`, `VarTopLevel`, `VarForeign` and `VarConstructor` into one
-`TermKind::Identifier(String)`. Those are four different things to emit — a parameter, a
-module-scope binding, a named import, an object constructor — and the string left behind is
-qualified for some of them and not others, so the distinction cannot be recovered afterwards.
+resolution, and the typer's own translation already demonstrates the cost:
+`canonical_expr_to_term` collapses `VarLocal`, `VarTopLevel`, `VarForeign` and
+`VarConstructor` into one `TermKind::Identifier(String)`. Those are four different things to
+emit — a parameter, a module-scope binding, a named import, an object constructor — and the
+string left behind is qualified for some of them and not others, so the distinction cannot be
+recovered afterwards.
 A backend over the canonical AST would rebuild it, along with arity, saturation and a
 constructor's place in its declaration, as ad-hoc walks at emission time, once per backend.
 
@@ -71,9 +72,9 @@ besides WebAssembly is the specialisation [DEC-2 decision
 same solved types and would otherwise be a second reason to do this work.
 
 What it costs is honest and was accepted: the first ticket of the program is inside the typer
-(`GEN-3`), and two silent skips there — a construct the translation
-cannot represent, and an unbound variable — have to stop being silent, because a backend cannot
-tell a declaration the typer verified from one it walked past.
+(`GEN-3`), and two silent skips there — a construct the translation cannot represent, and an
+unbound variable — had to stop being silent, because a backend cannot tell a declaration the
+typer verified from one it walked past.
 
 Lands at: `src/compiler/ir/`, whose doc comment is where the shape's obligations are written.
 

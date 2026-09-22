@@ -10,9 +10,8 @@ declaration, carrying a solved type on every node of the ones it could type.
 
 **Location:** `src/compiler/typer/mod.rs` — `Term`, `TermKind`, `TermPattern`,
 `TermPatternKind`, `TypedTerm`, `TypedTermKind` and `Solved`, which move to a module of their
-own; `canonical_expr_to_term` (the ticket text below calls it `translate_expression`),
-`translate_pattern` and `value_to_term_and_annotation`, which are the translation that has to
-stop discarding things. A new `src/compiler/ir/` for the moved definitions.
+own; `canonical_expr_to_term`, `translate_pattern` and `value_to_term_and_annotation`, which
+are the translation that has to stop discarding things. A new `src/compiler/ir/` for the moved definitions.
 `src/compiler/canonical/mod.rs` — `ExpressionKind` and `Value`, the input side.
 `src/compiler/mod.rs` — `check_module`, which holds the solved types and hands back only the
 `canonical::Module`; threading them out to a caller is this ticket's.
@@ -29,7 +28,7 @@ generator cannot work without.
 
 The sharpest of those is name kind. `canonical::ExpressionKind` distinguishes `VarLocal`,
 `VarTopLevel`, `VarForeign(QualName, Type)` and `VarConstructor(QualName, Type)`, and
-`translate_expression` flattens all four into `TermKind::Identifier(String)`. Those are four
+`canonical_expr_to_term` flattens all four into `TermKind::Identifier(String)`. Those are four
 different things to emit: a local is a parameter or a bound name, a top-level is a binding in
 this module's scope, a foreign is a named import from another emitted module, and a constructor
 builds a tagged object. Recovering the distinction from a string afterwards is not possible —
