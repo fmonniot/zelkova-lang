@@ -18,15 +18,16 @@
 //!   and leaving it green meant a chapter's **Known gap:** about the type checker had
 //!   to be deleted by hand on the day its ticket landed instead of going red on its
 //!   own. What the tag does *not* promise is that every declaration was checked:
-//!   [`typer::type_check`] skips silently — a bare `continue`, not an error — any
-//!   declaration whose function head holds a constructor or tuple pattern, any body
-//!   reaching a `VarForeign` or an expression form its term language does not model,
-//!   any `ErrorKind::UnboundVariable`, and any `binding_foreign` module whole. Its
-//!   own doc comment is the account of why. Across `docs/spec/` that is roughly one
-//!   declaration in ten, so a green `expect=ok` block may still hold an annotation its
-//!   body contradicts — `docs/spec/conventions.md`'s row carries the same caveat for
-//!   chapter authors. Exhaustiveness is not run at all — it is a stub that accepts
-//!   every module.
+//!   [`typer::type_check`] raises no error for a declaration whose function head holds
+//!   a constructor or tuple pattern, one whose body reaches a `VarForeign` or an
+//!   expression form its term language does not model, one that hits an
+//!   `ErrorKind::UnboundVariable`, or any `binding_foreign` module whole. It marks each
+//!   of those in the types it returns — a `typer::Solved` that is not `Typed` — and
+//!   this harness reads only the errors, so the distinction does not reach a verdict.
+//!   Across `docs/spec/` that is roughly one declaration in ten, so a green
+//!   `expect=ok` block may still hold an annotation its body contradicts —
+//!   `docs/spec/conventions.md`'s row carries the same caveat for chapter authors.
+//!   Exhaustiveness is not run at all — it is a stub that accepts every module.
 //! - `zel expect=parse-error` — fails in the parser (tokenizer, layout or grammar).
 //!   Which error is not pinned.
 //! - `zel expect=parse-error:Reason` — the same, but the reason must match one of the
@@ -192,7 +193,10 @@ fn stdlib_interfaces(declared: &[Name]) -> HashMap<Name, Interface> {
 /// running it would only let a future chapter tag a block against a phase that inspects
 /// nothing.
 fn type_check(module: &canonical::Module) -> Result<(), Vec<typer::Error>> {
-    typer::type_check(module)
+    // The solved types are dropped: a chapter's tags are claims about which phase
+    // accepts or rejects a block, and none of them is about what a declaration's type
+    // came out as.
+    typer::type_check(module).map(|_| ())
 }
 
 /// The `typer::ErrorKind` names present in `errors`.
@@ -201,9 +205,10 @@ fn type_check(module: &canonical::Module) -> Result<(), Vec<typer::Error>> {
 /// a new `ErrorKind` variant fails this file to compile rather than silently becoming a
 /// name no chapter can ever match. There is no grouping variant to flatten — a
 /// `typer::Error` carries exactly one kind, and [`typer::type_check`] hands back at most
-/// one `Error` per declaration it *rejected*. A declaration it could not check at all is
-/// skipped silently and contributes no error, so an empty list is not evidence that every
-/// declaration was looked at; see this file's module documentation.
+/// one `Error` per declaration it *rejected*. A declaration it could not check at all
+/// contributes no error — it is marked in the types the typer returns, which this file
+/// drops — so an empty list is not evidence that every declaration was looked at; see
+/// this file's module documentation.
 fn error_kind_names(errors: &[typer::Error]) -> Vec<&'static str> {
     errors
         .iter()

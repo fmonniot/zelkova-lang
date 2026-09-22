@@ -11,6 +11,8 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
+use zelkova_lang::compiler::name::Name;
+use zelkova_lang::compiler::typer::{Solved, TypedTerm, TypedTermKind};
 use zelkova_lang::compiler::{check_module, typer, CompilationError, PhaseError, SpanLabel};
 
 mod support;
@@ -23,6 +25,29 @@ fn run(
     let parsed = parse_source(source);
     let interfaces = HashMap::from([basics_interface(), char_interface()]);
     check_module(&test_package(), &interfaces, &parsed, false)
+}
+
+/// What the typer solved for `source`, one entry per declaration.
+///
+/// Goes through `canonicalize` and `typer::type_check` directly rather than through
+/// [`run`], because `check_module` keeps the solved types to itself: it holds them and
+/// hands back the canonical module, and `GEN-4` is what threads them onward.
+fn solved(source: &str) -> HashMap<Name, Solved> {
+    let interfaces = HashMap::from([basics_interface(), char_interface()]);
+    let canonical = canonicalize_with_interfaces(source, &interfaces)
+        .unwrap_or_else(|errors| panic!("expected the module to canonicalize, got {:?}", errors));
+
+    typer::type_check(&canonical)
+        .unwrap_or_else(|errors| panic!("expected the module to type check, got {:?}", errors))
+}
+
+/// The one declaration named `name`, which the typer typed.
+fn typed_declaration<'a>(solved: &'a HashMap<Name, Solved>, name: &str) -> &'a TypedTerm {
+    solved
+        .get(&Name::new(name))
+        .unwrap_or_else(|| panic!("`{}` should be in the solved types, got {:?}", name, solved))
+        .typed()
+        .unwrap_or_else(|| panic!("`{}` should have been typed", name))
 }
 
 /// The type errors `source` produced, insisting that they *are* type errors.
@@ -871,4 +896,189 @@ fn basics_own_bool_still_rejects_a_wrong_value() {
         one_type_error(source).message(),
         "cannot match `Bool` with `number`"
     );
+}
+
+// ── What the typer hands back ─────────────────────────────────────────────────
+
+/// A declaration the typer checked comes back with the type it solved, and so does
+/// every node inside it.
+///
+/// The interior is the half that matters. `annotate` gives each node a fresh inference
+/// variable and unification solves those somewhere else entirely, so a term whose root
+/// alone had the substitution applied would answer `Bool -> Char` here and `t14` for
+/// the `if` — enough to say what a declaration's type is, and not enough to generate
+/// code from.
+///
+/// Mutation-checked by having `infer_annotated` rebuild the root alone —
+/// `TypedTerm { tpe: substitution.apply_type(&typed_term.tpe), ..typed_term }` — instead
+/// of calling `Substitution::apply_term`: the declaration's own type still passes and
+/// both interior assertions go red, naming a `t`-number.
+#[test]
+fn a_typed_declaration_carries_the_types_of_its_interior() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        pick : Bool -> Char
+        pick c = if c then 'a' else 'b'
+    "#};
+
+    let solved = solved(source);
+    let term = typed_declaration(&solved, "pick");
+
+    assert_eq!(format!("{}", term.tpe), "Bool -> Char");
+
+    // The body of the function is the `if`, whose own type is the `Char` its two
+    // branches agree on — a type the annotation never spells at that node.
+    let body = match &term.kind {
+        TypedTermKind::Fun { body, .. } => body,
+        other => panic!("expected a function, got {:?}", other),
+    };
+    assert_eq!(format!("{}", body.tpe), "Char");
+
+    // And one level deeper again: the condition is the parameter, which the annotation
+    // says is a `Bool`.
+    let cond = match &body.kind {
+        TypedTermKind::If { cond, .. } => cond,
+        other => panic!("expected an `if`, got {:?}", other),
+    };
+    assert_eq!(format!("{}", cond.tpe), "Bool");
+}
+
+/// A declaration whose body reaches a name the typer's environment does not hold is
+/// present in what comes back, marked as un-typed.
+///
+/// `helper` carries no annotation, so the typer's first pass — which registers the
+/// module's *annotated* values — never puts it in the environment, and `answer`'s body
+/// cannot be inferred. Neither is a mistake in the source, so neither is an error; what
+/// it may not be is missing, because a backend handed a map without `answer` in it
+/// cannot tell that from a declaration that checked.
+///
+/// `helper` itself is asserted typed, so this cannot pass by the whole map being empty.
+///
+/// Mutation-checked by restoring the bare `continue` on the
+/// `Err(ErrorKind::UnboundVariable { .. })` arm of `type_check`: `answer` goes missing
+/// and the lookup panics.
+#[test]
+fn a_declaration_the_typer_cannot_resolve_comes_back_marked() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (answer)
+        helper = 1
+        answer : Int
+        answer = helper
+    "#};
+
+    let solved = solved(source);
+
+    match solved.get(&Name::new("answer")) {
+        Some(Solved::UnboundName { name, .. }) => assert_eq!(name, "Test.helper"),
+        other => panic!("expected `answer` to be marked un-typed, got {:?}", other),
+    }
+
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "helper").tpe),
+        "number"
+    );
+}
+
+/// The other skip: a declaration the term language cannot express is present too, and
+/// says so.
+///
+/// A constructor pattern in a function head is one `wrap_with_patterns` refuses, so
+/// nothing about `unwrap` is checked — including its annotation.
+///
+/// The span is asserted because the warning `ERR-8` will make of this needs a caret,
+/// and the whole declaration is the only position available: which construct stopped
+/// the translation does not come back.
+///
+/// Mutation-checked twice: restoring the bare `continue` on the `else` branch of
+/// `value_to_term_and_annotation` in `type_check` makes `unwrap` go missing and the
+/// match falls through to the panic; handing `NodeSpan::none()` to the variant instead
+/// of `value.span()` leaves the first assertion passing and turns the range red.
+#[test]
+fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Wrap = Wrap Int
+        unwrap : Wrap -> Int
+        unwrap (Wrap n) = n
+    "#};
+
+    let solved = solved(source);
+
+    let span = match solved.get(&Name::new("unwrap")) {
+        Some(Solved::Untranslatable { span }) => *span,
+        other => panic!(
+            "expected `unwrap` to be marked untranslatable, got {:?}",
+            other
+        ),
+    };
+
+    // `NodeSpan`'s `PartialEq` always answers `true`, so the range is what proves the
+    // position: the annotation merged with the binding under it.
+    assert_eq!(
+        span.to_range(),
+        Some(range_of(
+            source,
+            "unwrap : Wrap -> Int\nunwrap (Wrap n) = n"
+        ))
+    );
+}
+
+/// Every declaration of a `module foreign` facade comes back, each saying it has no
+/// body.
+///
+/// A facade declares signatures and nothing else, and canonicalization gives each one a
+/// synthetic placeholder body, so there is nothing for inference to do — but the
+/// entries still have to be there. An empty map would read, to whatever consumes it, as
+/// a facade that declares nothing, which is exactly the confusion [`Solved`] exists to
+/// prevent: `GEN-4` emits a declaration per facade signature.
+///
+/// Mutation-checked by returning `Ok(HashMap::new())` from `type_check`'s
+/// `binding_foreign` branch: the count and both lookups go red. `cargo run` and
+/// `stdlib_package_compiles` both stay green under that same change, which is why this
+/// test is here — they walk `Js.Bitwise` but read only whether the pass errored.
+#[test]
+fn a_facade_declaration_comes_back_with_no_body() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (and, complement)
+
+        unsafe and : Int -> Int -> Int
+        unsafe complement : Int -> Int
+    "#};
+
+    let solved = solved(source);
+
+    assert_eq!(solved.len(), 2, "got {:?}", solved);
+    for name in ["and", "complement"] {
+        match solved.get(&Name::new(name)) {
+            Some(Solved::NoBody) => (),
+            other => panic!("expected `{}` to have no body, got {:?}", name, other),
+        }
+    }
+}
+
+/// An integer literal larger than a `u32` survives translation with its value.
+///
+/// [`Int` is 64 bits](../docs/spec/evaluation-semantics.md#numbers) (`DEC-16`), and the
+/// typed term is what code is generated from, so a literal that arrives at the backend
+/// narrowed is a program that computes a different number than the one written.
+/// Inference cannot notice: every integer literal is a `number` whatever its value, so
+/// the module type checks either way.
+///
+/// Mutation-checked by putting the old truncation back in `canonical_expr_to_term`
+/// (`TermKind::Int(*i as u32 as i64)`, the widened variant's spelling of what
+/// `TermKind::Int(*i as u32)` did): the literal comes back as 705032704.
+#[test]
+fn an_int_literal_wider_than_u32_keeps_its_value() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        big : Int
+        big = 5000000000
+    "#};
+
+    let solved = solved(source);
+
+    match &typed_declaration(&solved, "big").kind {
+        TypedTermKind::Int(value) => assert_eq!(*value, 5_000_000_000),
+        other => panic!("expected an integer literal, got {:?}", other),
+    }
 }
