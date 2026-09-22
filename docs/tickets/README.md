@@ -162,7 +162,7 @@ GEN-4   the backend IR   ── closed
   ├── GEN-6   a self tail call is marked
   └── GEN-7   parameterless bindings get an initialisation order   ← LANG-35 first
   │
-GEN-8   the JavaScript runtime module   (independent; any time before GEN-9)
+GEN-8   the JavaScript runtime module   ── closed
   │
 GEN-9   emit a module
   ├── GEN-10  emit a `case`
@@ -378,7 +378,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-5](gen-5.md) | task | — | open | A `case` becomes a decision tree in the IR |
 | [GEN-6](gen-6.md) | task | — | open | A self tail call is marked in the IR |
 | [GEN-7](gen-7.md) | task | — | open | Parameterless bindings get an initialisation order |
-| [GEN-8](gen-8.md) | task | — | open | The JavaScript runtime module |
+| GEN-8 | task | — | closed 2026-09-22 | The JavaScript runtime module |
 | [GEN-9](gen-9.md) | task | — | open | Emit a module |
 | [GEN-10](gen-10.md) | task | — | open | Emit a `case` |
 | [GEN-11](gen-11.md) | task | — | open | Emit the tail-call loop |
