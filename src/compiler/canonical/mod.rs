@@ -449,6 +449,30 @@ impl Value {
             Value::Value { span, .. } | Value::TypedValue { span, .. } => *span,
         }
     }
+
+    /// How many parameters this declaration was written with.
+    ///
+    /// This is the count of patterns on the left of the `=`, and deliberately not the
+    /// number of arrows in the declaration's type: `f : Int -> Int -> Int` written `f a =
+    /// add a` has arity 1, and returns a function for the second argument.
+    ///
+    /// The rule lives here rather than at either of its two readers because they feed
+    /// two fields a backend reads together, from two different phases. `typer`'s
+    /// `Translation` uses it as the callee's arity at every call site naming this
+    /// declaration, which is what decides
+    /// [`ir::Saturation`](crate::compiler::ir::Saturation); `ir::build` uses it as
+    /// [`ir::Declaration::arity`](crate::compiler::ir::Declaration::arity), the count a
+    /// direct call has to supply. Two copies that drifted apart would mark a call site
+    /// saturated at a count the emitted function does not take. A facade signature has no
+    /// patterns to count and never reaches here — `ir::build` reads its arrows instead.
+    pub fn arity(&self) -> usize {
+        // Two arms rather than an or-pattern: a `TypedValue`'s patterns each carry the
+        // type the annotation gave them, so the two fields are different types.
+        match self {
+            Value::Value { patterns, .. } => patterns.len(),
+            Value::TypedValue { patterns, .. } => patterns.len(),
+        }
+    }
 }
 
 /// A canonical pattern, and where it was written.

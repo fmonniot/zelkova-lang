@@ -550,7 +550,7 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
         match solved.remove(name) {
             Some(Solved::Typed(term)) => {
                 let tpe = term.tpe.clone();
-                let (parameters, expression) = peel(term, arity_of(value));
+                let (parameters, expression) = peel(term, value.arity());
 
                 declarations.push(Declaration {
                     name: name.clone(),
@@ -609,17 +609,6 @@ pub(crate) fn variants_of(union: &canonical::UnionType) -> Vec<Variant> {
             arity: ctor.type_parameters.len(),
         })
         .collect()
-}
-
-/// How many parameters a declaration was written with.
-///
-/// This is the fact [`Declaration::arity`] is, taken where it exists rather than counted
-/// back off a spine of nested [`TypedTermKind::Fun`] nodes.
-fn arity_of(value: &canonical::Value) -> usize {
-    match value {
-        canonical::Value::Value { patterns, .. } => patterns.len(),
-        canonical::Value::TypedValue { patterns, .. } => patterns.len(),
-    }
 }
 
 /// Split `arity` parameters off the front of a typed term.

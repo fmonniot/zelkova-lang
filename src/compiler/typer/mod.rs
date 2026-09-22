@@ -692,10 +692,9 @@ struct Translation<'a> {
     constructors: HashMap<QualName, Constructor>,
     /// How many parameters each of this module's declarations was written with.
     ///
-    /// This is the callee's arity at a call site naming one of them, and it is the
-    /// declaration's parameter count rather than its type's arrow count: `f : Int -> Int
-    /// -> Int` written `f a = add a` takes one argument directly and returns a function
-    /// for the second.
+    /// This is the callee's arity at a call site naming one of them, which is what
+    /// decides an application's [`Saturation`]. The rule itself — parameter count, not
+    /// arrow count — is [`canonical::Value::arity`], which `ir::build` reads too.
     arities: HashMap<Name, usize>,
 }
 
@@ -712,14 +711,7 @@ impl<'a> Translation<'a> {
         let arities = module
             .values
             .iter()
-            .map(|(name, value)| {
-                let arity = match value {
-                    canonical::Value::Value { patterns, .. } => patterns.len(),
-                    canonical::Value::TypedValue { patterns, .. } => patterns.len(),
-                };
-
-                (name.clone(), arity)
-            })
+            .map(|(name, value)| (name.clone(), value.arity()))
             .collect();
 
         Translation {

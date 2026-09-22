@@ -1415,8 +1415,11 @@ pub struct CheckedModule {
 impl CheckedModule {
     /// This module's [`Interface`] — [`canonical::Module::to_interface`], which is the
     /// half of a checked module that crosses a module boundary.
+    ///
+    /// Inherent so that a caller holding a `CheckedModule` reaches it without importing
+    /// [`Checked`]; the body is that trait's, so there is only one to keep correct.
     pub fn to_interface(&self, file: Option<SourceFileId>) -> Interface {
-        self.canonical.to_interface(file)
+        Checked::to_interface(self, file)
     }
 }
 
