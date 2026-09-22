@@ -3,16 +3,19 @@
 **Sizing:** medium. One module's worth of type definitions, plus growing the existing
 canonical-to-term translation into one that keeps what it currently throws away. No emission.
 
-**Depends on:** [`GEN-3`](gen-3.md) — the types this IR carries are the ones that ticket makes
-the typer hand back.
+**Depends on:** `GEN-3`, closed — `typer::type_check` returns a `typer::Solved` per
+declaration, carrying a solved type on every node of the ones it could type.
 
 **Part of:** [`GEN-1`](gen-1.md).
 
-**Location:** `src/compiler/typer/mod.rs` — `Term`, `TermKind`, `TermPattern` and
-`TermPatternKind`, which move to a module of their own; `translate_expression`,
+**Location:** `src/compiler/typer/mod.rs` — `Term`, `TermKind`, `TermPattern`,
+`TermPatternKind`, `TypedTerm`, `TypedTermKind` and `Solved`, which move to a module of their
+own; `canonical_expr_to_term` (the ticket text below calls it `translate_expression`),
 `translate_pattern` and `value_to_term_and_annotation`, which are the translation that has to
 stop discarding things. A new `src/compiler/ir/` for the moved definitions.
 `src/compiler/canonical/mod.rs` — `ExpressionKind` and `Value`, the input side.
+`src/compiler/mod.rs` — `check_module`, which holds the solved types and hands back only the
+`canonical::Module`; threading them out to a caller is this ticket's.
 
 **Decided ([`DEC-18` decision 1](../decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it) and [`DEC-18` decision 2](../decisions/dec-18.md#2--one-ir-serves-both-targets-and-javascript-is-written-first)):** one IR, produced by the typer, consumed by
 both backends. It carries a type on every node, because WebAssembly is statically typed and

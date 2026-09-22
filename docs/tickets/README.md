@@ -155,7 +155,7 @@ an infix operator back in touch with the function its `infix` declaration names,
 wrong arithmetic.
 
 ```
-GEN-3   the typer hands back the types it solved
+GEN-3   the typer hands back the types it solved   ── closed
   │
 GEN-4   the backend IR
   ├── GEN-5   a `case` becomes a decision tree
@@ -372,7 +372,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |
-| [GEN-3](gen-3.md) | task | — | open | The typer hands back the types it solved |
+| GEN-3 | task | — | closed 2026-09-21 | The typer hands back the types it solved |
 | [GEN-4](gen-4.md) | task | — | open | The backend IR |
 | [GEN-5](gen-5.md) | task | — | open | A `case` becomes a decision tree in the IR |
 | [GEN-6](gen-6.md) | task | — | open | A self tail call is marked in the IR |

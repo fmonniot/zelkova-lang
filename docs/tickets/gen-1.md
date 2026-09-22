@@ -2,7 +2,7 @@
 
 **This ticket is the program's index, not a unit of work.** The design session on 2026-09-20
 settled what a backend consumes, how a function value is represented, where output goes and how
-it is tested, and broke the work into [`GEN-3`](gen-3.md) through [`GEN-14`](gen-14.md), each
+it is tested, and broke the work into `GEN-3` through [`GEN-14`](gen-14.md), each
 sized for one sitting. What is written below is the part that belongs to no single one of them:
 the decisions they inherit and the order they land in. It is tombstoned when the last of them
 closes.
@@ -94,7 +94,7 @@ LANG-35   a parameterless binding may not depend on itself   ── prerequisite
 BUG-27    an infix is qualified under its symbol, not its function  ── prerequisite
 LANG-56   std/core's companions carry an Int at 64 bits      ── prerequisite
    │
-GEN-3   the typer hands back the types it solved
+GEN-3   the typer hands back the types it solved   ── closed
    │
 GEN-4   the backend IR
    ├── GEN-5   a `case` becomes a decision tree

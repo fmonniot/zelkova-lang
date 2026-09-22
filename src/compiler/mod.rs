@@ -1373,10 +1373,15 @@ pub fn check_module(
             .map_err(|errors| CompilationError::Canonical(errors, source.name.clone()))?;
 
     // - type checking and inference
-    // TODO Here either type checks return the new types, or it take a mutable canonical
-    // representation and "fill the blank" directly on the canonical AST.
-    typer::type_check(&canonical)
+    //
+    // The typer answers with the types it solved — one `typer::Solved` per declaration,
+    // carrying a type on every node of the ones it could type and saying why for the
+    // ones it could not. Nothing downstream reads them yet: `GEN-4` is what reshapes
+    // them into the backend IR and threads them out of here, and until then this is
+    // where they stop.
+    let solved = typer::type_check(&canonical)
         .map_err(|errors| CompilationError::Type(errors, source.name.clone()))?;
+    debug!("solved types for {}: {:#?}", source.name, solved);
 
     // verify in pattern matching branches that all variants are covered
     exhaustiveness::check(&canonical)

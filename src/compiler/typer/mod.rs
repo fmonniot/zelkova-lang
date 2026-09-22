@@ -299,8 +299,8 @@ pub enum ErrorKind {
         tpe: Box<Type>,
         origin: Box<Origin>,
     },
-    /// A name the typer's environment does not know. See [`type_check`] for why this
-    /// one is not reported to the user today.
+    /// A name the typer's environment does not know. `type_check` turns this into a
+    /// [`Solved::UnboundName`] rather than an [`Error`]; that variant says why.
     UnboundVariable {
         name: String,
         /// Where the name was written.
@@ -481,36 +481,81 @@ impl PhaseError for Error {
     }
 }
 
-/// Type check one canonical module, reporting every value whose inference produced a
-/// reportable error rather than stopping at the first — the shape `compile_package` is
-/// built to accumulate.
+/// What the typer has to say about one declaration.
 ///
-/// # The two failures this pass still swallows
+/// A phase that answers with types has to answer for *every* declaration it was given,
+/// including the ones it could not type: a caller handed only the ones that worked
+/// cannot tell a declaration the typer verified from one it walked past, and emitting
+/// code for the second is a miscompile. So the three ways a declaration goes untyped
+/// each get a variant, and [`type_check`] returns one entry per declaration either way.
+#[derive(Debug)]
+pub enum Solved {
+    /// The declaration's typed term, with the final substitution applied to every node
+    /// — the *zonk*. Its own `tpe` is the declaration's type; each node below it
+    /// carries the type inference solved for that sub-expression.
+    Typed(TypedTerm),
+    /// A declaration of a `module foreign` facade, whose body is a synthetic
+    /// placeholder rather than anything the user wrote. Nothing about it is inferred;
+    /// its type is the signature the facade declares.
+    NoBody,
+    /// `value_to_term_and_annotation` could not translate the declaration into the
+    /// typer's term language — a `VarKernel` or `VarForeign` reference, a constructor
+    /// or tuple pattern in a function head, a nested pattern inside a `case`. Nothing
+    /// about the declaration was checked.
+    ///
+    /// Not an [`Error`]: it is a gap in the typer rather than a mistake in the source,
+    /// and reporting it would fail 53 of the declarations in `std/core/src` that are
+    /// simply beyond today's inference. What it wants is a warning, which the compiler
+    /// does not have yet (`ERR-8`, see `docs/tickets/README.md`).
+    Untranslatable,
+    /// Inference reached a name the typer's environment does not hold, and nothing
+    /// about the declaration was checked.
+    ///
+    /// That environment is assembled from *this module alone*: its own annotated
+    /// values and its own type constructors. Anything that crossed a module boundary
+    /// is absent even though canonicalization resolved it perfectly well —
+    /// `Maybe.isJust` referring to `True`, which `Basics` declares, or
+    /// `Basics.negate` referring to `-`, which the infix declaration aliases to `sub`.
+    /// Five declarations in `std/core/src` hit this today and not one of them is a
+    /// mistake in the source, which is why this is not an [`Error`] either; closing
+    /// the hole is `BUG-36`. A name that genuinely does not exist is caught earlier,
+    /// by canonicalization, as `canonical::Error::VariableNotFound`, with a caret
+    /// under the name.
+    UnboundName {
+        /// The name as inference looked it up.
+        name: String,
+        /// Where it was written.
+        span: NodeSpan,
+    },
+}
+
+impl Solved {
+    /// The typed term, for a declaration that has one.
+    pub fn typed(&self) -> Option<&TypedTerm> {
+        match self {
+            Solved::Typed(term) => Some(term),
+            _ => None,
+        }
+    }
+}
+
+/// Type check one canonical module and hand back what it solved, reporting every value
+/// whose inference produced a reportable error rather than stopping at the first — the
+/// shape `compile_package` is built to accumulate.
 ///
-/// Both are in the third pass below, and neither is a statement about the user's
-/// source, which is why neither is reported as an error against it.
+/// # What comes back
 ///
-/// **An unsupported construct.** `value_to_term_and_annotation` returns `None` for
-/// anything the term language cannot express — a `VarKernel` or `VarForeign`
-/// reference, a nested pattern inside a `case`. The declaration is then not checked
-/// at all. Reporting that as an error would fail 53 of the declarations in
-/// `std/core/src` that are simply beyond today's inference; it is a gap in the
-/// typer, and what it wants is a warning, which the compiler does not have yet
-/// (`ERR-8`, see `docs/tickets/README.md`).
+/// One [`Solved`] per declaration, keyed the way `module.values` is. A declaration the
+/// typer could not type is present and says so; none is ever merely absent, because
+/// absent is indistinguishable from checked-and-fine to whatever reads this next
+/// ([`DEC-18` decision 1](../../../docs/decisions/dec-18.md)). The map is only returned
+/// at all when no declaration failed: a module with type errors answers with them, so
+/// there is no half-checked module to interpret.
 ///
-/// **An unbound variable.** [`ErrorKind::UnboundVariable`] means the name is missing
-/// from the environment the two passes above build — and that environment is
-/// assembled from *this module alone*: its own annotated values and its own type
-/// constructors. Anything that crossed a module boundary is therefore absent even
-/// though canonicalization resolved it perfectly well: `Maybe.isJust` referring to
-/// `True`, which `Basics` declares, or `Basics.negate` referring to `-`, which the
-/// infix declaration aliases to `sub`. Five declarations in `std/core/src` hit this
-/// today and not one of them is a mistake in the source. A name that genuinely does
-/// not exist is caught earlier, by canonicalization, as
-/// `canonical::Error::VariableNotFound`, with a caret under the name — so nothing a
-/// user can write reaches the user only through this path. The error nonetheless
-/// carries its span now, so the day the typer's environment spans modules it can be
-/// reported without further plumbing.
+/// The term inside [`Solved::Typed`] is the one `annotate` built, with `unify`'s final
+/// substitution applied to every node rather than to the declaration's own type alone.
+/// That interior is the point — a backend needs the type of each sub-expression, not
+/// just of the declaration containing it.
 ///
 /// # Where an [`Error`] is built
 ///
@@ -518,10 +563,16 @@ impl PhaseError for Error {
 /// it is the only one that knows the declaration's name and its span. What went
 /// *wrong* and *where inside the declaration* comes up from inference on the
 /// [`ErrorKind`]; see [`Error`].
-pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
-    // A `module foreign` facade uses synthetic placeholder bodies — skip type checking.
+pub fn type_check(module: &Module) -> Result<HashMap<Name, Solved>, Vec<Error>> {
+    // A `module foreign` facade uses synthetic placeholder bodies, so there is nothing
+    // to infer — but every declaration still has to be accounted for, so each is
+    // returned saying why it has no term.
     if module.binding_foreign {
-        return Ok(());
+        return Ok(module
+            .values
+            .keys()
+            .map(|name| (name.clone(), Solved::NoBody))
+            .collect());
     }
 
     // Start at a high offset to avoid collisions with the counter inside
@@ -616,11 +667,15 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
     // Third pass: check each value. A value that fails is recorded and the pass
     // moves on, so one broken declaration cannot hide the others.
     let mut errors: Vec<Error> = vec![];
+    let mut solved: HashMap<Name, Solved> = HashMap::new();
     for (name, value) in &module.values {
         let Some((term, annotation)) =
             value_to_term_and_annotation(value, &module_types, &mut counter)
         else {
-            continue; // unsupported construct — see this function's documentation
+            // Unsupported construct: nothing was checked, and the entry says so
+            // rather than the declaration going missing — see [`Solved`].
+            solved.insert(name.clone(), Solved::Untranslatable);
+            continue;
         };
 
         // The annotation is handed to inference rather than checked against its
@@ -629,20 +684,33 @@ pub fn type_check(module: &Module) -> Result<(), Vec<Error>> {
         // whole types at the end could only ever say "this declaration is `Int` and
         // its body is something else", with the caret across the lot.
         match infer_annotated(term, global.clone(), annotation) {
-            // See this function's documentation: an unbound variable here is a hole
-            // in the typer's environment, not a mistake in the source.
-            Err(ErrorKind::UnboundVariable { .. }) => continue,
+            // An unbound variable here is a hole in the typer's environment, not a
+            // mistake in the source — see [`Solved::UnboundName`].
+            Err(ErrorKind::UnboundVariable {
+                name: unbound,
+                span,
+            }) => {
+                solved.insert(
+                    name.clone(),
+                    Solved::UnboundName {
+                        name: unbound,
+                        span,
+                    },
+                );
+            }
             Err(kind) => errors.push(Error {
                 kind,
                 span: value.span(),
                 declaration: name.clone(),
             }),
-            Ok(_) => (),
+            Ok(term) => {
+                solved.insert(name.clone(), Solved::Typed(term));
+            }
         }
     }
 
     if errors.is_empty() {
-        Ok(())
+        Ok(solved)
     } else {
         Err(errors)
     }
@@ -786,7 +854,11 @@ fn canonical_expr_to_term(
     counter: &mut u32,
 ) -> Option<Term> {
     let kind = match &expr.kind {
-        canonical::ExpressionKind::Int(i) => TermKind::Int(*i as u32),
+        // Carried at the canonical AST's own width: [`Int` is 64
+        // bits](../../../docs/spec/evaluation-semantics.md#numbers), and a term is what
+        // code is generated from, so narrowing here would emit a different number than
+        // the one that was written.
+        canonical::ExpressionKind::Int(i) => TermKind::Int(*i),
         canonical::ExpressionKind::Bool(b) => TermKind::Bool(*b),
         canonical::ExpressionKind::Char(c) => TermKind::Char(*c),
         canonical::ExpressionKind::Float(f) => TermKind::Float(*f),
@@ -1089,7 +1161,10 @@ impl Term {
 pub enum TermKind {
     // literals
     Bool(bool),
-    Int(u32),
+    /// An integer literal, at the width [`Int` *is*](../../../docs/spec/evaluation-semantics.md#numbers)
+    /// ([`DEC-16`](../../../docs/decisions/dec-16.md)). Inference never reads the value
+    /// — every literal is a `number` whatever it says — but code generation does.
+    Int(i64),
     Char(char),
     Float(f64),
     Identifier(String), // VAR
@@ -1364,9 +1439,9 @@ impl Type {
 #[derive(Debug, Clone)]
 /// Bind a name and a type together.
 /// Used in function and let expression
-struct TypeBinder {
-    name: String,
-    tpe: Type,
+pub struct TypeBinder {
+    pub name: String,
+    pub tpe: Type,
 }
 
 impl TypeBinder {
@@ -1377,17 +1452,22 @@ impl TypeBinder {
 
 /// Like a [Term] but with an associated [Type], and still with its position.
 /// Any term introducing a name will have a TypeBinder instead.
+///
+/// This is what [`type_check`] hands back for a declaration it typed, and the types on
+/// it are the *solved* ones: `infer_annotated` applies `unify`'s final substitution to
+/// every node before returning. Between `annotate` and that point they are inference
+/// variables and mean nothing on their own.
 #[derive(Debug)]
-struct TypedTerm {
-    span: NodeSpan,
-    tpe: Type,
-    kind: TypedTermKind,
+pub struct TypedTerm {
+    pub span: NodeSpan,
+    pub tpe: Type,
+    pub kind: TypedTermKind,
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
-enum TypedTermKind {
-    Int(u32),
+pub enum TypedTermKind {
+    /// See [`TermKind::Int`] for the width.
+    Int(i64),
     Bool(bool),
     Char(char),
     Float(f64),
@@ -1574,6 +1654,115 @@ impl Substitution {
             })
     }
 
+    /// Rewrite **every** type in a typed term with everything solved — the *zonk*.
+    ///
+    /// `annotate` gives each node a fresh inference variable and unification solves
+    /// those variables somewhere else entirely, so until this runs a node's `tpe` is a
+    /// `t17` that means nothing on its own. Applying the substitution to the root's
+    /// type alone is enough to answer "what type is this declaration", which is all
+    /// inference ever needed; it leaves every node below still holding a variable,
+    /// which is not enough to generate code from
+    /// ([`DEC-18` decision 1](../../../docs/decisions/dec-18.md)).
+    ///
+    /// The types a pattern carries are rewritten too: a constructor pattern's
+    /// arguments and the bindings it introduces are the types the branch body's
+    /// variables were bound at.
+    fn apply_term(&self, term: TypedTerm) -> TypedTerm {
+        let kind = match term.kind {
+            kind @ (TypedTermKind::Int(_)
+            | TypedTermKind::Bool(_)
+            | TypedTermKind::Char(_)
+            | TypedTermKind::Float(_)
+            | TypedTermKind::Identifier(_)) => kind,
+            TypedTermKind::Fun { param, body } => TypedTermKind::Fun {
+                param: self.apply_binder(param),
+                body: Box::new(self.apply_term(*body)),
+            },
+            TypedTermKind::Apply { fun, arg } => TypedTermKind::Apply {
+                fun: Box::new(self.apply_term(*fun)),
+                arg: Box::new(self.apply_term(*arg)),
+            },
+            TypedTermKind::If {
+                cond,
+                true_branch,
+                false_branch,
+            } => TypedTermKind::If {
+                cond: Box::new(self.apply_term(*cond)),
+                true_branch: Box::new(self.apply_term(*true_branch)),
+                false_branch: Box::new(self.apply_term(*false_branch)),
+            },
+            TypedTermKind::Let {
+                binding,
+                value,
+                body,
+            } => TypedTermKind::Let {
+                binding: self.apply_binder(binding),
+                value: Box::new(self.apply_term(*value)),
+                body: Box::new(self.apply_term(*body)),
+            },
+            TypedTermKind::Tuple(Tuple::Two(a, b)) => {
+                TypedTermKind::Tuple(Tuple::two(self.apply_term(*a), self.apply_term(*b)))
+            }
+            TypedTermKind::Tuple(Tuple::Three(a, b, c)) => TypedTermKind::Tuple(Tuple::three(
+                self.apply_term(*a),
+                self.apply_term(*b),
+                self.apply_term(*c),
+            )),
+            TypedTermKind::Case {
+                scrutinee,
+                branches,
+            } => TypedTermKind::Case {
+                scrutinee: Box::new(self.apply_term(*scrutinee)),
+                branches: branches
+                    .into_iter()
+                    .map(|(pattern, body)| {
+                        (
+                            self.apply_pattern(pattern),
+                            Box::new(self.apply_term(*body)),
+                        )
+                    })
+                    .collect(),
+            },
+        };
+
+        TypedTerm {
+            span: term.span,
+            tpe: self.apply_type(&term.tpe),
+            kind,
+        }
+    }
+
+    fn apply_binder(&self, binder: TypeBinder) -> TypeBinder {
+        TypeBinder {
+            tpe: self.apply_type(&binder.tpe),
+            name: binder.name,
+        }
+    }
+
+    fn apply_pattern(&self, pattern: TermPattern) -> TermPattern {
+        let kind = match pattern.kind {
+            kind @ (TermPatternKind::Anything | TermPatternKind::Bind(_)) => kind,
+            TermPatternKind::Literal(tpe) => TermPatternKind::Literal(self.apply_type(&tpe)),
+            TermPatternKind::Constructor {
+                adt_name,
+                adt_args,
+                bindings,
+            } => TermPatternKind::Constructor {
+                adt_name,
+                adt_args: adt_args.iter().map(|a| self.apply_type(a)).collect(),
+                bindings: bindings
+                    .into_iter()
+                    .map(|(name, tpe)| (name, self.apply_type(&tpe)))
+                    .collect(),
+            },
+        };
+
+        TermPattern {
+            span: pattern.span,
+            kind,
+        }
+    }
+
     fn substitute(tpe: Type, tvar: &TypeVariable, replacement: &Type) -> Type {
         match tpe {
             Type::Literal(_) | Type::Number => tpe,
@@ -1690,10 +1879,11 @@ impl Types {
 /// This is a translation of the algorithm demonstrated by
 /// [Ionut Gan at I T.A.K.E Unconference 2015](https://www.youtube.com/watch?v=oPVTNxiMcSU)
 pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, ErrorKind> {
-    infer_annotated(term, global, None)
+    infer_annotated(term, global, None).map(|term| term.tpe)
 }
 
-/// [`infer`], with the declaration's type annotation as a constraint of its own.
+/// [`infer`], with the declaration's type annotation as a constraint of its own, and
+/// answering with the whole solved term rather than only its type.
 ///
 /// The annotation is put *first*, before the constraints the body generates, and that
 /// ordering is the point of the function. `unify` solves constraints in order, so the
@@ -1701,11 +1891,14 @@ pub fn infer(term: Term, global: HashMap<String, Type>) -> Result<Type, ErrorKin
 /// solved; when one of them then fails, its [`Origin::explanation`] names the annotation,
 /// and the diagnostic can say `Int` was expected *because of the annotation* rather
 /// than merely that the declaration as a whole does not check.
+///
+/// The term handed back is zonked — see [`Substitution::apply_term`] — so every node
+/// carries the type inference solved for it and not the variable `annotate` gave it.
 fn infer_annotated(
     term: Term,
     global: HashMap<String, Type>,
     annotation: Option<Annotation>,
-) -> Result<Type, ErrorKind> {
+) -> Result<TypedTerm, ErrorKind> {
     let mut env = Types::new();
     env.extends_with(global);
 
@@ -1730,7 +1923,7 @@ fn infer_annotated(
 
     let substitution = unifier::unify(constraints)?;
 
-    Ok(substitution.apply_type(&typed_term.tpe))
+    Ok(substitution.apply_term(typed_term))
 }
 
 // TODO Once we have changed the Term to the zelkova primitives, rewrite the tests
@@ -1749,7 +1942,7 @@ mod tests {
     fn bool(b: bool) -> Term {
         Term::bare(TermKind::Bool(b))
     }
-    fn int(i: u32) -> Term {
+    fn int(i: i64) -> Term {
         Term::bare(TermKind::Int(i))
     }
     fn var(n: &str) -> Term {

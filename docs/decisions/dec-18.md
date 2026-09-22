@@ -71,7 +71,7 @@ besides WebAssembly is the specialisation [DEC-2 decision
 same solved types and would otherwise be a second reason to do this work.
 
 What it costs is honest and was accepted: the first ticket of the program is inside the typer
-([`GEN-3`](../tickets/gen-3.md)), and two silent skips there — a construct the translation
+(`GEN-3`), and two silent skips there — a construct the translation
 cannot represent, and an unbound variable — have to stop being silent, because a backend cannot
 tell a declaration the typer verified from one it walked past.
 
