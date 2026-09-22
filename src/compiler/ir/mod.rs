@@ -5,8 +5,16 @@
 //! 1](../../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
 //! [`Term`] is the untyped half — what the translation from the canonical AST builds —
 //! and [`TypedTerm`] is the same tree once inference has solved a type for each of its
-//! nodes. A [`Module`] is what a backend is handed: the unions a module declares, and one
-//! [`Declaration`] per value.
+//! nodes. A [`Module`] holds the unions a module declares and one [`Declaration`] per
+//! value: everything about a module that only emission asks for.
+//!
+//! It is not the whole of what a backend is handed. `check_module` answers with a
+//! [`CheckedModule`](crate::compiler::CheckedModule), which is this beside the
+//! [`canonical::Module`] it was built from, and two of the things emission needs are
+//! still only on that half — a module's `exports`, which is what a JavaScript module has
+//! to export, and `canonical::Value::TypedValue`'s `marked_unsafe`, which
+//! [`GEN-12`](../../../docs/tickets/gen-12.md) reads because an `unsafe` signature and an
+//! effectful one emit differently. Nothing here duplicates them.
 //!
 //! The type language itself is still [`typer::Type`](crate::compiler::typer::Type). It is
 //! the typer's own representation and unification is written against it, so it stays
@@ -69,7 +77,12 @@ use super::ModuleName;
 
 // ── A module ──────────────────────────────────────────────────────────────────
 
-/// One checked module, in the form a backend reads it.
+/// One checked module's emittable shape: what a backend reads that no earlier phase
+/// carried.
+///
+/// Not everything emission needs — `exports` and `marked_unsafe` stay on the
+/// [`canonical::Module`] this was built from, and a backend is handed both halves as a
+/// [`CheckedModule`](crate::compiler::CheckedModule). See this module's doc comment.
 #[derive(Debug)]
 pub struct Module {
     pub name: ModuleName,
@@ -166,10 +179,12 @@ pub struct Body {
 
 /// A declaration the typer could not type, and which therefore has no IR.
 ///
-/// Why it could not is on the [`Solved`] entry this was built from: a construct the
-/// translation cannot represent ([`Solved::Untranslatable`]) or a name the typer's
-/// environment does not hold ([`Solved::UnboundName`]). Neither is a mistake in the
-/// user's source, and neither is an error; both are gaps in today's typer.
+/// Why it could not is decided in [`build`], from the [`Solved`] entry, and is not
+/// carried here: a construct the translation cannot represent
+/// ([`Solved::Untranslatable`]) or a name the typer's environment does not hold
+/// ([`Solved::UnboundName`]). Neither is a mistake in the user's source, and neither is
+/// an error; both are gaps in today's typer, and `ERR-8`'s warning is what will need the
+/// reason carried this far.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Unchecked {
     pub name: Name,
