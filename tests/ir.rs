@@ -6,10 +6,11 @@
 //! wants, what kind of name a reference is, and where a constructor sits in its
 //! declaration.
 //!
-//! The fourth kind of name — a value another module declares — is not asserted here, and
-//! cannot be: the typer's environment is built from the module under check alone, so a
-//! declaration mentioning an imported value comes back `Solved::UnboundName` and lands
-//! in `ir::Module::unchecked` rather than becoming a declaration (`BUG-36`). That the
+//! The fourth kind of name — a value another module declares — is not merely unasserted
+//! here: `ReferenceKind::Foreign` is currently unreachable in any `ir::Module` at all.
+//! The typer's environment is built from the module under check alone, so every
+//! declaration that would produce one comes back `Solved::UnboundName` and lands in
+//! `ir::Module::unchecked` rather than becoming a declaration (`BUG-36`). That the
 //! translation tells it apart from the other three is pinned one level down, by
 //! `typer::tests::the_four_kinds_of_name_stay_apart`.
 
@@ -96,9 +97,9 @@ fn reference(term: &TypedTerm) -> &Reference {
 /// function](../docs/decisions/dec-18.md) has to know how many of those nodes are its
 /// parameter list.
 ///
-/// Mutation-checked by making `arity_of` answer `0`, which is what counting nothing
-/// looks like: both assertions go red, since `second` then has no parameters and its
-/// whole nested-function body is left as the expression to emit.
+/// Mutation-checked by making `canonical::Value::arity` answer `0`, which is what
+/// counting nothing looks like: both assertions go red, since `second` then has no
+/// parameters and its whole nested-function body is left as the expression to emit.
 #[test]
 fn a_declarations_arity_is_the_number_of_parameters_it_was_written_with() {
     let module = ir_of(indoc! {r#"
@@ -136,14 +137,26 @@ fn a_declarations_arity_is_the_number_of_parameters_it_was_written_with() {
 /// node supplies one argument at a time, so nothing in the shape of the tree says which
 /// a given application is.
 ///
+/// `half` is the shape that decides the difference on its own: the *outermost* node of
+/// its body stays `Partial`, so it is the declaration a backend has to reach for `$curry`
+/// on rather than emit a direct call for. `both` and `one` both saturate at their
+/// outermost node, and pin `Partial` only on an inner one.
+///
 /// Mutation-checked by returning `Saturation::Partial` unconditionally from the
 /// application arm of `canonical_expr_to_term` — the `both` assertion goes red — and,
 /// separately, by returning `Saturation::Saturated` unconditionally, which turns `one`
-/// red. Either alone leaves the other green, which is why both are asserted.
+/// and `half` red (each on its own, with the other neutralised). Either mutation alone
+/// leaves the other direction green, which is why both are asserted.
+///
+/// The `half.arity` assertion is documentation rather than a second check: `arity` is the
+/// parameter count `peel` actually took, and a body that is not a `Fun` yields none
+/// whatever the rule says, so no mutation of the arity rule moves it. It is here because
+/// this is the declaration where arity (0 patterns) and the type's arrow count (1)
+/// disagree, which is the rule [`Declaration::arity`]'s doc comment states.
 #[test]
 fn an_application_says_whether_it_supplies_every_argument() {
     let module = ir_of(indoc! {r#"
-        module Test exposing (both, one)
+        module Test exposing (both, one, half)
 
         pick : Int -> Int -> Int
         pick a b =
@@ -156,6 +169,10 @@ fn an_application_says_whether_it_supplies_every_argument() {
         one : Int -> Int
         one b =
           pick 1 b
+
+        half : Int -> Int
+        half =
+          pick 1
     "#});
 
     let both = declaration(&module, "both");
@@ -187,6 +204,22 @@ fn an_application_says_whether_it_supplies_every_argument() {
                 other => panic!("expected the inner application, got {:?}", other),
             }
         }
+        other => panic!("expected an application, got {:?}", other),
+    }
+
+    // A spine whose outermost node is itself short: `half` returns the function `pick 1`
+    // is, and supplies one of the two arguments `pick` takes.
+    let half = declaration(&module, "half");
+    assert_eq!(
+        half.arity, 0,
+        "`half` was written with no parameters, whatever its type's arrows say"
+    );
+    match &body(half, "half").kind {
+        TypedTermKind::Apply { saturation, .. } => assert_eq!(
+            *saturation,
+            Saturation::Partial,
+            "`pick 1` is the whole body, and supplies one of two"
+        ),
         other => panic!("expected an application, got {:?}", other),
     }
 }
