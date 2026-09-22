@@ -495,8 +495,15 @@ pub enum Solved {
     /// carries the type inference solved for that sub-expression.
     Typed(TypedTerm),
     /// A declaration of a `module foreign` facade, whose body is a synthetic
-    /// placeholder rather than anything the user wrote. Nothing about it is inferred;
-    /// its type is the signature the facade declares.
+    /// placeholder rather than anything the user wrote. Nothing about it is inferred.
+    ///
+    /// This variant carries nothing, so [`Solved::typed`] answers `None` for it: the
+    /// declaration's type is the signature the facade declares, and it stays where
+    /// canonicalization put it, on `canonical::Value::TypedValue`'s `tpe`. A consumer
+    /// reading these entries is walking the same `canonical::Module` the map was
+    /// solved from — [`type_check`] takes one and keys the map the way its `values`
+    /// is keyed — so the signature is one lookup away, and repeating it here would be
+    /// a second copy of it rather than something inference established.
     NoBody,
     /// `value_to_term_and_annotation` could not translate the declaration into the
     /// typer's term language — a `VarKernel` or `VarForeign` reference, a constructor
@@ -506,8 +513,17 @@ pub enum Solved {
     /// Not an [`Error`]: it is a gap in the typer rather than a mistake in the source,
     /// and reporting it would fail 53 of the declarations in `std/core/src` that are
     /// simply beyond today's inference. What it wants is a warning, which the compiler
-    /// does not have yet (`ERR-8`, see `docs/tickets/README.md`).
-    Untranslatable,
+    /// does not have yet (`ERR-8`, see `docs/tickets/README.md`) — hence the span, so
+    /// that the warning has a caret the day it exists. *Which* of the four constructs
+    /// tripped it is not carried: `value_to_term_and_annotation` answers `Option`, so
+    /// the reason does not survive the return, and giving it one belongs with the
+    /// reshape in `GEN-4` rather than here.
+    Untranslatable {
+        /// Where the declaration was written, annotation and body together — the only
+        /// position available, since the construct that stopped the translation is not
+        /// reported back.
+        span: NodeSpan,
+    },
     /// Inference reached a name the typer's environment does not hold, and nothing
     /// about the declaration was checked.
     ///
@@ -674,7 +690,7 @@ pub fn type_check(module: &Module) -> Result<HashMap<Name, Solved>, Vec<Error>> 
         else {
             // Unsupported construct: nothing was checked, and the entry says so
             // rather than the declaration going missing — see [`Solved`].
-            solved.insert(name.clone(), Solved::Untranslatable);
+            solved.insert(name.clone(), Solved::Untranslatable { span: value.span() });
             continue;
         };
 

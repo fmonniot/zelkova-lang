@@ -985,9 +985,14 @@ fn a_declaration_the_typer_cannot_resolve_comes_back_marked() {
 /// A constructor pattern in a function head is one `wrap_with_patterns` refuses, so
 /// nothing about `unwrap` is checked — including its annotation.
 ///
-/// Mutation-checked by restoring the bare `continue` on the `else` branch of
-/// `value_to_term_and_annotation` in `type_check`: `unwrap` goes missing and the match
-/// falls through to the panic.
+/// The span is asserted because the warning `ERR-8` will make of this needs a caret,
+/// and the whole declaration is the only position available: which construct stopped
+/// the translation does not come back.
+///
+/// Mutation-checked twice: restoring the bare `continue` on the `else` branch of
+/// `value_to_term_and_annotation` in `type_check` makes `unwrap` go missing and the
+/// match falls through to the panic; handing `NodeSpan::none()` to the variant instead
+/// of `value.span()` leaves the first assertion passing and turns the range red.
 #[test]
 fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
     let source = indoc::indoc! {r#"
@@ -999,14 +1004,56 @@ fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
 
     let solved = solved(source);
 
-    assert!(
-        matches!(
-            solved.get(&Name::new("unwrap")),
-            Some(Solved::Untranslatable)
+    let span = match solved.get(&Name::new("unwrap")) {
+        Some(Solved::Untranslatable { span }) => *span,
+        other => panic!(
+            "expected `unwrap` to be marked untranslatable, got {:?}",
+            other
         ),
-        "expected `unwrap` to be marked untranslatable, got {:?}",
-        solved.get(&Name::new("unwrap"))
+    };
+
+    // `NodeSpan`'s `PartialEq` always answers `true`, so the range is what proves the
+    // position: the annotation merged with the binding under it.
+    assert_eq!(
+        span.to_range(),
+        Some(range_of(
+            source,
+            "unwrap : Wrap -> Int\nunwrap (Wrap n) = n"
+        ))
     );
+}
+
+/// Every declaration of a `module foreign` facade comes back, each saying it has no
+/// body.
+///
+/// A facade declares signatures and nothing else, and canonicalization gives each one a
+/// synthetic placeholder body, so there is nothing for inference to do — but the
+/// entries still have to be there. An empty map would read, to whatever consumes it, as
+/// a facade that declares nothing, which is exactly the confusion [`Solved`] exists to
+/// prevent: `GEN-4` emits a declaration per facade signature.
+///
+/// Mutation-checked by returning `Ok(HashMap::new())` from `type_check`'s
+/// `binding_foreign` branch: the count and both lookups go red. `cargo run` and
+/// `stdlib_package_compiles` both stay green under that same change, which is why this
+/// test is here — they walk `Js.Bitwise` but read only whether the pass errored.
+#[test]
+fn a_facade_declaration_comes_back_with_no_body() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (and, complement)
+
+        unsafe and : Int -> Int -> Int
+        unsafe complement : Int -> Int
+    "#};
+
+    let solved = solved(source);
+
+    assert_eq!(solved.len(), 2, "got {:?}", solved);
+    for name in ["and", "complement"] {
+        match solved.get(&Name::new(name)) {
+            Some(Solved::NoBody) => (),
+            other => panic!("expected `{}` to have no body, got {:?}", name, other),
+        }
+    }
 }
 
 /// An integer literal larger than a `u32` survives translation with its value.
