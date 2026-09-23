@@ -2724,3 +2724,85 @@ fn mentioning_a_recursive_function_is_accepted() {
         "mentioning a recursive function is not itself a cycle among parameterless bindings",
     );
 }
+
+// ── An imported name is named by the module that declared it ────────────────
+
+/// The name at the head of `name`'s body, past every argument applied to it.
+fn head_of(module: &canonical::Module, name: &str) -> String {
+    let value = module
+        .values
+        .get(&name.into())
+        .unwrap_or_else(|| panic!("no declaration `{}`", name));
+    let canonical::Value::TypedValue { body, .. } = value else {
+        panic!("`{}` should be annotated", name);
+    };
+
+    let mut expr = body;
+    while let canonical::ExpressionKind::Apply(fun, _) = &expr.kind {
+        expr = fun;
+    }
+
+    match &expr.kind {
+        canonical::ExpressionKind::VarConstructor(name, _)
+        | canonical::ExpressionKind::VarForeign(name, _) => name.to_name().as_str().to_string(),
+        other => panic!("expected an imported name at the head, got {:?}", other),
+    }
+}
+
+/// An imported constructor and an imported value are each named by the module that
+/// declared them, however the importing source spells them: bare because exposed,
+/// qualified by the module, or qualified by an alias.
+///
+/// `BUG-36`'s second root cause: an exposed constructor was named by the importing
+/// module (`Main.Just`), an aliased one kept the alias (`M.Just`), and a qualified
+/// value kept its whole spelling as its own name (`Maybe.Maybe.withDefault`).
+///
+/// Mutation-checked two ways in `Expression::from_parser`: naming a `VarConstructor`
+/// by its written spelling fails the test with `Main.Just`, and qualifying a
+/// `VarForeign` with the whole written spelling fails it with
+/// `Maybe.Maybe.withDefault`.
+#[test]
+fn an_imported_name_is_named_by_the_module_that_declared_it() {
+    let mut interfaces = scalar_interfaces();
+    let (name, interface) = maybe_interface();
+    interfaces.insert(name, interface);
+
+    let canonicalize = |source| {
+        canonicalize_with_interfaces(source, &interfaces)
+            .unwrap_or_else(|e| panic!("should canonicalize, got {:?}", e))
+    };
+
+    // `Maybe` as the default imports bring it in: its constructors exposed.
+    let module = canonicalize(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        exposed : Maybe Int
+        exposed = Just 1
+
+        qualified : Maybe Int
+        qualified = Maybe.Just 1
+
+        value : Int
+        value = Maybe.withDefault 0 Nothing
+    "#});
+
+    assert_eq!(head_of(&module, "exposed"), "Maybe.Just");
+    assert_eq!(head_of(&module, "qualified"), "Maybe.Just");
+    assert_eq!(head_of(&module, "value"), "Maybe.withDefault");
+
+    // `Maybe` imported under an alias, which replaces the default import.
+    let module = canonicalize(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Maybe as M exposing (Maybe(..))
+
+        aliased : Maybe Int
+        aliased = M.Just 1
+
+        aliasedValue : Int
+        aliasedValue = M.withDefault 0 Nothing
+    "#});
+
+    assert_eq!(head_of(&module, "aliased"), "Maybe.Just");
+    assert_eq!(head_of(&module, "aliasedValue"), "Maybe.withDefault");
+}

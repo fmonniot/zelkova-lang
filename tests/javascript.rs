@@ -12,9 +12,8 @@
 use std::collections::HashMap;
 
 use indoc::indoc;
-use zelkova_lang::compiler::ir::{Body, Reference, ReferenceKind, TypedTerm, TypedTermKind};
 use zelkova_lang::compiler::javascript::{self, Construct, Error};
-use zelkova_lang::compiler::name::{Name, QualName};
+use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::{check_module, CheckedModule, Interface};
 
@@ -314,44 +313,45 @@ fn a_nullary_constructor_is_one_constant_every_mention_refers_to() {
 /// A constructor of no arguments that another module declares is hoisted by the module
 /// that mentions it, since the declaring module exports no constant for it.
 ///
-/// The IR is the one a local constructor produces, rewritten to name a union `Lib`
-/// declares, so no second module has to be checked first.
+/// `Lib` is checked first and `Test` against its interface, the way a build orders
+/// them, so what is emitted is what the front end makes of an imported constructor —
+/// written both exposed and qualified — and not a hand-built stand-in for it.
 ///
-/// Mutation-checked by not recording the constructor in `value`: `$Lib$Red` is then
-/// mentioned and never declared.
+/// Mutation-checked two ways: by not recording the constructor in `value`, which
+/// leaves `$Lib$Red` mentioned and never declared; and by naming an exposed
+/// `VarConstructor` by the importing module in `Expression::from_parser`, which makes
+/// `first` a `Test.Red` nothing declares, so the module is refused as unchecked.
 #[test]
 fn an_imported_nullary_constructor_is_hoisted_by_the_importer() {
-    let mut module = checked(indoc! {r#"
-        module Test exposing (first)
+    let mut interfaces = HashMap::from([basics_interface(), char_interface(), maybe_interface()]);
+    let lib = checked_against(
+        indoc! {r#"
+            module Lib exposing (Colour(..))
 
-        type Colour
-          = Red
-          | Green
+            type Colour
+              = Red
+              | Green
+        "#},
+        interfaces.clone(),
+    );
+    interfaces.insert(lib.canonical.name.name().clone(), lib.to_interface(None));
 
-        first : Colour
-        first =
-          Red
-    "#});
+    let module = checked_against(
+        indoc! {r#"
+            module Test exposing (first, second)
 
-    module.ir.unions.clear();
-    let lib_colour = QualName::parse("Lib.Colour").unwrap();
-    for declaration in &mut module.ir.declarations {
-        if let Some(Body {
-            expression:
-                TypedTerm {
-                    kind:
-                        TypedTermKind::Identifier(Reference {
-                            kind: ReferenceKind::Constructor(ctor),
-                            ..
-                        }),
-                    ..
-                },
-            ..
-        }) = &mut declaration.body
-        {
-            ctor.union = lib_colour.clone();
-        }
-    }
+            import Lib exposing (Colour(..))
+
+            first : Colour
+            first =
+              Red
+
+            second : Lib.Colour
+            second =
+              Lib.Red
+        "#},
+        interfaces,
+    );
 
     let text = emit(&module);
 
@@ -361,6 +361,7 @@ fn an_imported_nullary_constructor_is_hoisted_by_the_importer() {
         text
     );
     assert!(text.contains("const first = $Lib$Red;"), "got:\n{}", text);
+    assert!(text.contains("const second = $Lib$Red;"), "got:\n{}", text);
     assert!(!text.contains("$Test$"), "got:\n{}", text);
 }
 

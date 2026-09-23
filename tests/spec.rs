@@ -151,14 +151,25 @@ fn parse(source: &str) -> Result<parser::Module, parser::Error> {
     parser::parse(&file)
 }
 
-fn canonicalize(module: &parser::Module) -> Result<canonical::Module, Vec<canonical::Error>> {
+/// A lone block, canonicalized against `interfaces` — its [`block_interfaces`], the
+/// map the typer is then handed too.
+fn canonicalize(
+    module: &parser::Module,
+    interfaces: &HashMap<Name, Interface>,
+) -> Result<canonical::Module, Vec<canonical::Error>> {
     let declared = std::slice::from_ref(&module.name);
     canonical::canonicalize(
         &test_package(),
-        &stdlib_interfaces(declared),
+        interfaces,
         module,
         zelkova_lang::compiler::default_imports::declares_a_default(declared),
     )
+}
+
+/// The interfaces a lone block is compiled against: [`stdlib_interfaces`] for a
+/// package that declares only that block's module.
+fn block_interfaces(module: &parser::Module) -> HashMap<Name, Interface> {
+    stdlib_interfaces(std::slice::from_ref(&module.name))
 }
 
 /// `Basics` as a stand-in [`Interface`], so a chapter may name `Int`, `Float` or
@@ -415,19 +426,22 @@ fn evaluate(block: &Block) -> Verdict {
         ),
         Expect::Ok => match parse(&block.source) {
             Err(e) => Verdict::Fail(format!("expected `ok`, but the parser rejected it: {:?}", e)),
-            Ok(module) => match canonicalize(&module) {
-                Err(errors) => Verdict::Fail(format!(
-                    "expected `ok`, but canonicalization failed: {:?}",
-                    errors
-                )),
-                Ok(canonical) => match type_check(&canonical, &stdlib_interfaces(std::slice::from_ref(&module.name))) {
+            Ok(module) => {
+                let interfaces = block_interfaces(&module);
+                match canonicalize(&module, &interfaces) {
                     Err(errors) => Verdict::Fail(format!(
-                        "expected `ok`, but type checking failed: {:?}",
+                        "expected `ok`, but canonicalization failed: {:?}",
                         errors
                     )),
-                    Ok(()) => Verdict::Pass,
-                },
-            },
+                    Ok(canonical) => match type_check(&canonical, &interfaces) {
+                        Err(errors) => Verdict::Fail(format!(
+                            "expected `ok`, but type checking failed: {:?}",
+                            errors
+                        )),
+                        Ok(()) => Verdict::Pass,
+                    },
+                }
+            }
         },
         Expect::TypeError(wanted) => match parse(&block.source) {
             Err(e) => Verdict::Fail(format!(
@@ -435,17 +449,23 @@ fn evaluate(block: &Block) -> Verdict {
                 type_error_label(wanted),
                 e
             )),
-            Ok(module) => match canonicalize(&module) {
-                Err(errors) => Verdict::Fail(format!(
-                    "expected `{}`, but canonicalization rejected it before the typer \
-                     ran: {:?}",
-                    type_error_label(wanted),
-                    errors
-                )),
-                Ok(canonical) => {
-                    judge_type_error(wanted, &type_check(&canonical, &stdlib_interfaces(std::slice::from_ref(&module.name))).err().unwrap_or_default())
+            Ok(module) => {
+                let interfaces = block_interfaces(&module);
+                match canonicalize(&module, &interfaces) {
+                    Err(errors) => Verdict::Fail(format!(
+                        "expected `{}`, but canonicalization rejected it before the typer \
+                         ran: {:?}",
+                        type_error_label(wanted),
+                        errors
+                    )),
+                    Ok(canonical) => judge_type_error(
+                        wanted,
+                        &type_check(&canonical, &interfaces)
+                            .err()
+                            .unwrap_or_default(),
+                    ),
                 }
-            },
+            }
         },
         Expect::ParseError(wanted) => match parse(&block.source) {
             Ok(_) => Verdict::Fail(format!(
@@ -475,7 +495,7 @@ fn evaluate(block: &Block) -> Verdict {
                 "expected `canonical-error:{}`, but the parser rejected it before canonicalization ran: {:?}",
                 wanted, e
             )),
-            Ok(module) => match canonicalize(&module) {
+            Ok(module) => match canonicalize(&module, &block_interfaces(&module)) {
                 Ok(_) => Verdict::Fail(format!(
                     "expected `canonical-error:{}`, but the module canonicalized with no errors",
                     wanted
@@ -501,29 +521,32 @@ fn evaluate(block: &Block) -> Verdict {
                 );
                 Verdict::Pass
             }
-            Ok(module) => match canonicalize(&module) {
-                Err(errors) => {
-                    println!(
-                        "{}:{} (expect=unimplemented) failed in canonicalization, as expected: {:?}",
-                        block.file, block.line, errors
-                    );
-                    Verdict::Pass
-                }
-                Ok(canonical) => match type_check(&canonical, &stdlib_interfaces(std::slice::from_ref(&module.name))) {
+            Ok(module) => {
+                let interfaces = block_interfaces(&module);
+                match canonicalize(&module, &interfaces) {
                     Err(errors) => {
                         println!(
-                            "{}:{} (expect=unimplemented) failed in the typer, as expected: {:?}",
+                            "{}:{} (expect=unimplemented) failed in canonicalization, as expected: {:?}",
                             block.file, block.line, errors
                         );
                         Verdict::Pass
                     }
-                    Ok(()) => Verdict::Fail(
-                        "expected `unimplemented`, but the block compiled cleanly — this \
-                         feature looks implemented now; update the chapter"
-                            .to_string(),
-                    ),
-                },
-            },
+                    Ok(canonical) => match type_check(&canonical, &interfaces) {
+                        Err(errors) => {
+                            println!(
+                                "{}:{} (expect=unimplemented) failed in the typer, as expected: {:?}",
+                                block.file, block.line, errors
+                            );
+                            Verdict::Pass
+                        }
+                        Ok(()) => Verdict::Fail(
+                            "expected `unimplemented`, but the block compiled cleanly — this \
+                             feature looks implemented now; update the chapter"
+                                .to_string(),
+                        ),
+                    },
+                }
+            }
         },
     }
 }
