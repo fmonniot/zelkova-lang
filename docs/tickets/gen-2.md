@@ -5,13 +5,13 @@ runs it, plus the two destinations a failing check has. Bigger if it is taken be
 [`GEN-1`](gen-1.md)'s program has settled how a value is represented, because half of this
 ticket *is* that representation read back.
 
-**Depends on:** [`GEN-12`](gen-12.md), which emits the facade call site this wraps a check
+**Depends on:** [`GEN-12`](README.md), which emits the facade call site this wraps a check
 around, and [`LANG-43`](lang-43.md). Sibling to [`GEN-1`](gen-1.md)'s program rather than a
 member of it: this is a bounded piece of output that can be written, tested and reviewed on its
 own, against one chapter section.
 
 **Location:** `src/compiler/javascript.rs`, at whatever
-[`GEN-12`](gen-12.md) emits for a `module foreign` facade's call site. `std/core/src/Js/*.mjs`
+[`GEN-12`](README.md) emits for a `module foreign` facade's call site. `std/core/src/Js/*.mjs`
 are the companions the emitted checks sit in front of.
 
 **Problem:** [Foreign interoperability](../spec/interop.md#which-types-may-cross-the-boundary)

@@ -16,6 +16,7 @@ use codespan_reporting::diagnostic::{LabelStyle, Severity};
 use codespan_reporting::files::SimpleFile;
 use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::dependencies::{self, ModuleWalker};
+use zelkova_lang::compiler::javascript;
 use zelkova_lang::compiler::manifest;
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::resolve;
@@ -555,6 +556,65 @@ fn stdlib_package_compiles() {
     let result = compile_package(&std_package_root());
 
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+/// Every checked module of `std/core`, the way [`check_fixture`] reads a smaller
+/// fixture package — needed here rather than [`compile_package`] because
+/// `javascript::emit` reads a module's [`CheckedModule`], which `compile_package` does
+/// not hand back.
+fn check_std_core() -> Vec<CheckedModule> {
+    let root = std_package_root();
+    let sources = load_package_sources(&root, SourceRoot::Src)
+        .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
+    let modules: Vec<parser::Module> = sources
+        .iter()
+        .map(|(_, file)| {
+            parser::parse(file.file())
+                .unwrap_or_else(|e| panic!("parse error in {:?}: {:?}", file.file().name(), e))
+        })
+        .collect();
+
+    let module_files = HashMap::new();
+    let walker =
+        ModuleWalker::new(&modules, &module_files).expect("no dependency cycle in std/core");
+    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
+    let (checked, errors) =
+        walker.check_in_order(&std_package(), &mut interfaces, &module_files, check_module);
+    assert!(
+        errors.is_empty(),
+        "std/core must check clean, got {:?}",
+        errors
+    );
+
+    checked
+}
+
+/// The three `Js/*` facades under `std/core` are each marked `unsafe` throughout
+/// (`GEN-12`'s own `std/core` survey), so `javascript::emit` answers a module for
+/// every one of them now, rather than refusing the whole tree the way a blanket
+/// `module foreign` check used to.
+///
+/// The unit tests in `tests/javascript.rs` pin the *shape* of what a facade emits as;
+/// this only pins that the three real signatures do not hit an edge their small
+/// fixtures miss — `Js.Basics.add : a -> a -> a` names a type variable, which nothing
+/// rejects yet (`LANG-43`) and which this ticket is explicit is not blocked by, since
+/// an arrow count is readable whatever the types are.
+///
+/// Mutation-checked by reverting `emit`'s `ir.foreign` branch to the old blanket
+/// refusal: this test then panics on the first facade.
+#[test]
+fn the_stdlib_facades_emit() {
+    let checked = check_std_core();
+
+    for name in ["Js.Basics", "Js.Bitwise", "Js.Utils"] {
+        let module = checked
+            .iter()
+            .find(|m| m.canonical.name.name().as_str() == name)
+            .unwrap_or_else(|| panic!("{} did not check", name));
+
+        javascript::emit(module, true)
+            .unwrap_or_else(|errors| panic!("{} failed to emit: {:?}", name, errors));
+    }
 }
 
 // ── Test 14: a type error reaches the user as a real diagnostic ──────────────

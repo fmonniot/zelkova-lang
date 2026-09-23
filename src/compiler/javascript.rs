@@ -68,16 +68,43 @@
 //! one argument at a time like any other value. No such reference reaches an
 //! [`ir::Declaration`] today (`BUG-36`, see [`ir::ReferenceKind::Foreign`]).
 //!
+//! # A facade
+//!
+//! [`emit`] answers a module for a `module foreign` facade too, so that an importer
+//! needs no special case. Every [`unsafe`](../../../docs/spec/interop.md#an-unsafe-facade)
+//! declaration becomes forwarding code that imports the companion's export under an
+//! alias and calls it with exactly the parameters the signature's arrow count gives —
+//! a plain function at arity one or more, a `const` at arity zero — the same
+//! [plain-parameter-list promise](../../../docs/spec/interop.md#the-javascript-companion)
+//! an ordinary declaration's call already keeps. [`Error::MissingCompanion`] is
+//! answered instead when the caller says no companion sits beside this module for the
+//! target being built ([*A facade names a boundary, not a
+//! backend*](../../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)) —
+//! [`emit`] has no path of its own to check that with, so the caller decides.
+//!
+//! A signature not marked `unsafe` declares an effect
+//! ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)), and
+//! wrapping one in the `Result` its call site is owed is
+//! [`GEN-16`](../../../docs/tickets/gen-16.md)'s, blocked on `Task` existing at all.
+//! [`emit`] answers [`Error::Effectful`] for one rather than emitting the `unsafe`
+//! shape for it.
+//!
+//! [`companion_specifier`] assumes the companion sits beside this module's own emitted
+//! file, sharing the last segment of its name, which is where it sits beside the
+//! `.zel` source today. Whether the two can share that output path once one is written
+//! there is [`GEN-13`](../../../docs/tickets/gen-13.md)'s to settle, along with copying
+//! the companion into place at all — nothing here does either.
+//!
 //! # What is refused
 //!
 //! [`emit`] answers an [`Error`] rather than a module missing a part: for a declaration
 //! with no IR ([`ir::Module::unchecked`]), for a `case` ([`GEN-10`](../../../docs/tickets/gen-10.md)
-//! emits it), and for a `module foreign` facade ([`GEN-12`](../../../docs/tickets/gen-12.md)
-//! emits it).
+//! emits it), for a facade signature not marked `unsafe`, and for a facade with no
+//! companion for the target being built.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use super::canonical::{ExportType, Exports};
+use super::canonical::{ExportType, Exports, Value};
 use super::ir::{self, ReferenceKind, Saturation, TypedTerm, TypedTermKind};
 use super::name::{Name, QualName};
 use super::position::NodeSpan;
@@ -88,9 +115,19 @@ use super::{scalars, CheckedModule, PhaseError, SpanLabel};
 /// Why a module could not be emitted.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
-    /// The module is a `module foreign` facade. What one emits as is
-    /// [`GEN-12`](../../../docs/tickets/gen-12.md)'s.
-    Facade { module: Name },
+    /// A `module foreign` facade with no companion for the target being built
+    /// ([*A facade names a boundary, not a
+    /// backend*](../../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
+    ///
+    /// [`emit`] has no path of its own to check a companion's presence on disk with —
+    /// its caller does, and says so through [`emit`]'s `has_companion` parameter.
+    MissingCompanion { module: Name, target: &'static str },
+    /// A facade signature not marked `unsafe`. It declares an effect
+    /// ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)), and
+    /// the wrapper its call site is owed is [`GEN-16`](../../../docs/tickets/gen-16.md)'s,
+    /// blocked on `Task` existing at all — so this is refused rather than emitted as
+    /// if it were `unsafe`.
+    Effectful { name: Name, span: NodeSpan },
     /// A declaration the typer could not check has no IR to emit, and a module emitted
     /// without it would be missing a value its source declares.
     Unchecked { name: Name, span: NodeSpan },
@@ -129,9 +166,14 @@ impl Construct {
 impl PhaseError for Error {
     fn message(&self) -> String {
         match self {
-            Error::Facade { module } => format!(
-                "the facade `{}` cannot be compiled to JavaScript yet",
-                module.as_str()
+            Error::MissingCompanion { module, target } => format!(
+                "the facade `{}` has no companion for the `{}` target",
+                module.as_str(),
+                target
+            ),
+            Error::Effectful { name, .. } => format!(
+                "`{}` declares an effect, which the JavaScript backend does not wrap yet",
+                name.as_str()
             ),
             Error::Unchecked { name, .. } => format!(
                 "`{}` cannot be compiled to JavaScript, because the type checker could not check it",
@@ -151,7 +193,12 @@ impl PhaseError for Error {
 
     fn labels(&self) -> Vec<SpanLabel> {
         let (span, message) = match self {
-            Error::Facade { .. } => return Vec::new(),
+            // No span exists for a `module foreign` line today — nothing in the parsed
+            // or canonical AST carries the module header's position, only each
+            // declaration's — so this names the facade and the target in `message()`
+            // alone.
+            Error::MissingCompanion { .. } => return Vec::new(),
+            Error::Effectful { span, .. } => (span, "not marked `unsafe`"),
             Error::Unchecked { span, .. } => (span, "this declaration"),
             Error::Unsupported { span, .. } => (span, "not supported by the JavaScript backend"),
         };
@@ -339,6 +386,25 @@ fn runtime_specifier(from: &Name) -> String {
     format!("{}zelkova.mjs", "../".repeat(depth(from) + 1))
 }
 
+/// The specifier a facade named `module` imports its own companion by.
+///
+/// **Provisional**, like [`module_specifier`]: assumes the companion sits beside this
+/// module's own emitted file, sharing the last segment of its name — `Js.Basics`
+/// imports `./Basics.mjs` — which is where it sits beside the `.zel` source today
+/// ([*A facade names a boundary, not a
+/// backend*](../../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
+/// Whether the facade's own emitted file and the companion can share that same output
+/// path, and copying the companion there at all, is
+/// [`GEN-13`](../../../docs/tickets/gen-13.md)'s to settle.
+fn companion_specifier(module: &Name) -> String {
+    let last = module
+        .as_str()
+        .rsplit('.')
+        .next()
+        .unwrap_or(module.as_str());
+    format!("./{}.mjs", last)
+}
+
 // ── Literals ──────────────────────────────────────────────────────────────────
 
 /// A JavaScript string literal holding `c` and nothing else.
@@ -382,13 +448,20 @@ fn float_literal(f: f64) -> String {
 
 /// The JavaScript text of `module`, or every reason it cannot be emitted.
 ///
+/// `has_companion` is irrelevant to any module but a `module foreign` facade, for which
+/// it says whether a JavaScript companion sits beside it for the target being built.
+/// [`emit`] has no path of its own to check that with — the caller does, since only it
+/// knows where `module`'s source came from — so a facade with no companion is
+/// [`Error::MissingCompanion`] rather than something this function discovers.
+///
 /// See this module's documentation for the shape of the text.
-pub fn emit(module: &CheckedModule) -> Result<String, Vec<Error>> {
+pub fn emit(module: &CheckedModule, has_companion: bool) -> Result<String, Vec<Error>> {
     let ir = &module.ir;
 
-    if ir.foreign {
-        return Err(vec![Error::Facade {
+    if ir.foreign && !has_companion {
+        return Err(vec![Error::MissingCompanion {
             module: ir.name.name().clone(),
+            target: "javascript",
         }]);
     }
 
@@ -415,14 +488,27 @@ pub fn emit(module: &CheckedModule) -> Result<String, Vec<Error>> {
 
     let mut functions = Vec::new();
     let mut constants: HashMap<&Name, String> = HashMap::new();
+    let mut companion_imports: Vec<String> = Vec::new();
 
     for declaration in &ir.declarations {
+        emitter.declaration = Some(declaration.name.clone());
+
+        if ir.foreign {
+            emitter.facade_declaration(
+                &module.canonical,
+                declaration,
+                &mut functions,
+                &mut constants,
+                &mut companion_imports,
+            );
+            continue;
+        }
+
         // Every declaration of a module that is not a facade has a body; one without
-        // would be a facade signature, which was refused above.
+        // would be a facade signature, handled above.
         let Some(body) = &declaration.body else {
             continue;
         };
-        emitter.declaration = Some(declaration.name.clone());
 
         let expression = emitter.expression(&body.expression);
         let name = mangle(declaration.name.as_str());
@@ -486,6 +572,13 @@ pub fn emit(module: &CheckedModule) -> Result<String, Vec<Error>> {
             "import {{ {} }} from \"{}\";",
             helpers.join(", "),
             runtime_specifier(ir.name.name())
+        ));
+    }
+    if !companion_imports.is_empty() {
+        imports.push(format!(
+            "import {{ {} }} from \"{}\";",
+            companion_imports.join(", "),
+            companion_specifier(ir.name.name())
         ));
     }
     for (from, names) in &emitter.imports {
@@ -629,6 +722,60 @@ impl Emitter {
     fn curry(&mut self, function: &str, arity: usize) -> String {
         self.runtime.insert("$curry");
         format!("$curry({}, {})", function, arity)
+    }
+
+    /// One `module foreign` facade declaration's forwarding code, appended to
+    /// `functions` or `constants` — a plain function at arity one or more, a `const`
+    /// at arity zero — plus the companion import it needs, appended to
+    /// `companion_imports`.
+    ///
+    /// Only for a signature marked `unsafe`: one that is not declares an effect
+    /// ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)),
+    /// which this backend does not wrap yet, so [`Error::Effectful`] is pushed instead
+    /// and nothing is appended for it.
+    fn facade_declaration<'a>(
+        &mut self,
+        canonical: &super::canonical::Module,
+        declaration: &'a ir::Declaration,
+        functions: &mut Vec<String>,
+        constants: &mut HashMap<&'a Name, String>,
+        companion_imports: &mut Vec<String>,
+    ) {
+        let marked_unsafe = matches!(
+            canonical.values.get(&declaration.name),
+            Some(Value::TypedValue {
+                marked_unsafe: true,
+                ..
+            })
+        );
+
+        if !marked_unsafe {
+            self.errors.push(Error::Effectful {
+                name: declaration.name.clone(),
+                span: declaration.span,
+            });
+            return;
+        }
+
+        // The companion's export is imported under an alias — never the plain name,
+        // which this method is about to declare a local binding under, and a module
+        // cannot import and declare the same name twice.
+        let local = mangle(declaration.name.as_str());
+        let alias = imported(self.module.as_str(), declaration.name.as_str());
+        companion_imports.push(format!("{} as {}", declaration.name.as_str(), alias));
+
+        if declaration.arity == 0 {
+            constants.insert(&declaration.name, format!("const {} = {};", local, alias));
+        } else {
+            let parameters: Vec<String> = (0..declaration.arity).map(field).collect();
+            functions.push(format!(
+                "function {}({}) {{\n  return {}({});\n}}",
+                local,
+                parameters.join(", "),
+                alias,
+                parameters.join(", ")
+            ));
+        }
     }
 
     fn expression(&mut self, term: &TypedTerm) -> String {

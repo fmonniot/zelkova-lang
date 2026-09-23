@@ -7,10 +7,10 @@ into `compile_package` and `src/main.rs`.
 module's text. Its `module_specifier` and `runtime_specifier` are the only places an import path
 is built, and both are provisional until this ticket settles the layout: a module name is all an
 imported reference carries, so neither knows which package declared it. Sits with
-[`GEN-12`](gen-12.md), which places a companion into the layout this decides.
+[`GEN-12`](README.md), which places a companion into the layout this decides.
 
 `emit` refuses every one of `std/core`'s eight modules today, which bears on this ticket's
-acceptance. Its three facades are [`GEN-12`](gen-12.md)'s. Each of the other five holds a
+acceptance. Its three facades are [`GEN-12`](README.md)'s. Each of the other five holds a
 declaration the typer could not check, and `emit` refuses a module missing a declaration rather
 than writing it without one. The causes differ by module:
 

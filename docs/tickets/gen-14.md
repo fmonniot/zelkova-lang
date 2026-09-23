@@ -60,6 +60,6 @@ emitting step here is whatever `cargo run` already does; giving it arguments is 
 
 **Acceptance:** the command in `CLAUDE.md` runs green locally over the fixture, and the same
 command runs in CI on a pull request. Reverting [`GEN-11`](gen-11.md)'s loop emission turns the
-depth test red; reverting [`GEN-12`](gen-12.md)'s companion placement turns the facade test red.
+depth test red; reverting [`GEN-12`](README.md)'s companion placement turns the facade test red.
 `cargo test --workspace` is unchanged and does not invoke `node`. `cargo run` still prints
 `parsed 8 modules`, lists all eight and exits 0.
