@@ -162,7 +162,7 @@ shape.
 
 In JavaScript a union value is an **object carrying the name of its constructor** in a `$` field,
 with that constructor's arguments in declaration order in fields named `a`, `b`, `c` and so on.
-`Red` is `{$: "Red"}`; `Rgb 255 0 0` is `{$: "Rgb", a: 255, b: 0, c: 0}`. The predicate reads
+`Red` is `{$: "Red"}`; `Rgb 255 0 0` is `{$: "Rgb", a: 255n, b: 0n, c: 0n}`. The predicate reads
 `$`, checks it against the declaration's constructors, and checks each argument against the
 predicate of the type that constructor declares for it.
 
@@ -193,9 +193,10 @@ one breaks every companion that mentions it.
 A union may be recursive, and the JavaScript predicate follows it: the walk descends into each
 argument and terminates because a Zelkova value is immutable and can hold no cycle.
 
-**Not implemented:** the JavaScript the compiler produces builds a union value in the encoding
-above, but nothing writes that output or runs it, no WebAssembly is produced, no predicate is run
-and no interface is read; the predicates are what [`GEN-2`](../tickets/gen-2.md) emits.
+**Not implemented:** the JavaScript the compiler can produce builds a union value in the encoding
+above, but nothing in the pipeline produces it, writes it or runs it. No WebAssembly is produced,
+no predicate is run and no interface is read; the predicates are what
+[`GEN-2`](../tickets/gen-2.md) emits.
 
 ### What a facade signature may not name
 

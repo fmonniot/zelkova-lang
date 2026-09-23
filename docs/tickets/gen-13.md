@@ -6,13 +6,24 @@ into `compile_package` and `src/main.rs`.
 **Depends on:** `GEN-9`, closed — `javascript::emit` in `src/compiler/javascript.rs` produces a
 module's text. Its `module_specifier` and `runtime_specifier` are the only places an import path
 is built, and both are provisional until this ticket settles the layout: a module name is all an
-imported reference carries, so neither knows which package declared it.
+imported reference carries, so neither knows which package declared it. Sits with
+[`GEN-12`](gen-12.md), which places a companion into the layout this decides.
 
 `emit` refuses every one of `std/core`'s eight modules today, which bears on this ticket's
-acceptance: its three facades are [`GEN-12`](gen-12.md)'s, and each of the other five holds a
-declaration the typer could not check (`BUG-36`) — `emit` refuses a module missing a declaration
-rather than writing it without one — and most also hold a `case` ([`GEN-10`](gen-10.md)). Sits
-with [`GEN-12`](gen-12.md), which places a companion into the layout this decides.
+acceptance. Its three facades are [`GEN-12`](gen-12.md)'s. Each of the other five holds a
+declaration the typer could not check, and `emit` refuses a module missing a declaration rather
+than writing it without one. The causes differ by module:
+
+- `Maybe` and `Result` build or match an imported constructor (`True`, `False`, and in `Result`
+  `Just` and `Nothing`), which is [`BUG-36`](bug-36.md). These two also hold a `case`, which
+  [`GEN-10`](gen-10.md) emits.
+- `Basics` and `Bitwise` forward imported values (`add = Js.Basics.add`). The typer does not
+  translate a reference to an imported value, which `BUG-36` names as out of its scope; no
+  ticket covers it. `Basics.never` also matches a constructor pattern in its parameter,
+  `never (JustOneMore nvr)`.
+- `Tuple`'s five refused declarations match a tuple pattern in a parameter, `first (x,_) = x`.
+  The typer's `wrap_with_patterns` translates only a variable or `_` there, and no ticket
+  covers it.
 
 **Part of:** [`GEN-1`](gen-1.md).
 

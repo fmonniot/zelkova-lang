@@ -5,10 +5,9 @@ is evaluated by a rule below. Two properties decide almost all of them. Evaluati
 **strict**: a subexpression is evaluated when it is reached, not when its value is demanded. And
 it is **pure**: evaluating an expression produces a value and has no other consequence.
 
-**Not implemented:** nothing in the compiler evaluates a Zelkova program. It can turn a module
-into JavaScript text, but it writes that text nowhere and runs none of it, so nothing holds a
-program to any rule below. An `expect=ok` block here is a program the type checker
-accepted, and nothing runs it — so nothing holds it to the value a rule below says it has.
+**Not implemented:** the compiler turns a module into JavaScript text, but writes that text
+nowhere and runs none of it, so an `expect=ok` block here is a program the type checker accepted
+and nothing holds it to the value a rule below says it has.
 [`GEN-1`](../tickets/gen-1.md) is the ticket.
 
 ## Two outcomes
