@@ -2955,10 +2955,10 @@ const CROSSES_TWO_SIZES: &str = indoc::indoc! {r#"
 // constructor in a pattern, a constructor in an expression, or a plain value — and
 // holds a type error the typer has to find.
 
-/// A module exposing a union with a parameter, a nullary union, and a value, for the
-/// importers below to reach for.
+/// A module exposing a union with a parameter, a nullary union, a value and a
+/// polymorphic function, for the importers below to reach for.
 const IMPORTED: &str = indoc::indoc! {r#"
-    module Lib exposing (Box(..), Flag(..), size)
+    module Lib exposing (Box(..), Flag(..), size, ident)
 
     type Box a = Box a
 
@@ -2966,6 +2966,9 @@ const IMPORTED: &str = indoc::indoc! {r#"
 
     size : Int
     size = 1
+
+    ident : a -> a
+    ident x = x
 "#};
 
 /// [`IMPORTED`] checked into an `Interface` the way [`check_importer`] builds one, and
@@ -3316,6 +3319,102 @@ fn well_typed_uses_of_imported_names_are_checked_declarations() {
         checked.ir.unchecked
     );
     assert_eq!(checked.ir.declarations.len(), 3);
+}
+
+/// `main` checks clean, with every one of its declarations checked rather than
+/// skipped.
+fn assert_checks_clean(main: &str) {
+    let checked = check_against_imported(main)
+        .unwrap_or_else(|e| panic!("expected the module to check, got {:?}", e));
+
+    assert!(
+        checked.ir.unchecked.is_empty(),
+        "every declaration should have been checked, got {:?}",
+        checked.ir.unchecked
+    );
+}
+
+/// Each use of a polymorphic name another module declares is typed on its own:
+/// one declaration can use it at two types.
+///
+/// `Just` and `Nothing` are the sharpest case, because they are two names for one
+/// union: without instantiation both carry the same `a`, so `Nothing` would be
+/// forced to `Maybe Int` beside `Just 1` even though neither name is used twice.
+///
+/// Mutation-checked by making `Types::by_name` hand a global's type back as it is
+/// rather than instantiating it: each of the four probes is then rejected with a
+/// unification failure.
+#[test]
+fn an_imported_polymorphic_name_is_instantiated_at_each_use() {
+    // Two constructors of one union.
+    assert_checks_clean(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        f : (Maybe Int, Maybe Char)
+        f = (Just 1, Nothing)
+    "#});
+
+    // One imported function, used at two types.
+    assert_checks_clean(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        f : Maybe Int -> Maybe Char -> (Int, Char)
+        f a b = (Maybe.withDefault 0 a, Maybe.withDefault 'c' b)
+    "#});
+
+    // An imported value, used at two types.
+    assert_checks_clean(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib exposing (ident)
+
+        f : (Int, Char)
+        f = (ident 1, ident 'c')
+    "#});
+
+    // One imported constructor, used at two types.
+    assert_checks_clean(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib exposing (Box(..))
+
+        f : (Box Int, Box Char)
+        f = (Box 1, Box 'c')
+    "#});
+}
+
+/// A union this module declares is instantiated the same way: its constructor can be
+/// used at two types in one declaration.
+///
+/// Mutation-checked with [`an_imported_polymorphic_name_is_instantiated_at_each_use`].
+#[test]
+fn a_local_polymorphic_constructor_is_instantiated_at_each_use() {
+    assert_checks_clean(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        type B a = B a
+
+        f : (B Int, B Char)
+        f = (B 1, B 'c')
+    "#});
+}
+
+/// Instantiation is fresh per use, not a licence to ignore types: inside one use,
+/// the variable is still one variable, so `ident` applied to a `Char` is a `Char`.
+///
+/// Mutation-checked by giving each *occurrence* of a variable in a global's type its
+/// own fresh variable in `Types::instantiate` (dropping the `fresh` lookup): `ident`
+/// is then `a -> b` and this checks clean.
+#[test]
+fn one_use_of_an_imported_polymorphic_name_keeps_its_variables_linked() {
+    assert_rejected_at_the_char(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib exposing (ident)
+
+        f : Int
+        f = ident 'c'
+    "#});
 }
 
 // ── Package boundaries: namespaces, unwrapping, and one name per module ──────

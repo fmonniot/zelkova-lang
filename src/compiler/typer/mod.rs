@@ -515,7 +515,9 @@ impl PhaseError for Error {
 /// `interfaces` is the map `module` was canonicalized against. Every value and union
 /// it exposes is put in the typer's environment beside this module's own, so a
 /// declaration that forwards an imported value, builds an imported constructor or
-/// matches on one is checked like any other.
+/// matches on one is checked like any other. Each use of one of those names gets a
+/// fresh instance of its declared type, so one declaration can use `Just` or
+/// `Maybe.withDefault` at two types — see [`Types`].
 pub fn type_check(
     module: &Module,
     interfaces: &HashMap<Name, Interface>,
@@ -1875,22 +1877,46 @@ fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
     }
 }
 
+/// The names in scope while one declaration is annotated, and the counter its fresh
+/// type variables come from.
+///
+/// Two kinds of name, looked up differently:
+///
+/// - A **binder** — a parameter, a `case` binding — is introduced by the term being
+///   annotated. Its type is one type: every use of it shares its variables, which is
+///   what lets inference learn a parameter's type from how the body uses it.
+/// - A **global** — a declaration of this module or of an imported one, or a
+///   constructor — comes from `type_check`'s environment. Its type is read as quantified
+///   over every variable in it, and [`by_name`](Self::by_name) hands each use a copy
+///   with those variables replaced by fresh ones. That is what lets one declaration use
+///   `Just` at `Maybe Int` and `Nothing` at `Maybe Char`, or `identity` at two types.
+///
+/// Reading every variable of a global as quantified is only right because each one was
+/// translated from a declared type — an annotation or a union — on its own, so none of
+/// its variables is shared with anything else in the environment. A binder shadows a
+/// global of the same name.
 struct Types {
     counter: u32,
     env: HashMap<String, Type>,
+    globals: HashMap<String, Type>,
 }
 
 impl Types {
     fn new() -> Types {
         let counter = 10;
         let env = HashMap::new();
+        let globals = HashMap::new();
 
-        Types { counter, env }
+        Types {
+            counter,
+            env,
+            globals,
+        }
     }
 
-    // Add variable name binding from an outer scope
+    /// Put the declarations of an outer scope in reach, as globals.
     fn extends_with(&mut self, global: HashMap<String, Type>) {
-        self.env.extend(global)
+        self.globals.extend(global)
     }
 
     fn fresh_var(&mut self) -> Type {
@@ -1907,8 +1933,54 @@ impl Types {
         self.env.remove(name);
     }
 
-    fn by_name(&self, name: &String) -> Option<Type> {
-        self.env.get(name).cloned()
+    /// The type of one use of `name`: a binder's own type, or a fresh instance of a
+    /// global's.
+    fn by_name(&mut self, name: &String) -> Option<Type> {
+        if let Some(tpe) = self.env.get(name) {
+            return Some(tpe.clone());
+        }
+
+        let scheme = self.globals.get(name)?.clone();
+        let mut fresh = HashMap::new();
+        Some(self.instantiate(scheme, &mut fresh))
+    }
+
+    /// `tpe` with each of its variables replaced by a fresh one, the same variable by
+    /// the same fresh one throughout.
+    fn instantiate(&mut self, tpe: Type, fresh: &mut HashMap<TypeVariable, Type>) -> Type {
+        match tpe {
+            Type::Literal(_) | Type::Number => tpe,
+            Type::Variable(tvar) => {
+                if let Some(replacement) = fresh.get(&tvar) {
+                    return replacement.clone();
+                }
+                let replacement = self.fresh_var();
+                fresh.insert(tvar, replacement.clone());
+                replacement
+            }
+            Type::Fun {
+                param_tpe,
+                return_tpe,
+            } => Type::Fun {
+                param_tpe: Box::new(self.instantiate(*param_tpe, fresh)),
+                return_tpe: Box::new(self.instantiate(*return_tpe, fresh)),
+            },
+            Type::Tuple(Tuple::Two(a, b)) => Type::Tuple(Tuple::two(
+                self.instantiate(*a, fresh),
+                self.instantiate(*b, fresh),
+            )),
+            Type::Tuple(Tuple::Three(a, b, c)) => Type::Tuple(Tuple::three(
+                self.instantiate(*a, fresh),
+                self.instantiate(*b, fresh),
+                self.instantiate(*c, fresh),
+            )),
+            Type::Adt(name, args) => Type::Adt(
+                name,
+                args.into_iter()
+                    .map(|arg| self.instantiate(arg, fresh))
+                    .collect(),
+            ),
+        }
     }
 }
 
