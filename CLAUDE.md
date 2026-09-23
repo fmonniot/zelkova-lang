@@ -97,7 +97,7 @@ from, beside the `ir::Module` a backend will read.
 | Type checking | `src/compiler/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`. **Wired into `check_module`** |
 | Exhaustiveness | `src/compiler/exhaustiveness.rs` | **stub** — `check` inspects nothing and accepts every module. `Error::NonExhaustiveMatch` exists and renders, but nothing constructs it yet |
 | Backend IR | `src/compiler/ir/` | the shape a backend reads: a type on every node, the four kinds of name apart, arity, saturation and a constructor's place in its declaration. `ir::build` turns the canonical module and what the typer solved into one `ir::Module`. Its module doc comment is where the WebAssembly constraints are written, and is what to read before changing the shape |
-| Code generation | — | not started |
+| Code generation | `src/compiler/javascript.rs` | `javascript::emit` turns one `CheckedModule` into the text of an ES module; nothing in the pipeline calls it and nothing is written. It refuses a `case`, a facade and a module holding a declaration the typer could not check — which is every module of `std/core` today. Its module doc comment has the shape, the representations and the call rule |
 
 `Name` (`src/compiler/name.rs`) is an unqualified identifier; `QualName` is one that carries
 its module. Everything after parsing should be reaching for `QualName`.
@@ -171,12 +171,13 @@ it describes.
   checked against an empty interface map cannot name `Int`, `Char` or `Bool` at all — put
   `basics_interface()` and `char_interface()` in the map, which is also what makes a bare
   `Int` the scalar `Basics.Int` rather than some other declaration of the same spelling. Top-level test binaries (`tests/typer.rs`,
-  `tests/pipeline.rs`, `tests/ir.rs`) get them with a plain `mod support;`; files nested under
+  `tests/pipeline.rs`, `tests/ir.rs`, `tests/javascript.rs`) get them with a plain `mod support;`; files nested under
   `tests/compiler/` need `#[path = "../support/mod.rs"]`.
-- Four layers exist: `tests/compiler/canonical.rs` (source string → `canonical::Module`
+- Five layers exist: `tests/compiler/canonical.rs` (source string → `canonical::Module`
   assertions), `tests/typer.rs` (source string → expected type or expected error),
   `tests/pipeline.rs` (`check_module` end-to-end, including on real `std/core/src/` modules),
-  and `tests/ir.rs` (source string → the `ir::Module` a backend reads).
+  `tests/ir.rs` (source string → the `ir::Module` a backend reads), and
+  `tests/javascript.rs` (source string → the JavaScript text it emits as).
 - Use `indoc!` for `.zel` source literals — the layout pass is indentation-sensitive and a
   stray leading space changes the parse.
 - `NodeSpan`'s `PartialEq` always returns `true`, so a whole-value `assert_eq!` proves nothing

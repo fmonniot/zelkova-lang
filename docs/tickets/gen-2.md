@@ -10,7 +10,7 @@ around, and [`LANG-43`](lang-43.md). Sibling to [`GEN-1`](gen-1.md)'s program ra
 member of it: this is a bounded piece of output that can be written, tested and reviewed on its
 own, against one chapter section.
 
-**Location:** the backend module [`GEN-9`](gen-9.md) creates under `src/compiler/`, at whatever
+**Location:** `src/compiler/javascript.rs`, at whatever
 [`GEN-12`](gen-12.md) emits for a `module foreign` facade's call site. `std/core/src/Js/*.mjs`
 are the companions the emitted checks sit in front of.
 

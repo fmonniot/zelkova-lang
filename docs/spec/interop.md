@@ -152,8 +152,8 @@ when the component loaded.
 ([`LANG-44`](../tickets/lang-44.md)) — so four of those rows are about types a program cannot
 write today. Both constructs are specified, in [Records](records.md) and [Lists](lists.md), and
 neither chapter publishes an encoding: what a record and a list look like across either boundary
-belongs to code generation. Nothing runs a predicate or reads a WIT interface either, because
-code generation has not started — [`GEN-2`](../tickets/gen-2.md) is the ticket that emits them.
+belongs to code generation. Nothing runs a predicate or reads a WIT interface either —
+[`GEN-2`](../tickets/gen-2.md) is the ticket that emits them.
 
 ### A union crosses as a tagged value
 
@@ -193,9 +193,9 @@ one breaks every companion that mentions it.
 A union may be recursive, and the JavaScript predicate follows it: the walk descends into each
 argument and terminates because a Zelkova value is immutable and can hold no cycle.
 
-**Not implemented:** no value is encoded, no predicate is run and no interface is read, because
-code generation has not started; both encodings above are what
-[`GEN-2`](../tickets/gen-2.md) emits.
+**Not implemented:** the JavaScript the compiler produces builds a union value in the encoding
+above, but nothing writes that output or runs it, no WebAssembly is produced, no predicate is run
+and no interface is read; the predicates are what [`GEN-2`](../tickets/gen-2.md) emits.
 
 ### What a facade signature may not name
 
@@ -359,7 +359,7 @@ exactly as any other crossing is, and a value that fails
 
 **Not implemented:** the word is read and acted on nowhere. Nothing holds an unmarked facade to
 a `Task` result ([`LANG-43`](../tickets/lang-43.md)), so the two shapes declare the same thing
-today; and no wrapper is generated for either, because code generation has not started
+today; and no wrapper is generated for either, because no code is generated for a facade
 ([`GEN-1`](../tickets/gen-1.md)).
 
 ## Facade constants

@@ -3,8 +3,16 @@
 **Sizing:** medium. The output layout, the file writing, the runtime's placement, and the wiring
 into `compile_package` and `src/main.rs`.
 
-**Depends on:** [`GEN-9`](gen-9.md). Sits with [`GEN-12`](gen-12.md), which places a companion
-into the layout this decides.
+**Depends on:** `GEN-9`, closed — `javascript::emit` in `src/compiler/javascript.rs` produces a
+module's text. Its `module_specifier` and `runtime_specifier` are the only places an import path
+is built, and both are provisional until this ticket settles the layout: a module name is all an
+imported reference carries, so neither knows which package declared it.
+
+`emit` refuses every one of `std/core`'s eight modules today, which bears on this ticket's
+acceptance: its three facades are [`GEN-12`](gen-12.md)'s, and each of the other five holds a
+declaration the typer could not check (`BUG-36`) — `emit` refuses a module missing a declaration
+rather than writing it without one — and most also hold a `case` ([`GEN-10`](gen-10.md)). Sits
+with [`GEN-12`](gen-12.md), which places a companion into the layout this decides.
 
 **Part of:** [`GEN-1`](gen-1.md).
 

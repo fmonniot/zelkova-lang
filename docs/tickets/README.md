@@ -164,7 +164,7 @@ GEN-4   the backend IR   ── closed
   │
 GEN-8   the JavaScript runtime module   ── closed
   │
-GEN-9   emit a module
+GEN-9   emit a module   ── closed
   ├── GEN-10  emit a `case`
   ├── GEN-11  emit the tail-call loop
   └── GEN-12  emit an `unsafe` facade call, and place its companion
@@ -379,7 +379,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-6](gen-6.md) | task | — | open | A self tail call is marked in the IR |
 | GEN-7 | task | — | closed 2026-09-22 | Parameterless bindings get an initialisation order |
 | GEN-8 | task | — | closed 2026-09-22 | The JavaScript runtime module |
-| [GEN-9](gen-9.md) | task | — | open | Emit a module |
+| GEN-9 | task | — | closed 2026-09-22 | Emit a module |
 | [GEN-10](gen-10.md) | task | — | open | Emit a `case` |
 | [GEN-11](gen-11.md) | task | — | open | Emit the tail-call loop |
 | [GEN-12](gen-12.md) | task | — | open | Emit an `unsafe` facade call, and place its companion |
