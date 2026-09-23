@@ -18,12 +18,14 @@ than writing it without one. The causes differ by module:
   `Just` and `Nothing`), which is [`BUG-36`](bug-36.md). These two also hold a `case`, which
   [`GEN-10`](gen-10.md) emits.
 - `Basics` and `Bitwise` forward imported values (`add = Js.Basics.add`). The typer does not
-  translate a reference to an imported value, which `BUG-36` names as out of its scope; no
-  ticket covers it. `Basics.never` also matches a constructor pattern in its parameter,
-  `never (JustOneMore nvr)`.
+  translate a reference to an imported value, which is also [`BUG-36`](bug-36.md) — its title and
+  scope now cover `VarForeign` alongside `VarConstructor`, since the same fix (handing
+  `type_check` the interfaces) closes both. `Basics.never` also matches a constructor pattern in
+  its parameter, `never (JustOneMore nvr)` — `JustOneMore` is `Basics`'s own, not imported, so
+  that one is [`BUG-39`](bug-39.md), not `BUG-36`.
 - `Tuple`'s five refused declarations match a tuple pattern in a parameter, `first (x,_) = x`.
-  The typer's `wrap_with_patterns` translates only a variable or `_` there, and no ticket
-  covers it.
+  The typer's `wrap_with_patterns` translates only a variable or `_` there, which is
+  [`BUG-39`](bug-39.md).
 
 **Part of:** [`GEN-1`](gen-1.md).
 
