@@ -13,7 +13,8 @@
 //! 1. **Imports** — the runtime helpers the module calls, from the runtime module
 //!    (`runtime/js/zelkova.mjs`), then one named import per value another module declares.
 //! 2. **Hoisted constructors** — one `const` per constructor of no arguments this module
-//!    declares, which every mention of it refers to ([`DEC-18` decision
+//!    declares, then one per such constructor of another module's that it mentions, which
+//!    every mention of it refers to ([`DEC-18` decision
 //!    4](../../../docs/decisions/dec-18.md#4--a-constructor-of-no-arguments-is-hoisted-to-one-module-level-constant)).
 //! 3. **Functions** — one `function` per declaration that takes parameters, with exactly
 //!    as many JavaScript parameters as it was written with ([`DEC-18` decision
@@ -38,9 +39,10 @@
 //! is an array.
 //!
 //! A constructor is not exported. An importer that builds one builds its own object of
-//! the same shape, and [equality is
+//! the same shape, and hoists its own constant for one of no arguments. [Equality is
 //! structural](../../../docs/spec/evaluation-semantics.md#what-structural-equality-computes),
-//! so nothing observes which module allocated it.
+//! so nothing observes which module allocated it. No mention of another module's
+//! constructor reaches an [`ir::Declaration`] today (`BUG-36`).
 //!
 //! # Calls
 //!
@@ -398,6 +400,8 @@ pub fn emit(module: &CheckedModule) -> Result<String, Vec<Error>> {
             .collect(),
         runtime: BTreeSet::new(),
         imports: BTreeMap::new(),
+        module: ir.name.name().clone(),
+        imported_constructors: BTreeMap::new(),
         errors: ir
             .unchecked
             .iter()
@@ -408,8 +412,6 @@ pub fn emit(module: &CheckedModule) -> Result<String, Vec<Error>> {
             .collect(),
         declaration: None,
     };
-
-    let hoisted = hoisted_constructors(ir);
 
     let mut functions = Vec::new();
     let mut constants: HashMap<&Name, String> = HashMap::new();
@@ -466,6 +468,14 @@ pub fn emit(module: &CheckedModule) -> Result<String, Vec<Error>> {
     let mut leftover: Vec<(&Name, String)> = constants.into_iter().collect();
     leftover.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
     ordered.extend(leftover.into_iter().map(|(_, constant)| constant));
+
+    let mut hoisted = hoisted_constructors(ir);
+    hoisted.extend(
+        emitter
+            .imported_constructors
+            .iter()
+            .map(|(local, name)| format!("const {} = {{$: \"{}\"}};", local, name.as_str())),
+    );
 
     let mut sections: Vec<String> = Vec::new();
 
@@ -593,6 +603,13 @@ struct Emitter {
     /// The values of other modules the emitted text mentions, by the module declaring
     /// each.
     imports: BTreeMap<String, BTreeSet<String>>,
+    /// The module being emitted, which tells a constructor it declares from one another
+    /// module does.
+    module: Name,
+    /// The constructors of no arguments another module declares that the emitted text
+    /// mentions, by the name each is hoisted to. This module hoists its own constant for
+    /// each, since the declaring module exports none.
+    imported_constructors: BTreeMap<String, Name>,
     errors: Vec<Error>,
     /// The declaration being emitted, which an [`Error::Unsupported`] names.
     declaration: Option<Name>,
@@ -684,7 +701,14 @@ impl Emitter {
                 }
 
                 match ctor.arity {
-                    0 => hoisted(&ctor.union, &ctor.name),
+                    0 => {
+                        let local = hoisted(&ctor.union, &ctor.name);
+                        if ctor.union.module_name() != self.module {
+                            self.imported_constructors
+                                .insert(local.clone(), ctor.name.clone());
+                        }
+                        local
+                    }
                     arity => {
                         let parameters: Vec<String> = (0..arity).map(field).collect();
                         let function = format!(

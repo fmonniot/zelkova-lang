@@ -12,8 +12,9 @@
 use std::collections::HashMap;
 
 use indoc::indoc;
+use zelkova_lang::compiler::ir::{Body, Reference, ReferenceKind, TypedTerm, TypedTermKind};
 use zelkova_lang::compiler::javascript::{self, Construct, Error};
-use zelkova_lang::compiler::name::Name;
+use zelkova_lang::compiler::name::{Name, QualName};
 use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::{check_module, CheckedModule, Interface};
 
@@ -299,6 +300,60 @@ fn a_nullary_constructor_is_one_constant_every_mention_refers_to() {
     );
     assert!(text.contains("const first = $Test$Red;"), "got:\n{}", text);
     assert!(text.contains("const second = $Test$Red;"), "got:\n{}", text);
+}
+
+/// A constructor of no arguments that another module declares is hoisted by the module
+/// that mentions it, since the declaring module exports no constant for it.
+///
+/// No module the front end checks reaches this today: a declaration mentioning an
+/// imported constructor is left unchecked (`BUG-36`). So the IR is the one a local
+/// constructor produces, rewritten to name a union `Lib` declares.
+///
+/// Mutation-checked by not recording the constructor in `value`: `$Lib$Red` is then
+/// mentioned and never declared.
+#[test]
+fn an_imported_nullary_constructor_is_hoisted_by_the_importer() {
+    let mut module = checked(indoc! {r#"
+        module Test exposing (first)
+
+        type Colour
+          = Red
+          | Green
+
+        first : Colour
+        first =
+          Red
+    "#});
+
+    module.ir.unions.clear();
+    let lib_colour = QualName::parse("Lib.Colour").unwrap();
+    for declaration in &mut module.ir.declarations {
+        if let Some(Body {
+            expression:
+                TypedTerm {
+                    kind:
+                        TypedTermKind::Identifier(Reference {
+                            kind: ReferenceKind::Constructor(ctor),
+                            ..
+                        }),
+                    ..
+                },
+            ..
+        }) = &mut declaration.body
+        {
+            ctor.union = lib_colour.clone();
+        }
+    }
+
+    let text = emit(&module);
+
+    assert!(
+        text.contains("const $Lib$Red = {$: \"Red\"};"),
+        "got:\n{}",
+        text
+    );
+    assert!(text.contains("const first = $Lib$Red;"), "got:\n{}", text);
+    assert!(!text.contains("$Test$"), "got:\n{}", text);
 }
 
 /// A constructor with arguments is a tagged object with its arguments in `a`, `b`, `c`,
