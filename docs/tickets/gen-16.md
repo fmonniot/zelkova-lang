@@ -6,7 +6,7 @@ does not exist.
 **Blocked on:** `Task` and `Failure` existing at all; [`LANG-9`](lang-9.md), since
 `Task (Result Failure String)` does not parse while a type argument must be a bare name; and
 [`LANG-43`](lang-43.md), which is what holds an unmarked facade to the result type this wrapper
-assumes. Sequence after [`GEN-12`](gen-12.md), which emits the `unsafe` half of the same call
+assumes. Sequence after [`GEN-12`](README.md), which emits the `unsafe` half of the same call
 site.
 
 **Part of:** [`GEN-1`](gen-1.md) in subject, and deliberately outside its program: the original
@@ -14,7 +14,7 @@ GEN-1 text carried this as inherited work, and it cannot be written until the th
 above clear.
 
 **Location:** `src/compiler/javascript.rs`, at the facade call site
-[`GEN-12`](gen-12.md) emits. `src/compiler/canonical/mod.rs` — `Value::TypedValue`'s
+[`GEN-12`](README.md) emits. `src/compiler/canonical/mod.rs` — `Value::TypedValue`'s
 `marked_unsafe`, which is the flag that decides which of the two shapes a call gets.
 `std/core/src/Task.ignored` is the module that would declare the types, and it does not compile.
 
@@ -35,7 +35,7 @@ above clear.
 - An [`unsafe`](../spec/interop.md#an-unsafe-facade) facade gets **no wrapper** — its companion
   is called directly, and one that throws
   [aborts the program](../spec/evaluation-semantics.md#when-a-program-aborts). That half is
-  [`GEN-12`](gen-12.md)'s.
+  [`GEN-12`](README.md)'s.
 - A [facade constant naming a `Task`](../spec/interop.md#facade-constants) is the one constant
   whose JavaScript companion exports a **function** rather than a value: the effect has to happen
   each time the `Task` is run.

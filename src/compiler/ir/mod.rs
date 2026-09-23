@@ -13,8 +13,8 @@
 //! [`canonical::Module`] it was built from, and two of the things emission needs are
 //! still only on that half — a module's `exports`, which is what a JavaScript module has
 //! to export, and `canonical::Value::TypedValue`'s `marked_unsafe`, which
-//! [`GEN-12`](../../../docs/tickets/gen-12.md) reads because an `unsafe` signature and an
-//! effectful one emit differently. Nothing here duplicates them.
+//! [`javascript::emit`](crate::compiler::javascript::emit) reads because an `unsafe`
+//! signature and an effectful one emit differently. Nothing here duplicates them.
 //!
 //! The type language itself is still [`typer::Type`](crate::compiler::typer::Type). It is
 //! the typer's own representation and unification is written against it, so it stays
@@ -180,8 +180,9 @@ pub struct Declaration {
     ///
     /// `None` is a `module foreign` facade's signature. It is the whole reason this is an
     /// `Option`: a facade declares what crosses the boundary and the code is in the
-    /// companion, so there is nothing here to emit and [`GEN-12`](../../../docs/tickets/gen-12.md)
-    /// reads the signature instead.
+    /// companion, so there is nothing here to emit and
+    /// [`javascript::emit`](crate::compiler::javascript::emit) reads the signature
+    /// instead.
     pub body: Option<Body>,
     /// Where the declaration was written, annotation and body together.
     pub span: NodeSpan,

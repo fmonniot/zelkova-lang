@@ -358,10 +358,11 @@ the second [aborts the program](evaluation-semantics.md#when-a-program-aborts).
 exactly as any other crossing is, and a value that fails
 [aborts](evaluation-semantics.md#when-a-program-aborts).
 
-**Not implemented:** the word is read and acted on nowhere. Nothing holds an unmarked facade to
-a `Task` result ([`LANG-43`](../tickets/lang-43.md)), so the two shapes declare the same thing
-today; and no wrapper is generated for either, because no code is generated for a facade
-([`GEN-1`](../tickets/gen-1.md)).
+**Not implemented:** nothing holds an unmarked facade to a `Task` result
+([`LANG-43`](../tickets/lang-43.md)), so the two shapes declare the same thing where a
+signature's own annotation is concerned. Crossing the boundary runs no check against the
+declared type in either direction ([`GEN-2`](../tickets/gen-2.md)), and the wrapper an
+effectful facade's call site needs is not generated ([`GEN-16`](../tickets/gen-16.md)).
 
 ## Facade constants
 

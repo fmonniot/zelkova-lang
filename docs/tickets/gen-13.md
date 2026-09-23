@@ -7,10 +7,10 @@ into `compile_package` and `src/main.rs`.
 module's text. Its `module_specifier` and `runtime_specifier` are the only places an import path
 is built, and both are provisional until this ticket settles the layout: a module name is all an
 imported reference carries, so neither knows which package declared it. Sits with
-[`GEN-12`](gen-12.md), which places a companion into the layout this decides.
+[`GEN-12`](README.md), which places a companion into the layout this decides.
 
 `emit` refuses every one of `std/core`'s eight modules today, which bears on this ticket's
-acceptance. Its three facades are [`GEN-12`](gen-12.md)'s. Each of the other five holds a
+acceptance. Its three facades are [`GEN-12`](README.md)'s. Each of the other five holds a
 declaration the typer could not check, and `emit` refuses a module missing a declaration rather
 than writing it without one. The causes differ by module:
 
@@ -76,8 +76,11 @@ place.
 
 **Acceptance:** `cargo run` writes `build/js/zelkova-core/` holding eight `.mjs` files named
 after the eight modules, the three `Js/*` companions beside their facades, and the runtime at
-`build/js/`'s agreed path; it still prints `parsed 8 modules`, lists all eight and exits 0. A
-test in `tests/pipeline.rs` compiles a fixture package into a temporary directory and asserts
-the file tree. A second asserts a package with a failing module writes **no** file at all —
-neutralise-check it by emitting before the error check, which turns it red. `build/` is
-gitignored and `git status` is clean after a `cargo run`.
+`build/js/`'s agreed path; it still prints `parsed 8 modules`, lists all eight and exits 0. This
+carries forward the closed [`GEN-12`](README.md)'s own Acceptance clause of the same shape
+("`cargo run` emits a module for each of the three `Js/*` facades with their companions beside
+them") — `GEN-12` produced the text `javascript::emit` writes, not the write itself, so that
+clause is not met until this ticket lands. A test in `tests/pipeline.rs` compiles a fixture
+package into a temporary directory and asserts the file tree. A second asserts a package with a
+failing module writes **no** file at all — neutralise-check it by emitting before the error
+check, which turns it red. `build/` is gitignored and `git status` is clean after a `cargo run`.

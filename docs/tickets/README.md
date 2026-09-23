@@ -167,7 +167,7 @@ GEN-8   the JavaScript runtime module   ── closed
 GEN-9   emit a module   ── closed
   ├── GEN-10  emit a `case`
   ├── GEN-11  emit the tail-call loop
-  └── GEN-12  emit an `unsafe` facade call, and place its companion
+  └── GEN-12  emit an `unsafe` facade call, and place its companion   ── closed
   │
 GEN-13  write the build
   │
@@ -383,7 +383,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-9 | task | — | closed 2026-09-22 | Emit a module |
 | [GEN-10](gen-10.md) | task | — | open | Emit a `case` |
 | [GEN-11](gen-11.md) | task | — | open | Emit the tail-call loop |
-| [GEN-12](gen-12.md) | task | — | open | Emit an `unsafe` facade call, and place its companion |
+| GEN-12 | task | — | closed 2026-09-22 | Emit an `unsafe` facade call, and place its companion |
 | [GEN-13](gen-13.md) | task | — | open | Write the build |
 | [GEN-14](gen-14.md) | task | — | open | The end-to-end check under node |
 | [GEN-15](gen-15.md) | task | — | open | The WebAssembly backend |

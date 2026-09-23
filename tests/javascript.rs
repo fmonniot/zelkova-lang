@@ -36,7 +36,7 @@ fn checked(source: &str) -> CheckedModule {
 }
 
 fn emit(module: &CheckedModule) -> String {
-    javascript::emit(module)
+    javascript::emit(module, true)
         .unwrap_or_else(|errors| panic!("expected the module to emit, got {:?}", errors))
 }
 
@@ -47,7 +47,16 @@ fn emitted(source: &str) -> String {
 
 /// The errors `source` fails to emit with, insisting that it fails.
 fn refused(source: &str) -> Vec<Error> {
-    match javascript::emit(&checked(source)) {
+    match javascript::emit(&checked(source), true) {
+        Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
+        Err(errors) => errors,
+    }
+}
+
+/// The errors `source` fails to emit with when no companion is available for the
+/// target being built, insisting that it fails.
+fn refused_without_companion(source: &str) -> Vec<Error> {
+    match javascript::emit(&checked(source), false) {
         Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
         Err(errors) => errors,
     }
@@ -590,22 +599,81 @@ fn a_declaration_with_no_ir_is_refused() {
     );
 }
 
-/// A facade is refused: what one emits as is `GEN-12`'s.
+/// An `unsafe` facade emits a module that imports its companion under an alias and
+/// re-exports its names: a two-parameter export is a plain function whose body is a
+/// direct, saturated call to the companion, and a zero-parameter one (a facade
+/// constant) is a `const` bound to the companion's value.
 ///
-/// Mutation-checked by deleting the `ir.foreign` check: the facade then emits as an
-/// empty module.
+/// Mutation-checked by reverting `Emitter::facade_declaration` to build the function's
+/// call one argument at a time (`Test$add(a)(b)`) instead of the plain parameter list:
+/// this test's `assert_eq!` then fails on the function's body.
 #[test]
-fn a_facade_is_refused() {
-    let errors = refused(indoc! {r#"
-        module foreign Test exposing (combine)
+fn an_unsafe_facade_re_exports_its_companion() {
+    let text = emitted(indoc! {r#"
+        module foreign Test exposing (add, pi)
 
-        unsafe combine : Int -> Int -> Int
+        unsafe add : Int -> Int -> Int
+        unsafe pi : Float
+    "#});
+
+    assert_eq!(
+        text,
+        indoc! {r#"
+            import { add as Test$add, pi as Test$pi } from "./Test.mjs";
+
+            function add(a, b) {
+              return Test$add(a, b);
+            }
+
+            const pi = Test$pi;
+
+            export { add, pi };
+        "#}
+    );
+}
+
+/// A facade signature not marked `unsafe` declares an effect, which this backend does
+/// not wrap yet, so it is refused rather than emitted as if it were `unsafe`.
+///
+/// Mutation-checked by dropping the `!marked_unsafe` check in
+/// `Emitter::facade_declaration`: `add` then emits the `unsafe` shape.
+#[test]
+fn an_effectful_facade_signature_is_refused() {
+    let errors = refused(indoc! {r#"
+        module foreign Test exposing (add)
+
+        add : Int -> Int -> Int
+    "#});
+
+    // `NodeSpan`'s equality ignores the span, so this compares the variant and the name.
+    assert_eq!(
+        errors,
+        vec![Error::Effectful {
+            name: Name::new("add"),
+            span: NodeSpan::none(),
+        }]
+    );
+}
+
+/// A facade with no companion for the target being built is refused, naming the facade
+/// and the target — the caller says so through `emit`'s `has_companion` parameter,
+/// since `emit` has no path of its own to check a companion's presence with.
+///
+/// Mutation-checked by dropping the `!has_companion` half of the `emit` guard: this
+/// then emits `add`'s forwarding code instead of refusing.
+#[test]
+fn a_facade_with_no_companion_is_refused() {
+    let errors = refused_without_companion(indoc! {r#"
+        module foreign Test exposing (add)
+
+        unsafe add : Int -> Int -> Int
     "#});
 
     assert_eq!(
         errors,
-        vec![Error::Facade {
-            module: Name::new("Test")
+        vec![Error::MissingCompanion {
+            module: Name::new("Test"),
+            target: "javascript",
         }]
     );
 }
