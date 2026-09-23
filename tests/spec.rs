@@ -193,11 +193,17 @@ fn stdlib_interfaces(declared: &[Name]) -> HashMap<Name, Interface> {
 /// Exhaustiveness is deliberately not run: it is a stub that accepts every module, so
 /// running it would only let a future chapter tag a block against a phase that inspects
 /// nothing.
-fn type_check(module: &canonical::Module) -> Result<(), Vec<typer::Error>> {
+///
+/// `interfaces` is what the module was canonicalized against, which is what the typer
+/// reads every imported value and union from.
+fn type_check(
+    module: &canonical::Module,
+    interfaces: &HashMap<Name, Interface>,
+) -> Result<(), Vec<typer::Error>> {
     // The solved types are dropped: a chapter's tags are claims about which phase
     // accepts or rejects a block, and none of them is about what a declaration's type
     // came out as.
-    typer::type_check(module).map(|_| ())
+    typer::type_check(module, interfaces).map(|_| ())
 }
 
 /// The `typer::ErrorKind` names present in `errors`.
@@ -414,7 +420,7 @@ fn evaluate(block: &Block) -> Verdict {
                     "expected `ok`, but canonicalization failed: {:?}",
                     errors
                 )),
-                Ok(canonical) => match type_check(&canonical) {
+                Ok(canonical) => match type_check(&canonical, &stdlib_interfaces(std::slice::from_ref(&module.name))) {
                     Err(errors) => Verdict::Fail(format!(
                         "expected `ok`, but type checking failed: {:?}",
                         errors
@@ -437,7 +443,7 @@ fn evaluate(block: &Block) -> Verdict {
                     errors
                 )),
                 Ok(canonical) => {
-                    judge_type_error(wanted, &type_check(&canonical).err().unwrap_or_default())
+                    judge_type_error(wanted, &type_check(&canonical, &stdlib_interfaces(std::slice::from_ref(&module.name))).err().unwrap_or_default())
                 }
             },
         },
@@ -503,7 +509,7 @@ fn evaluate(block: &Block) -> Verdict {
                     );
                     Verdict::Pass
                 }
-                Ok(canonical) => match type_check(&canonical) {
+                Ok(canonical) => match type_check(&canonical, &stdlib_interfaces(std::slice::from_ref(&module.name))) {
                     Err(errors) => {
                         println!(
                             "{}:{} (expect=unimplemented) failed in the typer, as expected: {:?}",
@@ -671,13 +677,14 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
     // does not touch it: an interface carries declared signatures, and those are what
     // canonicalization already validated. So a group can show one module failing the
     // typer and its importer still resolving every name it imports, which is what a
-    // chapter demonstrating a type error inside a two-module example needs. The typer
-    // reads one module at a time (`typer::type_check` takes no interfaces), so the
-    // order is bookkeeping rather than a dependency here.
+    // chapter demonstrating a type error inside a two-module example needs. Each module
+    // is type checked against the whole group's interfaces; the ones it does not import
+    // are never reached, because every name the typer looks up is one canonicalization
+    // resolved against that module's own imports.
     let type_failures: HashMap<Name, Vec<typer::Error>> = checked
         .iter()
         .filter_map(|m| {
-            type_check(m)
+            type_check(m, &interfaces)
                 .err()
                 .map(|errors| (m.name.name().clone(), errors))
         })

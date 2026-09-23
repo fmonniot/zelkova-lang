@@ -242,8 +242,8 @@ fn an_int_literal_ends_in_n_and_a_float_literal_does_not() {
 
 /// `True` and `False` are JavaScript's `true` and `false`, and `Bool` hoists no constant.
 ///
-/// A module can only mention them where their union is translatable, which today means in
-/// the module declaring `Bool` itself (`BUG-36`), so the fixture is a `Basics` of its own.
+/// The fixture is a `Basics` of its own, declaring `Bool` itself, so no interface has to
+/// be built for it.
 ///
 /// Mutation-checked by removing the `scalars::BOOL` arm from `value`: the bindings then
 /// read `$Basics$True` and `$Basics$False`. Removing the `Bool` filter from
@@ -314,9 +314,8 @@ fn a_nullary_constructor_is_one_constant_every_mention_refers_to() {
 /// A constructor of no arguments that another module declares is hoisted by the module
 /// that mentions it, since the declaring module exports no constant for it.
 ///
-/// No module the front end checks reaches this today: a declaration mentioning an
-/// imported constructor is left unchecked (`BUG-36`). So the IR is the one a local
-/// constructor produces, rewritten to name a union `Lib` declares.
+/// The IR is the one a local constructor produces, rewritten to name a union `Lib`
+/// declares, so no second module has to be checked first.
 ///
 /// Mutation-checked by not recording the constructor in `value`: `$Lib$Red` is then
 /// mentioned and never declared.
@@ -569,7 +568,8 @@ fn a_case_is_refused() {
 }
 
 /// A module holding a declaration the typer could not check is refused rather than
-/// emitted without it.
+/// emitted without it. `helper` destructures a tuple parameter, which the typer does not
+/// translate (`BUG-39`).
 ///
 /// Mutation-checked by starting `emit`'s errors empty instead of from `ir.unchecked`:
 /// the module is then emitted with `helper` missing.
@@ -578,15 +578,13 @@ fn a_declaration_with_no_ir_is_refused() {
     let errors = refused(indoc! {r#"
         module Test exposing (answer)
 
-        import Maybe
-
         answer : Int
         answer =
           1
 
-        helper : Int
-        helper =
-          Maybe.withDefault
+        helper : (Int, Int) -> Int
+        helper (a, b) =
+          a
     "#});
 
     // `NodeSpan`'s equality ignores the span, so this compares the variant and the name.

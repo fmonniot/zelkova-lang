@@ -1387,8 +1387,9 @@ pub fn check_module(
     // carrying a type on every node of the ones it could type and saying why for the
     // ones it could not. Not logged on the way out: `infer_annotated` already dumps each
     // declaration's term under `debug`, and `typer::type_check` is `pub`, so a test that
-    // wants the map calls it directly.
-    let solved = typer::type_check(&canonical)
+    // wants the map calls it directly. It reads the same interfaces canonicalization
+    // resolved this module's imports against, for the types of what they declare.
+    let solved = typer::type_check(&canonical, interfaces)
         .map_err(|errors| CompilationError::Type(errors, source.name.clone()))?;
 
     // verify in pattern matching branches that all variants are covered

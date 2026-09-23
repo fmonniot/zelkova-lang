@@ -33,9 +33,8 @@ not exist yet for a *parameter* position, though it does for a `case` scrutinee
 
 Surfaced while scoping [`GEN-13`](gen-13.md) (write the build): `javascript::emit` refuses a
 module if even one of its declarations was never type checked, so this gap alone keeps
-`Basics` and `Tuple` both fully refused even once [`BUG-36`](bug-36.md) (an imported constructor
-or value) is fixed — `Basics`'s other declarations are `BUG-36`'s, but `never` is this ticket's
-alone, and nothing else in `Tuple` needs `BUG-36` at all.
+`Basics` and `Tuple` both fully refused now that [`BUG-36`](README.md) (an imported constructor
+or value) is closed.
 
 **Fix:** give a parameter pattern the same case-arm translation `translate_pattern` already gives
 a `case` scrutinee. The mechanism is not new — `translate_pattern` returns a `TermPattern` and

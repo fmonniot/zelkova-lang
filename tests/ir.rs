@@ -6,12 +6,7 @@
 //! wants, what kind of name a reference is, and where a constructor sits in its
 //! declaration.
 //!
-//! The fourth kind of name — a value another module declares — is not merely unasserted
-//! here: `ReferenceKind::Foreign` is currently unreachable in any `ir::Module` at all.
-//! The typer's environment is built from the module under check alone, so every
-//! declaration that would produce one comes back `Solved::UnboundName` and lands in
-//! `ir::Module::unchecked` rather than becoming a declaration (`BUG-36`). That the
-//! translation tells it apart from the other three is pinned one level down, by
+//! That the translation tells the four kinds of name apart is pinned one level down, by
 //! `typer::tests::the_four_kinds_of_name_stay_apart`.
 
 use std::collections::HashMap;
@@ -610,8 +605,8 @@ fn independent_parameterless_bindings_come_back_in_name_sorted_order() {
 ///
 /// A backend handed only the declarations that worked cannot tell a module it may emit
 /// whole from one that quietly lost a declaration, which is the mistake `DEC-18`'s first
-/// decision is about. `helper` below mentions an imported value, which the typer's
-/// environment does not hold (`BUG-36`), so it is exactly such a declaration.
+/// decision is about. `helper` below destructures a tuple parameter, which the typer
+/// does not translate (`BUG-39`), so it is exactly such a declaration.
 ///
 /// Mutation-checked by dropping the `unchecked.push` in `ir::build`'s catch-all arm:
 /// `helper` then goes missing from both lists and the count assertion goes red.
@@ -620,15 +615,13 @@ fn a_declaration_with_no_ir_is_named_rather_than_dropped() {
     let module = ir_of(indoc! {r#"
         module Test exposing (answer)
 
-        import Maybe
-
         answer : Int
         answer =
           1
 
-        helper : Int
-        helper =
-          Maybe.withDefault
+        helper : (Int, Int) -> Int
+        helper (a, b) =
+          a
     "#});
 
     assert_eq!(
@@ -657,12 +650,12 @@ fn a_declaration_with_no_ir_is_named_rather_than_dropped() {
 /// it establishes is coverage: the shape above is not one that only holds for four-line
 /// examples, and a facade is in the list beside four ordinary modules.
 ///
-/// Every declaration is not expected to have an IR: `Bitwise` forwards each of its seven
-/// to `Js.Bitwise`, and an imported name goes untyped today (`BUG-36`), so all seven are
-/// `unchecked`. What is asserted is that nothing is lost either way.
+/// Every declaration is not expected to have an IR: `Tuple` and `Basics` each hold a
+/// declaration whose parameter is a pattern the typer does not translate (`BUG-39`), so
+/// those are `unchecked`. What is asserted is that nothing is lost either way.
 ///
 /// Mutation-checked twice: dropping `ir::build`'s `unchecked.push` turns the accounting
-/// assertion red for five of the eight modules, and routing `Solved::NoBody` to
+/// assertion red for those two modules, and routing `Solved::NoBody` to
 /// `unchecked` instead of to a signature turns the `Js.Basics` assertions red.
 #[test]
 fn every_module_of_the_standard_library_gets_an_ir() {

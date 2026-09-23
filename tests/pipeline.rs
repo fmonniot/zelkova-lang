@@ -617,6 +617,33 @@ fn the_stdlib_facades_emit() {
     }
 }
 
+/// `std/core`'s `Bitwise` forwards every one of its declarations to `Js.Bitwise`,
+/// written qualified — `and = Js.Bitwise.and` — so every one is type checked against
+/// the facade's interface and the module emits.
+///
+/// Mutation-checked two ways, each making `emit` refuse all seven declarations as
+/// unchecked: dropping the loop over `interfaces` from `type_check`'s first pass, and
+/// qualifying a `VarForeign` with the whole written spelling in
+/// `Expression::from_parser` (`m.qualify_name(name)`), which names
+/// `Js.Bitwise.Js.Bitwise.and` and finds nothing.
+#[test]
+fn the_stdlib_bitwise_forwards_to_its_facade() {
+    let checked = check_std_core();
+    let bitwise = checked
+        .iter()
+        .find(|m| m.canonical.name.name().as_str() == "Bitwise")
+        .expect("Bitwise did not check");
+
+    let text = javascript::emit(bitwise, false)
+        .unwrap_or_else(|errors| panic!("Bitwise failed to emit: {:?}", errors));
+
+    assert!(
+        text.contains("const and = Js$Bitwise$and;"),
+        "got:\n{}",
+        text
+    );
+}
+
 // ── Test 14: a type error reaches the user as a real diagnostic ──────────────
 
 /// `ERR-2`: a type error must render as an `error` naming both types.
@@ -2908,11 +2935,10 @@ const SIZE_LIB: &str = indoc::indoc! {r#"
     type Size a = Wrap a
 "#};
 
-/// A declaration whose annotation names both modules' `Size`.
-///
-/// No constructor appears in it, deliberately: a value that mentions an *imported*
-/// constructor is skipped by the typer altogether (`BUG-36`), so it could not show
-/// the two types being compared.
+/// A declaration whose annotation names both modules' `Size`, and whose body names
+/// neither module's constructor: the two types are compared through the annotation
+/// alone. [`an_imported_constructor_does_not_build_another_modules_type`] is the same
+/// comparison reached through a constructor.
 const CROSSES_TWO_SIZES: &str = indoc::indoc! {r#"
     module Main exposing (..)
 
@@ -2922,6 +2948,375 @@ const CROSSES_TWO_SIZES: &str = indoc::indoc! {r#"
     f : A.Size -> B.Size
     f s = s
 "#};
+
+// ── Test 34: what another module declares is type checked ────────────────────
+//
+// `BUG-36`. Each probe below reaches for something another module declares — a
+// constructor in a pattern, a constructor in an expression, or a plain value — and
+// holds a type error the typer has to find.
+
+/// A module exposing a union with a parameter, a nullary union, and a value, for the
+/// importers below to reach for.
+const IMPORTED: &str = indoc::indoc! {r#"
+    module Lib exposing (Box(..), Flag(..), size)
+
+    type Box a = Box a
+
+    type Flag = On | Off
+
+    size : Int
+    size = 1
+"#};
+
+/// [`IMPORTED`] checked into an `Interface` the way [`check_importer`] builds one, and
+/// `main` checked against it with `Char` and `Maybe` in the map too, so that the
+/// default imports bring the `Char` type and `Just` and `Nothing` in.
+fn check_against_imported(main: &str) -> Result<CheckedModule, CompilationError> {
+    let pkg = test_package();
+    let mut interfaces: HashMap<Name, Interface> =
+        HashMap::from([basics_interface(), char_interface(), maybe_interface()]);
+    let lib = check_module(&pkg, &interfaces, &parse_source(IMPORTED), false)
+        .unwrap_or_else(|e| panic!("the exporting module should compile: {:?}", e));
+
+    interfaces.insert(lib.canonical.name.name().clone(), lib.to_interface(None));
+
+    check_module(&pkg, &interfaces, &parse_source(main), false)
+}
+
+/// The type errors `main` is rejected with, which must be exactly one.
+fn only_type_error(main: &str) -> (CompilationError, String) {
+    let error = match check_against_imported(main) {
+        Ok(_) => panic!("expected a type error, but the module checked clean"),
+        Err(error) => error,
+    };
+
+    let CompilationError::Type(errors, module) = &error else {
+        panic!("expected a Type error, got {:?}", error);
+    };
+    assert_eq!(module, &Name::from("Main"));
+    assert_eq!(errors.len(), 1, "expected one type error, got {:?}", errors);
+    assert!(
+        matches!(
+            errors[0].kind,
+            zelkova_lang::compiler::typer::ErrorKind::UnificationFailed { .. }
+        ),
+        "expected a unification failure, got {:?}",
+        errors[0].kind
+    );
+
+    let message = errors[0].message();
+    (error, message)
+}
+
+/// `main`'s one type error, which has to be a unification failure with its caret
+/// under the only `'c'` in `main`.
+///
+/// The variant and the caret are both asserted, not merely the rejection: what these
+/// tests pin is that the declaration reached the unifier and was blamed where the
+/// source disagrees.
+fn assert_rejected_at_the_char(main: &str) {
+    let (error, _) = only_type_error(main);
+
+    // The labels of the typer's own error rather than of a rendered diagnostic: a
+    // `CompilationError` that no file was attached to renders without any.
+    let CompilationError::Type(errors, _) = &error else {
+        unreachable!("`only_type_error` answers with a Type error");
+    };
+    let labels = errors[0].labels();
+    let primary = labels
+        .iter()
+        .find(|label| label.primary)
+        .unwrap_or_else(|| panic!("expected a primary label, got {:?}", labels));
+
+    let at = main.find("'c'").expect("the probe writes a `'c'`");
+    assert_eq!(
+        primary.span.to_range(),
+        at..at + 3,
+        "the caret must be under the `'c'`, got {:?}",
+        labels
+    );
+}
+
+/// A `case` over a `Maybe` — whose constructors every module receives through the
+/// default imports — has its branches checked.
+///
+/// Mutation-checked by building `Translation::unions` from `module.types` alone:
+/// `Just` then finds no union and the declaration is skipped, so this checks clean.
+#[test]
+fn a_case_over_a_default_imported_constructor_is_type_checked() {
+    assert_rejected_at_the_char(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        f : Maybe Int -> Int
+        f m =
+          case m of
+            Just x ->
+              'c'
+
+            Nothing ->
+              1
+    "#});
+}
+
+/// Building an imported constructor checks what it is built from.
+///
+/// Mutation-checked three ways, each making the module check clean on its own:
+/// building `Translation::constructors` from this module's unions alone (the
+/// `VarConstructor` arm finds nothing and the declaration is skipped), registering
+/// only this module's constructors in `type_check`'s second pass (`Lib.Box` is
+/// unbound and the declaration comes back `UnboundName`), and naming a
+/// `VarConstructor` by its written spelling in `Expression::from_parser` (the bare
+/// `Box` becomes `Main.Box`, which nothing declares).
+#[test]
+fn building_an_imported_constructor_is_type_checked() {
+    assert_rejected_at_the_char(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib exposing (Box(..))
+
+        f : Box Int
+        f = Box 'c'
+    "#});
+}
+
+/// A constructor pattern written qualified finds the union its module declared.
+///
+/// Mutation-checked by building `Translation::unions` from `module.types` alone.
+#[test]
+fn a_case_over_a_qualified_imported_constructor_is_type_checked() {
+    assert_rejected_at_the_char(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib
+
+        f : Lib.Box Int -> Int
+        f b =
+          case b of
+            Lib.Box x ->
+              'c'
+    "#});
+}
+
+/// The same pattern, written with the constructor exposed.
+///
+/// Mutation-checked by building `Translation::unions` from `module.types` alone.
+#[test]
+fn a_case_over_an_exposed_imported_constructor_is_type_checked() {
+    assert_rejected_at_the_char(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib exposing (Box(..))
+
+        f : Box Int -> Int
+        f b =
+          case b of
+            Box x ->
+              'c'
+    "#});
+}
+
+/// A nullary imported constructor in a pattern.
+///
+/// Mutation-checked by building `Translation::unions` from `module.types` alone.
+#[test]
+fn a_case_over_a_nullary_imported_constructor_is_type_checked() {
+    assert_rejected_at_the_char(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib exposing (Flag(..))
+
+        f : Flag -> Int
+        f flag =
+          case flag of
+            On ->
+              'c'
+
+            Off ->
+              1
+    "#});
+}
+
+/// An error that has nothing to do with the import is found in a declaration that
+/// holds one: a skipped declaration hides every error in it.
+///
+/// Mutation-checked by building `Translation::unions` from `module.types` alone,
+/// which makes the module check clean.
+#[test]
+fn an_unrelated_error_beside_an_imported_constructor_is_reported() {
+    let (_, message) = only_type_error(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib exposing (Flag(..))
+
+        f : Flag -> Int
+        f flag =
+          if 'c' then
+            case flag of
+              On ->
+                1
+
+              Off ->
+                2
+          else
+            3
+    "#});
+
+    assert!(
+        message == "cannot match `Bool` with `Char`"
+            || message == "cannot match `Char` with `Bool`",
+        "got {:?}",
+        message
+    );
+}
+
+/// A constructor of one module's `Size` is not a value of another module's `Size`.
+///
+/// Inherited from `BUG-35`, which made the two `Size`es two types but could not show
+/// `B.S` meeting `A.Size`: the declaration never reached the unifier.
+///
+/// Mutation-checked by building `Translation::constructors` from this module's unions
+/// alone, which makes `B.S` untranslatable and the module check clean.
+#[test]
+fn an_imported_constructor_does_not_build_another_modules_type() {
+    let main = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import A
+        import B
+
+        x : A.Size
+        x = B.S
+    "#};
+
+    let error = check_importer_of_two(SIZE_A, SIZE_B, main).expect_err("`B.S` is not an `A.Size`");
+
+    let CompilationError::Type(errors, _) = &error else {
+        panic!("expected a Type error, got {:?}", error);
+    };
+    assert_eq!(errors.len(), 1, "expected one type error, got {:?}", errors);
+
+    let message = errors[0].message();
+    assert!(
+        message == "cannot match `A.Size` with `B.Size`"
+            || message == "cannot match `B.Size` with `A.Size`",
+        "both types must be named by their module, got {:?}",
+        message
+    );
+}
+
+/// A declaration that forwards an imported value is checked against that value's
+/// declared type.
+///
+/// Mutation-checked by dropping the loop over `interfaces` from `type_check`'s first
+/// pass: `Lib.size` is then unbound, the declaration comes back `UnboundName`, and
+/// the module checks clean.
+#[test]
+fn forwarding_an_imported_value_is_type_checked() {
+    let (_, message) = only_type_error(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib exposing (size)
+
+        f : Char
+        f = size
+    "#});
+
+    assert!(
+        message == "cannot match `Int` with `Char`" || message == "cannot match `Char` with `Int`",
+        "got {:?}",
+        message
+    );
+}
+
+/// An imported value written qualified, by its module's name or by an alias, is the
+/// same value as the exposed one above and is checked the same way.
+///
+/// Mutation-checked by qualifying a `VarForeign` with the whole written spelling in
+/// `Expression::from_parser` (`m.qualify_name(name)`): the reference then names
+/// `Lib.Lib.size` or `Lib.L.size`, which nothing registers, and both check clean.
+#[test]
+fn forwarding_a_qualified_imported_value_is_type_checked() {
+    for import in ["import Lib", "import Lib as L"] {
+        let written = if import.ends_with(" L") {
+            "L.size"
+        } else {
+            "Lib.size"
+        };
+        let main = format!(
+            "module Main exposing (..)\n\n{}\n\nf : Char\nf = {}\n",
+            import, written
+        );
+
+        let (_, message) = only_type_error(&main);
+
+        assert!(
+            message == "cannot match `Int` with `Char`"
+                || message == "cannot match `Char` with `Int`",
+            "`{}`: got {:?}",
+            written,
+            message
+        );
+    }
+}
+
+/// An imported constructor written under an alias is named by the module that
+/// declared its union, and so is found.
+///
+/// Mutation-checked by naming a `VarConstructor` by its written spelling in
+/// `Expression::from_parser` again (`name.to_qual()`, else this module's name): `L.Box`
+/// then finds no constructor, and the declaration is skipped.
+#[test]
+fn building_an_aliased_imported_constructor_is_type_checked() {
+    assert_rejected_at_the_char(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib as L
+
+        f : L.Box Int
+        f = L.Box 'c'
+    "#});
+}
+
+/// The other half of the tests above: what they reject for a wrong type, they accept
+/// for the right one, and each declaration becomes one a backend can read rather than
+/// an entry in `unchecked`.
+///
+/// Without this, every rejection above would also pass on a typer that refused
+/// anything imported outright.
+#[test]
+fn well_typed_uses_of_imported_names_are_checked_declarations() {
+    let checked = check_against_imported(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        import Lib exposing (Box(..), Flag(..), size)
+
+        boxed : Box Int
+        boxed = Box size
+
+        unboxed : Box Int -> Int
+        unboxed b =
+          case b of
+            Box x ->
+              x
+
+        flagged : Flag -> Maybe Int
+        flagged flag =
+          case flag of
+            On ->
+              Just size
+
+            Off ->
+              Nothing
+    "#})
+    .unwrap_or_else(|e| panic!("expected the module to check, got {:?}", e));
+
+    assert!(
+        checked.ir.unchecked.is_empty(),
+        "every declaration should have been checked, got {:?}",
+        checked.ir.unchecked
+    );
+    assert_eq!(checked.ir.declarations.len(), 3);
+}
 
 // ── Package boundaries: namespaces, unwrapping, and one name per module ──────
 //

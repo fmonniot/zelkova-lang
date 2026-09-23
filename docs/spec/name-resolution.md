@@ -407,9 +407,10 @@ y =
 
 An operator is the one case with no qualified spelling to fall back on —
 [`Widget.(+)` is not writable](modules.md#operators) — so the fix there is an edit to an
-`import` line: name what the file wants.
+`import` line: name what the file wants. Below, `+` is `Gadget`'s and `one` is `Widget`'s, so
+`z` is a type error, and swapping the two `import` lines makes it compile.
 
-```zel expect=ok package=ambiguous
+```zel expect=type-error:UnificationFailed package=ambiguous
 module Third exposing (z)
 
 import Widget exposing (..)

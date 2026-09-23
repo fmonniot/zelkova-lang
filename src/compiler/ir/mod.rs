@@ -257,12 +257,7 @@ pub enum ReferenceKind {
     /// A declaration of another module, named in full: a named import of whatever that
     /// module emitted.
     ///
-    /// Nothing reaches a [`Declaration`] through this today. The typer's environment is
-    /// built from the module under check alone, so a declaration mentioning an imported
-    /// value comes back [`Solved::UnboundName`] and lands in
-    /// [`Module::unchecked`]; giving the typer the imported interfaces is `BUG-36`. The
-    /// translation records the kind regardless, because that is the only moment it is
-    /// available.
+    /// The typer checks it against the type that module's interface declares.
     Foreign(QualName),
     /// A union constructor: it builds a tagged value rather than reading a binding.
     Constructor(Constructor),
@@ -513,16 +508,14 @@ pub enum Solved {
     /// Inference reached a name the typer's environment does not hold, and nothing
     /// about the declaration was checked.
     ///
-    /// That environment is assembled from *this module alone*: its own annotated
-    /// values and its own type constructors. Anything that crossed a module boundary
-    /// is absent even though canonicalization resolved it perfectly well —
-    /// `Basics.negate` referring to `-`, which the infix declaration aliases to `sub`,
-    /// or any reference to an imported value at all. Several declarations in
-    /// `std/core/src` hit this today and not one of them is a mistake in the source,
-    /// which is why this is not an [`Error`](crate::compiler::typer::Error) either;
-    /// closing the hole is `BUG-36`. A name that genuinely does not exist is caught
-    /// earlier, by canonicalization, as `canonical::Error::VariableNotFound`, with a
-    /// caret under the name.
+    /// That environment holds a declared type for every value in reach that has one:
+    /// the values and constructors every imported interface exposes, and this module's
+    /// own constructors and annotated declarations. A declaration of this module
+    /// written without an annotation has no declared type, and a name reaching one
+    /// lands here. That is not a mistake in the source, which is why this is not an
+    /// [`Error`](crate::compiler::typer::Error) either. A name that genuinely does not
+    /// exist is caught earlier, by canonicalization, as
+    /// `canonical::Error::VariableNotFound`, with a caret under the name.
     UnboundName {
         /// The name as inference looked it up.
         name: String,

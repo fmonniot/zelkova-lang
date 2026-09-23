@@ -38,7 +38,7 @@ fn solved(source: &str) -> HashMap<Name, Solved> {
     let canonical = canonicalize_with_interfaces(source, &interfaces)
         .unwrap_or_else(|errors| panic!("expected the module to canonicalize, got {:?}", errors));
 
-    typer::type_check(&canonical)
+    typer::type_check(&canonical, &interfaces)
         .unwrap_or_else(|errors| panic!("expected the module to type check, got {:?}", errors))
 }
 

@@ -45,7 +45,7 @@ use crate::compiler::ir::{
 use crate::compiler::name::{Name, QualName};
 use crate::compiler::position::NodeSpan;
 use crate::compiler::tuple::Tuple;
-use crate::compiler::{PhaseError, SpanLabel};
+use crate::compiler::{Interface, PhaseError, SpanLabel};
 use log::debug;
 use std::collections::HashMap;
 
@@ -509,7 +509,17 @@ impl PhaseError for Error {
 /// it is the only one that knows the declaration's name and its span. What went
 /// *wrong* and *where inside the declaration* comes up from inference on the
 /// [`ErrorKind`]; see [`Error`].
-pub fn type_check(module: &Module) -> Result<HashMap<Name, Solved>, Vec<Error>> {
+///
+/// # What a declaration is checked against
+///
+/// `interfaces` is the map `module` was canonicalized against. Every value and union
+/// it exposes is put in the typer's environment beside this module's own, so a
+/// declaration that forwards an imported value, builds an imported constructor or
+/// matches on one is checked like any other.
+pub fn type_check(
+    module: &Module,
+    interfaces: &HashMap<Name, Interface>,
+) -> Result<HashMap<Name, Solved>, Vec<Error>> {
     // A `module foreign` facade uses synthetic placeholder bodies, so there is nothing
     // to infer — but every declaration still has to be accounted for, so each is
     // returned saying why it has no term.
@@ -525,9 +535,26 @@ pub fn type_check(module: &Module) -> Result<HashMap<Name, Solved>, Vec<Error>> 
     // Types::new() (which starts at 10) used during inference.
     let mut counter = 10_000u32;
 
-    // First pass: build global env from all TypedValues' declared types.
-    // This allows values to reference other module-level typed values.
+    // First pass: build global env from every declared type in reach — the values
+    // each imported interface exposes, then this module's own annotated values.
     let mut global: HashMap<String, Type> = HashMap::new();
+
+    // An imported value is keyed the way a `VarForeign` reference spells it: its name
+    // qualified by the module that declared it. That is the only key, so it cannot
+    // collide with a local name or with a same-named value of another module. An
+    // operator's backing function the header did not expose by name is in
+    // `infix_functions` rather than `values`, and an operator resolves to a
+    // `VarForeign` naming it all the same.
+    for interface in interfaces.values() {
+        for (name, (_, tpe)) in interface.values.iter().chain(&interface.infix_functions) {
+            let mut var_map = HashMap::new();
+            if let Some(typer_tpe) = canonical_type_to_typer_type(tpe, &mut var_map, &mut counter) {
+                let qname = interface.module_name.qualify_name(name).to_name();
+                global.insert(qname.as_str().to_string(), typer_tpe);
+            }
+        }
+    }
+
     for (name, value) in &module.values {
         if let canonical::Value::TypedValue { tpe, .. } = value {
             let mut var_map = HashMap::new();
@@ -545,12 +572,14 @@ pub fn type_check(module: &Module) -> Result<HashMap<Name, Solved>, Vec<Error>> 
         }
     }
 
-    // What the canonical AST is read against: this module's unions, its constructors
-    // and the arity of each of its declarations. See [`Translation`].
-    let translation = Translation::of(module);
+    // What the canonical AST is read against: every union in reach, their
+    // constructors and the arity of each of this module's declarations. See
+    // [`Translation`].
+    let translation = Translation::of(module, interfaces);
 
-    // Second pass: add constructor types to global from this module's unions
-    for (type_name, union_type) in &translation.module_types {
+    // Second pass: add constructor types to global from every union in reach, this
+    // module's own and every imported interface's alike.
+    for (type_name, union_type) in &translation.unions {
         // Fresh type vars for each ADT type parameter (e.g. "a" in Maybe a)
         let mut adt_var_map: HashMap<String, TypeVariable> = HashMap::new();
         for tv_name in &union_type.variables {
@@ -591,15 +620,16 @@ pub fn type_check(module: &Module) -> Result<HashMap<Name, Solved>, Vec<Error>> 
                     })
             };
 
-            // Register under both unqualified ("Just") and qualified ("Test.Just") names
-            global.insert(ctor.name.as_str().to_string(), ctor_type.clone());
-            let qname = module
-                .name
-                .qualify_name(&ctor.name)
-                .to_name()
-                .as_str()
-                .to_string();
-            global.insert(qname, ctor_type);
+            // Registered under the qualified name a `VarConstructor` spells —
+            // "Maybe.Just", named by the module that declared the union — and, for
+            // this module's own unions only, under the bare name too.
+            let Some(qname) = ctor.name.qualify_with_name(&type_name.module_name()) else {
+                continue;
+            };
+            if module.name.qualify_name(&type_name.unqualified_name()) == *type_name {
+                global.insert(ctor.name.as_str().to_string(), ctor_type.clone());
+            }
+            global.insert(qname.to_name().as_str().to_string(), ctor_type);
         }
     }
 
@@ -657,38 +687,36 @@ pub fn type_check(module: &Module) -> Result<HashMap<Name, Solved>, Vec<Error>> 
 
 // ── Translation helpers ───────────────────────────────────────────────────────
 
-/// The union declarations of the module under check, keyed by the qualified name of
-/// each declaration.
+/// Union declarations, keyed by the qualified name of each declaration.
 ///
 /// Keyed that way rather than by the spelling, so that a lookup answers "is this the
-/// declaration that module named?" and not "does this module declare something spelled
-/// like that?". The two differ for every imported constructor whose type shares a name
-/// with a local one, which is what `BUG-35` closed.
-type ModuleTypes<'a> = HashMap<QualName, &'a canonical::UnionType>;
+/// declaration that module named?" and not "is something spelled like that in reach?".
+/// The two differ for every imported constructor whose type shares a name with a local
+/// one, which is what `BUG-35` closed.
+type Unions<'a> = HashMap<QualName, &'a canonical::UnionType>;
 
 /// Everything the translation from the canonical AST reads besides the expression in
 /// front of it.
 ///
 /// Each of the three answers a question the canonical node cannot: which union a
 /// constructor belongs to and where in it, and how many arguments a call has to supply
-/// before it is a direct call. All three are facts of the *module*, which is why they
-/// are gathered once here — the declaration being translated is the only thing that
-/// changes between calls.
-///
-/// Every one of them is about the module under check and none about its imports. The
-/// typer's environment is built the same way, so a declaration reaching for an imported
-/// union or an imported value goes untyped today whatever this holds; giving the typer
-/// the imported interfaces is `BUG-36`.
+/// before it is a direct call. All three are facts of the module and of what it
+/// imports, which is why they are gathered once here — the declaration being translated
+/// is the only thing that changes between calls.
 struct Translation<'a> {
-    /// This module's unions, keyed by the qualified name that identifies each
+    /// Every union in reach — this module's own, and every one an imported
+    /// [`Interface`] exposes — keyed by the qualified name that identifies each
     /// declaration rather than by the spelling the `type` line wrote. A constructor
-    /// carries the qualified name of the type it builds, so this key is what decides
-    /// whether the constructor in a pattern is one of *these* declarations' — see
-    /// [`translate_pattern`]. The two keys differ for every imported constructor whose
-    /// type shares a name with a local one, which is what `BUG-35` closed.
-    module_types: ModuleTypes<'a>,
-    /// This module's constructors, keyed the way a `VarConstructor` spells one, each
-    /// with the place in its declaration both backends need.
+    /// carries the qualified name of the type it builds, so this key is what finds the
+    /// declaration a constructor in a pattern belongs to — see [`translate_pattern`].
+    ///
+    /// An interface's union is only as complete as its module exposed it: an opaque
+    /// one crosses with no constructors, which is also why no canonical constructor
+    /// can name one.
+    unions: Unions<'a>,
+    /// The constructors of every union in [`unions`](Self::unions), keyed the way a
+    /// `VarConstructor` spells one, each with the place in its declaration both
+    /// backends need.
     constructors: HashMap<QualName, Constructor>,
     /// How many parameters each of this module's declarations was written with.
     ///
@@ -699,14 +727,25 @@ struct Translation<'a> {
 }
 
 impl<'a> Translation<'a> {
-    fn of(module: &'a Module) -> Translation<'a> {
-        let module_types: ModuleTypes<'a> = module
-            .types
-            .iter()
-            .map(|(name, union_type)| (module.name.qualify_name(name), union_type))
-            .collect();
+    /// The translation for `module`, checked against `interfaces`.
+    ///
+    /// The interfaces' unions go in first and this module's own after them, so that if
+    /// the map somehow held an interface of the module under check, the declarations
+    /// in front of the typer are the ones that win.
+    fn of(module: &'a Module, interfaces: &'a HashMap<Name, Interface>) -> Translation<'a> {
+        let mut unions: Unions<'a> = HashMap::new();
 
-        let constructors = constructors_of(&module_types);
+        for interface in interfaces.values() {
+            for (name, union_type) in &interface.unions {
+                unions.insert(interface.module_name.qualify_name(name), union_type);
+            }
+        }
+
+        for (name, union_type) in &module.types {
+            unions.insert(module.name.qualify_name(name), union_type);
+        }
+
+        let constructors = constructors_of(&unions);
 
         let arities = module
             .values
@@ -715,20 +754,20 @@ impl<'a> Translation<'a> {
             .collect();
 
         Translation {
-            module_types,
+            unions,
             constructors,
             arities,
         }
     }
 
-    /// A translation that knows this module's unions and nothing else: no arity is
-    /// known, so every application it produces is [`Saturation::Partial`].
+    /// A translation that knows these unions and nothing else: no arity is known, so
+    /// every application it produces is [`Saturation::Partial`].
     #[cfg(test)]
-    fn of_types(module_types: ModuleTypes<'a>) -> Translation<'a> {
-        let constructors = constructors_of(&module_types);
+    fn of_types(unions: Unions<'a>) -> Translation<'a> {
+        let constructors = constructors_of(&unions);
 
         Translation {
-            module_types,
+            unions,
             constructors,
             arities: HashMap::new(),
         }
@@ -756,12 +795,12 @@ impl<'a> Translation<'a> {
     }
 }
 
-/// Every constructor of `module_types`, keyed the way a `VarConstructor` spells one:
-/// the constructor's name qualified by the module that declared the union it builds.
-fn constructors_of(module_types: &ModuleTypes) -> HashMap<QualName, Constructor> {
+/// Every constructor of `unions`, keyed the way a `VarConstructor` spells one: the
+/// constructor's name qualified by the module that declared the union it builds.
+fn constructors_of(unions: &Unions) -> HashMap<QualName, Constructor> {
     let mut constructors = HashMap::new();
 
-    for (union, union_type) in module_types {
+    for (union, union_type) in unions {
         for variant in crate::compiler::ir::variants_of(union_type) {
             // A union is named by its declaring module, so that module is where its
             // constructors are named from too. `qualify_with_name` only declines an
@@ -901,8 +940,8 @@ pub(super) fn bool_type() -> Type {
 /// Convert a canonical expression to a Term, keeping the position it was written at.
 ///
 /// Returns None for constructs the inference engine doesn't yet handle (a `VarKernel`
-/// reference, a constructor of a union this module does not declare, complex patterns
-/// inside a `Case`).
+/// reference, complex patterns inside a `Case`), and for a constructor of a union
+/// neither this module nor an interface in [`Translation`] declares.
 ///
 /// Every arm attaches `expr.span` to the term it builds. That is the whole of what
 /// `ERR-4` needed from this function: a constraint can only point at a
@@ -941,19 +980,17 @@ fn canonical_expr_to_term(
             name: qname.to_name().as_str().to_string(),
             kind: ReferenceKind::TopLevel(qname.clone()),
         }),
-        // A value another module declares. Inference has no type for it — its
-        // environment holds this module alone (`BUG-36`) — so the declaration around it
-        // comes back `Solved::UnboundName` and never reaches a backend. The kind is
-        // recorded regardless, because this is the only place it is available.
+        // A value another module declares. Its type is the one its module's interface
+        // declared, which `type_check` registers under this same qualified name.
         canonical::ExpressionKind::VarForeign(qname, _) => TermKind::Identifier(Reference {
             name: qname.to_name().as_str().to_string(),
             kind: ReferenceKind::Foreign(qname.clone()),
         }),
         // A constructor builds a tagged value rather than reading a binding, so it
-        // carries its place in its declaration. That place comes from the union, and
-        // only this module's unions are in hand: a constructor of an imported type
-        // finds nothing and the whole declaration goes untranslated, exactly as
-        // `translate_pattern` already does for a constructor *pattern*.
+        // carries its place in its declaration. That place comes from the union,
+        // which is in `translation.constructors` whether this module declared it or
+        // an imported interface did. The type the canonical node carries is not read:
+        // the one `type_check` registers is built from the union's own variables.
         canonical::ExpressionKind::VarConstructor(qname, _) => {
             let ctor = translation.constructors.get(qname)?;
 
@@ -1090,12 +1127,10 @@ fn translate_pattern(
         ),
         canonical::PatternKind::Constructor { ctor, args } => {
             // Look up the parent union to get its type variables. `ctor.tpe` names
-            // the declaration the constructor builds, module included, and
-            // `module_types` is keyed the same way — so this finds a union only when
-            // the constructor is one of this module's own. A constructor of an
-            // imported type finds nothing, and the whole declaration goes unchecked;
-            // giving the typer the imported unions is `BUG-36`.
-            let union_type = translation.module_types.get(&ctor.tpe)?;
+            // the declaration the constructor builds, module included, and `unions`
+            // is keyed the same way — so this finds the one declaration the
+            // constructor belongs to, this module's or an imported one.
+            let union_type = translation.unions.get(&ctor.tpe)?;
 
             // Which case of that union this pattern matches. Unification needs only
             // the union; a decision tree and a WIT `variant` both need the case, and
@@ -2232,12 +2267,9 @@ mod tests {
     /// ([`DEC-18` decision
     /// 1](../../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
     ///
-    /// Written against hand-built canonical expressions rather than against source,
-    /// which the IR tests in `tests/ir.rs` use for the other three. The imported one is
-    /// why: the typer's environment holds this module alone, so a declaration
-    /// mentioning an imported value comes back `Solved::UnboundName` and never reaches
-    /// an `ir::Module` at all (`BUG-36`). This is the level at which all four are
-    /// observable together.
+    /// Written against hand-built canonical expressions rather than against source, so
+    /// that all four are read off one translation with no other module needing to be
+    /// checked first.
     ///
     /// Mutation-checked by giving the `VarForeign` and `VarTopLevel` arms of
     /// `canonical_expr_to_term` the same `ReferenceKind`, which is the collapse this
@@ -2296,12 +2328,10 @@ mod tests {
     ///
     /// `BUG-35`: the lookup narrowed the constructor's type to its unqualified half,
     /// so `A.S` found `Main.Size` and the pattern was translated at the local type.
-    /// It now finds nothing, which is the whole-module gap `BUG-36` covers — the
-    /// declaration is skipped rather than checked against the wrong union — so this
-    /// has to be asserted here rather than through `type_check`.
+    /// With no `A` in the translation, the lookup finds nothing at all.
     ///
     /// Mutation-checked by restoring the narrowed lookup
-    /// (`module_types` keyed by `Name`, `get(&ctor.tpe.unqualified_name())`): the
+    /// (`unions` keyed by `Name`, `get(&ctor.tpe.unqualified_name())`): the
     /// pattern is then translated and the assertion goes red.
     #[test]
     fn an_imported_constructor_does_not_find_a_local_type_of_the_same_name() {
