@@ -255,6 +255,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-35 | bug | medium | closed 2026-09-16 | The typer identifies a union type by its unqualified name, so two modules' `Size` are one type |
 | [BUG-36](bug-36.md) | bug | medium | open | A value that matches or builds an imported constructor is never type checked |
 | [BUG-37](bug-37.md) | bug | high | open | A package is not part of a type's identity, so two packages' same-named modules are one type |
+| [BUG-38](bug-38.md) | bug | high | open | A parameterless binding that reaches another only through a function it calls is not ordered after it |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
