@@ -391,7 +391,7 @@ The same rule holds in every namespace: two imports, one spelling, no reason to 
 
 **Known gap:** ambiguity is detected for values only. A type, a constructor or an operator
 arriving from two imports is taken from whichever `import` line is written last, silently, so
-the meaning of the two blocks below depends on the order of two lines that look
+the meaning of the next two blocks depends on the order of two lines that look
 interchangeable ([`docs/tickets/lang-30.md`](../tickets/lang-30.md)).
 
 ```zel expect=ok package=ambiguous
@@ -407,14 +407,28 @@ y =
 
 An operator is the one case with no qualified spelling to fall back on —
 [`Widget.(+)` is not writable](modules.md#operators) — so the fix there is an edit to an
-`import` line: name what the file wants. Below, `+` is `Gadget`'s and `one` is `Widget`'s, so
-`z` is a type error, and swapping the two `import` lines makes it compile.
+`import` line: name what the file wants. Here the last import wins `+`, so `+` is `Gadget`'s
+while `one` is `Widget`'s, and `z` is a type error.
 
 ```zel expect=type-error:UnificationFailed package=ambiguous
 module Third exposing (z)
 
 import Widget exposing (..)
 import Gadget exposing (..)
+
+z : Widget.Size
+z =
+  one + one
+```
+
+Narrowing the `Gadget` import to what the file uses from it leaves `Widget` the only module
+exposing `+`, and `z` compiles:
+
+```zel expect=ok package=ambiguous
+module Fourth exposing (z)
+
+import Widget exposing (..)
+import Gadget exposing (two)
 
 z : Widget.Size
 z =

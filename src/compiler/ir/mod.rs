@@ -487,13 +487,13 @@ pub enum Solved {
     /// what reads it back out.
     NoBody,
     /// `value_to_term_and_annotation` could not translate the declaration into the
-    /// typer's term language — a `VarKernel` reference, a constructor of a union this
-    /// module does not declare, a constructor or tuple pattern in a function head, a
-    /// nested pattern inside a `case`. Nothing about the declaration was checked.
+    /// typer's term language — a `VarKernel` reference, a constructor or tuple pattern
+    /// in a function head, a nested pattern inside a `case`. Nothing about the
+    /// declaration was checked.
     ///
     /// Not an [`Error`](crate::compiler::typer::Error): it is a gap in the typer rather
-    /// than a mistake in the source, and reporting it would fail dozens of the
-    /// declarations in `std/core/src` that are simply beyond today's inference. What it
+    /// than a mistake in the source, and reporting it would fail the eight declarations
+    /// in `std/core/src` that are beyond today's inference (`BUG-39`). What it
     /// wants is a warning, which the compiler does not have yet (`ERR-8`, see
     /// `docs/tickets/README.md`) — hence the span, so that the warning has a caret the
     /// day it exists. *Which* of the constructs tripped it is not carried:
