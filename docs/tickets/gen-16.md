@@ -13,7 +13,7 @@ site.
 GEN-1 text carried this as inherited work, and it cannot be written until the three blockers
 above clear.
 
-**Location:** the backend module [`GEN-9`](gen-9.md) creates, at the facade call site
+**Location:** `src/compiler/javascript.rs`, at the facade call site
 [`GEN-12`](gen-12.md) emits. `src/compiler/canonical/mod.rs` — `Value::TypedValue`'s
 `marked_unsafe`, which is the flag that decides which of the two shapes a call gets.
 `std/core/src/Task.ignored` is the module that would declare the types, and it does not compile.

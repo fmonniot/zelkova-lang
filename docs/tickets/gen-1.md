@@ -101,9 +101,9 @@ GEN-4   the backend IR   ── closed
    ├── GEN-6   a self tail call is marked
    └── GEN-7   parameterless bindings get an initialisation order   ── closed
    │
-GEN-8   the JavaScript runtime module
+GEN-8   the JavaScript runtime module   ── closed
    │
-GEN-9   emit a module
+GEN-9   emit a module   ── closed
    ├── GEN-10  emit a `case`
    ├── GEN-11  emit the tail-call loop
    └── GEN-12  emit an `unsafe` facade call, and place its companion

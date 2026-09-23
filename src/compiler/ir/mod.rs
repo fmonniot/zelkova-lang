@@ -64,8 +64,7 @@
 //! ([`GEN-6`](../../../docs/tickets/gen-6.md)). [`Module`] holds its declarations in a
 //! `Vec` sorted by name, which is a deterministic order and not an evaluation order;
 //! [`Module::initialisation_order`] is the evaluation order, over the parameterless ones
-//! alone, and [`GEN-9`](../../../docs/tickets/gen-9.md) is what still has to emit
-//! declarations in it.
+//! alone, and [`javascript::emit`](crate::compiler::javascript::emit) emits them in it.
 
 use std::collections::HashMap;
 
@@ -126,8 +125,8 @@ pub struct Module {
     /// `canonical::canonicalize` already built to reject a cycle (`LANG-35`) rather than
     /// building a second one from the same rule; see that function's doc comment for the
     /// acyclic assumption this relies on and which phase discharges it.
-    /// [`GEN-9`](../../../docs/tickets/gen-9.md) is what emits declarations in this order —
-    /// this only computes it.
+    /// [`javascript::emit`](crate::compiler::javascript::emit) is what emits declarations
+    /// in this order — this only computes it.
     pub initialisation_order: Vec<Name>,
 }
 

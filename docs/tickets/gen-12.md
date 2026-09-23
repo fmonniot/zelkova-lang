@@ -3,12 +3,13 @@
 **Sizing:** medium. A facade's emitted module, the companion's placement, and a new error for a
 target with no companion.
 
-**Depends on:** [`GEN-9`](gen-9.md). Sits with [`GEN-13`](gen-13.md), which decides the output
+**Depends on:** `GEN-9`, closed — the emitter is `src/compiler/javascript.rs`. Sits with [`GEN-13`](gen-13.md), which decides the output
 layout the companion is copied into — take them in either order, or together.
 
 **Part of:** [`GEN-1`](gen-1.md).
 
-**Location:** the backend module [`GEN-9`](gen-9.md) creates.
+**Location:** `src/compiler/javascript.rs`, whose `emit` answers `Error::Facade` for a facade
+today.
 `src/compiler/canonical/mod.rs` — `Module::binding_foreign`, which marks a facade, and
 `Value::TypedValue`'s `marked_unsafe`, which nothing downstream reads yet.
 `std/core/src/Js/Basics.zel`, `Js/Bitwise.zel` and `Js/Utils.zel` with their `.mjs` companions
@@ -30,7 +31,7 @@ are the three facades in the tree, and all three are `unsafe` throughout.
   by the companion as the value itself, not as a function. The one exception is a constant whose
   type is a `Task`, which is [`GEN-16`](gen-16.md)'s and not reachable yet.
 
-**Problem:** a facade has signatures and no bodies, so [`GEN-9`](gen-9.md) has nothing to emit
+**Problem:** a facade has signatures and no bodies, so `src/compiler/javascript.rs` has nothing to emit
 for one — and every value in `std/core` that actually computes something arrives through one.
 `marked_unsafe` is recorded on the declaration and read nowhere.
 
@@ -42,7 +43,7 @@ already implies.
 A call site needs no wrapper. The signature's arrow count is the arity, and the companion takes
 that many parameters, so a saturated call is a direct call and an unsaturated one goes through
 [`GEN-8`](gen-8.md)'s `$curry` with the arity read off the signature — the same rule
-[`GEN-9`](gen-9.md) applies to an ordinary declaration, which is the point of the
+`src/compiler/javascript.rs` applies to an ordinary declaration, which is the point of the
 plain-parameter-list promise.
 
 Add the missing-companion error, with a `message()` naming the facade and the target per

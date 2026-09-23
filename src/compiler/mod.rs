@@ -70,6 +70,10 @@ pub mod exhaustiveness;
 /// for one module. Public because it is the compiler's hand-off to a backend and
 /// `check_module` returns one.
 pub mod ir;
+/// The JavaScript backend: the text of the ES module one checked module emits as.
+/// Public because nothing in the pipeline calls it yet — writing its output is
+/// `GEN-13` — so its tests and that ticket reach it from outside.
+pub mod javascript;
 /// `zelkova.toml`: reading it, and the shape it has to have. Public for the same
 /// reason as `source` and `dependencies` — `manifest::ManifestError` is reachable
 /// from the public `CompilationError::Manifest`.

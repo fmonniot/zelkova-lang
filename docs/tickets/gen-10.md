@@ -3,12 +3,13 @@
 **Sizing:** small to medium. The hard part — deciding what is tested in what order — is
 [`GEN-5`](gen-5.md)'s; this walks the tree it produced and writes JavaScript.
 
-**Depends on:** [`GEN-5`](gen-5.md) (the decision tree), [`GEN-9`](gen-9.md) (the emitter it
-sits inside) and [`GEN-8`](gen-8.md) (the abort the fall-through leaf calls).
+**Depends on:** [`GEN-5`](gen-5.md) (the decision tree), `GEN-9`, closed (the emitter it
+sits inside, `src/compiler/javascript.rs`) and [`GEN-8`](gen-8.md) (the abort the fall-through leaf calls).
 
 **Part of:** [`GEN-1`](gen-1.md).
 
-**Location:** the backend module [`GEN-9`](gen-9.md) creates.
+**Location:** `src/compiler/javascript.rs`, whose `expression` answers
+`Error::Unsupported` with `Construct::Case` for a `case` today.
 
 **Decided:** the tests, their order and the names each leaf binds are already settled by the
 tree [`GEN-5`](gen-5.md) built, from
@@ -21,7 +22,7 @@ The representation each test reads is the one [`GEN-1`](gen-1.md) collects: a un
 constructor is its `$` field, a tuple is an array, and a `Bool` is a JavaScript boolean rather
 than a tagged object — so a `case` on a `Bool` tests the value itself.
 
-**Problem:** [`GEN-9`](gen-9.md) emits every expression form except this one, and `case` is how
+**Problem:** `src/compiler/javascript.rs` emits every expression form except this one, and `case` is how
 every union type in the language is taken apart. `std/core`'s `Maybe`, `Result` and `Basics`
 are all unreachable without it.
 

@@ -125,8 +125,8 @@ depends on it not doing so was already depending on a backend rather than on the
 It needs two facts at the call site — the callee's arity and whether the call is saturated —
 which is part of why the IR carries them (decision 1).
 
-Lands at: `runtime/js/zelkova.mjs` for the helper, and the backend module
-[`GEN-9`](../tickets/gen-9.md) creates for the call-site rule.
+Lands at: `runtime/js/zelkova.mjs` for the helper, and `src/compiler/javascript.rs` for the
+call-site rule.
 
 ## 4 — A constructor of no arguments is hoisted to one module-level constant
 
@@ -148,7 +148,7 @@ whether the backend is allowed to do this should find that it is, not have to re
 The same reasoning does not extend to a constructor *with* arguments, which is a different value
 per application and is not hoisted.
 
-Lands at: the backend module [`GEN-9`](../tickets/gen-9.md) creates.
+Lands at: `src/compiler/javascript.rs`.
 
 ## 5 — Output is written per package, beside the root manifest
 

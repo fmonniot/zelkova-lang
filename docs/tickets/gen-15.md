@@ -7,7 +7,7 @@ record before the IR is written, not rediscovered afterwards. It is not part of
 **Depends on:** all of [`GEN-1`](gen-1.md) — there is no backend to be the second of until the
 first exists.
 
-**Location:** a sibling of the JavaScript backend [`GEN-9`](gen-9.md) creates, reading the same
+**Location:** a sibling of the JavaScript backend, `src/compiler/javascript.rs`, reading the same
 `src/compiler/ir/`.
 
 **Decided ([`docs/spec/interop.md`](../spec/interop.md)):** Zelkova compiles to more than one

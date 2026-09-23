@@ -651,8 +651,8 @@ instance Comparable Int where
     orderOf (Js.Utils.compareInt a b)
 ```
 
-**Not implemented:** specialisation is a rule about code generation, and code generation has not
-started. When it exists, the generated JavaScript holds one ordinary function per instantiation
+**Not implemented:** specialisation is a rule about code generation, and the compiler's code
+generation specialises nothing yet. When it does, the generated JavaScript holds one ordinary function per instantiation
 and no table of operations is built or passed at runtime. Two consequences: a program is compiled
 as a whole rather than a module at a time, and a constrained function cannot call itself at a
 different type than it was called with. The second is already impossible — a class variable
