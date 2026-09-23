@@ -358,6 +358,57 @@ fn an_if_is_a_conditional_expression() {
     assert!(text.contains("return b ? 1n : 2n;"), "got:\n{}", text);
 }
 
+/// An `if` in the condition of another is parenthesised: without the parentheses,
+/// JavaScript reads `x ? y : x ? 1n : 2n` as a conditional in the *else* branch, a
+/// different program.
+///
+/// Mutation-checked by returning `operand`'s text unparenthesised.
+#[test]
+fn an_if_in_condition_position_is_parenthesised() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (choose)
+
+        choose : Bool -> Bool -> Int
+        choose x y =
+          if (if x then y else x) then 1 else 2
+    "#});
+
+    assert!(
+        text.contains("return (x ? y : x) ? 1n : 2n;"),
+        "got:\n{}",
+        text
+    );
+}
+
+/// An `if` applied to an argument is parenthesised: without the parentheses, the call
+/// would bind to the *else* branch alone.
+///
+/// Mutation-checked by returning `operand`'s text unparenthesised.
+#[test]
+fn an_if_in_callee_position_is_parenthesised() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (choose)
+
+        next : Int -> Int
+        next n =
+          n
+
+        same : Int -> Int
+        same n =
+          n
+
+        choose : Bool -> Int
+        choose x =
+          (if x then next else same) 1
+    "#});
+
+    assert!(
+        text.contains("return (x ? next : same)(1n);"),
+        "got:\n{}",
+        text
+    );
+}
+
 /// A parameterless binding that mentions another is emitted after it, whatever their
 /// names' order: `alpha` sorts first and is initialised second.
 ///
