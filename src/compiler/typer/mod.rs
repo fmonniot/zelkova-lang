@@ -1206,7 +1206,10 @@ fn translate_pattern(
         }
         // Each element gets a fresh type, and the matched value has to be the tuple of
         // them. An element is held to the same limit a constructor's argument is: a
-        // variable or `_`, nothing nested.
+        // variable or `_`, nothing nested. A tuple nested in a tuple is the stand-in
+        // for an untranslatable declaration in `tests/typer.rs`, `tests/ir.rs` and
+        // `tests/javascript.rs` — the only nested shape that parses today — so lifting
+        // this limit turns all three red, and each needs a new stand-in.
         canonical::PatternKind::Tuple(elements) => {
             let mut bindings: Vec<(String, Type)> = vec![];
             let elements = elements
@@ -1304,8 +1307,11 @@ fn value_to_term_and_annotation(
 /// off by. The `Case`s nest in parameter order, the first outermost, so a name two
 /// patterned parameters both bind is the later one's in the body — which is how
 /// canonicalization resolved it. A pattern's names also shadow a same-named parameter
-/// written as a variable, whichever comes first. Both are a name bound twice in one
-/// clause, which the language rejects and the compiler does not yet (`LANG-18`).
+/// written as a variable, whichever comes first — and when the pattern comes first,
+/// that is the opposite of canonicalization, which lets the later parameter win:
+/// `f (x, _) x = x` reads the pattern's `x` here and the plain parameter's there. Both
+/// are a name bound twice in one clause, which the language rejects and the compiler
+/// does not yet (`LANG-18`).
 ///
 /// Each `Fun` spans its parameter through the body it wraps, so a function whose
 /// declared shape does not match its definition is underlined from the parameter

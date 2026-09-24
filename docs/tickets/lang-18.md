@@ -27,6 +27,13 @@ f a a =
 
 Neither is reported by any phase. The body reads as if it names the first binding and does not.
 
+The typer resolves one mix of the two the other way. `wrap_with_patterns`
+(`src/compiler/typer/mod.rs`) binds a parameter written as a pattern in a match nested inside
+every parameter, so the pattern's names shadow a same-named plain parameter whichever comes
+first: `f (x, _) x = x` reads the second `x` in the `canonical::Module` and the first in the
+typed term an `ir::Module` is built from. Once this ticket rejects the source, the sentence on
+it in `wrap_with_patterns`'s doc comment describes nothing and goes.
+
 Found while writing [`docs/spec/patterns.md`](../spec/patterns.md) (`SPEC-7`).
 
 **Approach:** `expose_pattern` is the wrong level on its own — the rule is per *clause*, and
