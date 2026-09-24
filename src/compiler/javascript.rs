@@ -41,8 +41,7 @@
 //! A constructor is not exported. An importer that builds one builds its own object of
 //! the same shape, and hoists its own constant for one of no arguments. [Equality is
 //! structural](../../../docs/spec/evaluation-semantics.md#what-structural-equality-computes),
-//! so nothing observes which module allocated it. No mention of another module's
-//! constructor reaches an [`ir::Declaration`] today (`BUG-36`).
+//! so nothing observes which module allocated it.
 //!
 //! # Calls
 //!
@@ -65,8 +64,7 @@
 //! operators.
 //!
 //! A value another module declares has an arity this module cannot see, so it is called
-//! one argument at a time like any other value. No such reference reaches an
-//! [`ir::Declaration`] today (`BUG-36`, see [`ir::ReferenceKind::Foreign`]).
+//! one argument at a time like any other value ([`ir::ReferenceKind::Foreign`]).
 //!
 //! # A facade
 //!

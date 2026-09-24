@@ -9,22 +9,16 @@ is built, and both are provisional until this ticket settles the layout: a modul
 imported reference carries, so neither knows which package declared it. Sits with
 [`GEN-12`](README.md), which places a companion into the layout this decides.
 
-`emit` refuses every one of `std/core`'s eight modules today, which bears on this ticket's
-acceptance. Its three facades are [`GEN-12`](README.md)'s. Each of the other five holds a
-declaration the typer could not check, and `emit` refuses a module missing a declaration rather
-than writing it without one. The causes differ by module:
+`emit` refuses four of `std/core`'s eight modules today, which bears on this ticket's
+acceptance. Its three facades emit ([`GEN-12`](README.md)), and so does `Bitwise`, which only
+forwards to one of them. The causes differ by module:
 
-- `Maybe` and `Result` build or match an imported constructor (`True`, `False`, and in `Result`
-  `Just` and `Nothing`), which is [`BUG-36`](bug-36.md). These two also hold a `case`, which
-  [`GEN-10`](gen-10.md) emits.
-- `Basics` and `Bitwise` forward imported values (`add = Js.Basics.add`). The typer does not
-  translate a reference to an imported value, which is also [`BUG-36`](bug-36.md) — its title and
-  scope now cover `VarForeign` alongside `VarConstructor`, since the same fix (handing
-  `type_check` the interfaces) closes both. `Basics.never` also matches a constructor pattern in
-  its parameter, `never (JustOneMore nvr)` — `JustOneMore` is `Basics`'s own, not imported, so
-  that one is [`BUG-39`](bug-39.md), not `BUG-36`.
-- `Tuple`'s five refused declarations match a tuple pattern in a parameter, `first (x,_) = x`.
-  The typer's `wrap_with_patterns` translates only a variable or `_` there, which is
+- `Maybe` and `Result` hold a `case`, which [`GEN-10`](gen-10.md) emits.
+- `Basics` and `Tuple` each hold a declaration the typer could not check, and `emit` refuses a
+  module missing a declaration rather than writing it without one. Each of them matches a
+  pattern in a parameter — a constructor in `never (JustOneMore nvr)`, a tuple in
+  `Tuple.first (x,_) = x` and in `Basics.fromPolar`/`toPolar` — and the typer's
+  `wrap_with_patterns` translates only a variable or `_` there, which is
   [`BUG-39`](bug-39.md).
 
 **Part of:** [`GEN-1`](gen-1.md).

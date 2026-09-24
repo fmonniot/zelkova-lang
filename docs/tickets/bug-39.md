@@ -21,21 +21,22 @@ plain name away — it is not a lookup, unlike `BUG-36`'s gap — the translatio
 not exist yet for a *parameter* position, though it does for a `case` scrutinee
 (`translate_pattern`).
 
-`std/core` has six declarations that hit this today, none of them touching an import:
+`std/core` has eight declarations that hit this today, none of them touching an import:
 
 - `Basics.never (JustOneMore nvr) = never nvr` (`std/core/src/Basics.zel`) — a constructor
   pattern; `Never`, and `JustOneMore`, are declared in `Basics` itself, so this is not `BUG-36`'s
   domain (an imported name), it is a pattern *shape* `wrap_with_patterns` cannot represent at
   all, local or imported.
+- `Basics.fromPolar (radius, theta)` and `Basics.toPolar ( x, y )` (`std/core/src/Basics.zel`)
+  each destructure a tuple parameter.
 - All five of `std/core/src/Tuple.zel`'s functions destructure a tuple parameter directly:
   `first (x,_) = x`, `second (_,y) = y`, `mapFirst func (x,y) = (func x, y)`,
   `mapSecond func (x,y) = (x, func y)`, `mapBoth funcA funcB (x,y) = (funcA x, funcB y)`.
 
 Surfaced while scoping [`GEN-13`](gen-13.md) (write the build): `javascript::emit` refuses a
 module if even one of its declarations was never type checked, so this gap alone keeps
-`Basics` and `Tuple` both fully refused even once [`BUG-36`](bug-36.md) (an imported constructor
-or value) is fixed — `Basics`'s other declarations are `BUG-36`'s, but `never` is this ticket's
-alone, and nothing else in `Tuple` needs `BUG-36` at all.
+`Basics` and `Tuple` both fully refused now that [`BUG-36`](README.md) (an imported constructor
+or value) is closed.
 
 **Fix:** give a parameter pattern the same case-arm translation `translate_pattern` already gives
 a `case` scrutinee. The mechanism is not new — `translate_pattern` returns a `TermPattern` and
@@ -69,5 +70,12 @@ covers `wrap_with_patterns`'s neighbours) for each shape:
 - mutation-check by restoring `wrap_with_patterns`'s `_ => None` and watching both tests go red.
 
 `cargo run` still prints `parsed 8 modules`, lists all eight as checked, and exits 0 —
-`Basics.never` and all five of `Tuple`'s functions are newly checked, so a failure there is
-either a real error in `std/core` or a regression, and has to be told apart before landing.
+`Basics.never`, `Basics.fromPolar`, `Basics.toPolar` and all five of `Tuple`'s functions are
+newly checked, so a failure there is either a real error in `std/core` or a regression, and has
+to be told apart before landing.
+
+Two tests use a tuple parameter as their stand-in for "a declaration the typer cannot type",
+and go red when this lands: `tests/ir.rs::a_declaration_with_no_ir_is_named_rather_than_dropped`
+and `tests/javascript.rs::a_declaration_with_no_ir_is_refused`. Each needs a new stand-in that
+is still untranslatable — a pattern nested inside a `case` constructor's arguments
+(`Just (x, y) ->`) is one — and not a weakened assertion.

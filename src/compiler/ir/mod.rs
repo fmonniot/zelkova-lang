@@ -257,12 +257,7 @@ pub enum ReferenceKind {
     /// A declaration of another module, named in full: a named import of whatever that
     /// module emitted.
     ///
-    /// Nothing reaches a [`Declaration`] through this today. The typer's environment is
-    /// built from the module under check alone, so a declaration mentioning an imported
-    /// value comes back [`Solved::UnboundName`] and lands in
-    /// [`Module::unchecked`]; giving the typer the imported interfaces is `BUG-36`. The
-    /// translation records the kind regardless, because that is the only moment it is
-    /// available.
+    /// The typer checks it against the type that module's interface declares.
     Foreign(QualName),
     /// A union constructor: it builds a tagged value rather than reading a binding.
     Constructor(Constructor),
@@ -492,13 +487,13 @@ pub enum Solved {
     /// what reads it back out.
     NoBody,
     /// `value_to_term_and_annotation` could not translate the declaration into the
-    /// typer's term language — a `VarKernel` reference, a constructor of a union this
-    /// module does not declare, a constructor or tuple pattern in a function head, a
-    /// nested pattern inside a `case`. Nothing about the declaration was checked.
+    /// typer's term language — a `VarKernel` reference, a constructor or tuple pattern
+    /// in a function head, a nested pattern inside a `case`. Nothing about the
+    /// declaration was checked.
     ///
     /// Not an [`Error`](crate::compiler::typer::Error): it is a gap in the typer rather
-    /// than a mistake in the source, and reporting it would fail dozens of the
-    /// declarations in `std/core/src` that are simply beyond today's inference. What it
+    /// than a mistake in the source, and reporting it would fail the eight declarations
+    /// in `std/core/src` that are beyond today's inference (`BUG-39`). What it
     /// wants is a warning, which the compiler does not have yet (`ERR-8`, see
     /// `docs/tickets/README.md`) — hence the span, so that the warning has a caret the
     /// day it exists. *Which* of the constructs tripped it is not carried:
@@ -513,16 +508,14 @@ pub enum Solved {
     /// Inference reached a name the typer's environment does not hold, and nothing
     /// about the declaration was checked.
     ///
-    /// That environment is assembled from *this module alone*: its own annotated
-    /// values and its own type constructors. Anything that crossed a module boundary
-    /// is absent even though canonicalization resolved it perfectly well —
-    /// `Basics.negate` referring to `-`, which the infix declaration aliases to `sub`,
-    /// or any reference to an imported value at all. Several declarations in
-    /// `std/core/src` hit this today and not one of them is a mistake in the source,
-    /// which is why this is not an [`Error`](crate::compiler::typer::Error) either;
-    /// closing the hole is `BUG-36`. A name that genuinely does not exist is caught
-    /// earlier, by canonicalization, as `canonical::Error::VariableNotFound`, with a
-    /// caret under the name.
+    /// That environment holds a declared type for every value in reach that has one:
+    /// the values and constructors every imported interface exposes, and this module's
+    /// own constructors and annotated declarations. A declaration of this module
+    /// written without an annotation has no declared type, and a name reaching one
+    /// lands here. That is not a mistake in the source, which is why this is not an
+    /// [`Error`](crate::compiler::typer::Error) either. A name that genuinely does not
+    /// exist is caught earlier, by canonicalization, as
+    /// `canonical::Error::VariableNotFound`, with a caret under the name.
     UnboundName {
         /// The name as inference looked it up.
         name: String,

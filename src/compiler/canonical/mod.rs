@@ -608,6 +608,8 @@ pub enum ExpressionKind {
     VarTopLevel(QualName),
     VarKernel(QualName),
     VarForeign(QualName, Type),
+    /// A union constructor, named by the module that declared its union whichever
+    /// module the reference is written in.
     VarConstructor(QualName, Type),
     Char(char),
     Int(i64),
@@ -667,8 +669,16 @@ impl Expression {
                     ValueType::TopLevel => {
                         ExpressionKind::VarTopLevel(env.module_name().qualify_name(name))
                     }
+                    // Named by the module that declared the value, `m`. The written
+                    // spelling is bare for an exposed value and carries a module or an
+                    // alias for a qualified one (`Js.Basics.add`), and only its last
+                    // segment is the value's own name.
                     ValueType::Foreign(m, _source, tpe, _origin) => {
-                        ExpressionKind::VarForeign(m.qualify_name(name), tpe.clone())
+                        let declared = name
+                            .to_qual()
+                            .map(|written| written.unqualified_name())
+                            .unwrap_or_else(|| name.clone());
+                        ExpressionKind::VarForeign(m.qualify_name(&declared), tpe.clone())
                     }
                     ValueType::Foreigns(candidates) => {
                         return Err(Error::AmbiguousVariables(
@@ -704,8 +714,14 @@ impl Expression {
                     )
                 };
 
-                let name = name
-                    .to_qual()
+                // Named by the module that declared the union, the way `VarForeign` is
+                // named by the module that declared the value — not by the spelling the
+                // source wrote, which is bare for an exposed constructor and carries the
+                // importer's alias for a qualified one. `qualify_with_name` declines only
+                // an empty module name, which a union's qualified name never has.
+                let name = ctor
+                    .name
+                    .qualify_with_name(&ctor.tpe.module_name())
                     .unwrap_or_else(|| env.module_name().qualify_name(name));
 
                 ExpressionKind::VarConstructor(name, tpe)

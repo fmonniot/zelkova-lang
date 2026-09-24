@@ -32,8 +32,10 @@ what it published, and no later phase would notice.
 Inside a declaration's own body, `a` has to be **rigid**: an opaque constant whose only
 operations are the ones its context provides. That is precisely `LANG-12`'s skolemization, and
 it is what makes "given `Comparable a`, `a` has a `compare`" a statement the checker can hold.
-At a *call site* the opposite is true and needs nothing new — `a` is instantiated fresh and the
-obligation is discharged against a concrete type.
+At a *call site* the opposite is true — `a` is instantiated fresh, which `Types::by_name`
+already does for every use of a declared name, and the obligation is discharged against a
+concrete type. What is new there is only that the instantiated obligation has to travel with the
+instantiated type.
 
 **Problem:** the typer has no notion of an obligation. `Constraint` is a pair of types plus an
 `Origin`, `unify` solves each one on sight, and the only thing resembling a class today is
@@ -77,14 +79,14 @@ ticket builds, and [LANG-41](lang-41.md) is what retires it.
    the constraint. `ERR-4`'s labelling gives the caret and the secondary label for free once the
    obligation carries an `Origin`.
 
-**What this ticket does not reach.** `type_check` skips a declaration whose body it cannot
-translate, and that is most of what a constraint would be about in `std/core`: probed, 45 of the
-package's 133 values are in `module javascript` facades that `type_check` returns early on, and
-43 more are bare facade re-exports (`add = Js.Basics.add`) that `value_to_term_and_annotation`
-returns `None` for. `min`, `compare`, `add` and `append` are all in that second set. So the
-solver built here will be exercised by tests and by user code long before it is exercised by the
-standard library, and [LANG-42](lang-42.md) is where that changes. Do not read a green
-`cargo run` as evidence this ticket works.
+**What this ticket does not reach.** Nothing in `std/core` carries a constraint for this
+solver to discharge. Probed, 45 of the package's 133 values are in `module javascript` facades
+that `type_check` returns early on. The declarations built on them — `add = Js.Basics.add`,
+`min`, `compare`, `append` — are type checked since `BUG-36`, but against the unconstrained
+`a -> a -> …` signatures `SPEC-11` left them with. So the solver built here will be exercised
+by tests and by user code long before it is exercised by the standard library, and
+[LANG-42](lang-42.md) is where that changes. Do not read a green `cargo run` as evidence this
+ticket works.
 
 **Acceptance:** tests in `tests/typer.rs`, each with its neutralised-and-seen-red counterpart
 per `CLAUDE.md`'s *A green test proves nothing until you have seen it fail*:

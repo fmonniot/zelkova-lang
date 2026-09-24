@@ -253,7 +253,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-33](bug-33.md) | bug | low | open | `SourceFileError::notes()` dumps `io::Error`'s `Debug` form instead of its `Display` form |
 | [BUG-34](bug-34.md) | bug | low | open | A failed sub-pass in `canonicalize` reports as if it found nothing, cascading into spurious errors from every later pass that depended on it |
 | BUG-35 | bug | medium | closed 2026-09-16 | The typer identifies a union type by its unqualified name, so two modules' `Size` are one type |
-| [BUG-36](bug-36.md) | bug | medium | open | A value that reaches an imported constructor or an imported value is never type checked |
+| BUG-36 | bug | medium | closed 2026-09-23 | A value that reaches an imported constructor or an imported value is never type checked |
 | [BUG-37](bug-37.md) | bug | high | open | A package is not part of a type's identity, so two packages' same-named modules are one type |
 | [BUG-38](bug-38.md) | bug | high | open | A parameterless binding that reaches another only through a function it calls is not ordered after it |
 | [BUG-39](bug-39.md) | bug | medium | open | A function parameter pattern other than a variable or `_` is never type checked |

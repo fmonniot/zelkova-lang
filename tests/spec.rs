@@ -151,14 +151,25 @@ fn parse(source: &str) -> Result<parser::Module, parser::Error> {
     parser::parse(&file)
 }
 
-fn canonicalize(module: &parser::Module) -> Result<canonical::Module, Vec<canonical::Error>> {
+/// A lone block, canonicalized against `interfaces` — its [`block_interfaces`], the
+/// map the typer is then handed too.
+fn canonicalize(
+    module: &parser::Module,
+    interfaces: &HashMap<Name, Interface>,
+) -> Result<canonical::Module, Vec<canonical::Error>> {
     let declared = std::slice::from_ref(&module.name);
     canonical::canonicalize(
         &test_package(),
-        &stdlib_interfaces(declared),
+        interfaces,
         module,
         zelkova_lang::compiler::default_imports::declares_a_default(declared),
     )
+}
+
+/// The interfaces a lone block is compiled against: [`stdlib_interfaces`] for a
+/// package that declares only that block's module.
+fn block_interfaces(module: &parser::Module) -> HashMap<Name, Interface> {
+    stdlib_interfaces(std::slice::from_ref(&module.name))
 }
 
 /// `Basics` as a stand-in [`Interface`], so a chapter may name `Int`, `Float` or
@@ -193,11 +204,17 @@ fn stdlib_interfaces(declared: &[Name]) -> HashMap<Name, Interface> {
 /// Exhaustiveness is deliberately not run: it is a stub that accepts every module, so
 /// running it would only let a future chapter tag a block against a phase that inspects
 /// nothing.
-fn type_check(module: &canonical::Module) -> Result<(), Vec<typer::Error>> {
+///
+/// `interfaces` is what the module was canonicalized against, which is what the typer
+/// reads every imported value and union from.
+fn type_check(
+    module: &canonical::Module,
+    interfaces: &HashMap<Name, Interface>,
+) -> Result<(), Vec<typer::Error>> {
     // The solved types are dropped: a chapter's tags are claims about which phase
     // accepts or rejects a block, and none of them is about what a declaration's type
     // came out as.
-    typer::type_check(module).map(|_| ())
+    typer::type_check(module, interfaces).map(|_| ())
 }
 
 /// The `typer::ErrorKind` names present in `errors`.
@@ -409,19 +426,22 @@ fn evaluate(block: &Block) -> Verdict {
         ),
         Expect::Ok => match parse(&block.source) {
             Err(e) => Verdict::Fail(format!("expected `ok`, but the parser rejected it: {:?}", e)),
-            Ok(module) => match canonicalize(&module) {
-                Err(errors) => Verdict::Fail(format!(
-                    "expected `ok`, but canonicalization failed: {:?}",
-                    errors
-                )),
-                Ok(canonical) => match type_check(&canonical) {
+            Ok(module) => {
+                let interfaces = block_interfaces(&module);
+                match canonicalize(&module, &interfaces) {
                     Err(errors) => Verdict::Fail(format!(
-                        "expected `ok`, but type checking failed: {:?}",
+                        "expected `ok`, but canonicalization failed: {:?}",
                         errors
                     )),
-                    Ok(()) => Verdict::Pass,
-                },
-            },
+                    Ok(canonical) => match type_check(&canonical, &interfaces) {
+                        Err(errors) => Verdict::Fail(format!(
+                            "expected `ok`, but type checking failed: {:?}",
+                            errors
+                        )),
+                        Ok(()) => Verdict::Pass,
+                    },
+                }
+            }
         },
         Expect::TypeError(wanted) => match parse(&block.source) {
             Err(e) => Verdict::Fail(format!(
@@ -429,17 +449,23 @@ fn evaluate(block: &Block) -> Verdict {
                 type_error_label(wanted),
                 e
             )),
-            Ok(module) => match canonicalize(&module) {
-                Err(errors) => Verdict::Fail(format!(
-                    "expected `{}`, but canonicalization rejected it before the typer \
-                     ran: {:?}",
-                    type_error_label(wanted),
-                    errors
-                )),
-                Ok(canonical) => {
-                    judge_type_error(wanted, &type_check(&canonical).err().unwrap_or_default())
+            Ok(module) => {
+                let interfaces = block_interfaces(&module);
+                match canonicalize(&module, &interfaces) {
+                    Err(errors) => Verdict::Fail(format!(
+                        "expected `{}`, but canonicalization rejected it before the typer \
+                         ran: {:?}",
+                        type_error_label(wanted),
+                        errors
+                    )),
+                    Ok(canonical) => judge_type_error(
+                        wanted,
+                        &type_check(&canonical, &interfaces)
+                            .err()
+                            .unwrap_or_default(),
+                    ),
                 }
-            },
+            }
         },
         Expect::ParseError(wanted) => match parse(&block.source) {
             Ok(_) => Verdict::Fail(format!(
@@ -469,7 +495,7 @@ fn evaluate(block: &Block) -> Verdict {
                 "expected `canonical-error:{}`, but the parser rejected it before canonicalization ran: {:?}",
                 wanted, e
             )),
-            Ok(module) => match canonicalize(&module) {
+            Ok(module) => match canonicalize(&module, &block_interfaces(&module)) {
                 Ok(_) => Verdict::Fail(format!(
                     "expected `canonical-error:{}`, but the module canonicalized with no errors",
                     wanted
@@ -495,29 +521,32 @@ fn evaluate(block: &Block) -> Verdict {
                 );
                 Verdict::Pass
             }
-            Ok(module) => match canonicalize(&module) {
-                Err(errors) => {
-                    println!(
-                        "{}:{} (expect=unimplemented) failed in canonicalization, as expected: {:?}",
-                        block.file, block.line, errors
-                    );
-                    Verdict::Pass
-                }
-                Ok(canonical) => match type_check(&canonical) {
+            Ok(module) => {
+                let interfaces = block_interfaces(&module);
+                match canonicalize(&module, &interfaces) {
                     Err(errors) => {
                         println!(
-                            "{}:{} (expect=unimplemented) failed in the typer, as expected: {:?}",
+                            "{}:{} (expect=unimplemented) failed in canonicalization, as expected: {:?}",
                             block.file, block.line, errors
                         );
                         Verdict::Pass
                     }
-                    Ok(()) => Verdict::Fail(
-                        "expected `unimplemented`, but the block compiled cleanly — this \
-                         feature looks implemented now; update the chapter"
-                            .to_string(),
-                    ),
-                },
-            },
+                    Ok(canonical) => match type_check(&canonical, &interfaces) {
+                        Err(errors) => {
+                            println!(
+                                "{}:{} (expect=unimplemented) failed in the typer, as expected: {:?}",
+                                block.file, block.line, errors
+                            );
+                            Verdict::Pass
+                        }
+                        Ok(()) => Verdict::Fail(
+                            "expected `unimplemented`, but the block compiled cleanly — this \
+                             feature looks implemented now; update the chapter"
+                                .to_string(),
+                        ),
+                    },
+                }
+            }
         },
     }
 }
@@ -671,13 +700,14 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
     // does not touch it: an interface carries declared signatures, and those are what
     // canonicalization already validated. So a group can show one module failing the
     // typer and its importer still resolving every name it imports, which is what a
-    // chapter demonstrating a type error inside a two-module example needs. The typer
-    // reads one module at a time (`typer::type_check` takes no interfaces), so the
-    // order is bookkeeping rather than a dependency here.
+    // chapter demonstrating a type error inside a two-module example needs. Each module
+    // is type checked against the whole group's interfaces; the ones it does not import
+    // are never reached, because every name the typer looks up is one canonicalization
+    // resolved against that module's own imports.
     let type_failures: HashMap<Name, Vec<typer::Error>> = checked
         .iter()
         .filter_map(|m| {
-            type_check(m)
+            type_check(m, &interfaces)
                 .err()
                 .map(|errors| (m.name.name().clone(), errors))
         })
