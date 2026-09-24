@@ -58,13 +58,20 @@
 //!
 //! # What is not here yet
 //!
-//! Two tickets each add a field or a pass over this shape and are deliberately not
-//! written into it: a `case` becomes a decision tree
-//! ([`GEN-5`](../../../docs/tickets/gen-5.md)), and a self tail call is marked
-//! ([`GEN-6`](../../../docs/tickets/gen-6.md)). [`Module`] holds its declarations in a
-//! `Vec` sorted by name, which is a deterministic order and not an evaluation order;
-//! [`Module::initialisation_order`] is the evaluation order, over the parameterless ones
-//! alone, and [`javascript::emit`](crate::compiler::javascript::emit) emits them in it.
+//! One ticket adds a mark to this shape and is deliberately not written into it yet: a
+//! self tail call ([`GEN-6`](../../../docs/tickets/gen-6.md)). [`Module`] holds its
+//! declarations in a `Vec` sorted by name, which is a deterministic order and not an
+//! evaluation order; [`Module::initialisation_order`] is the evaluation order, over the
+//! parameterless ones alone, and [`javascript::emit`](crate::compiler::javascript::emit)
+//! emits them in it.
+//!
+//! A `case`'s branches keep [`TypedTermKind::Case`]'s own flat shape rather than
+//! growing a tree in place: the typer still wants a flat list, since every branch is
+//! checked against the same scrutinee type and order does not matter to it. The
+//! `decision` module is a second, additional view of the same branches — built from
+//! them on demand rather than stored alongside them — and [`Decision`] is the tree a
+//! backend walks instead of re-deriving, at emission time, which test distinguishes
+//! which branch (`GEN-5`). See that module's doc comment.
 
 use std::collections::HashMap;
 
@@ -74,6 +81,9 @@ use super::position::NodeSpan;
 use super::tuple::Tuple;
 use super::typer::Type;
 use super::ModuleName;
+
+mod decision;
+pub use decision::{build as decision_tree, Decision, Occurrence, Outcome, Step};
 
 // ── A module ──────────────────────────────────────────────────────────────────
 
@@ -415,29 +425,53 @@ pub enum TermPatternKind {
     Anything,
     /// Binds the scrutinee type to this name.
     Bind(String),
-    /// Matches one specific value; constrains the scrutinee to the type carried here.
+    /// Matches one specific value; constrains the scrutinee to the type carried here
+    /// and, unlike the type alone, says which value of it.
     ///
-    /// That type is a [`Type::Literal`] for an `Int` or a `Char` pattern, and the
+    /// `tpe` is a [`Type::Literal`] for an `Int` or a `Char` pattern, and the
     /// [`Type::Adt`] `typer::bool_type` builds for a `true`/`false` one — `Bool` is the
-    /// union `Basics` declares, not a literal type.
-    Literal(Type),
+    /// union `Basics` declares, not a literal type. Two patterns of that same kind — two
+    /// `Int`s, say — share that one type, so `value` is what tells `1` from `2`, or
+    /// `true` from `false`; a `decision::Decision` reads it to build the
+    /// `decision::Outcome` each of a `Switch`'s edges is tried against.
+    Literal { tpe: Type, value: LiteralValue },
     /// Matches an ADT constructor; carries the fresh ADT args and field bindings.
     Constructor {
         /// Which constructor, and where it sits in its declaration. `ctor.union` is the
         /// name the [`Type::Adt`] this pattern constrains the scrutinee to is built from.
         ctor: Constructor,
         adt_args: Vec<Type>,
-        /// `(variable_name, its_type_var)` for each bound constructor argument.
-        bindings: Vec<(String, Type)>,
+        /// `(position, variable_name, its_type_var)` for each bound constructor
+        /// argument. `position` is the argument's place in the constructor, counted
+        /// from zero the way [`Constructor::index`] counts a case, and travels with the
+        /// name because a wildcard argument contributes no entry here — without it, a
+        /// name bound after a `_` could not be told which argument it reads from.
+        bindings: Vec<(usize, String, Type)>,
     },
     /// Matches a tuple of two or three elements; carries a fresh type per element and
     /// the bindings its elements introduce.
     Tuple {
         /// One type per element, which the matched value's tuple type is built from.
         elements: Tuple<Type>,
-        /// `(variable_name, its_type)` for each element written as a variable.
-        bindings: Vec<(String, Type)>,
+        /// `(position, variable_name, its_type)` for each element written as a
+        /// variable — see [`Constructor`]'s own `bindings` field for why a position
+        /// travels with the name.
+        bindings: Vec<(usize, String, Type)>,
     },
+}
+
+/// The concrete value a [`TermPatternKind::Literal`] pattern tests for.
+///
+/// The pattern's own `tpe` cannot tell `1` from `2`, or `'a'` from `'b'`: both share one
+/// type, and only this says which value the scrutinee has to equal. `Bool`'s two
+/// constructors are `true`/`false` here rather than a reference into the union `Basics`
+/// declares, matching how [`TermPatternKind::Literal`] already treats a `Bool` pattern's
+/// type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiteralValue {
+    Bool(bool),
+    Int(i64),
+    Char(char),
 }
 
 #[derive(Debug, Clone)]

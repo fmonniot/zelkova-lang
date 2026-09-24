@@ -177,9 +177,9 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                 // Each pattern constrains the scrutinee type. The pattern is what the
                 // caret should sit under, so the pattern's type is `left`.
                 match &pattern.kind {
-                    TermPatternKind::Literal(lit) => {
+                    TermPatternKind::Literal { tpe, .. } => {
                         constraints.push(Constraint::new(
-                            lit.clone(),
+                            tpe.clone(),
                             scrutinee.tpe.clone(),
                             pattern_reason,
                             pattern.span,

@@ -128,8 +128,11 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                         vec![(name.clone(), scrutinee.tpe.clone())]
                     }
                     TermPatternKind::Constructor { bindings, .. }
-                    | TermPatternKind::Tuple { bindings, .. } => bindings.clone(),
-                    TermPatternKind::Anything | TermPatternKind::Literal(_) => vec![],
+                    | TermPatternKind::Tuple { bindings, .. } => bindings
+                        .iter()
+                        .map(|(_, name, tpe)| (name.clone(), tpe.clone()))
+                        .collect(),
+                    TermPatternKind::Anything | TermPatternKind::Literal { .. } => vec![],
                 };
                 for (name, tpe) in &new_bindings {
                     types.add_binder(TypeBinder::new(name.clone(), tpe.clone()));

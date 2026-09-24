@@ -158,7 +158,7 @@ wrong arithmetic.
 GEN-3   the typer hands back the types it solved   ── closed
   │
 GEN-4   the backend IR   ── closed
-  ├── GEN-5   a `case` becomes a decision tree
+  ├── GEN-5   a `case` becomes a decision tree   ── closed
   ├── GEN-6   a self tail call is marked
   └── GEN-7   parameterless bindings get an initialisation order   ── closed
   │
@@ -377,7 +377,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |
 | GEN-3 | task | — | closed 2026-09-21 | The typer hands back the types it solved |
 | GEN-4 | task | — | closed 2026-09-21 | The backend IR |
-| [GEN-5](gen-5.md) | task | — | open | A `case` becomes a decision tree in the IR |
+| GEN-5 | task | — | closed 2026-09-23 | A `case` becomes a decision tree in the IR |
 | [GEN-6](gen-6.md) | task | — | open | A self tail call is marked in the IR |
 | GEN-7 | task | — | closed 2026-09-22 | Parameterless bindings get an initialisation order |
 | GEN-8 | task | — | closed 2026-09-22 | The JavaScript runtime module |

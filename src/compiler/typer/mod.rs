@@ -39,8 +39,8 @@ use super::canonical;
 use super::canonical::Module;
 use super::scalars;
 use crate::compiler::ir::{
-    pattern_parameter, CaseForm, Constructor, Reference, ReferenceKind, Saturation, Solved, Term,
-    TermKind, TermPattern, TermPatternKind, TypeBinder, TypedTerm, TypedTermKind,
+    pattern_parameter, CaseForm, Constructor, LiteralValue, Reference, ReferenceKind, Saturation,
+    Solved, Term, TermKind, TermPattern, TermPatternKind, TypeBinder, TypedTerm, TypedTermKind,
 };
 use crate::compiler::name::{Name, QualName};
 use crate::compiler::position::NodeSpan;
@@ -1132,13 +1132,25 @@ fn translate_pattern(
             // The binding's actual type will be unified with the scrutinee type in annotate.
             (TermPatternKind::Bind(name.as_str().to_string()), vec![])
         }
-        canonical::PatternKind::Bool(_) => (TermPatternKind::Literal(bool_type()), vec![]),
-        canonical::PatternKind::Int(_) => (
-            TermPatternKind::Literal(Type::Literal(TypeLiteral::Int)),
+        canonical::PatternKind::Bool(value) => (
+            TermPatternKind::Literal {
+                tpe: bool_type(),
+                value: LiteralValue::Bool(*value),
+            },
             vec![],
         ),
-        canonical::PatternKind::Char(_) => (
-            TermPatternKind::Literal(Type::Literal(TypeLiteral::Char)),
+        canonical::PatternKind::Int(value) => (
+            TermPatternKind::Literal {
+                tpe: Type::Literal(TypeLiteral::Int),
+                value: LiteralValue::Int(*value),
+            },
+            vec![],
+        ),
+        canonical::PatternKind::Char(value) => (
+            TermPatternKind::Literal {
+                tpe: Type::Literal(TypeLiteral::Char),
+                value: LiteralValue::Char(*value),
+            },
             vec![],
         ),
         canonical::PatternKind::Constructor { ctor, args } => {
@@ -1180,12 +1192,17 @@ fn translate_pattern(
                 return None;
             }
 
-            // Build bindings from arg patterns.
-            let mut bindings: Vec<(String, Type)> = vec![];
-            for (arg_pattern, param_type) in args.iter().zip(param_types.iter()) {
+            // Build bindings from arg patterns, tagged with each argument's position —
+            // a wildcard argument contributes no entry, so the position is what lets a
+            // later binding be told apart from the argument before it (`ir::Constructor`
+            // field bindings' own doc comment).
+            let mut bindings: Vec<(usize, String, Type)> = vec![];
+            for (position, (arg_pattern, param_type)) in
+                args.iter().zip(param_types.iter()).enumerate()
+            {
                 match &arg_pattern.kind {
                     canonical::PatternKind::Variable(name) => {
-                        bindings.push((name.as_str().to_string(), param_type.clone()));
+                        bindings.push((position, name.as_str().to_string(), param_type.clone()));
                     }
                     canonical::PatternKind::Anything => {} // no binding needed
                     _ => return None, // nested complex patterns not yet supported
@@ -1202,7 +1219,11 @@ fn translate_pattern(
                 adt_args,
                 bindings: bindings.clone(),
             };
-            (kind, bindings)
+            let flat_bindings = bindings
+                .into_iter()
+                .map(|(_, name, tpe)| (name, tpe))
+                .collect();
+            (kind, flat_bindings)
         }
         // Each element gets a fresh type, and the matched value has to be the tuple of
         // them. An element is held to the same limit a constructor's argument is: a
@@ -1211,18 +1232,23 @@ fn translate_pattern(
         // `tests/javascript.rs` — the only nested shape that parses today — so lifting
         // this limit turns all three red, and each needs a new stand-in.
         canonical::PatternKind::Tuple(elements) => {
-            let mut bindings: Vec<(String, Type)> = vec![];
+            // Tagged with each element's position for the same reason a constructor's
+            // bindings are: a wildcard element contributes no entry, so the position is
+            // what a later binding needs to say which element it reads from.
+            let mut bindings: Vec<(usize, String, Type)> = vec![];
+            let mut position = 0;
             let elements = elements
                 .try_map(|element| {
                     *counter += 1;
                     let tpe = Type::Variable(TypeVariable { id: *counter });
                     match &element.kind {
                         canonical::PatternKind::Variable(name) => {
-                            bindings.push((name.as_str().to_string(), tpe.clone()));
+                            bindings.push((position, name.as_str().to_string(), tpe.clone()));
                         }
                         canonical::PatternKind::Anything => {}
                         _ => return Err(()),
                     }
+                    position += 1;
                     Ok(tpe)
                 })
                 .ok()?;
@@ -1231,7 +1257,11 @@ fn translate_pattern(
                 elements,
                 bindings: bindings.clone(),
             };
-            (kind, bindings)
+            let flat_bindings = bindings
+                .into_iter()
+                .map(|(_, name, tpe)| (name, tpe))
+                .collect();
+            (kind, flat_bindings)
         }
         _ => return None, // Float patterns — not yet supported
     };
@@ -1880,7 +1910,10 @@ impl Substitution {
     fn apply_pattern(&self, pattern: TermPattern) -> TermPattern {
         let kind = match pattern.kind {
             kind @ (TermPatternKind::Anything | TermPatternKind::Bind(_)) => kind,
-            TermPatternKind::Literal(tpe) => TermPatternKind::Literal(self.apply_type(&tpe)),
+            TermPatternKind::Literal { tpe, value } => TermPatternKind::Literal {
+                tpe: self.apply_type(&tpe),
+                value,
+            },
             TermPatternKind::Constructor {
                 ctor,
                 adt_args,
@@ -1890,14 +1923,14 @@ impl Substitution {
                 adt_args: adt_args.iter().map(|a| self.apply_type(a)).collect(),
                 bindings: bindings
                     .into_iter()
-                    .map(|(name, tpe)| (name, self.apply_type(&tpe)))
+                    .map(|(position, name, tpe)| (position, name, self.apply_type(&tpe)))
                     .collect(),
             },
             TermPatternKind::Tuple { elements, bindings } => TermPatternKind::Tuple {
                 elements: elements.map(|element| self.apply_type(element)),
                 bindings: bindings
                     .into_iter()
-                    .map(|(name, tpe)| (name, self.apply_type(&tpe)))
+                    .map(|(position, name, tpe)| (position, name, self.apply_type(&tpe)))
                     .collect(),
             },
         };

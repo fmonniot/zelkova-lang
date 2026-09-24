@@ -97,7 +97,7 @@ LANG-56   std/core's companions carry an Int at 64 bits      ── prerequisite
 GEN-3   the typer hands back the types it solved   ── closed
    │
 GEN-4   the backend IR   ── closed
-   ├── GEN-5   a `case` becomes a decision tree
+   ├── GEN-5   a `case` becomes a decision tree   ── closed
    ├── GEN-6   a self tail call is marked
    └── GEN-7   parameterless bindings get an initialisation order   ── closed
    │
