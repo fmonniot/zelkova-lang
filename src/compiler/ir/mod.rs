@@ -360,7 +360,43 @@ pub enum TermKind {
     Case {
         scrutinee: Box<Term>,
         branches: Vec<(TermPattern, Box<Term>)>,
+        /// What the source wrote that this match was built from.
+        form: CaseForm,
     },
+}
+
+/// What the source wrote that a `Case` term was built from.
+///
+/// A parameter written as a pattern — `first (x, _) = x` — is a match like any other,
+/// and it is translated as one: the parameter becomes a plain one named by
+/// [`pattern_parameter`], and the declaration's body a single-branch `Case` on it. So a
+/// backend lowers a pattern in either position the same way, and the term language keeps
+/// one binding construct, [`TermKind::Fun`], that only ever binds a name.
+///
+/// This is what lets a diagnostic about the match speak about what the user wrote: a
+/// type error in a parameter's pattern names the parameter and not a `case`, one in the
+/// body under it names the declaration's body and not a `case` branch, and a
+/// backend refusing the match can say which of the two it is refusing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaseForm {
+    /// A `case … of` expression.
+    Expression,
+    /// A parameter the declaration wrote as a pattern. The `Case` has exactly one
+    /// branch, and its scrutinee is the local reference [`pattern_parameter`] names.
+    Parameter,
+}
+
+/// The name a parameter written as a pattern is bound under: `$` and the parameter's
+/// position in the declaration, counted from zero — `$0`, `$1`, ….
+///
+/// It is the scrutinee of the [`CaseForm::Parameter`] match the parameter becomes, and
+/// nothing else refers to it. It cannot meet a name the source wrote, because a Zelkova
+/// identifier never contains a `$`, and it cannot meet another parameter's, because two
+/// parameters of one declaration never share a position. A declaration's parameters are
+/// the only names its body is in scope of besides the ones a pattern binds, which are
+/// source names, so that is every name it could meet.
+pub(crate) fn pattern_parameter(position: usize) -> String {
+    format!("${}", position)
 }
 
 /// Simplified pattern used inside a [`Term`], and where it was written.
@@ -392,6 +428,14 @@ pub enum TermPatternKind {
         ctor: Constructor,
         adt_args: Vec<Type>,
         /// `(variable_name, its_type_var)` for each bound constructor argument.
+        bindings: Vec<(String, Type)>,
+    },
+    /// Matches a tuple of two or three elements; carries a fresh type per element and
+    /// the bindings its elements introduce.
+    Tuple {
+        /// One type per element, which the matched value's tuple type is built from.
+        elements: Tuple<Type>,
+        /// `(variable_name, its_type)` for each element written as a variable.
         bindings: Vec<(String, Type)>,
     },
 }
@@ -455,6 +499,8 @@ pub enum TypedTermKind {
     Case {
         scrutinee: Box<TypedTerm>,
         branches: Vec<(TermPattern, Box<TypedTerm>)>,
+        /// See [`TermKind::Case`].
+        form: CaseForm,
     },
 }
 
@@ -487,14 +533,12 @@ pub enum Solved {
     /// what reads it back out.
     NoBody,
     /// `value_to_term_and_annotation` could not translate the declaration into the
-    /// typer's term language — a `VarKernel` reference, a constructor or tuple pattern
-    /// in a function head, a nested pattern inside a `case`. Nothing about the
-    /// declaration was checked.
+    /// typer's term language — a `VarKernel` reference, a float pattern, or a pattern
+    /// nested inside a constructor or tuple pattern, whether a `case` branch or a
+    /// parameter wrote it. Nothing about the declaration was checked.
     ///
     /// Not an [`Error`](crate::compiler::typer::Error): it is a gap in the typer rather
-    /// than a mistake in the source, and reporting it would fail the eight declarations
-    /// in `std/core/src` that are beyond today's inference (`BUG-39`). What it
-    /// wants is a warning, which the compiler does not have yet (`ERR-8`, see
+    /// than a mistake in the source. What it wants is a warning, which the compiler does not have yet (`ERR-8`, see
     /// `docs/tickets/README.md`) — hence the span, so that the warning has a caret the
     /// day it exists. *Which* of the constructs tripped it is not carried:
     /// `value_to_term_and_annotation` answers `Option`, so the reason does not survive

@@ -568,9 +568,44 @@ fn a_case_is_refused() {
     }
 }
 
+/// A parameter written as a pattern is refused as what the source wrote — a pattern in
+/// a parameter — with the caret under the pattern, although the IR holds it as a match.
+///
+/// Mutation-checked by answering `Construct::Case` for a `CaseForm::Parameter` match
+/// in `expression`: the construct assertion goes red.
+#[test]
+fn a_parameter_written_as_a_pattern_is_refused_as_one() {
+    let source = indoc! {r#"
+        module Test exposing (first)
+
+        first : (Int, Int) -> Int
+        first (x, _) =
+          x
+    "#};
+    let errors = refused(source);
+
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+    match &errors[0] {
+        Error::Unsupported {
+            construct,
+            declaration,
+            span,
+        } => {
+            assert_eq!(*construct, Construct::ParameterPattern);
+            assert_eq!(*declaration, Name::new("first"));
+            let start = position(source, "(x, _)");
+            assert_eq!(span.to_range(), Some(start..start + "(x, _)".len()));
+        }
+        other => panic!(
+            "expected the parameter's pattern to be refused, got {:?}",
+            other
+        ),
+    }
+}
+
 /// A module holding a declaration the typer could not check is refused rather than
-/// emitted without it. `helper` destructures a tuple parameter, which the typer does not
-/// translate (`BUG-39`).
+/// emitted without it. `helper` matches a tuple pattern nested inside another tuple
+/// pattern, which the typer does not translate.
 ///
 /// Mutation-checked by starting `emit`'s errors empty instead of from `ir.unchecked`:
 /// the module is then emitted with `helper` missing.
@@ -583,9 +618,11 @@ fn a_declaration_with_no_ir_is_refused() {
         answer =
           1
 
-        helper : (Int, Int) -> Int
-        helper (a, b) =
-          a
+        helper : ((Int, Int), Int) -> Int
+        helper pair =
+          case pair of
+            ((a, b), c) ->
+              a
     "#});
 
     // `NodeSpan`'s equality ignores the span, so this compares the variant and the name.

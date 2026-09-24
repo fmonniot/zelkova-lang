@@ -116,6 +116,7 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
         TermKind::Case {
             scrutinee,
             branches,
+            form,
         } => {
             let scrutinee = Box::new(annotate(*scrutinee, types)?);
             let mut typed_branches = Vec::new();
@@ -126,7 +127,8 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                         // Bind to the scrutinee's type variable.
                         vec![(name.clone(), scrutinee.tpe.clone())]
                     }
-                    TermPatternKind::Constructor { bindings, .. } => bindings.clone(),
+                    TermPatternKind::Constructor { bindings, .. }
+                    | TermPatternKind::Tuple { bindings, .. } => bindings.clone(),
                     TermPatternKind::Anything | TermPatternKind::Literal(_) => vec![],
                 };
                 for (name, tpe) in &new_bindings {
@@ -144,6 +146,7 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                 TypedTermKind::Case {
                     scrutinee,
                     branches: typed_branches,
+                    form,
                 },
             )
         }

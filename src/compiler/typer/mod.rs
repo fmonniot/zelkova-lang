@@ -39,8 +39,8 @@ use super::canonical;
 use super::canonical::Module;
 use super::scalars;
 use crate::compiler::ir::{
-    Constructor, Reference, ReferenceKind, Saturation, Solved, Term, TermKind, TermPattern,
-    TermPatternKind, TypeBinder, TypedTerm, TypedTermKind,
+    pattern_parameter, CaseForm, Constructor, Reference, ReferenceKind, Saturation, Solved, Term,
+    TermKind, TermPattern, TermPatternKind, TypeBinder, TypedTerm, TypedTermKind,
 };
 use crate::compiler::name::{Name, QualName};
 use crate::compiler::position::NodeSpan;
@@ -76,6 +76,12 @@ pub enum Reason {
     CaseBranch,
     /// A pattern has to match the type of the expression being matched on.
     CasePattern,
+    /// A parameter written as a pattern has to match the type of the argument it takes.
+    ParameterPattern,
+    /// The body of a declaration that wrote a parameter as a pattern has the type the
+    /// declaration returns. It is the one branch of the match that parameter became,
+    /// and is reported as what the source wrote: a body, not a `case` branch.
+    DeclarationBody,
     /// A `let` binding has the type of the value bound to it.
     LetBinding,
     /// A `let` has the type of its body.
@@ -107,6 +113,8 @@ impl Reason {
             Reason::IfBranch => "this branch of the `if`",
             Reason::CaseBranch => "this branch of the `case`",
             Reason::CasePattern => "this pattern",
+            Reason::ParameterPattern => "this pattern",
+            Reason::DeclarationBody => "the body of this declaration",
             Reason::LetBinding => "the value bound here",
             Reason::LetBody => "the body of this `let`",
             Reason::TupleElements => "this tuple",
@@ -130,6 +138,8 @@ impl Reason {
             Reason::IfBranch => "expected because of this branch",
             Reason::CaseBranch => "expected because of this branch",
             Reason::CasePattern => "expected because of this pattern",
+            Reason::ParameterPattern => "expected because of this pattern",
+            Reason::DeclarationBody => "expected because of this declaration's body",
             Reason::LetBinding => "expected because of this value",
             Reason::LetBody => "expected because of this `let` body",
             Reason::TupleElements => "expected because of this tuple",
@@ -148,6 +158,9 @@ impl Reason {
             Reason::CasePattern => Some(
                 "every pattern of a `case` must match the type of the expression it matches on",
             ),
+            Reason::ParameterPattern => {
+                Some("a parameter's pattern must match the type of the argument it takes")
+            }
             _ => None,
         }
     }
@@ -1068,6 +1081,7 @@ fn canonical_expr_to_term(
             TermKind::Case {
                 scrutinee: Box::new(scrutinee),
                 branches: term_branches,
+                form: CaseForm::Expression,
             }
         }
         // Not yet supported: VarKernel
@@ -1190,7 +1204,36 @@ fn translate_pattern(
             };
             (kind, bindings)
         }
-        _ => return None, // Tuple, Float patterns — not yet supported
+        // Each element gets a fresh type, and the matched value has to be the tuple of
+        // them. An element is held to the same limit a constructor's argument is: a
+        // variable or `_`, nothing nested. A tuple nested in a tuple is the stand-in
+        // for an untranslatable declaration in `tests/typer.rs`, `tests/ir.rs` and
+        // `tests/javascript.rs` — the only nested shape that parses today — so lifting
+        // this limit turns all three red, and each needs a new stand-in.
+        canonical::PatternKind::Tuple(elements) => {
+            let mut bindings: Vec<(String, Type)> = vec![];
+            let elements = elements
+                .try_map(|element| {
+                    *counter += 1;
+                    let tpe = Type::Variable(TypeVariable { id: *counter });
+                    match &element.kind {
+                        canonical::PatternKind::Variable(name) => {
+                            bindings.push((name.as_str().to_string(), tpe.clone()));
+                        }
+                        canonical::PatternKind::Anything => {}
+                        _ => return Err(()),
+                    }
+                    Ok(tpe)
+                })
+                .ok()?;
+
+            let kind = TermPatternKind::Tuple {
+                elements,
+                bindings: bindings.clone(),
+            };
+            (kind, bindings)
+        }
+        _ => return None, // Float patterns — not yet supported
     };
 
     Some((
@@ -1214,7 +1257,8 @@ struct Annotation {
 }
 
 /// Convert a canonical Value into a (Term, optional annotation) pair.
-/// The body is wrapped in nested Fun nodes for each pattern parameter.
+/// The body is wrapped in nested Fun nodes for each parameter — see
+/// [`wrap_with_patterns`].
 /// Returns None if any part of the value cannot be translated.
 fn value_to_term_and_annotation(
     value: &canonical::Value,
@@ -1224,7 +1268,7 @@ fn value_to_term_and_annotation(
     match value {
         canonical::Value::Value { patterns, body, .. } => {
             let body_term = canonical_expr_to_term(body, translation, counter)?;
-            let term = wrap_with_patterns(patterns.iter(), body_term)?;
+            let term = wrap_with_patterns(patterns.iter(), body_term, translation, counter)?;
             Some((term, None))
         }
         canonical::Value::TypedValue {
@@ -1236,7 +1280,7 @@ fn value_to_term_and_annotation(
         } => {
             let body_term = canonical_expr_to_term(body, translation, counter)?;
             let pattern_iter = patterns.iter().map(|(p, _)| p);
-            let term = wrap_with_patterns(pattern_iter, body_term)?;
+            let term = wrap_with_patterns(pattern_iter, body_term, translation, counter)?;
             let mut var_map = HashMap::new();
             let annotation =
                 canonical_type_to_typer_type(tpe, &mut var_map, counter).map(|tpe| Annotation {
@@ -1248,31 +1292,84 @@ fn value_to_term_and_annotation(
     }
 }
 
-/// Wrap a body Term in nested Fun nodes for each pattern, outermost first.
-/// Returns None if any pattern is not translatable (e.g. constructor patterns).
+/// Wrap a body Term in nested Fun nodes for each parameter, outermost first.
+///
+/// A `Fun` binds one name, so a parameter written as a variable or `_` is bound as it
+/// is. A parameter written as any other pattern is bound under the name
+/// [`pattern_parameter`] gives its position, and matched by a single-branch
+/// [`CaseForm::Parameter`] `Case` on that name: `first (x, _) = x` is translated as
+/// `first $0 = case $0 of (x, _) -> x` would be. The pattern goes through
+/// [`translate_pattern`], the same translation a `case` branch's gets, so a parameter
+/// admits exactly the patterns a branch does. Returns `None` when it does not.
+///
+/// Every `Fun` is outside every `Case`. That keeps the first `arity` nodes of the term
+/// the declaration's parameters and nothing else, which is what `ir::build` reads them
+/// off by. The `Case`s nest in parameter order, the first outermost, so a name two
+/// patterned parameters both bind is the later one's in the body — which is how
+/// canonicalization resolved it. A pattern's names also shadow a same-named parameter
+/// written as a variable, whichever comes first — and when the pattern comes first,
+/// that is the opposite of canonicalization, which lets the later parameter win:
+/// `f (x, _) x = x` reads the pattern's `x` here and the plain parameter's there. Both
+/// are a name bound twice in one clause, which the language rejects and the compiler
+/// does not yet (`LANG-18`).
 ///
 /// Each `Fun` spans its parameter through the body it wraps, so a function whose
 /// declared shape does not match its definition is underlined from the parameter
-/// that starts it rather than across the annotation as well.
+/// that starts it rather than across the annotation as well. A `Case` built here spans
+/// its pattern alone: it is what the source wrote in place of a plain parameter.
 fn wrap_with_patterns<'a>(
     patterns: impl Iterator<Item = &'a canonical::Pattern>,
     body: Term,
+    translation: &Translation,
+    counter: &mut u32,
 ) -> Option<Term> {
-    let names: Vec<(String, NodeSpan)> = patterns
-        .map(|p| match &p.kind {
-            canonical::PatternKind::Variable(name) => Some((name.as_str().to_string(), p.span)),
-            canonical::PatternKind::Anything => Some(("_".to_string(), p.span)),
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()?;
+    let body_span = body.span;
+    let mut params: Vec<(String, NodeSpan)> = vec![];
+    let mut matched: Vec<(String, TermPattern)> = vec![];
 
-    let term = names.iter().rev().fold(body, |acc, (param, span)| Term {
-        span: span.merge(acc.span),
-        kind: TermKind::Fun {
-            param: param.clone(),
-            body: Box::new(acc),
-        },
-    });
+    for (position, pattern) in patterns.enumerate() {
+        match &pattern.kind {
+            canonical::PatternKind::Variable(name) => {
+                params.push((name.as_str().to_string(), pattern.span))
+            }
+            canonical::PatternKind::Anything => params.push(("_".to_string(), pattern.span)),
+            _ => {
+                let name = pattern_parameter(position);
+                let (translated, _) = translate_pattern(pattern, translation, counter)?;
+                params.push((name.clone(), pattern.span));
+                matched.push((name, translated));
+            }
+        }
+    }
+
+    let body = matched
+        .into_iter()
+        .rev()
+        .fold(body, |acc, (name, pattern)| {
+            let span = pattern.span;
+            Term {
+                span,
+                kind: TermKind::Case {
+                    scrutinee: Box::new(Term {
+                        span,
+                        kind: TermKind::Identifier(Reference::local(name)),
+                    }),
+                    branches: vec![(pattern, Box::new(acc))],
+                    form: CaseForm::Parameter,
+                },
+            }
+        });
+
+    let term = params
+        .into_iter()
+        .rev()
+        .fold(body, |acc, (param, span)| Term {
+            span: span.merge(body_span),
+            kind: TermKind::Fun {
+                param,
+                body: Box::new(acc),
+            },
+        });
 
     Some(term)
 }
@@ -1750,6 +1847,7 @@ impl Substitution {
             TypedTermKind::Case {
                 scrutinee,
                 branches,
+                form,
             } => TypedTermKind::Case {
                 scrutinee: Box::new(self.apply_term(*scrutinee)),
                 branches: branches
@@ -1761,6 +1859,7 @@ impl Substitution {
                         )
                     })
                     .collect(),
+                form,
             },
         };
 
@@ -1789,6 +1888,13 @@ impl Substitution {
             } => TermPatternKind::Constructor {
                 ctor,
                 adt_args: adt_args.iter().map(|a| self.apply_type(a)).collect(),
+                bindings: bindings
+                    .into_iter()
+                    .map(|(name, tpe)| (name, self.apply_type(&tpe)))
+                    .collect(),
+            },
+            TermPatternKind::Tuple { elements, bindings } => TermPatternKind::Tuple {
+                elements: elements.map(|element| self.apply_type(element)),
                 bindings: bindings
                     .into_iter()
                     .map(|(name, tpe)| (name, self.apply_type(&tpe)))

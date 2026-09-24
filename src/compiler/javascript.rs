@@ -96,8 +96,8 @@
 //! # What is refused
 //!
 //! [`emit`] answers an [`Error`] rather than a module missing a part: for a declaration
-//! with no IR ([`ir::Module::unchecked`]), for a `case` ([`GEN-10`](../../../docs/tickets/gen-10.md)
-//! emits it), for a facade signature not marked `unsafe`, and for a facade with no
+//! with no IR ([`ir::Module::unchecked`]), for a `case` or a parameter written as a
+//! pattern ([`GEN-10`](../../../docs/tickets/gen-10.md) emits both), for a facade signature not marked `unsafe`, and for a facade with no
 //! companion for the target being built.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -143,6 +143,9 @@ pub enum Error {
 pub enum Construct {
     /// A `case` expression, which [`GEN-10`](../../../docs/tickets/gen-10.md) emits.
     Case,
+    /// A parameter written as a pattern. The IR holds it as a match on the parameter
+    /// ([`ir::CaseForm::Parameter`]), so it is emitted when a `case` is.
+    ParameterPattern,
     /// A `let` expression. The front end does not accept one yet, so the IR never holds
     /// one; it is named so that meeting one is an error rather than a panic.
     Let,
@@ -155,6 +158,7 @@ impl Construct {
     fn describe(self) -> &'static str {
         match self {
             Construct::Case => "a `case` expression",
+            Construct::ParameterPattern => "a pattern in a parameter",
             Construct::Let => "a `let` expression",
             Construct::Lambda => "an anonymous function",
         }
@@ -294,7 +298,9 @@ const RESERVED: &[&str] = &[
 /// - a value imported from another module, [`imported`]: a `$` that is not the first
 ///   character;
 /// - a wildcard parameter, [`wildcard`]: `$_` and a number, and `_0`, `_1`, … are not in
-///   [`RESERVED`].
+///   [`RESERVED`];
+/// - a parameter written as a pattern, [`ir::pattern_parameter`]: `$` and a number,
+///   which this function leaves as it is, since nothing in [`RESERVED`] holds a `$`.
 fn mangle(name: &str) -> String {
     if RESERVED.contains(&name) {
         format!("${}", name)
@@ -801,7 +807,13 @@ impl Emitter {
                     .collect();
                 format!("[{}]", elements.join(", "))
             }
-            TypedTermKind::Case { .. } => self.unsupported(Construct::Case, term.span),
+            TypedTermKind::Case { form, .. } => {
+                let construct = match form {
+                    ir::CaseForm::Expression => Construct::Case,
+                    ir::CaseForm::Parameter => Construct::ParameterPattern,
+                };
+                self.unsupported(construct, term.span)
+            }
             TypedTermKind::Let { .. } => self.unsupported(Construct::Let, term.span),
             TypedTermKind::Fun { .. } => self.unsupported(Construct::Lambda, term.span),
         }
