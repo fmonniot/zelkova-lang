@@ -374,7 +374,8 @@ pub enum TermKind {
 /// one binding construct, [`TermKind::Fun`], that only ever binds a name.
 ///
 /// This is what lets a diagnostic about the match speak about what the user wrote: a
-/// type error in a parameter's pattern names the parameter and not a `case`, and a
+/// type error in a parameter's pattern names the parameter and not a `case`, one in the
+/// body under it names the declaration's body and not a `case` branch, and a
 /// backend refusing the match can say which of the two it is refusing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaseForm {

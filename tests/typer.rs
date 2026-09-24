@@ -1145,6 +1145,104 @@ fn a_parameter_pattern_that_does_not_match_its_annotation_is_a_type_error() {
     );
 }
 
+/// A body of the wrong type under a patterned parameter is blamed on the body, and
+/// reported as the declaration's: the pattern matches its argument, so neither the
+/// caret nor the note may say it does not, and there is no `case` in the source for
+/// either to name.
+///
+/// The tuple is the shape that used to misblame: its elements are fresh variables that
+/// only the pattern's constraint ties to the argument, so a branch constraint solved
+/// before it settled them from the declared result instead. The constructor has
+/// concrete arguments and was always blamed on the body, but as a `case` branch.
+///
+/// Mutation-checked two ways, each red on its own: pushing the branch constraint in
+/// `constraint::collect` before the pattern's (the tuple's caret moves onto `(x, _)`),
+/// and handing it `Reason::CaseBranch` for a `CaseForm::Parameter` match as well (the
+/// label says "this branch of the `case`").
+#[test]
+fn a_parameter_patterns_body_of_the_wrong_type_is_blamed_on_the_body() {
+    let sources = [
+        (
+            indoc::indoc! {r#"
+                module Test exposing (..)
+                f : (Int, Int) -> Char
+                f (x, _) = x
+            "#},
+            "f : (Int, Int) -> Char",
+        ),
+        (
+            indoc::indoc! {r#"
+                module Test exposing (..)
+                type W = W Int
+                f : W -> Char
+                f (W x) = x
+            "#},
+            "f : W -> Char",
+        ),
+    ];
+
+    for (source, annotation) in sources {
+        let error = one_type_error(source);
+        let labels = error.labels();
+
+        assert_eq!(
+            ranges(&labels),
+            vec![
+                range_within(source, ") = x", "x"),
+                range_of(source, annotation)
+            ],
+            "expected the caret under the body and the annotation behind it in {}",
+            source
+        );
+        assert_eq!(labels[0].message, "the body of this declaration");
+        assert!(
+            error
+                .notes()
+                .iter()
+                .any(|n| n == "a declaration's body must have the type its annotation declares"),
+            "the note should state the body's rule, got {:?}",
+            error.notes()
+        );
+        assert!(
+            !labels.iter().any(|l| l.message.contains("case"))
+                && !error.notes().iter().any(|n| n.contains("case")),
+            "the source wrote no `case`, got {:?} and {:?}",
+            labels,
+            error.notes()
+        );
+    }
+}
+
+/// A `case` branch of the wrong type under a tuple pattern is blamed on the branch.
+/// The pattern matches the scrutinee; what disagrees with the annotation is `x`.
+///
+/// Mutation-checked by pushing the branch constraint in `constraint::collect` before
+/// the pattern's: the tuple's element variables are then settled from the annotation's
+/// `Char`, and the caret moves onto `(x, _)` with the pattern's note.
+#[test]
+fn a_case_branch_of_the_wrong_type_is_blamed_on_the_branch_not_its_pattern() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        f : (Int, Int) -> Char
+        f p =
+          case p of
+            (x, _) -> x
+    "#};
+    let error = one_type_error(source);
+
+    let labels = error.labels();
+    assert_eq!(
+        ranges(&labels),
+        vec![
+            range_within(source, "-> x", "x"),
+            range_of(source, "f : (Int, Int) -> Char")
+        ],
+        "expected the caret under the branch and the annotation behind it, got {:?}",
+        labels
+    );
+    assert_eq!(labels[0].message, "this branch of the `case`");
+}
+
 /// A patterned parameter after a plain one, and a plain one after it, are each bound
 /// where they were written: `pick`'s body reads the element its second parameter bound
 /// and the parameter after that, and the annotation holds only if each is the type its

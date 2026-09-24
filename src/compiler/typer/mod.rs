@@ -78,6 +78,10 @@ pub enum Reason {
     CasePattern,
     /// A parameter written as a pattern has to match the type of the argument it takes.
     ParameterPattern,
+    /// The body of a declaration that wrote a parameter as a pattern has the type the
+    /// declaration returns. It is the one branch of the match that parameter became,
+    /// and is reported as what the source wrote: a body, not a `case` branch.
+    DeclarationBody,
     /// A `let` binding has the type of the value bound to it.
     LetBinding,
     /// A `let` has the type of its body.
@@ -110,6 +114,7 @@ impl Reason {
             Reason::CaseBranch => "this branch of the `case`",
             Reason::CasePattern => "this pattern",
             Reason::ParameterPattern => "this pattern",
+            Reason::DeclarationBody => "the body of this declaration",
             Reason::LetBinding => "the value bound here",
             Reason::LetBody => "the body of this `let`",
             Reason::TupleElements => "this tuple",
@@ -134,6 +139,7 @@ impl Reason {
             Reason::CaseBranch => "expected because of this branch",
             Reason::CasePattern => "expected because of this pattern",
             Reason::ParameterPattern => "expected because of this pattern",
+            Reason::DeclarationBody => "expected because of this declaration's body",
             Reason::LetBinding => "expected because of this value",
             Reason::LetBody => "expected because of this `let` body",
             Reason::TupleElements => "expected because of this tuple",
