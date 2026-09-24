@@ -9,7 +9,9 @@ sits inside, `src/compiler/javascript.rs`) and [`GEN-8`](gen-8.md) (the abort th
 **Part of:** [`GEN-1`](gen-1.md).
 
 **Location:** `src/compiler/javascript.rs`, whose `expression` answers
-`Error::Unsupported` with `Construct::Case` for a `case` today.
+`Error::Unsupported` with `Construct::Case` for a `case` today, and with
+`Construct::ParameterPattern` for a parameter written as a pattern, which the IR holds as a
+single-branch match on that parameter (`ir::CaseForm::Parameter`) and which emits the same way.
 
 **Decided:** the tests, their order and the names each leaf binds are already settled by the
 tree [`GEN-5`](gen-5.md) built, from

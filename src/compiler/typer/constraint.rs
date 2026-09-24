@@ -20,7 +20,8 @@
 //!   [`Constraint`]).
 
 use super::{
-    bool_type, Constraint, Reason, TermPatternKind, Type, TypeLiteral, TypedTerm, TypedTermKind,
+    bool_type, CaseForm, Constraint, Reason, TermPatternKind, Type, TypeLiteral, TypedTerm,
+    TypedTermKind,
 };
 use crate::compiler::tuple::Tuple;
 
@@ -155,7 +156,15 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
         TypedTermKind::Case {
             scrutinee,
             branches,
+            form,
         } => {
+            // A parameter written as a pattern is matched the way a `case` is, and a
+            // mismatch there is reported as the parameter's rather than a `case`'s.
+            let pattern_reason = match form {
+                CaseForm::Expression => Reason::CasePattern,
+                CaseForm::Parameter => Reason::ParameterPattern,
+            };
+
             // Every branch's own constraints, all of them, before any child is walked
             // — including the scrutinee, which is a child like the branch bodies are.
             // Walking it first was this arm's one departure from the rule the module
@@ -177,7 +186,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                         constraints.push(Constraint::new(
                             lit.clone(),
                             scrutinee.tpe.clone(),
-                            Reason::CasePattern,
+                            pattern_reason,
                             pattern.span,
                         ));
                     }
@@ -185,7 +194,15 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                         constraints.push(Constraint::new(
                             Type::Adt(ctor.union.clone(), adt_args.clone()),
                             scrutinee.tpe.clone(),
-                            Reason::CasePattern,
+                            pattern_reason,
+                            pattern.span,
+                        ));
+                    }
+                    TermPatternKind::Tuple { elements, .. } => {
+                        constraints.push(Constraint::new(
+                            Type::Tuple(elements.clone()),
+                            scrutinee.tpe.clone(),
+                            pattern_reason,
                             pattern.span,
                         ));
                     }

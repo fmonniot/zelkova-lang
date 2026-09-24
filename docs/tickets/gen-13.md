@@ -14,12 +14,10 @@ acceptance. Its three facades emit ([`GEN-12`](README.md)), and so does `Bitwise
 forwards to one of them. The causes differ by module:
 
 - `Maybe` and `Result` hold a `case`, which [`GEN-10`](gen-10.md) emits.
-- `Basics` and `Tuple` each hold a declaration the typer could not check, and `emit` refuses a
-  module missing a declaration rather than writing it without one. Each of them matches a
-  pattern in a parameter — a constructor in `never (JustOneMore nvr)`, a tuple in
-  `Tuple.first (x,_) = x` and in `Basics.fromPolar`/`toPolar` — and the typer's
-  `wrap_with_patterns` translates only a variable or `_` there, which is
-  [`BUG-39`](bug-39.md).
+- `Basics` and `Tuple` each match a pattern in a parameter — a constructor in
+  `never (JustOneMore nvr)`, a tuple in `Tuple.first (x,_) = x` and in
+  `Basics.fromPolar`/`toPolar`. The IR holds such a parameter as a match on it, and
+  [`GEN-10`](gen-10.md) emits it with the `case` it is.
 
 **Part of:** [`GEN-1`](gen-1.md).
 

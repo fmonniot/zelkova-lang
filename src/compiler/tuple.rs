@@ -48,6 +48,17 @@ impl<T> Tuple<T> {
             .chain(third)
     }
 
+    /// Convert every element with `f`, keeping the arity.
+    pub fn map<U, F>(&self, mut f: F) -> Tuple<U>
+    where
+        F: FnMut(&T) -> U,
+    {
+        match self {
+            Tuple::Two(a, b) => Tuple::two(f(a), f(b)),
+            Tuple::Three(a, b, c) => Tuple::three(f(a), f(b), f(c)),
+        }
+    }
+
     /// Convert every element with `f`, keeping the arity, and stop at the first
     /// error.
     ///

@@ -983,8 +983,9 @@ fn a_declaration_the_typer_cannot_resolve_comes_back_marked() {
 /// The other skip: a declaration the term language cannot express is present too, and
 /// says so.
 ///
-/// A constructor pattern in a function head is one `wrap_with_patterns` refuses, so
-/// nothing about `unwrap` is checked — including its annotation.
+/// A pattern nested inside a tuple pattern is one `translate_pattern` refuses, and a
+/// parameter's pattern goes through it as a `case` branch's does, so nothing about
+/// `unwrap` is checked — including its annotation.
 ///
 /// The span is asserted because the warning `ERR-8` will make of this needs a caret,
 /// and the whole declaration is the only position available: which construct stopped
@@ -998,9 +999,8 @@ fn a_declaration_the_typer_cannot_resolve_comes_back_marked() {
 fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
-        type Wrap = Wrap Int
-        unwrap : Wrap -> Int
-        unwrap (Wrap n) = n
+        unwrap : ((Int, Int), Int) -> Int
+        unwrap ((n, m), k) = n
     "#};
 
     let solved = solved(source);
@@ -1019,8 +1019,172 @@ fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
         span.to_range(),
         Some(range_of(
             source,
-            "unwrap : Wrap -> Int\nunwrap (Wrap n) = n"
+            "unwrap : ((Int, Int), Int) -> Int\nunwrap ((n, m), k) = n"
         ))
+    );
+}
+
+// ── Patterns in parameters ────────────────────────────────────────────────────
+
+/// A parameter written as a tuple pattern is typed, and its type is read off the
+/// pattern: `first` is never annotated, so the tuple it takes and the element it
+/// returns are everything inference had to go on.
+///
+/// Mutation-checked by restoring `wrap_with_patterns`'s `_ => None` for every pattern
+/// other than a variable or `_`: `first` comes back `Untranslatable` and the lookup
+/// panics.
+#[test]
+fn a_tuple_pattern_parameter_is_typed() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (answer)
+        answer : Int
+        answer = 1
+        first (x, _) = x
+    "#};
+
+    let solved = solved(source);
+
+    // The variables' numbering is inference's business, so the shape is what is
+    // compared: a pair, whose first element is what comes back.
+    let rendered = format!("{}", typed_declaration(&solved, "first").tpe);
+    let shape = rendered
+        .strip_prefix("( ")
+        .and_then(|rest| rest.split_once(", "))
+        .and_then(|(first, rest)| rest.split_once(" ) -> ").map(|(_, back)| (first, back)));
+    match shape {
+        Some((first, back)) => assert_eq!(
+            first, back,
+            "`first` returns the first element: {}",
+            rendered
+        ),
+        None => panic!("expected `( a, b ) -> a`, got {}", rendered),
+    }
+}
+
+/// A tuple pattern heading a `case` branch is typed the way one in a parameter is: the
+/// translation is `translate_pattern`'s, which both positions share.
+///
+/// Mutation-checked by removing `translate_pattern`'s `PatternKind::Tuple` arm, so a
+/// tuple pattern falls through to `None` again: `swap` comes back `Untranslatable` and
+/// the lookup panics.
+#[test]
+fn a_tuple_pattern_in_a_case_is_typed() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (swap)
+        swap : (Int, Char) -> (Char, Int)
+        swap pair =
+          case pair of
+            (a, b) -> (b, a)
+    "#};
+
+    let solved = solved(source);
+
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "swap").tpe),
+        "( Int, Char ) -> ( Char, Int )"
+    );
+}
+
+/// A parameter written as a constructor pattern over a union of the same module is
+/// typed — `Basics.never`'s shape, where the union is recursive and the function calls
+/// itself on what the pattern bound.
+///
+/// Mutation-checked by restoring `wrap_with_patterns`'s `_ => None`: `never` comes back
+/// `Untranslatable` and the lookup panics.
+#[test]
+fn a_constructor_pattern_parameter_is_typed() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Never = JustOneMore Never
+        never : Never -> a
+        never (JustOneMore nvr) = never nvr
+    "#};
+
+    let solved = solved(source);
+
+    let rendered = format!("{}", typed_declaration(&solved, "never").tpe);
+    assert!(
+        rendered.starts_with("Never -> t"),
+        "expected `Never` to anything, got {}",
+        rendered
+    );
+}
+
+/// A parameter's pattern is checked against the type the annotation gives that
+/// parameter, and the mismatch is reported as the parameter's: the caret is under the
+/// pattern, and the rule the note states is about a parameter, not about a `case` the
+/// source never wrote.
+///
+/// Mutation-checked by handing `constraint::collect` `Reason::CasePattern` for a
+/// `CaseForm::Parameter` match as well: the note then speaks of a `case` and the last
+/// assertion goes red.
+#[test]
+fn a_parameter_pattern_that_does_not_match_its_annotation_is_a_type_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : Int -> Int
+        bad (x, y) = x
+    "#};
+    let error = one_type_error(source);
+
+    let labels = error.labels();
+    assert_eq!(
+        ranges(&labels).first(),
+        Some(&range_of(source, "(x, y)")),
+        "expected the caret under the pattern, got {:?}",
+        labels
+    );
+    assert_eq!(labels[0].message, "this pattern");
+    assert!(
+        error
+            .notes()
+            .iter()
+            .any(|n| n == "a parameter's pattern must match the type of the argument it takes"),
+        "the note should state the parameter's rule, got {:?}",
+        error.notes()
+    );
+}
+
+/// A patterned parameter after a plain one, and a plain one after it, are each bound
+/// where they were written: `pick`'s body reads the element its second parameter bound
+/// and the parameter after that, and the annotation holds only if each is the type its
+/// position says.
+///
+/// Mutation-checked by nesting each parameter's match directly inside its own `Fun`
+/// rather than inside all of them: the declaration's type is unchanged, but the typed
+/// term's first three nodes are no longer the three parameters, and the depth
+/// assertion goes red.
+#[test]
+fn a_pattern_parameter_between_plain_ones_is_typed() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        pick : Int -> (Char, Int) -> Char -> (Int, Char)
+        pick n (c, _) d = (n, c)
+    "#};
+
+    let solved = solved(source);
+    let pick = typed_declaration(&solved, "pick");
+
+    assert_eq!(
+        format!("{}", pick.tpe),
+        "Int -> ( Char, Int ) -> Char -> ( Int, Char )"
+    );
+
+    let mut depth = 0;
+    let mut term = pick;
+    while let TypedTermKind::Fun { body, .. } = &term.kind {
+        depth += 1;
+        term = body;
+    }
+    assert_eq!(
+        depth, 3,
+        "one `Fun` per parameter, outside every match: {:?}",
+        pick
+    );
+    assert!(
+        matches!(term.kind, TypedTermKind::Case { .. }),
+        "inside the parameters is the match on the patterned one, got {:?}",
+        term
     );
 }
 

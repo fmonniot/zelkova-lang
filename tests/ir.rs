@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use indoc::indoc;
 use zelkova_lang::compiler::dependencies::ModuleWalker;
 use zelkova_lang::compiler::ir::{
-    self, Declaration, Reference, ReferenceKind, Saturation, TypedTerm, TypedTermKind,
+    self, CaseForm, Declaration, Reference, ReferenceKind, Saturation, TypedTerm, TypedTermKind,
 };
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::source::{load_package_sources, SourceRoot};
@@ -122,6 +122,51 @@ fn a_declarations_arity_is_the_number_of_parameters_it_was_written_with() {
     );
 
     assert_eq!(declaration(&module, "first").arity, 1);
+}
+
+/// A parameter written as a pattern is still a parameter: the declaration's arity counts
+/// it, it is bound under the name `ir::pattern_parameter` gives its position, and the
+/// body is a single-branch match on that name, marked as a parameter's so that a backend
+/// and a diagnostic can tell it from a `case` the source wrote.
+///
+/// Mutation-checked twice: nesting each parameter's match directly inside its own `Fun`,
+/// rather than inside all of them, leaves `pick` with one parameter and the arity
+/// assertion red; building the match with `CaseForm::Expression` turns the form
+/// assertion red.
+#[test]
+fn a_parameter_written_as_a_pattern_is_a_parameter_and_a_match() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (pick)
+
+        pick : (Int, Char) -> Int -> Int
+        pick (a, c) n =
+          a
+    "#});
+
+    let pick = declaration(&module, "pick");
+    assert_eq!(pick.arity, 2);
+    let parameters: Vec<&str> = pick
+        .body
+        .as_ref()
+        .map(|body| body.parameters.iter().map(|p| p.name.as_str()).collect())
+        .unwrap_or_default();
+    assert_eq!(parameters, vec!["$0", "n"]);
+
+    match &body(pick, "pick").kind {
+        TypedTermKind::Case {
+            scrutinee,
+            branches,
+            form,
+        } => {
+            assert_eq!(*form, CaseForm::Parameter);
+            assert_eq!(branches.len(), 1);
+            assert_eq!(*reference(scrutinee), Reference::local("$0"));
+        }
+        other => panic!(
+            "expected a match on the patterned parameter, got {:?}",
+            other
+        ),
+    }
 }
 
 /// A call that supplies every argument its callee takes is marked saturated, and one
@@ -605,8 +650,9 @@ fn independent_parameterless_bindings_come_back_in_name_sorted_order() {
 ///
 /// A backend handed only the declarations that worked cannot tell a module it may emit
 /// whole from one that quietly lost a declaration, which is the mistake `DEC-18`'s first
-/// decision is about. `helper` below destructures a tuple parameter, which the typer
-/// does not translate (`BUG-39`), so it is exactly such a declaration.
+/// decision is about. `helper` below matches a tuple pattern nested inside another
+/// tuple pattern, which the typer does not translate, so it is exactly such a
+/// declaration.
 ///
 /// Mutation-checked by dropping the `unchecked.push` in `ir::build`'s catch-all arm:
 /// `helper` then goes missing from both lists and the count assertion goes red.
@@ -619,9 +665,11 @@ fn a_declaration_with_no_ir_is_named_rather_than_dropped() {
         answer =
           1
 
-        helper : (Int, Int) -> Int
-        helper (a, b) =
-          a
+        helper : ((Int, Int), Int) -> Int
+        helper pair =
+          case pair of
+            ((a, b), c) ->
+              a
     "#});
 
     assert_eq!(
@@ -650,13 +698,16 @@ fn a_declaration_with_no_ir_is_named_rather_than_dropped() {
 /// it establishes is coverage: the shape above is not one that only holds for four-line
 /// examples, and a facade is in the list beside four ordinary modules.
 ///
-/// Every declaration is not expected to have an IR: `Tuple` and `Basics` each hold a
-/// declaration whose parameter is a pattern the typer does not translate (`BUG-39`), so
-/// those are `unchecked`. What is asserted is that nothing is lost either way.
+/// Every declaration of every module has one, too: nothing in `std/core` is beyond the
+/// typer, so a module's `unchecked` list being non-empty is a regression. The accounting
+/// assertion is kept beside that one, since it is what says nothing was lost on the way
+/// should a declaration ever land in `unchecked` again;
+/// `a_declaration_with_no_ir_is_named_rather_than_dropped` is what exercises it.
 ///
-/// Mutation-checked twice: dropping `ir::build`'s `unchecked.push` turns the accounting
-/// assertion red for those two modules, and routing `Solved::NoBody` to
-/// `unchecked` instead of to a signature turns the `Js.Basics` assertions red.
+/// Mutation-checked twice: restoring `wrap_with_patterns`'s `_ => None` for a parameter
+/// written as a pattern leaves `Basics` and `Tuple` with unchecked declarations and the
+/// emptiness assertion red, and routing `Solved::NoBody` to `unchecked` instead of to a
+/// signature turns it and the `Js.Basics` assertions red.
 #[test]
 fn every_module_of_the_standard_library_gets_an_ir() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
@@ -689,6 +740,12 @@ fn every_module_of_the_standard_library_gets_an_ir() {
             module.canonical.values.len(),
             "`{}`: every value of a checked module has to be in one list or the other",
             module.ir.name.name(),
+        );
+        assert!(
+            module.ir.unchecked.is_empty(),
+            "`{}`: every declaration of std/core should be typed, but {:?} were not",
+            module.ir.name.name(),
+            module.ir.unchecked,
         );
     }
 
