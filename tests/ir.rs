@@ -14,10 +14,12 @@ use std::collections::HashMap;
 use indoc::indoc;
 use zelkova_lang::compiler::dependencies::ModuleWalker;
 use zelkova_lang::compiler::ir::{
-    self, CaseForm, Declaration, Reference, ReferenceKind, Saturation, TypedTerm, TypedTermKind,
+    self, decision_tree, Binding, CaseForm, Constructor, Decision, Declaration, LiteralValue,
+    Occurrence, Outcome, Reference, ReferenceKind, Saturation, Step, TypedTerm, TypedTermKind,
 };
-use zelkova_lang::compiler::name::Name;
+use zelkova_lang::compiler::name::{Name, QualName};
 use zelkova_lang::compiler::source::{load_package_sources, SourceRoot};
+use zelkova_lang::compiler::typer::{Type, TypeLiteral};
 use zelkova_lang::compiler::{check_module, parser, Interface, PackageName};
 
 mod support;
@@ -65,6 +67,24 @@ fn body<'a>(declaration: &'a Declaration, name: &str) -> &'a TypedTerm {
         .as_ref()
         .unwrap_or_else(|| panic!("`{}` should have a body", name))
         .expression
+}
+
+/// A declaration's body, insisting that it is a `case … of` expression, and its
+/// branches' bodies in source order beside the decision tree `GEN-5`'s
+/// `decision::build` lowers them to — handed `name` as the declaration a `Fail` leaf
+/// carries, the way a backend walking that declaration would hand it.
+fn case_tree<'a>(declaration: &'a Declaration, name: &str) -> (Decision<'a>, Vec<&'a TypedTerm>) {
+    match &body(declaration, name).kind {
+        TypedTermKind::Case {
+            scrutinee,
+            branches,
+            ..
+        } => (
+            decision_tree(&scrutinee.tpe, branches, &Name::new(name)),
+            branches.iter().map(|(_, body)| &**body).collect(),
+        ),
+        other => panic!("expected `{}`'s body to be a `case`, got {:?}", name, other),
+    }
 }
 
 /// What is being applied, at the head of an application spine.
@@ -779,5 +799,444 @@ fn every_module_of_the_standard_library_gets_an_ir() {
             .iter()
             .any(|declaration| declaration.body.is_some()),
         "`Maybe` should have declarations to emit"
+    );
+}
+
+// ── GEN-5: a `case` becomes a decision tree ─────────────────────────────────────
+
+fn int() -> Type {
+    Type::Literal(TypeLiteral::Int)
+}
+
+fn leaf<'a>(bindings: Vec<Binding>, body: &'a TypedTerm) -> Decision<'a> {
+    Decision::Leaf { bindings, body }
+}
+
+fn binding(name: &str, occurrence: Occurrence, tpe: Type) -> Binding {
+    Binding {
+        name: name.to_string(),
+        occurrence,
+        tpe,
+    }
+}
+
+fn test_root<'a>(outcome: Outcome, matched: Decision<'a>, default: Decision<'a>) -> Decision<'a> {
+    Decision::Test {
+        scrutinee: Occurrence::Root,
+        outcome,
+        matched: Box::new(matched),
+        default: Box::new(default),
+    }
+}
+
+fn fail<'a>(declaration: &str) -> Decision<'a> {
+    Decision::Fail {
+        declaration: Name::new(declaration),
+    }
+}
+
+/// Constructor `name` of the union `union` this test module declares.
+fn test_constructor(union: &str, name: &str, index: usize, arity: usize) -> Outcome {
+    Outcome::Constructor(Constructor {
+        union: QualName::in_module("Test", union),
+        name: Name::new(name),
+        index,
+        arity,
+    })
+}
+
+/// A wildcard branch matches unconditionally, so the tree it lowers to is one leaf —
+/// no `Test`, since there is nothing to test — and that leaf binds nothing.
+///
+/// Mutation-checked by having `decision::lower`'s `Anything` arm bind the value under
+/// `_` the way its `Bind` arm binds a name: the leaf's bindings come out non-empty and
+/// the assertion goes red.
+#[test]
+fn a_wildcard_branch_is_a_leaf_with_no_bindings() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (always_one)
+
+        always_one : Int -> Int
+        always_one n =
+          case n of
+            _ ->
+              1
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "always_one"), "always_one");
+
+    assert!(matches!(bodies[0].kind, TypedTermKind::Int(1)));
+    assert_eq!(tree, leaf(vec![], bodies[0]));
+}
+
+/// A variable branch also matches unconditionally, and binds the whole scrutinee under
+/// its own name — at `Occurrence::Root`, since a variable pattern reads the value
+/// `case` was given rather than any part of it, and at the scrutinee's type.
+///
+/// Mutation-checked twice: having `decision::lower`'s `Bind` arm build its binding at
+/// `occurrence.field(Step::TupleElement(0))` instead of `occurrence`, and having
+/// `decision::build` hand the root pattern a `Type::Number` instead of the scrutinee's
+/// type. Each turns the assertion red.
+#[test]
+fn a_variable_branch_is_a_leaf_that_binds_the_whole_scrutinee() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (identity)
+
+        identity : Int -> Int
+        identity n =
+          case n of
+            x ->
+              x
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "identity"), "identity");
+
+    assert_eq!(
+        tree,
+        leaf(vec![binding("x", Occurrence::Root, int())], bodies[0])
+    );
+}
+
+/// An `Int` pattern is refutable, so it becomes a `Test` of the scrutinee itself
+/// against the value it names, with everything after it in `default` — which is where
+/// the next branch's own `Test` lives, keeping the branches' source order as nested
+/// `default`s rather than one table of edges. The wildcard ends the chain.
+///
+/// Mutation-checked by having `decision::lower`'s `Literal` arm test
+/// `Outcome::Literal(LiteralValue::Int(0))` regardless of the pattern's own value: the
+/// assertion goes red.
+#[test]
+fn an_int_pattern_becomes_a_test_on_its_value() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (label)
+
+        label : Int -> Int
+        label n =
+          case n of
+            1 ->
+              10
+
+            2 ->
+              20
+
+            _ ->
+              0
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "label"), "label");
+
+    assert!(matches!(bodies[0].kind, TypedTermKind::Int(10)));
+    assert!(matches!(bodies[1].kind, TypedTermKind::Int(20)));
+    assert!(matches!(bodies[2].kind, TypedTermKind::Int(0)));
+    assert_eq!(
+        tree,
+        test_root(
+            Outcome::Literal(LiteralValue::Int(1)),
+            leaf(vec![], bodies[0]),
+            test_root(
+                Outcome::Literal(LiteralValue::Int(2)),
+                leaf(vec![], bodies[1]),
+                leaf(vec![], bodies[2]),
+            ),
+        )
+    );
+}
+
+/// A `Char` pattern is a `Test` the same way an `Int` one is, tested by value rather
+/// than by its type alone — both `'a'` and `'b'` share the type `Char` — and the
+/// wildcard written after it is its `default`, not the other way round.
+///
+/// Mutation-checked by having `translate_pattern` record every `Char` pattern's value
+/// as `'z'`, as if it kept only the pattern's type: the assertion goes red.
+#[test]
+fn a_char_pattern_becomes_a_test_on_its_value() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (code)
+
+        code : Char -> Int
+        code c =
+          case c of
+            'a' ->
+              1
+
+            _ ->
+              0
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "code"), "code");
+
+    assert!(matches!(bodies[0].kind, TypedTermKind::Int(1)));
+    assert!(matches!(bodies[1].kind, TypedTermKind::Int(0)));
+    assert_eq!(
+        tree,
+        test_root(
+            Outcome::Literal(LiteralValue::Char('a')),
+            leaf(vec![], bodies[0]),
+            leaf(vec![], bodies[1]),
+        )
+    );
+}
+
+/// A `Bool` pattern — `true` or `false` — is a literal like `Int` and `Char` are, not a
+/// constructor. Two literal branches cover `Bool`, but coverage is not checked
+/// (`LANG-19`), so the `false` branch's `Test` still has a `default`: the `Fail` leaf.
+///
+/// Mutation-checked by having `translate_pattern`'s `Bool` arm read `true` regardless
+/// of the pattern it was given: the assertion goes red.
+#[test]
+fn a_bool_pattern_becomes_a_test_on_its_value() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (choose)
+
+        choose : Bool -> Int
+        choose flag =
+          case flag of
+            true ->
+              1
+
+            false ->
+              0
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "choose"), "choose");
+
+    assert!(matches!(bodies[0].kind, TypedTermKind::Int(1)));
+    assert!(matches!(bodies[1].kind, TypedTermKind::Int(0)));
+    assert_eq!(
+        tree,
+        test_root(
+            Outcome::Literal(LiteralValue::Bool(true)),
+            leaf(vec![], bodies[0]),
+            test_root(
+                Outcome::Literal(LiteralValue::Bool(false)),
+                leaf(vec![], bodies[1]),
+                fail("choose"),
+            ),
+        )
+    );
+}
+
+/// A tuple pattern tests nothing — a value of a tuple type is always a tuple, and every
+/// element here is a name or `_` — so it lowers straight to a leaf, with one binding per
+/// named element, each at the occurrence its position in the tuple gives it and at that
+/// element's type. The wildcard element contributes no binding, and does not shift the
+/// position of the one after it.
+///
+/// Mutation-checked by having `decision::lower`'s `Tuple` arm give every element the
+/// occurrence `Step::TupleElement(0)`: `b`'s occurrence comes out as element `0` rather
+/// than `1`, and the assertion goes red.
+#[test]
+fn a_tuple_pattern_is_a_leaf_that_binds_each_named_element_by_position() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (second)
+
+        second : (Int, Int) -> Int
+        second pair =
+          case pair of
+            (_, b) ->
+              b
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "second"), "second");
+
+    assert_eq!(
+        tree,
+        leaf(
+            vec![binding(
+                "b",
+                Occurrence::Root.field(Step::TupleElement(1)),
+                int()
+            )],
+            bodies[0],
+        )
+    );
+}
+
+/// A constructor pattern is refutable — it becomes a `Test` of the union's case — and,
+/// unlike a literal, may bind names too: one per argument the pattern names, each at
+/// the occurrence its position in the constructor gives it. A nullary constructor
+/// (`Nothing`) is the same `Test`, whose leaf binds nothing. The two branches cover
+/// `Box`, but coverage is not checked (`LANG-19`), so the last `default` is `Fail`.
+///
+/// Mutation-checked by having `translate_pattern` record every constructor's `index` as
+/// `0`: `Nothing`'s outcome then names the wrong case of `Box`, and the assertion goes
+/// red. A position mix-up in a binding is what
+/// `two_branches_on_the_same_constructor_keep_source_order` below catches instead, since
+/// `Just`'s one argument already sits at `0`.
+#[test]
+fn a_constructor_pattern_binds_its_arguments_by_position() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (Box, withDefault)
+
+        type Box
+          = Just Int
+          | Nothing
+
+        withDefault : Int -> Box -> Int
+        withDefault default box =
+          case box of
+            Just n ->
+              n
+
+            Nothing ->
+              default
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "withDefault"), "withDefault");
+
+    assert_eq!(
+        tree,
+        test_root(
+            test_constructor("Box", "Just", 0, 1),
+            leaf(
+                vec![binding(
+                    "n",
+                    Occurrence::Root.field(Step::ConstructorArgument(0)),
+                    int()
+                )],
+                bodies[0],
+            ),
+            test_root(
+                test_constructor("Box", "Nothing", 1, 0),
+                leaf(vec![], bodies[1]),
+                fail("withDefault"),
+            ),
+        )
+    );
+}
+
+/// Two branches naming the same constructor keep source order: `Cons a _ -> a` is tried
+/// before `Cons _ b -> b`, so its `Test` is the outer one and the second's sits in its
+/// `default`. That second `Test` is dead — any `Cons` value takes the first — but it is
+/// still built; telling that it is dead is coverage checking's question (`LANG-19`).
+///
+/// The second branch's name is bound at argument `1` rather than `0`, so a lowering that
+/// mixed up which argument a name reads from cannot pass by accident the way it could if
+/// both branches bound position `0`.
+///
+/// Mutation-checked by having `decision::lower`'s `Constructor` arm give every argument
+/// the occurrence `Step::ConstructorArgument(0)`:
+/// `a_constructor_pattern_binds_its_arguments_by_position` cannot tell this from a
+/// correct lowering, but `b`'s binding here comes out at `0`, and the assertion goes red.
+#[test]
+fn two_branches_on_the_same_constructor_keep_source_order() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (Item, first)
+
+        type Item
+          = Cons Int Int
+          | Nil
+
+        first : Item -> Int
+        first item =
+          case item of
+            Cons a _ ->
+              a
+
+            Cons _ b ->
+              b
+
+            Nil ->
+              0
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "first"), "first");
+
+    let argument = |position| Occurrence::Root.field(Step::ConstructorArgument(position));
+    assert_eq!(
+        tree,
+        test_root(
+            test_constructor("Item", "Cons", 0, 2),
+            leaf(vec![binding("a", argument(0), int())], bodies[0]),
+            test_root(
+                test_constructor("Item", "Cons", 0, 2),
+                leaf(vec![binding("b", argument(1), int())], bodies[1]),
+                test_root(
+                    test_constructor("Item", "Nil", 1, 0),
+                    leaf(vec![], bodies[2]),
+                    fail("first"),
+                ),
+            ),
+        )
+    );
+}
+
+/// A `case` missing a branch for some value of its type — accepted today only because
+/// coverage is not checked yet (`LANG-19`) — lowers to a tree whose last `default` is
+/// an explicit `Fail` leaf rather than running off the end of the branches with nothing
+/// to evaluate.
+///
+/// The declaration the leaf names is the one `case_tree` handed `decision_tree`: the
+/// tree does not find it, and this does not pretend to check that it does. What it
+/// checks is the `On` test, its leaf, and that the `default` after it is `Fail` and
+/// carries the name it was given.
+///
+/// Mutation-checked by having `decision::build`, when no branch is left after the one
+/// it is lowering, fall back to that branch's own body — a leaf binding nothing — instead
+/// of to `Fail`, which is what running off the end would amount to: the assertion goes
+/// red.
+#[test]
+fn a_case_missing_a_branch_has_a_fall_through_leaf() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (Flag, ignore)
+
+        type Flag
+          = On
+          | Off
+
+        ignore : Flag -> Flag
+        ignore flag =
+          case flag of
+            On ->
+              Off
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "ignore"), "ignore");
+
+    assert_eq!(
+        tree,
+        test_root(
+            test_constructor("Flag", "On", 0, 0),
+            leaf(vec![], bodies[0]),
+            fail("ignore"),
+        )
+    );
+}
+
+/// `Basics`' `True` and `False` constructors are tested by value exactly as `true` and
+/// `false` are, so a `case` mixing the two spellings lowers to `Test`s in one
+/// vocabulary: a backend never has to recognise `Basics.Bool` among constructors.
+///
+/// Mutation-checked by deleting `translate_pattern`'s `True`/`False` arm, so `True`
+/// goes through the general constructor path: the first `Test`'s outcome comes out as
+/// `Outcome::Constructor(Basics.Bool.True)`, and the assertion goes red.
+#[test]
+fn a_bool_constructor_is_tested_by_value_like_a_bool_literal() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (choose)
+
+        choose : Bool -> Int
+        choose flag =
+          case flag of
+            True ->
+              1
+
+            false ->
+              0
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "choose"), "choose");
+
+    assert_eq!(
+        tree,
+        test_root(
+            Outcome::Literal(LiteralValue::Bool(true)),
+            leaf(vec![], bodies[0]),
+            test_root(
+                Outcome::Literal(LiteralValue::Bool(false)),
+                leaf(vec![], bodies[1]),
+                fail("choose"),
+            ),
+        )
     );
 }

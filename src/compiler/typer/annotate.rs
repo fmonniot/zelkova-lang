@@ -5,9 +5,7 @@
 //! them off the typed term when it decides what each constraint is about, so nothing
 //! below this point ever has to go looking for a position again.
 
-use super::{
-    ErrorKind, Term, TermKind, TermPatternKind, TypeBinder, TypedTerm, TypedTermKind, Types,
-};
+use super::{ErrorKind, Term, TermKind, TypeBinder, TypedTerm, TypedTermKind, Types};
 use crate::compiler::tuple::Tuple;
 
 pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, ErrorKind> {
@@ -121,16 +119,10 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
             let scrutinee = Box::new(annotate(*scrutinee, types)?);
             let mut typed_branches = Vec::new();
             for (pattern, body) in branches {
-                // Determine what bindings this pattern introduces.
-                let new_bindings: Vec<(String, super::Type)> = match &pattern.kind {
-                    TermPatternKind::Bind(name) => {
-                        // Bind to the scrutinee's type variable.
-                        vec![(name.clone(), scrutinee.tpe.clone())]
-                    }
-                    TermPatternKind::Constructor { bindings, .. }
-                    | TermPatternKind::Tuple { bindings, .. } => bindings.clone(),
-                    TermPatternKind::Anything | TermPatternKind::Literal(_) => vec![],
-                };
+                // Every name this pattern introduces, at any depth. A variable at the
+                // top binds the scrutinee's type variable; one inside a constructor or a
+                // tuple binds the type its position carries.
+                let new_bindings = pattern.bindings(&scrutinee.tpe);
                 for (name, tpe) in &new_bindings {
                     types.add_binder(TypeBinder::new(name.clone(), tpe.clone()));
                 }

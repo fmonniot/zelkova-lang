@@ -39,8 +39,9 @@ use super::canonical;
 use super::canonical::Module;
 use super::scalars;
 use crate::compiler::ir::{
-    pattern_parameter, CaseForm, Constructor, Reference, ReferenceKind, Saturation, Solved, Term,
-    TermKind, TermPattern, TermPatternKind, TypeBinder, TypedTerm, TypedTermKind,
+    pattern_parameter, CaseForm, Constructor, LiteralValue, Reference, ReferenceKind, Saturation,
+    Solved, SubPattern, Term, TermKind, TermPattern, TermPatternKind, TypeBinder, TypedTerm,
+    TypedTermKind,
 };
 use crate::compiler::name::{Name, QualName};
 use crate::compiler::position::NodeSpan;
@@ -1072,8 +1073,7 @@ fn canonical_expr_to_term(
             let term_branches: Vec<(TermPattern, Box<Term>)> = branches
                 .iter()
                 .map(|cb| {
-                    let (pattern, _bindings) =
-                        translate_pattern(&cb.pattern, translation, counter)?;
+                    let pattern = translate_pattern(&cb.pattern, translation, counter)?;
                     let body = canonical_expr_to_term(&cb.expression, translation, counter)?;
                     Some((pattern, Box::new(body)))
                 })
@@ -1115,8 +1115,8 @@ fn spine(expr: &canonical::Expression) -> (&canonical::Expression, Vec<&canonica
     (callee, applications)
 }
 
-/// Translate a canonical pattern into a `TermPattern` plus any variable bindings
-/// introduced by the pattern.  Returns `None` for unsupported pattern shapes.
+/// Translate a canonical pattern into a `TermPattern`. Returns `None` for unsupported
+/// pattern shapes.
 ///
 /// The pattern keeps its own span, separate from the branch body's: a `case` branch
 /// whose pattern does not match what is being matched on is about the pattern, and
@@ -1125,22 +1125,43 @@ fn translate_pattern(
     pattern: &canonical::Pattern,
     translation: &Translation,
     counter: &mut u32,
-) -> Option<(TermPattern, Vec<(String, Type)>)> {
-    let (kind, bindings) = match &pattern.kind {
-        canonical::PatternKind::Anything => (TermPatternKind::Anything, vec![]),
+) -> Option<TermPattern> {
+    let kind = match &pattern.kind {
+        canonical::PatternKind::Anything => TermPatternKind::Anything,
         canonical::PatternKind::Variable(name) => {
             // The binding's actual type will be unified with the scrutinee type in annotate.
-            (TermPatternKind::Bind(name.as_str().to_string()), vec![])
+            TermPatternKind::Bind(name.as_str().to_string())
         }
-        canonical::PatternKind::Bool(_) => (TermPatternKind::Literal(bool_type()), vec![]),
-        canonical::PatternKind::Int(_) => (
-            TermPatternKind::Literal(Type::Literal(TypeLiteral::Int)),
-            vec![],
-        ),
-        canonical::PatternKind::Char(_) => (
-            TermPatternKind::Literal(Type::Literal(TypeLiteral::Char)),
-            vec![],
-        ),
+        canonical::PatternKind::Bool(value) => TermPatternKind::Literal {
+            tpe: bool_type(),
+            value: LiteralValue::Bool(*value),
+        },
+        canonical::PatternKind::Int(value) => TermPatternKind::Literal {
+            tpe: Type::Literal(TypeLiteral::Int),
+            value: LiteralValue::Int(*value),
+        },
+        canonical::PatternKind::Char(value) => TermPatternKind::Literal {
+            tpe: Type::Literal(TypeLiteral::Char),
+            value: LiteralValue::Char(*value),
+        },
+        // `Basics`' own `True` and `False` are tested by value, exactly as `true` and
+        // `false` are, so a backend meets one vocabulary for a `Bool` whichever
+        // spelling the source used — a `case` mixing them included. The type is the
+        // same one the constructor would have constrained the scrutinee to. A module's
+        // own `type Bool = True | False` is not `Basics.Bool` and is left alone.
+        canonical::PatternKind::Constructor { ctor, args }
+            if args.is_empty() && ctor.tpe == scalars::BOOL.qual_name() =>
+        {
+            let value = match ctor.name.as_str() {
+                "True" => true,
+                "False" => false,
+                _ => return None,
+            };
+            TermPatternKind::Literal {
+                tpe: bool_type(),
+                value: LiteralValue::Bool(value),
+            }
+        }
         canonical::PatternKind::Constructor { ctor, args } => {
             // Look up the parent union to get its type variables. `ctor.tpe` names
             // the declaration the constructor builds, module included, and `unions`
@@ -1180,19 +1201,17 @@ fn translate_pattern(
                 return None;
             }
 
-            // Build bindings from arg patterns.
-            let mut bindings: Vec<(String, Type)> = vec![];
-            for (arg_pattern, param_type) in args.iter().zip(param_types.iter()) {
-                match &arg_pattern.kind {
-                    canonical::PatternKind::Variable(name) => {
-                        bindings.push((name.as_str().to_string(), param_type.clone()));
-                    }
-                    canonical::PatternKind::Anything => {} // no binding needed
-                    _ => return None, // nested complex patterns not yet supported
-                }
-            }
+            // One sub-pattern per argument, so an argument's position is its place in
+            // the list.
+            let args = args
+                .iter()
+                .zip(param_types)
+                .map(|(arg_pattern, param_type)| {
+                    translate_sub_pattern(arg_pattern, param_type, translation, counter)
+                })
+                .collect::<Option<Vec<_>>>()?;
 
-            let kind = TermPatternKind::Constructor {
+            TermPatternKind::Constructor {
                 ctor: Constructor {
                     union: ctor.tpe.clone(),
                     name: ctor.name.clone(),
@@ -1200,49 +1219,57 @@ fn translate_pattern(
                     arity: ctor.type_parameters.len(),
                 },
                 adt_args,
-                bindings: bindings.clone(),
-            };
-            (kind, bindings)
+                args,
+            }
         }
         // Each element gets a fresh type, and the matched value has to be the tuple of
-        // them. An element is held to the same limit a constructor's argument is: a
-        // variable or `_`, nothing nested. A tuple nested in a tuple is the stand-in
-        // for an untranslatable declaration in `tests/typer.rs`, `tests/ir.rs` and
+        // them. An element is held to the same limit a constructor's argument is (see
+        // `translate_sub_pattern`). A tuple nested in a tuple is the stand-in for an
+        // untranslatable declaration in `tests/typer.rs`, `tests/ir.rs` and
         // `tests/javascript.rs` — the only nested shape that parses today — so lifting
         // this limit turns all three red, and each needs a new stand-in.
         canonical::PatternKind::Tuple(elements) => {
-            let mut bindings: Vec<(String, Type)> = vec![];
             let elements = elements
                 .try_map(|element| {
                     *counter += 1;
                     let tpe = Type::Variable(TypeVariable { id: *counter });
-                    match &element.kind {
-                        canonical::PatternKind::Variable(name) => {
-                            bindings.push((name.as_str().to_string(), tpe.clone()));
-                        }
-                        canonical::PatternKind::Anything => {}
-                        _ => return Err(()),
-                    }
-                    Ok(tpe)
+                    translate_sub_pattern(element, tpe, translation, counter).ok_or(())
                 })
                 .ok()?;
 
-            let kind = TermPatternKind::Tuple {
-                elements,
-                bindings: bindings.clone(),
-            };
-            (kind, bindings)
+            TermPatternKind::Tuple { elements }
         }
         _ => return None, // Float patterns — not yet supported
     };
 
-    Some((
-        TermPattern {
-            span: pattern.span,
-            kind,
-        },
-        bindings,
-    ))
+    Some(TermPattern {
+        span: pattern.span,
+        kind,
+    })
+}
+
+/// A pattern written as a constructor's argument or a tuple's element, matched against
+/// a value of type `tpe`.
+///
+/// It is translated by [`translate_pattern`] like a pattern anywhere else, so the
+/// [`SubPattern`] it becomes can hold any pattern at all — but only a variable or `_` is
+/// admitted here today, and anything nested deeper is refused with `None`: lifting that
+/// is `LANG-16`'s, and the typer's handling of a refutable sub-pattern would have to be
+/// written with it.
+fn translate_sub_pattern(
+    pattern: &canonical::Pattern,
+    tpe: Type,
+    translation: &Translation,
+    counter: &mut u32,
+) -> Option<SubPattern> {
+    match &pattern.kind {
+        canonical::PatternKind::Variable(_) | canonical::PatternKind::Anything => {}
+        _ => return None,
+    }
+    Some(SubPattern {
+        tpe,
+        pattern: translate_pattern(pattern, translation, counter)?,
+    })
 }
 
 /// A declaration's type annotation, and where it was written.
@@ -1335,7 +1362,7 @@ fn wrap_with_patterns<'a>(
             canonical::PatternKind::Anything => params.push(("_".to_string(), pattern.span)),
             _ => {
                 let name = pattern_parameter(position);
-                let (translated, _) = translate_pattern(pattern, translation, counter)?;
+                let translated = translate_pattern(pattern, translation, counter)?;
                 params.push((name.clone(), pattern.span));
                 matched.push((name, translated));
             }
@@ -1880,31 +1907,37 @@ impl Substitution {
     fn apply_pattern(&self, pattern: TermPattern) -> TermPattern {
         let kind = match pattern.kind {
             kind @ (TermPatternKind::Anything | TermPatternKind::Bind(_)) => kind,
-            TermPatternKind::Literal(tpe) => TermPatternKind::Literal(self.apply_type(&tpe)),
+            TermPatternKind::Literal { tpe, value } => TermPatternKind::Literal {
+                tpe: self.apply_type(&tpe),
+                value,
+            },
             TermPatternKind::Constructor {
                 ctor,
                 adt_args,
-                bindings,
+                args,
             } => TermPatternKind::Constructor {
                 ctor,
                 adt_args: adt_args.iter().map(|a| self.apply_type(a)).collect(),
-                bindings: bindings
+                args: args
                     .into_iter()
-                    .map(|(name, tpe)| (name, self.apply_type(&tpe)))
+                    .map(|arg| self.apply_sub_pattern(arg))
                     .collect(),
             },
-            TermPatternKind::Tuple { elements, bindings } => TermPatternKind::Tuple {
-                elements: elements.map(|element| self.apply_type(element)),
-                bindings: bindings
-                    .into_iter()
-                    .map(|(name, tpe)| (name, self.apply_type(&tpe)))
-                    .collect(),
+            TermPatternKind::Tuple { elements } => TermPatternKind::Tuple {
+                elements: elements.map(|element| self.apply_sub_pattern(element.clone())),
             },
         };
 
         TermPattern {
             span: pattern.span,
             kind,
+        }
+    }
+
+    fn apply_sub_pattern(&self, sub: SubPattern) -> SubPattern {
+        SubPattern {
+            tpe: self.apply_type(&sub.tpe),
+            pattern: self.apply_pattern(sub.pattern),
         }
     }
 
@@ -2535,7 +2568,7 @@ mod tests {
 
         let pattern = constructor_pattern("Big", qual("Main", "Size"));
 
-        let (translated, _) = translate_pattern(&pattern, &translation, &mut counter)
+        let translated = translate_pattern(&pattern, &translation, &mut counter)
             .expect("`Main.Big` is a constructor of `Main.Size`");
 
         match translated.kind {
