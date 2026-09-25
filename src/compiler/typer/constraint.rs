@@ -20,8 +20,8 @@
 //!   [`Constraint`]).
 
 use super::{
-    bool_type, CaseForm, Constraint, Reason, TermPatternKind, Type, TypeLiteral, TypedTerm,
-    TypedTermKind,
+    bool_type, CaseForm, Constraint, Reason, SubPattern, TermPattern, TermPatternKind, Type,
+    TypeLiteral, TypedTerm, TypedTermKind,
 };
 use crate::compiler::tuple::Tuple;
 
@@ -176,35 +176,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             for (pattern, body) in branches {
                 // Each pattern constrains the scrutinee type. The pattern is what the
                 // caret should sit under, so the pattern's type is `left`.
-                match &pattern.kind {
-                    TermPatternKind::Literal { tpe, .. } => {
-                        constraints.push(Constraint::new(
-                            tpe.clone(),
-                            scrutinee.tpe.clone(),
-                            pattern_reason,
-                            pattern.span,
-                        ));
-                    }
-                    TermPatternKind::Constructor { ctor, adt_args, .. } => {
-                        constraints.push(Constraint::new(
-                            Type::Adt(ctor.union.clone(), adt_args.clone()),
-                            scrutinee.tpe.clone(),
-                            pattern_reason,
-                            pattern.span,
-                        ));
-                    }
-                    TermPatternKind::Tuple { elements, .. } => {
-                        constraints.push(Constraint::new(
-                            Type::Tuple(elements.clone()),
-                            scrutinee.tpe.clone(),
-                            pattern_reason,
-                            pattern.span,
-                        ));
-                    }
-                    // Bind/Anything: the binding's type was already set to scrutinee.tpe
-                    // in annotate, so no extra constraint needed here.
-                    TermPatternKind::Bind(_) | TermPatternKind::Anything => {}
-                }
+                pattern_constraints(pattern, &scrutinee.tpe, pattern_reason, &mut constraints);
                 // Every branch must return the case expression's type. Pushed after the
                 // pattern's constraint, which is what links the names the pattern binds
                 // to the scrutinee: a tuple pattern's elements are fresh variables until
@@ -243,6 +215,46 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
     };
 
     constraints
+}
+
+/// The constraints a pattern places on `against`, the type of the value it is matched
+/// against: the scrutinee's for a branch's own pattern, and the type its position
+/// carries for a constructor's argument or a tuple's element.
+///
+/// The pattern's own constraint comes first, then its sub-patterns', left to right and
+/// depth first. A variable or `_` constrains nothing: a variable's type is `against`
+/// already, as `TermPattern::bindings` gives it. Today no sub-pattern is anything else
+/// (`LANG-16`), so the recursion adds no constraint yet; it is here so a nested pattern
+/// is constrained the day one is admitted.
+fn pattern_constraints(
+    pattern: &TermPattern,
+    against: &Type,
+    reason: Reason,
+    constraints: &mut Vec<Constraint>,
+) {
+    let (own, subs): (Option<Type>, Vec<&SubPattern>) = match &pattern.kind {
+        TermPatternKind::Literal { tpe, .. } => (Some(tpe.clone()), vec![]),
+        TermPatternKind::Constructor {
+            ctor,
+            adt_args,
+            args,
+        } => (
+            Some(Type::Adt(ctor.union.clone(), adt_args.clone())),
+            args.iter().collect(),
+        ),
+        TermPatternKind::Tuple { elements } => (
+            Some(Type::Tuple(elements.map(|element| element.tpe.clone()))),
+            elements.iter().collect(),
+        ),
+        TermPatternKind::Bind(_) | TermPatternKind::Anything => (None, vec![]),
+    };
+
+    if let Some(own) = own {
+        constraints.push(Constraint::new(own, against.clone(), reason, pattern.span));
+    }
+    for sub in subs {
+        pattern_constraints(&sub.pattern, &sub.tpe, reason, constraints);
+    }
 }
 
 #[cfg(test)]

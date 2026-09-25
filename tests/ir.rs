@@ -14,11 +14,12 @@ use std::collections::HashMap;
 use indoc::indoc;
 use zelkova_lang::compiler::dependencies::ModuleWalker;
 use zelkova_lang::compiler::ir::{
-    self, decision_tree, CaseForm, Decision, Declaration, LiteralValue, Occurrence, Outcome,
-    Reference, ReferenceKind, Saturation, Step, TermPattern, TypedTerm, TypedTermKind,
+    self, decision_tree, Binding, CaseForm, Constructor, Decision, Declaration, LiteralValue,
+    Occurrence, Outcome, Reference, ReferenceKind, Saturation, Step, TypedTerm, TypedTermKind,
 };
-use zelkova_lang::compiler::name::Name;
+use zelkova_lang::compiler::name::{Name, QualName};
 use zelkova_lang::compiler::source::{load_package_sources, SourceRoot};
+use zelkova_lang::compiler::typer::{Type, TypeLiteral};
 use zelkova_lang::compiler::{check_module, parser, Interface, PackageName};
 
 mod support;
@@ -69,13 +70,19 @@ fn body<'a>(declaration: &'a Declaration, name: &str) -> &'a TypedTerm {
 }
 
 /// A declaration's body, insisting that it is a `case … of` expression, and its
-/// branches — `GEN-5`'s `decision::build` reads exactly this shape.
-fn case_branches<'a>(
-    declaration: &'a Declaration,
-    name: &str,
-) -> &'a [(TermPattern, Box<TypedTerm>)] {
+/// branches' bodies in source order beside the decision tree `GEN-5`'s
+/// `decision::build` lowers them to — handed `name` as the declaration a `Fail` leaf
+/// carries, the way a backend walking that declaration would hand it.
+fn case_tree<'a>(declaration: &'a Declaration, name: &str) -> (Decision<'a>, Vec<&'a TypedTerm>) {
     match &body(declaration, name).kind {
-        TypedTermKind::Case { branches, .. } => branches,
+        TypedTermKind::Case {
+            scrutinee,
+            branches,
+            ..
+        } => (
+            decision_tree(&scrutinee.tpe, branches, &Name::new(name)),
+            branches.iter().map(|(_, body)| &**body).collect(),
+        ),
         other => panic!("expected `{}`'s body to be a `case`, got {:?}", name, other),
     }
 }
@@ -797,11 +804,53 @@ fn every_module_of_the_standard_library_gets_an_ir() {
 
 // ── GEN-5: a `case` becomes a decision tree ─────────────────────────────────────
 
+fn int() -> Type {
+    Type::Literal(TypeLiteral::Int)
+}
+
+fn leaf<'a>(bindings: Vec<Binding>, body: &'a TypedTerm) -> Decision<'a> {
+    Decision::Leaf { bindings, body }
+}
+
+fn binding(name: &str, occurrence: Occurrence, tpe: Type) -> Binding {
+    Binding {
+        name: name.to_string(),
+        occurrence,
+        tpe,
+    }
+}
+
+fn test_root<'a>(outcome: Outcome, matched: Decision<'a>, default: Decision<'a>) -> Decision<'a> {
+    Decision::Test {
+        scrutinee: Occurrence::Root,
+        outcome,
+        matched: Box::new(matched),
+        default: Box::new(default),
+    }
+}
+
+fn fail<'a>(declaration: &str) -> Decision<'a> {
+    Decision::Fail {
+        declaration: Name::new(declaration),
+    }
+}
+
+/// Constructor `name` of the union `union` this test module declares.
+fn test_constructor(union: &str, name: &str, index: usize, arity: usize) -> Outcome {
+    Outcome::Constructor(Constructor {
+        union: QualName::in_module("Test", union),
+        name: Name::new(name),
+        index,
+        arity,
+    })
+}
+
 /// A wildcard branch matches unconditionally, so the tree it lowers to is one leaf —
-/// no `Switch`, since there is nothing to test — and that leaf binds nothing.
+/// no `Test`, since there is nothing to test — and that leaf binds nothing.
 ///
-/// Mutation-checked by routing `TermPatternKind::Anything` through the `Bind` arm of
-/// `decision::lower` (as if `_` bound a name): the empty-bindings assertion goes red.
+/// Mutation-checked by having `decision::lower`'s `Anything` arm bind the value under
+/// `_` the way its `Bind` arm binds a name: the leaf's bindings come out non-empty and
+/// the assertion goes red.
 #[test]
 fn a_wildcard_branch_is_a_leaf_with_no_bindings() {
     let module = ir_of(indoc! {r#"
@@ -814,30 +863,20 @@ fn a_wildcard_branch_is_a_leaf_with_no_bindings() {
               1
     "#});
 
-    let f = declaration(&module, "always_one");
-    let branches = case_branches(f, "always_one");
-    let tree = decision_tree(branches, &Name::new("always_one"));
+    let (tree, bodies) = case_tree(declaration(&module, "always_one"), "always_one");
 
-    match tree {
-        Decision::Leaf { bindings, body } => {
-            assert!(
-                bindings.is_empty(),
-                "a wildcard binds nothing, got {:?}",
-                bindings
-            );
-            assert!(matches!(body.kind, TypedTermKind::Int(1)));
-        }
-        other => panic!("expected a leaf, got {:?}", other),
-    }
+    assert!(matches!(bodies[0].kind, TypedTermKind::Int(1)));
+    assert_eq!(tree, leaf(vec![], bodies[0]));
 }
 
 /// A variable branch also matches unconditionally, and binds the whole scrutinee under
 /// its own name — at `Occurrence::Root`, since a variable pattern reads the value
-/// `case` was given rather than any part of it.
+/// `case` was given rather than any part of it, and at the scrutinee's type.
 ///
-/// Mutation-checked by having `decision::lower`'s `Bind` arm build its binding at
-/// `Occurrence::Root.field(Step::TupleElement(0))` instead of `Occurrence::Root`: the
-/// occurrence assertion below goes red.
+/// Mutation-checked twice: having `decision::lower`'s `Bind` arm build its binding at
+/// `occurrence.field(Step::TupleElement(0))` instead of `occurrence`, and having
+/// `decision::build` hand the root pattern a `Type::Number` instead of the scrutinee's
+/// type. Each turns the assertion red.
 #[test]
 fn a_variable_branch_is_a_leaf_that_binds_the_whole_scrutinee() {
     let module = ir_of(indoc! {r#"
@@ -850,28 +889,24 @@ fn a_variable_branch_is_a_leaf_that_binds_the_whole_scrutinee() {
               x
     "#});
 
-    let f = declaration(&module, "identity");
-    let branches = case_branches(f, "identity");
-    let tree = decision_tree(branches, &Name::new("identity"));
+    let (tree, bodies) = case_tree(declaration(&module, "identity"), "identity");
 
-    match tree {
-        Decision::Leaf { bindings, .. } => {
-            assert_eq!(bindings, vec![("x".to_string(), Occurrence::Root)]);
-        }
-        other => panic!("expected a leaf, got {:?}", other),
-    }
+    assert_eq!(
+        tree,
+        leaf(vec![binding("x", Occurrence::Root, int())], bodies[0])
+    );
 }
 
-/// An `Int` pattern is refutable, so it becomes a `Switch` testing the scrutinee
-/// itself, with one edge for the value it names and everything after it folded into
-/// `default` — which is where the next branch's own test lives, keeping the branches'
-/// source order as nested `default`s rather than one table of edges.
+/// An `Int` pattern is refutable, so it becomes a `Test` of the scrutinee itself
+/// against the value it names, with everything after it in `default` — which is where
+/// the next branch's own `Test` lives, keeping the branches' source order as nested
+/// `default`s rather than one table of edges. The wildcard ends the chain.
 ///
 /// Mutation-checked by having `decision::lower`'s `Literal` arm test
 /// `Outcome::Literal(LiteralValue::Int(0))` regardless of the pattern's own value: the
-/// first edge's outcome assertion goes red.
+/// assertion goes red.
 #[test]
-fn an_int_pattern_becomes_a_switch_on_its_value() {
+fn an_int_pattern_becomes_a_test_on_its_value() {
     let module = ir_of(indoc! {r#"
         module Test exposing (label)
 
@@ -888,70 +923,33 @@ fn an_int_pattern_becomes_a_switch_on_its_value() {
               0
     "#});
 
-    let f = declaration(&module, "label");
-    let branches = case_branches(f, "label");
-    let tree = decision_tree(branches, &Name::new("label"));
+    let (tree, bodies) = case_tree(declaration(&module, "label"), "label");
 
-    match tree {
-        Decision::Switch {
-            scrutinee,
-            edges,
-            default,
-        } => {
-            assert_eq!(scrutinee, Occurrence::Root);
-            assert_eq!(
-                edges.len(),
-                1,
-                "one edge per `Switch` node, got {:?}",
-                edges
-            );
-            let (outcome, target) = &edges[0];
-            assert_eq!(*outcome, Outcome::Literal(LiteralValue::Int(1)));
-            match target {
-                Decision::Leaf { bindings, body } => {
-                    assert!(bindings.is_empty());
-                    assert!(matches!(body.kind, TypedTermKind::Int(10)));
-                }
-                other => panic!("expected a leaf, got {:?}", other),
-            }
-
-            // The second branch's test is nested in `default`, preserving the order
-            // the branches were written in.
-            match *default {
-                Decision::Switch { edges, default, .. } => {
-                    let (outcome, target) = &edges[0];
-                    assert_eq!(*outcome, Outcome::Literal(LiteralValue::Int(2)));
-                    match target {
-                        Decision::Leaf { body, .. } => {
-                            assert!(matches!(body.kind, TypedTermKind::Int(20)))
-                        }
-                        other => panic!("expected a leaf, got {:?}", other),
-                    }
-
-                    // The wildcard ends the chain: a leaf, not a further `Switch`.
-                    match *default {
-                        Decision::Leaf { bindings, body } => {
-                            assert!(bindings.is_empty());
-                            assert!(matches!(body.kind, TypedTermKind::Int(0)));
-                        }
-                        other => panic!("expected the wildcard's leaf, got {:?}", other),
-                    }
-                }
-                other => panic!("expected the second branch's `Switch`, got {:?}", other),
-            }
-        }
-        other => panic!("expected a `Switch`, got {:?}", other),
-    }
+    assert!(matches!(bodies[0].kind, TypedTermKind::Int(10)));
+    assert!(matches!(bodies[1].kind, TypedTermKind::Int(20)));
+    assert!(matches!(bodies[2].kind, TypedTermKind::Int(0)));
+    assert_eq!(
+        tree,
+        test_root(
+            Outcome::Literal(LiteralValue::Int(1)),
+            leaf(vec![], bodies[0]),
+            test_root(
+                Outcome::Literal(LiteralValue::Int(2)),
+                leaf(vec![], bodies[1]),
+                leaf(vec![], bodies[2]),
+            ),
+        )
+    );
 }
 
-/// A `Char` pattern is a `Switch` the same way an `Int` one is, tested by value rather
-/// than by its type alone — both `'a'` and `'b'` share the type `Char`.
+/// A `Char` pattern is a `Test` the same way an `Int` one is, tested by value rather
+/// than by its type alone — both `'a'` and `'b'` share the type `Char` — and the
+/// wildcard written after it is its `default`, not the other way round.
 ///
-/// Mutation-checked by having `translate_pattern` drop the matched `Char`'s value (as
-/// it did before `GEN-5`, keeping only the pattern's type): the outcome assertion
-/// cannot distinguish `'a'` from `'b'` and goes red.
+/// Mutation-checked by having `translate_pattern` record every `Char` pattern's value
+/// as `'z'`, as if it kept only the pattern's type: the assertion goes red.
 #[test]
-fn a_char_pattern_becomes_a_switch_on_its_value() {
+fn a_char_pattern_becomes_a_test_on_its_value() {
     let module = ir_of(indoc! {r#"
         module Test exposing (code)
 
@@ -965,26 +963,28 @@ fn a_char_pattern_becomes_a_switch_on_its_value() {
               0
     "#});
 
-    let f = declaration(&module, "code");
-    let branches = case_branches(f, "code");
-    let tree = decision_tree(branches, &Name::new("code"));
+    let (tree, bodies) = case_tree(declaration(&module, "code"), "code");
 
-    match tree {
-        Decision::Switch { edges, .. } => {
-            assert_eq!(edges[0].0, Outcome::Literal(LiteralValue::Char('a')));
-        }
-        other => panic!("expected a `Switch`, got {:?}", other),
-    }
+    assert!(matches!(bodies[0].kind, TypedTermKind::Int(1)));
+    assert!(matches!(bodies[1].kind, TypedTermKind::Int(0)));
+    assert_eq!(
+        tree,
+        test_root(
+            Outcome::Literal(LiteralValue::Char('a')),
+            leaf(vec![], bodies[0]),
+            leaf(vec![], bodies[1]),
+        )
+    );
 }
 
 /// A `Bool` pattern — `true` or `false` — is a literal like `Int` and `Char` are, not a
-/// constructor: `Bool` is an ordinary union, but the language spells its values with a
-/// literal rather than a capitalised constructor.
+/// constructor. Two literal branches cover `Bool`, but coverage is not checked
+/// (`LANG-19`), so the `false` branch's `Test` still has a `default`: the `Fail` leaf.
 ///
 /// Mutation-checked by having `translate_pattern`'s `Bool` arm read `true` regardless
-/// of the pattern it was given: the first edge's outcome assertion goes red.
+/// of the pattern it was given: the assertion goes red.
 #[test]
-fn a_bool_pattern_becomes_a_switch_on_its_value() {
+fn a_bool_pattern_becomes_a_test_on_its_value() {
     let module = ir_of(indoc! {r#"
         module Test exposing (choose)
 
@@ -998,33 +998,33 @@ fn a_bool_pattern_becomes_a_switch_on_its_value() {
               0
     "#});
 
-    let f = declaration(&module, "choose");
-    let branches = case_branches(f, "choose");
-    let tree = decision_tree(branches, &Name::new("choose"));
+    let (tree, bodies) = case_tree(declaration(&module, "choose"), "choose");
 
-    match tree {
-        Decision::Switch { edges, default, .. } => {
-            assert_eq!(edges[0].0, Outcome::Literal(LiteralValue::Bool(true)));
-            match *default {
-                Decision::Switch { edges, .. } => {
-                    assert_eq!(edges[0].0, Outcome::Literal(LiteralValue::Bool(false)));
-                }
-                other => panic!("expected the `false` branch's `Switch`, got {:?}", other),
-            }
-        }
-        other => panic!("expected a `Switch`, got {:?}", other),
-    }
+    assert!(matches!(bodies[0].kind, TypedTermKind::Int(1)));
+    assert!(matches!(bodies[1].kind, TypedTermKind::Int(0)));
+    assert_eq!(
+        tree,
+        test_root(
+            Outcome::Literal(LiteralValue::Bool(true)),
+            leaf(vec![], bodies[0]),
+            test_root(
+                Outcome::Literal(LiteralValue::Bool(false)),
+                leaf(vec![], bodies[1]),
+                fail("choose"),
+            ),
+        )
+    );
 }
 
-/// A tuple pattern is irrefutable — every element is a name or `_`, so it always
-/// matches — and lowers straight to a leaf: no `Switch`, and one binding per named
-/// element, each at the occurrence its position in the tuple gives it. The wildcard
-/// element contributes no binding, and does not shift the position of the one after it.
+/// A tuple pattern tests nothing — a value of a tuple type is always a tuple, and every
+/// element here is a name or `_` — so it lowers straight to a leaf, with one binding per
+/// named element, each at the occurrence its position in the tuple gives it and at that
+/// element's type. The wildcard element contributes no binding, and does not shift the
+/// position of the one after it.
 ///
-/// Mutation-checked by having `decision::lower`'s `Tuple` arm read each binding's name
-/// without its position (as `translate_pattern` did before `GEN-5`, when a wildcard
-/// before a name silently shifted it): `b`'s occurrence would come out as element `0`
-/// rather than `1`, and the occurrence assertion goes red.
+/// Mutation-checked by having `decision::lower`'s `Tuple` arm give every element the
+/// occurrence `Step::TupleElement(0)`: `b`'s occurrence comes out as element `0` rather
+/// than `1`, and the assertion goes red.
 #[test]
 fn a_tuple_pattern_is_a_leaf_that_binds_each_named_element_by_position() {
     let module = ir_of(indoc! {r#"
@@ -1037,35 +1037,32 @@ fn a_tuple_pattern_is_a_leaf_that_binds_each_named_element_by_position() {
               b
     "#});
 
-    let f = declaration(&module, "second");
-    let branches = case_branches(f, "second");
-    let tree = decision_tree(branches, &Name::new("second"));
+    let (tree, bodies) = case_tree(declaration(&module, "second"), "second");
 
-    match tree {
-        Decision::Leaf { bindings, body } => {
-            assert_eq!(
-                bindings,
-                vec![(
-                    "b".to_string(),
-                    Occurrence::Root.field(Step::TupleElement(1))
-                )]
-            );
-            assert!(matches!(&body.kind, TypedTermKind::Identifier(_)));
-        }
-        other => panic!("expected a leaf, got {:?}", other),
-    }
+    assert_eq!(
+        tree,
+        leaf(
+            vec![binding(
+                "b",
+                Occurrence::Root.field(Step::TupleElement(1)),
+                int()
+            )],
+            bodies[0],
+        )
+    );
 }
 
-/// A constructor pattern is refutable — it becomes a `Switch` on the union's case —
-/// and, unlike a literal, may bind names too: one per argument the pattern names, each
-/// at the occurrence its position in the constructor gives it. A nullary constructor
-/// (`Nothing`) is the same `Switch`, with an edge whose leaf binds nothing.
+/// A constructor pattern is refutable — it becomes a `Test` of the union's case — and,
+/// unlike a literal, may bind names too: one per argument the pattern names, each at
+/// the occurrence its position in the constructor gives it. A nullary constructor
+/// (`Nothing`) is the same `Test`, whose leaf binds nothing. The two branches cover
+/// `Box`, but coverage is not checked (`LANG-19`), so the last `default` is `Fail`.
 ///
-/// Mutation-checked by having `decision::lower`'s `Constructor` arm build `n`'s
-/// occurrence at a fixed position (`0`) rather than the position `translate_pattern`
-/// recorded: harmless for `Just`, whose argument already sits at `0`, so this is why
-/// `two_branches_on_the_same_constructor_keep_source_order` below also covers a
-/// constructor argument away from position `0`.
+/// Mutation-checked by having `translate_pattern` record every constructor's `index` as
+/// `0`: `Nothing`'s outcome then names the wrong case of `Box`, and the assertion goes
+/// red. A position mix-up in a binding is what
+/// `two_branches_on_the_same_constructor_keep_source_order` below catches instead, since
+/// `Just`'s one argument already sits at `0`.
 #[test]
 fn a_constructor_pattern_binds_its_arguments_by_position() {
     let module = ir_of(indoc! {r#"
@@ -1085,60 +1082,42 @@ fn a_constructor_pattern_binds_its_arguments_by_position() {
               default
     "#});
 
-    let f = declaration(&module, "withDefault");
-    let branches = case_branches(f, "withDefault");
-    let tree = decision_tree(branches, &Name::new("withDefault"));
+    let (tree, bodies) = case_tree(declaration(&module, "withDefault"), "withDefault");
 
-    match tree {
-        Decision::Switch {
-            scrutinee,
-            edges,
-            default,
-        } => {
-            assert_eq!(scrutinee, Occurrence::Root);
-            let (outcome, target) = &edges[0];
-            match outcome {
-                Outcome::Constructor(ctor) => assert_eq!(ctor.name, Name::new("Just")),
-                other => panic!("expected a constructor outcome, got {:?}", other),
-            }
-            match target {
-                Decision::Leaf { bindings, .. } => assert_eq!(
-                    bindings,
-                    &vec![(
-                        "n".to_string(),
-                        Occurrence::Root.field(Step::ConstructorArgument(0))
-                    )]
-                ),
-                other => panic!("expected a leaf, got {:?}", other),
-            }
-
-            match *default {
-                Decision::Switch { edges, .. } => match &edges[0].0 {
-                    Outcome::Constructor(ctor) => assert_eq!(ctor.name, Name::new("Nothing")),
-                    other => panic!("expected a constructor outcome, got {:?}", other),
-                },
-                other => panic!("expected the `Nothing` branch's `Switch`, got {:?}", other),
-            }
-        }
-        other => panic!("expected a `Switch`, got {:?}", other),
-    }
+    assert_eq!(
+        tree,
+        test_root(
+            test_constructor("Box", "Just", 0, 1),
+            leaf(
+                vec![binding(
+                    "n",
+                    Occurrence::Root.field(Step::ConstructorArgument(0)),
+                    int()
+                )],
+                bodies[0],
+            ),
+            test_root(
+                test_constructor("Box", "Nothing", 1, 0),
+                leaf(vec![], bodies[1]),
+                fail("withDefault"),
+            ),
+        )
+    );
 }
 
-/// Two branches naming the same constructor still answer to whichever is tried first:
-/// `Cons a _ -> a` wins over `Cons _ b -> b` for every `Cons`, and the tree reflects
-/// that by giving the *first* branch's binding to the one edge a `Cons` value ever
-/// reaches — the second `Cons` branch is unreachable and gets no edge of its own.
+/// Two branches naming the same constructor keep source order: `Cons a _ -> a` is tried
+/// before `Cons _ b -> b`, so its `Test` is the outer one and the second's sits in its
+/// `default`. That second `Test` is dead — any `Cons` value takes the first — but it is
+/// still built; telling that it is dead is coverage checking's question (`LANG-19`).
 ///
-/// The bound argument sits at position `1` here rather than `0`, so a lowering that
-/// mixed up which argument's occurrence a name reads from cannot pass by accident the
-/// way it could if both branches happened to bind position `0`.
+/// The second branch's name is bound at argument `1` rather than `0`, so a lowering that
+/// mixed up which argument a name reads from cannot pass by accident the way it could if
+/// both branches bound position `0`.
 ///
-/// Mutation-checked by having `decision::lower`'s `Constructor` arm bind every
-/// argument at position `0` rather than at the position `translate_pattern` recorded:
+/// Mutation-checked by having `decision::lower`'s `Constructor` arm give every argument
+/// the occurrence `Step::ConstructorArgument(0)`:
 /// `a_constructor_pattern_binds_its_arguments_by_position` cannot tell this from a
-/// correct lowering, because `Just`'s one argument already sits at `0` — but this
-/// test's second, nested `Cons` branch binds `b` at `1`, and the mutation turns that
-/// assertion red.
+/// correct lowering, but `b`'s binding here comes out at `0`, and the assertion goes red.
 #[test]
 fn two_branches_on_the_same_constructor_keep_source_order() {
     let module = ir_of(indoc! {r#"
@@ -1161,65 +1140,40 @@ fn two_branches_on_the_same_constructor_keep_source_order() {
               0
     "#});
 
-    let f = declaration(&module, "first");
-    let branches = case_branches(f, "first");
-    let tree = decision_tree(branches, &Name::new("first"));
+    let (tree, bodies) = case_tree(declaration(&module, "first"), "first");
 
-    match tree {
-        Decision::Switch { edges, default, .. } => {
-            let (outcome, target) = &edges[0];
-            match outcome {
-                Outcome::Constructor(ctor) => assert_eq!(ctor.name, Name::new("Cons")),
-                other => panic!("expected a constructor outcome, got {:?}", other),
-            }
-            match target {
-                Decision::Leaf { bindings, .. } => assert_eq!(
-                    bindings,
-                    &vec![(
-                        "a".to_string(),
-                        Occurrence::Root.field(Step::ConstructorArgument(0))
-                    )],
-                    "the first `Cons` branch binds `a` at argument 0; the second, \
-                     unreachable one binds `b` at argument 1, and must not win"
+    let argument = |position| Occurrence::Root.field(Step::ConstructorArgument(position));
+    assert_eq!(
+        tree,
+        test_root(
+            test_constructor("Item", "Cons", 0, 2),
+            leaf(vec![binding("a", argument(0), int())], bodies[0]),
+            test_root(
+                test_constructor("Item", "Cons", 0, 2),
+                leaf(vec![binding("b", argument(1), int())], bodies[1]),
+                test_root(
+                    test_constructor("Item", "Nil", 1, 0),
+                    leaf(vec![], bodies[2]),
+                    fail("first"),
                 ),
-                other => panic!("expected a leaf, got {:?}", other),
-            }
-
-            // The second, unreachable `Cons` branch is still in the tree, nested in
-            // `default` — and its own binding sits at argument 1, not 0, which is
-            // what tells a lowering that forgot to carry a binding's position apart
-            // from one that mixed the two branches' arguments up.
-            match *default {
-                Decision::Switch { edges, .. } => {
-                    let (_, target) = &edges[0];
-                    match target {
-                        Decision::Leaf { bindings, .. } => assert_eq!(
-                            bindings,
-                            &vec![(
-                                "b".to_string(),
-                                Occurrence::Root.field(Step::ConstructorArgument(1))
-                            )]
-                        ),
-                        other => panic!("expected a leaf, got {:?}", other),
-                    }
-                }
-                other => panic!(
-                    "expected the second `Cons` branch's `Switch`, got {:?}",
-                    other
-                ),
-            }
-        }
-        other => panic!("expected a `Switch`, got {:?}", other),
-    }
+            ),
+        )
+    );
 }
 
 /// A `case` missing a branch for some value of its type — accepted today only because
 /// coverage is not checked yet (`LANG-19`) — lowers to a tree whose last `default` is
-/// an explicit `Fail` leaf, naming the declaration it was written in, rather than
-/// running off the end of the branches with nothing to evaluate.
+/// an explicit `Fail` leaf rather than running off the end of the branches with nothing
+/// to evaluate.
 ///
-/// Mutation-checked by having the exhausted-`branches` case build its `Fail` with a
-/// hard-coded name instead of the `declaration` it was handed: the name assertion goes
+/// The declaration the leaf names is the one `case_tree` handed `decision_tree`: the
+/// tree does not find it, and this does not pretend to check that it does. What it
+/// checks is the `On` test, its leaf, and that the `default` after it is `Fail` and
+/// carries the name it was given.
+///
+/// Mutation-checked by having `decision::build`, when no branch is left after the one
+/// it is lowering, fall back to that branch's own body — a leaf binding nothing — instead
+/// of to `Fail`, which is what running off the end would amount to: the assertion goes
 /// red.
 #[test]
 fn a_case_missing_a_branch_has_a_fall_through_leaf() {
@@ -1237,17 +1191,14 @@ fn a_case_missing_a_branch_has_a_fall_through_leaf() {
               Off
     "#});
 
-    let f = declaration(&module, "ignore");
-    let branches = case_branches(f, "ignore");
-    let tree = decision_tree(branches, &Name::new("ignore"));
+    let (tree, bodies) = case_tree(declaration(&module, "ignore"), "ignore");
 
-    match tree {
-        Decision::Switch { default, .. } => match *default {
-            Decision::Fail { declaration } => {
-                assert_eq!(declaration, Name::new("ignore"));
-            }
-            other => panic!("expected a fall-through `Fail` leaf, got {:?}", other),
-        },
-        other => panic!("expected a `Switch`, got {:?}", other),
-    }
+    assert_eq!(
+        tree,
+        test_root(
+            test_constructor("Flag", "On", 0, 0),
+            leaf(vec![], bodies[0]),
+            fail("ignore"),
+        )
+    );
 }

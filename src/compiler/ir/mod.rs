@@ -83,7 +83,7 @@ use super::typer::Type;
 use super::ModuleName;
 
 mod decision;
-pub use decision::{build as decision_tree, Decision, Occurrence, Outcome, Step};
+pub use decision::{build as decision_tree, Binding, Decision, Occurrence, Outcome, Step};
 
 // ── A module ──────────────────────────────────────────────────────────────────
 
@@ -432,32 +432,71 @@ pub enum TermPatternKind {
     /// [`Type::Adt`] `typer::bool_type` builds for a `true`/`false` one — `Bool` is the
     /// union `Basics` declares, not a literal type. Two patterns of that same kind — two
     /// `Int`s, say — share that one type, so `value` is what tells `1` from `2`, or
-    /// `true` from `false`; a `decision::Decision` reads it to build the
-    /// `decision::Outcome` each of a `Switch`'s edges is tried against.
+    /// `true` from `false`; [`decision_tree`] reads it to build the [`Outcome`] a
+    /// [`Decision::Test`] checks for.
     Literal { tpe: Type, value: LiteralValue },
-    /// Matches an ADT constructor; carries the fresh ADT args and field bindings.
+    /// Matches an ADT constructor; carries the fresh ADT args and one sub-pattern per
+    /// argument.
     Constructor {
         /// Which constructor, and where it sits in its declaration. `ctor.union` is the
         /// name the [`Type::Adt`] this pattern constrains the scrutinee to is built from.
         ctor: Constructor,
         adt_args: Vec<Type>,
-        /// `(position, variable_name, its_type_var)` for each bound constructor
-        /// argument. `position` is the argument's place in the constructor, counted
-        /// from zero the way [`Constructor::index`] counts a case, and travels with the
-        /// name because a wildcard argument contributes no entry here — without it, a
-        /// name bound after a `_` could not be told which argument it reads from.
-        bindings: Vec<(usize, String, Type)>,
+        /// One per argument the pattern writes, in order, so an argument's place in
+        /// this `Vec` is its position in the constructor.
+        args: Vec<SubPattern>,
     },
-    /// Matches a tuple of two or three elements; carries a fresh type per element and
-    /// the bindings its elements introduce.
+    /// Matches a tuple of two or three elements; carries one sub-pattern per element.
     Tuple {
-        /// One type per element, which the matched value's tuple type is built from.
-        elements: Tuple<Type>,
-        /// `(position, variable_name, its_type)` for each element written as a
-        /// variable — see [`Constructor`]'s own `bindings` field for why a position
-        /// travels with the name.
-        bindings: Vec<(usize, String, Type)>,
+        /// One per element, in order. The matched value's tuple type is built from
+        /// their types.
+        elements: Tuple<SubPattern>,
     },
+}
+
+/// A pattern written in a position inside another one — a constructor's argument or a
+/// tuple's element — and the type of the value found there.
+///
+/// The position's type travels with the pattern because a sub-pattern has no scrutinee
+/// of its own to take one from: a variable written there binds a value of this type, and
+/// any other pattern written there constrains this type the way a `case` branch's
+/// pattern constrains the scrutinee's.
+///
+/// Today the pattern is only ever a [`TermPatternKind::Bind`] or a
+/// [`TermPatternKind::Anything`]: `typer::translate_pattern` refuses anything nested
+/// deeper (`LANG-16`). The shape does not assume it.
+#[derive(Debug, Clone)]
+pub struct SubPattern {
+    pub tpe: Type,
+    pub pattern: TermPattern,
+}
+
+impl TermPattern {
+    /// Every name this pattern binds, at any depth, in source order, with the type of
+    /// the value it binds. A variable written at the top is bound at `scrutinee`, the
+    /// type of the value the pattern is matched against.
+    pub(crate) fn bindings(&self, scrutinee: &Type) -> Vec<(String, Type)> {
+        let mut bindings = Vec::new();
+        self.collect_bindings(scrutinee, &mut bindings);
+        bindings
+    }
+
+    fn collect_bindings(&self, tpe: &Type, bindings: &mut Vec<(String, Type)>) {
+        match &self.kind {
+            TermPatternKind::Anything | TermPatternKind::Literal { .. } => {}
+            TermPatternKind::Bind(name) => bindings.push((name.clone(), tpe.clone())),
+            TermPatternKind::Constructor { args, .. } => {
+                for arg in args {
+                    arg.pattern.collect_bindings(&arg.tpe, bindings);
+                }
+            }
+            TermPatternKind::Tuple { elements } => {
+                for element in elements.iter() {
+                    element.pattern.collect_bindings(&element.tpe, bindings);
+                }
+            }
+        }
+    }
 }
 
 /// The concrete value a [`TermPatternKind::Literal`] pattern tests for.
