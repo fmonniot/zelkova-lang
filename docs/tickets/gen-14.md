@@ -33,6 +33,13 @@ test behind it, because nothing in `cargo test` loads a `.mjs`.
 step that emits it into a build directory, followed by `node --test` over assertions that import
 the emitted modules and check values.
 
+`std/core/tests/CaseChecks.mjs` (`GEN-10`) is a hand-copied stand-in for the `case` shape this
+ticket's fixture should exercise once it lands — literal JavaScript checked in by hand,
+mirroring `javascript::emit`'s output rather than importing a real build's, and kept in sync
+with `tests/javascript.rs` by a human reading both sides rather than by anything that runs.
+Once this ticket's fixture covers a `case`, delete `CaseChecks.mjs` or convert it to import the
+fixture's real emitted output instead.
+
 **What the fixture has to cover**, because these are the two rules nothing else can check:
 
 - **A self-recursive function in tail position, deep enough that a non-tail emission exhausts

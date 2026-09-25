@@ -617,6 +617,32 @@ fn the_stdlib_facades_emit() {
     }
 }
 
+/// `CLAUDE.md`'s architecture table claims `javascript::emit` "emits every module of
+/// `std/core`, `case` included" — true (`Basics`, `Maybe`, `Result` and `Tuple` all lean
+/// on `case`), but until this test nothing pinned it: `the_stdlib_facades_emit` above
+/// only loops over the three `Js/*` facades, and `the_stdlib_bitwise_forwards_to_its_
+/// facade` below only names `Bitwise`. Looping over every module `check_std_core`
+/// returns, rather than naming the four again by hand, means a ninth `std/core` module
+/// is covered automatically the day one exists, and CLAUDE.md's "every module" is never
+/// only hand-verified again the way it was for this PR.
+///
+/// Mutation-checked by reverting one of `Basics`, `Maybe`, `Result` or `Tuple`'s
+/// `case`-using declarations to something `javascript::emit` refuses (an easy probe:
+/// temporarily making `case_expression` always push `Error::Unsupported`) — this test
+/// panics on the first module that stops emitting; the loop below over the *complete*
+/// set is what makes that regression visible here instead of staying silent because a
+/// narrower list happened not to include the broken module.
+#[test]
+fn every_stdlib_module_emits() {
+    let checked = check_std_core();
+
+    for module in &checked {
+        let name = module.canonical.name.name().as_str();
+        javascript::emit(module, true)
+            .unwrap_or_else(|errors| panic!("{} failed to emit: {:?}", name, errors));
+    }
+}
+
 /// `std/core`'s `Bitwise` forwards every one of its declarations to `Js.Bitwise`,
 /// written qualified — `and = Js.Bitwise.and` — so every one is type checked against
 /// the facade's interface and the module emits.

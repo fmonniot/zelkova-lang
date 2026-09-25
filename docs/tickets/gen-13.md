@@ -9,15 +9,12 @@ is built, and both are provisional until this ticket settles the layout: a modul
 imported reference carries, so neither knows which package declared it. Sits with
 [`GEN-12`](README.md), which places a companion into the layout this decides.
 
-`emit` refuses four of `std/core`'s eight modules today, which bears on this ticket's
-acceptance. Its three facades emit ([`GEN-12`](README.md)), and so does `Bitwise`, which only
-forwards to one of them. The causes differ by module:
-
-- `Maybe` and `Result` hold a `case`, which [`GEN-10`](gen-10.md) emits.
-- `Basics` and `Tuple` each match a pattern in a parameter — a constructor in
-  `never (JustOneMore nvr)`, a tuple in `Tuple.first (x,_) = x` and in
-  `Basics.fromPolar`/`toPolar`. The IR holds such a parameter as a match on it, and
-  [`GEN-10`](gen-10.md) emits it with the `case` it is.
+`emit` now answers all eight of `std/core`'s modules, which bears on this ticket's acceptance.
+Its three facades emit ([`GEN-12`](README.md)), and so does `Bitwise`, which only forwards to
+one of them; `Maybe`, `Result`, `Basics` and `Tuple` emit too, now that `GEN-10`, closed, emits
+a `case` and the parameter patterns the IR holds as one — a constructor in
+`never (JustOneMore nvr)`, a tuple in `Tuple.first (x,_) = x` and in
+`Basics.fromPolar`/`toPolar`.
 
 **Part of:** [`GEN-1`](gen-1.md).
 

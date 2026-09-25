@@ -93,17 +93,43 @@
 //! there is [`GEN-13`](../../../docs/tickets/gen-13.md)'s to settle, along with copying
 //! the companion into place at all — nothing here does either.
 //!
+//! # A `case`
+//!
+//! [`ir::decision_tree`] turns a `case`'s branches — and a parameter written as a
+//! pattern, which the IR holds as a single-branch match on it
+//! ([`ir::CaseForm::Parameter`]) and which reaches [`Emitter::case_expression`] the
+//! same way — into the [`Decision`] tree a backend walks instead of re-deriving which
+//! test distinguishes which branch. [`Emitter::case_expression`] binds the scrutinee to
+//! `$scrutinee` once, since the tree tests it more than once and re-evaluating it per
+//! test would evaluate it once per test — observable through non-termination ([Order of
+//! evaluation](../../../docs/spec/evaluation-semantics.md#order-of-evaluation)) — and
+//! walks the tree into an `if`/`else` chain inside an immediately invoked function,
+//! since a `case` is an expression and JavaScript's `if` is a statement. A
+//! [`Decision::Test`] becomes an `if` on the value [`occurrence_expr`] reads off
+//! `$scrutinee`: `.$ === "Ctor"` for a constructor, an equality check for a literal. A
+//! [`Decision::Leaf`] declares its bindings as `const`s ahead of a `return`, all of it
+//! inside its own block — a binding may repeat a name the scrutinee expression reads
+//! ([Variable patterns](../../../docs/spec/patterns.md#variable-patterns)), and without
+//! that block the two would share a scope, putting the earlier read in the later
+//! binding's temporal dead zone. A [`Decision::Fail`] — the fall-through a `case`
+//! missing a branch reaches, because [coverage is not checked
+//! yet](../../../docs/spec/evaluation-semantics.md#two-outcomes) — calls the runtime's
+//! `$abort`, naming the declaration the `case` was written in and, for a parameter
+//! written as a pattern, saying so rather than naming a `case` the source never wrote.
+//!
 //! # What is refused
 //!
 //! [`emit`] answers an [`Error`] rather than a module missing a part: for a declaration
-//! with no IR ([`ir::Module::unchecked`]), for a `case` or a parameter written as a
-//! pattern ([`GEN-10`](../../../docs/tickets/gen-10.md) emits both), for a facade signature not marked `unsafe`, and for a facade with no
-//! companion for the target being built.
+//! with no IR ([`ir::Module::unchecked`]), for a facade signature not marked `unsafe`,
+//! and for a facade with no companion for the target being built.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::canonical::{ExportType, Exports, Value};
-use super::ir::{self, ReferenceKind, Saturation, TypedTerm, TypedTermKind};
+use super::ir::{
+    self, decision_tree, CaseForm, Decision, LiteralValue, Occurrence, Outcome, ReferenceKind,
+    Saturation, Step, TypedTerm, TypedTermKind,
+};
 use super::name::{Name, QualName};
 use super::position::NodeSpan;
 use super::{scalars, CheckedModule, PhaseError, SpanLabel};
@@ -141,11 +167,6 @@ pub enum Error {
 /// The expression forms [`Error::Unsupported`] names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Construct {
-    /// A `case` expression, which [`GEN-10`](../../../docs/tickets/gen-10.md) emits.
-    Case,
-    /// A parameter written as a pattern. The IR holds it as a match on the parameter
-    /// ([`ir::CaseForm::Parameter`]), so it is emitted when a `case` is.
-    ParameterPattern,
     /// A `let` expression. The front end does not accept one yet, so the IR never holds
     /// one; it is named so that meeting one is an error rather than a panic.
     Let,
@@ -157,8 +178,6 @@ pub enum Construct {
 impl Construct {
     fn describe(self) -> &'static str {
         match self {
-            Construct::Case => "a `case` expression",
-            Construct::ParameterPattern => "a pattern in a parameter",
             Construct::Let => "a `let` expression",
             Construct::Lambda => "an anonymous function",
         }
@@ -807,13 +826,11 @@ impl Emitter {
                     .collect();
                 format!("[{}]", elements.join(", "))
             }
-            TypedTermKind::Case { form, .. } => {
-                let construct = match form {
-                    ir::CaseForm::Expression => Construct::Case,
-                    ir::CaseForm::Parameter => Construct::ParameterPattern,
-                };
-                self.unsupported(construct, term.span)
-            }
+            TypedTermKind::Case {
+                scrutinee,
+                branches,
+                form,
+            } => self.case_expression(scrutinee, branches, *form),
             TypedTermKind::Let { .. } => self.unsupported(Construct::Let, term.span),
             TypedTermKind::Fun { .. } => self.unsupported(Construct::Lambda, term.span),
         }
@@ -941,6 +958,165 @@ impl Emitter {
             .iter()
             .map(|(argument, _)| self.expression(argument))
             .collect()
+    }
+
+    /// A `case … of`, or a parameter written as a pattern — the IR's single-branch
+    /// match on it ([`ir::CaseForm::Parameter`]), which lowers and emits the same way.
+    /// See this module's doc comment, "A `case`", for the shape.
+    ///
+    /// `scrutinee` is evaluated exactly once — bound to `$scrutinee` before the tree is
+    /// walked — never once per test, which is what a decision tree built by
+    /// [`decision_tree`] wants: [Order of
+    /// evaluation](../../../docs/spec/evaluation-semantics.md#order-of-evaluation).
+    ///
+    /// `form` says whether the source wrote a `case … of` or a parameter pattern
+    /// ([`ir::CaseForm`]) and reaches [`abort_description`] unchanged, so a
+    /// [`Decision::Fail`] this tree needs describes itself in the vocabulary the source
+    /// actually used.
+    ///
+    /// Mutation-checked by re-emitting `self.expression(scrutinee)` at every
+    /// [`Decision::Test`] instead of binding it once: a `case` whose scrutinee is a call
+    /// then contains that call's text more than once.
+    fn case_expression(
+        &mut self,
+        scrutinee: &TypedTerm,
+        branches: &[(ir::TermPattern, Box<TypedTerm>)],
+        form: CaseForm,
+    ) -> String {
+        let declaration = self.declaration.clone().unwrap_or_else(|| Name::new(""));
+        let tree = decision_tree(&scrutinee.tpe, branches, &declaration);
+        let scrutinee_expr = self.expression(scrutinee);
+        let body = self.decision(&tree, "$scrutinee", 1, form);
+
+        format!(
+            "(() => {{\n  const $scrutinee = {};\n{}\n}})()",
+            scrutinee_expr, body
+        )
+    }
+
+    /// One [`Decision`] node as the statements of an `if`/`else` chain, each line
+    /// indented `depth` levels of two spaces — the body of [`case_expression`]'s
+    /// immediately invoked function. `root` is the name the scrutinee is bound to,
+    /// which [`occurrence_expr`] reads a test's or a binding's value off; `form` is
+    /// passed through unchanged to [`abort_description`].
+    ///
+    /// A [`Decision::Test`] nests: its `matched` and `default` are each a full
+    /// [`Decision`] emitted one level deeper, so a chain of tests on the scrutinee comes
+    /// out as `if`s nested in one another's `else`, never merged or reordered — the
+    /// order [Conditional
+    /// evaluation](../../../docs/spec/evaluation-semantics.md#conditional-evaluation)
+    /// tries branches in. A [`Decision::Leaf`] declares its bindings as `const`s, each
+    /// read off `root` by [`occurrence_expr`], ahead of a `return` of its body — all of
+    /// it inside its own block, so a binding never shares a scope with the
+    /// `$scrutinee` line above it. Sharing that scope is observable: a binding may name
+    /// anything the pattern it comes from could ([Variable
+    /// patterns](../../../docs/spec/patterns.md#variable-patterns) lets one repeat a
+    /// name already in scope), and a `const` anywhere in a block puts every reference to
+    /// that name earlier in the *same* block in its temporal dead zone — so without the
+    /// leaf's own block, a scrutinee expression that happens to read a name a leaf also
+    /// binds would throw `ReferenceError` before ever reaching the leaf. A
+    /// [`Decision::Fail`] returns the runtime's `$abort`, importing it the way `$curry`
+    /// is imported; it carries no binding, so it needs no block of its own.
+    fn decision(&mut self, tree: &Decision, root: &str, depth: usize, form: CaseForm) -> String {
+        let pad = "  ".repeat(depth);
+
+        match tree {
+            Decision::Test {
+                scrutinee,
+                outcome,
+                matched,
+                default,
+            } => {
+                let condition = test_condition(root, scrutinee, outcome);
+                let matched = self.decision(matched, root, depth + 1, form);
+                let default = self.decision(default, root, depth + 1, form);
+                format!(
+                    "{pad}if ({condition}) {{\n{matched}\n{pad}}} else {{\n{default}\n{pad}}}",
+                    pad = pad,
+                    condition = condition,
+                    matched = matched,
+                    default = default,
+                )
+            }
+            Decision::Leaf { bindings, body } => {
+                let inner_pad = "  ".repeat(depth + 1);
+                let mut lines: Vec<String> = bindings
+                    .iter()
+                    .map(|binding| {
+                        format!(
+                            "{}const {} = {};",
+                            inner_pad,
+                            mangle(&binding.name),
+                            occurrence_expr(root, &binding.occurrence)
+                        )
+                    })
+                    .collect();
+                lines.push(format!("{}return {};", inner_pad, self.expression(body)));
+                format!("{pad}{{\n{}\n{pad}}}", lines.join("\n"), pad = pad)
+            }
+            Decision::Fail { declaration } => {
+                self.runtime.insert("$abort");
+                format!(
+                    "{}return $abort({});",
+                    pad,
+                    abort_description(declaration, form)
+                )
+            }
+        }
+    }
+}
+
+/// The condition a [`Decision::Test`] compiles to: an equality check against the value
+/// [`occurrence_expr`] reads off `root`. A constructor is tested by its `$` field — a
+/// `Bool`'s constructors never reach here, since `typer::translate_pattern` normalises
+/// `True`/`False` to the same [`Outcome::Literal`] a `true`/`false` pattern is — and a
+/// literal by the value itself, which is also how a `case` on a `Bool` tests it (see
+/// this module's doc comment, "Representations").
+fn test_condition(root: &str, occurrence: &Occurrence, outcome: &Outcome) -> String {
+    let value = occurrence_expr(root, occurrence);
+
+    match outcome {
+        Outcome::Literal(LiteralValue::Bool(b)) => format!("{} === {}", value, b),
+        Outcome::Literal(LiteralValue::Int(i)) => format!("{} === {}n", value, i),
+        Outcome::Literal(LiteralValue::Char(c)) => format!("{} === {}", value, char_literal(*c)),
+        Outcome::Constructor(ctor) => format!("{}.$ === \"{}\"", value, ctor.name.as_str()),
+    }
+}
+
+/// The JavaScript expression reading the value at `occurrence` off `root`, the name the
+/// scrutinee is bound to: a constructor argument is a field ([`field`], the same one
+/// [`tagged`] builds an object under), a tuple element an index — the representations
+/// [A union crosses as a tagged
+/// value](../../../docs/spec/interop.md#a-union-crosses-as-a-tagged-value) gives them.
+fn occurrence_expr(root: &str, occurrence: &Occurrence) -> String {
+    match occurrence {
+        Occurrence::Root => root.to_string(),
+        Occurrence::At(base, step) => {
+            let base = occurrence_expr(root, base);
+            match step {
+                Step::ConstructorArgument(index) => format!("{}.{}", base, field(*index)),
+                Step::TupleElement(index) => format!("{}[{}]", base, index),
+            }
+        }
+    }
+}
+
+/// The description a [`Decision::Fail`]'s `$abort` call carries: which declaration's
+/// `case` — or, for [`CaseForm::Parameter`], parameter pattern — matched no branch. That
+/// leaf exists only because [coverage is not checked
+/// yet](../../../docs/spec/evaluation-semantics.md#two-outcomes) (`LANG-19`) — reaching
+/// it aborts rather than falling through to `undefined`. `form` keeps the message in the
+/// vocabulary the source actually used: a parameter written as a pattern has no `case`
+/// for the message to name.
+fn abort_description(declaration: &Name, form: CaseForm) -> String {
+    match form {
+        CaseForm::Expression => {
+            format!("\"`{}`'s case matched no branch\"", declaration.as_str())
+        }
+        CaseForm::Parameter => format!(
+            "\"`{}`'s parameter pattern matched no branch\"",
+            declaration.as_str()
+        ),
     }
 }
 
