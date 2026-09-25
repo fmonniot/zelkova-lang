@@ -429,8 +429,8 @@ pub enum TermPatternKind {
     /// and, unlike the type alone, says which value of it.
     ///
     /// `tpe` is a [`Type::Literal`] for an `Int` or a `Char` pattern, and the
-    /// [`Type::Adt`] `typer::bool_type` builds for a `true`/`false` one — `Bool` is the
-    /// union `Basics` declares, not a literal type. Two patterns of that same kind — two
+    /// [`Type::Adt`] `typer::bool_type` builds for a `true`/`false` or a `True`/`False`
+    /// one — `Bool` is the union `Basics` declares, not a literal type. Two patterns of that same kind — two
     /// `Int`s, say — share that one type, so `value` is what tells `1` from `2`, or
     /// `true` from `false`; [`decision_tree`] reads it to build the [`Outcome`] a
     /// [`Decision::Test`] checks for.
@@ -502,10 +502,10 @@ impl TermPattern {
 /// The concrete value a [`TermPatternKind::Literal`] pattern tests for.
 ///
 /// The pattern's own `tpe` cannot tell `1` from `2`, or `'a'` from `'b'`: both share one
-/// type, and only this says which value the scrutinee has to equal. `Bool`'s two
-/// constructors are `true`/`false` here rather than a reference into the union `Basics`
-/// declares, matching how [`TermPatternKind::Literal`] already treats a `Bool` pattern's
-/// type.
+/// type, and only this says which value the scrutinee has to equal. A `Bool` is tested
+/// by its value whichever spelling the pattern used: `true`/`false` and `Basics`' own
+/// `True`/`False` constructors both arrive here as a `Bool(..)`, never as a
+/// [`TermPatternKind::Constructor`] (`typer::translate_pattern` does the normalising).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LiteralValue {
     Bool(bool),

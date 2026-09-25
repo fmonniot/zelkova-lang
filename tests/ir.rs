@@ -1202,3 +1202,41 @@ fn a_case_missing_a_branch_has_a_fall_through_leaf() {
         )
     );
 }
+
+/// `Basics`' `True` and `False` constructors are tested by value exactly as `true` and
+/// `false` are, so a `case` mixing the two spellings lowers to `Test`s in one
+/// vocabulary: a backend never has to recognise `Basics.Bool` among constructors.
+///
+/// Mutation-checked by deleting `translate_pattern`'s `True`/`False` arm, so `True`
+/// goes through the general constructor path: the first `Test`'s outcome comes out as
+/// `Outcome::Constructor(Basics.Bool.True)`, and the assertion goes red.
+#[test]
+fn a_bool_constructor_is_tested_by_value_like_a_bool_literal() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (choose)
+
+        choose : Bool -> Int
+        choose flag =
+          case flag of
+            True ->
+              1
+
+            false ->
+              0
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "choose"), "choose");
+
+    assert_eq!(
+        tree,
+        test_root(
+            Outcome::Literal(LiteralValue::Bool(true)),
+            leaf(vec![], bodies[0]),
+            test_root(
+                Outcome::Literal(LiteralValue::Bool(false)),
+                leaf(vec![], bodies[1]),
+                fail("choose"),
+            ),
+        )
+    );
+}

@@ -1144,6 +1144,24 @@ fn translate_pattern(
             tpe: Type::Literal(TypeLiteral::Char),
             value: LiteralValue::Char(*value),
         },
+        // `Basics`' own `True` and `False` are tested by value, exactly as `true` and
+        // `false` are, so a backend meets one vocabulary for a `Bool` whichever
+        // spelling the source used — a `case` mixing them included. The type is the
+        // same one the constructor would have constrained the scrutinee to. A module's
+        // own `type Bool = True | False` is not `Basics.Bool` and is left alone.
+        canonical::PatternKind::Constructor { ctor, args }
+            if args.is_empty() && ctor.tpe == scalars::BOOL.qual_name() =>
+        {
+            let value = match ctor.name.as_str() {
+                "True" => true,
+                "False" => false,
+                _ => return None,
+            };
+            TermPatternKind::Literal {
+                tpe: bool_type(),
+                value: LiteralValue::Bool(value),
+            }
+        }
         canonical::PatternKind::Constructor { ctor, args } => {
             // Look up the parent union to get its type variables. `ctor.tpe` names
             // the declaration the constructor builds, module included, and `unions`
