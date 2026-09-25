@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use indoc::indoc;
-use zelkova_lang::compiler::javascript::{self, Construct, Error};
+use zelkova_lang::compiler::javascript::{self, Error};
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::{check_module, CheckedModule, Interface};
@@ -531,76 +531,351 @@ fn a_reserved_word_is_mangled_and_a_name_containing_one_is_not() {
     );
 }
 
-/// A `case` is refused rather than emitted without it, naming the declaration.
+/// A `case` over a three-constructor union is the scrutinee bound once, then a chain of
+/// `if`/`else` nested one per constructor tested — in source order, since [Conditional
+/// evaluation](../docs/spec/evaluation-semantics.md#conditional-evaluation) tries a
+/// `case`'s branches in the order written — inside an immediately invoked function, so
+/// the whole thing is still one expression. Coverage is not checked yet (`LANG-19`), so
+/// even a `case` naming every constructor gets a `Fail` leaf after the last test, which
+/// calls the runtime's `$abort` naming the declaration.
 ///
-/// Mutation-checked by making the `Case` arm of `expression` emit an empty string
-/// without recording an error: the module is then emitted.
+/// This pins the whole shape in one `assert_eq!` rather than a handful of `contains`,
+/// since the nesting and the fall-through are the part every other test below takes for
+/// granted.
+///
+/// Mutation-checked by having `Emitter::decision`'s `Test` arm drop the `else` and
+/// concatenate `matched` and `default` one after the other: the `Green`/`Blue` arms
+/// then both return, which is not valid JavaScript and the text no longer matches.
 #[test]
-fn a_case_is_refused() {
-    let errors = refused(indoc! {r#"
-        module Test exposing (flip)
+fn a_case_on_a_three_constructor_union_is_nested_ifs_naming_each_tag() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (label)
 
         type Colour
           = Red
           | Green
+          | Blue
 
-        flip : Colour -> Colour
-        flip c =
+        label : Colour -> Int
+        label c =
           case c of
             Red ->
-              Green
+              1
 
             Green ->
-              Red
+              2
+
+            Blue ->
+              3
     "#});
 
-    assert_eq!(errors.len(), 1, "got {:?}", errors);
-    match &errors[0] {
-        Error::Unsupported {
-            construct,
-            declaration,
-            ..
-        } => {
-            assert_eq!(*construct, Construct::Case);
-            assert_eq!(*declaration, Name::new("flip"));
-        }
-        other => panic!("expected the `case` to be refused, got {:?}", other),
-    }
+    assert!(
+        text.contains(indoc! {r#"
+            function label(c) {
+              return (() => {
+              const $scrutinee = c;
+              if ($scrutinee.$ === "Red") {
+                return 1n;
+              } else {
+                if ($scrutinee.$ === "Green") {
+                  return 2n;
+                } else {
+                  if ($scrutinee.$ === "Blue") {
+                    return 3n;
+                  } else {
+                    return $abort("`label`'s case matched no branch");
+                  }
+                }
+              }
+            })();
+            }
+        "#}),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.starts_with("import { $abort } from \"../zelkova.mjs\";\n"),
+        "got:\n{}",
+        text
+    );
 }
 
-/// A parameter written as a pattern is refused as what the source wrote — a pattern in
-/// a parameter — with the caret under the pattern, although the IR holds it as a match.
+/// The scrutinee is bound to `$scrutinee` once, even though the tree tests it more than
+/// once (`Red`, then `Green`, then the fall-through to `Blue`): re-emitting it at every
+/// test would call `next` once per test, evaluating it more than once — [Order of
+/// evaluation](../docs/spec/evaluation-semantics.md#order-of-evaluation) forbids that.
 ///
-/// Mutation-checked by answering `Construct::Case` for a `CaseForm::Parameter` match
-/// in `expression`: the construct assertion goes red.
+/// Mutation-checked by having `case_expression` call `self.expression(scrutinee)`
+/// inside `test_condition` instead of binding it to `$scrutinee` first: `next(c)` then
+/// appears twice.
 #[test]
-fn a_parameter_written_as_a_pattern_is_refused_as_one() {
-    let source = indoc! {r#"
+fn a_cases_scrutinee_is_evaluated_once() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (label)
+
+        type Colour
+          = Red
+          | Green
+          | Blue
+
+        next : Colour -> Colour
+        next value =
+          value
+
+        label : Colour -> Int
+        label c =
+          case next c of
+            Red ->
+              1
+
+            Green ->
+              2
+
+            Blue ->
+              3
+    "#});
+
+    assert_eq!(
+        text.matches("next(c)").count(),
+        1,
+        "the scrutinee is a call, evaluated once, got:\n{}",
+        text
+    );
+}
+
+/// A wildcard branch matches unconditionally and binds nothing: the whole `case`
+/// collapses to the scrutinee binding and a bare `return`, with no `if` at all.
+///
+/// Mutation-checked by having `Emitter::decision`'s `Leaf` arm emit a `const` for every
+/// binding the branch's pattern *could* have had rather than the ones `ir::decision_tree`
+/// actually gathered: a wildcard then gets a spurious `const`.
+#[test]
+fn a_wildcard_branch_binds_nothing() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (always_one)
+
+        always_one : Int -> Int
+        always_one n =
+          case n of
+            _ ->
+              1
+    "#});
+
+    assert!(
+        text.contains("const $scrutinee = n;\n  return 1n;"),
+        "got:\n{}",
+        text
+    );
+}
+
+/// A variable branch also matches unconditionally, and binds the whole scrutinee under
+/// its own (mangled) name.
+///
+/// Mutation-checked by having `occurrence_expr` answer `"$scrutinee.a"` for
+/// `Occurrence::Root` instead of `root` itself: `x` is then bound to a field of the
+/// scrutinee rather than the scrutinee.
+#[test]
+fn a_variable_branch_binds_the_whole_scrutinee() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (identity)
+
+        identity : Int -> Int
+        identity n =
+          case n of
+            x ->
+              x
+    "#});
+
+    assert!(
+        text.contains("const x = $scrutinee;\n  return x;"),
+        "got:\n{}",
+        text
+    );
+}
+
+/// An `Int` pattern is tested by equality against its `BigInt` literal.
+///
+/// Mutation-checked by having `test_condition`'s `Int` arm drop the `n` suffix: the
+/// condition then reads `$scrutinee === 1`, a `Number` comparison an `Int` — a
+/// `BigInt` — never equals.
+#[test]
+fn an_int_pattern_is_tested_by_equality() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (label)
+
+        label : Int -> Int
+        label n =
+          case n of
+            1 ->
+              10
+
+            _ ->
+              0
+    "#});
+
+    assert!(text.contains("if ($scrutinee === 1n) {"), "got:\n{}", text);
+}
+
+/// A `Char` pattern is tested by equality against its one-character string.
+///
+/// Mutation-checked by having `test_condition`'s `Char` arm write the character
+/// unquoted: the emitted text is then not valid JavaScript.
+#[test]
+fn a_char_pattern_is_tested_by_equality() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (code)
+
+        code : Char -> Int
+        code c =
+          case c of
+            'a' ->
+              1
+
+            _ ->
+              0
+    "#});
+
+    assert!(
+        text.contains("if ($scrutinee === \"a\") {"),
+        "got:\n{}",
+        text
+    );
+}
+
+/// A `Bool` pattern — `true` or `false` — is tested by the value itself, never by a `$`
+/// tag: `Bool` is a JavaScript boolean, not a tagged object, so a `case` on it reads
+/// exactly like a `Basics.True`/`Basics.False` constructor pattern would, and the
+/// two spellings emit identically.
+///
+/// Mutation-checked by having `test_condition`'s `Bool` arm build a tag check,
+/// `.$ === "True"`, the way `Outcome::Constructor` does: the condition then reads a
+/// field a JavaScript boolean does not have.
+#[test]
+fn a_bool_pattern_is_tested_by_its_value_not_a_tag() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (choose)
+
+        choose : Bool -> Int
+        choose flag =
+          case flag of
+            true ->
+              1
+
+            false ->
+              0
+    "#});
+
+    assert!(
+        text.contains("if ($scrutinee === true) {"),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("if ($scrutinee === false) {"),
+        "got:\n{}",
+        text
+    );
+    assert!(!text.contains("$scrutinee.$"), "got:\n{}", text);
+}
+
+/// A tuple pattern tests nothing — a value of a tuple type is always a tuple — and binds
+/// each named element by its index into the array a tuple is. The wildcard element
+/// contributes no binding.
+///
+/// Mutation-checked by having `occurrence_expr`'s `TupleElement` arm read
+/// `.{index}` (a field, the way a constructor argument is read) instead of `[{index}]`:
+/// the emitted text then reads a field a JavaScript array does not have.
+#[test]
+fn a_tuple_pattern_binds_its_elements_by_index() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (second)
+
+        second : (Int, Int) -> Int
+        second pair =
+          case pair of
+            (_, b) ->
+              b
+    "#});
+
+    assert!(
+        text.contains("const b = $scrutinee[1];\n  return b;"),
+        "got:\n{}",
+        text
+    );
+}
+
+/// A constructor pattern is tested by its `$` tag and binds its arguments by field —
+/// `a`, `b`, … in declaration order, the same names [`tagged`] builds an object under.
+/// `Box` has two constructors and the `case` names both, but coverage is not checked
+/// yet (`LANG-19`), so the last one's `default` still reaches a `Fail` leaf, which
+/// calls `$abort` naming the declaration rather than falling through to `undefined`.
+///
+/// Mutation-checked two ways: having `test_condition`'s `Constructor` arm read `.b`
+/// instead of `.$`, and having `Emitter::decision`'s `Fail` arm return `undefined`
+/// instead of calling `$abort` — the second is also acceptance's own requirement, since
+/// nothing else in this suite runs the emitted text under `node` to observe it.
+#[test]
+fn a_constructor_pattern_is_tested_by_tag_and_binds_by_field() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (Box, withDefault)
+
+        type Box
+          = Just Int
+          | Nothing
+
+        withDefault : Int -> Box -> Int
+        withDefault fallback box =
+          case box of
+            Just n ->
+              n
+
+            Nothing ->
+              fallback
+    "#});
+
+    assert!(
+        text.contains(
+            "if ($scrutinee.$ === \"Just\") {\n    const n = $scrutinee.a;\n    return n;"
+        ),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("if ($scrutinee.$ === \"Nothing\") {\n      return fallback;"),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("return $abort(\"`withDefault`'s case matched no branch\");"),
+        "got:\n{}",
+        text
+    );
+}
+
+/// A parameter written as a pattern emits the same way a `case` does — the IR holds it
+/// as a single-branch match on the parameter ([`ir::CaseForm::Parameter`]) — so `first`
+/// takes its parameter under [`ir::pattern_parameter`]'s name, `$0`, and its body is the
+/// same scrutinee-then-bindings shape a `case` expression's is.
+///
+/// Mutation-checked by keeping `Construct::ParameterPattern`'s old refusal instead of
+/// routing `CaseForm::Parameter` through `case_expression` too: `first` is then refused
+/// rather than emitted.
+#[test]
+fn a_parameter_written_as_a_pattern_emits_as_a_single_branch_match() {
+    let text = emitted(indoc! {r#"
         module Test exposing (first)
 
         first : (Int, Int) -> Int
         first (x, _) =
           x
-    "#};
-    let errors = refused(source);
+    "#});
 
-    assert_eq!(errors.len(), 1, "got {:?}", errors);
-    match &errors[0] {
-        Error::Unsupported {
-            construct,
-            declaration,
-            span,
-        } => {
-            assert_eq!(*construct, Construct::ParameterPattern);
-            assert_eq!(*declaration, Name::new("first"));
-            let start = position(source, "(x, _)");
-            assert_eq!(span.to_range(), Some(start..start + "(x, _)".len()));
-        }
-        other => panic!(
-            "expected the parameter's pattern to be refused, got {:?}",
-            other
-        ),
-    }
+    assert!(text.contains("function first($0) {"), "got:\n{}", text);
+    assert!(
+        text.contains("const $scrutinee = $0;\n  const x = $scrutinee[0];\n  return x;"),
+        "got:\n{}",
+        text
+    );
 }
 
 /// A module holding a declaration the typer could not check is refused rather than

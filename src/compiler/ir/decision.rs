@@ -148,8 +148,8 @@ pub enum Decision<'a> {
         /// nothing in a `case`'s branches says which declaration they sit in, so naming
         /// it is the caller's contract — a backend walking a declaration's body has
         /// that declaration's name at hand. Neither the `$abort` call nor the
-        /// description's exact wording is this pass's to write; emitting a `Decision`
-        /// is `GEN-10`'s.
+        /// description's exact wording is this pass's to write; walking a `Decision`
+        /// to build them is `javascript::emit`'s.
         declaration: Name,
     },
 }
