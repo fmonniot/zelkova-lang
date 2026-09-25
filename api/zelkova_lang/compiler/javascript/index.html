@@ -1,0 +1,110 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="The JavaScript backend: the text of the ES module one checked module emits as. Public because nothing in the pipeline calls it yet — writing its output is `GEN-13` — so its tests and that ticket reach it from outside. The JavaScript backend: one checked module in, the text of one ES module out."><title>zelkova_lang::compiler::javascript - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="zelkova_lang" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.1 (48a229cea 2026-09-01)" data-channel="1.98.1" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module javascript</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../../zelkova_lang/index.html">zelkova_<wbr>lang</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module javascript</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#the-shape-of-an-emitted-module" title="The shape of an emitted module">The shape of an emitted module</a></li><li><a href="#representations" title="Representations">Representations</a></li><li><a href="#calls" title="Calls">Calls</a></li><li><a href="#a-facade" title="A facade">A facade</a></li><li><a href="#a-case" title="A `case`">A <code>case</code></a></li><li><a href="#what-is-refused" title="What is refused">What is refused</a></li></ul><h3><a href="#enums">Module Items</a></h3><ul class="block"><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#functions" title="Functions">Functions</a></li></ul></section><div id="rustdoc-modnav"><h2><a href="../index.html">In zelkova_<wbr>lang::<wbr>compiler</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../../index.html">zelkova_lang</a>::<wbr><a href="../index.html">compiler</a></div><h1>Module <span>javascript</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../../src/zelkova_lang/compiler/javascript.rs.html#1-1188">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>The JavaScript backend: the text of the ES module one checked module emits as.
+Public because nothing in the pipeline calls it yet — writing its output is
+<code>GEN-13</code> — so its tests and that ticket reach it from outside.
+The JavaScript backend: one checked module in, the text of one ES module out.</p>
+<p>[<code>emit</code>] reads the <a href="../ir/struct.Module.html" title="struct zelkova_lang::compiler::ir::Module"><code>ir::Module</code></a> a <a href="../struct.CheckedModule.html" title="struct zelkova_lang::compiler::CheckedModule"><code>CheckedModule</code></a> carries, beside the
+<a href="../canonical/struct.Module.html" title="struct zelkova_lang::compiler::canonical::Module"><code>canonical::Module</code></a> it was built from for the one thing the IR does not hold — which
+names the module exports. It produces text and writes nothing; where that text goes is
+<a href="../../../docs/tickets/gen-13.md"><code>GEN-13</code></a>’s.</p>
+<h2 id="the-shape-of-an-emitted-module"><a class="doc-anchor" href="#the-shape-of-an-emitted-module">§</a>The shape of an emitted module</h2>
+<p>In this order, each section separated from the next by a blank line and left out when
+it is empty:</p>
+<ol>
+<li><strong>Imports</strong> — the runtime helpers the module calls, from the runtime module
+(<code>runtime/js/zelkova.mjs</code>), then one named import per value another module declares.</li>
+<li><strong>Hoisted constructors</strong> — one <code>const</code> per constructor of no arguments this module
+declares, then one per such constructor of another module’s that it mentions, which
+every mention of it refers to (<a href="../../../docs/decisions/dec-18.md#4--a-constructor-of-no-arguments-is-hoisted-to-one-module-level-constant"><code>DEC-18</code> decision
+4</a>).</li>
+<li><strong>Functions</strong> — one <code>function</code> per declaration that takes parameters, with exactly
+as many JavaScript parameters as it was written with (<a href="../../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper"><code>DEC-18</code> decision
+3</a>).</li>
+<li><strong>Parameterless bindings</strong> — one <code>const</code> each, in
+<a href="../ir/struct.Module.html#structfield.initialisation_order" title="field zelkova_lang::compiler::ir::Module::initialisation_order"><code>ir::Module::initialisation_order</code></a>, so each is initialised after every other one
+it mentions directly. One that reaches another only through a function it calls is
+not ordered after it, and the emitted module throws at load
+(<a href="../../../docs/tickets/bug-38.md"><code>BUG-38</code></a>).</li>
+<li><strong>Exports</strong> — one <code>export { … }</code> naming each exported value by its Zelkova name.</li>
+</ol>
+<h2 id="representations"><a class="doc-anchor" href="#representations">§</a>Representations</h2>
+<p>An <code>Int</code> literal is a <code>BigInt</code> (<code>1n</code>), since <a href="../../../docs/spec/evaluation-semantics.md#numbers"><code>Int</code> is 64
+bits</a>; a <code>Float</code> is a number, a
+<code>Char</code> a one-character string. <code>True</code> and <code>False</code> — the constructors of
+<a href="../scalars/constant.BOOL.html" title="constant zelkova_lang::compiler::scalars::BOOL"><code>scalars::BOOL</code></a>, recognised by the union’s qualified name — are <code>true</code> and <code>false</code>.
+Every other union value is <code>{$: "Ctor", a: …, b: …}</code>, arguments in declaration order
+(<a href="../../../docs/spec/interop.md#a-union-crosses-as-a-tagged-value">A union crosses as a tagged
+value</a>); a
+constructor’s arguments past the 26th continue <code>aa</code>, <code>ab</code>, … — see [<code>field</code>]. A tuple
+is an array.</p>
+<p>A constructor is not exported. An importer that builds one builds its own object of
+the same shape, and hoists its own constant for one of no arguments. <a href="../../../docs/spec/evaluation-semantics.md#what-structural-equality-computes">Equality is
+structural</a>,
+so nothing observes which module allocated it.</p>
+<h2 id="calls"><a class="doc-anchor" href="#calls">§</a>Calls</h2>
+<p>An application whose IR node is [<code>Saturation::Saturated</code>] is a direct call,
+<code>f(a, b)</code>, or for a constructor the object itself. Every other application calls a
+<em>function value</em>, one argument per JavaScript call: <code>g(a)(b)</code>. What makes that
+correct is that every function value the emitted code hands around accepts being
+called one argument at a time. A declaration of two or more parameters, and a
+constructor of two or more arguments, is <code>$curry(f, n)</code> wherever it is used as a value
+rather than called, so a partial application such as <code>pick 1</code> is <code>$curry(pick, 2)(1n)</code>; a one-parameter function already takes its argument one at a time.</p>
+<p>One argument per call is also what keeps the <a href="../../../docs/spec/evaluation-semantics.md#order-of-evaluation">order of
+evaluation</a>: <code>g a b</code>
+applies <code>g a</code> before it evaluates <code>b</code>, and <code>g(a)(b)</code> does too where <code>g(a, b)</code> would
+not. Nothing here reorders a subexpression, and <a href="../../../docs/spec/evaluation-semantics.md#nothing-short-circuits">nothing
+short-circuits</a>:
+<code>&amp;&amp;</code> and <code>||</code> reach this module as ordinary applications of the functions their
+<code>infix</code> declarations name, so they are emitted as calls, never as JavaScript’s own
+operators.</p>
+<p>A value another module declares has an arity this module cannot see, so it is called
+one argument at a time like any other value (<a href="../ir/enum.ReferenceKind.html#variant.Foreign" title="variant zelkova_lang::compiler::ir::ReferenceKind::Foreign"><code>ir::ReferenceKind::Foreign</code></a>).</p>
+<h2 id="a-facade"><a class="doc-anchor" href="#a-facade">§</a>A facade</h2>
+<p>[<code>emit</code>] answers a module for a <code>module foreign</code> facade too, so that an importer
+needs no special case. Every <a href="../../../docs/spec/interop.md#an-unsafe-facade"><code>unsafe</code></a>
+declaration becomes forwarding code that imports the companion’s export under an
+alias and calls it with exactly the parameters the signature’s arrow count gives —
+a plain function at arity one or more, a <code>const</code> at arity zero — the same
+<a href="../../../docs/spec/interop.md#the-javascript-companion">plain-parameter-list promise</a>
+an ordinary declaration’s call already keeps. [<code>Error::MissingCompanion</code>] is
+answered instead when the caller says no companion sits beside this module for the
+target being built (<a href="../../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend"><em>A facade names a boundary, not a
+backend</em></a>) —
+[<code>emit</code>] has no path of its own to check that with, so the caller decides.</p>
+<p>A signature not marked <code>unsafe</code> declares an effect
+(<a href="../../../docs/spec/interop.md#an-effectful-facade">An effectful facade</a>), and
+wrapping one in the <code>Result</code> its call site is owed is
+<a href="../../../docs/tickets/gen-16.md"><code>GEN-16</code></a>’s, blocked on <code>Task</code> existing at all.
+[<code>emit</code>] answers [<code>Error::Effectful</code>] for one rather than emitting the <code>unsafe</code>
+shape for it.</p>
+<p>[<code>companion_specifier</code>] assumes the companion sits beside this module’s own emitted
+file, sharing the last segment of its name, which is where it sits beside the
+<code>.zel</code> source today. Whether the two can share that output path once one is written
+there is <a href="../../../docs/tickets/gen-13.md"><code>GEN-13</code></a>’s to settle, along with copying
+the companion into place at all — nothing here does either.</p>
+<h2 id="a-case"><a class="doc-anchor" href="#a-case">§</a>A <code>case</code></h2>
+<p><a href="../ir/fn.decision_tree.html" title="fn zelkova_lang::compiler::ir::decision_tree"><code>ir::decision_tree</code></a> turns a <code>case</code>’s branches — and a parameter written as a
+pattern, which the IR holds as a single-branch match on it
+(<a href="../ir/enum.CaseForm.html#variant.Parameter" title="variant zelkova_lang::compiler::ir::CaseForm::Parameter"><code>ir::CaseForm::Parameter</code></a>) and which reaches [<code>Emitter::case_expression</code>] the
+same way — into the [<code>Decision</code>] tree a backend walks instead of re-deriving which
+test distinguishes which branch. [<code>Emitter::case_expression</code>] binds the scrutinee to
+<code>$scrutinee</code> once, since the tree tests it more than once and re-evaluating it per
+test would evaluate it once per test — observable through non-termination (<a href="../../../docs/spec/evaluation-semantics.md#order-of-evaluation">Order of
+evaluation</a>) — and
+walks the tree into an <code>if</code>/<code>else</code> chain inside an immediately invoked function,
+since a <code>case</code> is an expression and JavaScript’s <code>if</code> is a statement. A
+[<code>Decision::Test</code>] becomes an <code>if</code> on the value [<code>occurrence_expr</code>] reads off
+<code>$scrutinee</code>: <code>.$ === "Ctor"</code> for a constructor, an equality check for a literal. A
+[<code>Decision::Leaf</code>] declares its bindings as <code>const</code>s ahead of a <code>return</code>, all of it
+inside its own block — a binding may repeat a name the scrutinee expression reads
+(<a href="../../../docs/spec/patterns.md#variable-patterns">Variable patterns</a>), and without
+that block the two would share a scope, putting the earlier read in the later
+binding’s temporal dead zone. A [<code>Decision::Fail</code>] — the fall-through a <code>case</code>
+missing a branch reaches, because <a href="../../../docs/spec/evaluation-semantics.md#two-outcomes">coverage is not checked
+yet</a> — calls the runtime’s
+<code>$abort</code>, naming the declaration the <code>case</code> was written in and, for a parameter
+written as a pattern, saying so rather than naming a <code>case</code> the source never wrote.</p>
+<h2 id="what-is-refused"><a class="doc-anchor" href="#what-is-refused">§</a>What is refused</h2>
+<p>[<code>emit</code>] answers an [<code>Error</code>] rather than a module missing a part: for a declaration
+with no IR (<a href="../ir/struct.Module.html#structfield.unchecked" title="field zelkova_lang::compiler::ir::Module::unchecked"><code>ir::Module::unchecked</code></a>), for a facade signature not marked <code>unsafe</code>,
+and for a facade with no companion for the target being built.</p>
+</div></details><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.Construct.html" title="enum zelkova_lang::compiler::javascript::Construct">Construct</a></dt><dd>The expression forms <a href="enum.Error.html#variant.Unsupported" title="variant zelkova_lang::compiler::javascript::Error::Unsupported"><code>Error::Unsupported</code></a> names.</dd><dt><a class="enum" href="enum.Error.html" title="enum zelkova_lang::compiler::javascript::Error">Error</a></dt><dd>Why a module could not be emitted.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.emit.html" title="fn zelkova_lang::compiler::javascript::emit">emit</a></dt><dd>The JavaScript text of <code>module</code>, or every reason it cannot be emitted.</dd></dl></section></div></main></body></html>
