@@ -25,6 +25,17 @@ generator is unkept.
 `while (true) { … }`. A marked call becomes: compute the new arguments, assign them to the
 parameters, `continue`. Every other path out of the body `return`s.
 
+**A marked call inside a `case` needs care this description does not give.** `GEN-10` emits
+every `case` — including one that is the whole of a declaration's tail position — as an
+immediately invoked arrow function (`Emitter::case_expression`, `src/compiler/javascript.rs`),
+so a marked call sitting in one of its branches is lexically inside that arrow function's body.
+`continue` cannot cross an arrow-function boundary, and in practice a self tail call almost
+always sits inside a `case` branch, so this ticket's `while (true) { … continue; … }` cannot
+just wrap the declaration's body the way this section describes — the loop has to be lifted
+above the `case`'s arrow function, or the `case` emitted as plain statements in tail position
+(no arrow function to cross) before the loop can be added around it. Settle that shape here
+before writing the loop; it is not a detail to discover while emitting the `continue`.
+
 **Assign all the parameters at once, not one at a time.** `count (Succ acc) m` assigns both, and
 the new value of one may be computed from the old value of another — assigning `acc` before `m`
 is read gives the wrong answer for any declaration whose arguments cross over. Evaluate every
