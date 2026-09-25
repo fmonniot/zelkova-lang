@@ -539,9 +539,15 @@ fn a_reserved_word_is_mangled_and_a_name_containing_one_is_not() {
 /// even a `case` naming every constructor gets a `Fail` leaf after the last test, which
 /// calls the runtime's `$abort` naming the declaration.
 ///
-/// This pins the whole shape in one `assert_eq!` rather than a handful of `contains`,
-/// since the nesting and the fall-through are the part every other test below takes for
-/// granted.
+/// This pins the whole shape with one `assert!(text.contains(..))` against the full
+/// nested block, plus a separate `starts_with` on the import — not an `assert_eq!` on
+/// the whole module — since the nesting and the fall-through are the part every other
+/// test below takes for granted.
+///
+/// Kept in sync by hand with `std/core/tests/CaseChecks.mjs`'s `label`, which hand-copies
+/// this exact shape until `GEN-13`/`GEN-14` let it import real build output instead — a
+/// change here that changes what gets emitted has to be carried there too, or that
+/// fixture starts asserting on stale text.
 ///
 /// Mutation-checked by having `Emitter::decision`'s `Test` arm drop the `else` and
 /// concatenate `matched` and `default` one after the other: the `Green`/`Blue` arms
@@ -575,13 +581,19 @@ fn a_case_on_a_three_constructor_union_is_nested_ifs_naming_each_tag() {
               return (() => {
               const $scrutinee = c;
               if ($scrutinee.$ === "Red") {
-                return 1n;
+                {
+                  return 1n;
+                }
               } else {
                 if ($scrutinee.$ === "Green") {
-                  return 2n;
+                  {
+                    return 2n;
+                  }
                 } else {
                   if ($scrutinee.$ === "Blue") {
-                    return 3n;
+                    {
+                      return 3n;
+                    }
                   } else {
                     return $abort("`label`'s case matched no branch");
                   }
@@ -646,9 +658,11 @@ fn a_cases_scrutinee_is_evaluated_once() {
 /// A wildcard branch matches unconditionally and binds nothing: the whole `case`
 /// collapses to the scrutinee binding and a bare `return`, with no `if` at all.
 ///
-/// Mutation-checked by having `Emitter::decision`'s `Leaf` arm emit a `const` for every
-/// binding the branch's pattern *could* have had rather than the ones `ir::decision_tree`
-/// actually gathered: a wildcard then gets a spurious `const`.
+/// That a wildcard gathers no binding is `ir::decision_tree`'s doing (`GEN-5`), not this
+/// backend's — `Emitter::decision`'s `Leaf` arm only ever emits one `const` per binding
+/// it is handed, so there is no mutation of *this* module that makes it emit a binding a
+/// wildcard has none of. What this test actually pins on the emitter's own side is that
+/// an unconditional match produces no `if` at all, only the leaf's own block.
 #[test]
 fn a_wildcard_branch_binds_nothing() {
     let text = emitted(indoc! {r#"
@@ -662,7 +676,7 @@ fn a_wildcard_branch_binds_nothing() {
     "#});
 
     assert!(
-        text.contains("const $scrutinee = n;\n  return 1n;"),
+        text.contains("const $scrutinee = n;\n  {\n    return 1n;\n  }"),
         "got:\n{}",
         text
     );
@@ -687,7 +701,44 @@ fn a_variable_branch_binds_the_whole_scrutinee() {
     "#});
 
     assert!(
-        text.contains("const x = $scrutinee;\n  return x;"),
+        text.contains("{\n    const x = $scrutinee;\n    return x;\n  }"),
+        "got:\n{}",
+        text
+    );
+}
+
+/// A variable branch's binding may repeat a name the scrutinee expression itself reads —
+/// [Variable patterns](../docs/spec/patterns.md#variable-patterns) allows it, since a
+/// pattern's names are a fresh scope, not a reference to whatever a name already means.
+/// `next(x)` here reads the parameter `x`, and the branch rebinds `x` to the whole
+/// scrutinee; the two must not share a JavaScript scope, or the `const x` inside the
+/// leaf's own block would put the `x` inside `next(x)` in its temporal dead zone and the
+/// emitted function would throw `ReferenceError: Cannot access 'x' before
+/// initialization` instead of returning.
+///
+/// Mutation-checked by having `Emitter::decision`'s `Leaf` arm emit its bindings and
+/// `return` directly, the way it did before this test, instead of wrapping them in their
+/// own block: the assertion below then looks for a block that is not there.
+#[test]
+fn a_shadowing_variable_branch_does_not_reach_into_the_scrutinees_scope() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (identity)
+
+        next : Int -> Int
+        next value =
+          value
+
+        identity : Int -> Int
+        identity x =
+          case next x of
+            x ->
+              x
+    "#});
+
+    assert!(
+        text.contains(
+            "const $scrutinee = next(x);\n  {\n    const x = $scrutinee;\n    return x;\n  }"
+        ),
         "got:\n{}",
         text
     );
@@ -744,8 +795,7 @@ fn a_char_pattern_is_tested_by_equality() {
 
 /// A `Bool` pattern — `true` or `false` — is tested by the value itself, never by a `$`
 /// tag: `Bool` is a JavaScript boolean, not a tagged object, so a `case` on it reads
-/// exactly like a `Basics.True`/`Basics.False` constructor pattern would, and the
-/// two spellings emit identically.
+/// exactly like a `Basics.True`/`Basics.False` constructor pattern would.
 ///
 /// Mutation-checked by having `test_condition`'s `Bool` arm build a tag check,
 /// `.$ === "True"`, the way `Outcome::Constructor` does: the condition then reads a
@@ -762,6 +812,45 @@ fn a_bool_pattern_is_tested_by_its_value_not_a_tag() {
               1
 
             false ->
+              0
+    "#});
+
+    assert!(
+        text.contains("if ($scrutinee === true) {"),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("if ($scrutinee === false) {"),
+        "got:\n{}",
+        text
+    );
+    assert!(!text.contains("$scrutinee.$"), "got:\n{}", text);
+}
+
+/// The `True`/`False` constructor spelling emits exactly the same condition as the
+/// `true`/`false` literal spelling does — `ir::translate_pattern` normalises both to the
+/// same [`ir::Outcome::Literal`] before this backend ever sees the pattern
+/// (`a_bool_constructor_is_tested_by_value_like_a_bool_literal` in `tests/ir.rs` pins
+/// that), so this backend has no `Bool`-specific code path to tell the two spellings
+/// apart at all. `True`/`False` is the more common spelling in real code, and nothing
+/// above this test exercises it.
+///
+/// Mutation-checked the same way as the sibling test above: having `test_condition`'s
+/// `Bool` arm build a tag check turns this one red too, since `True`/`False` reaches it
+/// through the exact same `Outcome::Literal(Bool)`.
+#[test]
+fn a_bool_constructor_pattern_is_tested_by_its_value_not_a_tag() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (choose)
+
+        choose : Bool -> Int
+        choose flag =
+          case flag of
+            True ->
+              1
+
+            False ->
               0
     "#});
 
@@ -798,7 +887,7 @@ fn a_tuple_pattern_binds_its_elements_by_index() {
     "#});
 
     assert!(
-        text.contains("const b = $scrutinee[1];\n  return b;"),
+        text.contains("{\n    const b = $scrutinee[1];\n    return b;\n  }"),
         "got:\n{}",
         text
     );
@@ -835,13 +924,15 @@ fn a_constructor_pattern_is_tested_by_tag_and_binds_by_field() {
 
     assert!(
         text.contains(
-            "if ($scrutinee.$ === \"Just\") {\n    const n = $scrutinee.a;\n    return n;"
+            "if ($scrutinee.$ === \"Just\") {\n    {\n      const n = $scrutinee.a;\n      return n;\n    }"
         ),
         "got:\n{}",
         text
     );
     assert!(
-        text.contains("if ($scrutinee.$ === \"Nothing\") {\n      return fallback;"),
+        text.contains(
+            "if ($scrutinee.$ === \"Nothing\") {\n      {\n        return fallback;\n      }"
+        ),
         "got:\n{}",
         text
     );
@@ -872,10 +963,37 @@ fn a_parameter_written_as_a_pattern_emits_as_a_single_branch_match() {
 
     assert!(text.contains("function first($0) {"), "got:\n{}", text);
     assert!(
-        text.contains("const $scrutinee = $0;\n  const x = $scrutinee[0];\n  return x;"),
+        text.contains(
+            "const $scrutinee = $0;\n  {\n    const x = $scrutinee[0];\n    return x;\n  }"
+        ),
         "got:\n{}",
         text
     );
+}
+
+/// A parameter written as a pattern can fail to match — `unwrap`'s parameter names only
+/// `Just`, so a `Nothing` reaches the same `Fail` leaf a `case` missing a branch would —
+/// and the `$abort` it calls describes itself as a parameter pattern, not a `case`, since
+/// that is what the source actually wrote ([`ir::CaseForm::Parameter`]).
+///
+/// Mutation-checked by having `abort_description` ignore `form` and always build the
+/// `case`-worded message: the assertion below then looks for text that is not there.
+#[test]
+fn a_failing_parameter_pattern_describes_itself_as_a_parameter_not_a_case() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (unwrap)
+
+        unwrap : Maybe Int -> Int
+        unwrap (Just n) =
+          n
+    "#});
+
+    assert!(
+        text.contains("return $abort(\"`unwrap`'s parameter pattern matched no branch\");"),
+        "got:\n{}",
+        text
+    );
+    assert!(!text.contains("case matched no branch"), "got:\n{}", text);
 }
 
 /// A module holding a declaration the typer could not check is refused rather than
