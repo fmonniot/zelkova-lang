@@ -243,7 +243,8 @@ run is not a test that passed.
 **Known gap:** nothing is fetched, nothing is cached, and no `zelkova.lock` is read or written
 ([`docs/tickets/lang-61.md`](../tickets/lang-61.md)), so none of the rest of this appendix
 exists. What does: the compiler is pointed at a package root, reads that package's manifest,
-and compiles every package reachable from it through a `path` entry, dependencies first.
+compiles every package reachable from it through a `path` entry, dependencies first, and writes
+their JavaScript to `build/js/` beside that manifest.
 
 **Provisional:** what it becomes is a compiler pointed at a package root — the directory holding
 `zelkova.toml` — which resolves, compiles every module of `src/`, and writes its output beside

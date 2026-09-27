@@ -670,6 +670,244 @@ fn the_stdlib_bitwise_forwards_to_its_facade() {
     );
 }
 
+// ── Writing the build ────────────────────────────────────────────────────────
+
+/// An empty directory under Cargo's per-target scratch space, named for the test using
+/// it, for a build to write into.
+fn fresh_build_dir(test: &str) -> std::path::PathBuf {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(test);
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+    dir
+}
+
+/// Every file below `dir`, as sorted `/`-separated paths relative to it — empty when
+/// `dir` does not exist.
+fn files_under(dir: &Path) -> Vec<String> {
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else {
+                let relative = path.strip_prefix(root).unwrap();
+                let parts: Vec<String> = relative
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect();
+                out.push(parts.join("/"));
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out.sort();
+    out
+}
+
+/// `GEN-13`: a build that checks writes `js/` below its build directory — the runtime at
+/// its root, then one directory per package of the build holding one file per module,
+/// named after the module within its own package and never the namespace the dependent
+/// writes (`AcmeWidgets.Size` is `acme-widgets/Size.mjs`), with a facade's companion
+/// beside it under its own name. A private module is emitted like any other, since its
+/// own package's modules import it. An import across the package boundary reaches the
+/// sibling package's directory.
+///
+/// Mutation-checked three ways: dropping the push of the companion in `emit_build` loses
+/// `Native.companion.mjs`; writing each module to its package-less `module_file` puts
+/// every file at the root of `js/`; and dropping the package comparison in
+/// `javascript::module_specifier` has `App.mjs` import `./Size.mjs`. Each turns this red.
+#[test]
+fn a_build_writes_one_directory_per_package() {
+    let build_dir = fresh_build_dir("a_build_writes_one_directory_per_package");
+
+    let result = zelkova_lang::compiler::compile_package_into(
+        &fixture_package("package_namespaced_dependency"),
+        &build_dir,
+    );
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    assert_eq!(
+        files_under(&build_dir),
+        vec![
+            "js/acme-widgets/Hidden.mjs",
+            "js/acme-widgets/Native.companion.mjs",
+            "js/acme-widgets/Native.mjs",
+            "js/acme-widgets/Size.mjs",
+            "js/package-namespaced-dependency/App.mjs",
+            "js/zelkova.mjs",
+        ]
+    );
+
+    let js = build_dir.join("js");
+    assert_eq!(
+        std::fs::read_to_string(js.join("zelkova.mjs")).unwrap(),
+        javascript::RUNTIME
+    );
+    assert_eq!(
+        std::fs::read_to_string(js.join("acme-widgets/Native.companion.mjs")).unwrap(),
+        std::fs::read_to_string(fixture_package("dep_widgets").join("src/Native.mjs")).unwrap()
+    );
+    let app = std::fs::read_to_string(js.join("package-namespaced-dependency/App.mjs")).unwrap();
+    assert!(
+        app.starts_with("import { small as Size$small } from \"../acme-widgets/Size.mjs\";\n"),
+        "got:\n{}",
+        app
+    );
+}
+
+/// `GEN-13`'s acceptance, the same tree `cargo run` writes: `std/core`'s eight modules,
+/// the three `Js/*` companions beside their facades, and the runtime.
+///
+/// Mutation-checked by leaving out the runtime `emit_build` starts from: `js/zelkova.mjs`
+/// goes missing and this turns red.
+#[test]
+fn the_stdlib_build_writes_every_module_and_companion() {
+    let build_dir = fresh_build_dir("the_stdlib_build_writes_every_module_and_companion");
+
+    let result = zelkova_lang::compiler::compile_package_into(&std_package_root(), &build_dir);
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    assert_eq!(
+        files_under(&build_dir),
+        vec![
+            "js/zelkova-core/Basics.mjs",
+            "js/zelkova-core/Bitwise.mjs",
+            "js/zelkova-core/Js/Basics.companion.mjs",
+            "js/zelkova-core/Js/Basics.mjs",
+            "js/zelkova-core/Js/Bitwise.companion.mjs",
+            "js/zelkova-core/Js/Bitwise.mjs",
+            "js/zelkova-core/Js/Utils.companion.mjs",
+            "js/zelkova-core/Js/Utils.mjs",
+            "js/zelkova-core/Maybe.mjs",
+            "js/zelkova-core/Result.mjs",
+            "js/zelkova-core/Tuple.mjs",
+            "js/zelkova.mjs",
+        ]
+    );
+}
+
+/// `GEN-13`: a build with a failing module writes no file at all — not the runtime, not
+/// a dependency's modules that checked cleanly, and not the failing package's own
+/// modules that did check.
+///
+/// `package_type_error` depends on `acme-widgets` (`dep_widgets`), which nothing here
+/// imports and which checks without error, so its modules *do* reach `checked` before
+/// the failure is known — unlike `package_type_error`'s own `Basics`, which never gets
+/// there at all: `compile_in_build` returns `None` for a package with any error (here,
+/// `Mismatch`'s), which drops every module of that package, `Basics` included, before
+/// `compile`'s `checked` ever sees them. So the two guards this test pins are not
+/// interchangeable with what keeps `Basics.mjs` off disk — that is `compile_in_build`'s
+/// `None`, not either guard in `compile` — and this fixture exists specifically so a
+/// dependency's modules are the ones the guards in `compile` are the *only* thing
+/// keeping off disk.
+///
+/// Mutation-checked by emitting and writing whatever checked without looking at the
+/// errors — both `if errors.is_empty()` guards around the codegen step in `compile`
+/// replaced with `if true`. That writes the runtime and `acme-widgets`'s modules —
+/// `package_type_error`'s own `Basics.mjs` still does not appear, because it was never
+/// in `checked` to begin with — and turns this red. Removing only the outer guard
+/// leaves it green, correctly: the inner one still sees the type error and writes
+/// nothing.
+#[test]
+fn a_build_with_a_failing_module_writes_nothing() {
+    let build_dir = fresh_build_dir("a_build_with_a_failing_module_writes_nothing");
+
+    let error = zelkova_lang::compiler::compile_package_into(
+        &fixture_package("package_type_error"),
+        &build_dir,
+    )
+    .expect_err("`Mismatch` does not type check");
+
+    // The failure is the type error, not something the build step raised.
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Many, got {:?}", error);
+    };
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [CompilationError::InFile(inner, _)] if matches!(**inner, CompilationError::Type(..))
+        ),
+        "got {:?}",
+        errors
+    );
+
+    assert_eq!(files_under(&build_dir), Vec::<String>::new());
+    assert!(!build_dir.exists());
+}
+
+/// `GEN-13`: a module that checks and cannot be emitted fails the build like any other
+/// error, and nothing is written. The facade here has no companion beside it, which
+/// [`javascript::emit`] refuses.
+///
+/// Mutation-checked by dropping the second `if errors.is_empty()` in `compile`, so
+/// files are written whether or not emission failed: the runtime is written and this
+/// turns red.
+#[test]
+fn a_build_that_cannot_be_emitted_writes_nothing() {
+    let package = fresh_build_dir("a_build_that_cannot_be_emitted_writes_nothing_package");
+    std::fs::create_dir_all(package.join("src")).unwrap();
+    std::fs::write(
+        package.join("zelkova.toml"),
+        "name = \"no-companion\"\nversion = \"0.1.0\"\nprivate-modules = []\n\n[dependencies]\n\n[test-dependencies]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("src/Answer.zel"),
+        indoc::indoc! {r#"
+            module Answer exposing (Answer(..))
+
+            type Answer = Yes
+        "#},
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("src/Native.zel"),
+        indoc::indoc! {r#"
+            module foreign Native exposing (answer)
+
+            import Answer exposing (Answer)
+
+            unsafe answer : Answer
+        "#},
+    )
+    .unwrap();
+    let build_dir = package.join("build");
+
+    let error = zelkova_lang::compiler::compile_package_into(&package, &build_dir)
+        .expect_err("a facade with no companion cannot be emitted");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Many, got {:?}", error);
+    };
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [CompilationError::InFile(inner, _)]
+                if matches!(
+                    &**inner,
+                    CompilationError::Emit(emit_errors, _)
+                        if matches!(emit_errors.as_slice(), [javascript::Error::MissingCompanion { .. }])
+                )
+        ),
+        "got {:?}",
+        errors
+    );
+    assert_eq!(
+        error.as_diagnostic().notes,
+        vec![
+            "[Native] the facade `Native` has no companion for the `javascript` target".to_string()
+        ]
+    );
+
+    assert!(!build_dir.exists(), "got {:?}", files_under(&build_dir));
+}
+
 // ── Test 14: a type error reaches the user as a real diagnostic ──────────────
 
 /// `ERR-2`: a type error must render as an `error` naming both types.
@@ -2480,7 +2718,9 @@ fn checked_value<'a>(
 fn foreign_names(value: &canonical::Value) -> Vec<String> {
     fn walk(expr: &canonical::Expression, out: &mut Vec<String>) {
         match &expr.kind {
-            canonical::ExpressionKind::VarForeign(qual, _) => out.push(qual.to_name().to_string()),
+            canonical::ExpressionKind::VarForeign(qual, _, _) => {
+                out.push(qual.to_name().to_string())
+            }
             canonical::ExpressionKind::Apply(f, arg) => {
                 walk(f, out);
                 walk(arg, out);
@@ -4181,6 +4421,36 @@ fn a_test_dependency_reaches_the_tests_root() {
 
     let result = compile_package_with_tests(&root);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+/// A test build's output tree holds exactly what a plain build of the same package's
+/// `src/` would: `compile_package_with_tests` checks `tests/AppTest.zel` and the
+/// `test-dependency` it reaches through (`acme-expect`), but writes neither
+/// `AppTest.mjs` nor `acme-expect/Expect.mjs`, so a later plain `compile_package` run
+/// never finds a test module a test build left behind.
+///
+/// Mutation-checked two ways, each red on its own: dropping the `root ==
+/// source::SourceRoot::Src` guard in `compile_in_build` writes `AppTest.mjs`; dropping
+/// the `!test_dependency_packages.contains` guard in `compile` also writes
+/// `acme-expect/Expect.mjs`.
+#[test]
+fn a_test_build_writes_the_same_tree_a_plain_build_would() {
+    let root = fixture_package("package_test_dependency");
+    let build_dir = root.join("build");
+    if build_dir.exists() {
+        std::fs::remove_dir_all(&build_dir).unwrap();
+    }
+
+    let result = compile_package_with_tests(&root);
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    assert_eq!(
+        files_under(&build_dir),
+        vec![
+            "js/package-test-dependency/App.mjs".to_string(),
+            "js/zelkova.mjs".to_string(),
+        ]
+    );
 }
 
 /// …and to nothing else. The same import written in `src/` reaches no module, because

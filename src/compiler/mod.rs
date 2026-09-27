@@ -32,7 +32,9 @@
 //!     1. check each module (type check, exhaustiveness, etc…), and build the `ir::Module`
 //!        a backend reads out of the canonical module and what the typer solved
 //!     1. Bonus point to parallelize the tree branches which are not dependent on each others
-//! 6. Once we have a module with all checks passing, create its interface and emit AST/interface
+//! 6. Once every module of every package has checked, emit each one as JavaScript
+//!    (`javascript::emit`) and, if that failed nowhere either, write the build to
+//!    `build/js/` (`output::write`). A build with any error writes nothing.
 //! 7. Report. Each phase returns every error it found, `check_module` tags those with
 //!    the module they came from, and `compile_package` accumulates them across modules
 //!    and renders them all through `CompilationError::as_diagnostic` — the one place a
@@ -70,15 +72,18 @@ pub mod exhaustiveness;
 /// for one module. Public because it is the compiler's hand-off to a backend and
 /// `check_module` returns one.
 pub mod ir;
-/// The JavaScript backend: the text of the ES module one checked module emits as.
-/// Public because nothing in the pipeline calls it yet — writing its output is
-/// `GEN-13` — so its tests and that ticket reach it from outside.
+/// The JavaScript backend: the text of the ES module one checked module emits as, and
+/// where in the output tree each file goes. Public so that its tests reach `emit`
+/// directly, on a module no package holds.
 pub mod javascript;
 /// `zelkova.toml`: reading it, and the shape it has to have. Public for the same
 /// reason as `source` and `dependencies` — `manifest::ManifestError` is reachable
 /// from the public `CompilationError::Manifest`.
 pub mod manifest;
 pub mod name;
+/// Writing a build's output to disk. Public for the same reason as `manifest`:
+/// `output::Error` is reachable from the public `CompilationError::Output`.
+pub mod output;
 pub mod parser;
 pub mod position;
 /// Which packages a build is made from, and what each module is called inside the
@@ -202,6 +207,11 @@ impl ModuleName {
 
     pub fn name(&self) -> &Name {
         &self.name
+    }
+
+    /// The package that declares this module.
+    pub fn package(&self) -> &PackageName {
+        &self.package
     }
 
     /// Simple shortcut to qualify a given name with this module's name
@@ -550,6 +560,11 @@ pub enum CompilationError {
     /// `exhaustiveness::check` is a stub, but rendered like any other phase.
     Exhaustiveness(Vec<exhaustiveness::Error>, Name),
     DependenciesError(dependencies::Error),
+    /// The named module checked and could not be emitted as JavaScript.
+    Emit(Vec<javascript::Error>, Name),
+    /// A file of the build's output could not be written. Raised only once every module
+    /// of the build has checked and emitted, since nothing is written before that.
+    Output(output::Error),
 
     /// An error together with the file the module it belongs to was read from.
     ///
@@ -588,7 +603,8 @@ impl CompilationError {
         match self {
             CompilationError::Canonical(_, module)
             | CompilationError::Type(_, module)
-            | CompilationError::Exhaustiveness(_, module) => Some(module),
+            | CompilationError::Exhaustiveness(_, module)
+            | CompilationError::Emit(_, module) => Some(module),
             CompilationError::InFile(inner, _) => inner.module(),
             _ => None,
         }
@@ -647,6 +663,13 @@ impl CompilationError {
             CompilationError::Exhaustiveness(errors, module) => {
                 phase_diagnostic(module, "exhaustiveness", errors, file)
             }
+            CompilationError::Emit(errors, module) => {
+                phase_diagnostic(module, "code generation", errors, file)
+            }
+            // A path on disk, not a place in any source, so there is nothing to label.
+            CompilationError::Output(error) => Diagnostic::error()
+                .with_message(error.message())
+                .with_notes(error.notes()),
             // A dependency cycle belongs to the package, not to any one module, so it
             // does not go through `phase_diagnostic` — there is no module to supply
             // the fallback file that helper takes. Its labels don't need one: each
@@ -748,8 +771,35 @@ enum TestRoot {
 /// package is compiled from source the same way whether it is the one asked for or a
 /// dependency of it, and the whole build shares one file database and one error
 /// accumulator: an error in any package of it makes this return `Err`.
+///
+/// A build that checks writes its JavaScript to `build/js/` beside `package_dir`'s
+/// manifest — see [`compile_package_into`] for what that tree holds. One that emitted
+/// any error writes nothing.
 pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
-    compile(package_dir, TestRoot::Skipped)
+    compile(
+        package_dir,
+        TestRoot::Skipped,
+        &package_dir.join(BUILD_DIRECTORY),
+    )
+}
+
+/// The directory a build's output goes to, beside the root package's manifest and never
+/// beside a source it read ([*The compiler's
+/// interface*](../../docs/spec/toolchain.md#the-compilers-interface)).
+pub const BUILD_DIRECTORY: &str = "build";
+
+/// [`compile_package`], writing its output below `build_dir` rather than below the
+/// package's own `build/`.
+///
+/// The output is one tree, `<build_dir>/js/`: the runtime at its root, then one
+/// directory per package of the build holding one `.mjs` file per module of that
+/// package, named after the module within its own package, and each facade's companion
+/// beside the facade ([`javascript`]'s *Paths* section has the names, [`DEC-18` decision
+/// 5](../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)
+/// the reasons). Nothing is written until every module of every package has checked and
+/// emitted.
+pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), CompilationError> {
+    compile(package_dir, TestRoot::Skipped, build_dir)
 }
 
 /// [`compile_package`], compiling the package's `tests/` root as well as its `src/`.
@@ -763,11 +813,20 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
 ///
 /// It compiles the tests and does not run them: what makes a declaration a test is
 /// [its type](../../docs/spec/packages.md#what-a-test-is), and there is no runner.
+///
+/// A test module and a `test-dependency`'s modules are checked, but neither is written to
+/// `build/js/`: this build's output tree is the same one [`compile_package`] would have
+/// produced from `src/` alone, so a plain build run afterwards never finds a test module
+/// left behind by one that also compiled the tests.
 pub fn compile_package_with_tests(package_dir: &Path) -> Result<(), CompilationError> {
-    compile(package_dir, TestRoot::Compiled)
+    compile(
+        package_dir,
+        TestRoot::Compiled,
+        &package_dir.join(BUILD_DIRECTORY),
+    )
 }
 
-fn compile(package_dir: &Path, tests: TestRoot) -> Result<(), CompilationError> {
+fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), CompilationError> {
     // Error reporter
     let mut writer = StandardStream::stderr(ColorChoice::Auto);
     let config = codespan_reporting::term::Config {
@@ -814,16 +873,21 @@ fn compile(package_dir: &Path, tests: TestRoot) -> Result<(), CompilationError> 
     debug!("phase: resolve the build");
     let build = resolve::resolve(package_dir, manifest)?;
 
-    // Resolved is not compiled. A package reached only through `test-dependencies` is in
-    // the build so that the version and cycle rules can be settled over the union, and a
-    // build that did not ask for the tests has no use for anything it holds: no module
-    // here can import one, since a `test-dependency`'s modules are held out of the
-    // environment `src/` is checked against. Compiling it anyway would parse and check a
-    // package the user never reached for, print its status lines, and fail this build on
-    // an error inside it.
+    // Every package this build reaches only through `test-dependencies` — never through
+    // the plain `dependencies` graph. Computed either way, because it answers two
+    // different questions depending on `tests`, below: whether to compile the package at
+    // all, and whether its modules belong in the build's output.
+    let test_dependency_packages = resolve::test_only_packages(&build, &root_package);
+
+    // A build that did not ask for the tests has no use for a `test-dependency` at all:
+    // no module here can import one, since a `test-dependency`'s modules are held out of
+    // the environment `src/` is checked against. Compiling it anyway would parse and
+    // check a package the user never reached for, print its status lines, and fail this
+    // build on an error inside it. One that did ask for the tests still compiles it —
+    // the tests need its interface — but does not write it; see the loop below.
     let test_only = match tests {
         TestRoot::Compiled => std::collections::HashSet::new(),
-        TestRoot::Skipped => resolve::test_only_packages(&build, &root_package),
+        TestRoot::Skipped => test_dependency_packages.clone(),
     };
 
     // Further steps will produce errors. We aggregate them here and report them at the
@@ -849,6 +913,13 @@ fn compile(package_dir: &Path, tests: TestRoot) -> Result<(), CompilationError> 
     // unwraps — belongs to that package alone and is applied by `compile_in_build`.
     let mut published: HashMap<PackageName, HashMap<Name, Interface>> = HashMap::new();
 
+    // Every module that checked, from every package that belongs in the build's output,
+    // held until the whole build is known to have checked: a module cannot be written
+    // while another may still fail. A `test-dependency`-only package is compiled when
+    // the tests ask for it, but its modules never land here — see the `continue` and the
+    // `if` around the `extend` below.
+    let mut checked: Vec<ModuleToEmit> = Vec::new();
+
     for package in &build {
         if test_only.contains(&package.name) {
             debug!(
@@ -866,7 +937,7 @@ fn compile(package_dir: &Path, tests: TestRoot) -> Result<(), CompilationError> 
             TestRoot::Skipped
         };
 
-        if let Some(public) = compile_in_build(
+        if let Some(compiled) = compile_in_build(
             package,
             &build,
             &published,
@@ -875,13 +946,39 @@ fn compile(package_dir: &Path, tests: TestRoot) -> Result<(), CompilationError> 
             &mut errors,
             &mut print_status,
         ) {
-            published.insert(package.name.clone(), public);
+            published.insert(package.name.clone(), compiled.public);
+
+            // A package reached only through `test-dependencies` is compiled and
+            // published so the tests can be checked against it, but nothing outside a
+            // package's own tests reads its modules — the build's output tree is not
+            // where they belong (see `compile_package_with_tests`'s doc comment).
+            if !test_dependency_packages.contains(&package.name) {
+                checked.extend(compiled.modules);
+            } else {
+                debug!(
+                    "phase: package {} checked for the tests alone — not part of the build's output",
+                    package.name
+                );
+            }
         }
     }
 
-    // Step 6
-    // emit interfaces and generate code
-    debug!("phase: codegen");
+    // Step 6: generate code, only for a build in which nothing failed. Every module is
+    // emitted before anything is written, so a module that cannot be emitted also
+    // leaves the build with no output at all.
+    if errors.is_empty() {
+        debug!("phase: codegen");
+        let files = emit_build(checked, &mut errors);
+
+        if errors.is_empty() {
+            debug!("phase: write the build");
+            errors.extend(
+                output::write(&build_dir.join("js"), &files)
+                    .into_iter()
+                    .map(CompilationError::Output),
+            );
+        }
+    }
 
     // Step 7: report everything we accumulated, then let that accumulation decide the
     // return value. Rendering the errors and returning `Ok` regardless was `BUG-1`.
@@ -903,8 +1000,81 @@ fn compile(package_dir: &Path, tests: TestRoot) -> Result<(), CompilationError> 
     }
 }
 
+/// A module that checked, with what emitting and writing it needs beyond the module
+/// itself.
+struct ModuleToEmit {
+    module: CheckedModule,
+    /// The file it was read from, which an emission error's labels point into.
+    file: Option<SourceFileId>,
+    /// For a facade, its JavaScript companion when one sits beside its `.zel` source —
+    /// a file of the same base name in the same directory
+    /// ([*A facade names a boundary, not a
+    /// backend*](../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
+    /// `None` for every other module, and for a facade with no companion, which
+    /// [`javascript::emit`] refuses.
+    companion: Option<std::path::PathBuf>,
+}
+
+/// Every file a build writes: the runtime, and each module of `checked` as the text
+/// [`javascript::emit`] gives it, with its facade's companion beside it.
+///
+/// A module that cannot be emitted pushes its errors onto `errors`, tagged with the
+/// file it came from, and every other module is still emitted so that one refusal
+/// cannot hide the next. The caller writes the files only when `errors` stays empty.
+fn emit_build(checked: Vec<ModuleToEmit>, errors: &mut Vec<CompilationError>) -> Vec<output::File> {
+    let mut files = vec![output::File {
+        path: javascript::RUNTIME_FILE.into(),
+        contents: output::Contents::Text(javascript::RUNTIME.to_string()),
+    }];
+
+    for ModuleToEmit {
+        module,
+        file,
+        companion,
+    } in checked
+    {
+        let name = module.canonical.name.clone();
+        let package_dir = std::path::PathBuf::from(name.package().as_str());
+
+        match javascript::emit(&module, companion.is_some()) {
+            Ok(text) => {
+                files.push(output::File {
+                    path: package_dir.join(javascript::module_file(name.name())),
+                    contents: output::Contents::Text(text),
+                });
+
+                if let Some(companion) = companion {
+                    files.push(output::File {
+                        path: package_dir.join(javascript::companion_file(name.name())),
+                        contents: output::Contents::Copy(companion),
+                    });
+                }
+            }
+            Err(emit_errors) => {
+                let error = CompilationError::Emit(emit_errors, name.name().clone());
+                errors.push(match file {
+                    Some(id) => CompilationError::InFile(Box::new(error), id),
+                    None => error,
+                });
+            }
+        }
+    }
+
+    files
+}
+
+/// What [`compile_in_build`] hands back for a package whose every module checked.
+struct CompiledPackage {
+    /// What it offers its dependents: its public modules' `Interface`s, keyed by each
+    /// module's name within the package.
+    public: HashMap<Name, Interface>,
+    /// Every module of it that was compiled, to be emitted once the whole build is known
+    /// to have checked.
+    modules: Vec<ModuleToEmit>,
+}
+
 /// Compile one package of a resolved build, and hand back what it offers its
-/// dependents.
+/// dependents and the modules it compiled.
 ///
 /// `published` holds what every package compiled before this one offers — this
 /// package's dependencies among them, since [`resolve::resolve`] orders a package
@@ -942,8 +1112,9 @@ fn compile_in_build(
     sources: &mut SourceFiles,
     errors: &mut Vec<CompilationError>,
     print_status: &mut impl FnMut(bool, String),
-) -> Option<HashMap<Name, Interface>> {
+) -> Option<CompiledPackage> {
     let errors_before = errors.len();
+    let mut checked: Vec<ModuleToEmit> = Vec::new();
 
     // Step 1: what this package is compiled against. Only its *direct* dependencies:
     // a package listed in a dependency's manifest and not in this one's is in the
@@ -1305,6 +1476,30 @@ fn compile_in_build(
                     }
                 }));
             }
+
+            // A companion sits beside its facade's source, under the same path below the
+            // source root that the facade's own emitted module has below its package's
+            // output directory.
+            let root_dir = package.root.join(root.directory());
+
+            // Only `src/` feeds the build's output. A module of `tests/` checks like any
+            // other, but nothing outside the package's own tests ever reads it — there is
+            // no runner ([`docs/spec/toolchain.md`](../../docs/spec/toolchain.md#running-a-packages-tests))
+            // — so it is never handed to `emit_build`. `checked`'s doc comment on
+            // `compile` restates this at the build level, for a whole package rather than
+            // one root.
+            if root == source::SourceRoot::Src {
+                checked.extend(can_mods.into_iter().map(|module| {
+                    let name = module.canonical.name.name();
+                    let companion = Some(root_dir.join(javascript::module_file(name)))
+                        .filter(|path| module.ir.foreign && path.is_file());
+                    ModuleToEmit {
+                        file: module_files.get(name).copied(),
+                        companion,
+                        module,
+                    }
+                }));
+            }
         }
     }
 
@@ -1344,7 +1539,10 @@ fn compile_in_build(
         })
         .collect();
 
-    Some(public)
+    Some(CompiledPackage {
+        public,
+        modules: checked,
+    })
 }
 
 /// Take a parsed module file within the ecosystem and apply all checks to it

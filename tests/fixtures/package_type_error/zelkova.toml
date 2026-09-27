@@ -1,7 +1,13 @@
+# `acme-widgets` is not imported by anything below — it exists so that
+# `a_build_with_a_failing_module_writes_nothing` (`tests/pipeline.rs`) has a dependency
+# that checks cleanly while this package's own `Mismatch` does not, which is what makes
+# the guards in `compile` (rather than `compile_in_build`'s `None` for a failing
+# package) the only thing keeping `acme-widgets`'s modules off disk.
 name = "package-type-error"
 version = "0.1.0"
 private-modules = []
 
-[dependencies]
+[dependencies.acme-widgets]
+path = "../dep_widgets"
 
 [test-dependencies]

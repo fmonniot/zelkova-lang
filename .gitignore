@@ -1,5 +1,8 @@
 /target
 /site
+# What `compile_package` writes beside the root package's manifest — `cargo run` writes
+# `std/core/build/` — so it matches at any depth.
+build/
 
 # Keep .claude/skills/ tracked so they're versioned and shared; ignore everything else
 # (worktrees, memory, local settings, session state). model-policy.md is tracked for the same

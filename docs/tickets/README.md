@@ -169,7 +169,7 @@ GEN-9   emit a module   ── closed
   ├── GEN-11  emit the tail-call loop
   └── GEN-12  emit an `unsafe` facade call, and place its companion   ── closed
   │
-GEN-13  write the build
+GEN-13  write the build   ── closed
   │
 GEN-14  the end-to-end check under node   ← converges with TEST-3's CI job
 ```
@@ -257,6 +257,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-37](bug-37.md) | bug | high | open | A package is not part of a type's identity, so two packages' same-named modules are one type |
 | [BUG-38](bug-38.md) | bug | high | open | A parameterless binding that reaches another only through a function it calls is not ordered after it |
 | BUG-39 | bug | medium | closed 2026-09-23 | A function parameter pattern other than a variable or `_` is never type checked |
+| [BUG-40](bug-40.md) | bug | high | open | Two same-named modules from different packages, both imported, emit colliding local import bindings |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -385,7 +386,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-10 | task | — | closed 2026-09-25 | Emit a `case` |
 | [GEN-11](gen-11.md) | task | — | open | Emit the tail-call loop |
 | GEN-12 | task | — | closed 2026-09-22 | Emit an `unsafe` facade call, and place its companion |
-| [GEN-13](gen-13.md) | task | — | open | Write the build |
+| GEN-13 | task | — | closed 2026-09-26 | Write the build |
 | [GEN-14](gen-14.md) | task | — | open | The end-to-end check under node |
 | [GEN-15](gen-15.md) | task | — | open | The WebAssembly backend |
 | [GEN-16](gen-16.md) | task | — | open | The wrapper an effectful facade's call site gets |

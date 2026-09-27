@@ -1,8 +1,8 @@
 # BUG-38 · A parameterless binding that reaches another only through a function it calls is not ordered after it
 
 **Severity:** high (a miscompile: a well-typed module with no cycle among its parameterless
-bindings emits JavaScript that throws a `ReferenceError` at load. Nothing calls
-`javascript::emit` yet, so no user meets it before [`GEN-13`](gen-13.md) writes the output).
+bindings emits JavaScript that throws a `ReferenceError` at load, and `compile_package` writes
+that JavaScript to `build/js/` since [`GEN-13`](README.md)).
 
 **Location:** `src/compiler/canonical/mod.rs` — `dependency_graph`, whose edges are the
 references a parameterless binding's body makes to *another parameterless binding*, and which by

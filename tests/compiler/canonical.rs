@@ -2744,7 +2744,7 @@ fn head_of(module: &canonical::Module, name: &str) -> String {
 
     match &expr.kind {
         canonical::ExpressionKind::VarConstructor(name, _)
-        | canonical::ExpressionKind::VarForeign(name, _) => name.to_name().as_str().to_string(),
+        | canonical::ExpressionKind::VarForeign(name, _, _) => name.to_name().as_str().to_string(),
         other => panic!("expected an imported name at the head, got {:?}", other),
     }
 }

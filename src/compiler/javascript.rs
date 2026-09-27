@@ -2,8 +2,8 @@
 //!
 //! [`emit`] reads the [`ir::Module`] a [`CheckedModule`] carries, beside the
 //! [`canonical::Module`] it was built from for the one thing the IR does not hold — which
-//! names the module exports. It produces text and writes nothing; where that text goes is
-//! [`GEN-13`](../../../docs/tickets/gen-13.md)'s.
+//! names the module exports. It produces text and writes nothing: `compile_package` writes
+//! it, to the path [`module_file`] gives, once the whole build has checked and emitted.
 //!
 //! # The shape of an emitted module
 //!
@@ -11,7 +11,8 @@
 //! it is empty:
 //!
 //! 1. **Imports** — the runtime helpers the module calls, from the runtime module
-//!    (`runtime/js/zelkova.mjs`), then one named import per value another module declares.
+//!    ([`RUNTIME`]), then its companion's exports for a facade, then one named import per
+//!    value another module declares, from that module's package.
 //! 2. **Hoisted constructors** — one `const` per constructor of no arguments this module
 //!    declares, then one per such constructor of another module's that it mentions, which
 //!    every mention of it refers to ([`DEC-18` decision
@@ -87,11 +88,8 @@
 //! [`emit`] answers [`Error::Effectful`] for one rather than emitting the `unsafe`
 //! shape for it.
 //!
-//! [`companion_specifier`] assumes the companion sits beside this module's own emitted
-//! file, sharing the last segment of its name, which is where it sits beside the
-//! `.zel` source today. Whether the two can share that output path once one is written
-//! there is [`GEN-13`](../../../docs/tickets/gen-13.md)'s to settle, along with copying
-//! the companion into place at all — nothing here does either.
+//! The companion is imported from [`companion_file`], beside the facade's own emitted
+//! file and renamed so that the two do not share one path.
 //!
 //! # A `case`
 //!
@@ -124,6 +122,7 @@
 //! and for a facade with no companion for the target being built.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::PathBuf;
 
 use super::canonical::{ExportType, Exports, Value};
 use super::ir::{
@@ -132,7 +131,7 @@ use super::ir::{
 };
 use super::name::{Name, QualName};
 use super::position::NodeSpan;
-use super::{scalars, CheckedModule, PhaseError, SpanLabel};
+use super::{scalars, CheckedModule, ModuleName, PhaseError, SpanLabel};
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 
@@ -375,6 +374,36 @@ fn field(index: usize) -> String {
 }
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
+//
+// The output of a build is one tree, `build/js/` beside the root package's manifest
+// ([`DEC-18` decision 5](../../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)):
+//
+// ```text
+// build/js/
+//   zelkova.mjs                      the runtime, RUNTIME_FILE
+//   zelkova-core/                    one directory per package of the build
+//     Maybe.mjs                      one file per module, module_file
+//     Js/Basics.mjs                  a facade's module, like any other
+//     Js/Basics.companion.mjs        that facade's companion, companion_file
+// ```
+//
+// The functions below are the only places a path into that tree is built, and the
+// specifiers are built from the same shape, so what is written and what is imported
+// cannot disagree. `compile_package` writes the tree.
+
+/// The runtime's file name, at the root of `build/js/`, above every package's directory.
+pub const RUNTIME_FILE: &str = "zelkova.mjs";
+
+/// The runtime module's text, the one file of the output that is not generated.
+///
+/// It is embedded in the compiler binary when the compiler is built, from
+/// `runtime/js/zelkova.mjs` in the compiler's own tree, and written out from here. A
+/// compiler that looked for that file at run time would have to find its own source
+/// tree — relative to the binary, the working directory or an environment variable —
+/// and every one of those is wrong for a binary run from anywhere else. Embedding it
+/// leaves nothing to look up and no way to fail but writing, and a compiler always
+/// writes the runtime it was built with.
+pub const RUNTIME: &str = include_str!("../../runtime/js/zelkova.mjs");
 
 /// How many directories below its package's output directory the emitted file for
 /// `module` sits: one per segment of its name but the last.
@@ -382,50 +411,80 @@ fn depth(module: &Name) -> usize {
     module.as_str().split('.').count() - 1
 }
 
-/// The specifier the module named `from` imports the module named `to` by.
+/// Where the module named `module` is written, relative to its package's directory:
+/// one directory per segment of its name but the last — `Js.Basics` is
+/// `Js/Basics.mjs`.
 ///
-/// **Provisional, until [`GEN-13`](../../../docs/tickets/gen-13.md) settles the output
-/// layout**, and the only function that would change when it does. Each module is
-/// assumed to be at `<module path>.mjs` below one directory per package, as [`DEC-18`
-/// decision 5](../../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)
-/// has it, and both modules are assumed to be in the same package: a module name is all
-/// an [`ir::ReferenceKind::Foreign`] carries, and it does not say which package declared
-/// it.
-fn module_specifier(from: &Name, to: &Name) -> String {
-    let up = match depth(from) {
-        0 => "./".to_string(),
-        depth => "../".repeat(depth),
-    };
-
-    format!("{}{}.mjs", up, to.as_str().replace('.', "/"))
+/// This is the module's name **within its own package**, never the namespace a
+/// dependent reaches it by, so each package's modules have one path whichever package
+/// imports them.
+pub fn module_file(module: &Name) -> PathBuf {
+    let mut path: PathBuf = module.as_str().split('.').collect();
+    path.set_extension("mjs");
+    path
 }
 
-/// The specifier the module named `from` imports the runtime by.
+/// Where the companion of the facade named `module` is written, relative to its
+/// package's directory: beside the facade's own module, named after it with
+/// `.companion.mjs` — `Js.Basics`'s is `Js/Basics.companion.mjs`.
 ///
-/// **Provisional**, like [`module_specifier`]: the runtime is assumed to be at the root
-/// of the output, above every package's directory, which is where
-/// [`GEN-13`](../../../docs/tickets/gen-13.md) names as the obvious candidate.
+/// It cannot keep the name it has beside the `.zel` source, `Basics.mjs`, because that
+/// is the facade's own [`module_file`]. It is the companion that is renamed rather than
+/// the facade, because the facade's path is the one every importer builds from a module
+/// name. No module's file can be called this: a segment of a module name holds no `.`,
+/// so no [`module_file`] has two in its file name.
+///
+/// The companion is copied byte for byte, so one that imports a sibling `.mjs` by a
+/// relative specifier finds the emitted module of that name there, not the sibling it
+/// was written beside.
+pub fn companion_file(module: &Name) -> PathBuf {
+    let mut path = module_file(module);
+    path.set_extension("companion.mjs");
+    path
+}
+
+/// The specifier the module `from` imports the module named `to`, declared by
+/// `package`, by.
+///
+/// Within one package it is a path inside that package's directory. Across a package
+/// boundary it climbs out of `from`'s package to `build/js/` and into `package`'s
+/// sibling directory — which is why every package of the build has its own directory
+/// rather than the whole build sharing one tree.
+fn module_specifier(from: &ModuleName, package: &str, to: &Name) -> String {
+    let to_path = to.as_str().replace('.', "/");
+
+    if from.package().as_str() == package {
+        let up = match depth(from.name()) {
+            0 => "./".to_string(),
+            depth => "../".repeat(depth),
+        };
+        format!("{}{}.mjs", up, to_path)
+    } else {
+        format!(
+            "{}{}/{}.mjs",
+            "../".repeat(depth(from.name()) + 1),
+            package,
+            to_path
+        )
+    }
+}
+
+/// The specifier the module named `from` imports the runtime by: [`RUNTIME_FILE`] at
+/// the root of `build/js/`, one level above `from`'s package directory.
 fn runtime_specifier(from: &Name) -> String {
-    format!("{}zelkova.mjs", "../".repeat(depth(from) + 1))
+    format!("{}{}", "../".repeat(depth(from) + 1), RUNTIME_FILE)
 }
 
-/// The specifier a facade named `module` imports its own companion by.
-///
-/// **Provisional**, like [`module_specifier`]: assumes the companion sits beside this
-/// module's own emitted file, sharing the last segment of its name — `Js.Basics`
-/// imports `./Basics.mjs` — which is where it sits beside the `.zel` source today
-/// ([*A facade names a boundary, not a
-/// backend*](../../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
-/// Whether the facade's own emitted file and the companion can share that same output
-/// path, and copying the companion there at all, is
-/// [`GEN-13`](../../../docs/tickets/gen-13.md)'s to settle.
+/// The specifier a facade named `module` imports its own companion by: its
+/// [`companion_file`], which sits in the same directory — `Js.Basics` imports
+/// `./Basics.companion.mjs`.
 fn companion_specifier(module: &Name) -> String {
-    let last = module
-        .as_str()
-        .rsplit('.')
-        .next()
-        .unwrap_or(module.as_str());
-    format!("./{}.mjs", last)
+    let file = companion_file(module);
+    let name = file
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    format!("./{}", name)
 }
 
 // ── Literals ──────────────────────────────────────────────────────────────────
@@ -604,7 +663,7 @@ pub fn emit(module: &CheckedModule, has_companion: bool) -> Result<String, Vec<E
             companion_specifier(ir.name.name())
         ));
     }
-    for (from, names) in &emitter.imports {
+    for ((package, from), names) in &emitter.imports {
         let specifiers: Vec<String> = names
             .iter()
             .map(|name| format!("{} as {}", name, imported(from, name)))
@@ -612,7 +671,7 @@ pub fn emit(module: &CheckedModule, has_companion: bool) -> Result<String, Vec<E
         imports.push(format!(
             "import {{ {} }} from \"{}\";",
             specifiers.join(", "),
-            module_specifier(ir.name.name(), &Name::new(from.as_str()))
+            module_specifier(&ir.name, package, &Name::new(from.as_str()))
         ));
     }
 
@@ -716,9 +775,9 @@ struct Emitter {
     arities: HashMap<Name, usize>,
     /// The runtime helpers the emitted text calls.
     runtime: BTreeSet<&'static str>,
-    /// The values of other modules the emitted text mentions, by the module declaring
-    /// each.
-    imports: BTreeMap<String, BTreeSet<String>>,
+    /// The values of other modules the emitted text mentions, by the package and the
+    /// module declaring each.
+    imports: BTreeMap<(String, String), BTreeSet<String>>,
     /// The module being emitted, which tells a constructor it declares from one another
     /// module does.
     module: Name,
@@ -858,11 +917,14 @@ impl Emitter {
                     _ => local,
                 }
             }
-            ReferenceKind::Foreign(qname) => {
+            ReferenceKind::Foreign(qname, package) => {
                 let module = qname.module_name().as_str().to_string();
                 let name = qname.unqualified_name().as_str().to_string();
                 let local = imported(&module, &name);
-                self.imports.entry(module).or_default().insert(name);
+                self.imports
+                    .entry((package.as_str().to_string(), module))
+                    .or_default()
+                    .insert(name);
                 local
             }
             ReferenceKind::Constructor(ctor) => {
@@ -1159,16 +1221,23 @@ mod tests {
         assert_eq!(names.len(), 1000);
     }
 
-    /// A module one directory down reaches a sibling package module and the runtime by
+    fn module(package: &str, name: &str) -> ModuleName {
+        ModuleName::new(
+            crate::compiler::PackageName::new(package).unwrap(),
+            Name::new(name),
+        )
+    }
+
+    /// A module one directory down reaches a module of its own package and the runtime by
     /// climbing one more level than a top-level module does.
     #[test]
     fn a_specifier_climbs_out_of_the_importers_directory() {
         assert_eq!(
-            module_specifier(&Name::new("Test"), &Name::new("Js.Basics")),
+            module_specifier(&module("app", "Test"), "app", &Name::new("Js.Basics")),
             "./Js/Basics.mjs"
         );
         assert_eq!(
-            module_specifier(&Name::new("Js.Basics"), &Name::new("Maybe")),
+            module_specifier(&module("app", "Js.Basics"), "app", &Name::new("Maybe")),
             "../Maybe.mjs"
         );
         assert_eq!(runtime_specifier(&Name::new("Test")), "../zelkova.mjs");
@@ -1176,6 +1245,40 @@ mod tests {
             runtime_specifier(&Name::new("Js.Basics")),
             "../../zelkova.mjs"
         );
+    }
+
+    /// A module of another package is reached in that package's sibling directory, by
+    /// climbing out of the importer's own package directory first.
+    ///
+    /// Mutation-checked by dropping the package comparison in `module_specifier`, so
+    /// every import is built as if it were within one package: both assertions go red.
+    #[test]
+    fn a_specifier_across_packages_reaches_a_sibling_directory() {
+        assert_eq!(
+            module_specifier(&module("app", "Test"), "zelkova-core", &Name::new("Maybe")),
+            "../zelkova-core/Maybe.mjs"
+        );
+        assert_eq!(
+            module_specifier(
+                &module("app", "Page.Home"),
+                "zelkova-core",
+                &Name::new("Js.Basics")
+            ),
+            "../../zelkova-core/Js/Basics.mjs"
+        );
+    }
+
+    /// A facade's companion is written beside it under a name no module's file can
+    /// have, and the facade imports it by that name.
+    #[test]
+    fn a_companion_is_written_and_imported_beside_its_facade() {
+        let name = Name::new("Js.Basics");
+        assert_eq!(module_file(&name), PathBuf::from("Js/Basics.mjs"));
+        assert_eq!(
+            companion_file(&name),
+            PathBuf::from("Js/Basics.companion.mjs")
+        );
+        assert_eq!(companion_specifier(&name), "./Basics.companion.mjs");
     }
 
     #[test]
