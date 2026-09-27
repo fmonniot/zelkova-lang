@@ -161,25 +161,36 @@ mod tests {
         );
     }
 
-    /// Two tests of one module come back sorted, not in whatever order the
+    /// Four tests of one module come back sorted, not in whatever order the
     /// `HashMap` they were read from happened to iterate.
     ///
-    /// Mutation-checked by dropping the `sort_by` call: this is flaky rather than
-    /// reliably red, since a two-entry `HashMap` may already iterate in order — the
-    /// doc comment records that rather than leaving a mutation nobody could confirm.
+    /// Mutation-checked by dropping the `sort_by` call: with only two entries this was
+    /// flaky rather than reliably red, since a two-entry `HashMap` may already iterate
+    /// in order by chance — dropping the call went green in 4 of 10 runs. Four entries,
+    /// inserted out of order, went red in 10 of 10 runs of the same check.
     #[test]
     fn tests_of_one_module_are_sorted_by_name() {
         let modules = vec![interface(
             "acme",
             "AppTest",
-            vec![("zLast", real_test()), ("aFirst", real_test())],
+            vec![
+                ("zLast", real_test()),
+                ("mSecond", real_test()),
+                ("bThird", real_test()),
+                ("aFirst", real_test()),
+            ],
         )];
 
         let collected = collect(&modules);
 
         assert_eq!(
             collected[0].tests,
-            vec![Name::new("aFirst"), Name::new("zLast")]
+            vec![
+                Name::new("aFirst"),
+                Name::new("bThird"),
+                Name::new("mSecond"),
+                Name::new("zLast"),
+            ]
         );
     }
 
