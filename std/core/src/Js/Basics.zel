@@ -1,5 +1,5 @@
 module foreign Js.Basics exposing
-  ( add, sub, mul, fdiv, idiv, pow
+  ( addInt, addFloat, subInt, subFloat, fdiv, idiv, mulInt, mulFloat, powInt, powFloat
   , toFloat, round, floor, ceiling, truncate
   , not, and, or, xor
   , modBy, remainderBy, sqrt, log, e
@@ -15,12 +15,22 @@ will contains the actual implementation of this module.
 -}
 
 
-unsafe add : a -> a -> a
-unsafe sub : a -> a -> a
-unsafe mul : a -> a -> a
+-- `add`, `sub`, `mul` and `pow` used to be declared over a bare `a`, which
+-- reads as the numeric type class the language does not have yet
+-- (`docs/spec/type-classes.md`). A `module foreign` facade signature may not
+-- name a type variable at all (`docs/spec/interop.md#what-a-facade-signature-may-not-name`,
+-- `LANG-43`), so each is one monomorphic facade per type its companion really
+-- handles — `Basics.zel` picks between the two.
+unsafe addInt : Int -> Int -> Int
+unsafe addFloat : Float -> Float -> Float
+unsafe subInt : Int -> Int -> Int
+unsafe subFloat : Float -> Float -> Float
+unsafe mulInt : Int -> Int -> Int
+unsafe mulFloat : Float -> Float -> Float
 unsafe fdiv : Float -> Float -> Float
 unsafe idiv : Int -> Int -> Int
-unsafe pow : a -> a -> a
+unsafe powInt : Int -> Int -> Int
+unsafe powFloat : Float -> Float -> Float
 
 unsafe toFloat : Int -> Float
 unsafe round : Float -> Int

@@ -1,6 +1,8 @@
 module foreign Js.Utils exposing
-  ( equal, notEqual
-  , lt, le, gt, ge, compare, append
+  ( equalInt, equalFloat, notEqualInt, notEqualFloat
+  , ltInt, ltFloat, leInt, leFloat, gtInt, gtFloat, geInt, geFloat
+  , compareInt, compareFloat
+  , appendInt, appendFloat
   )
 
 {-| Interop module between Zelkova and Javascript.
@@ -11,13 +13,27 @@ will contains the actual implementation of this module.
 -}
 
 
-unsafe equal : a -> a -> Bool
-unsafe notEqual : a -> a -> Bool
+-- Every signature here used to be declared over a bare `a`, which is exactly
+-- what `docs/spec/interop.md#what-a-facade-signature-may-not-name` rejects: a
+-- facade signature may not name a type variable, because no target has a
+-- predicate or a WIT spelling for one (`LANG-43`, `BUG-20`). Each becomes one
+-- monomorphic facade per type its companion really handles; `Basics.zel`
+-- picks between the two.
+unsafe equalInt : Int -> Int -> Bool
+unsafe equalFloat : Float -> Float -> Bool
+unsafe notEqualInt : Int -> Int -> Bool
+unsafe notEqualFloat : Float -> Float -> Bool
 
-unsafe lt: a -> a -> Bool
-unsafe le: a -> a -> Bool
-unsafe gt: a -> a -> Bool
-unsafe ge: a -> a -> Bool
-unsafe compare: a -> a -> Int
+unsafe ltInt: Int -> Int -> Bool
+unsafe ltFloat: Float -> Float -> Bool
+unsafe leInt: Int -> Int -> Bool
+unsafe leFloat: Float -> Float -> Bool
+unsafe gtInt: Int -> Int -> Bool
+unsafe gtFloat: Float -> Float -> Bool
+unsafe geInt: Int -> Int -> Bool
+unsafe geFloat: Float -> Float -> Bool
+unsafe compareInt: Int -> Int -> Int
+unsafe compareFloat: Float -> Float -> Int
 
-unsafe append : a -> a -> a
+unsafe appendInt : Int -> Int -> Int
+unsafe appendFloat : Float -> Float -> Float

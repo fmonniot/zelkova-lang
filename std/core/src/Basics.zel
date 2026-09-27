@@ -173,27 +173,36 @@ exactly what type of number you are dealing with. When you try to _infer_ these
 conversions (as Scala does) it can be even more confusing. Elm has opted for a
 design that makes all conversions explicit.
 -}
+-- `Js.Basics` names `addInt` and `addFloat` rather than one facade over `a`
+-- (`LANG-43`), since a facade signature may not name a type variable. `add`
+-- itself keeps its `a -> a -> a` annotation — the language still has no way
+-- to write the real restriction — and picks one of the two: which one makes
+-- no difference here, because `addInt` and `addFloat` are the same
+-- JavaScript function underneath, and every *use* of `add` is checked
+-- against this declared annotation rather than against that choice.
 add : a -> a -> a
 add =
-  Js.Basics.add
+  Js.Basics.addInt
 
 
 {-| Subtract numbers like `4 - 3 == 1`.
 
 See [`(+)`](#+) for why `a` is not the restriction it looks like.
 -}
+-- See `add` above for why `subInt` is picked over `subFloat`.
 sub : a -> a -> a
 sub =
-  Js.Basics.sub
+  Js.Basics.subInt
 
 
 {-| Multiply numbers like `2 * 3 == 6`.
 
 See [`(+)`](#+) for why `a` is not the restriction it looks like.
 -}
+-- See `add` above for why `mulInt` is picked over `mulFloat`.
 mul : a -> a -> a
 mul =
-  Js.Basics.mul
+  Js.Basics.mulInt
 
 
 {-| Floating-point division:
@@ -240,9 +249,10 @@ idiv =
     3^2 == 9
     3^3 == 27
 -}
+-- See `add` above for why `powInt` is picked over `powFloat`.
 pow : a -> a -> a
 pow =
-  Js.Basics.pow
+  Js.Basics.powInt
 
 
 
@@ -353,46 +363,53 @@ possible.
 
 [undecidable]: https://en.wikipedia.org/wiki/Undecidable_problem
 -}
+-- `Js.Utils` names `equalInt` and `equalFloat` rather than one facade over
+-- `a` (`LANG-43`); see `add` in the MATHEMATICS section above for why `eq`
+-- keeps its own `a -> a -> Bool`-shaped annotation and picking `equalInt` here
+-- makes no difference to how `eq` type-checks or is used.
 eq : a -> a -> Bool
 eq =
-  Js.Utils.equal
+  Js.Utils.equalInt
 
 
 {-| Check if values are not &ldquo;the same&rdquo;.
 
 So `(a /= b)` is the same as `(not (a == b))`.
 -}
+-- See `eq` above for why `notEqualInt` is picked over `notEqualFloat`.
 neq : a -> a -> Bool
 neq =
-  Js.Utils.notEqual
+  Js.Utils.notEqualInt
 
 
 
 -- COMPARISONS
 
 
+-- See `eq` above for why the `Int` facade is picked over the `Float` one,
+-- for `lt`, `gt`, `le` and `ge` alike.
 {-|-}
 lt : a -> a -> Bool
 lt =
-  Js.Utils.lt
+  Js.Utils.ltInt
 
 
 {-|-}
 gt : a -> a -> Bool
 gt =
-  Js.Utils.gt
+  Js.Utils.gtInt
 
 
 {-|-}
 le : a -> a -> Bool
 le =
-  Js.Utils.le
+  Js.Utils.leInt
 
 
 {-|-}
 ge : a -> a -> Bool
 ge =
-  Js.Utils.ge
+  Js.Utils.geInt
 
 
 {-| Find the smaller of two comparables.
@@ -429,7 +446,7 @@ compare a b =
   EQ
 -- TODO Uncomment that one as soon as we have let expression in the parser
 --  let
---    n = Js.Utils.compare a b
+--    n = Js.Utils.compareInt a b
 --  in
 --  if n < 0 then LT else (if n == 0 then EQ else GT)
 
@@ -522,9 +539,14 @@ lists only; the signature does not enforce it — see [`(+)`](#+).
     "hello" ++ "world" == "helloworld"
     [1,1,2] ++ [3,5,8] == [1,1,2,3,5,8]
 -}
+-- `Js.Utils` names `appendInt` and `appendFloat` rather than one facade over
+-- `a` (`LANG-43`), but its companion still only concatenates two Strings —
+-- Zelkova has no `String` type yet to name here for real, so both throw for
+-- every value either admits today. Narrowing that gap is `BUG-20`'s, not this
+-- one's; see `Js/Utils.mjs`.
 append : a -> a -> a
 append =
-  Js.Utils.append
+  Js.Utils.appendInt
 
 
 

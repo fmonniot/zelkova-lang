@@ -47,9 +47,16 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+// `Basics.mjs` no longer exports bare `add`/`sub`/`mul`/`pow`: `LANG-43`
+// split each into a monomorphic `*Int`/`*Float` pair (`Js/Basics.zel`), and
+// `Basics.zel` itself picks the `Int` one for its own `a -> a -> a`
+// re-export. The two aliases share one underlying function (see
+// `Basics.mjs`), so importing the `Int` name under its old bare spelling
+// below still exercises exactly what these tests exercised before — Float
+// operands included.
 import {
-    add, sub, mul, idiv, modBy, remainderBy, round, floor, ceiling, truncate,
-    toFloat, pow,
+    addInt as add, subInt as sub, mulInt as mul, idiv, modBy, remainderBy,
+    round, floor, ceiling, truncate, toFloat, powInt as pow,
 } from '../../src/Js/Basics.mjs';
 
 // INT ARITHMETIC (LANG-56)

@@ -39,8 +39,17 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+// `Utils.mjs` no longer exports these eight under their bare names:
+// `LANG-43` split each into a monomorphic `*Int`/`*Float` pair
+// (`Js/Utils.zel`), and `Basics.zel` itself picks the `Int` one for its own
+// re-export. The two aliases share one underlying function (see
+// `Utils.mjs`), so importing the `Int` name under its old bare spelling
+// below still exercises exactly what these tests exercised before, whatever
+// the operands' types.
 import {
-    compare, lt, le, gt, ge, append, equal, notEqual,
+    compareInt as compare, ltInt as lt, leInt as le, gtInt as gt,
+    geInt as ge, appendInt as append, equalInt as equal,
+    notEqualInt as notEqual,
 } from '../../src/Js/Utils.mjs';
 
 // A stand-in for `Colour = Red | Blue`, encoded as

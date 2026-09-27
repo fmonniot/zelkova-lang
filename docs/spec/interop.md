@@ -38,7 +38,7 @@ handles: the division behind `fdiv` divides, the one behind `idiv` truncates.
 
 **Not implemented:** nothing holds an unmarked facade to the result type
 [An effectful facade](#an-effectful-facade) requires, so a facade that omits `unsafe` is read as
-if it carried it ([`LANG-43`](../tickets/lang-43.md)).
+if it carried it ([`LANG-68`](../tickets/lang-68.md)).
 
 ## A facade names a boundary, not a backend
 
@@ -210,7 +210,7 @@ A **function type** is rejected wherever it appears. `typeof x === 'function'` d
 value is *some* function, not that it is the one declared, and a component's interface has no
 function type to name either.
 
-```zel expect=ok
+```zel expect=canonical-error:FacadeTypeNotAdmitted
 module foreign Core.Utils exposing
   ( equal
   )
@@ -218,20 +218,13 @@ module foreign Core.Utils exposing
 equal : a -> a -> Bool
 ```
 
-```zel expect=ok
+```zel expect=canonical-error:FacadeTypeNotAdmitted
 module foreign Core.List exposing
   ( count
   )
 
 count : (Int -> Bool) -> Int -> Int
 ```
-
-**Known gap:** neither signature is admitted — `equal` names a type variable, `count` takes a
-function — and nothing rejects either. A facade annotation is resolved exactly as any other
-annotation is, so every type a normal module may write, a facade may write. Neither is marked
-`unsafe` or declares `Task (Result Failure a)` either, which the opening rule above also holds
-every facade signature to, and nothing checks that any more than it checks the rest.
-[`LANG-43`](../tickets/lang-43.md) is the check for all of it.
 
 **Not implemented:** a class constraint is rejected on the same grounds, `Comparable a => a`
 being a signature over `a`. A constrained function is specialised, and a facade has no body to
@@ -322,8 +315,8 @@ inside another type.
 
 **Not implemented:** neither block above compiles, because nothing declares the `Task` or the
 `Failure` they import. No wrapper is generated, and nothing is checked at either boundary
-([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)); no check holds a facade to the result type above, which is
-[`LANG-43`](../tickets/lang-43.md)'s.
+([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)); no check holds a facade to the
+result type above, which is [`LANG-68`](../tickets/lang-68.md)'s.
 
 ## An `unsafe` facade
 
@@ -356,7 +349,7 @@ exactly as any other crossing is, and a value that fails
 [aborts](evaluation-semantics.md#when-a-program-aborts).
 
 **Not implemented:** nothing holds an unmarked facade to a `Task` result
-([`LANG-43`](../tickets/lang-43.md)), so the two shapes declare the same thing where a
+([`LANG-68`](../tickets/lang-68.md)), so the two shapes declare the same thing where a
 signature's own annotation is concerned. Crossing the boundary runs no check against the
 declared type in either direction ([`GEN-2`](../tickets/gen-2.md)), and the wrapper an
 effectful facade's call site needs is not generated ([`GEN-16`](../tickets/gen-16.md)).

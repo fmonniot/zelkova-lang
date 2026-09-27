@@ -6,7 +6,7 @@ runs it, plus the two destinations a failing check has. Bigger if it is taken be
 ticket *is* that representation read back.
 
 **Depends on:** [`GEN-12`](README.md), which emits the facade call site this wraps a check
-around, and [`LANG-43`](lang-43.md). Sibling to [`GEN-1`](gen-1.md)'s program rather than a
+around, and [`LANG-43`](README.md). Sibling to [`GEN-1`](gen-1.md)'s program rather than a
 member of it: this is a bounded piece of output that can be written, tested and reviewed on its
 own, against one chapter section.
 
@@ -64,7 +64,7 @@ every phase downstream of the boundary is entitled to believe it.
    a type with no structure is a single `typeof`.
 
 **Not in this ticket:** rejecting a signature whose type has no predicate. That is a front-end
-check, it is [`LANG-43`](lang-43.md), and it lands first — this ticket may then assume every
+check, it is [`LANG-43`](README.md), and it lands first — this ticket may then assume every
 facade signature it sees names only admitted types, which is what makes an exhaustive emitter
 possible rather than one with a fallthrough case.
 

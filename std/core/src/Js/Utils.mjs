@@ -64,8 +64,14 @@ function _Utils_eqHelp(x, y, depth, stack) {
     return true;
 }
 
-export function equal(x, y) { return eq(x, y) }
-export function notEqual(x, y) { return !eq(x, y) }
+// `Js.Utils.zel` names each of these twice, once per type it really handles
+// (`LANG-43`) — `equalInt`/`equalFloat` and so on are the same JavaScript
+// underneath, and `Basics.zel` picks between the aliases exported below.
+function equal(x, y) { return eq(x, y) }
+function notEqual(x, y) { return !eq(x, y) }
+
+export { equal as equalInt, equal as equalFloat };
+export { notEqual as notEqualInt, notEqual as notEqualFloat };
 
 
 
@@ -192,18 +198,35 @@ function _Utils_cmp(x, y, ord) {
 
 // We expose compare as a way to implement Basics.compare. This one returns a number,
 // so we don't want to expose it.
-export function compare(a, b) {
-    return _Utils_cmp(a, b); 
+//
+// `Js.Utils.zel` names each of these five twice, once per type it really
+// handles (`LANG-43`) — see `equal`/`equalInt`/`equalFloat` above.
+function compare(a, b) {
+    return _Utils_cmp(a, b);
 }
-export function lt(a, b) {  return _Utils_cmp(a, b) < 0 }
-export function le(a, b) {  return _Utils_cmp(a, b) < 1 }
-export function gt(a, b) {  return _Utils_cmp(a, b) > 0 }
-export function ge(a, b) {  return _Utils_cmp(a, b) >= 0 }
+function lt(a, b) {  return _Utils_cmp(a, b) < 0 }
+function le(a, b) {  return _Utils_cmp(a, b) < 1 }
+function gt(a, b) {  return _Utils_cmp(a, b) > 0 }
+function ge(a, b) {  return _Utils_cmp(a, b) >= 0 }
+
+export { compare as compareInt, compare as compareFloat };
+export { lt as ltInt, lt as ltFloat };
+export { le as leInt, le as leFloat };
+export { gt as gtInt, gt as gtFloat };
+export { ge as geInt, ge as geFloat };
 
 
 // APPEND
 
-export function append(xs, ys) {
+// `append` only ever concatenates two Strings (see below), and Zelkova has no
+// `String` type yet to name in a facade signature at all — so `appendInt` and
+// `appendFloat` are what `LANG-43`'s shape rule leaves nameable today, and
+// neither is a type this function can honour: every call throws until a
+// `String` (or `List`) type exists for `append`'s signature to name for real.
+// That gap is `BUG-20`'s, not this one's — this file already fails loudly
+// rather than returning nonsense, which is as far as a signature with no
+// `String` to name can go.
+function append(xs, ys) {
     if (typeof xs === 'string' && typeof ys === 'string') {
         return xs + ys;
     }
@@ -226,6 +249,8 @@ export function append(xs, ys) {
         _Utils_describe(ys)
     );
 }
+
+export { append as appendInt, append as appendFloat };
 
 // TODO Script below have not been modified yet, which isn't an issue given it doesn't export anything
 // COMMON VALUES

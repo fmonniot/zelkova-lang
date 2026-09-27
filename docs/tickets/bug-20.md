@@ -3,10 +3,11 @@
 **Severity:** high (miscompile — the type checker accepts a call whose runtime behaviour is
 undefined, and there is no later phase that would catch it).
 
-**Location:** `std/core/src/Js/Utils.zel` — the `lt`, `le`, `gt`, `ge`, `compare` and `append`
-signatures; `std/core/src/Js/Utils.mjs` — `_Utils_cmp` and `append`, which are what those
-signatures are facades for. `std/core/src/Basics.zel` re-exports every one of them under the
-same type.
+**Location:** `std/core/src/Basics.zel` — the `lt`, `le`, `gt`, `ge`, `compare` and `append`
+re-exports, still declared `a -> a -> ...`; `std/core/src/Js/Utils.mjs` — `_Utils_cmp` and
+`append`, which are what the `Js.Utils` facades those re-exports pick between call into.
+`Js/Utils.zel`'s own six signatures are monomorphic since `LANG-43` and are no longer part of
+the over-promise.
 
 **Found:** while writing the Constrained type variables chapter (`SPEC-11`), which `SPEC-12`
 has since superseded with [`docs/spec/type-classes.md`](../spec/type-classes.md).
@@ -47,14 +48,14 @@ smaller =
   min Red Blue
 ```
 
-Nothing in the compiler stands between that program and `_Utils_cmp`. Type checking accepts
-it because the declared type genuinely does accept it, and code generation does not exist yet.
+Nothing in the compiler stood between that program and `_Utils_cmp`. Type checking accepted
+it because the declared type genuinely accepted it, and code generation does not exist yet.
 There is now a facade-level rule to appeal to —
 [Which types may cross the boundary](../spec/interop.md#which-types-may-cross-the-boundary)
-rejects a bare type variable in a facade signature, so all six of these are inadmissible — but
-nothing enforces it: [`LANG-43`](lang-43.md) is that check, and rewriting these six into
-monomorphic facades is part of its scope. It does not close this ticket, whose acceptance is
-about the `.mjs` failing loudly rather than about the signatures.
+rejects a bare type variable in a facade signature, so all six of these were inadmissible — and
+[`LANG-43`](README.md), now closed, is what enforces it: `Js.Utils`'s six are rewritten into
+monomorphic facades, one per type each really handles. That does not close this ticket, whose
+acceptance is about the `.mjs` failing loudly rather than about the signatures.
 
 **Approach:** this cannot be fixed by narrowing the annotation, because the language has no
 way to write the restriction — that is the whole subject of

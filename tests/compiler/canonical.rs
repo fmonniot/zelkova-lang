@@ -2266,6 +2266,95 @@ fn unsafe_is_a_facade_constant_name() {
     }
 }
 
+// ── Scenario 14: a facade signature naming an inadmissible type ──────────────
+//
+// `docs/spec/interop.md#which-types-may-cross-the-boundary` admits the
+// primitives, tuples and union types applied to admitted types, and rejects a
+// bare type variable and a function type wherever either appears
+// (`docs/spec/interop.md#what-a-facade-signature-may-not-name`, `LANG-43`).
+
+/// A type variable at the top of a facade signature — the simplest shape the
+/// walk rejects.
+///
+/// Verified to fail by neutralising `check_facade_admitted_type` to always
+/// return `Ok(())`: the module then canonicalizes cleanly and `expect_err`
+/// panics.
+#[test]
+fn facade_signature_over_bare_variable_is_rejected() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (equal)
+        equal : a -> a -> Bool
+    "#};
+
+    let errors = canonicalize_with_scalars(source)
+        .expect_err("a facade signature over a bare type variable must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::FacadeTypeNotAdmitted(name, kind, _) => {
+            assert_eq!(name.as_str(), "equal");
+            assert_eq!(*kind, canonical::FacadeRejectedKind::Variable);
+        }
+        other => panic!("expected FacadeTypeNotAdmitted, got {:?}", other),
+    }
+
+    let annotation = "equal : a -> a -> Bool";
+    let start = source.find(annotation).expect("source has the annotation");
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + annotation.len()),
+        "the caret must cover the whole annotation, the finest span in hand"
+    );
+}
+
+/// A function type taken as a parameter, nested under the top-level arrows a
+/// facade's own parameter list contributes — the shape the ticket's own
+/// example (`count`) names, and the one that proves the walk descends past
+/// the first arrow rather than stopping at it.
+///
+/// Verified to fail by neutralising `check_facade_admitted_type`'s
+/// `Type::Arrow` arm to `Ok(())` instead of `Err(FacadeRejectedKind::Function)`:
+/// the module then canonicalizes cleanly and `expect_err` panics.
+#[test]
+fn facade_signature_over_function_type_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (count)
+        count : (Int -> Bool) -> Int -> Int
+    "#};
+
+    let errors = canonicalize_with_scalars(source)
+        .expect_err("a facade signature taking a function must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::FacadeTypeNotAdmitted(name, kind, _) => {
+            assert_eq!(name.as_str(), "count");
+            assert_eq!(*kind, canonical::FacadeRejectedKind::Function);
+        }
+        other => panic!("expected FacadeTypeNotAdmitted, got {:?}", other),
+    }
+}
+
+/// A tuple of admitted types is not what either rejection is about, so it
+/// canonicalizes cleanly — the same `rgb` signature
+/// `docs/spec/interop.md#which-types-may-cross-the-boundary` shows as
+/// `expect=ok`. This is the counterpart the mutation check above needs: a
+/// walk that rejected everything would also make the two tests above pass.
+#[test]
+fn facade_signature_over_admitted_tuple_is_accepted() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (rgb)
+        unsafe rgb : Int -> (Int, Int, Int)
+    "#};
+
+    canonicalize_with_scalars(source).expect("a tuple of admitted types must canonicalize");
+}
+
 // ── LANG-59: an opaque scalar's declaration is not an ordinary union ─────────
 //
 // `Basics.Int`, `Basics.Float`, `Char.Char` and `String.String` are opaque

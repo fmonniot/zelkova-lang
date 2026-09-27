@@ -63,7 +63,7 @@ constraint on a facade signature and gives the same remedy in the same words —
 function lives in ordinary Zelkova and calls a monomorphic facade underneath it. The constraint
 rule and this rule are one rule seen twice: a facade's signature names the types its JavaScript
 really handles, whether the wider type someone wanted to write was `Comparable a => a` or `a`.
-Landing this makes twelve `std/core` signatures illegal ([`LANG-43`](../tickets/lang-43.md)), and
+Landing this makes twelve `std/core` signatures illegal ([`LANG-43`](../tickets/README.md)), and
 each becomes several monomorphic facades with the polymorphism moved up a level — which is what
 those signatures always meant.
 
@@ -134,10 +134,13 @@ moment it is least observable.
 So every value entering Zelkova from a companion is checked. [`BUG-20`](../tickets/bug-20.md) is
 the case that motivates both halves of this entry: `_Utils_cmp`, handed a value of a user union
 type, read three fields that are not there and returned a comparison of nothing against nothing,
-until it was made to refuse such a value instead. That it can still be *called* that way is
-decision 2's business, and
-[`LANG-43`](../tickets/lang-43.md)'s to fix; what decision 4 adds is the other end — a companion
-returning a value its declared type does not describe is caught where it crosses rather than
-believed by everything downstream. The work is [`GEN-2`](../tickets/gen-2.md), a sibling of
-[`GEN-1`](../tickets/gen-1.md) rather than a part of it: `GEN-1` is a whole phase, this is a
-bounded piece of its output with a chapter section to check it against.
+until it was made to refuse such a value instead. That it could still be *called* that way
+through the facade — `Js.Utils.equal` and its siblings admitted a union value because they were
+declared over a bare `a` — was decision 2's business, and [`LANG-43`](../tickets/README.md) is
+what closed it: `Js.Utils` is monomorphic now, so calling one of its facades with a value of the
+wrong type is a type error rather than a call `_Utils_cmp` had to refuse at runtime. What decision
+4 adds is the other end — a companion returning a value its declared type does not describe is
+caught where it crosses rather than believed by everything downstream. The work is
+[`GEN-2`](../tickets/gen-2.md), a sibling of [`GEN-1`](../tickets/gen-1.md) rather than a part of
+it: `GEN-1` is a whole phase, this is a bounded piece of its output with a chapter section to
+check it against.
