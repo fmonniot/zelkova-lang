@@ -1,0 +1,12 @@
+# A library tested with a package that depends on it: `acme-check` names this
+# package in its own `dependencies`, and this package names `acme-check` in its
+# `test-dependencies`. The edge back names this package's `src/`, so the build is
+# `src/`, then `acme-check`, then `tests/`, and is not a cycle.
+name = "acme-lib"
+version = "0.1.0"
+private-modules = ["Internal"]
+
+[dependencies]
+
+[test-dependencies.acme-check]
+path = "../dep_acme_check"

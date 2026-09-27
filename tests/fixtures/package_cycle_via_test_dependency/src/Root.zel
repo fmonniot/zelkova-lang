@@ -1,0 +1,5 @@
+module Root exposing (Root(..))
+
+
+type Root
+  = Root

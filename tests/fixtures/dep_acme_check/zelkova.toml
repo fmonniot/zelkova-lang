@@ -1,0 +1,10 @@
+# The test library `package_acme_lib` names in its `test-dependencies`. It depends
+# on `acme-lib` in turn, and its one module is written against `acme-lib`'s `Lib`.
+name = "acme-check"
+version = "1.0.0"
+private-modules = []
+
+[dependencies.acme-lib]
+path = "../package_acme_lib"
+
+[test-dependencies]

@@ -181,7 +181,7 @@ worked in parallel:
 GEN-17   `zelkova compile [DIR]` — the binary, clap, and the `cargo run` sweep   ── closed
 LANG-63  `zelkova-test` declares `Test`; a pass collects a package's tests
 GEN-18   a test build writes its tests, to `build/test/js/`
-SPEC-35  a test-dependency may depend on the package it tests
+SPEC-35  a test-dependency may depend on the package it tests                    ── closed
   │
   │  GEN-17 + LANG-63 + GEN-18
   ▼
@@ -310,7 +310,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-32 | task | — | closed 2026-09-15 | A module is made ambiguous by an import it never wrote |
 | SPEC-33 | task | — | closed 2026-09-15 | Which default imports a module gets is a fixed point over the whole package |
 | SPEC-34 | task | — | closed 2026-09-27 | Only `zelkova-core` may declare a module the default imports name, and the exemption is keyed on the package rather than on module names |
-| [SPEC-35](spec-35.md) | task | — | open | A package cannot be tested with a library that depends on it, so `zelkova-core` cannot use `zelkova-test` |
+| SPEC-35 | task | — | closed 2026-09-27 | A package cannot be tested with a library that depends on it |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
