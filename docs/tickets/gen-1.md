@@ -116,7 +116,7 @@ GEN-14  the end-to-end check under node
 Unscheduled, filed to keep their context: [`GEN-15`](gen-15.md) the WebAssembly backend,
 [`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets, [`GEN-17`](gen-17.md) a
 `zelkova` binary. [`GEN-2`](gen-2.md), the boundary predicates, sequences after
-[`GEN-12`](README.md) and [`LANG-43`](lang-43.md) as it always did.
+[`GEN-12`](README.md) and [`LANG-43`](README.md) as it always did.
 
 **Acceptance:** every ticket above is closed, and this file is tombstoned with them. What the
 program as a whole has to show is [`GEN-14`](gen-14.md)'s: a small module compiled, its exported

@@ -597,9 +597,8 @@ fn check_std_core() -> Vec<CheckedModule> {
 ///
 /// The unit tests in `tests/javascript.rs` pin the *shape* of what a facade emits as;
 /// this only pins that the three real signatures do not hit an edge their small
-/// fixtures miss — `Js.Basics.add : a -> a -> a` names a type variable, which nothing
-/// rejects yet (`LANG-43`) and which this ticket is explicit is not blocked by, since
-/// an arrow count is readable whatever the types are.
+/// fixtures miss — an arrow count is readable whatever the types are, and code
+/// generation reads none of them.
 ///
 /// Mutation-checked by reverting `emit`'s `ir.foreign` branch to the old blanket
 /// refusal: this test then panics on the first facade.

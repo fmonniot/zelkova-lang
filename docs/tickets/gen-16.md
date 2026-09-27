@@ -3,10 +3,11 @@
 **Sizing:** medium, and **blocked** — see below. The wrapper itself is small; what it builds
 does not exist.
 
-**Blocked on:** `Task` and `Failure` existing at all; and
-[`LANG-43`](lang-43.md), which is what holds an unmarked facade to the result type this wrapper
-assumes. Sequence after [`GEN-12`](README.md), which emits the `unsafe` half of the same call
-site.
+**Blocked on:** `Task` and `Failure` existing at all; and a check, not yet ticketed, that holds
+an unmarked facade to the result type this wrapper assumes — [`LANG-43`](README.md) rejects a
+type variable or a function type in a facade signature, but not an unmarked facade whose result
+is not `Task (Result Failure a)`. Sequence after [`GEN-12`](README.md), which emits the `unsafe`
+half of the same call site.
 
 **Part of:** [`GEN-1`](gen-1.md) in subject, and deliberately outside its program: the original
 GEN-1 text carried this as inherited work, and it cannot be written until the three blockers
@@ -42,8 +43,7 @@ above clear.
 **Problem:** the wrapper is the whole of what keeps a throwing `.mjs` from ending the program,
 and nothing emits one. Today it is also unreachable: every facade in the tree is marked
 `unsafe`, nothing declares `Task` or `Failure`, and nothing holds an unmarked facade to a `Task`
-result — so an unmarked facade is read as if it carried `unsafe`
-([`LANG-43`](lang-43.md)).
+result — so an unmarked facade is read as if it carried `unsafe`.
 
 **Approach:** not settled, and it depends on decisions `Task` itself has not made. What this
 ticket needs from whatever declares `Task`: how a `Task` is represented at runtime, since the

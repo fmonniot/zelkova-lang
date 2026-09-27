@@ -23,20 +23,22 @@ It's not a language designed for high-perf or high-reach applications :)
 // brought back into it with `BigInt.asIntN(64, ..)`, the way `| 0` used to
 // bring one back into 32 bits.
 //
-// `add`, `sub` and `mul` back both `Int` and `Float` arithmetic: `Basics.zel`
-// declares each of them `a -> a -> a` and means either. The operand's own
-// JavaScript type is what tells the two apart — an `Int` is a `bigint`, a
+// `add`, `sub` and `mul` back both `Int` and `Float` arithmetic. The operand's
+// own JavaScript type is what tells the two apart — an `Int` is a `bigint`, a
 // `Float` a number — and a `Float` keeps IEEE's answer, which is what the
-// bare operator already computes.
-export function add(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a + b) : a + b }
-export function sub(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a - b) : a - b }
-export function mul(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a * b) : a * b }
+// bare operator already computes. `Js.Basics.zel` names this one function
+// twice, once per type it really handles (`LANG-43`): `addInt`/`addFloat` and
+// so on are the same JavaScript underneath, and the alias each exports below
+// is what `Basics.zel` picks between.
+function add(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a + b) : a + b }
+function sub(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a - b) : a - b }
+function mul(a, b) { return typeof a === 'bigint' ? BigInt.asIntN(64, a * b) : a * b }
 export function fdiv(a, b) { return a / b }
 
-// `pow` is declared `a -> a -> a` the same way, and dispatches the same way:
-// a `Float` operand keeps `Math.pow`, IEEE's own answer, and a `bigint`
-// operand uses `**`, masked back into 64 bits the way `add`/`sub`/`mul` are,
-// since a power can leave the range that arithmetic can't reach on its own.
+// `pow` dispatches the same way: a `Float` operand keeps `Math.pow`, IEEE's
+// own answer, and a `bigint` operand uses `**`, masked back into 64 bits the
+// way `add`/`sub`/`mul` are, since a power can leave the range that
+// arithmetic can't reach on its own.
 //
 // A negative `Int` exponent is not handled here. `2 ^ -1` has a real answer
 // (`0.5`) that `Int` has no room for — unlike `n // 0`
@@ -44,9 +46,14 @@ export function fdiv(a, b) { return a / b }
 // has been chosen to stand in for it, and choosing one is `LANG-66`. `**`
 // itself throws on a negative `BigInt` exponent, so `pow` still throws on
 // that case until `LANG-66` settles it.
-export function pow(a, b) {
+function pow(a, b) {
   return typeof a === 'bigint' ? BigInt.asIntN(64, a ** b) : Math.pow(a, b);
 }
+
+export { add as addInt, add as addFloat };
+export { sub as subInt, sub as subFloat };
+export { mul as mulInt, mul as mulFloat };
+export { pow as powInt, pow as powFloat };
 
 // docs/spec/evaluation-semantics.md#an-operation-with-no-answer defines
 // `n // 0` to be `0`. `BigInt` division by zero throws, so the divisor is

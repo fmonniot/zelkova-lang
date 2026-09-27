@@ -153,9 +153,11 @@ it describes.
   kernel. What a facade *is* — the `Task`/`unsafe` split, which types may cross, the
   plain-parameter-list guarantee the companion makes — is
   [`docs/spec/interop.md`](docs/spec/interop.md), with [`DEC-11`](docs/decisions/dec-11.md) and
-  [`DEC-12`](docs/decisions/dec-12.md) behind it. Most of that is not implemented: the modifier
-  is spelled `module foreign` and a signature may be marked `unsafe`, but nothing reads the mark
-  and the admitted-types check is [`LANG-43`](docs/tickets/lang-43.md).
+  [`DEC-12`](docs/decisions/dec-12.md) behind it. A facade signature naming a type variable or a
+  function type is rejected. Still not implemented: the modifier is spelled `module foreign` and
+  a signature may be marked `unsafe`, but nothing holds an unmarked facade to the
+  `Task (Result Failure a)` result type that requires, so the two shapes are read as the same
+  thing until something does.
 - **A doc comment describes what the code at that site does** — not what you intended, and
   not what it used to do. An overstated comment is a real defect because it is what the next
   reader trusts. Prefer saying less over saying more than you verified.

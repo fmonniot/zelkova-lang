@@ -181,7 +181,7 @@ Three more are filed unscheduled, to keep context that would otherwise be redisc
 existing at all; and [`GEN-17`](gen-17.md) a `zelkova` binary that compiles and runs, which
 [`LANG-63`](lang-63.md) and [`GEN-14`](gen-14.md) both point at.
 [`GEN-2`](gen-2.md), the boundary predicates, sequences after `GEN-12` and
-[`LANG-43`](lang-43.md) as it always did.
+`LANG-43` as it always did.
 
 ## Recovering a closed ticket
 
@@ -350,7 +350,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |
 | [LANG-41](lang-41.md) | task | — | open | Retire `Type::Number` in favour of a `Number` class, defaulting to `Int` |
 | [LANG-42](lang-42.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
-| [LANG-43](lang-43.md) | task | — | open | A facade signature may name any type at all, including ones no runtime predicate can decide |
+| LANG-43 | task | — | closed 2026-09-27 | A facade signature may name any type at all, including ones no runtime predicate can decide |
 | [LANG-44](lang-44.md) | task | — | open | There is no list-literal production, so `[1, 2]` does not parse |
 | [LANG-45](lang-45.md) | task | — | open | There is no list pattern, so neither `[]` nor `first :: rest` can be matched |
 | [LANG-46](lang-46.md) | task | — | open | `std/core` declares `List`, opaquely, with `(::)` over it |

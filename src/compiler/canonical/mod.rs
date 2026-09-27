@@ -1147,6 +1147,18 @@ pub enum Error {
     /// accepting the word there would make it mean nothing in half the places it
     /// can be written.
     UnsafeOutsideFacade(Name, NodeSpan),
+    /// A `module foreign` facade signature naming a type variable or a
+    /// function type, in a parameter or in the result, once the arrows
+    /// separating a facade's own parameters are stripped
+    /// (`docs/spec/interop.md#what-a-facade-signature-may-not-name`): the
+    /// value's name, which form was found, and `function.annotation_span`.
+    ///
+    /// The span is the whole annotation rather than the offending piece of it,
+    /// because a canonical `Type` carries no span of its own — see
+    /// [`Type::from_parser_type`]'s doc comment — and the annotation is the
+    /// finest caret available without first teaching that conversion to keep
+    /// per-node spans.
+    FacadeTypeNotAdmitted(Name, FacadeRejectedKind, NodeSpan),
 
     /// A parameterless binding that depends on itself — [evaluation
     /// semantics](../../../docs/spec/evaluation-semantics.md#a-binding-may-not-depend-on-itself):
@@ -1206,6 +1218,19 @@ pub enum InvalidVariantKind {
     /// variant rather than a suffix of it, `Wrap Int` being its left operand, so
     /// there is no constructor here to keep either.
     Arrow,
+}
+
+/// The two forms [What a facade signature may not
+/// name](../../../docs/spec/interop.md#what-a-facade-signature-may-not-name)
+/// rejects — see [`Error::FacadeTypeNotAdmitted`].
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum FacadeRejectedKind {
+    /// A type variable, which excludes no value: there is nothing for a
+    /// runtime predicate to decide.
+    Variable,
+    /// A function type, wherever it is found — as the signature's own result
+    /// or nested inside a parameter, a tuple or a union's argument.
+    Function,
 }
 
 /// Canonicalization errors name source constructs — a value, a type, an operator —
@@ -1340,6 +1365,14 @@ impl PhaseError for Error {
             Error::UnsafeOutsideFacade(name, _) => format!(
                 "`{}` is marked `unsafe`, which only a signature in a `module foreign` facade may be",
                 name
+            ),
+            Error::FacadeTypeNotAdmitted(name, kind, _) => format!(
+                "`{}` is a `module foreign` facade signature naming {}, which no target can check at the boundary",
+                name,
+                match kind {
+                    FacadeRejectedKind::Variable => "a type variable",
+                    FacadeRejectedKind::Function => "a function type",
+                }
             ),
             // A one-binding cycle reads better as its own sentence than as "a
             // cycle of length one" — see the enum's own doc comment.
@@ -1535,6 +1568,13 @@ impl PhaseError for Error {
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
             Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
             Error::UnsafeOutsideFacade(_, span) => primary(span, "marked `unsafe` here"),
+            Error::FacadeTypeNotAdmitted(_, kind, span) => primary(
+                span,
+                match kind {
+                    FacadeRejectedKind::Variable => "this signature names a type variable",
+                    FacadeRejectedKind::Function => "this signature names a function type",
+                },
+            ),
             Error::SelfDependency(members) => members
                 .iter()
                 .enumerate()
@@ -1572,6 +1612,10 @@ impl PhaseError for Error {
         match self {
             Error::UnsafeOutsideFacade(..) => vec![
                 "`unsafe` asserts that the companion behind a facade signature is a function of its arguments and that it returns"
+                    .to_owned(),
+            ],
+            Error::FacadeTypeNotAdmitted(..) => vec![
+                "a facade signature may only name a type whose values a target can decide from the value alone, which admits the primitives, tuples and union types applied to admitted types"
                     .to_owned(),
             ],
             Error::InvalidScalarDeclaration(..) => vec![
@@ -1676,6 +1720,41 @@ impl From<Vec<Error>> for Error {
     }
 }
 
+/// Every piece of a facade signature [`check_facade_admitted_type`] walks: its
+/// parameters and its result, the top-level `Arrow`s separating them stripped
+/// away first. A facade is itself a function, so those are the one place an
+/// arrow is admitted — a parameter or a result that is itself a function type
+/// is what [`check_facade_admitted_type`] then rejects. A facade constant has
+/// no top-level arrow to strip, so it is returned whole, as its own one piece.
+fn facade_signature_pieces(tpe: &Type) -> Vec<&Type> {
+    match tpe {
+        Type::Arrow(param, rest) => {
+            let mut pieces = vec![param.as_ref()];
+            pieces.extend(facade_signature_pieces(rest));
+            pieces
+        }
+        _ => vec![tpe],
+    }
+}
+
+/// Whether `tpe` — one piece of a facade signature, as
+/// [`facade_signature_pieces`] cuts it up — is one of [the admitted
+/// types](../../../docs/spec/interop.md#which-types-may-cross-the-boundary).
+///
+/// A bare `Type::Variable` or a `Type::Arrow` anywhere inside `tpe` is
+/// rejected, the latter regardless of depth — a function type is inadmissible
+/// wherever it is found, not only at the top of the signature.
+/// `Type::Type` and `Type::Tuple` recurse into their own arguments, which may
+/// still hide either form.
+fn check_facade_admitted_type(tpe: &Type) -> Result<(), FacadeRejectedKind> {
+    match tpe {
+        Type::Variable(_) => Err(FacadeRejectedKind::Variable),
+        Type::Arrow(_, _) => Err(FacadeRejectedKind::Function),
+        Type::Type(_, args) => args.iter().try_for_each(check_facade_admitted_type),
+        Type::Tuple(tuple) => tuple.iter().try_for_each(check_facade_admitted_type),
+    }
+}
+
 /// Transform a given `parser::Module` into a `canonical::Module`.
 ///
 /// Whether this module is exempt from the default imports is not this function's
@@ -1758,6 +1837,25 @@ pub fn canonicalize(
                 .as_ref()
                 .ok_or_else(|| Error::NoTypeInBinding(function.name.clone(), function.span))?;
             let tpe = Type::from_parser_type(&env, tpe)?;
+
+            // Every parameter and the result — the arrows a facade's own
+            // parameter list contributes stripped first, since a facade is
+            // itself a function and that is the one place an arrow is
+            // admitted — must be one of the admitted types
+            // (`docs/spec/interop.md#which-types-may-cross-the-boundary`).
+            // One bad signature must not hide the next, so this pushes onto
+            // `errors` the same way the checks above do rather than
+            // returning early out of the whole facade.
+            if let Some(kind) = facade_signature_pieces(&tpe)
+                .into_iter()
+                .find_map(|piece| check_facade_admitted_type(piece).err())
+            {
+                Err(Error::FacadeTypeNotAdmitted(
+                    function.name.clone(),
+                    kind,
+                    function.annotation_span,
+                ))?
+            }
 
             let name = function.name.clone();
             // TODO Think how it's going to be represented. Currently canonical values assume an expression is present
