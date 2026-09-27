@@ -306,18 +306,27 @@ const RESERVED: &[&str] = &[
 /// removed by reading past it.
 ///
 /// Every other name an emitted module declares is the emitter's own, and each is built
-/// so that it cannot be one this function returns:
+/// so that it cannot be one this function returns, nor one another item here returns:
 ///
-/// - the runtime's helpers, `$curry` and `$abort`: a `$` and a word that is not in
-///   [`RESERVED`];
-/// - a hoisted constructor, [`hoisted`]: a `$` followed by a name that contains
-///   another `$`;
-/// - a value imported from another module, [`imported`]: a `$` that is not the first
-///   character;
+/// - the runtime's helpers, `$curry` and `$abort`, and the `$scrutinee` a `case` binds:
+///   a `$` and a word that is not in [`RESERVED`], and no other `$`;
+/// - a value imported from another module, [`imported`]: it contains a `$`, does not
+///   start with one, and its first segment — the package — is lowercase, where a module
+///   segment is uppercase;
+/// - a hoisted constructor, [`hoisted`]: a `$` followed by at least three more segments,
+///   each separated from the next by a `$` — package, module segments, constructor;
+/// - the facade's alias for its companion's export, [`companion_alias`]: `$companion$`
+///   and the value's name, which holds no `$` — a `$`, a word not in [`RESERVED`], and
+///   exactly one more `$`, so one segment fewer than any hoisted constructor;
 /// - a wildcard parameter, [`wildcard`]: `$_` and a number, and `_0`, `_1`, … are not in
 ///   [`RESERVED`];
 /// - a parameter written as a pattern, [`ir::pattern_parameter`]: `$` and a number,
 ///   which this function leaves as it is, since nothing in [`RESERVED`] holds a `$`.
+///
+/// Two imports, or two hoisted constructors, are told apart by their segments: none of
+/// them holds a `$`, so the segments come back out by splitting at it, and together
+/// they are the declaration's full identity — package, module and name — which is
+/// unique in a build.
 fn mangle(name: &str) -> String {
     if RESERVED.contains(&name) {
         format!("${}", name)
@@ -335,25 +344,53 @@ fn wildcard(position: usize) -> String {
     format!("$_{}", position)
 }
 
+/// A package's name as the first segment of a local name: each `-` replaced by `_` —
+/// `zelkova-core` is `zelkova_core`.
+///
+/// This is injective because a legal package name holds no `_`, and always a valid start
+/// of a JavaScript identifier because a package name starts with a lowercase letter.
+/// It is the package's own name and never its [namespace](super::PackageName::namespace),
+/// which is how one dependent spells the package rather than what the package is.
+fn package_segment(package: &str) -> String {
+    package.replace('-', "_")
+}
+
 /// The module-level constant a constructor of no arguments is hoisted to: `$`, then the
-/// segments of the module declaring its union and its own name, joined by `$` — `Test`'s
-/// `Red` is `$Test$Red`.
+/// package declaring its union ([`package_segment`]), the segments of the module
+/// declaring it and its own name, joined by `$` — `Test`'s `Red` in package `app` is
+/// `$app$Test$Red`.
+///
+/// It is the same whether the module declaring the union hoists it or a module
+/// mentioning it does.
 fn hoisted(union: &QualName, constructor: &Name) -> String {
     format!(
-        "${}${}",
+        "${}${}${}",
+        package_segment(union.package().as_str()),
         union.module_name().as_str().replace('.', "$"),
         constructor.as_str()
     )
 }
 
-/// The local name a value another module declares is imported under: the module's
-/// segments and the value's name, joined by `$` — `Maybe.withDefault` is
-/// `Maybe$withDefault`.
+/// The local name a value another module declares is imported under: the package
+/// declaring it ([`package_segment`]), the module's segments and the value's name,
+/// joined by `$` — `Maybe.withDefault` is `zelkova_core$Maybe$withDefault`.
 ///
 /// A value is never imported under its own name, because this module may declare the
-/// same name itself.
-fn imported(module: &str, name: &str) -> String {
-    format!("{}${}", module.replace('.', "$"), name)
+/// same name itself; and never under its module's name alone, because two packages may
+/// each declare a module of that name, and this module may import both.
+fn imported(package: &str, module: &str, name: &str) -> String {
+    format!(
+        "{}${}${}",
+        package_segment(package),
+        module.replace('.', "$"),
+        name
+    )
+}
+
+/// The local name a facade imports its companion's export `name` under:
+/// `$companion$<name>`.
+fn companion_alias(name: &str) -> String {
+    format!("$companion${}", name)
 }
 
 /// The name of the field a constructor's argument at `index` is stored in: `a`, `b`, …
@@ -554,7 +591,7 @@ pub fn emit(module: &CheckedModule, has_companion: bool) -> Result<String, Vec<E
             .collect(),
         runtime: BTreeSet::new(),
         imports: BTreeMap::new(),
-        module: ir.name.name().clone(),
+        module: ir.name.clone(),
         imported_constructors: BTreeMap::new(),
         errors: ir
             .unchecked
@@ -665,7 +702,7 @@ pub fn emit(module: &CheckedModule, has_companion: bool) -> Result<String, Vec<E
     for ((package, from), names) in &emitter.imports {
         let specifiers: Vec<String> = names
             .iter()
-            .map(|name| format!("{} as {}", name, imported(from, name)))
+            .map(|name| format!("{} as {}", name, imported(package, from, name)))
             .collect();
         imports.push(format!(
             "import {{ {} }} from \"{}\";",
@@ -777,9 +814,9 @@ struct Emitter {
     /// The values of other modules the emitted text mentions, by the package and the
     /// module declaring each.
     imports: BTreeMap<(String, String), BTreeSet<String>>,
-    /// The module being emitted, which tells a constructor it declares from one another
-    /// module does.
-    module: Name,
+    /// The module being emitted, package included, which tells a constructor it declares
+    /// from one another module does — of this package or of another.
+    module: ModuleName,
     /// The constructors of no arguments another module declares that the emitted text
     /// mentions, by the name each is hoisted to. This module hoists its own constant for
     /// each, since the declaring module exports none.
@@ -842,7 +879,7 @@ impl Emitter {
         // which this method is about to declare a local binding under, and a module
         // cannot import and declare the same name twice.
         let local = mangle(declaration.name.as_str());
-        let alias = imported(self.module.as_str(), declaration.name.as_str());
+        let alias = companion_alias(declaration.name.as_str());
         companion_imports.push(format!("{} as {}", declaration.name.as_str(), alias));
 
         if declaration.arity == 0 {
@@ -919,7 +956,7 @@ impl Emitter {
             ReferenceKind::Foreign(qname, package) => {
                 let module = qname.module_name().as_str().to_string();
                 let name = qname.unqualified_name().as_str().to_string();
-                let local = imported(&module, &name);
+                let local = imported(package.as_str(), &module, &name);
                 self.imports
                     .entry((package.as_str().to_string(), module))
                     .or_default()
@@ -938,7 +975,11 @@ impl Emitter {
                 match ctor.arity {
                     0 => {
                         let local = hoisted(&ctor.union, &ctor.name);
-                        if ctor.union.module_name() != self.module {
+                        // Compares the full identity field-wise instead of allocating a
+                        // throwaway `ModuleName` just to compare it against `self.module`.
+                        let declared_here = *ctor.union.package() == *self.module.package()
+                            && ctor.union.module_name() == *self.module.name();
+                        if !declared_here {
                             self.imported_constructors
                                 .insert(local.clone(), ctor.name.clone());
                         }
@@ -1205,6 +1246,30 @@ mod tests {
         assert_eq!(mangle("classy"), "classy");
         assert_eq!(mangle("eval"), "$eval");
         assert_eq!(mangle("curry"), "curry");
+    }
+
+    /// A value import and a hoisted constructor are named by the package, the module and
+    /// the name, the package spelled with `_` for each `-`.
+    ///
+    /// Mutation-checked by leaving `-` as it is in `package_segment`: the names then hold
+    /// a `-`, which no JavaScript identifier can, and the test goes red.
+    #[test]
+    fn a_local_name_carries_its_package() {
+        assert_eq!(
+            imported("zelkova-core", "Maybe", "withDefault"),
+            "zelkova_core$Maybe$withDefault"
+        );
+        assert_eq!(
+            hoisted(
+                &QualName::in_module(
+                    crate::compiler::PackageName::new("acme-widgets").unwrap(),
+                    "Page.Size",
+                    "Size"
+                ),
+                &Name::new("Small")
+            ),
+            "$acme_widgets$Page$Size$Small"
+        );
     }
 
     /// The fields continue past `z` without reusing a name.

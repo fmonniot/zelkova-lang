@@ -99,14 +99,14 @@ fn a_module_is_imports_constructors_functions_bindings_and_exports() {
         indoc! {r#"
             import { $curry } from "../zelkova.mjs";
 
-            const $Test$Red = {$: "Red"};
-            const $Test$Green = {$: "Green"};
+            const $test_project$Test$Red = {$: "Red"};
+            const $test_project$Test$Green = {$: "Green"};
 
             function pick(a, b) {
               return a;
             }
 
-            const colour = $Test$Green;
+            const colour = $test_project$Test$Green;
             const half = $curry(pick, 2)(1n);
 
             export { half, pick };
@@ -246,7 +246,7 @@ fn an_int_literal_ends_in_n_and_a_float_literal_does_not() {
 /// any other package is an ordinary union.
 ///
 /// Mutation-checked by removing the `scalars::BOOL` arm from `value`: the bindings then
-/// read `$Basics$True` and `$Basics$False`. Removing the `Bool` filter from
+/// read `$zelkova_core$Basics$True` and `$zelkova_core$Basics$False`. Removing the `Bool` filter from
 /// `hoisted_constructors` separately turns the no-constant assertion red.
 #[test]
 fn true_is_javascripts_true() {
@@ -306,12 +306,20 @@ fn a_nullary_constructor_is_one_constant_every_mention_refers_to() {
         text
     );
     assert!(
-        text.contains("const $Test$Red = {$: \"Red\"};"),
+        text.contains("const $test_project$Test$Red = {$: \"Red\"};"),
         "got:\n{}",
         text
     );
-    assert!(text.contains("const first = $Test$Red;"), "got:\n{}", text);
-    assert!(text.contains("const second = $Test$Red;"), "got:\n{}", text);
+    assert!(
+        text.contains("const first = $test_project$Test$Red;"),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("const second = $test_project$Test$Red;"),
+        "got:\n{}",
+        text
+    );
 }
 
 /// A constructor of no arguments that another module declares is hoisted by the module
@@ -322,7 +330,7 @@ fn a_nullary_constructor_is_one_constant_every_mention_refers_to() {
 /// written both exposed and qualified — and not a hand-built stand-in for it.
 ///
 /// Mutation-checked two ways: by not recording the constructor in `value`, which
-/// leaves `$Lib$Red` mentioned and never declared; and by naming an exposed
+/// leaves `$test_project$Lib$Red` mentioned and never declared; and by naming an exposed
 /// `VarConstructor` by the importing module in `Expression::from_parser`, which makes
 /// `first` a `Test.Red` nothing declares, so the module is refused as unchecked.
 #[test]
@@ -360,13 +368,21 @@ fn an_imported_nullary_constructor_is_hoisted_by_the_importer() {
     let text = emit(&module);
 
     assert!(
-        text.contains("const $Lib$Red = {$: \"Red\"};"),
+        text.contains("const $test_project$Lib$Red = {$: \"Red\"};"),
         "got:\n{}",
         text
     );
-    assert!(text.contains("const first = $Lib$Red;"), "got:\n{}", text);
-    assert!(text.contains("const second = $Lib$Red;"), "got:\n{}", text);
-    assert!(!text.contains("$Test$"), "got:\n{}", text);
+    assert!(
+        text.contains("const first = $test_project$Lib$Red;"),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("const second = $test_project$Lib$Red;"),
+        "got:\n{}",
+        text
+    );
+    assert!(!text.contains("$test_project$Test$"), "got:\n{}", text);
 }
 
 /// A constructor with arguments is a tagged object with its arguments in `a`, `b`, `c`,
@@ -391,7 +407,7 @@ fn a_constructor_with_arguments_is_a_tagged_object_in_declaration_order() {
         "got:\n{}",
         text
     );
-    assert!(!text.contains("$Test$Rgb"), "got:\n{}", text);
+    assert!(!text.contains("$test_project$Test$Rgb"), "got:\n{}", text);
 }
 
 /// A tuple is an array.
@@ -1097,7 +1113,7 @@ fn a_declaration_with_no_ir_is_refused() {
 /// constant) is a `const` bound to the companion's value.
 ///
 /// Mutation-checked by reverting `Emitter::facade_declaration` to build the function's
-/// call one argument at a time (`Test$add(a)(b)`) instead of the plain parameter list:
+/// call one argument at a time (`$companion$add(a)(b)`) instead of the plain parameter list:
 /// this test's `assert_eq!` then fails on the function's body.
 #[test]
 fn an_unsafe_facade_re_exports_its_companion() {
@@ -1111,13 +1127,13 @@ fn an_unsafe_facade_re_exports_its_companion() {
     assert_eq!(
         text,
         indoc! {r#"
-            import { add as Test$add, pi as Test$pi } from "./Test.companion.mjs";
+            import { add as $companion$add, pi as $companion$pi } from "./Test.companion.mjs";
 
             function add(a, b) {
-              return Test$add(a, b);
+              return $companion$add(a, b);
             }
 
-            const pi = Test$pi;
+            const pi = $companion$pi;
 
             export { add, pi };
         "#}

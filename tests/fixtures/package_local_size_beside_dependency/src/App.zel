@@ -1,0 +1,14 @@
+-- Imports both `Size`s: this package's own, and `acme-widgets`' as
+-- `AcmeWidgets.Size`. Each declares a `small`, and this module mentions both.
+module App exposing (mine, theirs)
+
+import Size
+import AcmeWidgets.Size
+
+
+mine : Size.Size
+mine = Size.small
+
+
+theirs : AcmeWidgets.Size.Size
+theirs = AcmeWidgets.Size.small
