@@ -660,11 +660,9 @@ stands for a complete type, so there is no different type for it to recurse at.
 
 **Known gap:** `Basics.lt`, `compare`, `min`, `max` and friends are ordinary declarations —
 not facade signatures — over any type at all, so a user union type still type-checks where none
-of them can genuinely order or compare one. [`BUG-20`](../tickets/bug-20.md) tracks it. The
-`Js.Utils` facades underneath used to be declared the same way and are not any more — a facade
-signature is monomorphic — but that only moved the over-promise up to `Basics.zel`'s own
-signatures, which are outside a facade's admitted-types rule; closing it for real needs the class
-mechanism this chapter specifies.
+of them can genuinely order or compare one. [`BUG-20`](../tickets/bug-20.md) tracks it. They sit
+outside a facade's admitted-types rule, which only constrains `Js.Utils`'s own, monomorphic
+signatures underneath; closing the gap for real needs the class mechanism this chapter specifies.
 
 ## The words this reserves
 

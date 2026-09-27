@@ -3,10 +3,11 @@
 **Severity:** high (miscompile — the type checker accepts a call whose runtime behaviour is
 undefined, and there is no later phase that would catch it).
 
-**Location:** `std/core/src/Js/Utils.zel` — the `lt`, `le`, `gt`, `ge`, `compare` and `append`
-signatures; `std/core/src/Js/Utils.mjs` — `_Utils_cmp` and `append`, which are what those
-signatures are facades for. `std/core/src/Basics.zel` re-exports every one of them under the
-same type.
+**Location:** `std/core/src/Basics.zel` — the `lt`, `le`, `gt`, `ge`, `compare` and `append`
+re-exports, still declared `a -> a -> ...`; `std/core/src/Js/Utils.mjs` — `_Utils_cmp` and
+`append`, which are what the `Js.Utils` facades those re-exports pick between call into.
+`Js/Utils.zel`'s own six signatures are monomorphic since `LANG-43` and are no longer part of
+the over-promise.
 
 **Found:** while writing the Constrained type variables chapter (`SPEC-11`), which `SPEC-12`
 has since superseded with [`docs/spec/type-classes.md`](../spec/type-classes.md).
