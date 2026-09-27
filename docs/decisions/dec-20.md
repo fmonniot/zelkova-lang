@@ -13,16 +13,21 @@ the chain `zelkova-core → zelkova-test → zelkova-core`, which the acyclicity
 
 The chapter counts a package's two source roots as two nodes instead. The test-dependency's
 edge back names the package's `src/`, which is compiled first; the test library is compiled
-against it; the package's `tests/` is compiled last, against both. That graph has no cycle, and
-every package in it still has an order to be compiled in, which is the whole reason the
-acyclicity rule exists.
+against it; the package's `tests/` is compiled last, against both. That graph has no cycle:
+every package in it still has an order to be compiled in.
 
 ## Precedent
 
-Cargo gives a `dev-dependency` that depends on its dependent exactly this arrangement: the
-library is built once, the dev-dependency is built against it, and the test targets are built
-against both. Elm's `elm/core` has the same need, since it is tested with
-`elm-explorations/test`, which depends on `elm/core`.
+Cargo gives a `dev-dependency` that depends on its dependent this arrangement for its
+integration tests: the library is built once, the dev-dependency is built against it, and the
+tests under `tests/` are built against both. Its unit tests do not get it. They are a second
+build of the library, one the dev-dependency never sees, so a type the dev-dependency names is
+not the type the unit test holds. Cargo therefore gives the arrangement only to tests that see
+the public API. Zelkova gives it to tests that reach the private modules too, because `src/` is
+compiled once and `tests/` reaches its private modules from that same build.
+
+Elm's `elm/core` has the same need, since it is tested with `elm-explorations/test`, which
+depends on `elm/core`.
 
 ## Why only the root package
 
