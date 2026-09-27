@@ -55,7 +55,8 @@ inner pattern's span, and the new alternatives must keep spanning the constructo
 arguments, since that is the text `canonical::Error::VariantNotFound`'s caret sits under.
 
 **Acceptance:** the three examples above parse, with tests in the parser's own test module
-asserting the nested `PatternKind`. `cargo run` still prints `parsed 8 modules` and lists all
-eight as checked. The three `expect=parse-error:UnexpectedToken` blocks in
+asserting the nested `PatternKind`. `cargo run -- compile std/core` still prints
+`parsed 8 modules` and lists all eight as checked. The three `expect=parse-error:UnexpectedToken`
+blocks in
 [`docs/spec/patterns.md`](../spec/patterns.md)'s *Patterns nest* section go red — that pin's
 whole job — and are retagged `expect=ok` with their `**Known gap:**` paragraph deleted.

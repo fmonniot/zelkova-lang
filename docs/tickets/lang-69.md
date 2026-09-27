@@ -7,11 +7,11 @@ module's tests rather than crash with it.
 
 **Part of:** the [bootstrap](README.md#active-work-bootstrap) section.
 
-**Depends on:** [`GEN-17`](gen-17.md) (the binary and its `compile` subcommand),
+**Depends on:** [`GEN-17`](README.md), now closed (the binary and its `compile` subcommand),
 [`LANG-63`](lang-63.md) (`Test`, and the pass that collects the values that have it) and
 [`GEN-18`](gen-18.md) (the test build is written to `build/test/js/`).
 
-**Location:** `src/main.rs`, which [`GEN-17`](gen-17.md) gives a clap `Command` enum.
+**Location:** `src/main.rs`, which [`GEN-17`](README.md) gives a clap `Command` enum.
 `src/compiler/mod.rs` has `compile_package_with_tests`. `src/compiler/javascript.rs` has
 `RUNTIME`, the precedent for JavaScript text the compiler carries and writes out.
 

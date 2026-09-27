@@ -94,8 +94,8 @@ annotates, if that declaration exists".
 each — a test in `tests/compiler/canonical.rs`. Three separations are errors, each with its own
 test: another declaration between the annotation and its body, a blank line between them, and a
 comment between them. An annotation directly above its declaration still compiles, including a
-multi-line one. A `module javascript` facade still compiles, and `cargo run` still prints
-`parsed 8 modules` and lists all eight as checked.
+multi-line one. A `module javascript` facade still compiles, and `cargo run -- compile
+std/core` still prints `parsed 8 modules` and lists all eight as checked.
 
 In [`docs/spec/types.md`](../spec/types.md)'s *Where an annotation goes* section, all three
 `expect=ok` blocks go red and are retagged with their `**Known gap:**` paragraph deleted.

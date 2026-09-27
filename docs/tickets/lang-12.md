@@ -66,8 +66,8 @@ body forces `a := Int` proves `Comparable Int` and publishes `Comparable a`. Rig
 what make an annotation's context a thing the body is held to.
 
 **Acceptance:** `f : a -> a` with `f x = C` is a type error naming the annotation, and
-`f : a -> a` with `f x = x` still checks — tests in `tests/typer.rs`. `cargo run` still prints
-`parsed 8 modules` and lists all eight as checked.
+`f : a -> a` with `f x = x` still checks — tests in `tests/typer.rs`.
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
 
 **The spec block for this goes red on its own.** `expect=ok` means the block type checks, so
 the one in [`docs/spec/types.md`](../spec/types.md)'s *An annotation is a promise* section —

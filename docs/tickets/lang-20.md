@@ -62,7 +62,7 @@ goes red and is retagged `expect=ok`, with its `**Not implemented:**` paragraph 
 arms and its entry in `tests/spec.rs`'s `variant_names`. Tests in `tests/compiler/canonical.rs`
 cover clause order, per-clause scoping, and a clause whose pattern count disagrees with the
 annotation; a test in `tests/typer.rs` covers two clauses whose bodies have different types.
-`cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
 
 **Note for `LANG-19`:** exhaustiveness over clauses becomes checkable only once this lands —
 `LANG-19` says so, and can be done for `case` alone before it.

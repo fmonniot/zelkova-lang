@@ -52,7 +52,7 @@ over `Succ (count acc m)` asserting it is not. Five more assert it is not set fo
 that is an argument, an operand, a scrutinee, an `if`'s condition, or unsaturated; two assert it
 *is* set in both arms of an `if` in tail position and in every branch body of a `case` in tail
 position. One asserts a saturated call to a *different* declaration in tail position is not
-marked, which is the mutual-recursion exclusion. `cargo run` still prints `parsed 8 modules`,
-lists all eight and exits 0.
+marked, which is the mutual-recursion exclusion. `cargo run -- compile std/core` still prints
+`parsed 8 modules`, lists all eight and exits 0.
 
 Neutralise-check by seeding the walk's bit true everywhere: the five "is not set" tests go red.

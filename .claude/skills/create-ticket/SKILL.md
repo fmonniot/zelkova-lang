@@ -60,8 +60,8 @@ gets believed. Before writing:
 - If a fix is proposed, confirm it is *possible* — that the API exists, that the type permits
   it. A ticket may honestly say the approach is undecided; it may not confidently propose
   something that cannot be done.
-- Reproduce it if it is reproducible. `cargo run` and `cargo test` output pasted into the
-  Problem section is worth more than any amount of description.
+- Reproduce it if it is reproducible. `cargo run -- compile std/core` and `cargo test` output
+  pasted into the Problem section is worth more than any amount of description.
 
 ## Step 3 — Write `docs/tickets/<id-lower>.md`
 

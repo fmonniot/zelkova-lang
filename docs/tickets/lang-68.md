@@ -61,8 +61,8 @@ not yet ticketed."
    a sibling ticket's, is an open call — say which was picked, and why, before implementing.
 5. `std/core` declares no `Task`, `Result` or `Failure` yet ([`GEN-1`](gen-1.md)), and every
    facade in the tree already carries `unsafe` ([`LANG-53`](README.md)), so this check accepts
-   every signature `std/core` currently writes without requiring any rewrite. `cargo run` should
-   be unaffected.
+   every signature `std/core` currently writes without requiring any rewrite.
+   `cargo run -- compile std/core` should be unaffected.
 
 **Tests:** `tests/compiler/canonical.rs`, alongside `LANG-43`'s fixtures. A synthetic interface
 needs to declare `Task`, `Result` and `Failure` for a fixture to construct the admitted shape at

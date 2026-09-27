@@ -164,7 +164,7 @@ The language owner settled the design on 2026-09-27. Each ticket records its par
 
 - **The binary is `zelkova`, with clap subcommands.** They are `compile [DIR]` and
   `test [DIR]`, where `DIR` defaults to `.`. A bare `cargo run` stops compiling `std/core`, and
-  `cargo run -- compile std/core` is the smoke test from [`GEN-17`](gen-17.md) on.
+  `cargo run -- compile std/core` is the smoke test from `GEN-17` on.
 - **A `Test` is a pass-or-fail verdict built from a `Bool`,** reported under the name of the
   value that holds it. `zelkova-test`, under `std/test/`, exposes `Test.equal` and `Test.check`.
   That needs no string literal, list, lambda, unit or `Task`, and all five are unimplemented. It
@@ -178,7 +178,7 @@ The minimal path has seven tickets. The first four have no prerequisite among th
 worked in parallel:
 
 ```
-GEN-17   `zelkova compile [DIR]` — the binary, clap, and the `cargo run` sweep
+GEN-17   `zelkova compile [DIR]` — the binary, clap, and the `cargo run` sweep   ── closed
 LANG-63  `zelkova-test` declares `Test`; a pass collects a package's tests
 GEN-18   a test build writes its tests, to `build/test/js/`
 SPEC-35  a test-dependency may depend on the package it tests
@@ -398,7 +398,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-14](gen-14.md) | task | — | open | Nothing checks that an emitted program computes the right value |
 | [GEN-15](gen-15.md) | task | — | open | The WebAssembly backend |
 | [GEN-16](gen-16.md) | task | — | open | The wrapper an effectful facade's call site gets |
-| [GEN-17](gen-17.md) | task | — | open | The compiler has no command line: `src/main.rs` compiles `std/core` and takes no arguments |
+| GEN-17 | task | — | closed 2026-09-27 | The compiler has no command line: `src/main.rs` compiles `std/core` and takes no arguments |
 | [GEN-18](gen-18.md) | task | — | open | A build that compiles the tests writes none of them, so nothing can run one |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |

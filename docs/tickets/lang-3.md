@@ -46,5 +46,6 @@ Two blocks in `docs/spec/lexical-structure.md` go red and are retagged, their `*
 paragraphs deleted: the titlecase one in *Identifiers*, and the trailing-point one in
 *Floats*.
 
-`cargo run` must still print `parsed 8 modules` and exit 0 — `std/core/src/` is ASCII
-throughout and writes no bare trailing point, so neither rule should cost it anything.
+`cargo run -- compile std/core` must still print `parsed 8 modules` and exit 0 —
+`std/core/src/` is ASCII throughout and writes no bare trailing point, so neither rule should
+cost it anything.

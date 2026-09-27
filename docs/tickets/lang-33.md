@@ -77,5 +77,5 @@ same change. The **Not implemented:** paragraph in
 [`docs/spec/name-resolution.md`](../spec/name-resolution.md)'s *Scopes* section goes with them,
 and that chapter gains a block showing a `let` binding shadowing a top-level name. A
 `tests/typer.rs` test pins that a `let`-bound identity function used at two types checks, which
-is the generalisation question in point 4. `cargo run` still prints `parsed 8 modules` and
-lists all eight as checked.
+is the generalisation question in point 4. `cargo run -- compile std/core` still prints
+`parsed 8 modules` and lists all eight as checked.

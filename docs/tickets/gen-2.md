@@ -78,4 +78,5 @@ returns a value of the wrong shape — a string where the signature says `Int`, 
 carrying a constructor name the type does not declare — runs it under `node`, and asserts the
 boundary check reports it rather than the wrong value propagating. A second test asserts the
 same facade called correctly returns its value unchanged, so the check is shown not to reject
-what it should accept. `cargo run` still prints `parsed 8 modules` and lists all eight.
+what it should accept. `cargo run -- compile std/core` still prints `parsed 8 modules` and
+lists all eight.

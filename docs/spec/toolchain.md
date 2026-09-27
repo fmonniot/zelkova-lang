@@ -251,3 +251,8 @@ their JavaScript to `build/js/` beside that manifest.
 that directory rather than beside any source it read. Errors are reported with a caret in the
 file they came from, in the format `codespan_reporting` already produces, and a build that
 emitted any error exits non-zero and writes no output.
+
+The binary is `zelkova`, and compiling is one subcommand of it: `zelkova compile [DIR]`, where
+`DIR` names the package root and defaults to the current directory. A bare `zelkova` with no
+subcommand compiles nothing — it prints usage and exits non-zero, the same as an unrecognised
+subcommand would.

@@ -62,5 +62,5 @@ call swaps its arguments. It asserts the value that simultaneous assignment give
 that sequential assignment gives.
 
 Neutralise-check both: revert the loop emission and the depth test overflows; assign the
-parameters in sequence without temporaries and the swap test goes red. `cargo run` still prints
-`parsed 8 modules`, lists all eight and exits 0.
+parameters in sequence without temporaries and the swap test goes red. `cargo run -- compile
+std/core` still prints `parsed 8 modules`, lists all eight and exits 0.

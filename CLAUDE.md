@@ -19,7 +19,7 @@ maintains is the one the next reader trusts.
 ```sh
 cargo test --workspace         # full suite: unit tests + tests/ + the tools/ crates'
 cargo build
-cargo run                      # compiles std/core — the de-facto smoke test
+cargo run -- compile std/core  # compiles std/core — the de-facto smoke test
 cargo run -p spec-site -- --out site   # renders the site locally; open site/index.html
 cargo fmt --all
 cargo clippy --workspace --all-features
@@ -29,10 +29,12 @@ Bare `cargo test` runs only the compiler's own tests and silently skips `tools/s
 use `--workspace`. `tools/spec-doc` carries no tests of its own; its logic is exercised through
 `tests/spec.rs`, which depends on it.
 
-`cargo run` prints `parsed 8 modules`, then lists all eight as checked, and **exits 0**. It is
-a genuine pass/fail smoke test: any error, any module missing from the checked list, a parse
-failure or a panic is a regression you introduced. `tests/pipeline.rs::stdlib_package_compiles`
-pins the same thing as a test.
+`cargo run -- compile std/core` prints `parsed 8 modules`, then lists all eight as checked, and
+**exits 0**. It is a genuine pass/fail smoke test: any error, any module missing from the
+checked list, a parse failure or a panic is a regression you introduced.
+`tests/pipeline.rs::stdlib_package_compiles` pins the same thing as a test. A bare `zelkova` or
+`cargo run` with no subcommand compiles nothing — it prints usage and exits non-zero, clap's
+default for a missing required subcommand.
 
 `cargo test` never loads a `.mjs` companion. A companion's checks belong to the package that
 ships it, under that package's own `tests/` root — `std/core/tests/Js/` holds the ones that

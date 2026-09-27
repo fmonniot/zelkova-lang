@@ -56,8 +56,9 @@ everything else. The operand to the right of an operator is still an `AppExpr`, 
 
 **Acceptance:** the four spellings above parse (the `case` one only once
 [LANG-21](lang-21.md) has landed too — say so if it has not), with tests in the parser's own
-test module asserting the grouping. `cargo run` still prints `parsed 8 modules` and lists all
-eight as checked. Two blocks in [`docs/spec/expressions.md`](../spec/expressions.md) go red —
+test module asserting the grouping. `cargo run -- compile std/core` still prints
+`parsed 8 modules` and lists all eight as checked. Two blocks in
+[`docs/spec/expressions.md`](../spec/expressions.md) go red —
 the `a - -b` block in *Prefix negation* and the `1 + if …` block in *`if … then … else`*, both
 tagged `expect=parse-error:UnexpectedToken` — and are retagged `expect=ok` with their
 `**Known gap:**` paragraphs deleted.

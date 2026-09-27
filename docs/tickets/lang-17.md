@@ -49,5 +49,5 @@ purpose so a new variant fails to compile rather than silently never matching.
 `tests/compiler/canonical.rs` for each of too-few and too-many. The `expect=ok` block in
 [`docs/spec/patterns.md`](../spec/patterns.md)'s *The arguments must be the ones it was
 declared with* section goes red, and is retagged `expect=canonical-error:<new variant>` with
-its `**Known gap:**` paragraph deleted. `cargo run` still prints `parsed 8 modules` and lists
-all eight as checked.
+its `**Known gap:**` paragraph deleted. `cargo run -- compile std/core` still prints
+`parsed 8 modules` and lists all eight as checked.

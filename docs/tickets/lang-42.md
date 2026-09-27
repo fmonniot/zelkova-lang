@@ -83,8 +83,9 @@ ticket to be the first pass over them and expect it to find more than it was loo
 error — the program `SPEC-11`'s chapter and BUG-20 both use as their worked example, and the
 single check this ticket exists for. `eq` applied to a function value is a type error rather
 than a runtime crash. Tests in `tests/typer.rs` for both, plus `tests/pipeline.rs` coverage
-that the real `std/core` modules still check. `cargo run` still prints `parsed 8 modules` and
-lists all eight as checked. `docs/tickets/bug-20.md` is deleted and its row tombstoned.
+that the real `std/core` modules still check. `cargo run -- compile std/core` still prints
+`parsed 8 modules` and lists all eight as checked. `docs/tickets/bug-20.md` is deleted and its
+row tombstoned.
 
 The blocks in `docs/spec/type-classes.md` showing a constrained standard-library signature go
 from `expect=unimplemented` to `expect=ok`, and their

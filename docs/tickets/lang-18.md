@@ -53,4 +53,5 @@ underlined asserts on `diagnostic.labels[..].range` rather than on the whole err
 for the within-one-pattern case and one for the across-parameters case. **Both** `expect=ok`
 blocks in [`docs/spec/patterns.md`](../spec/patterns.md)'s *A pattern binds each name once*
 section go red — one per example above — and are retagged
-`expect=canonical-error:<new variant>` with their `**Known gap:**` paragraphs deleted. `cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+`expect=canonical-error:<new variant>` with their `**Known gap:**` paragraphs deleted.
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.

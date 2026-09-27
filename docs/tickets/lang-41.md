@@ -50,7 +50,8 @@ deleting the variant and the spelling with it.
    passing to failing — an annotation of `Float` against an integer-literal body among them —
    and each is a case where the new behaviour is the specified one; check each rather than
    retagging in bulk.
-4. `cargo run` is the risk here, not the unit tests: `std/core/src/` is written against a
+4. `cargo run -- compile std/core` is the risk here, not the unit tests: `std/core/src/` is
+   written against a
    compiler that accepted an integer literal at `Float`. Any literal there that meant a
    `Float` needs a point. Expect this to be the bulk of the diff.
 
@@ -58,7 +59,8 @@ deleting the variant and the spelling with it.
 `x : Float` with a body of `1` is now an **error** — the reversal this ticket is for — and
 `1.0` checks. `x : Char` with a body of `1` is an error whose message contains no spelling the
 grammar would accept as a type variable, which is the assertion ERR-13 asked for, surviving
-into this ticket. `cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+into this ticket. `cargo run -- compile std/core` still prints `parsed 8 modules` and lists all
+eight as checked.
 
 **This gap has no red test behind it.** No block demonstrates the acceptance, so the
 `**Known gap:**` paragraph in

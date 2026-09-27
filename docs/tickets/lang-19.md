@@ -54,7 +54,8 @@ hand as part of this ticket; nothing will fail to remind you.
 **Acceptance:** the example above is rejected with `Error::NonExhaustiveMatch`, pointing at
 the `case`, with tests in `tests/typer.rs` (which reaches `check_module`, and so the phase)
 covering a missing variant, a `case` made exhaustive by a wildcard, and a `case` over a
-literal with no catch-all. `cargo run` still prints `parsed 8 modules` and lists all eight as
-checked — `std/core/src/` is the real test of whether the algorithm is right. The
+literal with no catch-all. `cargo run -- compile std/core` still prints `parsed 8 modules` and
+lists all eight as checked — `std/core/src/` is the real test of whether the algorithm is
+right. The
 `**Known gap:**` paragraph in [`docs/spec/patterns.md`](../spec/patterns.md)'s *A pattern that
 can fail, and one that cannot* section is deleted.

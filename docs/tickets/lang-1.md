@@ -45,6 +45,6 @@ does not satisfy one and is not the type to write the acceptance case against. T
 words* section goes red on the parse-error pin and is retagged `expect=ok`, its paragraph
 deleted.
 
-`cargo run` must still print `parsed 8 modules` and exit 0. Grep `std/core/src/` for `true`
-and `false` first — `Basics.zel` uses `True`/`False` and should be unaffected, but the
-`.ignored` modules are not checked and may hide the lowercase spelling.
+`cargo run -- compile std/core` must still print `parsed 8 modules` and exit 0. Grep
+`std/core/src/` for `true` and `false` first — `Basics.zel` uses `True`/`False` and should be
+unaffected, but the `.ignored` modules are not checked and may hide the lowercase spelling.

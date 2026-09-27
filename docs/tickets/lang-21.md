@@ -52,7 +52,8 @@ be the end of the *layout* token; whatever closes the block early must keep that
 true.
 
 **Acceptance:** the three spellings above parse, with tests in the parser's own test module.
-`cargo run` still prints `parsed 8 modules` and lists all eight as checked. The
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
+The
 `expect=parse-error:UnexpectedToken` block in
 [`docs/spec/expressions.md`](../spec/expressions.md)'s *`case … of`* section goes red — that
 pin's whole job — and is retagged `expect=ok` with its `**Known gap:**` paragraph deleted.

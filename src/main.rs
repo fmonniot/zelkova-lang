@@ -1,10 +1,37 @@
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
+
 use zelkova_lang::compiler;
+
+/// `zelkova` — the compiler's command line.
+#[derive(Parser)]
+#[command(name = "zelkova")]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Compile a package: the directory holding its `zelkova.toml`.
+    Compile {
+        /// The package root. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
+}
 
 fn main() {
     env_logger::init();
 
-    // Will need more love than that :p
-    if let Err(err) = compiler::compile_package("std/core".as_ref()) {
+    let cli = Cli::parse();
+
+    let result = match cli.command {
+        Command::Compile { dir } => compiler::compile_package(&dir),
+    };
+
+    if let Err(err) = result {
         // `compile_package` renders a diagnostic for every error it accumulated and
         // hands them back as `Many`, so re-printing those here would only repeat what
         // the user just read. Errors raised before the file database exists — the

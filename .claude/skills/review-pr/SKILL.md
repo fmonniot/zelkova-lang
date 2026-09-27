@@ -204,8 +204,9 @@ Single message, multiple `Agent` calls. For each:
 >   the fix, would this test go red? An assertion of `is_err()` where the point was *which*
 >   error is raised, an assertion that holds trivially because of ordering elsewhere, one the
 >   type system already guarantees. This is the highest-yield question in the whole review.
-> - **Regressions in `cargo run`.** `CLAUDE.md` records the expected baseline output. A diff
->   that changes it without the ticket asking is a regression whatever the tests say.
+> - **Regressions in `cargo run -- compile std/core`.** `CLAUDE.md` records the expected baseline
+>   output. A diff that changes it without the ticket asking is a regression whatever the tests
+>   say.
 > - **Comments that describe something other than what the code does.** Only raise wording when
 >   the comment states something *false*; imprecision is a `[note]` at most.
 >

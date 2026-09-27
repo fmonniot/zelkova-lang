@@ -69,5 +69,5 @@ paragraphs deleted. The **Not implemented:** paragraph in
 [`docs/spec/name-resolution.md`](../spec/name-resolution.md)'s *Scopes* section goes with them,
 and that chapter gains a block showing a lambda parameter shadowing a top-level name. A parser
 test pins that `\x y -> e` builds the same tree as `\x -> \y -> e`, and a `tests/typer.rs`
-test pins that a lambda passed as an argument checks. `cargo run` still prints
+test pins that a lambda passed as an argument checks. `cargo run -- compile std/core` still prints
 `parsed 8 modules` and lists all eight as checked.

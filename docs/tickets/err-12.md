@@ -63,8 +63,8 @@ line 1 — not on the `f` on line 3. Assert on the variant and on `labels[..].ra
 `is_err()`; `NodeSpan`'s `PartialEq` always returns `true`, so a whole-value assertion proves
 nothing about position.
 
-`cargo run` must still print `parsed 8 modules` and exit 0 — every module under
-`std/core/src/` already starts at column 1, so this rule costs the stdlib nothing.
+`cargo run -- compile std/core` must still print `parsed 8 modules` and exit 0 — every module
+under `std/core/src/` already starts at column 1, so this rule costs the stdlib nothing.
 
 Once this lands, `docs/spec/layout.md` keeps its `expect=parse-error` block for the rule (which
 stays green across the fix) and gains a sentence naming the message the reader will see.

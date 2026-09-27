@@ -233,14 +233,14 @@ fix, only its meaning.
 
 ```sh
 cargo test                     # includes --test spec
-cargo run                      # must print "parsed 8 modules", list all eight, exit 0
+cargo run -- compile std/core  # must print "parsed 8 modules", list all eight, exit 0
 cargo fmt --all --check
 cargo clippy --all-features
 ```
 
-`cargo run` matters even for a docs-only change: it is the smoke test, and a chapter that
-needed a `tests/` helper may have touched more than intended. CI does not gate on fmt or
-clippy — run both locally.
+`cargo run -- compile std/core` matters even for a docs-only change: it is the smoke test, and
+a chapter that needed a `tests/` helper may have touched more than intended. CI does not gate
+on fmt or clippy — run both locally.
 
 Then read the chapter twice more, since nothing tests either pass.
 

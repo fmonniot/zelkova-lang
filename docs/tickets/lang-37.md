@@ -111,8 +111,8 @@ constrained signature inside a `module javascript` facade is a different one —
 in `tests/compiler/canonical.rs` asserting the variant, and both with a `diagnostic.labels[..]`
 assertion pinning the caret rather than an `assert_eq!` on the whole value (`NodeSpan`'s
 `PartialEq` is blind — `CLAUDE.md`, *An error has to describe itself*). `infix left 5 (=>) = f`
-becomes a parse error, with a test recording that deliberately. `cargo run` still prints
-`parsed 8 modules` and lists all eight as checked.
+becomes a parse error, with a test recording that deliberately.
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
 
 In [`docs/spec/type-classes.md`](../spec/type-classes.md), the `expect=ok` block under *The words
 this reserves* showing `(=>)` declared as a user infix goes red and is retagged with its

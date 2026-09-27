@@ -54,7 +54,8 @@ with a secondary label on the unannotated function declaration, mirroring `BUG-1
 naming `add` — a canonicalization test. A `tests/pipeline.rs` test with two modules, the
 second using the operator, asserts the error lands on the *exporting* module rather than the
 importer failing to resolve `(+)`. A module keeping the infix and its function private still
-compiles. `cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+compiles. `cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight
+as checked.
 
 **Related:** found while closing [`BUG-14`](../tickets/README.md) (PR #198), which fixed the
 same defect for a value reached directly through `do_exports`'s `Lower`/`Open` handling; this

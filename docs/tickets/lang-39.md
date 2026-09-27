@@ -103,7 +103,7 @@ helpers in `tests/support/mod.rs`:
 - `instance Comparable Colour` without `instance Eq Colour` is the superclass error.
 - A class member is callable by its bare name in an importing module.
 
-`cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
 
 **The orphan block in [`docs/spec/type-classes.md`](../spec/type-classes.md) needs retagging and
 will not go red to remind you.** It sits under *Where an instance may be declared*, is tagged

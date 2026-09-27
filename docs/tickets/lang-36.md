@@ -63,5 +63,5 @@ deleted by hand as part of this ticket; nothing will fail to remind you.
 short-circuiting, a target-determined `Int`, or a runtime crash on comparing functions. The
 `**Known gap:**` paragraph in
 [`docs/spec/evaluation-semantics.md`](../spec/evaluation-semantics.md)'s *Nothing
-short-circuits* is deleted. `cargo run` still prints `parsed 8 modules` and lists all eight as
-checked.
+short-circuits* is deleted. `cargo run -- compile std/core` still prints `parsed 8 modules` and
+lists all eight as checked.

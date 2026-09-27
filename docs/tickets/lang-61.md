@@ -65,5 +65,5 @@ it lands.
 which pins today's refusal — is replaced by a test that pins the fetch. A `zelkova.lock` is
 written beside the fixture's manifest naming what the `git` entry resolved to, and a second
 build reads it rather than resolving again. `Error::UnsupportedSource` has no constructor left
-and goes with it. `cargo run` must still print `parsed 8 modules`, list all eight as checked,
-and exit 0.
+and goes with it. `cargo run -- compile std/core` must still print `parsed 8 modules`, list all
+eight as checked, and exit 0.
