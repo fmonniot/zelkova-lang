@@ -49,35 +49,25 @@ pub fn parse_source(source: &str) -> parser::Module {
 pub fn canonicalize_standalone(source: &str) -> Result<canonical::Module, Vec<canonical::Error>> {
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
-    canonical::canonicalize(&test_package(), &interfaces, &parsed, false)
+    canonical::canonicalize(&test_package(), &interfaces, &parsed)
 }
 
-/// Canonicalize `source` as a module of `zelkova-core`, with no interfaces available —
-/// what a test declaring one of [the scalars](../../docs/spec/types.md#scalar-types)
-/// needs, since a scalar is declared in `zelkova-core` and nowhere else.
-pub fn canonicalize_core_standalone(
-    source: &str,
-) -> Result<canonical::Module, Vec<canonical::Error>> {
-    let parsed = parse_source(source);
-    let interfaces = HashMap::new();
-    canonical::canonicalize(&PackageName::core(), &interfaces, &parsed, false)
-}
-
-/// Canonicalize `source` as a module of a package exempt from [the default
-/// imports](../../docs/spec/modules.md#the-default-imports) — `zelkova-core`'s
-/// own shape, `LANG-57`'s `package_declares_a_default: true` — with no
-/// interfaces available at all.
+/// Canonicalize `source` as a module of `zelkova-core` — the one package exempt
+/// from [the default imports](../../docs/spec/modules.md#the-default-imports)
+/// (`DEC-17`) — with no interfaces available at all.
 ///
-/// The empty interface map is the point: it is what tells apart a module that
-/// resolves `Int`/`Float`/`Bool` by seeding (`LANG-58`) from one that resolves
-/// them by importing `Basics`, since the second would have nothing here to
-/// import from.
+/// The empty interface map is the point, for two kinds of caller: a test
+/// declaring one of [the scalars](../../docs/spec/types.md#scalar-types) needs no
+/// interface, since a scalar is declared in `zelkova-core` and nowhere else; and a
+/// test of the scalar *seeding* (`LANG-58`) needs the map empty to tell a module
+/// that resolves `Int`/`Float`/`Bool` by seeding apart from one that resolves them
+/// by importing `Basics`, since the second would have nothing here to import from.
 pub fn canonicalize_exempt_package(
     source: &str,
 ) -> Result<canonical::Module, Vec<canonical::Error>> {
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
-    canonical::canonicalize(&test_package(), &interfaces, &parsed, true)
+    canonical::canonicalize(&PackageName::core(), &interfaces, &parsed)
 }
 
 pub fn canonicalize_with_interfaces(
@@ -85,7 +75,7 @@ pub fn canonicalize_with_interfaces(
     interfaces: &HashMap<Name, Interface>,
 ) -> Result<canonical::Module, Vec<canonical::Error>> {
     let parsed = parse_source(source);
-    canonical::canonicalize(&test_package(), interfaces, &parsed, false)
+    canonical::canonicalize(&test_package(), interfaces, &parsed)
 }
 
 /// Build a minimal Maybe interface for use in tests that need it.

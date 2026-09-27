@@ -1,0 +1,14 @@
+# An ordinary application with its own `src/List.zel` and `zelkova-core` among its
+# dependencies. `List` is reserved for `zelkova-core` whether or not core is in the
+# build at all (`package_reserved_list_no_core`'s point) and whether or not core
+# happens to publish that module yet — real `std/core` does not compile `List` today
+# (`.ignored`), so before this reservation an ordinary application naming its own
+# `List` collided with nothing and was silently taken for core-shaped instead.
+name = "package-reserved-list-with-core"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../dep_core"
+
+[test-dependencies]

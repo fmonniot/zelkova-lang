@@ -32,13 +32,6 @@ pub struct ModuleWalker<'a> {
     /// The list of modules to process. We loose the barrier orders
     /// so we can't really process them in parallel at the moment.
     modules: Vec<&'a Module>,
-    /// Whether the package these modules belong to declares one of the eight
-    /// default imports ([`default_imports::declares_a_default`](crate::compiler::default_imports::declares_a_default)),
-    /// asked once of the package and used for both the import graph
-    /// (`add_default_import_edges`) and every `check` call `check_in_order` makes, so
-    /// `implicit_imports` is asked the same question rather than each module
-    /// recomputing it from a module list it never sees.
-    declares_a_default: bool,
 }
 
 impl<'a> std::fmt::Debug for ModuleWalker<'a> {
@@ -343,15 +336,15 @@ fn build_cycle(
 /// without these edges whether `1 + 2` resolved would come down to the order the
 /// source files happened to load in.
 ///
-/// `package_declares_a_default` is the package's own answer, taken from every module of
-/// both its source roots: a package that declares one of the eight receives none of
-/// them, and `names` here is one root's worth of modules rather than the package's.
+/// `is_core` is `package.is_core()`, the package's own answer — a property of the
+/// package's name rather than of `names`, which here is only one root's worth of
+/// modules.
 fn add_default_import_edges(
     graph: &mut DiGraph<&Module, ()>,
     names: &HashMap<&Name, NodeIndex>,
-    package_declares_a_default: bool,
+    is_core: bool,
 ) {
-    if package_declares_a_default {
+    if is_core {
         return;
     }
 
@@ -396,24 +389,19 @@ impl<'a> ModuleWalker<'a> {
     pub fn new(
         modules: &'a [Module],
         module_files: &HashMap<Name, SourceFileId>,
+        package: &crate::compiler::PackageName,
     ) -> Result<ModuleWalker<'a>, Error> {
-        // Whether the package declares a default is a question about the package, and
-        // this is the answer for a caller whose `modules` are the whole of one.
-        let declares_a_default =
-            crate::compiler::default_imports::declares_a_default(modules.iter().map(|m| &m.name));
-
-        ModuleWalker::new_for_root(modules, module_files, declares_a_default)
+        ModuleWalker::new_for_root(modules, module_files, package)
     }
 
     /// A walker over the modules of *one* of a package's two source roots.
     ///
     /// A package has a `src/` and a `tests/`, and each is walked and checked on its own,
-    /// so the modules handed here are half a package and cannot answer a question about
-    /// the whole of one. `package_declares_a_default` is that question — whether this
-    /// package declares one of the eight [default
-    /// imports](crate::compiler::default_imports) and so receives none of them — asked
-    /// once by [`compile_package`](crate::compiler::compile_package) over both roots,
-    /// which is the only place that has seen both.
+    /// but whether `package` is exempt from the default imports
+    /// ([`PackageName::is_core`](crate::compiler::PackageName::is_core)) does not depend
+    /// on which root — or which modules — either one happens to hold, so the two roots
+    /// of one package always get the same answer without either walker having to be
+    /// told the other's modules.
     ///
     /// The import graph is built from `modules` alone either way. An import naming a
     /// module of the other root resolves through an
@@ -422,7 +410,7 @@ impl<'a> ModuleWalker<'a> {
     pub fn new_for_root(
         modules: &'a [Module],
         module_files: &HashMap<Name, SourceFileId>,
-        package_declares_a_default: bool,
+        package: &crate::compiler::PackageName,
     ) -> Result<ModuleWalker<'a>, Error> {
         let mut graph = DiGraph::new();
 
@@ -450,7 +438,7 @@ impl<'a> ModuleWalker<'a> {
             }
         }
 
-        add_default_import_edges(&mut graph, &names, package_declares_a_default);
+        add_default_import_edges(&mut graph, &names, package.is_core());
 
         // Find the strongly connected graphs (scc), if there are more than one node per scc
         // it means there is a circular dependency.
@@ -461,10 +449,7 @@ impl<'a> ModuleWalker<'a> {
         if cycles.is_empty() {
             let modules = deps.into_iter().flatten().map(|&idx| graph[idx]).collect();
 
-            Ok(ModuleWalker {
-                modules,
-                declares_a_default: package_declares_a_default,
-            })
+            Ok(ModuleWalker { modules })
         } else {
             // `partition` above already established every component here has more
             // than one member, so `first()` is always `Some`; taking the start node
@@ -508,11 +493,10 @@ impl<'a> ModuleWalker<'a> {
     /// since only a module that already parsed reaches here — simply leaves that
     /// interface's `file` as `None`, same as a hand-built one.
     ///
-    /// `check` takes `self.declares_a_default` as its last argument — the same
-    /// package-level answer `add_default_import_edges` used to build the import
-    /// graph this walker holds — so every module reaches `implicit_imports` with
-    /// the answer for its own package rather than recomputing it from a module
-    /// list a phase never sees.
+    /// `check` takes `package` and nothing beyond it to say whether this build is
+    /// exempt from the default imports — `PackageName::is_core` is a function of
+    /// `package` alone, so a checker derives its own answer from the same package
+    /// this walker was built from rather than being handed one separately.
     #[allow(clippy::type_complexity)]
     pub fn check_in_order<M: crate::compiler::Checked, E>(
         &self,
@@ -523,14 +507,13 @@ impl<'a> ModuleWalker<'a> {
             package: &crate::compiler::PackageName,
             interfaces: &HashMap<Name, crate::compiler::Interface>,
             source: &crate::compiler::parser::Module,
-            declares_a_default: bool,
         ) -> Result<M, E>,
     ) -> (Vec<M>, Vec<E>) {
         let mut modules = Vec::new();
         let mut errors = Vec::new();
 
         for module in self.modules.iter() {
-            match check(package, interfaces, module, self.declares_a_default) {
+            match check(package, interfaces, module) {
                 Ok(m) => {
                     // Once we have successfuly checked a module, we can add it to the available interfaces
                     // for the following modules.
@@ -588,6 +571,13 @@ mod tests {
         Name::new(s)
     }
 
+    /// A package other than `zelkova-core`, for a `ModuleWalker` whose modules are
+    /// not shaped like the standard library — every fixture below except the ones
+    /// that name `Basics` on purpose.
+    fn ordinary_package() -> PackageName {
+        PackageName::new("author-project").unwrap()
+    }
+
     /// A `CycleEdge` matching what `module()` above produces: no span, since
     /// there is no source text behind a hand-built import, and no file, since
     /// these tests pass an empty `module_files` map to `ModuleWalker::new`.
@@ -621,7 +611,6 @@ mod tests {
         package: &PackageName,
         _interfaces: &HashMap<Name, Interface>,
         source: &parser::Module,
-        _declares_a_default: bool,
     ) -> Result<CheckedModule, ()> {
         Ok(dummy_module(package, source))
     }
@@ -637,7 +626,6 @@ mod tests {
         package: &PackageName,
         _interfaces: &HashMap<Name, Interface>,
         source: &parser::Module,
-        _declares_a_default: bool,
     ) -> Result<CheckedModule, Name> {
         if source.name.as_str() == "b" {
             Err(source.name.clone())
@@ -647,7 +635,7 @@ mod tests {
     }
 
     fn assert_walker_processed_order(walker: ModuleWalker, expected: Vec<&str>) {
-        let name = crate::compiler::PackageName::new("author-project").unwrap();
+        let name = ordinary_package();
         let mut ifaces = HashMap::new();
         let module_files = HashMap::new();
         let (modules, errors): (Vec<CheckedModule>, Vec<()>) =
@@ -676,7 +664,7 @@ mod tests {
         let modules = vec![a, b, c, d];
         let module_files = HashMap::new();
 
-        let walker = ModuleWalker::new(&modules, &module_files);
+        let walker = ModuleWalker::new(&modules, &module_files, &ordinary_package());
 
         assert_walker_processed_order(walker.expect("no errors here"), vec!["a", "b", "c", "d"])
     }
@@ -751,7 +739,7 @@ mod tests {
         let modules = vec![a, b, c, d, e, f];
         let module_files = HashMap::new();
 
-        let walker = ModuleWalker::new(&modules, &module_files);
+        let walker = ModuleWalker::new(&modules, &module_files, &ordinary_package());
 
         let res = walker.expect_err("I'm expecting an error");
 
@@ -801,7 +789,7 @@ mod tests {
             let names: Vec<&str> = order.iter().map(|&i| specs[i].0).collect();
             let module_files = HashMap::new();
 
-            let res = ModuleWalker::new(&modules, &module_files)
+            let res = ModuleWalker::new(&modules, &module_files, &ordinary_package())
                 .expect_err("every fixture here has a cycle in it");
 
             let Error::CycleDetected(cycles) = &res;
@@ -951,9 +939,9 @@ mod tests {
     }
 
     /// `LANG-57`: `Basics` importing the `Js.Basics` facade — `std/core`'s own
-    /// shape — is not a dependency cycle. A package containing `Basics` adds no
-    /// implicit edges at all (below), so the only edge here is the written one,
-    /// and `Js.Basics` is checked first because `Basics` actually imports it.
+    /// shape — is not a dependency cycle. `zelkova-core` adds no implicit edges at
+    /// all (below), so the only edge here is the written one, and `Js.Basics` is
+    /// checked first because `Basics` actually imports it.
     #[test]
     fn a_facade_a_default_import_is_built_from_is_not_a_cycle() {
         let basics = module("Basics", vec!["Js.Basics"]);
@@ -962,32 +950,35 @@ mod tests {
         let modules = vec![basics, js_basics];
         let module_files = HashMap::new();
 
-        let walker = ModuleWalker::new(&modules, &module_files)
+        let walker = ModuleWalker::new(&modules, &module_files, &PackageName::core())
             .expect("the standard library's own shape is not a cycle");
 
         assert_walker_processed_order(walker, vec!["Js.Basics", "Basics"]);
     }
 
-    /// `LANG-57`: a package containing a module named after one of the eight adds
-    /// no implicit edges at all — not even one that would otherwise be perfectly
-    /// safe to add — while an ordinary package naming none of them is unaffected
-    /// (which for `add_default_import_edges` has always meant "still no edges,
-    /// because none of the eight is ever a node in its graph").
+    /// `LANG-57`: `zelkova-core` adds no implicit edges at all — not even one that
+    /// would otherwise be perfectly safe to add — while an ordinary package is
+    /// unaffected (which for `add_default_import_edges` has always meant "still no
+    /// edges, because none of the eight is ever a node in its graph").
     ///
-    /// Mutation-checked by dropping the `declares_a_default` guard at the top of
+    /// Mutation-checked by dropping the `is_core` guard at the top of
     /// `add_default_import_edges`: the first assertion then finds the edge
     /// `Widget -> Basics` that guard exists to suppress.
     #[test]
-    fn a_package_declaring_a_default_gets_no_implicit_edges() {
-        let core_shaped = implicit_edges(&["Widget", "Basics"], &[vec![], vec![]]);
+    fn a_core_package_gets_no_implicit_edges() {
+        let core_shaped = implicit_edges(
+            &PackageName::core(),
+            &["Widget", "Basics"],
+            &[vec![], vec![]],
+        );
         assert_eq!(
             core_shaped,
             Vec::new(),
-            "a package containing `Basics` must add no implicit edges, got {:?}",
+            "`zelkova-core` must add no implicit edges, got {:?}",
             core_shaped
         );
 
-        let ordinary = implicit_edges(&["Widget", "Aux"], &[vec![], vec![]]);
+        let ordinary = implicit_edges(&ordinary_package(), &["Widget", "Aux"], &[vec![], vec![]]);
         assert_eq!(
             ordinary,
             Vec::new(),
@@ -1023,7 +1014,7 @@ mod tests {
         let modules = vec![a, c, b, d, e, f, g, h, i];
         let module_files = HashMap::new();
 
-        let walker = ModuleWalker::new(&modules, &module_files);
+        let walker = ModuleWalker::new(&modules, &module_files, &ordinary_package());
 
         assert_walker_processed_order(
             walker.expect("no errors here"),
@@ -1051,9 +1042,9 @@ mod tests {
 
         let modules = vec![a, b, c];
         let module_files = HashMap::new();
-        let walker = ModuleWalker::new(&modules, &module_files).expect("no errors here");
+        let name = ordinary_package();
+        let walker = ModuleWalker::new(&modules, &module_files, &name).expect("no errors here");
 
-        let name = crate::compiler::PackageName::new("author-project").unwrap();
         let mut ifaces = HashMap::new();
         let (successes, errors) =
             walker.check_in_order(&name, &mut ifaces, &module_files, dummy_check_fails_for_b);
@@ -1077,7 +1068,11 @@ mod tests {
     ///
     /// Slots rather than names, so that two namings of one package shape produce
     /// directly comparable answers.
-    fn implicit_edges(names: &[&str], written: &[Vec<usize>]) -> Vec<(usize, usize)> {
+    fn implicit_edges(
+        package: &PackageName,
+        names: &[&str],
+        written: &[Vec<usize>],
+    ) -> Vec<(usize, usize)> {
         let modules: Vec<Module> = names
             .iter()
             .enumerate()
@@ -1103,11 +1098,7 @@ mod tests {
         }
 
         let before = graph.edge_count();
-        // The same question `ModuleWalker::new` asks of a whole package: these names
-        // are the package here, so they are what it is asked of.
-        let declares_a_default =
-            crate::compiler::default_imports::declares_a_default(idx_of.keys().copied());
-        add_default_import_edges(&mut graph, &idx_of, declares_a_default);
+        add_default_import_edges(&mut graph, &idx_of, package.is_core());
 
         let mut added: Vec<(usize, usize)> = graph
             .edge_indices()

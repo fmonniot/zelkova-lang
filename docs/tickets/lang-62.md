@@ -54,8 +54,12 @@ when it lands.
 **Acceptance:** a `tests/pipeline.rs` test over a fixture package whose manifest has an **empty**
 `dependencies` and whose module names `Int` — which fails today as a type that resolves to
 nothing — compiling green. `tests/fixtures/package_core_basics_collision` and
-`a_dependencys_basics_collides_with_cores` must stay green: a package of its own declaring
-`Basics` is still a collision, and now without anyone having had to write core down.
+`a_dependencys_bitwise_collides_with_cores` must stay green: a package of its own declaring
+`Bitwise` is still a collision, and now without anyone having had to write core down. (The
+fixture collided on `Basics` until [`SPEC-34`](README.md) made that name, and the other seven
+default imports', reserved for `zelkova-core` ahead of this ticket — rejected before a build
+ever reaches a collision check — so the fixture was retargeted at `Bitwise`, a name `LANG-62`
+still owns.)
 `tests/fixtures/dep_core_fork` and `core_is_unwrapped_whatever_its_entry_says` pin the
 unwrapping half and must stay green too. `cargo run` must still print `parsed 8 modules`, list
 all eight as checked, and exit 0 — `std/core` is compiled as the root package there, and step 3

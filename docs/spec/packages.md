@@ -316,10 +316,17 @@ It is seen unwrapped, in every package. So `Basics` is `Basics` and `List` is `L
 core's public modules are therefore taken in every package — a module of your own called
 `List` would be [a second module answering to one name](#two-modules-under-one-name-is-an-error).
 
+The eight [default imports'](modules.md#the-default-imports) names are reserved for
+`zelkova-core` outright: no other package may declare a module under one of them, whether or
+not `zelkova-core` is among its dependencies and whether or not `zelkova-core` has published
+that module. Declaring one is rejected when the build is resolved, before any module of the
+package is compiled.
+
 **Not implemented:** the compiler carries no copy of `zelkova-core`, so a package that needs
-one writes it in `dependencies` like any other and the names above are taken only in a package
-that does ([`docs/tickets/lang-62.md`](../tickets/lang-62.md)). The rest of the rule holds: a
-package of that name is seen unwrapped whatever the entry naming it says.
+one writes it in `dependencies` like any other, and core's other module names are taken only
+in a package that does ([`docs/tickets/lang-62.md`](../tickets/lang-62.md)) — the eight default
+imports' names are the exception, reserved in every package regardless. The rest of the rule
+holds: a package of that name is seen unwrapped whatever the entry naming it says.
 
 ## Imports across a package boundary
 

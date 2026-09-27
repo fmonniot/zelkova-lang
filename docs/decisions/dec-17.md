@@ -1,10 +1,13 @@
-# DEC-17 · The default imports are decided by package, not by the import graph: three decisions
+# DEC-17 · The default imports are decided by package, not by the import graph: four decisions
 
-**Settled:** 2026-09-15, by the language owner (`SPEC-33`).
+**Settled:** 2026-09-15, by the language owner (`SPEC-33`); decision 4 settled 2026-09-26
+(`SPEC-34`).
 **Status:** live.
 **Where the rule lives:** [The default imports](../spec/modules.md#the-default-imports) for
-which modules receive the list, and [Scalar types](../spec/types.md#scalar-types) for the five
-names that arrive in its place.
+which modules receive the list, [Scalar types](../spec/types.md#scalar-types) for the five names
+that arrive in its place, and [`zelkova-core` is a dependency of every
+package](../spec/packages.md#zelkova-core-is-a-dependency-of-every-package) for decision 4's
+reservation.
 
 Something has to give when an import the compiler supplies would close a cycle. `Basics` cannot
 import `Basics`; `Maybe` and `Result` would import each other; a facade `Basics` is built from
@@ -42,8 +45,11 @@ package:
   package](../spec/packages.md#zelkova-core-is-a-dependency-of-every-package) and dependencies
   run one way, so no module outside it can be one the eight depend on.
 - [No other package may declare a module under one of their
-  names](../spec/packages.md#two-modules-under-one-name-is-an-error), so no other package can
-  manufacture the situation either.
+  names](../spec/packages.md#two-modules-under-one-name-is-an-error) is the spec's rule, so no
+  other package can manufacture the situation — true of the *language* from the day that rule
+  was settled, but not yet true of the *compiler* at the time this entry was written: decision 4
+  below is what makes the compiler enforce it for these eight, ahead of `LANG-62` doing the same
+  for the rest of `zelkova-core`'s names.
 
 So the rule was general and its instances were four modules of one package. The three decisions
 below make the scope the rule.
@@ -97,6 +103,33 @@ construction.
 Decision 4 of that entry is untouched: type names only, no constructors and no values, so a
 module reaching `Bool` this way still cannot write a `True`.
 
+## 4 — Only `zelkova-core` may declare the eight, so the exception is asked of the package's name
+
+Decision 1 made the exception `zelkova-core`, but the compiler answered *which package is that*
+by asking whether it holds a module of one of the eight names — a question about what a package
+happens to contain, not about which package it is. Two counter-examples follow from the gap
+between those two questions, both reachable the day this was written:
+
+- The compiler does not supply core (`LANG-62`), so a package that lists no dependency on it has
+  nothing to collide with. Such a package could declare its own `Basics`, be taken for
+  core-shaped on that account alone, and have core's five scalars seeded into every module of it
+  even though core was never in its build — `Int` and its own `Basics.Int` are then two distinct
+  types inside one package.
+- Core does not compile all eight yet — `List`, `Task`, `Char` and `String` are still `.ignored`.
+  An ordinary application that depends on core and holds its own `src/List.zel` collides with
+  nothing today, and was taken for core-shaped too: every module of it lost all eight default
+  imports for a name the user had every right to declare.
+
+Both trace to one gap: the exemption and the module-name collision it was supposed to coincide
+with are two different checks, and only the exemption ran. Closing it is one rule — **a package
+other than `zelkova-core` may not declare a module named after one of the eight**, reported at
+resolution, ahead of `LANG-62`'s wider version of the same rule and regardless of whether core is
+in the build or has published that module yet — which is what makes *is this package
+`zelkova-core`* a question with one honest answer, asked of the package's own name
+(`PackageName::is_core`) rather than of what it contains. Decisions 1 through 3 are then keyed on
+that answer directly: default-import suppression, the implicit graph edges, and scalar seeding
+all read `PackageName::is_core` and nothing else.
+
 ## What it was chosen over
 
 **Keeping the per-entry fixed point.** It is strictly more expressive — a module keeps the
@@ -118,10 +151,26 @@ theirs, get nothing. Cheap to explain and it goes stale the first time `Basics`'
 mode when they forget is a module silently receiving an import that closes a cycle. Decision 1
 is scoped by package membership, which nothing has to remember to update.
 
+**For decision 4: leave it.** The `src/List.zel` application above is the counter-example: a
+user who declared nothing wrong loses every default import because core has not ported `List`
+yet.
+
+**For decision 4: split the flag** — seed the scalars by package, but keep suppressing the
+default imports by module name. Fixes the package with no dependency on core, since seeding
+would then require being named `zelkova-core` outright, but leaves the `List.zel` application
+broken: suppression would still fire on the name alone, with or without core in the build.
+
+**For decision 4: key both halves on the package, without also reserving the names.** A non-core
+package could then still declare its own `Basics`, and a module of it named `Basics` would
+receive `import Basics` implicitly — the self-cycle decision 1 exists to avoid — because nothing
+stops the package from holding that name in the first place.
+
 ## What nothing checks
 
-The rule is unobservable outside `zelkova-core`, which is what makes it a good rule and also
-means no test of an ordinary package can pin it: a package that does not contain `Basics`
-behaved identically under all three options. What the tests hold instead is core's own sets —
-[`LANG-57`](../tickets/README.md) is the ticket that made the compiler decide this by package
-rather than one entry at a time.
+Decisions 1 through 3 are unobservable outside `zelkova-core`, which is what makes them a good
+rule and also means no test of an ordinary package can pin them: a package that does not contain
+`Basics` behaved identically under all three options considered for them. What the tests hold
+instead is core's own sets — [`LANG-57`](../tickets/README.md) is the ticket that made the
+compiler decide this by package rather than one entry at a time. Decision 4 is the opposite: it
+exists *because* an ordinary package can reach the exemption's premise, and every test that pins
+it is a package other than `zelkova-core`.

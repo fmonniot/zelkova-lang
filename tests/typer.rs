@@ -24,7 +24,7 @@ fn run(
 ) -> Result<zelkova_lang::compiler::CheckedModule, zelkova_lang::compiler::CompilationError> {
     let parsed = parse_source(source);
     let interfaces = HashMap::from([basics_interface(), char_interface()]);
-    check_module(&test_package(), &interfaces, &parsed, false)
+    check_module(&test_package(), &interfaces, &parsed)
 }
 
 /// What the typer solved for `source`, one entry per declaration.

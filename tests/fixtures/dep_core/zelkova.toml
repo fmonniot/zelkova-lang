@@ -1,6 +1,8 @@
-# Stands in for the real `std/core` at the size these fixtures need: one module
-# named `Basics`, declaring the scalar `Int`. It is named `zelkova-core` because
-# that name is what makes a dependency seen unwrapped in every package.
+# Stands in for the real `std/core` at the size these fixtures need: `Basics`,
+# declaring the scalar `Int`, and `Bitwise`, a module that is not one of the eight
+# default imports and so can still collide with a rival package's own module of that
+# name. It is named `zelkova-core` because that name is what makes a dependency seen
+# unwrapped in every package.
 name = "zelkova-core"
 version = "0.1.0"
 private-modules = []

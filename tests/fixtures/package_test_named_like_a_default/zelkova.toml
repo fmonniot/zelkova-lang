@@ -1,6 +1,8 @@
 # A package holding a `tests/List.zel` — a test module answering to one of the
-# eight default imports' names. It declares no default import under `src/`, so it
-# receives all eight, and the file under `tests/` must not change that.
+# eight default imports' names. That name is reserved for `zelkova-core` under
+# `tests/` as much as under `src/`, so a build that compiles this package's tests
+# rejects it; one that does not never reads `tests/` and so never reports it, and
+# `src/` still receives all eight either way.
 name = "package-test-named-like-a-default"
 version = "0.1.0"
 private-modules = []

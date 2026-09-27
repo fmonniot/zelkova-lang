@@ -23,7 +23,7 @@ use support::*;
 
 /// `source` checked against `interfaces`, insisting that it checks.
 fn checked_against(source: &str, interfaces: HashMap<Name, Interface>) -> CheckedModule {
-    check_module(&test_package(), &interfaces, &parse_source(source), false)
+    check_module(&test_package(), &interfaces, &parse_source(source))
         .unwrap_or_else(|error| panic!("expected the module to check, got {:?}", error))
 }
 
@@ -266,7 +266,6 @@ fn true_is_javascripts_true() {
             no =
               False
         "#}),
-        false,
     )
     .unwrap_or_else(|errors| panic!("the module should check: {:?}", errors));
     let text = emit(&module);

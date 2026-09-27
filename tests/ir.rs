@@ -31,7 +31,7 @@ fn ir_of(source: &str) -> ir::Module {
     let parsed = parse_source(source);
     let interfaces = HashMap::from([basics_interface(), char_interface(), maybe_interface()]);
 
-    check_module(&test_package(), &interfaces, &parsed, false)
+    check_module(&test_package(), &interfaces, &parsed)
         .unwrap_or_else(|error| panic!("expected the module to check, got {:?}", error))
         .ir
 }
@@ -737,9 +737,10 @@ fn every_module_of_the_standard_library_gets_an_ir() {
     assert_eq!(modules.len(), 8, "std/core holds eight modules");
 
     let module_files = HashMap::new();
-    let walker = ModuleWalker::new(&modules, &module_files).expect("no cycle in std/core");
-    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
     let package = PackageName::new("zelkova-core").unwrap();
+    let walker =
+        ModuleWalker::new(&modules, &module_files, &package).expect("no cycle in std/core");
+    let mut interfaces: HashMap<Name, Interface> = HashMap::new();
     let (checked, errors): (Vec<_>, Vec<_>) =
         walker.check_in_order(&package, &mut interfaces, &module_files, check_module);
 

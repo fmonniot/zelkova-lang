@@ -1,7 +1,11 @@
+# `zelkova-core` is what gives `Ops.zel` and `User.zel` their `Int` — the eight default
+# imports' names are reserved for `zelkova-core` alone, so this package cannot declare
+# its own `Basics` the way it once stood in for one.
 name = "package-imported-operator-ambiguity"
 version = "0.1.0"
 private-modules = []
 
-[dependencies]
+[dependencies.zelkova-core]
+path = "../dep_core"
 
 [test-dependencies]

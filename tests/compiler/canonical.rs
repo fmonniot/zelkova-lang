@@ -10,7 +10,7 @@ use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::name::QualName;
 use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::tuple::Tuple;
-use zelkova_lang::compiler::Interface;
+use zelkova_lang::compiler::{Interface, PackageName};
 
 #[path = "../support/mod.rs"]
 mod support;
@@ -2297,8 +2297,8 @@ fn opaque_scalar_int_is_not_a_value_in_basics() {
         useInt = Int
     "#};
 
-    let errors = canonicalize_core_standalone(source)
-        .expect_err("`Int` is a type, not a value, in `Basics`");
+    let errors =
+        canonicalize_exempt_package(source).expect_err("`Int` is a type, not a value, in `Basics`");
 
     match errors.as_slice() {
         [canonical::Error::VariantNotFound(name, _, _)] => {
@@ -2323,7 +2323,7 @@ fn opaque_scalar_int_rejects_a_body_other_than_itself() {
     "#};
 
     let errors =
-        canonicalize_core_standalone(source).expect_err("`Int`'s body must be exactly `Int`");
+        canonicalize_exempt_package(source).expect_err("`Int`'s body must be exactly `Int`");
 
     match errors.as_slice() {
         [canonical::Error::InvalidScalarDeclaration(name, span)] => {
@@ -2510,7 +2510,7 @@ fn a_written_basics_import_coexists_with_the_seed() {
     interfaces.insert(name, interface);
 
     let parsed = parse_source(source);
-    let module = canonical::canonicalize(&test_package(), &interfaces, &parsed, true)
+    let module = canonical::canonicalize(&PackageName::core(), &interfaces, &parsed)
         .expect("the written import should not collide with the seed");
 
     match module.values.get(&"compare".into()) {
