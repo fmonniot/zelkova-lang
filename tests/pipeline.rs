@@ -792,16 +792,28 @@ fn the_stdlib_build_writes_every_module_and_companion() {
     );
 }
 
-/// `GEN-13`: a build with a failing module writes no file at all — not the runtime, and
-/// not the modules that did check. `package_type_error`'s `Basics` checks and its
-/// `Mismatch` does not, so a build that wrote whatever checked would leave
-/// `Basics.mjs` behind.
+/// `GEN-13`: a build with a failing module writes no file at all — not the runtime, not
+/// a dependency's modules that checked cleanly, and not the failing package's own
+/// modules that did check.
+///
+/// `package_type_error` depends on `acme-widgets` (`dep_widgets`), which nothing here
+/// imports and which checks without error, so its modules *do* reach `checked` before
+/// the failure is known — unlike `package_type_error`'s own `Basics`, which never gets
+/// there at all: `compile_in_build` returns `None` for a package with any error (here,
+/// `Mismatch`'s), which drops every module of that package, `Basics` included, before
+/// `compile`'s `checked` ever sees them. So the two guards this test pins are not
+/// interchangeable with what keeps `Basics.mjs` off disk — that is `compile_in_build`'s
+/// `None`, not either guard in `compile` — and this fixture exists specifically so a
+/// dependency's modules are the ones the guards in `compile` are the *only* thing
+/// keeping off disk.
 ///
 /// Mutation-checked by emitting and writing whatever checked without looking at the
 /// errors — both `if errors.is_empty()` guards around the codegen step in `compile`
-/// replaced with `if true` — which writes the runtime and `Basics.mjs` and turns this
-/// red. Removing only the outer guard leaves it green, correctly: the inner one still
-/// sees the type error and writes nothing.
+/// replaced with `if true`. That writes the runtime and `acme-widgets`'s modules —
+/// `package_type_error`'s own `Basics.mjs` still does not appear, because it was never
+/// in `checked` to begin with — and turns this red. Removing only the outer guard
+/// leaves it green, correctly: the inner one still sees the type error and writes
+/// nothing.
 #[test]
 fn a_build_with_a_failing_module_writes_nothing() {
     let build_dir = fresh_build_dir("a_build_with_a_failing_module_writes_nothing");
