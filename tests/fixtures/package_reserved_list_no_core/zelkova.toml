@@ -1,0 +1,12 @@
+# An ordinary application with its own `src/List.zel` and no dependency at all — not
+# even on `zelkova-core`. `List` is reserved for `zelkova-core` regardless: the
+# compiler does not supply core (`LANG-62`), so a package that names no dependency
+# has nothing to collide with, and the old module-name-based exemption would have
+# taken this package for core-shaped on that account alone.
+name = "package-reserved-list-no-core"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

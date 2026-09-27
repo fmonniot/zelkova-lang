@@ -156,13 +156,19 @@ fn parse(source: &str) -> Result<parser::Module, parser::Error> {
 /// The package a block or group declaring `declared` is compiled as.
 ///
 /// One declaring a module the eight default imports name is `zelkova-core` — the package
-/// those imports belong to, which is also what [`stdlib_interfaces`] and the
-/// `declares_a_default` flag already take it for. That is what makes a chapter's `module
-/// Basics` declaring `type Int = …` the declaration of the scalar `Int`, since a scalar is
-/// declared in `zelkova-core` and in no other package. Every other block is a module of
-/// [`test_package`].
+/// those imports belong to, which is also what [`stdlib_interfaces`] already takes it for.
+/// That is what makes a chapter's `module Basics` declaring `type Int = …` the declaration
+/// of the scalar `Int`, since a scalar is declared in `zelkova-core` and in no other
+/// package. Every other block is a module of [`test_package`].
+///
+/// This harness drives `canonicalize` and `check_in_order` directly rather than through
+/// `resolve::visible_modules`, so a chapter naming one of the eight is simply compiled as
+/// core and never goes through the reservation that rejects the same name in a real build.
 fn package_of(declared: &[Name]) -> PackageName {
-    if zelkova_lang::compiler::default_imports::declares_a_default(declared) {
+    if declared
+        .iter()
+        .any(zelkova_lang::compiler::default_imports::is_default)
+    {
         PackageName::core()
     } else {
         test_package()
@@ -176,12 +182,7 @@ fn canonicalize(
     interfaces: &HashMap<Name, Interface>,
 ) -> Result<canonical::Module, Vec<canonical::Error>> {
     let declared = std::slice::from_ref(&module.name);
-    canonical::canonicalize(
-        &package_of(declared),
-        interfaces,
-        module,
-        zelkova_lang::compiler::default_imports::declares_a_default(declared),
-    )
+    canonical::canonicalize(&package_of(declared), interfaces, module)
 }
 
 /// The interfaces a lone block is compiled against: [`stdlib_interfaces`] for a
@@ -580,9 +581,8 @@ fn canonicalize_tagged(
     package: &zelkova_lang::compiler::PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
-    declares_a_default: bool,
 ) -> Result<canonical::Module, (Name, Vec<canonical::Error>)> {
-    canonical::canonicalize(package, interfaces, source, declares_a_default)
+    canonical::canonicalize(package, interfaces, source)
         .map_err(|errors| (source.name.clone(), errors))
 }
 
@@ -680,8 +680,11 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
     // an `Interface` built here carries `file: None`, and a cross-module label falls
     // back on the module under check the way it did before `ERR-5`. Nothing the
     // harness asserts on depends on that.
+    let declared: Vec<Name> = modules.iter().map(|m| m.name.clone()).collect();
+    let package = package_of(&declared);
+
     let module_files = HashMap::new();
-    let walker = match ModuleWalker::new(&modules, &module_files) {
+    let walker = match ModuleWalker::new(&modules, &module_files, &package) {
         Ok(walker) => walker,
         Err(err) => {
             return blocks
@@ -700,10 +703,9 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
         }
     };
 
-    let declared: Vec<Name> = modules.iter().map(|m| m.name.clone()).collect();
     let mut interfaces = stdlib_interfaces(&declared);
     let (checked, failures) = walker.check_in_order(
-        &package_of(&declared),
+        &package,
         &mut interfaces,
         &module_files,
         canonicalize_tagged,

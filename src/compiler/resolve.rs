@@ -44,6 +44,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use super::default_imports;
 use super::manifest::{Manifest, ManifestError, Source, Version, MANIFEST_FILE_NAME};
 use super::name::Name;
 use super::{PackageName, PhaseError};
@@ -238,6 +239,22 @@ pub enum Error {
         first: ModuleOrigin,
         second: ModuleOrigin,
     },
+    /// A package other than `zelkova-core` declares a local module named after one
+    /// of [the eight default imports](default_imports::DEFAULT_IMPORTS) —
+    /// `default_imports::is_default` — under either source root.
+    ///
+    /// Reported when the build is resolved, before any module of the package is
+    /// compiled, the same as [`ModuleNameCollision`](Error::ModuleNameCollision):
+    /// this is what makes [`DEC-17`](../../../docs/decisions/dec-17.md)'s premise
+    /// true rather than assumed, ahead of `LANG-62` giving the rest of
+    /// `zelkova-core`'s module names the same protection. The module is reported
+    /// and not claimed, so a build that also contains `zelkova-core` does not
+    /// additionally report a [`ModuleNameCollision`](Error::ModuleNameCollision)
+    /// for the same name.
+    ReservedModuleName {
+        package: PackageName,
+        module: ModuleOrigin,
+    },
 }
 
 impl PhaseError for Error {
@@ -296,6 +313,10 @@ impl PhaseError for Error {
                 "`{}` was not compiled, because its dependency `{}` was not",
                 package, dependency
             ),
+            Error::ReservedModuleName { package, module } => format!(
+                "`{}` is reserved for `{}`, and `{}` declares a module of that name",
+                module.module, CORE_PACKAGE, package
+            ),
         }
     }
 
@@ -324,6 +345,9 @@ impl PhaseError for Error {
                     second.describe(),
                     "wrap one of the two, or rename this package's own module".to_string(),
                 ]
+            }
+            Error::ReservedModuleName { .. } => {
+                vec!["it is one of the modules every package imports by default".to_string()]
             }
             _ => Vec::new(),
         }
@@ -614,18 +638,29 @@ pub fn visible_modules(
     let mut local: Vec<&LocalModule> = local_modules.iter().collect();
     local.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
     for module in local {
-        claim(
-            module.name.clone(),
-            ModuleOrigin {
-                package: package.name.clone(),
-                version: package.manifest.version.clone(),
-                module: module.name.clone(),
-                kind: OriginKind::Local {
-                    file: module.file.clone(),
-                },
+        let origin = ModuleOrigin {
+            package: package.name.clone(),
+            version: package.manifest.version.clone(),
+            module: module.name.clone(),
+            kind: OriginKind::Local {
+                file: module.file.clone(),
             },
-            &mut errors,
-        );
+        };
+
+        // The eight default imports' names are `zelkova-core`'s alone
+        // (`docs/spec/packages.md#zelkova-core-is-a-dependency-of-every-package`):
+        // reported here, ahead of any collision, and not claimed — a build that
+        // also contains `zelkova-core` then finds this spelling unclaimed and
+        // reports no `ModuleNameCollision` on top of it.
+        if !package.name.is_core() && default_imports::is_default(&module.name) {
+            errors.push(Error::ReservedModuleName {
+                package: package.name.clone(),
+                module: origin,
+            });
+            continue;
+        }
+
+        claim(module.name.clone(), origin, &mut errors);
     }
 
     let mut dependencies: Vec<&DependencyModules<'_>> = dependencies.iter().collect();
@@ -911,5 +946,34 @@ mod tests {
         assert!(names.contains_key(&Name::new("Size")));
         assert!(names.contains_key(&Name::new("AcmeWidgets.Size")));
         assert!(names.contains_key(&Name::new("FmonniotUi.Size")));
+    }
+
+    /// The eight default imports' names are `zelkova-core`'s alone: `zelkova-core`
+    /// declaring `List` is claimed like any other local module, and a package of any
+    /// other name declaring it is reported as `ReservedModuleName` instead of being
+    /// claimed.
+    ///
+    /// Mutation-checked by dropping the `is_core` check ahead of `claim` in
+    /// `visible_modules`'s local-module loop: `acme-widgets` then claims `List`
+    /// instead of being reported for it, and the second `expect_err` panics.
+    #[test]
+    fn only_core_may_declare_a_default_imports_name() {
+        let core = package("zelkova-core", vec![]);
+        let names =
+            visible_modules(&core, &local(&["List"]), &[]).expect("zelkova-core may declare List");
+        assert!(names.contains_key(&Name::new("List")));
+
+        let widgets = package("acme-widgets", vec![]);
+        let errors = visible_modules(&widgets, &local(&["List"]), &[])
+            .expect_err("a package other than zelkova-core may not declare List");
+
+        assert_eq!(errors.len(), 1, "got {:?}", errors);
+        match &errors[0] {
+            Error::ReservedModuleName { package, module } => {
+                assert_eq!(package.as_str(), "acme-widgets");
+                assert_eq!(module.module.as_str(), "List");
+            }
+            other => panic!("expected ReservedModuleName, got {:?}", other),
+        }
     }
 }

@@ -1,0 +1,4 @@
+module Bitwise exposing (Flag)
+
+
+type Flag = Flag

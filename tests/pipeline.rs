@@ -124,7 +124,7 @@ fn minimal_passing_module() {
     "#};
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
-    let result = check_module(&test_package(), &interfaces, &parsed, false);
+    let result = check_module(&test_package(), &interfaces, &parsed);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }
 
@@ -142,7 +142,7 @@ fn module_with_typed_and_untyped_values() {
     "#};
     let parsed = parse_source(source);
     let interfaces = HashMap::from([basics_interface()]);
-    let result = check_module(&test_package(), &interfaces, &parsed, false);
+    let result = check_module(&test_package(), &interfaces, &parsed);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
     assert_eq!(module.canonical.values.len(), 3);
@@ -160,7 +160,7 @@ fn module_with_union_type() {
     "#};
     let parsed = parse_source(source);
     let interfaces = HashMap::from([basics_interface()]);
-    let result = check_module(&test_package(), &interfaces, &parsed, false);
+    let result = check_module(&test_package(), &interfaces, &parsed);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
     assert!(module.canonical.types.contains_key(&"Shape".into()));
@@ -181,7 +181,7 @@ fn module_importing_maybe_interface() {
         wrap x = Just x
     "#};
     let parsed = parse_source(source);
-    let result = check_module(&test_package(), &interfaces, &parsed, false);
+    let result = check_module(&test_package(), &interfaces, &parsed);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     let module = result.unwrap();
     assert!(module.canonical.values.contains_key(&"wrap".into()));
@@ -204,7 +204,7 @@ fn check_module_interface_can_be_used_by_dependent() {
         wrap x = Some x
     "#};
     let parsed_a = parse_source(source_a);
-    let module_a = check_module(&pkg, &interfaces, &parsed_a, false).expect("Lib should compile");
+    let module_a = check_module(&pkg, &interfaces, &parsed_a).expect("Lib should compile");
     interfaces.insert(
         module_a.canonical.name.name().clone(),
         module_a.to_interface(None),
@@ -218,7 +218,7 @@ fn check_module_interface_can_be_used_by_dependent() {
         answer = Some 42
     "#};
     let parsed_b = parse_source(source_b);
-    let result_b = check_module(&pkg, &interfaces, &parsed_b, false);
+    let result_b = check_module(&pkg, &interfaces, &parsed_b);
     assert!(result_b.is_ok(), "App should compile, got {:?}", result_b);
 }
 
@@ -234,7 +234,7 @@ fn check_module_fails_on_missing_import() {
     "#};
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
-    let result = check_module(&test_package(), &interfaces, &parsed, false);
+    let result = check_module(&test_package(), &interfaces, &parsed);
     assert!(result.is_err(), "expected Err for missing import, got Ok");
 }
 
@@ -249,7 +249,7 @@ fn stdlib_tuple_compiles() {
     }
     let parsed = parse_file(&path);
     let interfaces = HashMap::new();
-    let result = check_module(&std_package(), &interfaces, &parsed, true);
+    let result = check_module(&std_package(), &interfaces, &parsed);
     assert!(result.is_ok(), "Tuple.zel should compile, got {:?}", result);
 }
 
@@ -269,7 +269,7 @@ fn stdlib_basics_chain_compiles() {
             return;
         }
         let parsed = parse_file(&path);
-        let module = check_module(&pkg, &interfaces, &parsed, true)
+        let module = check_module(&pkg, &interfaces, &parsed)
             .unwrap_or_else(|e| panic!("{} failed: {:?}", js_module, e));
         interfaces.insert(
             module.canonical.name.name().clone(),
@@ -284,7 +284,7 @@ fn stdlib_basics_chain_compiles() {
         return;
     }
     let parsed_basics = parse_file(&basics_path);
-    let basics_module = check_module(&pkg, &interfaces, &parsed_basics, true)
+    let basics_module = check_module(&pkg, &interfaces, &parsed_basics)
         .unwrap_or_else(|e| panic!("Basics.zel failed: {:?}", e));
     interfaces.insert(
         basics_module.canonical.name.name().clone(),
@@ -298,7 +298,7 @@ fn stdlib_basics_chain_compiles() {
         return;
     }
     let parsed_maybe = parse_file(&maybe_path);
-    let maybe_module = check_module(&pkg, &interfaces, &parsed_maybe, true)
+    let maybe_module = check_module(&pkg, &interfaces, &parsed_maybe)
         .unwrap_or_else(|e| panic!("Maybe.zel failed: {:?}", e));
     interfaces.insert(
         maybe_module.canonical.name.name().clone(),
@@ -312,7 +312,7 @@ fn stdlib_basics_chain_compiles() {
         return;
     }
     let parsed_result = parse_file(&result_path);
-    let result_module = check_module(&pkg, &interfaces, &parsed_result, true)
+    let result_module = check_module(&pkg, &interfaces, &parsed_result)
         .unwrap_or_else(|e| panic!("Result.zel failed: {:?}", e));
     interfaces.insert(
         result_module.canonical.name.name().clone(),
@@ -437,8 +437,8 @@ fn check_in_order_keeps_passing_siblings_with_the_real_checker() {
     );
 
     let module_files = HashMap::new();
-    let walker =
-        ModuleWalker::new(&modules, &module_files).expect("no dependency cycle in the fixture");
+    let walker = ModuleWalker::new(&modules, &module_files, &std_package())
+        .expect("no dependency cycle in the fixture");
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
     let (checked, errors) =
         walker.check_in_order(&std_package(), &mut interfaces, &module_files, check_module);
@@ -509,7 +509,7 @@ fn stdlib_bitwise_compiles() {
             return;
         }
         let parsed = parse_file(&path);
-        let checked = check_module(&pkg, &interfaces, &parsed, true)
+        let checked = check_module(&pkg, &interfaces, &parsed)
             .unwrap_or_else(|e| panic!("{} failed: {:?}", module, e));
         interfaces.insert(
             checked.canonical.name.name().clone(),
@@ -576,8 +576,8 @@ fn check_std_core() -> Vec<CheckedModule> {
         .collect();
 
     let module_files = HashMap::new();
-    let walker =
-        ModuleWalker::new(&modules, &module_files).expect("no dependency cycle in std/core");
+    let walker = ModuleWalker::new(&modules, &module_files, &std_package())
+        .expect("no dependency cycle in std/core");
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
     let (checked, errors) =
         walker.check_in_order(&std_package(), &mut interfaces, &module_files, check_module);
@@ -799,24 +799,25 @@ fn the_stdlib_build_writes_every_module_and_companion() {
 /// a dependency's modules that checked cleanly, and not the failing package's own
 /// modules that did check.
 ///
-/// `package_type_error` depends on `acme-widgets` (`dep_widgets`), which nothing here
-/// imports and which checks without error, so its modules *do* reach `checked` before
-/// the failure is known — unlike `package_type_error`'s own `Basics`, which never gets
-/// there at all: `compile_in_build` returns `None` for a package with any error (here,
-/// `Mismatch`'s), which drops every module of that package, `Basics` included, before
-/// `compile`'s `checked` ever sees them. So the two guards this test pins are not
-/// interchangeable with what keeps `Basics.mjs` off disk — that is `compile_in_build`'s
-/// `None`, not either guard in `compile` — and this fixture exists specifically so a
-/// dependency's modules are the ones the guards in `compile` are the *only* thing
-/// keeping off disk.
+/// `package_type_error` depends on `zelkova-core` (`dep_core`, which is what gives
+/// `Mismatch`'s annotation its `Int`) and on `acme-widgets` (`dep_widgets`), which
+/// nothing here imports; both check without error, so their modules *do* reach
+/// `checked` before the failure is known — unlike `package_type_error`'s own
+/// `Mismatch`, which never gets there at all: `compile_in_build` returns `None` for a
+/// package with any error, which drops every module of that package before `compile`'s
+/// `checked` ever sees them. So the two guards this test pins are not interchangeable
+/// with what keeps a failing package's own modules off disk — that is
+/// `compile_in_build`'s `None`, not either guard in `compile` — and this fixture exists
+/// specifically so two dependencies' modules are the ones the guards in `compile` are
+/// the *only* thing keeping off disk.
 ///
 /// Mutation-checked by emitting and writing whatever checked without looking at the
 /// errors — both `if errors.is_empty()` guards around the codegen step in `compile`
-/// replaced with `if true`. That writes the runtime and `acme-widgets`'s modules —
-/// `package_type_error`'s own `Basics.mjs` still does not appear, because it was never
-/// in `checked` to begin with — and turns this red. Removing only the outer guard
-/// leaves it green, correctly: the inner one still sees the type error and writes
-/// nothing.
+/// replaced with `if true`. That writes the runtime, `zelkova-core`'s modules and
+/// `acme-widgets`'s modules — `package_type_error`'s own `Mismatch.mjs` still does not
+/// appear, because it was never in `checked` to begin with — and turns this red.
+/// Removing only the outer guard leaves it green, correctly: the inner one still sees
+/// the type error and writes nothing.
 #[test]
 fn a_build_with_a_failing_module_writes_nothing() {
     let build_dir = fresh_build_dir("a_build_with_a_failing_module_writes_nothing");
@@ -942,7 +943,7 @@ fn type_error_renders_as_an_error_naming_both_types() {
     let parsed = parse_source(source);
     let interfaces = HashMap::from([basics_interface()]);
 
-    let error = check_module(&test_package(), &interfaces, &parsed, false)
+    let error = check_module(&test_package(), &interfaces, &parsed)
         .expect_err("`answer : Int` with a `Bool` body must not type-check");
 
     // The phase is part of the contract: a type error must not be reported as, say,
@@ -1042,7 +1043,7 @@ fn type_error_labels_the_expression_that_disagrees() {
     let root = fixture_package("package_type_error");
     assert_eq!(
         module_names(&root, SourceRoot::Src),
-        vec!["src/Basics.zel", "src/Mismatch.zel"]
+        vec!["src/Mismatch.zel"]
     );
 
     let source = std::fs::read_to_string(root.join("src").join("Mismatch.zel"))
@@ -1589,7 +1590,7 @@ fn ambiguous_variable_note_calls_out_the_implicit_default_import() {
         x = add 1 2
     "#};
 
-    let error = check_module(&test_package(), &interfaces, &parse_source(source), false)
+    let error = check_module(&test_package(), &interfaces, &parse_source(source))
         .expect_err("a name colliding with a default import must not compile");
 
     match &error {
@@ -1634,7 +1635,7 @@ fn ambiguous_imported_operators_are_labeled_in_their_own_module() {
     let root = fixture_package("package_imported_operator_ambiguity");
     assert_eq!(
         module_names(&root, SourceRoot::Src),
-        vec!["src/Basics.zel", "src/Ops.zel", "src/User.zel"]
+        vec!["src/Ops.zel", "src/User.zel"]
     );
 
     let ops_source =
@@ -2023,7 +2024,7 @@ fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
 
     let pkg = test_package();
 
-    let widget_error = check_module(&pkg, &HashMap::new(), &parse_source(widget), false)
+    let widget_error = check_module(&pkg, &HashMap::new(), &parse_source(widget))
         .expect_err("an exposed, unannotated value must not compile");
 
     match &widget_error {
@@ -2043,7 +2044,7 @@ fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
     // `Widget` never checked, so there is no `Interface` for it in scope —
     // exactly what the real pipeline would have, since `check_in_order` only
     // inserts an `Interface` for a module that canonicalized.
-    let main_error = check_module(&pkg, &HashMap::new(), &parse_source(main), false)
+    let main_error = check_module(&pkg, &HashMap::new(), &parse_source(main))
         .expect_err("Main imports a module that never checked");
 
     match &main_error {
@@ -2080,7 +2081,7 @@ fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
 fn check_importer(lib: &str, main: &str) -> Result<(), CompilationError> {
     let pkg = test_package();
     let mut interfaces: HashMap<Name, Interface> = HashMap::from([basics_interface()]);
-    let lib_module = check_module(&pkg, &interfaces, &parse_source(lib), false)
+    let lib_module = check_module(&pkg, &interfaces, &parse_source(lib))
         .unwrap_or_else(|e| panic!("the exporting module should compile: {:?}", e));
 
     interfaces.insert(
@@ -2088,7 +2089,7 @@ fn check_importer(lib: &str, main: &str) -> Result<(), CompilationError> {
         lib_module.to_interface(None),
     );
 
-    check_module(&pkg, &interfaces, &parse_source(main), false).map(|_| ())
+    check_module(&pkg, &interfaces, &parse_source(main)).map(|_| ())
 }
 
 /// A module exposing three of its five declarations: a value, an opaque type and
@@ -2678,8 +2679,8 @@ fn check_fixture(name: &str, package: &PackageName) -> Vec<CheckedModule> {
         .collect();
 
     let module_files = HashMap::new();
-    let walker =
-        ModuleWalker::new(&modules, &module_files).expect("no dependency cycle in the fixture");
+    let walker = ModuleWalker::new(&modules, &module_files, package)
+        .expect("no dependency cycle in the fixture");
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
     let (checked, _errors) =
         walker.check_in_order(package, &mut interfaces, &module_files, check_module);
@@ -2811,8 +2812,7 @@ fn basics_interface_with_plus() -> (Name, Interface) {
 }
 
 /// `LANG-8`: a module that writes no `import` at all still resolves `+`, and
-/// resolves it to `Basics`, in an ordinary package (`package_declares_a_default:
-/// false`).
+/// resolves it to `Basics`, in an ordinary package (one other than `zelkova-core`).
 ///
 /// Asserting on the `VarForeign` rather than on `is_ok()` is the difference
 /// between "it compiled" and "it compiled because `Basics` was in scope": a
@@ -2834,7 +2834,7 @@ fn default_imports_resolve_without_an_import_line() {
         x = 1 + 2
     "#};
 
-    let checked = check_module(&test_package(), &interfaces, &parse_source(source), false)
+    let checked = check_module(&test_package(), &interfaces, &parse_source(source))
         .unwrap_or_else(|e| panic!("expected the implicit default to resolve `+`: {:?}", e));
     let x = checked
         .canonical
@@ -3036,7 +3036,7 @@ fn check_importer_of_two(first: &str, second: &str, main: &str) -> Result<(), Co
     let mut interfaces: HashMap<Name, Interface> = HashMap::from([basics_interface()]);
 
     for lib in [first, second] {
-        let module = check_module(&pkg, &interfaces, &parse_source(lib), false)
+        let module = check_module(&pkg, &interfaces, &parse_source(lib))
             .unwrap_or_else(|e| panic!("an exporting module should compile: {:?}", e));
         interfaces.insert(
             module.canonical.name.name().clone(),
@@ -3044,7 +3044,7 @@ fn check_importer_of_two(first: &str, second: &str, main: &str) -> Result<(), Co
         );
     }
 
-    check_module(&pkg, &interfaces, &parse_source(main), false).map(|_| ())
+    check_module(&pkg, &interfaces, &parse_source(main)).map(|_| ())
 }
 
 /// A `Size` declared in `A` and a `Size` declared in `B` are two types, and a
@@ -3250,12 +3250,12 @@ fn check_against_imported(main: &str) -> Result<CheckedModule, CompilationError>
     let pkg = test_package();
     let mut interfaces: HashMap<Name, Interface> =
         HashMap::from([basics_interface(), char_interface(), maybe_interface()]);
-    let lib = check_module(&pkg, &interfaces, &parse_source(IMPORTED), false)
+    let lib = check_module(&pkg, &interfaces, &parse_source(IMPORTED))
         .unwrap_or_else(|e| panic!("the exporting module should compile: {:?}", e));
 
     interfaces.insert(lib.canonical.name.name().clone(), lib.to_interface(None));
 
-    check_module(&pkg, &interfaces, &parse_source(main), false)
+    check_module(&pkg, &interfaces, &parse_source(main))
 }
 
 /// The type errors `main` is rejected with, which must be exactly one.
@@ -3892,25 +3892,26 @@ fn two_modules_under_one_name_are_reported_before_anything_is_compiled() {
     );
 }
 
-/// An unwrapped dependency declaring its own `Basics` collides with `zelkova-core`'s,
-/// which is always unwrapped: two modules answer to the spelling `Basics`, so the
-/// package's `Int` has no one declaration to resolve to.
+/// An unwrapped dependency declaring its own `Bitwise` collides with `zelkova-core`'s,
+/// which is always unwrapped: two modules answer to the spelling `Bitwise`, so the
+/// package has no one declaration to resolve it to.
 ///
-/// The scalars do not rest on this rule — `src/compiler/scalars.rs` recognises one by a
-/// qualified name that includes `zelkova-core` ([`DEC-15` decision 1]), which
-/// [`a_wrapped_dependencys_basics_declares_no_scalar`] pins — but the spelling is still
-/// ambiguous, and that is reported before any module is compiled.
+/// `Bitwise` rather than `Basics`, because a rival `Basics` — or any of the other
+/// seven default imports' names — is rejected as `ReservedModuleName` before a build
+/// ever reaches this collision check ([`a_non_core_packages_basics_is_reserved_even_wrapped`]).
+/// `Bitwise` is what is left of `LANG-62`'s wider rule — every one of `zelkova-core`'s
+/// module names is taken in every package — once the eight are carved out of it: this
+/// pins that a build still reaches the ordinary `ModuleNameCollision` for a name
+/// outside the eight.
 ///
 /// Mutation-checked the same way as the test above, and additionally by dropping the
 /// `CORE_PACKAGE` arm of `seen_unwrapped`: `zelkova-core` is then wrapped, its
-/// `Basics` becomes `ZelkovaCore.Basics`, and no collision is reported at all.
-///
-/// [`DEC-15` decision 1]: ../docs/decisions/dec-15.md
+/// `Bitwise` becomes `ZelkovaCore.Bitwise`, and no collision is reported at all.
 #[test]
-fn a_dependencys_basics_collides_with_cores() {
+fn a_dependencys_bitwise_collides_with_cores() {
     let root = fixture_package("package_core_basics_collision");
 
-    let error = compile_package(&root).expect_err("`Basics` is claimed twice");
+    let error = compile_package(&root).expect_err("`Bitwise` is claimed twice");
 
     let errors = resolution_errors(&error);
     assert_eq!(errors.len(), 1, "got {:?}", errors);
@@ -3925,11 +3926,11 @@ fn a_dependencys_basics_collides_with_cores() {
         panic!("expected a module name collision, got {:?}", errors[0]);
     };
 
-    assert_eq!(name.as_str(), "Basics");
+    assert_eq!(name.as_str(), "Bitwise");
 
     let mut packages = [first.package.as_str(), second.package.as_str()];
     packages.sort_unstable();
-    assert_eq!(packages, ["acme-basics", "zelkova-core"]);
+    assert_eq!(packages, ["acme-bitwise", "zelkova-core"]);
 
     assert!(
         accumulated(&error)
@@ -4189,41 +4190,56 @@ fn a_dependencys_constructor_is_hoisted_under_its_own_package() {
     );
 }
 
-/// A wrapped dependency's own `Basics` collides with nothing — its spelling is
-/// `AcmeBasics.Basics` — and its `type Int = Int` declares an ordinary union, not the
-/// scalar: a scalar is declared in `zelkova-core` and in no other package. So neither
-/// passing it off as `Int` nor giving it a literal type checks.
+/// `acme-basics` declares its own module `Basics`. The eight default imports' names
+/// are reserved for `zelkova-core` alone, so this is rejected at resolution before a
+/// single module of `acme-basics` is compiled — whether the dependent wraps it or not
+/// makes no difference, since the reservation is asked of the declaring package, not
+/// of how anyone names it. `package-wrapped-rival-basics`, which depends on it, then
+/// fails too, with `DependencyNotCompiled`, and no type error is ever reached.
 ///
-/// Mutation-checked by dropping the package comparison from `Scalar::declares`:
-/// `AcmeBasics.Basics.Int` is then the scalar, both declarations check and
-/// `expect_err` panics.
+/// Mutation-checked by dropping the `is_core` check ahead of `claim` in
+/// `resolve::visible_modules`'s local-module loop: `acme-basics` then compiles
+/// `Basics` as an ordinary union (its `type Int = Int` is not the scalar — a scalar
+/// is declared in `zelkova-core` and nowhere else) and the build succeeds instead of
+/// failing with the two resolution errors this pins. `Scalar::declares`'s package
+/// check is still pinned on its own, by `scalars.rs`'s
+/// `another_packages_basics_int_is_not_the_scalar` — which is now its only pin, since
+/// a build can no longer reach a rival `Basics` to ask the question of.
 #[test]
-fn a_wrapped_dependencys_basics_declares_no_scalar() {
+fn a_non_core_packages_basics_is_reserved_even_wrapped() {
     let root = fixture_package("package_wrapped_rival_basics");
 
-    let error =
-        compile_package(&root).expect_err("`AcmeBasics.Basics.Int` is not the scalar `Int`");
+    let error = compile_package(&root).expect_err("`Basics` is reserved for `zelkova-core`");
+
+    let errors = resolution_errors(&error);
+    assert_eq!(errors.len(), 2, "got {:?}", errors);
+
+    let reserved = errors
+        .iter()
+        .find_map(|e| match e {
+            resolve::Error::ReservedModuleName { package, module } => Some((package, module)),
+            _ => None,
+        })
+        .expect("a ReservedModuleName error naming acme-basics's own Basics");
+    assert_eq!(reserved.0.as_str(), "acme-basics");
+    assert_eq!(reserved.1.module.as_str(), "Basics");
 
     assert!(
-        resolution_errors(&error).is_empty(),
-        "a wrapped `Basics` collides with nothing, got {:?}",
-        error
+        errors.iter().any(|e| matches!(
+            e,
+            resolve::Error::DependencyNotCompiled { package, dependency }
+                if package.as_str() == "package-wrapped-rival-basics"
+                    && dependency.as_str() == "acme-basics"
+        )),
+        "expected the root to be reported as not compiled because of acme-basics, got {:?}",
+        errors
     );
 
-    let mut failed: Vec<(&str, &str)> = type_errors(&error)
-        .into_iter()
-        .map(|(module, error)| {
-            assert!(
-                matches!(error.kind, typer::ErrorKind::UnificationFailed { .. }),
-                "expected a unification failure, got {:?}",
-                error.kind
-            );
-            (module.as_str(), error.declaration.as_str())
-        })
-        .collect();
-    failed.sort_unstable();
-
-    assert_eq!(failed, vec![("App", "f"), ("App", "g")]);
+    assert!(
+        type_errors(&error).is_empty(),
+        "nothing of acme-basics or the root ever reaches the typer, got {:?}",
+        error
+    );
 }
 
 /// A package that depends on itself through a chain is reported rather than followed
@@ -4845,24 +4861,25 @@ fn a_test_module_that_does_not_check_fails_only_when_tests_are_compiled() {
     );
 }
 
-/// A file under `tests/` does not change what a module of `src/` means.
+/// A file under `tests/` does not change what a module of `src/` means — and it is
+/// held to the same reservation `src/` is: the eight default imports' names are
+/// `zelkova-core`'s alone under either source root, so `tests/List.zel` fails
+/// resolution with `ReservedModuleName` exactly when its build reads `tests/` at all.
 ///
-/// Whether the package declares one of the eight default imports is asked of `src/`
-/// alone, so a test module named `List` leaves the package receiving all eight. It has
-/// to: the same `src/` module is compiled by both entry points, and a build that
-/// compiles the tests cannot give it a different environment from one that does not.
+/// A build that does not ask for the tests root never reads `tests/`, so it reports
+/// nothing about `List` and `src/` still receives all eight — the fixture's `App.zel`
+/// reaches `Flag` and `on` — a type and a *value* of its `Basics` — without writing an
+/// import, which is what pins that `src/`'s own answer does not depend on `tests/` at
+/// all, reservation included. A value, because a scalar type name is seeded for a
+/// module of `zelkova-core` anyway (`LANG-58`), so a bare `Int` would resolve either
+/// way.
 ///
-/// The fixture reaches `Flag` and `on` — a type and a *value* of its `Basics` — without
-/// writing an import. A value, because a scalar type name is seeded for a module of an
-/// exempt package (`LANG-58`), so a bare `Int` would resolve whichever answer the
-/// question got.
-///
-/// Mutation-checked by asking the question over both roots
-/// (`modules.iter().chain(test_modules.iter())` in `compile_in_build`): the
-/// `compile_package_with_tests` half then fails with `cannot find a value named
-/// `App.on``, while the `compile_package` half stays green.
+/// Mutation-checked by dropping the `is_core` check ahead of `claim` in
+/// `resolve::visible_modules`'s local-module loop: `compile_package_with_tests`
+/// then succeeds instead of reporting `ReservedModuleName`, and the second assertion
+/// panics.
 #[test]
-fn a_test_module_named_after_a_default_import_does_not_exempt_the_package() {
+fn a_test_module_named_after_a_default_import_is_reserved_too() {
     let root = fixture_package("package_test_named_like_a_default");
 
     assert_eq!(
@@ -4874,16 +4891,66 @@ fn a_test_module_named_after_a_default_import_does_not_exempt_the_package() {
     let result = compile_package(&root);
     assert!(
         result.is_ok(),
-        "`src/` receives the default imports, got {:?}",
+        "a build that does not read `tests/` must not report `List`, got {:?}",
         result
     );
 
-    let result = compile_package_with_tests(&root);
-    assert!(
-        result.is_ok(),
-        "compiling the tests must not change what `src/` resolves, got {:?}",
-        result
-    );
+    let error = compile_package_with_tests(&root)
+        .expect_err("`tests/List.zel` is reserved for `zelkova-core` too");
+
+    let errors = resolution_errors(&error);
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+    match &errors[0] {
+        resolve::Error::ReservedModuleName { package, module } => {
+            assert_eq!(package.as_str(), "package-test-named-like-a-default");
+            assert_eq!(module.module.as_str(), "List");
+        }
+        other => panic!("expected ReservedModuleName, got {:?}", other),
+    }
+}
+
+/// `SPEC-34`: an ordinary application holding its own `src/List.zel` fails resolution
+/// with `ReservedModuleName`, whether or not `zelkova-core` is among its dependencies
+/// — the two fixtures cover both, since the compiler does not supply core on its own
+/// (`LANG-62`) and the reservation cannot rest on there being anything to collide
+/// with. Before this rule, a package naming no dependency had nothing to collide with
+/// and a package depending on core but naming a module core does not compile yet
+/// (`List` is `.ignored` in real `std/core`) collided with nothing either — both were
+/// silently taken for core-shaped instead of being told the name is not theirs to use.
+///
+/// Mutation-checked by dropping the `is_core` check ahead of `claim` in
+/// `resolve::visible_modules`'s local-module loop: both fixtures then compile `List`
+/// as an ordinary module instead of being rejected, and both `expect_err` calls panic.
+#[test]
+fn a_packages_own_list_is_reserved_with_and_without_core() {
+    for (fixture, package) in [
+        (
+            "package_reserved_list_no_core",
+            "package-reserved-list-no-core",
+        ),
+        (
+            "package_reserved_list_with_core",
+            "package-reserved-list-with-core",
+        ),
+    ] {
+        let root = fixture_package(fixture);
+
+        let error = compile_package(&root)
+            .expect_err("a package's own `List` is reserved for `zelkova-core`");
+
+        let errors = resolution_errors(&error);
+        assert_eq!(errors.len(), 1, "{}: got {:?}", fixture, errors);
+        match &errors[0] {
+            resolve::Error::ReservedModuleName {
+                package: reported,
+                module,
+            } => {
+                assert_eq!(reported.as_str(), package, "{}", fixture);
+                assert_eq!(module.module.as_str(), "List", "{}", fixture);
+            }
+            other => panic!("{}: expected ReservedModuleName, got {:?}", fixture, other),
+        }
+    }
 }
 
 /// A package reached only through `test-dependencies` is resolved into every build of

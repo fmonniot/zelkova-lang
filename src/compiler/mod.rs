@@ -145,6 +145,15 @@ impl PackageName {
         PackageName(resolve::CORE_PACKAGE.to_string())
     }
 
+    /// Whether this is `zelkova-core`, the one package the default imports and the
+    /// scalar seeding they are replaced by both key themselves on
+    /// ([`DEC-17`](../../docs/decisions/dec-17.md) decision 4) — and, since
+    /// [`resolve::visible_modules`] rejects any other package that declares one of
+    /// the eight, the only package that can be shaped like it.
+    pub fn is_core(&self) -> bool {
+        self.0 == resolve::CORE_PACKAGE
+    }
+
     /// The prefix this package's modules are named through from outside it: the name
     /// split at its hyphens, each piece capitalised, joined —
     /// [*The namespace*](../../docs/spec/packages.md#the-namespace). `acme-widgets` is
@@ -1370,22 +1379,12 @@ fn compile_in_build(
         }
     }
 
-    // Whether this package declares one of the eight default imports, and so receives
-    // none of them. It is asked here rather than by each root's walker because both
-    // roots have to get the same answer: a test module is checked against the same
-    // `Basics` a `src/` module is.
-    //
-    // It is asked of `src/` alone, and deliberately. A build that compiles the tests
-    // and one that does not have to agree about what a `src/` module means, and they
-    // cannot if a file under `tests/` can move the answer — `tests/List.zel` would make
-    // this package look like `zelkova-core` to `compile_package_with_tests` and not to
-    // `compile_package`, so the same `src/` module would resolve `Int` in one build and
-    // not in the other. `src/` is also the whole of what the exemption is for: it
-    // exists so that no module of `zelkova-core` can close an implicit import cycle
-    // (`DEC-17`), and a test module cannot be on such a cycle, because nothing imports
-    // one.
-    let package_declares_a_default =
-        default_imports::declares_a_default(modules.iter().map(|m| &m.name));
+    // Whether this package is exempt from the default imports, and so receives none
+    // of them, is `package.name.is_core()` — a property of the package's own name,
+    // not of which modules either root happens to hold. So it cannot differ between
+    // `src/` and `tests/`, or between a build that compiles the tests and one that
+    // does not: both roots, and both walkers below, are handed `&package.name`
+    // directly rather than a flag computed once and threaded through.
 
     // Steps 4 and 5, once per source root. Two passes rather than one walk over both,
     // because the two roots are two environments: `src/` is checked knowing nothing of
@@ -1417,7 +1416,7 @@ fn compile_in_build(
         let walker = match dependencies::ModuleWalker::new_for_root(
             root_modules,
             &module_files,
-            package_declares_a_default,
+            &package.name,
         ) {
             Ok(walker) => Some(walker),
             Err(err) => {
@@ -1560,19 +1559,16 @@ fn compile_in_build(
 /// will require access to other modules canonical representation.
 /// That probably mean moving the `canonical::canonicalize` call out of this function
 ///
-/// `package_declares_a_default` says whether the package `source` belongs to
-/// declares one of the eight [default
-/// imports](default_imports) — see [`default_imports::declares_a_default`].
-/// `dependencies::ModuleWalker` computes it once, from the same module list it
-/// builds the import graph from, and hands it to every module it checks through
-/// this same parameter, which is why `check` in
-/// [`ModuleWalker::check_in_order`](dependencies::ModuleWalker::check_in_order)
-/// carries it too: `check_module` is normally reached only as that `fn` pointer.
+/// Whether `source`'s package is exempt from the default imports is not decided
+/// here: `canonical::canonicalize` derives it from `package` itself
+/// ([`PackageName::is_core`]), so this function needs nothing beyond the package it
+/// already receives — which is why `check` in
+/// [`ModuleWalker::check_in_order`](dependencies::ModuleWalker::check_in_order) can
+/// carry `check_module` as a plain `fn` pointer over the package alone.
 pub fn check_module(
     package: &PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
-    package_declares_a_default: bool,
 ) -> Result<CheckedModule, CompilationError> {
     // - desugar ~?~ *!*
     // Should I have an intermediate AST before type checking ?
@@ -1584,9 +1580,8 @@ pub fn check_module(
     // Each phase accumulates its own errors and hands back all of them; this is where
     // they are tagged with the module they came from, because a phase only ever sees
     // one module and has no reason to carry its name around.
-    let canonical =
-        canonical::canonicalize(package, interfaces, source, package_declares_a_default)
-            .map_err(|errors| CompilationError::Canonical(errors, source.name.clone()))?;
+    let canonical = canonical::canonicalize(package, interfaces, source)
+        .map_err(|errors| CompilationError::Canonical(errors, source.name.clone()))?;
 
     // - type checking and inference
     //

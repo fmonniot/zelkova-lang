@@ -1,14 +1,8 @@
--- Neither declaration type checks: `AcmeBasics.Basics.Int` is an ordinary union
--- that shares a spelling with the scalar `Int`, so it is not `Int` and a literal
--- is not one of its values.
-module App exposing (f, g)
-
-import AcmeBasics.Basics
+-- `acme-basics` is rejected before this module is ever read — its own `Basics` is
+-- reserved for `zelkova-core` — so nothing here is exercised; the file exists only
+-- so the package has a `src/` to hold it.
+module App exposing (f)
 
 
-f : AcmeBasics.Basics.Int -> Int
-f x = x
-
-
-g : AcmeBasics.Basics.Int
-g = 1
+f : Int
+f = 1

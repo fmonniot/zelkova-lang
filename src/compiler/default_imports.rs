@@ -31,16 +31,16 @@
 //! — the package the eight belong to — is the exception, and it is all-or-nothing.
 //! No module of it receives any of the eight, not the eight themselves and not the
 //! facades they are built from, so nothing in the package can ever close a loop
-//! through an implicit edge. [`declares_a_default`] is that question, asked of a
-//! package by its module names rather than by its [`PackageName`](crate::compiler::PackageName):
-//! [`compile_package`](crate::compiler::compile_package) reads a package's declared
-//! name from its manifest, but only ever compiles one package at a time, so
-//! nothing here compares against it — `zelkova-core` is told apart by what it
-//! contains, not by what its manifest calls it. Every module of every other
-//! package receives all eight,
-//! whatever it imports and whatever imports it. [*The default
-//! imports*](../../../docs/spec/modules.md#the-default-imports) is the rule in full,
-//! and [`DEC-17`](../../../docs/decisions/dec-17.md) is why it is scoped to the
+//! through an implicit edge.
+//! [`PackageName::is_core`](crate::compiler::PackageName::is_core) is that question,
+//! asked of the package's own name rather than of its module names:
+//! [`resolve::visible_modules`](crate::compiler::resolve::visible_modules) rejects any
+//! package other than `zelkova-core` that declares one of the eight, before any module
+//! of it is compiled, so a package this is true for is `zelkova-core` by construction
+//! rather than merely by what it happens to contain. Every module of every other
+//! package receives all eight, whatever it imports and whatever imports it. [*The
+//! default imports*](../../../docs/spec/modules.md#the-default-imports) is the rule in
+//! full, and [`DEC-17`](../../../docs/decisions/dec-17.md) is why it is scoped to the
 //! package rather than judged from the import graph.
 //!
 //! `zelkova-core`'s own modules write every import they use — `Basics.zel`,
@@ -48,10 +48,9 @@
 //! exception affordable: nothing in the package spends an entry it does not receive.
 //!
 //! [`implicit_imports`] and `dependencies::add_default_import_edges` are asked the
-//! same question rather than each deriving their own answer: both take a
-//! `package_declares_a_default` argument computed once, from the same module names,
-//! so a package is exempt to `new_environment` exactly when it is to
-//! `ModuleWalker::new`.
+//! same question rather than each deriving their own answer: both take an `is_core`
+//! argument that traces back to one `PackageName::is_core` call, so a package is
+//! exempt to `new_environment` exactly when it is to `ModuleWalker::new`.
 //!
 //! # An implicit import is never a diagnostic
 //!
@@ -210,46 +209,35 @@ impl DefaultImport {
 
 /// Whether `module` is one of the modules the default imports name.
 ///
-/// Such a module receives none of them — as a corollary of its package receiving
-/// none, since a package containing a module of this name is the one the list
-/// belongs to (see [`declares_a_default`] and this module's documentation).
+/// Such a module receives none of them when its package is `zelkova-core`
+/// ([`implicit_imports`]) — the only package a module of this name may belong to,
+/// since [`resolve::visible_modules`](crate::compiler::resolve::visible_modules)
+/// rejects any other package that declares one (see this module's documentation).
 pub fn is_default(module: &Name) -> bool {
     DEFAULT_IMPORTS
         .iter()
         .any(|default| default.module == module.as_str())
 }
 
-/// Whether a package declares one of the eight, given the names of every module
-/// it contains.
-///
-/// A package this is true for is `zelkova-core`, the package the eight belong to,
-/// and none of its modules receives any of them ([`implicit_imports`]) — the
-/// package is told apart by what it declares, not by its `PackageName`, because
-/// [`compile_package`](crate::compiler::compile_package) only ever compiles one
-/// package at a time and has no second package's name to compare against.
-pub fn declares_a_default<'a>(names: impl IntoIterator<Item = &'a Name>) -> bool {
-    names.into_iter().any(is_default)
-}
-
 /// The imports a module gets without writing them, given what it *did* write and
 /// which interfaces are available to it.
 ///
-/// Empty whenever `package_declares_a_default` is set — a package that declares
-/// one of the eight gets none of them for any of its modules, including the ones
-/// named on the list themselves. That is why this no longer takes the module's
-/// own name: a module named on the list is exactly what makes its own package
-/// the exception ([`declares_a_default`]), so the caller's package-level answer
-/// already covers it and there is nothing left for a per-module check to add.
-/// Otherwise this returns one [`parser::Import`] per entry that `written` does
-/// not already name and that `interfaces` can satisfy — a written `import` of a
-/// default module **replaces** the implicit one, so `import Maybe as M` means
-/// `M.map` and nothing else.
+/// Empty whenever `is_core` is set — every module of `zelkova-core` gets none of
+/// the eight, including the ones named on the list themselves. That is why this
+/// no longer takes the module's own name: a module named on the list can only
+/// belong to `zelkova-core`
+/// ([`resolve::visible_modules`](crate::compiler::resolve::visible_modules) rejects
+/// it everywhere else), so the caller's package-level answer already covers it and
+/// there is nothing left for a per-module check to add. Otherwise this returns one
+/// [`parser::Import`] per entry that `written` does not already name and that
+/// `interfaces` can satisfy — a written `import` of a default module **replaces**
+/// the implicit one, so `import Maybe as M` means `M.map` and nothing else.
 pub fn implicit_imports(
     written: &[parser::Import],
     interfaces: &HashMap<Name, Interface>,
-    package_declares_a_default: bool,
+    is_core: bool,
 ) -> Vec<parser::Import> {
-    if package_declares_a_default {
+    if is_core {
         return Vec::new();
     }
 
@@ -334,16 +322,16 @@ mod tests {
         );
     }
 
-    /// `LANG-57`: a module of a package that declares one of the eight gets none
-    /// of them — not only the modules named on the list, but every module beside
-    /// them too — while an otherwise identical module of a package that declares
-    /// none of the eight still gets everything it can satisfy.
+    /// `LANG-57`: a module of a package that is `zelkova-core` gets none of the
+    /// eight — not only the modules named on the list, but every module beside
+    /// them too — while an otherwise identical module of a package that is not
+    /// `zelkova-core` still gets everything it can satisfy.
     ///
-    /// Mutation-checked by dropping the `package_declares_a_default` guard in
-    /// `implicit_imports`: the `true` case then comes back with `Basics` (and
-    /// anything else `available` can satisfy) instead of nothing.
+    /// Mutation-checked by dropping the `is_core` guard in `implicit_imports`: the
+    /// `true` case then comes back with `Basics` (and anything else `available` can
+    /// satisfy) instead of nothing.
     #[test]
-    fn a_package_declaring_a_default_gets_no_implicit_imports() {
+    fn a_core_package_gets_no_implicit_imports() {
         let available = interfaces(vec![
             interface("Basics", false),
             interface("Maybe", true),
@@ -352,17 +340,6 @@ mod tests {
 
         assert!(implicit_imports(&[], &available, true).is_empty());
         assert!(!implicit_imports(&[], &available, false).is_empty());
-    }
-
-    /// `declares_a_default` is a question about a package's whole set of module
-    /// names, true as soon as any one of them is on the list.
-    #[test]
-    fn declares_a_default_asks_about_the_whole_package() {
-        let core_shaped = [Name::new("Bitwise"), Name::new("Basics")];
-        let ordinary = [Name::new("Widget"), Name::new("Gadget")];
-
-        assert!(declares_a_default(core_shaped.iter()));
-        assert!(!declares_a_default(ordinary.iter()));
     }
 
     /// A written import of a default module replaces the implicit one, so the two

@@ -776,7 +776,10 @@ to](packages.md#zelkova-core-is-a-dependency-of-every-package) receives any of t
 eight themselves, and not the modules beside them. `Basics` cannot import `Basics`, `Maybe` and
 `Result` would import each other, and a facade `Basics` is built from cannot import `Basics`
 back: each is [an import cycle](#imports-may-not-form-a-cycle). Core's modules write every
-import they use, the way `Basics.zel`, `Maybe.zel` and `Bitwise.zel` already do.
+import they use, the way `Basics.zel`, `Maybe.zel` and `Bitwise.zel` already do. That exception
+belongs to `zelkova-core` alone, so a package of [any other
+name](packages.md#zelkova-core-is-a-dependency-of-every-package) declaring a module under one
+of the eight is rejected rather than mistaken for it.
 
 ```zel expect=ok package=core-shaped
 module Basics exposing (Int, (+), add)

@@ -1,0 +1,10 @@
+# A package declaring a module named `Bitwise` of its own. `Bitwise` is not one of
+# the eight default imports, so nothing here is reserved — unwrapped by whoever
+# depends on it, this module answers to the same name `zelkova-core`'s does.
+name = "acme-bitwise"
+version = "1.0.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

@@ -2,13 +2,16 @@ name = "package-core-basics-collision"
 version = "0.1.0"
 private-modules = []
 
-# `zelkova-core` is seen unwrapped whatever this entry says, and `acme-basics`
-# is unwrapped here too — so both offer a module named `Basics`.
+# `zelkova-core` is seen unwrapped whatever this entry says, and `acme-bitwise` is
+# unwrapped here too — so both offer a module named `Bitwise`. `Bitwise` is not one
+# of the eight default imports, so this is a `ModuleNameCollision` rather than a
+# `ReservedModuleName` — unlike a rival `Basics`, which is rejected before either
+# package's modules are compared at all.
 [dependencies.zelkova-core]
 path = "../dep_core"
 
-[dependencies.acme-basics]
-path = "../dep_rival_basics"
+[dependencies.acme-bitwise]
+path = "../dep_rival_bitwise"
 wrapped = false
 
 [test-dependencies]
