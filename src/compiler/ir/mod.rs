@@ -119,8 +119,9 @@ pub struct Module {
     /// is about. Every value of the canonical module is in one list or the other.
     pub unchecked: Vec<Unchecked>,
     /// The names of [`declarations`](Self::declarations) that take no parameter, in the
-    /// order they must be initialised: each only after every parameterless declaration its
-    /// own body mentions
+    /// order they must be initialised: each only after every parameterless declaration it
+    /// depends on, whether its own body mentions that declaration or reaches it through a
+    /// function it mentions
     /// (`docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once`).
     /// Empty for a module whose declarations all take parameters, and for a `module
     /// foreign` facade, whose constants are evaluated on whatever schedule the target
@@ -128,13 +129,13 @@ pub struct Module {
     ///
     /// Sorted so that two runs of the compiler over one unchanged module produce the same
     /// order, same as [`declarations`](Self::declarations) above — including among
-    /// bindings with no edge between them, where a topological sort alone leaves the order
+    /// bindings with no path between them, where dependencies alone leave the order
     /// unconstrained.
     ///
-    /// [`canonical::initialisation_order`] computes it, reusing the dependency graph
-    /// `canonical::canonicalize` already built to reject a cycle (`LANG-35`) rather than
-    /// building a second one from the same rule; see that function's doc comment for the
-    /// acyclic assumption this relies on and which phase discharges it.
+    /// [`canonical::initialisation_order`] computes it, from the same dependency graph
+    /// `canonical::canonicalize` reads to reject a cycle (`LANG-35`) rather than a second
+    /// one built from the same rule; see that function's doc comment for the assumption
+    /// this relies on and which phase discharges it.
     /// [`javascript::emit`](crate::compiler::javascript::emit) is what emits declarations
     /// in this order — this only computes it.
     pub initialisation_order: Vec<Name>,

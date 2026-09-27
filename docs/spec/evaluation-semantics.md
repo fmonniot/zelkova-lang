@@ -161,7 +161,9 @@ evaluated.
 
 A top-level binding that names no parameters is evaluated once, before the program runs, and
 every reference to it is that one value. Such bindings are evaluated in **dependency order**:
-one is evaluated after everything it mentions.
+one is evaluated after everything it **depends on**. A declaration depends on every top-level
+declaration its body mentions, on every one those declarations' bodies mention, and so on,
+through functions as well as through other bindings.
 
 ```zel expect=ok
 module Example exposing ()
@@ -186,6 +188,33 @@ other c =
 ```
 
 `shifted` mentions `base`, so `base` is evaluated first, whichever order the two are written in.
+A dependency can also run through a function:
+
+```zel expect=ok
+module Example exposing ()
+
+type Colour
+  = Red
+  | Green
+
+start =
+  flip Red
+
+flip c =
+  case c of
+    Red ->
+      fallback
+
+    Green ->
+      Red
+
+fallback =
+  Green
+```
+
+`start` mentions only `flip`, but `flip`'s body mentions `fallback`, so `start` depends on
+`fallback` and `fallback` is evaluated first.
+
 [Declarations are unordered](declarations.md#declarations-are-unordered) as text; this is the
 one place the language puts an order on them, and it reads it off the references rather than off
 the page.
@@ -196,8 +225,8 @@ the function, and its body runs when the function is applied.
 ### A binding may not depend on itself
 
 Under strict evaluation a parameterless binding's value has to exist before the binding can be
-used. **A cycle among parameterless bindings is an error**, whether it is one binding long or
-runs through several.
+used. **A parameterless binding that depends on itself is an error**, whether the cycle is one
+binding long or runs through several declarations.
 
 ```zel expect=canonical-error:SelfDependency
 module Example exposing ()
@@ -207,10 +236,33 @@ x =
 ```
 
 `a = b` beside `b = a` is rejected the same way: the cycle runs through two bindings instead of
-one, but neither has a value the other can use.
+one, but neither has a value the other can use. So is a cycle that runs through a function:
 
-The restriction is on parameterless bindings only. A function may call itself, and two functions
-may call each other, because neither body runs until the function is applied:
+```zel expect=canonical-error:SelfDependency
+module Example exposing ()
+
+type Colour
+  = Red
+  | Green
+
+start =
+  flip Red
+
+flip c =
+  case c of
+    Red ->
+      start
+
+    Green ->
+      Red
+```
+
+`start` depends on `flip`, and `flip`'s body mentions `start`, so `start` depends on itself. The
+rule reads mentions, not applications: a binding depends on a function it mentions whether or not
+evaluating the binding applies it.
+
+A cycle of functions only is not an error. A function may call itself, and two functions may
+call each other, because neither body runs until the function is applied:
 
 ```zel expect=ok
 module Example exposing ()
@@ -260,7 +312,8 @@ f n =
 ([`LANG-33`](../tickets/lang-33.md)). Its bindings are evaluated when the `let` is reached, in
 dependency order, once each — `doubled` above is computed once and used twice. The bindings of
 one `let` are [mutually recursive](expressions.md#let--in), and the same restriction applies
-one level down: a `let` binding with parameters may take part in a cycle, one without may not.
+one level down: a cycle among one `let`'s bindings is an error when it holds a binding without
+parameters.
 
 ## Function values
 

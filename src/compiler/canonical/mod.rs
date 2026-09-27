@@ -22,8 +22,10 @@ use super::{ModuleName, PackageName};
 use crate::utils::collect_accumulate;
 use log::{debug, trace};
 use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::Direction;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 mod environment;
 /// Part of [`Error::AmbiguousVariables`] and [`Error::AmbiguousVariants`]'s public
@@ -1146,33 +1148,42 @@ pub enum Error {
     /// can be written.
     UnsafeOutsideFacade(Name, NodeSpan),
 
-    /// A parameterless binding whose value depends on itself, directly or
-    /// through other parameterless bindings — [evaluation
+    /// A parameterless binding that depends on itself — [evaluation
     /// semantics](../../../docs/spec/evaluation-semantics.md#a-binding-may-not-depend-on-itself):
-    /// such a binding is evaluated once, before the program runs, in
-    /// dependency order, and a cycle among them describes no such order.
+    /// such a binding is evaluated once, before the program runs, after everything it
+    /// depends on, and a cycle through it describes no such order. *Depends on* is
+    /// transitive mention: the declarations its body mentions, the ones *their* bodies
+    /// mention, and so on, through functions as well as parameterless bindings — see
+    /// [`dependency_graph`].
     ///
-    /// One entry per binding in the cycle, each paired with its own
-    /// declaration's span (`Value::span()`) — length 1 for a self-loop
-    /// (`x = x`), length 2 or more for a cycle running through several
-    /// bindings (`a = b` beside `b = a`). `labels()` gives the first entry the
-    /// primary label and every other entry a secondary one; for a
-    /// length-2-or-more cycle, [`check_self_dependency`] sorts the members by
-    /// name before building this list, so the primary label is always the
-    /// alphabetically-first member of the cycle — deterministic, not an
-    /// artifact of traversal order.
+    /// One entry per member of the cycle — every declaration of one strongly-connected
+    /// component of that graph — each carrying its own declaration's span
+    /// (`Value::span()`) and whether it is a function. Length 1 for a parameterless
+    /// binding that mentions itself (`x = x`), length 2 or more for a cycle running
+    /// through several declarations (`a = b` beside `b = a`, or `a = f 1` beside `f x =
+    /// a`). [`check_self_dependency`] orders the members parameterless bindings first,
+    /// then functions, each group by name, so the first entry is always a parameterless
+    /// binding and the order is not an artifact of traversal. `labels()` gives that first
+    /// entry the primary label and every other entry a secondary one.
     ///
-    /// A binding that names a parameter is never a member of this cycle: its
-    /// value is the function, not evaluated until applied, so it may depend on
-    /// itself or on a parameterless binding freely. `f n = f n`, mutual
-    /// recursion between two functions, and a parameterless binding that
-    /// merely *mentions* a recursive function are all untouched by this check
-    /// — only a reference to another *parameterless* binding is ever an edge
-    /// of the graph [`check_self_dependency`] walks.
-    SelfDependency(Vec<(Name, NodeSpan)>),
+    /// A cycle of functions only is never reported: a function's value exists before its
+    /// body runs, so `f n = f n` and mutual recursion between two functions are untouched
+    /// by this check.
+    SelfDependency(Vec<CycleMember>),
 
     // Utility error
     Many(Vec<Error>),
+}
+
+/// One declaration of a cycle [`Error::SelfDependency`] reports.
+#[derive(Debug, Clone)]
+pub struct CycleMember {
+    pub name: Name,
+    /// The whole declaration, as `Value::span()` gives it.
+    pub span: NodeSpan,
+    /// Whether the declaration names a parameter. A cycle is only ever reported when it
+    /// holds at least one member for which this is `false`.
+    pub function: bool,
 }
 
 /// What was written where a `type` declaration expected a variant — see
@@ -1332,19 +1343,33 @@ impl PhaseError for Error {
             ),
             // A one-binding cycle reads better as its own sentence than as "a
             // cycle of length one" — see the enum's own doc comment.
-            Error::SelfDependency(path) => match path.as_slice() {
-                [(name, _)] => format!(
+            // A larger cycle may hold functions, so it is described by its first member —
+            // always a parameterless binding — and every member is named for what it is.
+            Error::SelfDependency(members) => match members.as_slice() {
+                [only] => format!(
                     "`{}` is a parameterless binding whose value depends on itself",
-                    name
+                    only.name
                 ),
-                members => {
-                    let names: Vec<String> =
-                        members.iter().map(|(name, _)| name.to_string()).collect();
+                [first, ..] => {
+                    let mut named: Vec<String> = members
+                        .iter()
+                        .map(|member| {
+                            if member.function {
+                                format!("the function `{}`", member.name)
+                            } else {
+                                format!("`{}`", member.name)
+                            }
+                        })
+                        .collect();
+                    let last = named.pop().unwrap_or_default();
                     format!(
-                        "{} are parameterless bindings that depend on each other, so none of them has a value before the others need it",
-                        names.join(", ")
+                        "`{}` needs its own value before it has one: {} and {} depend on each other",
+                        first.name,
+                        named.join(", "),
+                        last
                     )
                 }
+                [] => "a parameterless binding depends on itself".to_owned(),
             },
             Error::Many(errors) => match errors.as_slice() {
                 [only] => only.message(),
@@ -1510,22 +1535,25 @@ impl PhaseError for Error {
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
             Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
             Error::UnsafeOutsideFacade(_, span) => primary(span, "marked `unsafe` here"),
-            Error::SelfDependency(path) => path
+            Error::SelfDependency(members) => members
                 .iter()
                 .enumerate()
-                .filter_map(|(i, (name, span))| {
-                    let message = if path.len() == 1 {
+                .filter_map(|(i, member)| {
+                    let name = &member.name;
+                    let message = if members.len() == 1 {
                         format!("`{}` refers to its own value here", name)
                     } else if i == 0 {
                         format!(
-                            "`{}` depends, directly or through another binding, on itself",
+                            "`{}` depends on itself through the declarations it mentions",
                             name
                         )
+                    } else if member.function {
+                        format!("the function `{}` is also part of the cycle", name)
                     } else {
                         format!("`{}` is also part of the cycle", name)
                     };
 
-                    span.span().map(|s| SpanLabel {
+                    member.span.span().map(|s| SpanLabel {
                         span: s,
                         message,
                         primary: i == 0,
@@ -1806,7 +1834,7 @@ pub fn canonicalize(
     };
 
     // A parameterless binding's value has to exist before it can be used, so a
-    // cycle among parameterless bindings — one binding long or several — is an
+    // cycle that holds one — through other bindings or through functions — is an
     // error (`docs/spec/evaluation-semantics.md#a-binding-may-not-depend-on-itself`).
     // Independent of exports, so this runs regardless of what `do_exports` below
     // finds.
@@ -1835,8 +1863,9 @@ pub fn canonicalize(
     }
 }
 
-/// Whether `value` names no parameter — the only kind of binding
-/// [`check_self_dependency`] puts in its graph. Both `Value` variants carry
+/// Whether `value` names no parameter — the kind of binding a cycle
+/// [`check_self_dependency`] reports must hold, and the only kind
+/// [`initialisation_order`] schedules. Both `Value` variants carry
 /// their patterns under a different shape (`Vec<Pattern>` vs. `Vec<(Pattern,
 /// Type)>`), so this is the one place that reaches past the difference to ask
 /// how many there are.
@@ -1892,42 +1921,41 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
     }
 }
 
-/// `LANG-35`'s dependency graph over `values`' parameterless bindings: one node per
-/// [`is_parameterless`] declaration, and an edge from `u` to `v` for every
-/// [`collect_top_level_refs`] reference `u`'s body makes to another parameterless
-/// declaration `v` — a reference to a binding with parameters is a reference to a value
-/// that already exists (its own body runs only once applied), so it is never a node and
-/// never an edge, which is what lets `isEven`/`isOdd` and `f n = f n` through untouched. A
-/// reference to an imported name is likewise never an edge: it never canonicalizes to
+/// The graph *depends on* is read off: one node per top-level declaration of `values`,
+/// functions included, and an edge from `u` to `v` for every [`collect_top_level_refs`]
+/// reference `u`'s body makes to `v`. A binding depends on everything it can reach along
+/// these edges ([evaluation
+/// semantics](../../../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once)):
+/// initialising a binding runs its body and whatever functions that body calls, and a
+/// function can only be called by code that names it or was handed it by code that did,
+/// so what can run while a binding is initialised is contained in what it reaches. The
+/// relation over-approximates — `a = f` beside `f x = a` mentions `f` without calling it —
+/// and [`DEC-19`](../../../docs/decisions/dec-19.md) is why that is the rule.
+///
+/// A reference to an imported name is never an edge: it never canonicalizes to
 /// `VarTopLevel` in the first place (see [`collect_top_level_refs`]), and a cross-module
 /// cycle is [`dependencies::ModuleWalker`](super::dependencies::ModuleWalker)'s to report.
+/// A body that mentions `v` twice gives one edge.
 ///
-/// Shared by [`check_self_dependency`], which asks whether this graph has a cycle, and
-/// [`initialisation_order`] (`GEN-7`), which asks for a topological order over it — one
-/// edge set read by two passes, rather than two graphs built from the same rule (the case
-/// `CLAUDE.md`'s *A doc comment describes what the code at that site does* warns against).
+/// Shared by [`check_self_dependency`], which asks which strongly-connected components hold
+/// a parameterless binding and a cycle, and [`initialisation_order`] (`GEN-7`), which
+/// orders the components — one edge set read by two passes, rather than two graphs built
+/// from the same rule.
 ///
-/// Nodes are added in name-sorted order, not `values`' raw `HashMap` iteration order.
-/// `petgraph::algo::toposort` only orders an edge's source before its target; among nodes
-/// with no edge between them — two independent top-level constants, say — its output
-/// falls out of `node_identifiers()`, which for a `Graph` is node-insertion order. Reading
-/// `values` in `HashMap` order would make that order, and therefore `initialisation_order`
-/// and `check_self_dependency`'s cycle report, depend on `values`' hash seed rather than
-/// on anything in the source.
-fn dependency_graph(
-    values: &HashMap<Name, Value>,
-) -> (DiGraph<&Name, ()>, HashMap<&Name, NodeIndex>) {
-    let mut graph: DiGraph<&Name, ()> = DiGraph::new();
+/// Nodes are added in name-sorted order, not `values`' raw `HashMap` iteration order, so
+/// node indices — and everything `petgraph` derives from them, such as the order
+/// `tarjan_scc` returns components in — depend on the names in the source rather than on
+/// `values`' hash seed.
+fn dependency_graph(values: &HashMap<Name, Value>) -> DiGraph<(&Name, &Value), ()> {
+    let mut graph: DiGraph<(&Name, &Value), ()> = DiGraph::new();
     let mut nodes: HashMap<&Name, NodeIndex> = HashMap::new();
 
     let mut sorted: Vec<(&Name, &Value)> = values.iter().collect();
     sorted.sort_by(|(l, _), (r, _)| l.as_str().cmp(r.as_str()));
 
     for &(name, value) in &sorted {
-        if is_parameterless(value) {
-            let idx = graph.add_node(name);
-            nodes.insert(name, idx);
-        }
+        let idx = graph.add_node((name, value));
+        nodes.insert(name, idx);
     }
 
     for &(name, value) in &sorted {
@@ -1944,66 +1972,65 @@ fn dependency_graph(
 
         for referenced in &refs {
             if let Some(&to) = nodes.get(referenced) {
-                graph.add_edge(from, to, ());
+                graph.update_edge(from, to, ());
             }
         }
     }
 
-    (graph, nodes)
+    graph
 }
 
-/// `LANG-35`: a strict, parameterless binding is evaluated once, before the
-/// program runs, in dependency order — so a cycle among parameterless
-/// bindings describes no such order, however long it runs (one binding, `x =
-/// x`, included).
+/// `LANG-35`: a strict, parameterless binding is evaluated once, before the program runs,
+/// after everything it depends on — so a binding that depends on itself describes no such
+/// order, whether the cycle is one binding long (`x = x`) or runs through other bindings
+/// and functions (`a = f 1` beside `f x = a`).
 ///
-/// Walks [`dependency_graph`] for a cycle. A self-loop is reported directly:
-/// `tarjan_scc` puts a single node in its own component whether or not it has an edge
-/// back to itself, so a one-binding cycle would otherwise slip past the `len() > 1` check
-/// below — but only when that node is not *also* part of a larger component, since a
-/// node can have a self-loop and still belong to a bigger cycle (`a = (a,
-/// b)` beside `b = a`), and that member should be named once, not twice.
-/// Every larger strongly-connected component is reported as one
-/// [`Error::SelfDependency`], its members in a name-sorted order so the
-/// diagnostic does not depend on `values`' `HashMap` iteration order.
+/// Reports one [`Error::SelfDependency`] per strongly-connected component of
+/// [`dependency_graph`] that both holds a parameterless binding and is a cycle: two or
+/// more members, or one member with an edge to itself. `tarjan_scc` puts a single node in
+/// its own component whether or not it has that edge, which is why the one-member case is
+/// asked separately. A component of functions only is never reported — a function's value
+/// exists before its body runs — so `isEven`/`isOdd` and `f n = f n` pass. A binding with
+/// an edge to itself inside a larger component (`a = (a, b)` beside `b = a`) is reported
+/// once, with that component.
+///
+/// Members are ordered parameterless bindings first, then functions, each group by name,
+/// so the report does not depend on traversal order and its first member — the one the
+/// message and the primary label are about — is always a parameterless binding.
 fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>> {
-    let (graph, _nodes) = dependency_graph(values);
+    let graph = dependency_graph(values);
 
     let mut errors = Vec::new();
-    let sccs = petgraph::algo::tarjan_scc(&graph);
 
-    // A node that also sits in a larger strongly-connected component gets its
-    // cycle reported once, below, alongside the rest of that component — not
-    // again here as a length-1 `SelfDependency` naming it alone. `a = (a, b)`
-    // beside `b = a` is exactly this: `a` has a self-loop *and* is part of the
-    // two-member `{a, b}` cycle, and the two used to be reported separately.
-    let in_larger_scc: HashSet<NodeIndex> = sccs
-        .iter()
-        .filter(|members| members.len() > 1)
-        .flatten()
-        .copied()
-        .collect();
+    for component in petgraph::algo::tarjan_scc(&graph) {
+        let cyclic = match component.as_slice() {
+            [only] => graph.contains_edge(*only, *only),
+            _ => true,
+        };
+        let holds_binding = component.iter().any(|&idx| is_parameterless(graph[idx].1));
 
-    for idx in graph.node_indices() {
-        if graph.contains_edge(idx, idx) && !in_larger_scc.contains(&idx) {
-            let name = graph[idx];
-            errors.push(Error::SelfDependency(vec![(
-                name.clone(),
-                values[name].span(),
-            )]));
+        if !(cyclic && holds_binding) {
+            continue;
         }
-    }
 
-    for members in sccs.iter().filter(|members| members.len() > 1) {
-        let mut names: Vec<&Name> = members.iter().map(|&idx| graph[idx]).collect();
-        names.sort_by(|l, r| l.as_str().cmp(r.as_str()));
-
-        let path = names
-            .into_iter()
-            .map(|name| (name.clone(), values[name].span()))
+        let mut members: Vec<CycleMember> = component
+            .iter()
+            .map(|&idx| {
+                let (name, value) = graph[idx];
+                CycleMember {
+                    name: name.clone(),
+                    span: value.span(),
+                    function: !is_parameterless(value),
+                }
+            })
             .collect();
+        members.sort_by(|l, r| {
+            l.function
+                .cmp(&r.function)
+                .then_with(|| l.name.as_str().cmp(r.name.as_str()))
+        });
 
-        errors.push(Error::SelfDependency(path));
+        errors.push(Error::SelfDependency(members));
     }
 
     if errors.is_empty() {
@@ -2014,28 +2041,31 @@ fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>
 }
 
 /// `GEN-7`: the order `module`'s parameterless bindings must be initialised in — each
-/// only after every parameterless binding its own body mentions
+/// only after every parameterless binding it depends on, through functions as well as
+/// directly
 /// (`docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once`).
-/// Reads the same edges [`check_self_dependency`] (`LANG-35`) walks to reject a cycle, and
-/// asks a topological sort of them instead.
 ///
-/// Deterministic: two runs of the compiler over one unchanged module produce the same
-/// order, including among bindings with no edge between them (two independent top-level
-/// constants, say) — [`dependency_graph`] reads `module.values` in name-sorted order for
-/// exactly this reason, rather than the raw order its backing `HashMap` iterates in.
+/// Reads [`dependency_graph`], the graph [`check_self_dependency`] (`LANG-35`) reads, and
+/// orders its strongly-connected components dependency-first, keeping only the
+/// parameterless bindings. A plain topological sort of the graph itself would not do: a
+/// cycle of functions only is legal, and a topological sort refuses any cycle. So the
+/// components are condensed to one node each, which is acyclic, and that is what is
+/// sorted. Functions take part in the sort — an edge through one is still an edge — but
+/// are left out of what comes back.
 ///
-/// Assumes [`dependency_graph`] is acyclic here. `check_module` only reaches `ir::build` —
-/// this function's sole caller — after `canonicalize` returned `Ok`, and `canonicalize`
-/// calls `check_self_dependency` on this same value map first, turning any cycle into
-/// `Error::SelfDependency` and aborting before `ir::build` runs; that call is what
-/// discharges the assumption. A cycle found here regardless (which should be unreachable)
-/// does not panic — this codebase holds `panic!`/`unwrap()`/`expect()` off every non-test
-/// path — it falls back to a name-sorted order instead.
+/// Among components with no path between them, the one whose smallest member name sorts
+/// first comes first, so the order is fixed by the names in the source: two runs of the
+/// compiler over one unchanged module produce the same order, and two independent
+/// constants come back in name order.
 ///
-/// An edge `u -> v` means `u`'s body references `v`, so `petgraph::algo::toposort`'s
-/// natural order — every edge's source before its target — would place the referencing
-/// binding before the one it depends on, backwards from what initialisation needs; this
-/// reverses that order so a dependency comes out before what depends on it.
+/// After `check_self_dependency` accepts a module, every component holding a
+/// parameterless binding is that binding alone, so each binding has one well-defined
+/// place. `check_module` only reaches `ir::build` — this function's sole caller — after
+/// `canonicalize` returned `Ok`, and `canonicalize` runs that check on this same value map
+/// first; that is what discharges the assumption. A component holding several
+/// parameterless bindings regardless (which should be unreachable) does not panic — this
+/// codebase holds `panic!`/`unwrap()`/`expect()` off every non-test path — its bindings
+/// come back together, in name order.
 ///
 /// A `module foreign` facade has no parameterless declarations to order for this purpose:
 /// `unsafe pi : Float` names a foreign binding directly, with no Zelkova body to place,
@@ -2047,19 +2077,52 @@ pub(crate) fn initialisation_order(module: &Module) -> Vec<Name> {
         return Vec::new();
     }
 
-    let (graph, nodes) = dependency_graph(&module.values);
+    // `make_acyclic` drops the edges inside a component, so the condensation is a DAG.
+    let condensed = petgraph::algo::condensation(dependency_graph(&module.values), true);
 
-    let mut order = match petgraph::algo::toposort(&graph, None) {
-        Ok(order) => order,
-        Err(_cycle) => {
-            let mut indices: Vec<NodeIndex> = nodes.values().copied().collect();
-            indices.sort_by(|&l, &r| graph[l].as_str().cmp(graph[r].as_str()));
-            indices
-        }
+    let first_name = |idx: NodeIndex| -> &str {
+        condensed[idx]
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .min()
+            .unwrap_or_default()
     };
-    order.reverse();
 
-    order.into_iter().map(|idx| graph[idx].clone()).collect()
+    // An edge `u -> v` means `u` depends on `v`, so a component is ready once every edge
+    // out of it has been satisfied. Counted per edge, and released per edge below, so
+    // the two agree whatever the condensation does with parallel edges.
+    let mut unsatisfied: Vec<usize> = condensed
+        .node_indices()
+        .map(|idx| condensed.edges_directed(idx, Direction::Outgoing).count())
+        .collect();
+
+    let mut ready: BinaryHeap<Reverse<(&str, NodeIndex)>> = condensed
+        .node_indices()
+        .filter(|idx| unsatisfied[idx.index()] == 0)
+        .map(|idx| Reverse((first_name(idx), idx)))
+        .collect();
+
+    let mut order = Vec::new();
+
+    while let Some(Reverse((_, idx))) = ready.pop() {
+        let mut bindings: Vec<&Name> = condensed[idx]
+            .iter()
+            .filter(|(_, value)| is_parameterless(value))
+            .map(|(name, _)| *name)
+            .collect();
+        bindings.sort_by(|l, r| l.as_str().cmp(r.as_str()));
+        order.extend(bindings.into_iter().cloned());
+
+        for dependent in condensed.neighbors_directed(idx, Direction::Incoming) {
+            let count = &mut unsatisfied[dependent.index()];
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                ready.push(Reverse((first_name(dependent), dependent)));
+            }
+        }
+    }
+
+    order
 }
 
 fn do_values(
