@@ -5066,6 +5066,38 @@ fn a_test_dependency_may_depend_on_the_package_it_tests() {
     );
 }
 
+/// The negative of [`a_test_dependency_may_depend_on_the_package_it_tests`], so that its
+/// `Ok` is known to come from a `tests/` root that was checked. The fixture pair is the
+/// same arrangement, and the test module builds `acme-check`'s `Verdict` out of
+/// `Internal.secret` rather than `Lib.token`: both modules resolve — the private
+/// `Internal` from `acme-lib`'s own `src/`, `AcmeCheck.Check` from the test-only package
+/// compiled against it — and the build fails with a type error in `LibTest`, the one
+/// module under `tests/`, and nothing else.
+///
+/// Mutation-checked by making `compile` skip `compile_tests`: the build is then `Ok`.
+/// Dropping `acme-lib`'s own modules from the `interfaces` `TestsEnvironment` carries
+/// turns the error into a canonicalization error about `Internal`, and this goes red
+/// on the type-error assertion.
+#[test]
+fn a_test_module_that_does_not_check_fails_when_its_test_dependency_depends_on_the_package() {
+    let root = fixture_package("package_acme_lib_failing_test");
+    assert_eq!(
+        module_names(&root, SourceRoot::Tests),
+        vec!["tests/LibTest.zel".to_string()],
+        "the fixture must hold the test module this test is about"
+    );
+
+    let error = compile_package_with_tests(&root)
+        .expect_err("`Holds` takes a `Lib.Token`, and `LibTest` hands it an `Internal.Secret`");
+
+    let all = accumulated(&error);
+    assert_eq!(all.len(), 1, "expected one error, got {:?}", all);
+    match unwrap_in_file(all[0]) {
+        CompilationError::Type(_, module) => assert_eq!(module.as_str(), "LibTest"),
+        other => panic!("expected a type error in `LibTest`, got {:?}", other),
+    }
+}
+
 /// The same pair built without the tests: `acme-check` is resolved, since the rules of
 /// the build hold over both maps, but it is test-only and is never compiled.
 ///

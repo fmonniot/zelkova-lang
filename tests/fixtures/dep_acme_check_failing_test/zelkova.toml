@@ -1,0 +1,10 @@
+# `dep_acme_check`, depending on `package_acme_lib_failing_test` rather than on
+# `package_acme_lib`: a build holds one directory per package name.
+name = "acme-check"
+version = "1.0.0"
+private-modules = []
+
+[dependencies.acme-lib]
+path = "../package_acme_lib_failing_test"
+
+[test-dependencies]
