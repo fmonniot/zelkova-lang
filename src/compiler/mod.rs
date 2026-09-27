@@ -978,7 +978,12 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
         }
     }
 
-    if tests == TestRoot::Compiled {
+    // `None` unless the tests were asked for and the root's `src/` checked, and in the
+    // second case the failure is already reported: its tests would only be blamed for a
+    // type the package never managed to declare. A test-only package is in the build for
+    // the tests alone, so it is not compiled either — one that depends on the root would
+    // only add a `DependencyNotCompiled` saying what the root's own errors already say.
+    if let Some((root, environment)) = root_tests {
         for package in build.iter().filter(|p| test_only.contains(&p.name)) {
             debug!("phase: compile package {} for the tests", package.name);
 
@@ -998,20 +1003,15 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
             }
         }
 
-        // `None` when the root's `src/` did not check, which is already reported: its
-        // tests would only be blamed for a type the package never managed to declare.
-        if let Some((package, environment)) = root_tests {
-            debug!("phase: compile the tests of package {}", package.name);
-            compile_tests(
-                package,
-                &build,
-                &published,
-                environment,
-                &mut sources,
-                &mut errors,
-                &mut print_status,
-            );
-        }
+        debug!("phase: compile the tests of package {}", root.name);
+        compile_tests(
+            root,
+            &build,
+            &published,
+            environment,
+            &mut errors,
+            &mut print_status,
+        );
     }
 
     // Step 6: generate code, only for a build in which nothing failed. Every module is
@@ -1127,17 +1127,21 @@ struct CompiledPackage {
     tests: Option<TestsEnvironment>,
 }
 
-/// What a package's `src/` leaves behind for its `tests/`, which is checked in a later
-/// step of the build ([`compile_tests`]) once every test-only package is compiled.
+/// What [`compile_in_build`] leaves behind for a package's `tests/`, which is parsed
+/// alongside `src/` and checked in a later step of the build ([`compile_tests`]) once
+/// every test-only package is compiled.
 struct TestsEnvironment {
     /// Every interface `src/` was checked against or produced: the package's own modules,
     /// the private ones and the facades included, and its `dependencies`' public modules
     /// under the spelling this package names them by. A test module sees all of it.
     interfaces: HashMap<Name, Interface>,
-    /// The modules `src/` declares, each with its file. A test module answering to one of
-    /// these names is a collision, so the tests' own collision check starts from them.
+    /// The modules of `tests/`, as the parser left them.
+    modules: Vec<parser::Module>,
+    /// The modules both roots declare, `src/` first, each with its file. They were
+    /// already checked against each other and against the plain dependencies; the tests'
+    /// own collision check runs them again with the `test-dependencies` added.
     local_modules: Vec<resolve::LocalModule>,
-    /// The file each module of `src/` was parsed from.
+    /// The file each module of either root was parsed from.
     module_files: HashMap<Name, SourceFileId>,
 }
 
@@ -1152,9 +1156,12 @@ struct TestsEnvironment {
 ///
 /// `tests` says whether this package's `tests/` root is compiled later in the build. It
 /// is [`TestRoot::Compiled`] for the package the compiler was pointed at, when the
-/// caller asked for tests, and for no other package in the build. This function reads
-/// none of `tests/` either way; with [`TestRoot::Compiled`] it hands back the
-/// [`TestsEnvironment`] that [`compile_tests`] checks `tests/` against. The two roots are
+/// caller asked for tests, and for no other package in the build. With
+/// [`TestRoot::Compiled`] this function reads and parses `tests/`, so that a module name
+/// the two roots share is reported before `src/` is checked, but checks none of it: it
+/// hands back the parsed modules in the [`TestsEnvironment`] that [`compile_tests`]
+/// checks them against. A test module that fails to parse fails this package, the same
+/// as one of `src/` would. The two roots are
 /// two environments: a module under `src/` sees neither a test module nor a
 /// `test-dependency`'s — an import naming one is a module that does not exist, the same
 /// as a private module of another package.
@@ -1227,6 +1234,36 @@ fn compile_in_build(
     let parsed = parse_root(&src_ids, sources, errors);
     print_parse_status(&parsed, "modules", print_status);
 
+    // `tests/` is read and parsed here, ahead of anything in `src/` being checked, even
+    // though it is checked last in the build (`compile_tests`): the two roots share one
+    // set of module names, and a collision between them has to be reported before any
+    // module of the package is compiled (step 3.d below). A package that holds no
+    // `tests/` directory at all is a package with no tests rather than a failure —
+    // unlike `src/`, which every package has.
+    let parsed_tests = match tests {
+        TestRoot::Skipped => None,
+        TestRoot::Compiled => {
+            debug!("phase: load package test sources");
+            let test_ids = match source::load_package_sources_into(
+                &package.root,
+                source::SourceRoot::Tests,
+                Some(&package.name),
+                sources,
+            ) {
+                Ok(file_ids) => file_ids,
+                Err(error) => {
+                    errors.push(error);
+                    return None;
+                }
+            };
+
+            debug!("phase: parse package test sources");
+            let parsed_tests = parse_root(&test_ids, sources, errors);
+            print_parse_status(&parsed_tests, "test modules", print_status);
+            Some(parsed_tests)
+        }
+    };
+
     // Step 3.c
     // TODO Verify modules name match file system.
     // TODO Include this into the parser::parse() function (w/ module name as argument) ?
@@ -1276,13 +1313,25 @@ fn compile_in_build(
     // reason it does not is that the parsed header is what every other phase calls a
     // module by.
     //
-    // This map holds `src/` and the plain dependencies alone. A collision that needs a
-    // module of `tests/` or of a `test-dependency` is found by `compile_tests`, because
-    // that is the only step in which both halves are here to collide. A `tests/` root is
-    // read [when this package's own tests are run and at no other
+    // Whichever roots this build read are in the list, `src/` first — the order a
+    // collision between the two reads best in — because the two share one set of names:
+    // `src/Model.zel` and `tests/Model.zel` are both `Model`, and the chapter calls that
+    // the same error as two modules of one root answering to one name
+    // (`docs/spec/packages.md#source-roots`). A `tests/` root is read [when this
+    // package's own tests are run and at no other
     // time](../../docs/spec/packages.md#tests), so an ordinary build has not read the
     // second file and has nothing to report.
-    let visible = match resolve::visible_modules(package, &parsed.local_modules, &dependencies) {
+    //
+    // The dependencies here are the plain ones alone. A collision with a
+    // `test-dependency`'s module is found by `compile_tests`, because a test-dependency
+    // may depend on this package and so is compiled after it: what it publishes is not
+    // known yet. That half is reported late, which the chapter records as a known gap
+    // (`docs/tickets/bug-42.md`).
+    let mut local_modules = parsed.local_modules.clone();
+    if let Some(parsed_tests) = &parsed_tests {
+        local_modules.extend(parsed_tests.local_modules.iter().cloned());
+    }
+    let visible = match resolve::visible_modules(package, &local_modules, &dependencies) {
         Ok(visible) => visible,
         // As with the uncompiled-dependency case in `direct_dependencies`, the diagnostic
         // is the whole report: a second, shorter copy on the status line said nothing it
@@ -1379,14 +1428,16 @@ fn compile_in_build(
     // `tests/` is checked against everything `src/` was checked against or produced —
     // the private modules included, since `interfaces` holds every module of the
     // package and the `private-modules` filter applies only to what is published.
-    let tests = match tests {
-        TestRoot::Skipped => None,
-        TestRoot::Compiled => Some(TestsEnvironment {
+    let tests = parsed_tests.map(|parsed_tests| {
+        let mut module_files = parsed.module_files;
+        module_files.extend(parsed_tests.module_files);
+        TestsEnvironment {
             interfaces,
-            local_modules: parsed.local_modules,
-            module_files: parsed.module_files,
-        }),
-    };
+            modules: parsed_tests.modules,
+            local_modules,
+            module_files,
+        }
+    });
 
     Some(CompiledPackage {
         public,
@@ -1395,8 +1446,9 @@ fn compile_in_build(
     })
 }
 
-/// Compile the `tests/` root of the package the compiler was pointed at, against what
-/// its `src/` left in `environment` and the public modules of both its dependency maps.
+/// Check the `tests/` root of the package the compiler was pointed at, which
+/// [`compile_in_build`] already parsed into `environment`, against what its `src/` left
+/// there and the public modules of both its dependency maps.
 ///
 /// `compile` calls this after the package's `src/` and after every test-only package,
 /// because a test-only package may depend on this one
@@ -1414,15 +1466,14 @@ fn compile_tests(
     build: &[resolve::ResolvedPackage],
     published: &HashMap<PackageName, HashMap<Name, Interface>>,
     environment: TestsEnvironment,
-    sources: &mut SourceFiles,
     errors: &mut Vec<CompilationError>,
     print_status: &mut impl FnMut(bool, String),
 ) {
-    let errors_before = errors.len();
     let TestsEnvironment {
         mut interfaces,
-        mut local_modules,
-        mut module_files,
+        modules,
+        local_modules,
+        module_files,
     } = environment;
 
     // Both dependency maps, the plain one included: the collision check below is over
@@ -1442,33 +1493,11 @@ fn compile_tests(
         return;
     };
 
-    // A package that holds no `tests/` directory at all is a package with no tests
-    // rather than a failure — unlike `src/`, which every package has.
-    debug!("phase: load package test sources");
-    let test_ids = match source::load_package_sources_into(
-        &package.root,
-        source::SourceRoot::Tests,
-        Some(&package.name),
-        sources,
-    ) {
-        Ok(file_ids) => file_ids,
-        Err(error) => {
-            errors.push(error);
-            return;
-        }
-    };
-
-    debug!("phase: parse package test sources");
-    let parsed = parse_root(&test_ids, sources, errors);
-    print_parse_status(&parsed, "test modules", print_status);
-
-    // The two roots share one set of names: `src/Model.zel` and `tests/Model.zel` are
-    // both `Model`, and the chapter calls that the same error as two modules of one root
-    // answering to one name (`docs/spec/packages.md#source-roots`). So the map is built
-    // again over both roots, `src/` first — the order a collision between the two reads
-    // best in — and over both dependency maps.
-    local_modules.extend(parsed.local_modules);
-    module_files.extend(parsed.module_files);
+    // The map is built again over both roots and both dependency maps. `compile_in_build`
+    // already reported every collision among the two roots and the plain dependencies,
+    // before `src/` was checked, and stopped there if it found one; what this can still
+    // find is a collision with a `test-dependency`'s module, which could not be seen
+    // until that package was compiled.
     let visible = match resolve::visible_modules(package, &local_modules, &dependencies) {
         Ok(visible) => visible,
         Err(collisions) => {
@@ -1490,16 +1519,10 @@ fn compile_tests(
         &mut interfaces,
     );
 
-    // A test module that failed to parse leaves the rest of `tests/` unchecked, the
-    // same as any other error of this package so far.
-    if errors.len() != errors_before {
-        return;
-    }
-
     check_root(
         package,
         source::SourceRoot::Tests,
-        &parsed.modules,
+        &modules,
         &module_files,
         &mut interfaces,
         errors,

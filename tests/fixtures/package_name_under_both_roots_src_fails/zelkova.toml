@@ -1,0 +1,11 @@
+# `package_name_under_both_roots`, with a `src/` that also fails to check:
+# `src/Mismatch.zel` annotates `Apple` over a `Pear`. The collision between
+# `src/Model.zel` and `tests/Model.zel` is reported before any module is
+# checked, so the type error is never reached.
+name = "package-name-under-both-roots-src-fails"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

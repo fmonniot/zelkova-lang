@@ -1,0 +1,13 @@
+module Mismatch exposing (..)
+
+
+type Apple
+  = Apple
+
+
+type Pear
+  = Pear
+
+
+fruit : Apple
+fruit = Pear

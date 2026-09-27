@@ -512,6 +512,14 @@ ambiguous. The manifest is what created the ambiguity and the manifest is what h
 by wrapping one of the two, or by renaming the package's own module — so a build that has no
 coherent answer for a name is stopped before any file is read for one.
 
+**Known gap:** a collision that involves a module of a test-dependency, whether with one of the
+package's own modules or with a module of a plain dependency, should be reported with the
+others, before any module of the package is compiled. It is reported only after the package's
+`src/` has been checked and every test-dependency compiled, and not at all when either fails:
+the compiler learns which modules a test-dependency exposes by compiling it, and a
+test-dependency may depend on the package, so it is compiled after that package's `src/`
+([`docs/tickets/bug-42.md`](../tickets/bug-42.md)).
+
 ## Tests
 
 `tests/` is the package's second source root. A module under it is an ordinary module, with

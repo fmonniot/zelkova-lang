@@ -4654,9 +4654,11 @@ fn a_src_module_may_not_import_a_test_module() {
 /// one name. Both files are named, because the package name alone cannot say which of
 /// the two to change.
 ///
-/// Mutation-checked by leaving the `tests/` modules out of the `local_modules`
-/// `compile_tests` hands `visible_modules`, so it sees the `src/` modules alone: the
-/// collision disappears and the fixture compiles.
+/// Mutation-checked by leaving the `tests/` modules out of the `local_modules` list
+/// `compile_in_build` builds, which it and `compile_tests` both hand `visible_modules`:
+/// each then sees the `src/` modules alone, the collision disappears and the fixture
+/// compiles. *When* the collision is reported is pinned by
+/// [`a_collision_between_the_roots_is_reported_before_src_is_checked`].
 #[test]
 fn one_module_name_under_both_roots_names_both_files() {
     let root = fixture_package("package_name_under_both_roots");
@@ -4678,6 +4680,36 @@ fn one_module_name_under_both_roots_names_both_files() {
             && notes.iter().any(|n| n.contains("tests/Model.zel")),
         "both files must be named, got {:?}",
         notes
+    );
+}
+
+/// The collision between the two roots is reported before any module of the package is
+/// checked, so a `src/` that would also fail to check does not hide it: the fixture is
+/// [`one_module_name_under_both_roots_names_both_files`]'s, plus a `src/Mismatch.zel`
+/// that annotates `Apple` over a `Pear`, and the build reports the collision alone.
+///
+/// Mutation-checked by handing `compile_in_build`'s `visible_modules` call the `src/`
+/// modules alone, while the `TestsEnvironment` still carries both roots: `src/` is then
+/// checked, fails, and `compile_tests` is never reached, so the build reports the type
+/// error and no collision at all. [`one_module_name_under_both_roots_names_both_files`]
+/// stays green under that mutation, because its `src/` is clean and `compile_tests`
+/// still finds the collision.
+#[test]
+fn a_collision_between_the_roots_is_reported_before_src_is_checked() {
+    let root = fixture_package("package_name_under_both_roots_src_fails");
+
+    let error =
+        compile_package_with_tests(&root).expect_err("`Model` is declared under both source roots");
+
+    let all = accumulated(&error);
+    assert_eq!(all.len(), 1, "expected the collision alone, got {:?}", all);
+
+    let errors = resolution_errors(&error);
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+    assert!(
+        matches!(errors[0], resolve::Error::ModuleNameCollision { .. }),
+        "expected a module name collision, got {:?}",
+        errors[0]
     );
 }
 
