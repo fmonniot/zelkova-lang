@@ -38,7 +38,7 @@ handles: the division behind `fdiv` divides, the one behind `idiv` truncates.
 
 **Not implemented:** nothing holds an unmarked facade to the result type
 [An effectful facade](#an-effectful-facade) requires, so a facade that omits `unsafe` is read as
-if it carried it.
+if it carried it ([`LANG-68`](../tickets/lang-68.md)).
 
 ## A facade names a boundary, not a backend
 
@@ -315,8 +315,8 @@ inside another type.
 
 **Not implemented:** neither block above compiles, because nothing declares the `Task` or the
 `Failure` they import. No wrapper is generated, and nothing is checked at either boundary
-([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)); nothing holds a facade to the
-result type above either.
+([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)); no check holds a facade to the
+result type above, which is [`LANG-68`](../tickets/lang-68.md)'s.
 
 ## An `unsafe` facade
 
@@ -348,9 +348,9 @@ the second [aborts the program](evaluation-semantics.md#when-a-program-aborts).
 exactly as any other crossing is, and a value that fails
 [aborts](evaluation-semantics.md#when-a-program-aborts).
 
-**Not implemented:** nothing holds an unmarked facade to a `Task` result, so the two shapes
-declare the same thing where a signature's own annotation is concerned. Crossing the boundary
-runs no check against the
+**Not implemented:** nothing holds an unmarked facade to a `Task` result
+([`LANG-68`](../tickets/lang-68.md)), so the two shapes declare the same thing where a
+signature's own annotation is concerned. Crossing the boundary runs no check against the
 declared type in either direction ([`GEN-2`](../tickets/gen-2.md)), and the wrapper an
 effectful facade's call site needs is not generated ([`GEN-16`](../tickets/gen-16.md)).
 

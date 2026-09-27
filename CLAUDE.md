@@ -157,7 +157,7 @@ it describes.
   function type is rejected. Still not implemented: the modifier is spelled `module foreign` and
   a signature may be marked `unsafe`, but nothing holds an unmarked facade to the
   `Task (Result Failure a)` result type that requires, so the two shapes are read as the same
-  thing until something does.
+  thing until [`LANG-68`](docs/tickets/lang-68.md) does.
 - **A doc comment describes what the code at that site does** — not what you intended, and
   not what it used to do. An overstated comment is a real defect because it is what the next
   reader trusts. Prefer saying less over saying more than you verified.
