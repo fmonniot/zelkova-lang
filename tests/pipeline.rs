@@ -4762,25 +4762,55 @@ fn a_test_dependency_reaches_the_tests_root() {
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }
 
-/// A test build's output tree holds exactly what a plain build of the same package's
-/// `src/` would: `compile_package_with_tests` checks `tests/AppTest.zel` and the
-/// `test-dependency` it reaches through (`acme-expect`), but writes neither
-/// `AppTest.mjs` nor `acme-expect/Expect.mjs`, so a later plain `compile_package` run
+/// `GEN-18`: a test build writes a second, complete tree at `test/js/` — the root's
+/// `tests/AppTest.zel` and the `test-dependency` it reaches through (`acme-expect`)
+/// beside everything a plain build already writes — while `js/` itself stays exactly
+/// what a plain build of the same package's `src/` would write: neither `AppTest.mjs`
+/// nor `acme-expect/Expect.mjs` ever lands there, so a later plain `compile_package` run
 /// never finds a test module a test build left behind.
 ///
-/// Mutation-checked by extending `checked` with the modules of each test-only package
-/// in `compile`'s second loop: `acme-expect/Expect.mjs` is then written. No line keeps
-/// `AppTest.mjs` out: `compile_tests` hands back nothing, so there is no test module
-/// for `compile` to write.
+/// Mutation-checked by dropping `test_tree_modules.extend(compiled.modules)` from the
+/// test-only loop and the `test_tree_modules.extend(compile_tests(..))` around the call
+/// to `compile_tests` in `compile`: `test/js/` then holds only the runtime and `App.mjs`,
+/// missing both `Expect.mjs` and `AppTest.mjs`, and this goes red.
 #[test]
-fn a_test_build_writes_the_same_tree_a_plain_build_would() {
-    let root = fixture_package("package_test_dependency");
-    let build_dir = root.join("build");
-    if build_dir.exists() {
-        std::fs::remove_dir_all(&build_dir).unwrap();
-    }
+fn a_test_build_writes_a_second_tree_beside_the_plain_one() {
+    let build_dir = fresh_build_dir("a_test_build_writes_a_second_tree_beside_the_plain_one");
 
-    let result = compile_package_with_tests(&root);
+    let result = zelkova_lang::compiler::compile_package_with_tests_into(
+        &fixture_package("package_test_dependency"),
+        &build_dir,
+    );
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    assert_eq!(
+        files_under(&build_dir),
+        vec![
+            "js/package-test-dependency/App.mjs".to_string(),
+            "js/zelkova.mjs".to_string(),
+            "test/js/acme-expect/Expect.mjs".to_string(),
+            "test/js/package-test-dependency/App.mjs".to_string(),
+            "test/js/package-test-dependency/AppTest.mjs".to_string(),
+            "test/js/zelkova.mjs".to_string(),
+        ]
+    );
+}
+
+/// …and a plain build over the same fixture writes neither half of that second tree: it
+/// never checks `tests/` or resolves `test-dependencies` into anything to compile, so
+/// there is no `test/` directory at all and `acme-expect` — reachable only as a
+/// `test-dependency` — is never compiled, let alone written.
+///
+/// Mutation-checked by having `compile`'s first loop not `continue` past a `test_only`
+/// package: `js/acme-expect/Expect.mjs` then appears and this goes red.
+#[test]
+fn a_plain_build_writes_no_test_tree() {
+    let build_dir = fresh_build_dir("a_plain_build_writes_no_test_tree");
+
+    let result = zelkova_lang::compiler::compile_package_into(
+        &fixture_package("package_test_dependency"),
+        &build_dir,
+    );
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
     assert_eq!(
@@ -5053,13 +5083,19 @@ fn a_test_dependency_may_depend_on_the_package_it_tests() {
     let result = compile_package_with_tests(&root);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
-    // The test library is checked for the tests and never written.
+    // `acme-check` and `LibTest` are checked for the tests and never written to `js/` —
+    // only `test/js/` holds them, beside `acme-lib`'s own modules (`GEN-18`).
     assert_eq!(
         files_under(&build_dir),
         vec![
             "js/acme-lib/Internal.mjs".to_string(),
             "js/acme-lib/Lib.mjs".to_string(),
             "js/zelkova.mjs".to_string(),
+            "test/js/acme-check/Check.mjs".to_string(),
+            "test/js/acme-lib/Internal.mjs".to_string(),
+            "test/js/acme-lib/Lib.mjs".to_string(),
+            "test/js/acme-lib/LibTest.mjs".to_string(),
+            "test/js/zelkova.mjs".to_string(),
         ]
     );
 }

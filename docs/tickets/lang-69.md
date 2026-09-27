@@ -9,7 +9,7 @@ module's tests rather than crash with it.
 
 **Depends on:** [`GEN-17`](README.md), now closed (the binary and its `compile` subcommand),
 [`LANG-63`](lang-63.md) (`Test`, and the pass that collects the values that have it) and
-[`GEN-18`](gen-18.md) (the test build is written to `build/test/js/`).
+[`GEN-18`](README.md), now closed too (the test build is written to `build/test/js/`).
 
 **Location:** `src/main.rs`, which [`GEN-17`](README.md) gives a clap `Command` enum.
 `src/compiler/mod.rs` has `compile_package_with_tests`. `src/compiler/javascript.rs` has

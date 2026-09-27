@@ -41,7 +41,12 @@ use super::PhaseError;
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 /// One file of a build's output.
-#[derive(Debug)]
+///
+/// `Clone` because a test build's tree at `build/test/js/` starts as a copy of what
+/// `compile` already emitted for `build/js/` — the runtime, the root's `src/` and every
+/// plain dependency's modules — and adds its own extra files rather than emitting that
+/// shared half a second time.
+#[derive(Debug, Clone)]
 pub struct File {
     /// Where it goes, relative to `build/js/`.
     pub path: PathBuf,
@@ -49,7 +54,7 @@ pub struct File {
 }
 
 /// What a [`File`] holds.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Contents {
     /// Text the compiler produced: an emitted module, or the runtime.
     Text(String),
