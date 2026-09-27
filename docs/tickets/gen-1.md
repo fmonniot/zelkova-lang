@@ -110,16 +110,15 @@ GEN-9   emit a module   ── closed
    │
 GEN-13  write the build   ── closed
    │
-GEN-14  the end-to-end check under node
+GEN-14  the end-to-end check   ── moved to the bootstrap section, run by `zelkova test`
 ```
 
 Unscheduled, filed to keep their context: [`GEN-15`](gen-15.md) the WebAssembly backend,
-[`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets, [`GEN-17`](gen-17.md) a
-`zelkova` binary. [`GEN-2`](gen-2.md), the boundary predicates, sequences after
+[`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets. [`GEN-17`](gen-17.md),
+the `zelkova` binary, is scheduled in the bootstrap section. [`GEN-2`](gen-2.md), the boundary predicates, sequences after
 [`GEN-12`](README.md) and [`LANG-43`](README.md) as it always did.
 
 **Acceptance:** every ticket above is closed, and this file is tombstoned with them. What the
-program as a whole has to show is [`GEN-14`](gen-14.md)'s: a small module compiled, its exported
-value imported from the emitted output under `node`, and the value asserted — covering one self
-tail call deep enough that a non-tail emission exhausts the stack, and one call through a
-facade into its companion.
+program as a whole has to show is [`GEN-14`](gen-14.md)'s. Since 2026-09-27 that is Zelkova
+tests in `std/core/tests/` run by `zelkova test`, including one call through a facade into its
+companion. The self-tail-call depth check moved to [`GEN-11`](gen-11.md)'s own acceptance.

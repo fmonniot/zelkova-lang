@@ -53,12 +53,13 @@ rewritten. Say so in the doc comment so the next reader does not take its absenc
 oversight.
 
 **Acceptance:** a test asserts the emitted text for a declaration with a marked call contains
-the loop and for one without does not. The behavioural half — through the harness
-[`GEN-14`](gen-14.md) sets up — runs a self-recursive function in tail position to a depth deep
-enough that a non-tail emission exhausts Node's stack, and asserts the answer. A second
-behavioural test covers the crossing case: a two-parameter tail-recursive declaration whose
-recursive call swaps its arguments, asserting the value simultaneous assignment gives and not
-the one sequential assignment gives.
+the loop and for one without does not. The behavioural half is Zelkova tests in `std/core/tests/`,
+run by `zelkova test std/core` ([`GEN-14`](gen-14.md) sets that root up). One test runs a
+self-recursive function in tail position to a depth where a non-tail emission exhausts Node's
+stack, and asserts the answer. A comment beside the test says why that depth was chosen. A
+second test covers the crossing case: a two-parameter tail-recursive declaration whose recursive
+call swaps its arguments. It asserts the value that simultaneous assignment gives, not the one
+that sequential assignment gives.
 
 Neutralise-check both: revert the loop emission and the depth test overflows; assign the
 parameters in sequence without temporaries and the swap test goes red. `cargo run` still prints

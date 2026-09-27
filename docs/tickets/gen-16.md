@@ -58,5 +58,5 @@ is stated in [`GEN-2`](gen-2.md)'s first point.
 **Acceptance:** not written while the blockers stand. What it will have to show: a companion
 that throws yields `Err (Threw ..)` carrying the host's description, a companion that returns a
 value of the wrong shape yields `Err (Malformed ..)` naming the export, and a companion that
-returns correctly yields `Ok` with the value — all three asserted by running the emitted output
-under `node` through [`GEN-14`](gen-14.md)'s harness.
+returns correctly yields `Ok` with the value — all three asserted as Zelkova tests run by
+`zelkova test` ([`LANG-69`](lang-69.md)), in the root [`GEN-14`](gen-14.md) sets up.

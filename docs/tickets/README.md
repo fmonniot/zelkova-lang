@@ -171,17 +171,78 @@ GEN-9   emit a module   ── closed
   │
 GEN-13  write the build   ── closed
   │
-GEN-14  the end-to-end check under node   ← converges with TEST-3's CI job
+GEN-14  the end-to-end check   ── moved to the bootstrap section below
 ```
 
-Three more are filed unscheduled, to keep context that would otherwise be rediscovered:
+Two more are filed unscheduled, to keep context that would otherwise be rediscovered:
 [`GEN-15`](gen-15.md) the WebAssembly backend, whose constraints are what shape the IR in
 `src/compiler/ir/`;
-[`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets, blocked on `Task`
-existing at all; and [`GEN-17`](gen-17.md) a `zelkova` binary that compiles and runs, which
-[`LANG-63`](lang-63.md) and [`GEN-14`](gen-14.md) both point at.
+and [`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets, blocked on `Task`
+existing at all. [`GEN-17`](gen-17.md), the `zelkova` binary, used to be filed here and is now
+scheduled in the bootstrap section.
 [`GEN-2`](gen-2.md), the boundary predicates, sequences after `GEN-12` and
 `LANG-43` as it always did.
+
+## Active work: bootstrap
+
+The goal is **`zelkova compile` and `zelkova test`**, so that the language's own behaviour is
+checked by tests written in Zelkova. Today it is checked by Rust tests that assert emitted text,
+plus `.mjs` files that either test a companion directly or hand-copy what the emitter writes
+(`std/core/tests/CaseChecks.mjs`). Neither kind runs the program the compiler actually produced.
+
+The language owner settled the design on 2026-09-27. Each ticket records its part under
+**Decided**:
+
+- **The binary is `zelkova`, with clap subcommands.** They are `compile [DIR]` and
+  `test [DIR]`, where `DIR` defaults to `.`. A bare `cargo run` stops compiling `std/core`, and
+  `cargo run -- compile std/core` is the smoke test from [`GEN-17`](gen-17.md) on.
+- **A `Test` is a pass-or-fail verdict built from a `Bool`,** reported under the name of the
+  value that holds it. `zelkova-test`, under `std/test/`, exposes `Test.equal` and `Test.check`.
+  That needs no string literal, list, lambda, unit or `Task`, and all five are unimplemented. It
+  is the bootstrap shape and not the final surface, which grows once those constructs land.
+- **A package may test-depend on a library that depends on it.** That is what lets
+  `zelkova-core` use `zelkova-test` and keep its tests in its own `tests/` root.
+- **`zelkova test` runs under `node`.** `cargo test` still never does
+  ([`DEC-18` decision 6](../decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node)).
+
+The minimal path has seven tickets. The first four have no prerequisite among them and can be
+worked in parallel:
+
+```
+GEN-17   `zelkova compile [DIR]` — the binary, clap, and the `cargo run` sweep
+LANG-63  `zelkova-test` declares `Test`; a pass collects a package's tests
+GEN-18   a test build writes its tests, to `build/test/js/`
+SPEC-35  a test-dependency may depend on the package it tests
+  │
+  │  GEN-17 + LANG-63 + GEN-18
+  ▼
+LANG-69  `zelkova test [DIR]` — a generated `run.mjs`, run under node
+  │
+  │  + SPEC-35
+  ▼
+GEN-14   std/core's first Zelkova tests; `CaseChecks.mjs` is deleted
+  │
+TEST-3   CI runs `zelkova test std/core` and the remaining `.mjs` checks
+```
+
+**Deliberately off the path**, each one because the bootstrap does not need it:
+
+- [`LANG-62`](lang-62.md), core supplied without being written in `dependencies`. `zelkova-test`
+  names core by `path`, which works today.
+- [`GEN-11`](gen-11.md), the tail-call loop. Its depth test is written as a Zelkova test once
+  `std/core/tests/` exists.
+- [`GEN-16`](gen-16.md) and [`LANG-68`](lang-68.md), everything that needs `Task`, and with them
+  a `zelkova run`.
+- [`LANG-42`](lang-42.md). `==` is already structural at run time, because `Basics.eq` reaches
+  `_Utils_eq`, so `Test.equal` works before `Eq` exists. It gains an `Eq a =>` constraint when
+  that ticket lands.
+
+**What comes after.** Porting `std/core/tests/Js/*.mjs` into Zelkova tests is the obvious next
+step. It is not filed yet, because [*Testing a companion*](../spec/interop.md#testing-a-companion)
+specifies a companion's checks as a facade whose checks are `Task`s, and a port through
+`Basics` would test something different. That needs deciding first. A richer `Test`, with names,
+groups and failure messages, waits on string literals, [`LANG-44`](lang-44.md) and
+[`LANG-34`](lang-34.md).
 
 ## Recovering a closed ticket
 
@@ -308,6 +369,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-32 | task | — | closed 2026-09-15 | A module is made ambiguous by an import it never wrote |
 | SPEC-33 | task | — | closed 2026-09-15 | Which default imports a module gets is a fixed point over the whole package |
 | SPEC-34 | task | — | closed 2026-09-27 | Only `zelkova-core` may declare a module the default imports name, and the exemption is keyed on the package rather than on module names |
+| [SPEC-35](spec-35.md) | task | — | open | A package cannot be tested with a library that depends on it, so `zelkova-core` cannot use `zelkova-test` |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -370,12 +432,13 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-60 | task | — | closed 2026-09-16 | The typer gives `Bool` a literal type, so inside `Basics` it does not match `True` and `False` |
 | [LANG-61](lang-61.md) | task | — | open | A `git` dependency is not fetched, and nothing writes or reads `zelkova.lock` |
 | [LANG-62](lang-62.md) | task | — | open | The compiler carries no copy of `zelkova-core`, so a package has to write it in `dependencies` |
-| [LANG-63](lang-63.md) | task | — | open | Nothing declares `Test`, and nothing runs a package's tests |
+| [LANG-63](lang-63.md) | task | — | open | Nothing declares `Test`, and nothing finds a package's tests |
 | LANG-64 | task | — | closed 2026-09-20 | A shift count is clamped into `0 .. 64` |
 | LANG-65 | task | — | closed 2026-09-21 | Three more `std/core` JavaScript functions still read an `Int` as a number |
 | [LANG-66](lang-66.md) | task | — | open | What a negative `Int` exponent means for `pow` is undecided |
 | [LANG-67](lang-67.md) | task | — | open | `pow`'s `bigint` branch can materialize an astronomically large intermediate before masking |
 | [LANG-68](lang-68.md) | task | — | open | An unmarked facade signature is not held to the `Task (Result Failure a)` result shape |
+| [LANG-69](lang-69.md) | task | — | open | There is no `zelkova test`: nothing runs a package's tests |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
@@ -391,10 +454,11 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-11](gen-11.md) | task | — | open | Emit the tail-call loop |
 | GEN-12 | task | — | closed 2026-09-22 | Emit an `unsafe` facade call, and place its companion |
 | GEN-13 | task | — | closed 2026-09-26 | Write the build |
-| [GEN-14](gen-14.md) | task | — | open | The end-to-end check under node |
+| [GEN-14](gen-14.md) | task | — | open | Nothing checks that an emitted program computes the right value |
 | [GEN-15](gen-15.md) | task | — | open | The WebAssembly backend |
 | [GEN-16](gen-16.md) | task | — | open | The wrapper an effectful facade's call site gets |
-| [GEN-17](gen-17.md) | task | — | open | A `zelkova` binary that compiles and runs |
+| [GEN-17](gen-17.md) | task | — | open | The compiler has no command line: `src/main.rs` compiles `std/core` and takes no arguments |
+| [GEN-18](gen-18.md) | task | — | open | A build that compiles the tests writes none of them, so nothing can run one |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
@@ -411,5 +475,5 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |
-| [TEST-3](test-3.md) | task | — | open | A `.mjs` companion's test file has no harness in CI, and no documented way to discover it |
+| [TEST-3](test-3.md) | task | — | open | CI runs neither a package's Zelkova tests nor a `.mjs` companion's checks |
 | TEST-4 | task | — | closed 2026-09-11 | A facade's `.mjs` companion test lives in the compiler repo, not in the package that ships the companion |

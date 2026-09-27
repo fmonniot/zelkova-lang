@@ -1,59 +1,52 @@
-# TEST-3 · A `.mjs` companion's test file has no harness in CI, and no documented way to discover it
+# TEST-3 · CI runs neither a package's Zelkova tests nor a `.mjs` companion's checks
 
-**Sizing:** small (a `.github/workflows/rust.yml` job; `CLAUDE.md` already names the local
-command, and no compiler code moves). Could grow to small-to-medium if pinning a Node version or adding
-`actions/setup-node` turns out to matter — see **Approach**.
+**Sizing:** small. It adds a `.github/workflows/rust.yml` job and moves no compiler code. It
+could grow to small-to-medium if pinning a Node version with `actions/setup-node` turns out to
+matter (see **Approach**).
 
-**Location:** `.github/workflows/rust.yml` — the `test`/`fmt`/`clippy` jobs, all three
-`cargo`-only. `CLAUDE.md`'s *Commands* section, which lists `cargo test` as "full suite: unit
-tests + tests/" with nothing about `.mjs` files. `std/core/tests/Js/UtilsChecks.mjs` — the
-first (and, as of this writing, only) file in the place
-[*Testing a companion*](../spec/interop.md#testing-a-companion) puts one.
+**Part of:** the [bootstrap](README.md#active-work-bootstrap) section, as its last step.
+Re-scoped on 2026-09-27. This ticket used to be only about `node --test` over the companion
+checks. Once [`GEN-14`](gen-14.md) lands, `std/core` also holds Zelkova tests run by
+`zelkova test`, and both kinds of check belong in one job.
 
-**Found:** while working [`BUG-20`](bug-20.md), which added the file because no harness for the
-`.mjs` companions existed. That ticket's fix runs it with Node's built-in test runner and says
-so in `CLAUDE.md`, but stops there — wiring it into CI was out of that ticket's scope, and
-`CLAUDE.md` still says it is not wired into CI.
+**Depends on:** [`GEN-14`](gen-14.md), which gives `zelkova test std/core` something to run.
+The `node --test` half has no dependency and could land first.
 
-**Problem:** `.github/workflows/rust.yml` runs `cargo test`, `cargo fmt --all --check` and
-`cargo clippy --all-features` and nothing else. None of them load a `.mjs` file — `cargo test`
-only ever executes Rust. So `UtilsChecks.mjs` runs only when someone remembers to run it by hand,
-and a regression in `Utils.mjs` (or in a future sibling file) is invisible to both local
-`cargo test` runs and to CI on a pull request.
+**Location:** `.github/workflows/rust.yml`, whose `test`, `fmt` and `clippy` jobs all run only
+`cargo`. `CLAUDE.md`'s *Commands* section. `std/core/tests/Js/*.mjs`, the companion checks in
+the place [*Testing a companion*](../spec/interop.md#testing-a-companion) gives them.
 
-This also leaves the convention undiscoverable from the one place a session is told to look:
-`CLAUDE.md`'s *Commands* section lists every way to check the Rust side of the tree and nothing
-about the JavaScript side. A reader who does not already know `UtilsChecks.mjs` exists has no
-prompt to look for it — `cargo test` passing looks like "everything is checked."
+**Found:** while working [`BUG-20`](bug-20.md), which added the first companion check because
+no harness existed. That fix ran the check with Node's built-in test runner and stopped there.
+Wiring it into CI was out of its scope.
 
-[`BUG-24`](README.md) said it had no red test until a sibling `BasicsChecks.mjs` existed, and
-that file now does; [`BUG-25`](README.md) later extended the same file to cover `round`,
-`floor` and `ceiling` too. Both fixes landed without CI ever loading `BasicsChecks.mjs` — this
-gap is not only about the one file `BUG-20` covered; it is about what any test file for a `.mjs`
-companion is checked by, once written.
+**Problem:** CI never runs anything that executes the JavaScript the compiler emits or ships.
+`cargo test` executes only Rust. So a regression in a companion `.mjs`, or in the emitter's
+runtime behaviour, is invisible on a pull request. [`BUG-24`](README.md) and
+[`BUG-25`](README.md) both landed fixes to `Basics.mjs` that CI never loaded.
 
-**Approach:** two independent pieces, and the ticket does not pick between the options within
-each:
+**Approach:** one job, two steps, in this order:
 
-- **A CI job that runs every companion check.** Every `.mjs` under a package's `tests/` root
-  is one, so the glob is the root: `ubuntu-latest` GitHub Actions runners carry a preinstalled
-  Node, and the smallest version is a job with a bare `run: node --test
-  'std/core/tests/**/*.mjs'` step (`node --test` accepts a glob and runs every match). That
-  names one package, and a second package would need a second path or a wider glob. Whether
-  that job needs `actions/setup-node` to pin a specific Node version — matching how the `test`
-  job pins a Rust toolchain via `dtolnay/rust-toolchain@stable` — or can rely on the runner's
-  preinstalled version is a real choice, not a detail to guess at while filing this.
-- **Whether the job gates the build**, or is marked `continue-on-error: true` the way `fmt` and
-  `clippy` are. `UtilsChecks.mjs` pins real runtime behaviour (BUG-20's thrown-error fix), unlike
-  formatting — an argument for gating outright — but `CLAUDE.md`'s own words about `fmt`/`clippy`
-  ("CI does not actually gate on them... a red clippy will not be caught for you") show this
-  repository has an existing precedent for advisory-only checks, so this is worth a deliberate
-  choice either way, not a default.
+1. `cargo run -- test std/core`, which runs `std/core`'s Zelkova tests ([`LANG-69`](lang-69.md),
+   [`GEN-14`](gen-14.md)).
+2. `node --test 'std/core/tests/**/*.mjs'`, which runs the companion checks that are not
+   Zelkova tests yet.
 
-`CLAUDE.md`'s *Commands* section already names the local command, so what is left there is
-keeping it true if the CI job spells the glob differently.
+There are two choices this ticket does not make:
 
-**Acceptance:** opening a pull request that regresses `UtilsChecks.mjs` (e.g. reverting BUG-20's
-thrown-error guard) shows a failing (or, if advisory was chosen, a visibly-red-but-non-blocking)
-check in the PR's CI run, without anyone running `node --test` by hand. `CLAUDE.md`'s *Commands*
-section names the command that runs the `.mjs` tests locally.
+- **The Node version.** `ubuntu-latest` runners ship with a preinstalled Node. The other option
+  is to pin one with `actions/setup-node`, the way the `test` job pins its Rust toolchain.
+- **Whether the job gates the build**, or is marked `continue-on-error: true` like `fmt` and
+  `clippy`. These checks pin runtime behaviour, which argues for gating. The repository does
+  have a precedent for advisory checks. Make the choice on purpose rather than by default.
+
+In `CLAUDE.md`'s *Commands*, the paragraph that says `cargo test` never loads a `.mjs` stays
+true. Its note that the checks are "not wired into CI" goes.
+
+**Acceptance:**
+
+- A pull request that regresses a companion shows a failing check (or, if advisory was chosen,
+  a visibly red but non-blocking one), without anyone running a command by hand. Reverting
+  BUG-20's thrown-error guard in `Utils.mjs` is one such regression.
+- A pull request that breaks a test in `std/core/tests/*.zel` shows the same.
+- `CLAUDE.md`'s *Commands* names both local commands.

@@ -1,72 +1,72 @@
-# GEN-14 · The end-to-end check under node
+# GEN-14 · Nothing checks that an emitted program computes the right value
 
-**Sizing:** small. A fixture package, a step that emits it, and the JavaScript assertions. It is
-small only because every ticket before it has its own tests; this one proves the whole thing
-runs.
+**Sizing:** small-to-medium. It is a handful of Zelkova test modules, one manifest entry, and a
+file deleted. It is small only because every ticket before it has its own tests. This one proves
+the whole thing runs. What could make it bigger is a test that exposes a codegen bug, which is
+the point of writing it. File that bug as its own ticket rather than fixing it here.
 
-**Depends on:** [`GEN-13`](README.md), and through it everything else in the program.
+**Part of:** the [bootstrap](README.md#active-work-bootstrap) section, as its capstone.
+Re-scoped on 2026-09-27. This ticket used to be the last step of [`GEN-1`](gen-1.md)'s program,
+as a fixture package checked by hand-written `node --test` assertions. It is now the first real
+use of `zelkova test`. The behavioural checks it always asked for are written in Zelkova, in
+`std/core`'s own `tests/` root.
 
-**Part of:** [`GEN-1`](gen-1.md) — this is the acceptance the original ticket named.
+**Depends on:** [`LANG-69`](lang-69.md) (`zelkova test` exists) and [`SPEC-35`](spec-35.md)
+(`zelkova-core` may test-depend on `zelkova-test`).
 
-**Location:** a fixture package in the repository, emitted into a build directory; JavaScript
-assertions beside it, run by `node --test`. `.github/workflows/rust.yml` is where the job goes,
-and [`TEST-3`](test-3.md) is either the ticket that created that job or the ticket this one
-completes — check which has landed.
+**Location:** `std/core/zelkova.toml`, whose `test-dependencies` is empty, and
+`std/core/tests/`. `std/core/tests/CaseChecks.mjs` is the file to delete: it is a hand-copied
+stand-in for emitted output and imports no real build. `tests/javascript.rs` holds the
+text-level pins, which stay.
 
-**Decided ([`DEC-18` decision 6](../decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node)):** emission is checked in two halves. Everything
-testable without running JavaScript is a Rust test, and those are already written by the tickets
-that added each piece. The behavioural half — that the emitted program computes the right value
-— is a JavaScript test under `node --test`, in the shape
-[*Testing a companion*](../spec/interop.md#testing-a-companion) already uses. **`cargo test`
-does not shell out to `node`.**
+**Decided ([`DEC-18` decision 6](../decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node)):**
+emission is checked in two halves. Everything that can be tested without running JavaScript is a
+Rust test, and those tests already exist. The behavioural half is checked by running the emitted
+program. **`cargo test` does not shell out to `node`.** The reason is not squeamishness about the
+dependency. A Rust test that skips when `node` is absent is a green test that proves nothing.
+`zelkova test` is now the thing that runs it, instead of a bespoke `node --test` harness.
 
-The reason is not squeamishness about the dependency: it is that a Rust test which skips when
-`node` is absent is a green test proving nothing, which is the failure mode `CLAUDE.md` names as
-the most common review finding there is.
+**Problem:** every ticket in the program is graded by eye. The Rust tests assert emitted
+*text*, which pins what the emitter writes and says nothing about whether it runs.
+`CaseChecks.mjs` is the standing example. It checks JavaScript that a human copied from
+`javascript::emit`'s output, so it can pass while the real output is broken.
 
-**Problem:** every ticket in the program is graded by eye until this lands. The Rust tests
-assert emitted *text*, which pins what the emitter writes and says nothing about whether the
-writing runs. `LANG-56` is the standing example of what that costs — it landed with no Rust
-test behind it, because nothing in `cargo test` loads a `.mjs`.
+**Approach:**
 
-**Approach:** a fixture package with a `zelkova.toml` and a handful of modules, compiled by a
-step that emits it into a build directory, followed by `node --test` over assertions that import
-the emitted modules and check values.
+1. `std/core/zelkova.toml` names `zelkova-test` in `test-dependencies`, as
+   `path = "../test"` and `wrapped = false`.
+2. Write test modules under `std/core/tests/`, one per concern, each exposing `Test` values.
+   They must cover:
+   - **A `case`** over a three-constructor union, returning each branch's value. This is what
+     `CaseChecks.mjs` covered. The half that checks a value no branch matches *aborts* stays
+     with the Rust text pin. An abort cannot be asserted from inside Zelkova, and
+     [`LANG-69`](lang-69.md) would report it as an errored module rather than as a failing
+     test.
+   - **A call through a `module foreign` facade into its companion.** `Basics` arithmetic
+     reaches `Js.Basics`, so something as small as `Test.equal (7 // 2) 3` exercises the
+     boundary, the placement of the companion, and the `BigInt` representation of an `Int`.
+   - One value per representation the emitter decides: an `Int` (including one that wraps at
+     64 bits), a `Float`, a `Bool` from a comparison, a `Char`, a tuple taken apart by a
+     pattern, a union with arguments, and a hoisted nullary constructor compared with `==`.
+3. Delete `CaseChecks.mjs`. Replace the comment in `tests/javascript.rs` that points at it with
+   a pointer to the new test module.
+4. **The self-tail-call depth check is not here.** That behaviour is [`GEN-11`](gen-11.md)'s.
+   Its acceptance asks for a Zelkova test in this same root, written when it lands. Until then,
+   a deep recursion would overflow the stack and turn the test red for a reason no one could
+   fix under this ticket.
 
-`std/core/tests/CaseChecks.mjs` (`GEN-10`) is a hand-copied stand-in for the `case` shape this
-ticket's fixture should exercise once it lands — literal JavaScript checked in by hand,
-mirroring `javascript::emit`'s output rather than importing a real build's, and kept in sync
-with `tests/javascript.rs` by a human reading both sides rather than by anything that runs.
-Once this ticket's fixture covers a `case`, delete `CaseChecks.mjs` or convert it to import the
-fixture's real emitted output instead.
+**Acceptance:**
 
-**What the fixture has to cover**, because these are the two rules nothing else can check:
+- `cargo run -- test std/core` runs every test above, reports them all passing, and exits 0.
+- For each of the following, make the change, confirm that at least one test goes red, then
+  restore:
+  - Revert [`GEN-12`](README.md)'s companion placement.
+  - Swap two branches in `Emitter::case_expression`'s output.
+  - Emit an `Int` literal without its `n` suffix.
+  Record which test caught each.
+- `CaseChecks.mjs` is gone and nothing references it (`grep -rn CaseChecks`).
+- `cargo test --workspace` is unchanged and does not invoke `node`.
+- `cargo run -- compile std/core` still prints `parsed 8 modules`, lists all eight, and exits 0.
+  A test-dependency is not compiled by a plain build.
 
-- **A self-recursive function in tail position, deep enough that a non-tail emission exhausts
-  the stack.** Pick the depth deliberately and say in a comment why that number: too shallow and
-  the test passes without the rewrite, which makes it exactly the test that passes both ways.
-  Verify it by reverting [`GEN-11`](gen-11.md)'s loop emission and watching it overflow.
-- **A call through a `module foreign` facade into its companion `.mjs`**, which is the only
-  thing that exercises the boundary at all.
-
-Beyond those two, cover one value of each representation the emitter decides — an `Int` coming
-back as a `BigInt`, a union value's `$` field, a tuple as an array, a `Bool` as a boolean — so
-that a change to the encoding is caught here and not only in the text assertions.
-
-**Wire it into CI.** One job, two steps: emit the fixture, then `node --test`. It shares that
-job with the `.mjs` companion checks rather than standing up a second harness, so the glob
-widens to reach both. Whether the job gates the build or is advisory the way `fmt` and `clippy`
-are is [`TEST-3`](test-3.md)'s question and gets one answer for both — but note that this one
-pins runtime behaviour, which is the argument that ticket already records for gating.
-
-`CLAUDE.md`'s *Commands* section names the local command, and its sentence saying `cargo test`
-never loads a `.mjs` stays true and gains this file's command beside it.
-
-**Not in this ticket:** a `zelkova` binary that compiles and runs ([`GEN-17`](gen-17.md)). The
-emitting step here is whatever `cargo run` already does; giving it arguments is that ticket's.
-
-**Acceptance:** the command in `CLAUDE.md` runs green locally over the fixture, and the same
-command runs in CI on a pull request. Reverting [`GEN-11`](gen-11.md)'s loop emission turns the
-depth test red; reverting [`GEN-12`](README.md)'s companion placement turns the facade test red.
-`cargo test --workspace` is unchanged and does not invoke `node`. `cargo run` still prints
-`parsed 8 modules`, lists all eight and exits 0.
+Wiring `zelkova test std/core` into CI is [`TEST-3`](test-3.md), which lands after this.
