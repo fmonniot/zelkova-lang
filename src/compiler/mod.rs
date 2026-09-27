@@ -1036,21 +1036,12 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
         ));
     }
 
-    // Step 6: generate code, only for a build in which nothing failed. Every module is
-    // emitted before anything is written, so a module that cannot be emitted also
-    // leaves the build with no output at all.
+    // Step 6: generate code, only for a build in which nothing failed. Every module of
+    // both trees is emitted before anything is written, so a module that cannot be
+    // emitted — in `src/` or in `tests/` — also leaves the build with no output at all.
     if errors.is_empty() {
         debug!("phase: codegen");
         let files = emit_build(checked, &mut errors);
-
-        if errors.is_empty() {
-            debug!("phase: write the build");
-            errors.extend(
-                output::write(&build_dir.join("js"), &files)
-                    .into_iter()
-                    .map(CompilationError::Output),
-            );
-        }
 
         // A build that also compiled the tests writes a second, complete tree at
         // `<build_dir>/test/js/`, laid out exactly like `<build_dir>/js/` — the runtime,
@@ -1061,22 +1052,34 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
         // runtime, the root's `src/` and every plain dependency's modules — so the test
         // tree reuses it rather than emitting those modules a second time, and only
         // `test_tree_modules` (the test-only packages' and the root's `tests/`) is new
-        // work. Gated on `errors.is_empty()` a second time so a plain build's own
-        // failure to write `js/` — an unlikely I/O error, not a checking one — does not
-        // also attempt the test tree.
-        if errors.is_empty() && tests == TestRoot::Compiled {
+        // work. That work happens here, before `js/` is written, so a module of the test
+        // tree that cannot be emitted blocks both writes.
+        let test_files = (tests == TestRoot::Compiled).then(|| {
             debug!("phase: codegen (tests)");
             let mut test_files = files.clone();
             test_files.extend(emit_modules(test_tree_modules, &mut errors));
+            test_files
+        });
 
-            if errors.is_empty() {
-                debug!("phase: write the test build");
-                errors.extend(
-                    output::write(&build_dir.join("test").join("js"), &test_files)
-                        .into_iter()
-                        .map(CompilationError::Output),
-                );
-            }
+        if errors.is_empty() {
+            debug!("phase: write the build");
+            errors.extend(
+                output::write(&build_dir.join("js"), &files)
+                    .into_iter()
+                    .map(CompilationError::Output),
+            );
+        }
+
+        // Gated on `errors.is_empty()` a second time so a plain build's own failure to
+        // write `js/` — an unlikely I/O error, not a checking one — does not also
+        // attempt the test tree.
+        if let Some(test_files) = test_files.filter(|_| errors.is_empty()) {
+            debug!("phase: write the test build");
+            errors.extend(
+                output::write(&build_dir.join("test").join("js"), &test_files)
+                    .into_iter()
+                    .map(CompilationError::Output),
+            );
         }
     }
 
@@ -1160,10 +1163,11 @@ fn emit_build(checked: Vec<ModuleToEmit>, errors: &mut Vec<CompilationError>) ->
 
 /// [`emit_build`], without the runtime file at the front.
 ///
-/// The test tree already has the runtime — it starts from a clone of the plain build's
-/// own files — and only needs the modules a plain build never emits: each test-only
-/// package's, and the root's `tests/`. This is that half, factored out so a test build's
-/// extra modules do not also emit a second runtime file to sit unused beside the first.
+/// [`emit_build`] calls it for the plain build's own modules. A test build calls it a
+/// second time for the modules a plain build never emits — each test-only package's,
+/// and the root's `tests/` — which is why it is factored out: the test tree already has
+/// the runtime, since it starts from a clone of the plain build's own files, and those
+/// extra modules must not emit a second runtime file to sit unused beside the first.
 fn emit_modules(
     checked: Vec<ModuleToEmit>,
     errors: &mut Vec<CompilationError>,

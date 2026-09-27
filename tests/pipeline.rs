@@ -911,6 +911,69 @@ fn a_build_that_cannot_be_emitted_writes_nothing() {
     assert!(!build_dir.exists(), "got {:?}", files_under(&build_dir));
 }
 
+/// `GEN-18`: a test build whose `tests/` root holds a module that checks but cannot be
+/// emitted writes neither tree — not `test/js/`, and not `js/` either, though every
+/// module of `src/` emitted cleanly. The facade here sits under `tests/` with no
+/// companion beside it, which [`javascript::emit`] refuses.
+///
+/// Mutation-checked by moving the test tree's `emit_modules` call in `compile` back
+/// after the write of `js/`: `js/` is written in full and this turns red.
+#[test]
+fn a_test_build_whose_tests_cannot_be_emitted_writes_nothing() {
+    let package =
+        fresh_build_dir("a_test_build_whose_tests_cannot_be_emitted_writes_nothing_package");
+    std::fs::create_dir_all(package.join("src")).unwrap();
+    std::fs::create_dir_all(package.join("tests")).unwrap();
+    std::fs::write(
+        package.join("zelkova.toml"),
+        "name = \"no-test-companion\"\nversion = \"0.1.0\"\nprivate-modules = []\n\n[dependencies]\n\n[test-dependencies]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("src/Answer.zel"),
+        indoc::indoc! {r#"
+            module Answer exposing (Answer(..))
+
+            type Answer = Yes
+        "#},
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("tests/Native.zel"),
+        indoc::indoc! {r#"
+            module foreign Native exposing (answer)
+
+            import Answer exposing (Answer)
+
+            unsafe answer : Answer
+        "#},
+    )
+    .unwrap();
+    let build_dir = package.join("build");
+
+    let error = zelkova_lang::compiler::compile_package_with_tests_into(&package, &build_dir)
+        .expect_err("a facade under `tests/` with no companion cannot be emitted");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Many, got {:?}", error);
+    };
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [CompilationError::InFile(inner, _)]
+                if matches!(
+                    &**inner,
+                    CompilationError::Emit(emit_errors, _)
+                        if matches!(emit_errors.as_slice(), [javascript::Error::MissingCompanion { .. }])
+                )
+        ),
+        "got {:?}",
+        errors
+    );
+
+    assert!(!build_dir.exists(), "got {:?}", files_under(&build_dir));
+}
+
 // ── Test 14: a type error reaches the user as a real diagnostic ──────────────
 
 /// `ERR-2`: a type error must render as an `error` naming both types.
