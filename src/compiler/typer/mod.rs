@@ -46,7 +46,7 @@ use crate::compiler::ir::{
 use crate::compiler::name::{Name, QualName};
 use crate::compiler::position::NodeSpan;
 use crate::compiler::tuple::Tuple;
-use crate::compiler::{Interface, PhaseError, SpanLabel};
+use crate::compiler::{Interface, ModuleName, PhaseError, SpanLabel};
 use log::debug;
 use std::collections::HashMap;
 
@@ -319,6 +319,15 @@ pub enum ErrorKind {
     },
     /// A name the typer's environment does not know. `type_check` turns this into a
     /// [`Solved::UnboundName`] rather than an [`Error`]; that variant says why.
+    ///
+    /// `name` is [`environment_key`]'s `package:Module.name` lookup key, copied
+    /// verbatim from [`Reference::name`] — not a spelling. `message()`'s arm for this
+    /// variant renders it as-is, which would print the package if this variant were
+    /// ever surfaced as a rendered [`Error`]; today `type_check` never does that (see
+    /// above), so the leak has no path to a user yet. Whoever gives this variant a
+    /// live path — `ERR-8`'s planned warning is the likely first one — has to carry a
+    /// displayable name (the bare local name, or a `QualName` rendered the way
+    /// [`Spellings`] would) alongside this key rather than rendering it directly.
     UnboundVariable {
         name: String,
         /// Where the name was written.
@@ -337,7 +346,9 @@ impl ErrorKind {
         }
     }
 
-    fn message(&self) -> String {
+    /// The headline, naming each union the way `spellings` says the checked package
+    /// reaches it when the message has to qualify one at all — see [`AdtNames`].
+    fn message(&self, spellings: &Spellings) -> String {
         match self {
             ErrorKind::UnificationFailed { left, right, .. } => {
                 // Two modules may each declare a union of the same name, and the
@@ -346,11 +357,11 @@ impl ErrorKind {
                 // that declared each is what tells them apart, so both sides take
                 // it — both, because a sentence that qualifies one side and not the
                 // other reads as if only one of them had a module.
-                if AdtNames::for_all([left.as_ref(), right.as_ref()]) == AdtNames::Qualified {
+                if AdtNames::collide([left.as_ref(), right.as_ref()]) {
                     format!(
                         "cannot match `{}` with `{}`",
-                        Qualified(left),
-                        Qualified(right)
+                        Qualified(left, spellings),
+                        Qualified(right, spellings)
                     )
                 } else {
                     format!("cannot match `{}` with `{}`", left, right)
@@ -360,9 +371,11 @@ impl ErrorKind {
             // solution is built out of whatever it was unified against, which may
             // be two same-named unions from two modules.
             ErrorKind::CircularType { tpe, .. } => {
-                let tpe: &dyn std::fmt::Display = match AdtNames::for_all([tpe.as_ref()]) {
-                    AdtNames::Qualified => &Qualified(tpe),
-                    AdtNames::Unqualified => &**tpe,
+                let qualified = Qualified(tpe, spellings);
+                let tpe: &dyn std::fmt::Display = if AdtNames::collide([tpe.as_ref()]) {
+                    &qualified
+                } else {
+                    &**tpe
                 };
 
                 format!(
@@ -370,6 +383,9 @@ impl ErrorKind {
                     tpe
                 )
             }
+            // `name` is the internal environment key, not a spelling — see the
+            // doc comment on `UnboundVariable` above. Unreachable today only because
+            // nothing renders this variant as an `Error`.
             ErrorKind::UnboundVariable { name, .. } => {
                 format!("cannot find a value named `{}`", name)
             }
@@ -401,6 +417,9 @@ pub struct Error {
     /// hundred declarations, a caret is not much use without it when the diagnostic
     /// is rendered without a file (see `compile_package`).
     pub declaration: Name,
+    /// How the checked package spells each module in reach, which is what a union is
+    /// written by in [`message`](PhaseError::message) when it has to be qualified.
+    spellings: Spellings,
 }
 
 /// Type errors are about types, and [`Type`]'s `Display` writes them the way the
@@ -408,7 +427,7 @@ pub struct Error {
 /// dumping the typer's internal representation.
 impl PhaseError for Error {
     fn message(&self) -> String {
-        self.kind.message()
+        self.kind.message(&self.spellings)
     }
 
     fn notes(&self) -> Vec<String> {
@@ -556,17 +575,17 @@ pub fn type_check(
     let mut global: HashMap<String, Type> = HashMap::new();
 
     // An imported value is keyed the way a `VarForeign` reference spells it: its name
-    // qualified by the module that declared it. That is the only key, so it cannot
-    // collide with a local name or with a same-named value of another module. An
-    // operator's backing function the header did not expose by name is in
-    // `infix_functions` rather than `values`, and an operator resolves to a
-    // `VarForeign` naming it all the same.
+    // qualified by the package and module that declared it ([`environment_key`]). That
+    // is the only key, so it cannot collide with a local name or with a same-named value
+    // of another module, in this package or another. An operator's backing function the
+    // header did not expose by name is in `infix_functions` rather than `values`, and an
+    // operator resolves to a `VarForeign` naming it all the same.
     for interface in interfaces.values() {
         for (name, (_, tpe)) in interface.values.iter().chain(&interface.infix_functions) {
             let mut var_map = HashMap::new();
             if let Some(typer_tpe) = canonical_type_to_typer_type(tpe, &mut var_map, &mut counter) {
-                let qname = interface.module_name.qualify_name(name).to_name();
-                global.insert(qname.as_str().to_string(), typer_tpe);
+                let qname = interface.module_name.qualify_name(name);
+                global.insert(environment_key(&qname), typer_tpe);
             }
         }
     }
@@ -575,13 +594,9 @@ pub fn type_check(
         if let canonical::Value::TypedValue { tpe, .. } = value {
             let mut var_map = HashMap::new();
             if let Some(typer_tpe) = canonical_type_to_typer_type(tpe, &mut var_map, &mut counter) {
-                // Add both qualified (e.g. "Test.not") and unqualified (e.g. "not") names
-                let qname = module
-                    .name
-                    .qualify_name(name)
-                    .to_name()
-                    .as_str()
-                    .to_string();
+                // Add both qualified (e.g. "test-project:Test.not") and unqualified (e.g.
+                // "not") names
+                let qname = environment_key(&module.name.qualify_name(name));
                 global.insert(qname, typer_tpe.clone());
                 global.insert(name.as_str().to_string(), typer_tpe);
             }
@@ -637,20 +652,21 @@ pub fn type_check(
             };
 
             // Registered under the qualified name a `VarConstructor` spells —
-            // "Maybe.Just", named by the module that declared the union — and, for
-            // this module's own unions only, under the bare name too.
-            let Some(qname) = ctor.name.qualify_with_name(&type_name.module_name()) else {
-                continue;
-            };
+            // "zelkova-core:Maybe.Just", named by the package and module that declared
+            // the union — and, for this module's own unions only, under the bare name
+            // too. A union of another package's module of the same name is not this
+            // module's own: its `QualName` differs in the package.
+            let qname = type_name.sibling(&ctor.name);
             if module.name.qualify_name(&type_name.unqualified_name()) == *type_name {
                 global.insert(ctor.name.as_str().to_string(), ctor_type.clone());
             }
-            global.insert(qname.to_name().as_str().to_string(), ctor_type);
+            global.insert(environment_key(&qname), ctor_type);
         }
     }
 
     // Third pass: check each value. A value that fails is recorded and the pass
     // moves on, so one broken declaration cannot hide the others.
+    let spellings = Spellings::of(module, interfaces);
     let mut errors: Vec<Error> = vec![];
     let mut solved: HashMap<Name, Solved> = HashMap::new();
     for (name, value) in &module.values {
@@ -687,9 +703,10 @@ pub fn type_check(
                 kind,
                 span: value.span(),
                 declaration: name.clone(),
+                spellings: spellings.clone(),
             }),
             Ok(term) => {
-                solved.insert(name.clone(), Solved::Typed(term));
+                solved.insert(name.clone(), Solved::Typed(Box::new(term)));
             }
         }
     }
@@ -702,6 +719,18 @@ pub fn type_check(
 }
 
 // ── Translation helpers ───────────────────────────────────────────────────────
+
+/// The key the typer's environment holds a declaration's type under: the package that
+/// declares it, a `:`, then its qualified name — `zelkova-core:Maybe.withDefault`.
+///
+/// The package is in the key for the reason it is in a [`QualName`]: two packages may
+/// each hold a module `Size`, and `Size.foo` alone would give both declarations one
+/// entry, owned by whichever was inserted last. Neither a package name nor a module name
+/// can contain a `:`, so no two declarations share a key, and no key is a bare name a
+/// local is looked up by.
+fn environment_key(qname: &QualName) -> String {
+    format!("{}:{}", qname.package(), qname.to_name())
+}
 
 /// Union declarations, keyed by the qualified name of each declaration.
 ///
@@ -812,18 +841,16 @@ impl<'a> Translation<'a> {
 }
 
 /// Every constructor of `unions`, keyed the way a `VarConstructor` spells one: the
-/// constructor's name qualified by the module that declared the union it builds.
+/// constructor's name qualified by the package and module that declared the union it
+/// builds.
 fn constructors_of(unions: &Unions) -> HashMap<QualName, Constructor> {
     let mut constructors = HashMap::new();
 
     for (union, union_type) in unions {
         for variant in crate::compiler::ir::variants_of(union_type) {
-            // A union is named by its declaring module, so that module is where its
-            // constructors are named from too. `qualify_with_name` only declines an
-            // empty name, which a parsed declaration never has.
-            let Some(name) = variant.name.qualify_with_name(&union.module_name()) else {
-                continue;
-            };
+            // A union is named by its declaring package and module, so that is where
+            // its constructors are named from too.
+            let name = union.sibling(&variant.name);
 
             constructors.insert(
                 name,
@@ -993,14 +1020,14 @@ fn canonical_expr_to_term(
             TermKind::Identifier(Reference::local(name.as_str()))
         }
         canonical::ExpressionKind::VarTopLevel(qname) => TermKind::Identifier(Reference {
-            name: qname.to_name().as_str().to_string(),
+            name: environment_key(qname),
             kind: ReferenceKind::TopLevel(qname.clone()),
         }),
         // A value another module declares. Its type is the one its module's interface
         // declared, which `type_check` registers under this same qualified name.
         canonical::ExpressionKind::VarForeign(qname, package, _) => {
             TermKind::Identifier(Reference {
-                name: qname.to_name().as_str().to_string(),
+                name: environment_key(qname),
                 kind: ReferenceKind::Foreign(qname.clone(), package.clone()),
             })
         }
@@ -1013,7 +1040,7 @@ fn canonical_expr_to_term(
             let ctor = translation.constructors.get(qname)?;
 
             TermKind::Identifier(Reference {
-                name: qname.to_name().as_str().to_string(),
+                name: environment_key(qname),
                 kind: ReferenceKind::Constructor(ctor.clone()),
             })
         }
@@ -1455,11 +1482,12 @@ pub enum Type {
     /// A named algebraic data type, e.g. `Maybe Int` declared in `Maybe` →
     /// `Adt(Maybe.Maybe, [Literal(Int)])`.
     ///
-    /// The name is the declaring module's, in full, because that is the identity of
-    /// the type: `Widget.Size` and `Gadget.Size` are two types and a value of one is
-    /// never a value of the other. The unifier's equality on this name is the only
-    /// thing keeping them apart, so narrowing it to the spelling — which is what the
-    /// typer used to carry — made every same-named declaration one type (`BUG-35`).
+    /// The name is the declaring package's and module's, in full, because that is the
+    /// identity of the type: `Widget.Size` and `Gadget.Size` are two types and a value
+    /// of one is never a value of the other, and so are the `Size.Size` of two
+    /// packages. The unifier's equality on this name is the only thing keeping them
+    /// apart, so narrowing it to the spelling — which is what the typer used to carry —
+    /// made every same-named declaration one type (`BUG-35`).
     /// [`Display`](std::fmt::Display) still writes the unqualified half, since that is
     /// how a module's source spells its own types.
     Adt(QualName, Vec<Type>),
@@ -1470,17 +1498,18 @@ pub enum Type {
 /// A type is normally quoted the way the source spells it, which for a union is its
 /// bare name. That is ambiguous exactly when one message names two declarations that
 /// share a spelling, and [`ErrorKind::message`] switches to the qualified form there.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AdtNames {
+#[derive(Debug, Clone, Copy)]
+enum AdtNames<'a> {
     /// `Size`.
     Unqualified,
-    /// `Widget.Size`.
-    Qualified,
+    /// `Widget.Size`, or `AcmeWidgets.Size.Size`: the union's module as the checked
+    /// package spells it, then its own name — see [`Spellings`].
+    Qualified(&'a Spellings),
 }
 
-impl AdtNames {
-    /// How the types a single message is about have to be written for that message
-    /// to distinguish the declarations it names.
+impl AdtNames<'_> {
+    /// Whether the types a single message is about have to be written qualified for
+    /// that message to distinguish the declarations it names.
     ///
     /// The question is not whether the *types* are spelled alike — `A.Size` against
     /// `Lib.Size A.Size` renders as `Size` against `Size Size`, which differs as
@@ -1488,36 +1517,84 @@ impl AdtNames {
     /// of the unions named anywhere in those types are different declarations with
     /// the same bare name; if so every union in the sentence is qualified, since
     /// qualifying only the colliding pair would read as if the rest had no module.
-    fn for_all<'a>(types: impl IntoIterator<Item = &'a Type>) -> AdtNames {
+    /// Two declarations may share their module's name too, when two packages each
+    /// hold one, and they are still two: a [`QualName`] carries its package.
+    fn collide<'t>(types: impl IntoIterator<Item = &'t Type>) -> bool {
         let mut names: Vec<&QualName> = Vec::new();
 
         for tpe in types {
             tpe.collect_adt_names(&mut names);
         }
 
-        let collides = names.iter().enumerate().any(|(i, name)| {
+        names.iter().enumerate().any(|(i, name)| {
             names[i + 1..]
                 .iter()
                 .any(|other| *other != *name && other.unqualified_name() == name.unqualified_name())
-        });
+        })
+    }
+}
 
-        if collides {
-            AdtNames::Qualified
-        } else {
-            AdtNames::Unqualified
+/// How the package being checked spells each module in reach: the key `compile_package`
+/// stores that module's [`Interface`] under in the map it hands [`type_check`], and the
+/// module under check's own name.
+///
+/// A qualified message writes a union by this spelling rather than by its declaring
+/// module's own name, because the two differ for a wrapped dependency — and they have to
+/// differ in the message whenever two packages each hold a module of the same name.
+/// `AcmeWidgets.Size.Size` against `Size.Size` tells the two unions apart, and is what
+/// the checked package's own source writes; `Size.Size` against `Size.Size` would not,
+/// and the package name — `acme-widgets` — is a spelling no Zelkova source contains.
+#[derive(Debug, Clone, Default)]
+struct Spellings(HashMap<ModuleName, Name>);
+
+impl Spellings {
+    /// The spellings of every module `interfaces` holds, plus `module`'s own.
+    ///
+    /// A module reachable by two spellings is written by the first in alphabetical
+    /// order, so the message does not change between runs.
+    fn of(module: &Module, interfaces: &HashMap<Name, Interface>) -> Spellings {
+        let mut spellings: HashMap<ModuleName, Name> = HashMap::new();
+
+        for (spelling, interface) in interfaces {
+            spellings
+                .entry(interface.module_name.clone())
+                .and_modify(|kept| {
+                    if spelling.as_str() < kept.as_str() {
+                        *kept = spelling.clone();
+                    }
+                })
+                .or_insert_with(|| spelling.clone());
+        }
+
+        spellings.insert(module.name.clone(), module.name.name().clone());
+
+        Spellings(spellings)
+    }
+
+    /// `name` as the checked package writes it: its module's spelling, then its own
+    /// name. A module with no spelling here — one the checked package cannot import,
+    /// whose union reached it through another module's signature — is written by its
+    /// own name.
+    fn spell(&self, name: &QualName) -> String {
+        let module = ModuleName::new(name.package().clone(), name.module_name());
+
+        match self.0.get(&module) {
+            Some(spelling) => format!("{}.{}", spelling, name.unqualified_name()),
+            None => name.to_name().to_string(),
         }
     }
 }
 
-/// A [`Type`] written with every union named by the module that declared it.
+/// A [`Type`] written with every union named by its module, as the checked package
+/// spells it.
 ///
 /// The counterpart of `Type`'s own [`Display`](std::fmt::Display), which writes the
 /// unqualified half.
-struct Qualified<'a>(&'a Type);
+struct Qualified<'a>(&'a Type, &'a Spellings);
 
 impl std::fmt::Display for Qualified<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.write(f, AdtNames::Qualified)
+        self.0.write(f, AdtNames::Qualified(self.1))
     }
 }
 
@@ -1555,7 +1632,7 @@ impl Type {
     /// Every union named anywhere in this type, outermost first, appended to `out`.
     ///
     /// A union's arguments are types in their own right and may name unions of their
-    /// own, so this recurses rather than reading the head alone. [`AdtNames::for_all`]
+    /// own, so this recurses rather than reading the head alone. [`AdtNames::collide`]
     /// is what it exists for: deciding how to write a type means looking at every
     /// name the rendering will contain, not only the one at the top.
     fn collect_adt_names<'a>(&'a self, out: &mut Vec<&'a QualName>) {
@@ -1640,7 +1717,7 @@ impl Type {
             Type::Adt(name, args) => {
                 match names {
                     AdtNames::Unqualified => write!(f, "{}", name.unqualified_name())?,
-                    AdtNames::Qualified => write!(f, "{}", name.to_name())?,
+                    AdtNames::Qualified(spellings) => write!(f, "{}", spellings.spell(name))?,
                 }
                 for arg in args {
                     // Same reason as above: an argument that is itself applied or a
@@ -2433,10 +2510,13 @@ mod tests {
 
     // --- A constructor pattern finds only this module's own unions ------------
 
-    /// The qualified name of `name` as declared by `module`.
+    /// The qualified name of `name` as declared by `module` of the package `main`.
     fn qual(module: &str, name: &str) -> QualName {
-        QualName::parse(format!("{}.{}", module, name))
-            .expect("a module and a name make a qualified name")
+        QualName::in_module(
+            crate::compiler::PackageName::new("main").unwrap(),
+            module,
+            name,
+        )
     }
 
     /// `Main`'s own unions, as `translate_pattern` receives them: one nullary
@@ -2491,6 +2571,8 @@ mod tests {
     fn the_four_kinds_of_name_stay_apart() {
         let (union_name, union) = main_size();
         let translation = Translation::of_types(HashMap::from([(union_name.clone(), &union)]));
+        let lib = crate::compiler::PackageName::new("lib").unwrap();
+        let lib_size = QualName::in_module(lib.clone(), "Lib", "size");
 
         let reference = |kind: canonical::ExpressionKind| {
             let mut counter = 0;
@@ -2515,15 +2597,12 @@ mod tests {
         );
         assert_eq!(
             reference(canonical::ExpressionKind::VarForeign(
-                qual("Lib", "size"),
-                crate::compiler::PackageName::new("lib").unwrap(),
+                lib_size.clone(),
+                lib.clone(),
                 canonical::Type::Variable("a".into())
             ))
             .kind,
-            ReferenceKind::Foreign(
-                qual("Lib", "size"),
-                crate::compiler::PackageName::new("lib").unwrap()
-            )
+            ReferenceKind::Foreign(lib_size, lib)
         );
         assert_eq!(
             reference(canonical::ExpressionKind::VarConstructor(
@@ -2687,7 +2766,7 @@ mod tests {
         };
 
         assert_eq!(
-            kind.message(),
+            kind.message(&Spellings::default()),
             "circular type: a type variable would have to contain itself in \
              `Lib.Box A.Size B.Size`"
         );
@@ -2703,7 +2782,7 @@ mod tests {
         };
 
         assert_eq!(
-            kind.message(),
+            kind.message(&Spellings::default()),
             "circular type: a type variable would have to contain itself in `Box Size`"
         );
     }

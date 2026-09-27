@@ -36,9 +36,9 @@
 //! nothing here supplies it, because a compiler that ships its own core has to know
 //! where that copy sits and nothing yet says where. What is honoured is the other half
 //! of that rule: a package named `zelkova-core` is seen unwrapped whatever the entry
-//! naming it says, so `Basics` is `Basics` — which is what
-//! [`scalars`](super::scalars) relies on, since it knows a scalar by the bare qualified
-//! name `Basics.Int` ([`DEC-15` decision
+//! naming it says, so `Basics` is `Basics`. What makes `Basics.Int` the scalar is not
+//! that spelling but the package that declares it: [`scalars`](super::scalars) knows a
+//! scalar by a qualified name that includes [`CORE_PACKAGE`] ([`DEC-15` decision
 //! 1](../../../docs/decisions/dec-15.md#1--a-scalar-type-is-known-by-its-qualified-name)).
 
 use std::collections::HashMap;
@@ -53,8 +53,8 @@ use super::{PackageName, PhaseError};
 ///
 /// It is [seen unwrapped in every
 /// package](../../../docs/spec/packages.md#zelkova-core-is-a-dependency-of-every-package),
-/// which is what makes `Basics` `Basics` everywhere and keeps `Basics.Int` — the name
-/// [`scalars`](super::scalars) recognises a scalar by — pointing at one declaration.
+/// which is what makes `Basics` `Basics` everywhere, and it is the package every
+/// [scalar](super::scalars) is declared in — [`PackageName::core`] is this name.
 pub const CORE_PACKAGE: &str = "zelkova-core";
 
 /// One package of the resolved build: its name, the directory holding its
@@ -643,10 +643,7 @@ pub fn visible_modules(
                 (module.clone(), OriginKind::Unwrapped)
             } else {
                 (
-                    module
-                        .qualify_with_name(&namespace)
-                        .map(|qualified| qualified.to_name())
-                        .unwrap_or_else(|| module.clone()),
+                    module.clone().qualify_with(namespace.to_string()),
                     OriginKind::Namespaced,
                 )
             };

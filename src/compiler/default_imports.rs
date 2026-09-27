@@ -290,7 +290,7 @@ mod tests {
                         type_parameters: vec![Type::Variable("a".into())],
                         // The union shares its module's name, so the declaration
                         // it names is `Maybe.Maybe`.
-                        tpe: QualName::parse(format!("{}.{}", module, module)).unwrap(),
+                        tpe: QualName::in_module(PackageName::core(), module, module),
                     }],
                 },
             );

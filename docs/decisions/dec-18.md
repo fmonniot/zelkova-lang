@@ -159,8 +159,8 @@ output go beside the package root rather than beside any source it read, and mar
 **One directory per package**, `build/js/<package-name>/`, rather than one flat tree. A build
 holds several packages and [at most one version of
 each](../spec/packages.md#one-version-of-each); a flat tree would have to encode the package
-into every file name to keep two packages' same-named modules apart, which is the collision
-[`BUG-37`](../tickets/bug-37.md) is open on one level up.
+into every file name to keep two packages' same-named modules apart — the collision a
+package-less qualified name had one level up, in the typer ([`BUG-37`](../tickets/README.md)).
 
 **A module's emitted path uses its name within its own package** — `Js.Basics` is
 `zelkova-core/Js/Basics.mjs` — and never the namespace a dependent writes. [The

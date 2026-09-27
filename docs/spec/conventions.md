@@ -49,7 +49,9 @@ imports](modules.md#the-default-imports) — `Basics` itself, or `List`, `Maybe`
 `Task`, `Char`, `String` or `Tuple` — is the same case a real module of that name is: it
 receives none of the eight, and gets the five scalar type names directly instead of importing
 them. `module Task exposing (Failure(..))` is such a block today; naming any of the other
-seven has the same effect.
+seven has the same effect. Such a package is compiled as `zelkova-core`, the package the eight
+belong to, so a `Basics` it declares is where [the scalar types](types.md#scalar-types) are
+declared; every other block belongs to an ordinary package.
 
 Blocks sharing one label, **within one chapter**, are one package. They are parsed
 together, ordered by their imports, canonicalized in that order against each other's

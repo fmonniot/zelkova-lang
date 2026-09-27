@@ -970,7 +970,9 @@ fn a_declaration_the_typer_cannot_resolve_comes_back_marked() {
     let solved = solved(source);
 
     match solved.get(&Name::new("answer")) {
-        Some(Solved::UnboundName { name, .. }) => assert_eq!(name, "Test.helper"),
+        Some(Solved::UnboundName { name, .. }) => {
+            assert_eq!(name, "test-project:Test.helper")
+        }
         other => panic!("expected `answer` to be marked un-typed, got {:?}", other),
     }
 

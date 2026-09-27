@@ -75,7 +75,9 @@
 //!
 //! Either way the package is compiled against one interface it did not write —
 //! [`stdlib_interfaces`]'s stand-in `Basics`, which is what puts the scalar type
-//! names in a chapter's reach.
+//! names in a chapter's reach — and as the package [`package_of`] names: `zelkova-core`
+//! for one declaring a module the default imports name, whose `Basics` is then where
+//! the scalars are declared, and an ordinary package otherwise.
 //!
 //! A `zel` block with no `expect=`, an unrecognised `expect=` value, or an
 //! unrecognised key in its info string, is a hard failure. The extraction and evaluation logic below is written to take an arbitrary
@@ -131,7 +133,7 @@ use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::parser;
 use zelkova_lang::compiler::parser::tokenizer::TokenizerErrorType;
 use zelkova_lang::compiler::typer;
-use zelkova_lang::compiler::Interface;
+use zelkova_lang::compiler::{Interface, PackageName};
 
 mod support;
 
@@ -151,6 +153,22 @@ fn parse(source: &str) -> Result<parser::Module, parser::Error> {
     parser::parse(&file)
 }
 
+/// The package a block or group declaring `declared` is compiled as.
+///
+/// One declaring a module the eight default imports name is `zelkova-core` — the package
+/// those imports belong to, which is also what [`stdlib_interfaces`] and the
+/// `declares_a_default` flag already take it for. That is what makes a chapter's `module
+/// Basics` declaring `type Int = …` the declaration of the scalar `Int`, since a scalar is
+/// declared in `zelkova-core` and in no other package. Every other block is a module of
+/// [`test_package`].
+fn package_of(declared: &[Name]) -> PackageName {
+    if zelkova_lang::compiler::default_imports::declares_a_default(declared) {
+        PackageName::core()
+    } else {
+        test_package()
+    }
+}
+
 /// A lone block, canonicalized against `interfaces` — its [`block_interfaces`], the
 /// map the typer is then handed too.
 fn canonicalize(
@@ -159,7 +177,7 @@ fn canonicalize(
 ) -> Result<canonical::Module, Vec<canonical::Error>> {
     let declared = std::slice::from_ref(&module.name);
     canonical::canonicalize(
-        &test_package(),
+        &package_of(declared),
         interfaces,
         module,
         zelkova_lang::compiler::default_imports::declares_a_default(declared),
@@ -685,7 +703,7 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
     let declared: Vec<Name> = modules.iter().map(|m| m.name.clone()).collect();
     let mut interfaces = stdlib_interfaces(&declared);
     let (checked, failures) = walker.check_in_order(
-        &test_package(),
+        &package_of(&declared),
         &mut interfaces,
         &module_files,
         canonicalize_tagged,

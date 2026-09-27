@@ -144,7 +144,7 @@ pub struct Module {
 /// it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Union {
-    /// The union, named by the module that declared it.
+    /// The union, named by the package and module that declared it.
     pub name: QualName,
     /// The type variables the declaration was written with, in order.
     pub variables: Vec<Name>,
@@ -237,10 +237,10 @@ pub struct Unchecked {
 pub struct Reference {
     /// The spelling inference looks the name up by.
     ///
-    /// The typer's environment is a `HashMap<String, Type>` keyed by the spelling the
-    /// canonical AST carries — bare for a local, qualified for everything else — so this
-    /// is that key and not a display name. A backend reads [`kind`](Self::kind), which
-    /// says what the name *is*.
+    /// The typer's environment is a `HashMap<String, Type>` keyed bare for a local and,
+    /// for everything else, by the declaration's package and qualified name —
+    /// `test-project:Test.echo` — so this is that key and not a display name. A backend
+    /// reads [`kind`](Self::kind), which says what the name *is*.
     pub name: String,
     pub kind: ReferenceKind,
 }
@@ -284,7 +284,8 @@ pub enum ReferenceKind {
 /// to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Constructor {
-    /// The union this constructor builds, named by the module that declared it.
+    /// The union this constructor builds, named by the package and module that
+    /// declared it.
     pub union: QualName,
     /// The constructor's own name, unqualified.
     pub name: Name,
@@ -595,7 +596,11 @@ pub enum Solved {
     /// The declaration's typed term, with the final substitution applied to every node
     /// — the *zonk*. Its own `tpe` is the declaration's type; each node below it
     /// carries the type inference solved for that sub-expression.
-    Typed(TypedTerm),
+    ///
+    /// Boxed because a term carries a whole [`QualName`] — package included — for every
+    /// union and constructor it names, and every other variant would otherwise pay for
+    /// its size.
+    Typed(Box<TypedTerm>),
     /// A declaration of a `module foreign` facade, whose body is a synthetic
     /// placeholder rather than anything the user wrote. Nothing about it is inferred.
     ///
@@ -648,7 +653,7 @@ impl Solved {
     /// The typed term, for a declaration that has one.
     pub fn typed(&self) -> Option<&TypedTerm> {
         match self {
-            Solved::Typed(term) => Some(term),
+            Solved::Typed(term) => Some(term.as_ref()),
             _ => None,
         }
     }
@@ -699,7 +704,7 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
         match solved.remove(name) {
             Some(Solved::Typed(term)) => {
                 let tpe = term.tpe.clone();
-                let (parameters, expression) = peel(term, value.arity());
+                let (parameters, expression) = peel(*term, value.arity());
 
                 declarations.push(Declaration {
                     name: name.clone(),

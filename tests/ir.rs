@@ -319,7 +319,7 @@ fn a_local_a_top_level_and_a_constructor_are_three_references() {
         TypedTermKind::Apply { fun, arg, .. } => {
             assert_eq!(
                 reference(fun).kind,
-                ReferenceKind::TopLevel(qual("Test.echo"))
+                ReferenceKind::TopLevel(test_qual("Test.echo"))
             );
             assert_eq!(reference(arg).kind, ReferenceKind::Local);
         }
@@ -385,7 +385,7 @@ fn a_constructor_carries_its_argument_count_and_its_index() {
     let colour = module
         .unions
         .iter()
-        .find(|union| union.name == qual("Test.Colour"))
+        .find(|union| union.name == test_qual("Test.Colour"))
         .expect("`Test` declares `Colour`");
 
     assert_eq!(
@@ -838,7 +838,7 @@ fn fail<'a>(declaration: &str) -> Decision<'a> {
 /// Constructor `name` of the union `union` this test module declares.
 fn test_constructor(union: &str, name: &str, index: usize, arity: usize) -> Outcome {
     Outcome::Constructor(Constructor {
-        union: QualName::in_module("Test", union),
+        union: QualName::in_module(test_package(), "Test", union),
         name: Name::new(name),
         index,
         arity,

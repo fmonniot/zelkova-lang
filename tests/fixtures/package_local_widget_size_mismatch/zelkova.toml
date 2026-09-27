@@ -1,0 +1,11 @@
+# A local module named `Widget` (not `Size`) beside the wrapped `acme-widgets`. Its
+# own `Size` type shares only a *bare* name with the dependency's `AcmeWidgets.Size.Size`
+# — the two modules are not both named `Size`, unlike `package_local_size_mismatch`.
+name = "package-local-widget-size-mismatch"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-widgets]
+path = "../dep_widgets"
+
+[test-dependencies]

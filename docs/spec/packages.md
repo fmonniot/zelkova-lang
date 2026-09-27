@@ -482,12 +482,6 @@ type in a public signature is part of the package's interface, and a package tha
 dependency's type there has made that dependency part of what it asks of its users. Wrapping
 the type in one of its own is how a package chooses not to.
 
-**Not implemented:** a type's identity is its module and its own name, with no package in it
-(`QualName`, `src/compiler/name.rs`), and a module's name is unique only within its package. So
-a package holding its own `Size` and depending, wrapped, on `acme-widgets` has two distinct
-unions that the compiler reads as one: `Size.Size` and `AcmeWidgets.Size.Size` unify, and the
-build reports success ([`docs/tickets/bug-37.md`](../tickets/bug-37.md)).
-
 ### Two modules under one name is an error
 
 Two wrapped dependencies cannot collide, whatever they contain, and that is what the namespace

@@ -6,12 +6,15 @@
 //! types*](../../../docs/spec/types.md#scalar-types) is the rule; this module is the
 //! list it names.
 //!
-//! A scalar is known by the **qualified name of its declaration** and never by its
-//! spelling ([`DEC-15` decision
-//! 1](../../../docs/decisions/dec-15.md)). A module declaring its own `Int` declares
-//! an ordinary type that shares three letters with a scalar, and every phase treats it
-//! as one — which is why [`Scalar::declares`] takes a [`QualName`] and there is no
-//! entry point taking a bare [`Name`](super::name::Name).
+//! A scalar is known by the **qualified name of its declaration** — package, module and
+//! name — and never by its spelling ([`DEC-15` decision
+//! 1](../../../docs/decisions/dec-15.md#1--a-scalar-type-is-known-by-its-qualified-name)).
+//! A module declaring its own `Int` declares an ordinary type that shares three letters
+//! with a scalar, and every phase treats it as one — which is why [`Scalar::declares`]
+//! takes a [`QualName`] and there is no entry point taking a bare
+//! [`Name`](super::name::Name). The same goes for a whole package: a dependency's own
+//! `Basics` declaring `type Int = Int` declares `Basics.Int` of *that* package, and the
+//! five scalars are declared in [`zelkova-core`](super::resolve::CORE_PACKAGE) only.
 //!
 //! # Why the list lives here and not in the typer
 //!
@@ -25,12 +28,15 @@
 //! [`default_imports`](super::default_imports) does.
 
 use super::name::QualName;
+use super::resolve::CORE_PACKAGE;
+use super::PackageName;
 
-/// One scalar type: the module its declaration lives in, and the name that
-/// declaration writes.
+/// One scalar type: the module of `zelkova-core` its declaration lives in, and the name
+/// that declaration writes.
 ///
 /// The module is written out with its dots, as a `module` header writes it, so a
-/// nested module name is spelled the one way everywhere.
+/// nested module name is spelled the one way everywhere. The package is not a field:
+/// it is [`CORE_PACKAGE`] for all five.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Scalar {
     pub module: &'static str,
@@ -40,11 +46,14 @@ pub struct Scalar {
 impl Scalar {
     /// Whether `name` is this scalar's declaration.
     ///
-    /// Both halves have to match: `Example.Int` is not [`INT`]. An `Int` that
+    /// All three parts have to match: `Example.Int` is not [`INT`], and neither is a
+    /// `Basics.Int` declared by any package but [`CORE_PACKAGE`]. An `Int` that
     /// resolves to nothing never reaches here at all — canonicalization rejects
     /// the name rather than building a type out of it.
     pub fn declares(&self, name: &QualName) -> bool {
-        name.unqualified_name().as_str() == self.name && name.module_name().as_str() == self.module
+        name.package().as_str() == CORE_PACKAGE
+            && name.unqualified_name().as_str() == self.name
+            && name.module_name().as_str() == self.module
     }
 
     /// This scalar's declaration, as the qualified name every phase after
@@ -54,7 +63,7 @@ impl Scalar {
     /// to *name* a scalar rather than recognise one — the typer builds the type of an
     /// `if` condition out of [`BOOL`] this way.
     pub fn qual_name(&self) -> QualName {
-        QualName::in_module(self.module, self.name)
+        QualName::in_module(PackageName::core(), self.module, self.name)
     }
 }
 
@@ -122,7 +131,7 @@ mod tests {
     use super::*;
 
     fn qual(s: &str) -> QualName {
-        QualName::parse(s).unwrap()
+        QualName::parse(PackageName::core(), s).unwrap()
     }
 
     #[test]
@@ -137,8 +146,8 @@ mod tests {
     /// The two directions agree: the name a scalar writes is the one it recognises.
     ///
     /// Mutation-checked by giving [`Scalar::qual_name`] the wrong module
-    /// (`QualName::in_module("Example", self.name)`): `declares` then rejects every
-    /// scalar's own name and the loop goes red.
+    /// (`QualName::in_module(PackageName::core(), "Example", self.name)`): `declares`
+    /// then rejects every scalar's own name and the loop goes red.
     #[test]
     fn a_scalar_recognises_the_name_it_writes() {
         for scalar in SCALARS {
@@ -161,6 +170,21 @@ mod tests {
         assert_eq!(scalar_of(&qual("Js.Basics.Int")), None);
         assert_eq!(scalar_of(&qual("Basics.Char")), None);
         assert_eq!(scalar_of(&qual("Char.String")), None);
+    }
+
+    /// The package is part of the identity: `Basics.Int` declared by a package other
+    /// than `zelkova-core` is an ordinary type, however it is spelled.
+    ///
+    /// Mutation-checked by dropping the package comparison from [`Scalar::declares`]:
+    /// every assertion below then answers the scalar and goes red.
+    #[test]
+    fn another_packages_basics_int_is_not_the_scalar() {
+        let acme = PackageName::new("acme-basics").unwrap();
+
+        for scalar in SCALARS {
+            let elsewhere = QualName::in_module(acme.clone(), scalar.module, scalar.name);
+            assert_eq!(scalar_of(&elsewhere), None, "{:?} of acme-basics", scalar);
+        }
     }
 
     /// The four opaque scalars answer `opaque_scalar_of`; `Bool` is a scalar and

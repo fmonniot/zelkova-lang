@@ -1,0 +1,5 @@
+module Widget exposing (Size(..))
+
+
+type Size
+  = Mine

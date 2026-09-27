@@ -1,0 +1,22 @@
+-- This package's own `Size`, sharing its module name and its type's name with
+-- `acme-widgets`' `Size`, and declaring a `small` as that module does. `theirs`
+-- and `theirsSmall` reach the dependency's union, constructor and value from a
+-- module whose own are spelled the same.
+module Size exposing (Size(..), small, theirs, theirsSmall)
+
+import AcmeWidgets.Size
+
+
+type Size = Mine
+
+
+small : Size
+small = Mine
+
+
+theirs : AcmeWidgets.Size.Size
+theirs = AcmeWidgets.Size.Small
+
+
+theirsSmall : AcmeWidgets.Size.Size
+theirsSmall = AcmeWidgets.Size.small
