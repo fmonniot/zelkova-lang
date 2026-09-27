@@ -180,7 +180,7 @@ worked in parallel:
 ```
 GEN-17   `zelkova compile [DIR]` — the binary, clap, and the `cargo run` sweep   ── closed
 LANG-63  `zelkova-test` declares `Test`; a pass collects a package's tests
-GEN-18   a test build writes its tests, to `build/test/js/`
+GEN-18   a test build writes its tests, to `build/test/js/`                      ── closed
 SPEC-35  a test-dependency may depend on the package it tests                    ── closed
   │
   │  GEN-17 + LANG-63 + GEN-18
@@ -400,7 +400,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-15](gen-15.md) | task | — | open | The WebAssembly backend |
 | [GEN-16](gen-16.md) | task | — | open | The wrapper an effectful facade's call site gets |
 | GEN-17 | task | — | closed 2026-09-27 | The compiler has no command line: `src/main.rs` compiles `std/core` and takes no arguments |
-| [GEN-18](gen-18.md) | task | — | open | A build that compiles the tests writes none of them, so nothing can run one |
+| GEN-18 | task | — | closed 2026-09-27 | A build that compiles the tests writes none of them, so nothing can run one |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

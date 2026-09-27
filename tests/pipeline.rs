@@ -911,6 +911,69 @@ fn a_build_that_cannot_be_emitted_writes_nothing() {
     assert!(!build_dir.exists(), "got {:?}", files_under(&build_dir));
 }
 
+/// `GEN-18`: a test build whose `tests/` root holds a module that checks but cannot be
+/// emitted writes neither tree — not `test/js/`, and not `js/` either, though every
+/// module of `src/` emitted cleanly. The facade here sits under `tests/` with no
+/// companion beside it, which [`javascript::emit`] refuses.
+///
+/// Mutation-checked by moving the test tree's `emit_modules` call in `compile` back
+/// after the write of `js/`: `js/` is written in full and this turns red.
+#[test]
+fn a_test_build_whose_tests_cannot_be_emitted_writes_nothing() {
+    let package =
+        fresh_build_dir("a_test_build_whose_tests_cannot_be_emitted_writes_nothing_package");
+    std::fs::create_dir_all(package.join("src")).unwrap();
+    std::fs::create_dir_all(package.join("tests")).unwrap();
+    std::fs::write(
+        package.join("zelkova.toml"),
+        "name = \"no-test-companion\"\nversion = \"0.1.0\"\nprivate-modules = []\n\n[dependencies]\n\n[test-dependencies]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("src/Answer.zel"),
+        indoc::indoc! {r#"
+            module Answer exposing (Answer(..))
+
+            type Answer = Yes
+        "#},
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("tests/Native.zel"),
+        indoc::indoc! {r#"
+            module foreign Native exposing (answer)
+
+            import Answer exposing (Answer)
+
+            unsafe answer : Answer
+        "#},
+    )
+    .unwrap();
+    let build_dir = package.join("build");
+
+    let error = zelkova_lang::compiler::compile_package_with_tests_into(&package, &build_dir)
+        .expect_err("a facade under `tests/` with no companion cannot be emitted");
+
+    let CompilationError::Many(errors) = &error else {
+        panic!("expected Many, got {:?}", error);
+    };
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [CompilationError::InFile(inner, _)]
+                if matches!(
+                    &**inner,
+                    CompilationError::Emit(emit_errors, _)
+                        if matches!(emit_errors.as_slice(), [javascript::Error::MissingCompanion { .. }])
+                )
+        ),
+        "got {:?}",
+        errors
+    );
+
+    assert!(!build_dir.exists(), "got {:?}", files_under(&build_dir));
+}
+
 // ── Test 14: a type error reaches the user as a real diagnostic ──────────────
 
 /// `ERR-2`: a type error must render as an `error` naming both types.
@@ -4762,25 +4825,55 @@ fn a_test_dependency_reaches_the_tests_root() {
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }
 
-/// A test build's output tree holds exactly what a plain build of the same package's
-/// `src/` would: `compile_package_with_tests` checks `tests/AppTest.zel` and the
-/// `test-dependency` it reaches through (`acme-expect`), but writes neither
-/// `AppTest.mjs` nor `acme-expect/Expect.mjs`, so a later plain `compile_package` run
+/// `GEN-18`: a test build writes a second, complete tree at `test/js/` — the root's
+/// `tests/AppTest.zel` and the `test-dependency` it reaches through (`acme-expect`)
+/// beside everything a plain build already writes — while `js/` itself stays exactly
+/// what a plain build of the same package's `src/` would write: neither `AppTest.mjs`
+/// nor `acme-expect/Expect.mjs` ever lands there, so a later plain `compile_package` run
 /// never finds a test module a test build left behind.
 ///
-/// Mutation-checked by extending `checked` with the modules of each test-only package
-/// in `compile`'s second loop: `acme-expect/Expect.mjs` is then written. No line keeps
-/// `AppTest.mjs` out: `compile_tests` hands back nothing, so there is no test module
-/// for `compile` to write.
+/// Mutation-checked by dropping `test_tree_modules.extend(compiled.modules)` from the
+/// test-only loop and the `test_tree_modules.extend(compile_tests(..))` around the call
+/// to `compile_tests` in `compile`: `test/js/` then holds only the runtime and `App.mjs`,
+/// missing both `Expect.mjs` and `AppTest.mjs`, and this goes red.
 #[test]
-fn a_test_build_writes_the_same_tree_a_plain_build_would() {
-    let root = fixture_package("package_test_dependency");
-    let build_dir = root.join("build");
-    if build_dir.exists() {
-        std::fs::remove_dir_all(&build_dir).unwrap();
-    }
+fn a_test_build_writes_a_second_tree_beside_the_plain_one() {
+    let build_dir = fresh_build_dir("a_test_build_writes_a_second_tree_beside_the_plain_one");
 
-    let result = compile_package_with_tests(&root);
+    let result = zelkova_lang::compiler::compile_package_with_tests_into(
+        &fixture_package("package_test_dependency"),
+        &build_dir,
+    );
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    assert_eq!(
+        files_under(&build_dir),
+        vec![
+            "js/package-test-dependency/App.mjs".to_string(),
+            "js/zelkova.mjs".to_string(),
+            "test/js/acme-expect/Expect.mjs".to_string(),
+            "test/js/package-test-dependency/App.mjs".to_string(),
+            "test/js/package-test-dependency/AppTest.mjs".to_string(),
+            "test/js/zelkova.mjs".to_string(),
+        ]
+    );
+}
+
+/// …and a plain build over the same fixture writes neither half of that second tree: it
+/// never checks `tests/` or resolves `test-dependencies` into anything to compile, so
+/// there is no `test/` directory at all and `acme-expect` — reachable only as a
+/// `test-dependency` — is never compiled, let alone written.
+///
+/// Mutation-checked by having `compile`'s first loop not `continue` past a `test_only`
+/// package: `js/acme-expect/Expect.mjs` then appears and this goes red.
+#[test]
+fn a_plain_build_writes_no_test_tree() {
+    let build_dir = fresh_build_dir("a_plain_build_writes_no_test_tree");
+
+    let result = zelkova_lang::compiler::compile_package_into(
+        &fixture_package("package_test_dependency"),
+        &build_dir,
+    );
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
     assert_eq!(
@@ -5053,13 +5146,19 @@ fn a_test_dependency_may_depend_on_the_package_it_tests() {
     let result = compile_package_with_tests(&root);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
-    // The test library is checked for the tests and never written.
+    // `acme-check` and `LibTest` are checked for the tests and never written to `js/` —
+    // only `test/js/` holds them, beside `acme-lib`'s own modules (`GEN-18`).
     assert_eq!(
         files_under(&build_dir),
         vec![
             "js/acme-lib/Internal.mjs".to_string(),
             "js/acme-lib/Lib.mjs".to_string(),
             "js/zelkova.mjs".to_string(),
+            "test/js/acme-check/Check.mjs".to_string(),
+            "test/js/acme-lib/Internal.mjs".to_string(),
+            "test/js/acme-lib/Lib.mjs".to_string(),
+            "test/js/acme-lib/LibTest.mjs".to_string(),
+            "test/js/zelkova.mjs".to_string(),
         ]
     );
 }

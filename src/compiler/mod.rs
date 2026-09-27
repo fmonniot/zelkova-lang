@@ -36,7 +36,11 @@
 //!     1. Bonus point to parallelize the tree branches which are not dependent on each others
 //! 6. Once every module of every package has checked, emit each one as JavaScript
 //!    (`javascript::emit`) and, if that failed nowhere either, write the build to
-//!    `build/js/` (`output::write`). A build with any error writes nothing.
+//!    `build/js/` (`output::write`). A build with any error writes nothing. A build that
+//!    also compiled the tests (step 1's exception) writes a second, complete tree at
+//!    `build/test/js/` — the runtime, then one directory per package, holding every
+//!    package of the build (a test-only one included) and the root's `tests/` modules
+//!    beside its `src/` ones — so that tree alone is what a test runner ever reads from.
 //! 7. Report. Each phase returns every error it found, `check_module` tags those with
 //!    the module they came from, and `compile_package` accumulates them across modules
 //!    and renders them all through `CompilationError::as_diagnostic` — the one place a
@@ -832,18 +836,28 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 /// [`compile_package`].
 ///
 /// It compiles the tests and does not run them: what makes a declaration a test is
-/// [its type](../../docs/spec/packages.md#what-a-test-is), and there is no runner.
+/// [its type](../../docs/spec/packages.md#what-a-test-is), and there is no runner yet
+/// ([`LANG-69`](../../docs/tickets/lang-69.md) is that ticket).
 ///
-/// A test module and a `test-dependency`'s modules are checked, but neither is written to
-/// `build/js/`: this build's output tree is the same one [`compile_package`] would have
-/// produced from `src/` alone, so a plain build run afterwards never finds a test module
-/// left behind by one that also compiled the tests.
+/// A test module and every `test-dependency`'s modules are checked and, unlike a plain
+/// build, written — to a tree of their own, `build/test/js/`, laid out exactly like
+/// `build/js/` and holding every package of the build (a test-only one included) plus the
+/// root's `tests/` modules beside its `src/` ones. `build/js/` itself is left exactly as
+/// [`compile_package`] would have written it: a test module never turns up there, so a
+/// plain build run afterwards never finds one left behind by a run that also compiled the
+/// tests ([`GEN-18`](../../docs/tickets/README.md)).
 pub fn compile_package_with_tests(package_dir: &Path) -> Result<(), CompilationError> {
-    compile(
-        package_dir,
-        TestRoot::Compiled,
-        &package_dir.join(BUILD_DIRECTORY),
-    )
+    compile_package_with_tests_into(package_dir, &package_dir.join(BUILD_DIRECTORY))
+}
+
+/// [`compile_package_with_tests`], writing below `build_dir` rather than below the
+/// package's own `build/` — the same relationship [`compile_package_into`] has to
+/// [`compile_package`].
+pub fn compile_package_with_tests_into(
+    package_dir: &Path,
+    build_dir: &Path,
+) -> Result<(), CompilationError> {
+    compile(package_dir, TestRoot::Compiled, build_dir)
 }
 
 fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), CompilationError> {
@@ -934,6 +948,12 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
     // extends it.
     let mut checked: Vec<ModuleToEmit> = Vec::new();
 
+    // Every module the *test* tree (`build/test/js/`) needs beyond what `checked` already
+    // holds: each test-only package's modules, and the root's `tests/` modules. Stays
+    // empty — and unread — for a build that did not ask for the tests, since the codegen
+    // step below only reaches for it when `tests == TestRoot::Compiled`.
+    let mut test_tree_modules: Vec<ModuleToEmit> = Vec::new();
+
     // The root package's `tests/` is compiled apart from its `src/`, after every
     // test-only package, because a test-only package may depend on the root: that edge
     // names the root's `src/`, and the root's `tests/` in turn needs the test-only
@@ -987,9 +1007,10 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
         for package in build.iter().filter(|p| test_only.contains(&p.name)) {
             debug!("phase: compile package {} for the tests", package.name);
 
-            // Compiled and published so the tests can be checked against it, but nothing
-            // outside a package's own tests reads its modules — the build's output tree
-            // is not where they belong (see `compile_package_with_tests`'s doc comment).
+            // Compiled and published so the tests can be checked against it. Nothing
+            // outside a package's own tests reads its modules, so they never join
+            // `checked` — the plain build's output tree — but they do join
+            // `test_tree_modules`, which only the test tree reads.
             if let Some(compiled) = compile_in_build(
                 package,
                 &build,
@@ -1000,31 +1021,62 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
                 &mut print_status,
             ) {
                 published.insert(package.name.clone(), compiled.public);
+                test_tree_modules.extend(compiled.modules);
             }
         }
 
         debug!("phase: compile the tests of package {}", root.name);
-        compile_tests(
+        test_tree_modules.extend(compile_tests(
             root,
             &build,
             &published,
             environment,
             &mut errors,
             &mut print_status,
-        );
+        ));
     }
 
-    // Step 6: generate code, only for a build in which nothing failed. Every module is
-    // emitted before anything is written, so a module that cannot be emitted also
-    // leaves the build with no output at all.
+    // Step 6: generate code, only for a build in which nothing failed. Every module of
+    // both trees is emitted before anything is written, so a module that cannot be
+    // emitted — in `src/` or in `tests/` — also leaves the build with no output at all.
     if errors.is_empty() {
         debug!("phase: codegen");
         let files = emit_build(checked, &mut errors);
+
+        // A build that also compiled the tests writes a second, complete tree at
+        // `<build_dir>/test/js/`, laid out exactly like `<build_dir>/js/` — the runtime,
+        // then one directory per package — but holding every package of the build (a
+        // test-only one included) and the root's `tests/` modules beside its `src/` ones
+        // (`docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest`).
+        // `files` already holds everything a plain build would have written — the
+        // runtime, the root's `src/` and every plain dependency's modules — so the test
+        // tree reuses it rather than emitting those modules a second time, and only
+        // `test_tree_modules` (the test-only packages' and the root's `tests/`) is new
+        // work. That work happens here, before `js/` is written, so a module of the test
+        // tree that cannot be emitted blocks both writes.
+        let test_files = (tests == TestRoot::Compiled).then(|| {
+            debug!("phase: codegen (tests)");
+            let mut test_files = files.clone();
+            test_files.extend(emit_modules(test_tree_modules, &mut errors));
+            test_files
+        });
 
         if errors.is_empty() {
             debug!("phase: write the build");
             errors.extend(
                 output::write(&build_dir.join("js"), &files)
+                    .into_iter()
+                    .map(CompilationError::Output),
+            );
+        }
+
+        // Gated on `errors.is_empty()` a second time so a plain build's own failure to
+        // write `js/` — an unlikely I/O error, not a checking one — does not also
+        // attempt the test tree.
+        if let Some(test_files) = test_files.filter(|_| errors.is_empty()) {
+            debug!("phase: write the test build");
+            errors.extend(
+                output::write(&build_dir.join("test").join("js"), &test_files)
                     .into_iter()
                     .map(CompilationError::Output),
             );
@@ -1066,6 +1118,34 @@ struct ModuleToEmit {
     companion: Option<std::path::PathBuf>,
 }
 
+/// Pair each checked module of one source root with what emitting and writing it needs:
+/// the file it was read from, and its companion when it is a facade with one sitting
+/// beside its source under `root_dir` — the source root's own directory, `src/` or
+/// `tests/`, so a facade under `tests/` finds its companion there rather than under
+/// `src/` ([*Testing a companion*](../../docs/spec/interop.md#testing-a-companion)).
+///
+/// Shared by [`compile_in_build`] (over `src/`) and [`compile_tests`] (over `tests/`),
+/// which differ only in which root's directory and file map they pass.
+fn to_modules_to_emit(
+    checked: Vec<CheckedModule>,
+    root_dir: &Path,
+    module_files: &HashMap<Name, SourceFileId>,
+) -> Vec<ModuleToEmit> {
+    checked
+        .into_iter()
+        .map(|module| {
+            let name = module.canonical.name.name();
+            let companion = Some(root_dir.join(javascript::module_file(name)))
+                .filter(|path| module.ir.foreign && path.is_file());
+            ModuleToEmit {
+                file: module_files.get(name).copied(),
+                companion,
+                module,
+            }
+        })
+        .collect()
+}
+
 /// Every file a build writes: the runtime, and each module of `checked` as the text
 /// [`javascript::emit`] gives it, with its facade's companion beside it.
 ///
@@ -1077,6 +1157,22 @@ fn emit_build(checked: Vec<ModuleToEmit>, errors: &mut Vec<CompilationError>) ->
         path: javascript::RUNTIME_FILE.into(),
         contents: output::Contents::Text(javascript::RUNTIME.to_string()),
     }];
+    files.extend(emit_modules(checked, errors));
+    files
+}
+
+/// [`emit_build`], without the runtime file at the front.
+///
+/// [`emit_build`] calls it for the plain build's own modules. A test build calls it a
+/// second time for the modules a plain build never emits — each test-only package's,
+/// and the root's `tests/` — which is why it is factored out: the test tree already has
+/// the runtime, since it starts from a clone of the plain build's own files, and those
+/// extra modules must not emit a second runtime file to sit unused beside the first.
+fn emit_modules(
+    checked: Vec<ModuleToEmit>,
+    errors: &mut Vec<CompilationError>,
+) -> Vec<output::File> {
+    let mut files = Vec::new();
 
     for ModuleToEmit {
         module,
@@ -1373,24 +1469,11 @@ fn compile_in_build(
     // source root that the facade's own emitted module has below its package's output
     // directory.
     //
-    // Only `src/` feeds the build's output. A module of `tests/` checks like any other,
-    // but nothing outside the package's own tests ever reads it — there is no runner
-    // ([`docs/spec/toolchain.md`](../../docs/spec/toolchain.md#running-a-packages-tests))
-    // — so `compile_tests` hands nothing to `emit_build`.
+    // Only `src/` feeds `checked` here — the plain build's output tree. A module of
+    // `tests/` checks like any other but is not this package's, so it is not among
+    // these: it joins the test tree's own modules later, in `compile_tests`.
     let root_dir = package.root.join(source::SourceRoot::Src.directory());
-    let checked: Vec<ModuleToEmit> = can_mods
-        .into_iter()
-        .map(|module| {
-            let name = module.canonical.name.name();
-            let companion = Some(root_dir.join(javascript::module_file(name)))
-                .filter(|path| module.ir.foreign && path.is_file());
-            ModuleToEmit {
-                file: parsed.module_files.get(name).copied(),
-                companion,
-                module,
-            }
-        })
-        .collect();
+    let checked: Vec<ModuleToEmit> = to_modules_to_emit(can_mods, &root_dir, &parsed.module_files);
 
     if errors.len() != errors_before {
         return None;
@@ -1458,9 +1541,13 @@ fn compile_in_build(
 /// since every one of them would be blamed for a type the package never managed to
 /// declare.
 ///
-/// Nothing comes back. A test module is checked like any other and a failure in one
-/// fails the build, but nothing outside the package's own tests reads it, so none is
-/// published or emitted ([`compile_package_with_tests`]).
+/// Every `tests/` module that checked, paired with what emitting and writing it needs —
+/// [`ModuleToEmit`], the same shape [`compile_in_build`] hands back for `src/` — so the
+/// test tree ([`compile_package_with_tests`]) can write them beside it. Empty, with
+/// nothing published or emitted, for a package whose collision check or dependency
+/// resolution failed before any module was checked. A test module is checked like any
+/// other and a failure in one fails the build, but nothing outside the package's own
+/// tests reads it, so it is never published to a dependent.
 fn compile_tests(
     package: &resolve::ResolvedPackage,
     build: &[resolve::ResolvedPackage],
@@ -1468,7 +1555,7 @@ fn compile_tests(
     environment: TestsEnvironment,
     errors: &mut Vec<CompilationError>,
     print_status: &mut impl FnMut(bool, String),
-) {
+) -> Vec<ModuleToEmit> {
     let TestsEnvironment {
         mut interfaces,
         modules,
@@ -1490,7 +1577,7 @@ fn compile_tests(
         published,
         errors,
     ) else {
-        return;
+        return Vec::new();
     };
 
     // The map is built again over both roots and both dependency maps. `compile_in_build`
@@ -1502,7 +1589,7 @@ fn compile_tests(
         Ok(visible) => visible,
         Err(collisions) => {
             errors.push(CompilationError::Resolution(collisions));
-            return;
+            return Vec::new();
         }
     };
 
@@ -1519,7 +1606,7 @@ fn compile_tests(
         &mut interfaces,
     );
 
-    check_root(
+    let can_mods = check_root(
         package,
         source::SourceRoot::Tests,
         &modules,
@@ -1528,6 +1615,12 @@ fn compile_tests(
         errors,
         print_status,
     );
+
+    // A facade under `tests/` places its companion the way any other facade does — beside
+    // its own source — under `tests/` here rather than `src/`
+    // (`docs/spec/interop.md#testing-a-companion`).
+    let root_dir = package.root.join(source::SourceRoot::Tests.directory());
+    to_modules_to_emit(can_mods, &root_dir, &module_files)
 }
 
 /// The direct dependencies named by `entries`, each as the package being compiled sees
