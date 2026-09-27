@@ -103,8 +103,7 @@ looks at what it exposes, and nothing anywhere declares `Test`.
   `a_test_dependency_does_not_reach_the_src_root` test already pins that rule.
 - `cargo run -- compile std/test` compiles the new package and exits 0.
 - `cargo run -- compile std/core` still prints `parsed 8 modules`, lists all eight as checked,
-  and exits 0. A new package under `std/` must not change what `std/core` compiles to. (Before
-  [`GEN-17`](gen-17.md) lands, run a bare `cargo run` for this check.)
+  and exits 0. A new package under `std/` must not change what `std/core` compiles to.
 
 **No block in `docs/spec/packages.md` goes red when this lands,** because the chapter's `Test`
 is described in prose, not in a tagged block. The **Not implemented:** paragraph of

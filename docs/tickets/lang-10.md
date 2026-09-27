@@ -63,7 +63,8 @@ applies, though the parser AST's `UnionType.variants` stays a `Vec<Type>` and
 that is not a constructor application — `BUG-18`, closed; see [the index](README.md).)
 
 **Acceptance:** `type T =` and `type B = X |` are both parse errors; `type C = X | Y` and a
-single-variant `type D = X` still compile. Tests in the parser's own test module. `cargo run`
-still prints `parsed 8 modules` and lists all eight as checked. The two `expect=ok` blocks in
+single-variant `type D = X` still compile. Tests in the parser's own test module.
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
+The two `expect=ok` blocks in
 [`docs/spec/types.md`](../spec/types.md)'s *A variant list has at least one variant* section go
 red and are retagged `expect=parse-error:…` with their `**Known gap:**` paragraph deleted.

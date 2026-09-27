@@ -61,6 +61,7 @@ default imports', reserved for `zelkova-core` ahead of this ticket — rejected 
 ever reaches a collision check — so the fixture was retargeted at `Bitwise`, a name `LANG-62`
 still owns.)
 `tests/fixtures/dep_core_fork` and `core_is_unwrapped_whatever_its_entry_says` pin the
-unwrapping half and must stay green too. `cargo run` must still print `parsed 8 modules`, list
-all eight as checked, and exit 0 — `std/core` is compiled as the root package there, and step 3
+unwrapping half and must stay green too. `cargo run -- compile std/core` must still print
+`parsed 8 modules`, list all eight as checked, and exit 0 — `std/core` is compiled as the root
+package there, and step 3
 is what keeps that working.

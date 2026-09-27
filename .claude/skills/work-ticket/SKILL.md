@@ -193,7 +193,7 @@ round trip on its first turn.
 >    cargo build && cargo test
 >    cargo fmt --all
 >    cargo clippy --all-features
->    cargo run                      # must still parse 7 modules; see CLAUDE.md for the baseline
+>    cargo run -- compile std/core  # must still parse 7 modules; see CLAUDE.md for the baseline
 >    ```
 >    Fix every clippy warning. Note that `.github/workflows/rust.yml` marks the fmt and clippy
 >    jobs `continue-on-error: true`, so **CI will not catch these for you** — a green CI run on
@@ -302,8 +302,9 @@ candidate and it is the thing most easily lost between here and the merge.
 - **Leave worktrees in place.** `review-pr` and `fix-pr-comments` reuse them.
 - **One ID namespace, one closing convention.** Bugs and tasks are both just files under
   `docs/tickets/`; both close the same way. No per-type special case.
-- **`cargo run` is the smoke test.** `CLAUDE.md` records the expected baseline. A diff that
-  changes that output without the ticket asking for it is a regression, whatever the tests say.
+- **`cargo run -- compile std/core` is the smoke test.** `CLAUDE.md` records the expected
+  baseline. A diff that changes that output without the ticket asking for it is a regression,
+  whatever the tests say.
 - **A doc comment describes what the code at that site does** — not what the ticket intended.
   This repo comments heavily, which makes an overstated comment a real defect: it is what the
   next reader trusts. `TIDY-4` exists because two test headers describe a type checker that

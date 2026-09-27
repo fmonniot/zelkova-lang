@@ -89,7 +89,7 @@ failure, not a compile-time one — which is the half below that remains.
 
 **Acceptance:** *(the first clause is met — see Status.)* `_Utils_cmp` and `append` fail loudly
 on a value they cannot compare or concatenate, with a test in whatever harness covers the `.mjs`
-files by then. `cargo run` still prints `parsed 8 modules` and lists all eight as checked. What
-remains is the type half: the six signatures carry a real constraint, so `min Red Blue` is a
-type error rather than a runtime throw. [`LANG-42`](lang-42.md) is that work and closes this
-ticket.
+files by then. `cargo run -- compile std/core` still prints `parsed 8 modules` and lists all
+eight as checked. What remains is the type half: the six signatures carry a real constraint, so
+`min Red Blue` is a type error rather than a runtime throw. [`LANG-42`](lang-42.md) is that work
+and closes this ticket.

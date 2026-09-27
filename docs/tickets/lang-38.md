@@ -166,7 +166,7 @@ is the assertion the whole ticket turns on, and it goes red if step 2 regresses.
 and `type Box where = Box where` are parse errors, and `where : Int`, `f where = where` and
 `exposing (where)` still compile, each with a test recording the split deliberately. A
 canonicalization test asserts a `class` and an `instance` survive into `canonical::Module`.
-`cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
 
 In [`docs/spec/type-classes.md`](../spec/type-classes.md), the `expect=ok` blocks under *The
 words this reserves* (`class`/`instance` as value names, and `where` as a type variable) and the

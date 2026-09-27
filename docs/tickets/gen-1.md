@@ -49,7 +49,7 @@ manifest, one directory per package, each module named by its name *within its o
 ([decision 5](../decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)).
 A build that emitted any error writes no output
 ([*The compiler's interface*](../spec/toolchain.md#the-compilers-interface)). `build/` is
-gitignored and `cargo run` writes it on every invocation.
+gitignored and `cargo run -- compile std/core` writes it on every invocation.
 
 **6 — Emission is checked in two halves**
 ([decision 6](../decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node)).
@@ -114,9 +114,9 @@ GEN-14  the end-to-end check   ── moved to the bootstrap section, run by `ze
 ```
 
 Unscheduled, filed to keep their context: [`GEN-15`](gen-15.md) the WebAssembly backend,
-[`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets. [`GEN-17`](gen-17.md),
-the `zelkova` binary, is scheduled in the bootstrap section. [`GEN-2`](gen-2.md), the boundary predicates, sequences after
-[`GEN-12`](README.md) and [`LANG-43`](README.md) as it always did.
+[`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets. [`GEN-17`](README.md),
+the `zelkova` binary, closed in the bootstrap section. [`GEN-2`](gen-2.md), the boundary
+predicates, sequences after [`GEN-12`](README.md) and [`LANG-43`](README.md) as it always did.
 
 **Acceptance:** every ticket above is closed, and this file is tombstoned with them. What the
 program as a whole has to show is [`GEN-14`](gen-14.md)'s. Since 2026-09-27 that is Zelkova

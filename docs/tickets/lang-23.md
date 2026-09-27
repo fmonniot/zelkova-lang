@@ -38,8 +38,9 @@ Watch for an ambiguity against the existing `"(" <Expr> ")"` grouping, since `-`
 apart.
 
 **Acceptance:** `plus = (+)` and `two = (+) 1 1` parse and canonicalize, with a test in
-`tests/compiler/canonical.rs` asserting the resolved name. `cargo run` still prints
-`parsed 8 modules` and lists all eight as checked. The `expect=unimplemented` block in
+`tests/compiler/canonical.rs` asserting the resolved name.
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
+The `expect=unimplemented` block in
 [`docs/spec/expressions.md`](../spec/expressions.md)'s *Naming an operator* section goes red —
 that tag's whole job — and is retagged `expect=ok` with its `**Not implemented:**` paragraph
 deleted.

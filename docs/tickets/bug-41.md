@@ -77,8 +77,8 @@ rendered word — the property this ticket exists to restore.
   transitively-reached `acme-widgets` `Size.Size` with two different substrings — neither one
   the bare, ambiguous `Size.Size` twice, and neither the package name alone (`acme-widgets`
   spelled bare is still not user-writable source).
-- `cargo test --workspace` is green, and `cargo run` still prints `parsed 8 modules`, lists all
-  eight as checked, and exits 0.
+- `cargo test --workspace` is green, and `cargo run -- compile std/core` still prints
+  `parsed 8 modules`, lists all eight as checked, and exits 0.
 
 **Related:** found in review of [PR #245](https://github.com/fmonniot/zelkova-lang/pull/245)
 (`BUG-37`, "put the package in every `QualName`"). Sibling case: `BUG-37`'s own

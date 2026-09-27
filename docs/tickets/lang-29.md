@@ -71,6 +71,7 @@ in [`docs/spec/name-resolution.md`](../spec/name-resolution.md) (`module Main` a
 Other` of the `package=clash` group) go **red** — retag both `expect=canonical-error:` with the
 new variant and delete the **Known gap:** paragraph above them. A `tests/compiler/canonical.rs`
 case for each of the three shapes — a value entry, a type entry, and `exposing (..)` — seen to
-fail before the fix. `cargo run` still prints `parsed 8 modules` and lists all eight: `std/core`
-imports `Basics` openly in every module, so this check is the first thing that would notice a
+fail before the fix. `cargo run -- compile std/core` still prints `parsed 8 modules` and lists
+all eight: `std/core` imports `Basics` openly in every module, so this check is the first thing
+that would notice a
 collision there.

@@ -46,6 +46,7 @@ parser AST and `canonical/mod.rs`'s conversions move in the same commit.
 parse error; the same file with the `import` above `x = 1` compiles. The `**Known gap:**`
 block in [`docs/spec/modules.md`](../spec/modules.md) — the second block of the
 `package=position` group, tagged `expect=ok` — goes red, and is retagged
-`expect=parse-error:…` with its paragraph rewritten in the same change. `cargo run` still
-prints `parsed 8 modules` and lists all eight as checked; every `std/core/src/*.zel` already
+`expect=parse-error:…` with its paragraph rewritten in the same change.
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked;
+every `std/core/src/*.zel` already
 writes its imports at the top, so this must not move.

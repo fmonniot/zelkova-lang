@@ -93,7 +93,7 @@ three deserve the same check before trusting a partial map blindly.
 three, in a canonicalization test in `tests/compiler/canonical.rs` — mutation-checked in the
 usual way (reverting the fix must turn the test red, not just newly-written). A second test
 covers case 2 the same way, raising only `TypeArityMismatch`. `cargo test --workspace` stays
-green, and `cargo run` still prints `parsed 8 modules` with all eight checked.
+green, and `cargo run -- compile std/core` still prints `parsed 8 modules` with all eight checked.
 
 **Related:** found during review of [`BUG-18`](../tickets/README.md)'s PR (#201), which made
 case 1's shape reachable by a single mistyped constructor name rather than requiring an import

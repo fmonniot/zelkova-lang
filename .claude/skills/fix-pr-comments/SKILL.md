@@ -217,7 +217,7 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 >    cargo build && cargo test
 >    cargo fmt --all
 >    cargo clippy --all-features
->    cargo run                    # must match the baseline in CLAUDE.md
+>    cargo run -- compile std/core   # must match the baseline in CLAUDE.md
 >    ```
 >    `.github/workflows/rust.yml` marks the fmt and clippy jobs `continue-on-error: true`, so
 >    **CI will not fail on either** — a green CI run proves nothing about them. Leave no warnings

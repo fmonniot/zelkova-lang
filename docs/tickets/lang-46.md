@@ -40,8 +40,9 @@ name `Cons` could observe the representation, which
 Porting the rest of `List.ignored`'s API is **not** this ticket. That file stays `.ignored`
 until its functions can compile; this one adds only what the language's own syntax needs.
 
-**Acceptance:** `std/core/src/List.zel` exists and compiles. `cargo run` prints
-`parsed 9 modules` and lists all nine as checked, and `CLAUDE.md`'s baseline is updated in the
+**Acceptance:** `std/core/src/List.zel` exists and compiles.
+`cargo run -- compile std/core` prints `parsed 9 modules` and lists all nine as checked, and
+`CLAUDE.md`'s baseline is updated in the
 same commit — the count is the smoke test and a stale one is worse than none.
 `tests/pipeline.rs::stdlib_package_compiles` covers it.
 

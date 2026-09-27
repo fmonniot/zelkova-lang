@@ -85,8 +85,8 @@ that `type_check` returns early on. The declarations built on them — `add = Js
 `min`, `compare`, `append` — are type checked since `BUG-36`, but against the unconstrained
 `a -> a -> …` signatures `SPEC-11` left them with. So the solver built here will be exercised
 by tests and by user code long before it is exercised by the standard library, and
-[LANG-42](lang-42.md) is where that changes. Do not read a green `cargo run` as evidence this
-ticket works.
+[LANG-42](lang-42.md) is where that changes. Do not read a green
+`cargo run -- compile std/core` as evidence this ticket works.
 
 **Acceptance:** tests in `tests/typer.rs`, each with its neutralised-and-seen-red counterpart
 per `CLAUDE.md`'s *A green test proves nothing until you have seen it fail*:
@@ -101,4 +101,5 @@ per `CLAUDE.md`'s *A green test proves nothing until you have seen it fail*:
   silent specialisation — the `LANG-12` interaction, and the reason this ticket is sequenced
   after it.
 
-`cargo run` still prints `parsed 8 modules` and lists all eight as checked.
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as
+checked.

@@ -51,14 +51,16 @@ and the file* section carries the `**Not implemented:**` paragraph.
    `insert`.
 
 The package source root is `compile_package`'s `package_path` argument today — `std/core/src`
-for `cargo run` — which is enough to implement this. Whether a package may have more than one
+for `cargo run -- compile std/core` — which is enough to implement this. Whether a package may
+have more than one
 source root is a *Packages and source layout* question and this ticket does not answer it.
 
 **Acceptance:** two `tests/pipeline.rs` tests over `tests/fixtures/` packages: one where a
 file's declared name does not match its path, asserting `compile_package` returns `Err` with
 an error naming the file and both names; one where two files declare the same module name,
-asserting `Err`. `cargo run` must still print `parsed 8 modules` and list all eight as
-checked — every module under `std/core/src/` is already correctly placed, `Js/Basics.zel`
+asserting `Err`. `cargo run -- compile std/core` must still print `parsed 8 modules` and list
+all eight as checked — every module under `std/core/src/` is already correctly placed,
+`Js/Basics.zel`
 declaring `module javascript Js.Basics` included, so this must not move. No block in
 `docs/spec/modules.md` goes red: a fenced block is source text with no path behind it, so
 this rule cannot be expressed as a tagged example. Its `**Not implemented:**` paragraph has
