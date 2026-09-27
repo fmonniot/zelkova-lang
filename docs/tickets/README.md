@@ -261,6 +261,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-39 | bug | medium | closed 2026-09-23 | A function parameter pattern other than a variable or `_` is never type checked |
 | BUG-40 | bug | high | closed 2026-09-27 | Two same-named modules from different packages emit colliding local import bindings |
 | [BUG-41](bug-41.md) | bug | low | open | A union reached only transitively has no spelling, and `Spellings::spell` falls back to a name that can still collide |
+| [BUG-42](bug-42.md) | bug | low | open | A module-name collision with a test-dependency's module is found only after `src/` checks |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
