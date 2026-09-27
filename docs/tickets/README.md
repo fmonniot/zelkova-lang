@@ -65,11 +65,33 @@ claim about a gap that may no longer exist. Grep the chapters for the ID before 
 file; usually the whole citing paragraph goes, because the gap it describes is the one that
 just closed. The reasoning for checking this at all is [DEC-3](../decisions/dec-3.md).
 
-## Active work: diagnostics
+## Recovering a closed ticket
 
-`ERR-3` through `ERR-9` (the "every phase can point its error at the source that caused it"
-work) are done. The one live edge left is `ERR-10` (unused-import warnings), which gates
-`ERR-8` (warnings as a severity) by giving it a concrete diagnostic to carry.
+The tombstone's job is not to link anywhere. It is to tell you that
+`docs/tickets/<id>.md` once existed, because you cannot `git log` a path you have never heard
+of.
+
+```sh
+git log --oneline --diff-filter=D -- docs/tickets/ast-1.md   # the commit that closed it
+git show <that-sha>^:docs/tickets/ast-1.md                   # its full final text
+git log --follow -- docs/tickets/ast-1.md                    # the ticket's whole life
+```
+
+Merge commits are transparent to this: `--diff-filter=D` on a path resolves to the branch
+commit that did the delete, not to the merge. The PR is reachable separately —
+`git log --grep=AST-1`, or `git log --merges -i --grep=ast-1`, since branch names put the ID
+in the merge subject. That path often matters more than the ticket text: the review thread is
+where "why were the first two revisions rejected" actually lives.
+
+**The two tickets migrated as tombstones on 2026-08-25 are an exception.** `ERR-1` and
+`TEST-1` were never files — they were items 1 and 9 of `TODO.md`, already complete when this
+directory was created, and are recorded here so the numbering has no unexplained gap. Their
+history is in `TODO.md` itself:
+
+```sh
+git log --oneline --diff-filter=D -- TODO.md    # the commit that removed it
+git show <that-sha>^:TODO.md                    # the nine items in their final form
+```
 
 ## Active work: type classes
 
@@ -129,59 +151,6 @@ settles that a constrained function is specialised per instantiation and no dict
 at runtime — a constraint on code generation, which has not started. It is recorded in
 `docs/spec/type-classes.md` and `docs/spec/interop.md`, and [`GEN-1`](gen-1.md) inherits it
 from there rather than it being filed twice.
-
-## Active work: code generation
-
-`GEN-3` through `GEN-14` are one body of work, filed together after the language owner settled
-the design on 2026-09-20. The goal is that **a Zelkova program runs**: the pipeline currently
-ends at type checking, so nothing the compiler accepts has ever been executed, and every rule in
-[`docs/spec/evaluation-semantics.md`](../spec/evaluation-semantics.md) is one the compiler
-neither enforces nor implements.
-
-[`GEN-1`](gen-1.md) is the index rather than a unit of work — it carries the rules the children
-inherit and the order they land in, and [`DEC-18`](../decisions/dec-18.md) holds the seven
-decisions behind them and the alternatives each was chosen over. Read both before picking any of
-them up; none of the children re-argues a decision, and several would look arbitrary without one.
-`DEC-18` is the half that survives this program: `GEN-1` is deleted with its children, which is
-why the argument is not in it. `GEN-1` keeps its name and title through the rewrite because two
-spec chapters and seven decision entries cite `gen-1.md`, and `cargo test --test spec` checks
-those resolve.
-
-Three tickets that already existed are prerequisites rather than members:
-`LANG-35` builds the declaration graph `GEN-7` sorts, `BUG-27` put
-an infix operator back in touch with the function its `infix` declaration names, and
-`LANG-56` brought `std/core`'s two companions to the 64-bit `Int`
-[`DEC-16`](../decisions/dec-16.md) settled — without it the first emitted program would compute
-wrong arithmetic.
-
-```
-GEN-3   the typer hands back the types it solved   ── closed
-  │
-GEN-4   the backend IR   ── closed
-  ├── GEN-5   a `case` becomes a decision tree   ── closed
-  ├── GEN-6   a self tail call is marked
-  └── GEN-7   parameterless bindings get an initialisation order   ── closed
-  │
-GEN-8   the JavaScript runtime module   ── closed
-  │
-GEN-9   emit a module   ── closed
-  ├── GEN-10  emit a `case`   ── closed
-  ├── GEN-11  emit the tail-call loop
-  └── GEN-12  emit an `unsafe` facade call, and place its companion   ── closed
-  │
-GEN-13  write the build   ── closed
-  │
-GEN-14  the end-to-end check   ── moved to the bootstrap section below
-```
-
-Two more are filed unscheduled, to keep context that would otherwise be rediscovered:
-[`GEN-15`](gen-15.md) the WebAssembly backend, whose constraints are what shape the IR in
-`src/compiler/ir/`;
-and [`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets, blocked on `Task`
-existing at all. [`GEN-17`](gen-17.md), the `zelkova` binary, used to be filed here and is now
-scheduled in the bootstrap section.
-[`GEN-2`](gen-2.md), the boundary predicates, sequences after `GEN-12` and
-`LANG-43` as it always did.
 
 ## Active work: bootstrap
 
@@ -243,34 +212,6 @@ specifies a companion's checks as a facade whose checks are `Task`s, and a port 
 `Basics` would test something different. That needs deciding first. A richer `Test`, with names,
 groups and failure messages, waits on string literals, [`LANG-44`](lang-44.md) and
 [`LANG-34`](lang-34.md).
-
-## Recovering a closed ticket
-
-The tombstone's job is not to link anywhere. It is to tell you that
-`docs/tickets/<id>.md` once existed, because you cannot `git log` a path you have never heard
-of.
-
-```sh
-git log --oneline --diff-filter=D -- docs/tickets/ast-1.md   # the commit that closed it
-git show <that-sha>^:docs/tickets/ast-1.md                   # its full final text
-git log --follow -- docs/tickets/ast-1.md                    # the ticket's whole life
-```
-
-Merge commits are transparent to this: `--diff-filter=D` on a path resolves to the branch
-commit that did the delete, not to the merge. The PR is reachable separately —
-`git log --grep=AST-1`, or `git log --merges -i --grep=ast-1`, since branch names put the ID
-in the merge subject. That path often matters more than the ticket text: the review thread is
-where "why were the first two revisions rejected" actually lives.
-
-**The two tickets migrated as tombstones on 2026-08-25 are an exception.** `ERR-1` and
-`TEST-1` were never files — they were items 1 and 9 of `TODO.md`, already complete when this
-directory was created, and are recorded here so the numbering has no unexplained gap. Their
-history is in `TODO.md` itself:
-
-```sh
-git log --oneline --diff-filter=D -- TODO.md    # the commit that removed it
-git show <that-sha>^:TODO.md                    # the nine items in their final form
-```
 
 ## Tickets
 
