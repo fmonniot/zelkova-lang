@@ -1,0 +1,13 @@
+module LibTest exposing (checked, hidden)
+
+import AcmeCheck.Check
+import Internal
+import Lib
+
+
+checked : AcmeCheck.Check.Verdict
+checked = AcmeCheck.Check.Holds Lib.token
+
+
+hidden : Internal.Secret
+hidden = Internal.secret

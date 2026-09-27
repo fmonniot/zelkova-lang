@@ -369,6 +369,12 @@ impl PhaseError for Error {
 /// the union of the two maps, so one version of each package and an acyclic graph are
 /// settled once for the whole build rather than again when the tests are run.
 ///
+/// A package reached through the root's `test-dependencies` may depend on the root
+/// itself. That edge names the root's `src/`, which the graph counts apart from its
+/// `tests/`, so it is not a cycle. The order handed back still ends with the root, after
+/// such a package; putting the root's `src/` ahead of it is the build loop's job, since
+/// only the build loop compiles the two roots apart.
+///
 /// Every failure is collected rather than returned at the first one: a build whose
 /// manifests name three missing directories says so once.
 pub fn resolve(root: &Path, manifest: Manifest) -> Result<Vec<ResolvedPackage>, Vec<Error>> {
@@ -384,7 +390,7 @@ pub fn resolve(root: &Path, manifest: Manifest) -> Result<Vec<ResolvedPackage>, 
         manifest,
     };
 
-    resolver.visit(root_package, true, &mut Vec::new());
+    resolver.visit(root_package, true, false, &mut Vec::new());
 
     if resolver.errors.is_empty() {
         Ok(resolver.order)
@@ -403,8 +409,9 @@ pub fn resolve(root: &Path, manifest: Manifest) -> Result<Vec<ResolvedPackage>, 
 /// build for the tests alone, so a build that did not ask for the tests can leave them
 /// uncompiled instead of parsing, checking and reporting on a package it cannot import.
 ///
-/// Reachability is followed through `dependencies` only, starting from `root`. A package
-/// written in both maps is not possible — the manifest rejects that — but a package
+/// Reachability is followed through `dependencies` only, starting from `root`, so a
+/// package reached through `test-dependencies` that depends on the root stays in this
+/// set: nothing on the walk names it. A package written in both maps is not possible — the manifest rejects that — but a package
 /// reached through both, as a `test-dependency` here and an ordinary dependency of
 /// something else, is: it comes back out of this set, because an ordinary build needs it.
 pub fn test_only_packages<'a>(
@@ -468,14 +475,32 @@ impl Resolver {
     /// `with_test_dependencies` is true for the root package alone, because only that
     /// package's tests are ever compiled. A dependency's `test-dependencies` are none of
     /// this build's business and are not followed.
+    ///
+    /// `through_test_dependency` is true when the chain left the root through one of its
+    /// `test-dependencies`. Such a chain meeting the root at the root's own directory has
+    /// reached the root's `src/`, which is already being resolved, so it stops there
+    /// without an error
+    /// ([*`test-dependencies`*](../../../docs/spec/packages.md#test-dependencies)). The
+    /// root is always `stack[0]`, which is how it is told apart from any other package on
+    /// the stack.
+    ///
+    /// The root's `dependencies` are all visited before its `test-dependencies`, and that
+    /// order is what keeps the exemption to test-only chains. Every package the plain
+    /// graph reaches is resolved by the time a test chain starts, so a test chain that
+    /// meets one stops at the `resolved` check below instead of walking on to the root —
+    /// and a plain chain that closes on the root has already been reported as a cycle.
     fn visit(
         &mut self,
         package: ResolvedPackage,
         with_test_dependencies: bool,
+        through_test_dependency: bool,
         stack: &mut Vec<(PackageName, PathBuf)>,
     ) {
         if let Some(at) = stack.iter().position(|(name, _)| name == &package.name) {
             if stack[at].1 == package.root {
+                if at == 0 && through_test_dependency {
+                    return;
+                }
                 self.errors.push(Error::Cycle(
                     stack[at..].iter().map(|(name, _)| name.clone()).collect(),
                 ));
@@ -502,18 +527,37 @@ impl Resolver {
 
         stack.push((package.name.clone(), package.root.clone()));
 
-        // Sorted, so that a build with two broken entries reports them in the same
-        // order every run — a `HashMap`'s iteration order is not one a user should see.
-        let mut entries: Vec<(&PackageName, &super::manifest::Dependency)> =
-            package.manifest.dependencies.iter().collect();
-        if with_test_dependencies {
-            entries.extend(package.manifest.test_dependencies.iter());
+        // Each map sorted, so that a build with two broken entries reports them in the
+        // same order every run — a `HashMap`'s iteration order is not one a user should
+        // see. `dependencies` first, then `test-dependencies`: see this function's doc
+        // comment for why the order of the two maps matters.
+        fn sorted(
+            map: &HashMap<PackageName, super::manifest::Dependency>,
+        ) -> Vec<(&PackageName, &Source)> {
+            let mut entries: Vec<(&PackageName, &Source)> = map
+                .iter()
+                .map(|(name, dependency)| (name, &dependency.source))
+                .collect();
+            entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
+            entries
         }
-        entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
 
-        for (name, dependency) in entries {
-            if let Some(dependency) = self.obtain(&package, name, &dependency.source) {
-                self.visit(dependency, false, stack);
+        let mut entries: Vec<(&PackageName, &Source, bool)> =
+            sorted(&package.manifest.dependencies)
+                .into_iter()
+                .map(|(name, source)| (name, source, through_test_dependency))
+                .collect();
+        if with_test_dependencies {
+            entries.extend(
+                sorted(&package.manifest.test_dependencies)
+                    .into_iter()
+                    .map(|(name, source)| (name, source, true)),
+            );
+        }
+
+        for (name, source, through_test_dependency) in entries {
+            if let Some(dependency) = self.obtain(&package, name, source) {
+                self.visit(dependency, false, through_test_dependency, stack);
             }
         }
 

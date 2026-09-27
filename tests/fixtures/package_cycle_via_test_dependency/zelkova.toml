@@ -1,0 +1,13 @@
+# `acme-back` depends on this package, which is a cycle through `dependencies`.
+# `acme-audit`, a test-dependency, reaches `acme-back` too, and its name sorts
+# first: the cycle must be reported whichever of the two maps reaches `acme-back`
+# first.
+name = "package-cycle-via-test-dependency"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-back]
+path = "../dep_back"
+
+[test-dependencies.acme-audit]
+path = "../dep_audit"

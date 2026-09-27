@@ -1,0 +1,10 @@
+# Depends on `package_cycle_via_test_dependency`, which depends on it through
+# `dependencies`: a cycle.
+name = "acme-back"
+version = "1.0.0"
+private-modules = []
+
+[dependencies.package-cycle-via-test-dependency]
+path = "../package_cycle_via_test_dependency"
+
+[test-dependencies]

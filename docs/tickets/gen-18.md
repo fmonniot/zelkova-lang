@@ -8,10 +8,10 @@ is reported across both roots. Confirm that before relying on it.
 
 **Part of:** the [bootstrap](README.md#active-work-bootstrap) section.
 
-**Location:** `src/compiler/mod.rs` has `compile`, whose loop keeps a test-only package's
-modules out of `checked` (the `if !test_dependency_packages.contains(..)` around
-`checked.extend`), and `compile_in_build`, which checks the `tests/` root. Its doc comment and
-`compile_package_with_tests`'s both say the test modules are not written. `emit_build` and
+**Location:** `src/compiler/mod.rs` has `compile`, whose second loop compiles each test-only
+package without extending `checked`, and `compile_tests`, which checks the root package's
+`tests/` root and hands nothing back. Its doc comment and `compile_package_with_tests`'s both
+say the test modules are not written. `emit_build` and
 `output::write` produce and write the tree.
 
 **Decided ([`DEC-18` decision 5](../decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)):**
@@ -36,8 +36,8 @@ imports from one root.
 1. `compile` takes the output directory from its caller, as it already does through
    `build_dir`. `compile_package_with_tests` passes `build/test` and keeps the test-only
    packages' modules and the root's test modules in `checked`.
-2. `compile_in_build` returns the checked test modules alongside the `src/` ones, so
-   `emit_build` sees both. A facade under `tests/` needs its companion placed like any other
+2. `compile_tests` returns the checked test modules, so `emit_build` sees them beside the
+   `src/` ones. A facade under `tests/` needs its companion placed like any other
    facade's; [*Testing a companion*](../spec/interop.md#testing-a-companion) is where that
    shape comes from.
 3. Update both doc comments to describe the new tree.

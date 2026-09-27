@@ -11,7 +11,7 @@ as a fixture package checked by hand-written `node --test` assertions. It is now
 use of `zelkova test`. The behavioural checks it always asked for are written in Zelkova, in
 `std/core`'s own `tests/` root.
 
-**Depends on:** [`LANG-69`](lang-69.md) (`zelkova test` exists) and [`SPEC-35`](spec-35.md)
+**Depends on:** [`LANG-69`](lang-69.md) (`zelkova test` exists) and [`SPEC-35`](README.md)
 (`zelkova-core` may test-depend on `zelkova-test`).
 
 **Location:** `std/core/zelkova.toml`, whose `test-dependencies` is empty, and

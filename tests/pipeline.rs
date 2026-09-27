@@ -4654,8 +4654,11 @@ fn a_src_module_may_not_import_a_test_module() {
 /// one name. Both files are named, because the package name alone cannot say which of
 /// the two to change.
 ///
-/// Mutation-checked by giving `visible_modules` the `src/` modules alone: the
-/// collision disappears and the fixture compiles.
+/// Mutation-checked by leaving the `tests/` modules out of the `local_modules` list
+/// `compile_in_build` builds, which it and `compile_tests` both hand `visible_modules`:
+/// each then sees the `src/` modules alone, the collision disappears and the fixture
+/// compiles. *When* the collision is reported is pinned by
+/// [`a_collision_between_the_roots_is_reported_before_src_is_checked`].
 #[test]
 fn one_module_name_under_both_roots_names_both_files() {
     let root = fixture_package("package_name_under_both_roots");
@@ -4677,6 +4680,36 @@ fn one_module_name_under_both_roots_names_both_files() {
             && notes.iter().any(|n| n.contains("tests/Model.zel")),
         "both files must be named, got {:?}",
         notes
+    );
+}
+
+/// The collision between the two roots is reported before any module of the package is
+/// checked, so a `src/` that would also fail to check does not hide it: the fixture is
+/// [`one_module_name_under_both_roots_names_both_files`]'s, plus a `src/Mismatch.zel`
+/// that annotates `Apple` over a `Pear`, and the build reports the collision alone.
+///
+/// Mutation-checked by handing `compile_in_build`'s `visible_modules` call the `src/`
+/// modules alone, while the `TestsEnvironment` still carries both roots: `src/` is then
+/// checked, fails, and `compile_tests` is never reached, so the build reports the type
+/// error and no collision at all. [`one_module_name_under_both_roots_names_both_files`]
+/// stays green under that mutation, because its `src/` is clean and `compile_tests`
+/// still finds the collision.
+#[test]
+fn a_collision_between_the_roots_is_reported_before_src_is_checked() {
+    let root = fixture_package("package_name_under_both_roots_src_fails");
+
+    let error =
+        compile_package_with_tests(&root).expect_err("`Model` is declared under both source roots");
+
+    let all = accumulated(&error);
+    assert_eq!(all.len(), 1, "expected the collision alone, got {:?}", all);
+
+    let errors = resolution_errors(&error);
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+    assert!(
+        matches!(errors[0], resolve::Error::ModuleNameCollision { .. }),
+        "expected a module name collision, got {:?}",
+        errors[0]
     );
 }
 
@@ -4718,9 +4751,9 @@ fn a_package_named_in_both_dependency_maps_is_rejected() {
 /// test module annotates and calls through `AcmeExpect.Expect`, which is a module of
 /// a package `dependencies` does not mention.
 ///
-/// Mutation-checked by dropping the `test-dependencies` arm of `compile_in_build`'s
-/// dependency entries: `AcmeExpect.Expect` then names nothing and this goes red while
-/// its counterpart below stays green.
+/// Mutation-checked by dropping the `test-dependencies` from the entries
+/// `compile_tests` hands `direct_dependencies`: `AcmeExpect.Expect` then names nothing
+/// and this goes red while its counterpart below stays green.
 #[test]
 fn a_test_dependency_reaches_the_tests_root() {
     let root = fixture_package("package_test_dependency");
@@ -4735,10 +4768,10 @@ fn a_test_dependency_reaches_the_tests_root() {
 /// `AppTest.mjs` nor `acme-expect/Expect.mjs`, so a later plain `compile_package` run
 /// never finds a test module a test build left behind.
 ///
-/// Mutation-checked two ways, each red on its own: dropping the `root ==
-/// source::SourceRoot::Src` guard in `compile_in_build` writes `AppTest.mjs`; dropping
-/// the `!test_dependency_packages.contains` guard in `compile` also writes
-/// `acme-expect/Expect.mjs`.
+/// Mutation-checked by extending `checked` with the modules of each test-only package
+/// in `compile`'s second loop: `acme-expect/Expect.mjs` is then written. No line keeps
+/// `AppTest.mjs` out: `compile_tests` hands back nothing, so there is no test module
+/// for `compile` to write.
 #[test]
 fn a_test_build_writes_the_same_tree_a_plain_build_would() {
     let root = fixture_package("package_test_dependency");
@@ -4763,8 +4796,8 @@ fn a_test_build_writes_the_same_tree_a_plain_build_would() {
 /// a `test-dependency`'s modules are held out of the environment `src/` is checked
 /// against.
 ///
-/// Mutation-checked by seeding the test-dependencies' interfaces into `interfaces`
-/// rather than `test_interfaces` in `compile_in_build`: the fixture then compiles.
+/// Mutation-checked by handing `compile_in_build`'s `direct_dependencies` call the
+/// `test-dependencies` as well as the `dependencies`: the fixture then compiles.
 #[test]
 fn a_test_dependency_does_not_reach_the_src_root() {
     let root = fixture_package("package_src_uses_test_dependency");
@@ -4827,17 +4860,13 @@ fn a_package_with_no_test_modules_compiles_with_its_tests() {
 /// Mutation-checked once per half, because no single line carries both.
 ///
 /// The first half — a failing test module fails the build that compiled it — goes red
-/// when the `tests/` entry of `compile_in_build`'s `roots` list is never pushed
-/// (`if false { roots.push(..) }`), and no other test of this file does.
+/// when `compile` never calls `compile_tests`.
 ///
 /// The second half — a build that did not ask for the tests root does not read it —
-/// goes red when `compile_package` is changed to pass `TestRoot::Compiled`. Dropping
-/// the `TestRoot::Compiled` guard on that `roots` entry does *not* turn it red: the
-/// `TestRoot::Skipped` arm above has already left `test_modules` empty, so the extra
-/// pass walks nothing. Neither does dropping that arm on its own, since the `roots`
-/// guard then still holds the pass back. Two lines guard this behaviour and the test
-/// is red only when the guarding stops entirely, which is what passing
-/// `TestRoot::Compiled` does.
+/// goes red when `compile_package` is changed to pass `TestRoot::Compiled`, the one
+/// place that decides it: `compile`'s second stage runs only for the
+/// `TestsEnvironment` `compile_in_build` hands back, and it hands one back only for
+/// `TestRoot::Compiled`.
 #[test]
 fn a_test_module_that_does_not_check_fails_only_when_tests_are_compiled() {
     let root = fixture_package("package_broken_test");
@@ -4989,4 +5018,143 @@ fn a_test_dependency_is_compiled_only_when_the_tests_are() {
         "the test-dependency's own error must be what fails this build, got {:?}",
         messages
     );
+}
+
+/// `SPEC-35`: a `test-dependency` may depend on the package it tests. `acme-lib` names
+/// `acme-check` in its `test-dependencies`, `acme-check` names `acme-lib` in its
+/// `dependencies`, and the edge back names `acme-lib`'s `src/` — so the build is
+/// `acme-lib`'s `src/`, then `acme-check`, then `acme-lib`'s `tests/`, and not a cycle.
+///
+/// The test module imports a private module of its own package and `acme-check`, and
+/// builds `acme-check`'s `Verdict` out of `Lib.token`: `acme-check` was checked against
+/// the interfaces `acme-lib`'s `src/` published, and `tests/` against the ones it kept,
+/// and the two have to agree that `Lib.Token` is one type.
+///
+/// Mutation-checked two ways, each red on its own. Restoring the unconditional
+/// `Error::Cycle` branch in `Resolver::visit` (dropping the `at == 0 &&
+/// through_test_dependency` return) fails the build with `Cycle([acme-lib,
+/// acme-check])`. Compiling the test-only packages in `compile`'s first loop, in build
+/// order, reaches `acme-check` before `acme-lib` has published anything, and fails it
+/// with `DependencyNotCompiled`.
+#[test]
+fn a_test_dependency_may_depend_on_the_package_it_tests() {
+    let root = fixture_package("package_acme_lib");
+    assert_eq!(
+        module_names(&root, SourceRoot::Tests),
+        vec!["tests/LibTest.zel".to_string()],
+        "the fixture must hold the test module this test is about"
+    );
+
+    let build_dir = root.join("build");
+    if build_dir.exists() {
+        std::fs::remove_dir_all(&build_dir).unwrap();
+    }
+
+    let result = compile_package_with_tests(&root);
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    // The test library is checked for the tests and never written.
+    assert_eq!(
+        files_under(&build_dir),
+        vec![
+            "js/acme-lib/Internal.mjs".to_string(),
+            "js/acme-lib/Lib.mjs".to_string(),
+            "js/zelkova.mjs".to_string(),
+        ]
+    );
+}
+
+/// The negative of [`a_test_dependency_may_depend_on_the_package_it_tests`], so that its
+/// `Ok` is known to come from a `tests/` root that was checked. The fixture pair is the
+/// same arrangement, and the test module builds `acme-check`'s `Verdict` out of
+/// `Internal.secret` rather than `Lib.token`: both modules resolve — the private
+/// `Internal` from `acme-lib`'s own `src/`, `AcmeCheck.Check` from the test-only package
+/// compiled against it — and the build fails with a type error in `LibTest`, the one
+/// module under `tests/`, and nothing else.
+///
+/// Mutation-checked by making `compile` skip `compile_tests`: the build is then `Ok`.
+/// Dropping `acme-lib`'s own modules from the `interfaces` `TestsEnvironment` carries
+/// turns the error into a canonicalization error about `Internal`, and this goes red
+/// on the type-error assertion.
+#[test]
+fn a_test_module_that_does_not_check_fails_when_its_test_dependency_depends_on_the_package() {
+    let root = fixture_package("package_acme_lib_failing_test");
+    assert_eq!(
+        module_names(&root, SourceRoot::Tests),
+        vec!["tests/LibTest.zel".to_string()],
+        "the fixture must hold the test module this test is about"
+    );
+
+    let error = compile_package_with_tests(&root)
+        .expect_err("`Holds` takes a `Lib.Token`, and `LibTest` hands it an `Internal.Secret`");
+
+    let all = accumulated(&error);
+    assert_eq!(all.len(), 1, "expected one error, got {:?}", all);
+    match unwrap_in_file(all[0]) {
+        CompilationError::Type(_, module) => assert_eq!(module.as_str(), "LibTest"),
+        other => panic!("expected a type error in `LibTest`, got {:?}", other),
+    }
+}
+
+/// The same pair built without the tests: `acme-check` is resolved, since the rules of
+/// the build hold over both maps, but it is test-only and is never compiled.
+///
+/// Mutation-checked by having `test_only_packages`'s walk follow `test-dependencies` as
+/// well as `dependencies`: `acme-check` is then no longer test-only and the
+/// `test_only` assertion goes red.
+#[test]
+fn a_plain_build_leaves_a_test_dependency_on_its_dependent_uncompiled() {
+    let root = fixture_package("package_acme_lib");
+
+    let manifest = manifest::load(&root).expect("the fixture's manifest is valid");
+    let root_name = manifest.name.clone();
+    let build = resolve::resolve(&root, manifest).expect("the pair resolves");
+
+    let names: Vec<&str> = build.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["acme-check", "acme-lib"]);
+
+    let test_only = resolve::test_only_packages(&build, &root_name);
+    let expected: std::collections::HashSet<PackageName> =
+        std::iter::once(PackageName::new("acme-check").unwrap()).collect();
+    assert_eq!(test_only, expected);
+
+    let build_dir =
+        fresh_build_dir("a_plain_build_leaves_a_test_dependency_on_its_dependent_uncompiled");
+    let result = zelkova_lang::compiler::compile_package_into(&root, &build_dir);
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+    assert_eq!(
+        files_under(&build_dir),
+        vec![
+            "js/acme-lib/Internal.mjs".to_string(),
+            "js/acme-lib/Lib.mjs".to_string(),
+            "js/zelkova.mjs".to_string(),
+        ]
+    );
+}
+
+/// A cycle through the root's `dependencies` is still a cycle when a `test-dependency`
+/// also reaches it, and when that `test-dependency`'s name sorts first. `acme-back`
+/// depends on the root, and the root names it in `dependencies`; `acme-audit`, in
+/// `test-dependencies`, depends on `acme-back` too.
+///
+/// Mutation-checked by visiting both maps' entries in one name-sorted list in
+/// `Resolver::visit`, as it did before `SPEC-35`: `acme-audit` is then visited first,
+/// its chain meets the root and stops without an error, `acme-back` is resolved, and
+/// the plain entry finds it resolved — so the build compiles.
+#[test]
+fn a_dependency_cycle_through_the_root_is_reported_whichever_map_reaches_it_first() {
+    let root = fixture_package("package_cycle_via_test_dependency");
+
+    let error = compile_package(&root).expect_err("`acme-back` and the root depend on each other");
+
+    let errors = resolution_errors(&error);
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    let resolve::Error::Cycle(packages) = errors[0] else {
+        panic!("expected a package cycle, got {:?}", errors[0]);
+    };
+
+    let mut names: Vec<&str> = packages.iter().map(|p| p.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["acme-back", "package-cycle-via-test-dependency"]);
 }

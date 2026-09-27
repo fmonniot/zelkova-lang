@@ -1,0 +1,11 @@
+module Check exposing (Verdict(..), verdict)
+
+import AcmeLib.Lib
+
+
+type Verdict
+  = Holds AcmeLib.Lib.Token
+
+
+verdict : Verdict
+verdict = Holds AcmeLib.Lib.token

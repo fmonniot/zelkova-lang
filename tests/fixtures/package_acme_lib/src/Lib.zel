@@ -1,0 +1,9 @@
+module Lib exposing (Token(..), token)
+
+
+type Token
+  = Token
+
+
+token : Token
+token = Token

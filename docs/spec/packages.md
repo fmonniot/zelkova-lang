@@ -281,7 +281,8 @@ wrapped = false
 Two rules bind the resolved set of packages a build is made from. The package graph is
 **acyclic** — a package may not depend on itself, directly or through a chain — for the same
 reason the module graph is ([Modules](modules.md#imports-may-not-form-a-cycle)): there is no
-order in which the members of a cycle could be compiled. And **at most one version of a
+order in which the members of a cycle could be compiled. A test-dependency's dependency on the
+package it tests [is not a cycle](#test-dependencies). And **at most one version of a
 package** is in a build. Two versions of one package would present the same namespace to the
 same importers.
 
@@ -511,6 +512,14 @@ ambiguous. The manifest is what created the ambiguity and the manifest is what h
 by wrapping one of the two, or by renaming the package's own module — so a build that has no
 coherent answer for a name is stopped before any file is read for one.
 
+**Known gap:** a collision that involves a module of a test-dependency, whether with one of the
+package's own modules or with a module of a plain dependency, should be reported with the
+others, before any module of the package is compiled. It is reported only after the package's
+`src/` has been checked and every test-dependency compiled, and not at all when either fails:
+the compiler learns which modules a test-dependency exposes by compiling it, and a
+test-dependency may depend on the package, so it is compiled after that package's `src/`
+([`docs/tickets/bug-42.md`](../tickets/bug-42.md)).
+
 ## Tests
 
 `tests/` is the package's second source root. A module under it is an ordinary module, with
@@ -559,9 +568,16 @@ A package listed there is available to `tests/` and to nothing else.
 A package name appears in at most one of the two maps. Anything already in
 `dependencies` is usable from `tests/` without being written twice.
 
-The rest of the resolution rules are unchanged and apply to the union of the two maps. The
-graph stays acyclic, at most one version of each package is in the build, only direct
-dependencies are usable, and `zelkova.lock` records what was chosen for both.
+The rest of the resolution rules are unchanged and apply to the union of the two maps. At most
+one version of each package is in the build, only direct dependencies are usable, and
+`zelkova.lock` records what was chosen for both.
+
+The graph is acyclic too, with the package's `src/` and `tests/` counted as two nodes. So a
+test-dependency may depend on the package being tested: that dependency is the package's
+`src/`, the test-dependency is compiled against it, and the package's `tests/` is compiled
+against both. A chain that returns to the package through `dependencies` alone is still a
+cycle. This holds for the package whose tests are being run and no other, since no other
+package's test-dependencies are resolved.
 
 ## Programs
 

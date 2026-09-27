@@ -1,0 +1,10 @@
+# The test-dependency of `package_cycle_via_test_dependency`, reaching `acme-back`
+# through its own `dependencies`.
+name = "acme-audit"
+version = "1.0.0"
+private-modules = []
+
+[dependencies.acme-back]
+path = "../dep_back"
+
+[test-dependencies]

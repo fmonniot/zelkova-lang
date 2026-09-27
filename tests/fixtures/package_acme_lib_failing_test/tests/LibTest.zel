@@ -1,0 +1,8 @@
+module LibTest exposing (wrong)
+
+import AcmeCheck.Check
+import Internal
+
+
+wrong : AcmeCheck.Check.Verdict
+wrong = AcmeCheck.Check.Holds Internal.secret
