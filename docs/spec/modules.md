@@ -779,7 +779,7 @@ back: each is [an import cycle](#imports-may-not-form-a-cycle). Core's modules w
 import they use, the way `Basics.zel`, `Maybe.zel` and `Bitwise.zel` already do. That exception
 belongs to `zelkova-core` alone, so a package of [any other
 name](packages.md#zelkova-core-is-a-dependency-of-every-package) declaring a module under one
-of the eight is rejected rather than mistaken for it.
+of the eight is rejected.
 
 ```zel expect=ok package=core-shaped
 module Basics exposing (Int, (+), add)
