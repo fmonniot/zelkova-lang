@@ -112,17 +112,18 @@ its own prefix:
 `type` is `bug` or `task`; `sev` is the severity for bugs and `—` for tasks; `status` is
 `open`. If a new prefix was introduced, add it to the prefix list in the INDEX header.
 
-## Step 5 — Commit on `main`, in the main repo
+## Step 5 — Commit in the main repo
 
 ```bash
 git -C "$(git rev-parse --show-toplevel)" add docs/tickets/
 git commit -m "docs: file <ID> for <short summary>"
 ```
 
-**Not on the feature branch that discovered it.** A ticket that lands only when its discovering
-PR merges is invisible for exactly the period it is most useful — while someone is deciding
-whether to fix the thing now or later. If the current branch is not `main`, say so and either
-switch, or write the file and tell the user it needs to be committed separately.
+Commit on whatever branch is currently checked out. A ticket that lands only when its
+discovering PR merges is invisible for exactly the period it is most useful — while someone is
+deciding whether to fix the thing now or later — so if the current branch is a feature branch,
+consider whether the ticket would be more useful merged into `main` sooner, but it is not a
+requirement to switch.
 
 Do not push without asking; the user may want to read it first.
 
