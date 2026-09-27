@@ -75,9 +75,8 @@ you have seen it fail*).
   were discarded when its head resolved, so an argument reached the walk as nothing at all and
   an inadmissible one was invisible. Arguments now survive canonicalization, so the
   union-argument half of the rule is enforceable and step 2's recursion into `Type::Type`'s
-  arguments has something to recurse into. What still bounds it is
-  [`LANG-9`](lang-9.md): a parenthesised argument does not parse, so `Maybe (a -> a)` cannot be
-  written yet — the walk is ready for it before the grammar is.
+  arguments has something to recurse into. [`LANG-9`](README.md) is closed too, so a
+  parenthesised argument such as `Maybe (a -> a)` parses and reaches the walk.
 - **`BUG-16`** is fixed, so a facade naming a type that does not exist is rejected by
   canonicalization and never reaches this check. What arrives here is always a name something
   declared.
@@ -88,10 +87,8 @@ you have seen it fail*).
   the arrows are stripped: unmarked, the result is admitted only in that one shape and `a` is
   what the walk descends into, `Task` and the `Result` never crossing the boundary; marked, the
   result is walked as any other type. The flag is on the canonical declaration already —
-  `Value::TypedValue`'s `marked_unsafe` — but both halves still need [`LANG-9`](lang-9.md) for
-  the form: a type argument must be a bare name today, so `Task (Result Failure String)` does not
-  parse and no fixture can be written. Land the type-variable and function-type halves without
-  waiting; sequence this one after it.
+  `Value::TypedValue`'s `marked_unsafe` — and `Task (Result Failure String)` parses since
+  [`LANG-9`](README.md) closed, but a fixture for the shape check still needs a `Task` to name.
 - **[`LANG-37`](lang-37.md)** adds constraint syntax. A facade may not carry a constraint either
   ([What a facade signature may not name](../spec/interop.md#what-a-facade-signature-may-not-name));
   that is a separate rejection on a separate

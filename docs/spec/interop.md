@@ -320,12 +320,9 @@ inside another type.
 (Result IoError String))` — two `Result`s, collapsed into one by the module that
 [publishes `read`](packages.md#what-a-package-exposes) to other packages.
 
-**Not implemented:** neither block above parses. A type argument must be a bare name today, so
-the parentheses in `Task (Result Failure String)` are a syntax error
-([`LANG-9`](../tickets/lang-9.md)) — the same gap that rejects `Maybe (Maybe Int)` and every
-other nested type. Nothing declares `Task` or `Failure` either, no wrapper is generated, and
-nothing is checked at either boundary ([`GEN-1`](../tickets/gen-1.md),
-[`GEN-2`](../tickets/gen-2.md)); no check holds a facade to the result type above, which is
+**Not implemented:** neither block above compiles, because nothing declares the `Task` or the
+`Failure` they import. No wrapper is generated, and nothing is checked at either boundary
+([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)); no check holds a facade to the result type above, which is
 [`LANG-43`](../tickets/lang-43.md)'s.
 
 ## An `unsafe` facade
@@ -470,10 +467,10 @@ A runner finds [a value of type `Test` a module under `tests/`
 exposes](packages.md#what-a-test-is), so `Core.PrimTest` imports the facade and exposes one per
 check.
 
-**Not implemented:** none of this runs. The `zel` block fails on the parentheses in its result
-type ([`LANG-9`](../tickets/lang-9.md)), and [`()` is not recognised](types.md#the-unit-type) in
-either position. Nothing declares `Task` or `Failure`, no wrapper is generated around an
-effectful call ([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)), and there is no
-runner to find a `Test` ([`LANG-63`](../tickets/lang-63.md)). Until there is, a companion test
+**Not implemented:** none of this runs. The `zel` block does not parse, because
+[`()` is not recognised](types.md#the-unit-type) in either signature. Nothing declares `Task` or
+`Failure`, no wrapper is generated around an effectful call ([`GEN-1`](../tickets/gen-1.md),
+[`GEN-2`](../tickets/gen-2.md)), and there is no runner to find a `Test`
+([`LANG-63`](../tickets/lang-63.md)). Until there is, a companion test
 under `tests/` is a `.mjs` file that the target's own test runner is pointed at directly, and
 the facade half of the pair is not written yet.

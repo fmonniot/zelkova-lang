@@ -685,8 +685,8 @@ fn tuple_of_two_canonicalizes() {
 /// order: `(Int, Char, Int)` would be a palindrome and survive a reversal.
 ///
 /// Verified by mutating the three-element `AtomicExpr` production in
-/// `grammar.lalrpop` to `Tuple::three(c, b, a)` and the three-element `Type`
-/// production to `Tuple::three(c, b, a)` — each turns this test red.
+/// `grammar.lalrpop` to `Tuple::three(c, b, a)` and the three-element
+/// `AtomicType` production to `Tuple::three(c, b, a)` — each turns this test red.
 #[test]
 fn tuple_of_three_canonicalizes() {
     let source = indoc::indoc! {r#"

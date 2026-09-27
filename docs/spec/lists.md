@@ -37,16 +37,13 @@ land it parses and canonicalizes, and the type checker is what rejects it.
 A list is one of two things: **empty**, or a **first element and the rest**, where the rest is
 itself a list. That is a two-variant union type and it is written as one:
 
-```zel expect=unimplemented
+```zel expect=ok
 module List exposing (List)
 
 type List a
   = Nil
   | Cons a (List a)
 ```
-
-**Not implemented:** a type argument must be a bare name, so the parenthesised `(List a)` is a
-syntax error ([`LANG-9`](../tickets/lang-9.md)). That block is what goes green when it lands.
 
 `Nil` and `Cons` are **not exposed**: a list is built and taken apart through the bracket forms
 and the cons operator below and through nothing else, so no program names either constructor.

@@ -223,3 +223,110 @@ test_parse_ok!(
         ),
     ))
 );
+
+// A parenthesised type is an argument like any other (`LANG-9`). Each of the tests
+// below is a syntax error when `AtomicType` has no parenthesised alternative: they
+// were mutation-checked by restoring the grammar's previous shape — the three
+// parenthesised productions in `Type`, none in `AtomicType` — and every one of them
+// went red with an `UnexpectedToken` at the `(`.
+
+test_parse_ok!(
+    type_annotation_nested_application,
+    r#"
+    module Main exposing (..)
+
+    main : Maybe (Maybe Int)
+    "#,
+    module_function_type(type_unqualified_with(
+        name("Maybe"),
+        vec![type_unqualified_with(
+            name("Maybe"),
+            vec![type_unqualified(name("Int"))],
+        )],
+    ))
+);
+
+test_parse_ok!(
+    type_annotation_function_argument,
+    r#"
+    module Main exposing (..)
+
+    main : Box (Int -> Int)
+    "#,
+    module_function_type(type_unqualified_with(
+        name("Box"),
+        vec![type_arrow(
+            type_unqualified(name("Int")),
+            type_unqualified(name("Int")),
+        )],
+    ))
+);
+
+test_parse_ok!(
+    type_annotation_tuple_argument,
+    r#"
+    module Main exposing (..)
+
+    main : Maybe (Int, Char)
+    "#,
+    module_function_type(type_unqualified_with(
+        name("Maybe"),
+        vec![type_tuple2(
+            type_unqualified(name("Int")),
+            type_unqualified(name("Char")),
+        )],
+    ))
+);
+
+// Nesting has no depth limit, and an application whose last argument is
+// parenthesised is still an ordinary left operand of an arrow.
+test_parse_ok!(
+    type_annotation_deeply_nested_application_then_arrow,
+    r#"
+    module Main exposing (..)
+
+    main : Result e (Maybe (Maybe a)) -> a
+    "#,
+    module_function_type(type_arrow(
+        type_unqualified_with(
+            name("Result"),
+            vec![
+                type_variable(name("e")),
+                type_unqualified_with(
+                    name("Maybe"),
+                    vec![type_unqualified_with(
+                        name("Maybe"),
+                        vec![type_variable(name("a"))],
+                    )],
+                ),
+            ],
+        ),
+        type_variable(name("a")),
+    ))
+);
+
+test_parse_ok!(
+    custom_types_recursive_variant,
+    r#"
+    module Main exposing (..)
+
+    type Tree a
+        = Node (Tree a) (Tree a)
+        | Leaf a
+    "#,
+    module_custom_type(UnionType {
+        span: no_span(),
+        name: name("Tree"),
+        type_arguments: vec![name("a")],
+        variants: vec![
+            type_unqualified_with(
+                name("Node"),
+                vec![
+                    type_unqualified_with(name("Tree"), vec![type_variable(name("a"))]),
+                    type_unqualified_with(name("Tree"), vec![type_variable(name("a"))]),
+                ],
+            ),
+            type_unqualified_with(name("Leaf"), vec![type_variable(name("a"))]),
+        ],
+    })
+);

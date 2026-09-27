@@ -108,21 +108,6 @@ impl Type {
     pub fn unqualified_with(span: NodeSpan, name: Name, types: Vec<Type>) -> Type {
         Type::new(span, TypeKind::Unqualified(name, types))
     }
-
-    /// A parenthesised type together with the `-> T` the grammar may have found
-    /// after the closing parenthesis, which turns it into an arrow: `(a, b)` on
-    /// its own, but `(a, b) -> c` when the arrow is there.
-    ///
-    /// `span` covers the parenthesised type *and* the arrow, so it is the span of
-    /// the `Arrow` this builds. With no arrow there is no new node and nothing to
-    /// span: the parenthesised type is returned as it was, keeping the position of
-    /// the text inside the parentheses.
-    pub fn parenthesized(span: NodeSpan, tpe: Type, result: Option<Type>) -> Type {
-        match result {
-            Some(result) => Type::new(span, TypeKind::Arrow(Box::new(tpe), Box::new(result))),
-            None => tpe,
-        }
-    }
 }
 
 /// A Module is the top-level structure for a source file.

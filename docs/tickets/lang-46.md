@@ -6,10 +6,6 @@ bracket syntax is read against, so nothing else about lists can land before it.
 **Location:** `std/core/src/` — a new `List.zel`. `List.ignored` sits beside it today, carrying
 Elm's whole list API and an `import Elm.Kernel.List`.
 
-**Depends on:** [`LANG-9`](lang-9.md), hard. A type argument must be a bare name, so
-`Cons a (List a)` — the recursive variant this ticket exists to declare — is a syntax error
-until that lands. There is no way to write the type without it.
-
 **Decided (`SPEC-22`, by the language owner; [`DEC-7`](../decisions/dec-7.md) decisions 2 and 3):**
 a list is an ordinary two-variant union type declared in `std/core`, exposed **opaquely**, and
 `::` is an ordinary operator bound by an `infix` declaration rather than a reserved spelling.
@@ -20,7 +16,8 @@ module declares. `std/core/src/List.ignored` is Elm's module verbatim — it dec
 type at all, because Elm's is kernel-provided, and `CLAUDE.md`'s *Zelkova has no `Elm.Kernel.*`*
 rules that out. So the names the language's list syntax means do not exist anywhere in the tree.
 
-**Approach:** write `std/core/src/List.zel` with the type, the cons function and the operator:
+**Approach:** write `std/core/src/List.zel` with the type, the cons function and the operator.
+`Cons a (List a)` — the recursive variant below — parses and checks:
 
 ```zel
 module List exposing (List, cons, (::))

@@ -3,8 +3,7 @@
 **Sizing:** medium, and **blocked** — see below. The wrapper itself is small; what it builds
 does not exist.
 
-**Blocked on:** `Task` and `Failure` existing at all; [`LANG-9`](lang-9.md), since
-`Task (Result Failure String)` does not parse while a type argument must be a bare name; and
+**Blocked on:** `Task` and `Failure` existing at all; and
 [`LANG-43`](lang-43.md), which is what holds an unmarked facade to the result type this wrapper
 assumes. Sequence after [`GEN-12`](README.md), which emits the `unsafe` half of the same call
 site.
