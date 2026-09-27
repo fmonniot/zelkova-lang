@@ -1,0 +1,9 @@
+module App exposing (start)
+
+
+type Marker
+  = Marker
+
+
+start : Marker
+start = Marker

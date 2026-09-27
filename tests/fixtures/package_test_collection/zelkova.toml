@@ -1,0 +1,17 @@
+# The fixture `tests/pipeline.rs::a_test_is_found_by_its_qualname_not_its_spelling`
+# drives: `tests/AppTest.zel` exposes a real `Test.Test` value, an unrelated `Int`
+# helper, and a value of a type it declares itself under the same spelling `Test` — so
+# the collecting pass has to tell the three apart by the exposed value's full
+# `QualName`, never by the name `Test` alone. `zelkova-core` is a plain `dependencies`
+# entry (not a `test-dependencies` one) so that `tests/` has the union of both maps,
+# the same as `src/` would.
+name = "package-test-collection"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies.zelkova-test]
+path = "../../../std/test"
+wrapped = false

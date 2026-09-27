@@ -8,8 +8,9 @@ module's tests rather than crash with it.
 **Part of:** the [bootstrap](README.md#active-work-bootstrap) section.
 
 **Depends on:** [`GEN-17`](README.md), now closed (the binary and its `compile` subcommand),
-[`LANG-63`](lang-63.md) (`Test`, and the pass that collects the values that have it) and
-[`GEN-18`](README.md), now closed too (the test build is written to `build/test/js/`).
+[`LANG-63`](README.md), now closed too (`Test`, and the pass that collects the values that
+have it — `test_collection::collect`), and [`GEN-18`](README.md), now closed too (the test
+build is written to `build/test/js/`).
 
 **Location:** `src/main.rs`, which [`GEN-17`](README.md) gives a clap `Command` enum.
 `src/compiler/mod.rs` has `compile_package_with_tests`. `src/compiler/javascript.rs` has
@@ -24,7 +25,7 @@ the language owner on 2026-09-27):**
   root exits non-zero in the same way a failed build does.
 - The command is **`zelkova test [DIR]`**, a clap subcommand beside `compile`, where `DIR`
   defaults to `.`.
-- A test is a `Test` value, which is `Pass` or `Fail` ([`LANG-63`](lang-63.md)), and it is
+- A test is a `Test` value, which is `Pass` or `Fail` ([`LANG-63`](README.md)), and it is
   reported under `<Module>.<value>`.
 - The run happens under **`node`**, found on `PATH`. JavaScript is the only backend, and the
   build is ES modules. This means `zelkova test` needs `node` installed and `zelkova compile`
@@ -39,8 +40,9 @@ never evaluated.
 
 1. **`zelkova test [DIR]`** calls `compile_package_with_tests`. If compilation fails, it exits
    1 just as `compile` does, and runs nothing.
-2. It collects the tests with [`LANG-63`](lang-63.md)'s pass. With no tests, it prints that
-   there are none and exits 0. A package with no tests has not failed any.
+2. It collects the tests with [`LANG-63`](README.md)'s pass,
+   `compiler::test_collection::collect`. With no tests, it prints that there are none and
+   exits 0. A package with no tests has not failed any.
 3. **The entry point.** It writes `build/test/js/run.mjs`, a module the compiler generates. The
    generated module does not hard-code any test logic beyond the list it is given. For each
    test module it:
@@ -63,7 +65,7 @@ never evaluated.
 5. **Docs.** Delete or narrow the **Not implemented:** paragraphs that cite this ticket. They
    are in [*Running a package's tests*](../spec/toolchain.md#running-a-packages-tests) and
    [*What a test is*](../spec/packages.md#what-a-test-is), plus the decision-entry clauses
-   [`LANG-63`](lang-63.md) moved here. [*Testing a companion*](../spec/interop.md#testing-a-companion)
+   [`LANG-63`](README.md) moved here. [*Testing a companion*](../spec/interop.md#testing-a-companion)
    describes a companion test as a facade whose checks are `Task`s. That shape still has no
    runner. Narrow its paragraph to say so, rather than deleting it. Under `CLAUDE.md`'s
    *Commands*, add `cargo run -- test <dir>`.

@@ -1,0 +1,24 @@
+module AppTest exposing (addsUp, helper, decoyTest)
+
+import Test
+
+
+-- Spelled the same as `Test.Test`, on purpose: this fixture pins that the collecting
+-- pass tells the two apart by their full `QualName` rather than by this name.
+type Test
+  = Fake
+
+
+addsUp : Test.Test
+addsUp =
+  Test.equal (1 + 2) 3
+
+
+helper : Int
+helper =
+  1
+
+
+decoyTest : Test
+decoyTest =
+  Fake

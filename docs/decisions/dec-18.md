@@ -205,7 +205,7 @@ This converges rather than duplicating. [`TEST-3`](../tickets/test-3.md) is alre
 the existing companion checks in CI; one job runs both and its glob widens.
 
 A `zelkova` binary that compiles *and* runs is the destination for this and for
-[`LANG-63`](../tickets/lang-63.md)'s test runner, and is deliberately **not** a prerequisite:
+[`LANG-69`](../tickets/lang-69.md)'s test runner, and is deliberately **not** a prerequisite:
 [`GEN-17`](../tickets/README.md) closed with only a `compile` subcommand, and a binary whose job
 is to run a program cannot be written before anything can be run.
 
