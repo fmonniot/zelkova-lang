@@ -108,7 +108,7 @@ GEN-9   emit a module   ── closed
    ├── GEN-11  emit the tail-call loop
    └── GEN-12  emit an `unsafe` facade call, and place its companion   ── closed
    │
-GEN-13  write the build
+GEN-13  write the build   ── closed
    │
 GEN-14  the end-to-end check under node
 ```

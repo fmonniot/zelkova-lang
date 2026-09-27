@@ -4,7 +4,7 @@
 small only because every ticket before it has its own tests; this one proves the whole thing
 runs.
 
-**Depends on:** [`GEN-13`](gen-13.md), and through it everything else in the program.
+**Depends on:** [`GEN-13`](README.md), and through it everything else in the program.
 
 **Part of:** [`GEN-1`](gen-1.md) — this is the acceptance the original ticket named.
 

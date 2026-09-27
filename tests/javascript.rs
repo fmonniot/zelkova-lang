@@ -545,7 +545,7 @@ fn a_reserved_word_is_mangled_and_a_name_containing_one_is_not() {
 /// test below takes for granted.
 ///
 /// Kept in sync by hand with `std/core/tests/CaseChecks.mjs`'s `label`, which hand-copies
-/// this exact shape until `GEN-13`/`GEN-14` let it import real build output instead — a
+/// this exact shape until [`GEN-14`](../docs/tickets/gen-14.md) lets it import real build output instead — a
 /// change here that changes what gets emitted has to be carried there too, or that
 /// fixture starts asserting on stale text.
 ///
@@ -1048,7 +1048,7 @@ fn an_unsafe_facade_re_exports_its_companion() {
     assert_eq!(
         text,
         indoc! {r#"
-            import { add as Test$add, pi as Test$pi } from "./Test.mjs";
+            import { add as Test$add, pi as Test$pi } from "./Test.companion.mjs";
 
             function add(a, b) {
               return Test$add(a, b);

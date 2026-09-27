@@ -607,7 +607,12 @@ pub enum ExpressionKind {
     VarLocal(Name),
     VarTopLevel(QualName),
     VarKernel(QualName),
-    VarForeign(QualName, Type),
+    /// A value another module declares, named by that module, beside the package that
+    /// declares it. The package is what a backend builds the import path from: a
+    /// module's name is unique within its package and not across a build, and the
+    /// output keeps one directory per package
+    /// ([`DEC-18` decision 5](../../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)).
+    VarForeign(QualName, PackageName, Type),
     /// A union constructor, named by the module that declared its union whichever
     /// module the reference is written in.
     VarConstructor(QualName, Type),
@@ -678,7 +683,11 @@ impl Expression {
                             .to_qual()
                             .map(|written| written.unqualified_name())
                             .unwrap_or_else(|| name.clone());
-                        ExpressionKind::VarForeign(m.qualify_name(&declared), tpe.clone())
+                        ExpressionKind::VarForeign(
+                            m.qualify_name(&declared),
+                            m.package().clone(),
+                            tpe.clone(),
+                        )
                     }
                     ValueType::Foreigns(candidates) => {
                         return Err(Error::AmbiguousVariables(
@@ -840,9 +849,11 @@ fn resolve_infix_operator(
         InfixFunction::Local => {
             ExpressionKind::VarTopLevel(env.module_name().qualify_name(function_name))
         }
-        InfixFunction::Imported(module, tpe) => {
-            ExpressionKind::VarForeign(module.qualify_name(function_name), tpe.clone())
-        }
+        InfixFunction::Imported(module, tpe) => ExpressionKind::VarForeign(
+            module.qualify_name(function_name),
+            module.package().clone(),
+            tpe.clone(),
+        ),
         // The exporting module declared the backing function without an
         // annotation, so its interface carries no type for it. The name that
         // failed to resolve is the function's, and that is what is reported —
@@ -1855,7 +1866,7 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
         ExpressionKind::VarTopLevel(qual) => out.push(qual.unqualified_name()),
         ExpressionKind::VarLocal(_)
         | ExpressionKind::VarKernel(_)
-        | ExpressionKind::VarForeign(_, _)
+        | ExpressionKind::VarForeign(_, _, _)
         | ExpressionKind::VarConstructor(_, _)
         | ExpressionKind::Char(_)
         | ExpressionKind::Int(_)

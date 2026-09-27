@@ -170,7 +170,8 @@ naming itself something only its dependents call it, and two dependents of one p
 disagree about the path. So an import across a package boundary resolves to a sibling directory,
 which is the other half of why the tree is not flat.
 
-Lands at: [`GEN-13`](../tickets/gen-13.md), and `compile_package`'s emission step afterwards.
+Lands at: `compile_package`'s emission step, and the *Paths* section of
+`src/compiler/javascript.rs`, which is the only place a path into the output is built.
 
 ## 6 — The generated code is checked in two halves, and `cargo test` does not run `node`
 

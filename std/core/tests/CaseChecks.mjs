@@ -5,8 +5,8 @@
 // hand-written JavaScript behind a `module foreign` facade, it is testing the
 // compiler's own generated code, and it sits in std/core's own tests/ root on
 // sufferance — that root is otherwise reserved for a package's own companion checks
-// (see CLAUDE.md). Nothing writes that generated code to disk yet — GEN-13 is the
-// build, GEN-14 the harness that would run its real output under node — so `label` and
+// (see CLAUDE.md). A build writes that generated code under build/js/, but nothing here
+// imports it — GEN-14 is the harness that would run its real output under node — so `label` and
 // `partial` below are hand-copied instances of what `javascript::emit` answers today
 // for the fixture in this comment: literal JavaScript, checked in by hand, that runs
 // neither `javascript::emit` nor an import of any emitted module. Nothing here proves
@@ -15,7 +15,7 @@
 // `a_case_on_a_three_constructor_union_is_nested_ifs_naming_each_tag` is that same
 // shape's Rust-side pin (a `contains` assertion against the same nested block, not an
 // `assert_eq!` on the whole module), and a change to either side has to be carried to
-// the other by hand until GEN-13/14 land and this file can import real build output
+// the other by hand until GEN-14 lands and this file can import real build output
 // instead. GEN-10's acceptance asks for this much: a `case` over a three-constructor
 // union returning each branch's value, and a value no branch matches aborting rather
 // than returning `undefined`.

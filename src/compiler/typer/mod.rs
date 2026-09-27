@@ -998,10 +998,12 @@ fn canonical_expr_to_term(
         }),
         // A value another module declares. Its type is the one its module's interface
         // declared, which `type_check` registers under this same qualified name.
-        canonical::ExpressionKind::VarForeign(qname, _) => TermKind::Identifier(Reference {
-            name: qname.to_name().as_str().to_string(),
-            kind: ReferenceKind::Foreign(qname.clone()),
-        }),
+        canonical::ExpressionKind::VarForeign(qname, package, _) => {
+            TermKind::Identifier(Reference {
+                name: qname.to_name().as_str().to_string(),
+                kind: ReferenceKind::Foreign(qname.clone(), package.clone()),
+            })
+        }
         // A constructor builds a tagged value rather than reading a binding, so it
         // carries its place in its declaration. That place comes from the union,
         // which is in `translation.constructors` whether this module declared it or
@@ -2514,10 +2516,14 @@ mod tests {
         assert_eq!(
             reference(canonical::ExpressionKind::VarForeign(
                 qual("Lib", "size"),
+                crate::compiler::PackageName::new("lib").unwrap(),
                 canonical::Type::Variable("a".into())
             ))
             .kind,
-            ReferenceKind::Foreign(qual("Lib", "size"))
+            ReferenceKind::Foreign(
+                qual("Lib", "size"),
+                crate::compiler::PackageName::new("lib").unwrap()
+            )
         );
         assert_eq!(
             reference(canonical::ExpressionKind::VarConstructor(

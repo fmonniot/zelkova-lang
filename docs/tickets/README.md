@@ -169,7 +169,7 @@ GEN-9   emit a module   ── closed
   ├── GEN-11  emit the tail-call loop
   └── GEN-12  emit an `unsafe` facade call, and place its companion   ── closed
   │
-GEN-13  write the build
+GEN-13  write the build   ── closed
   │
 GEN-14  the end-to-end check under node   ← converges with TEST-3's CI job
 ```
@@ -385,7 +385,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-10 | task | — | closed 2026-09-25 | Emit a `case` |
 | [GEN-11](gen-11.md) | task | — | open | Emit the tail-call loop |
 | GEN-12 | task | — | closed 2026-09-22 | Emit an `unsafe` facade call, and place its companion |
-| [GEN-13](gen-13.md) | task | — | open | Write the build |
+| GEN-13 | task | — | closed 2026-09-26 | Write the build |
 | [GEN-14](gen-14.md) | task | — | open | The end-to-end check under node |
 | [GEN-15](gen-15.md) | task | — | open | The WebAssembly backend |
 | [GEN-16](gen-16.md) | task | — | open | The wrapper an effectful facade's call site gets |

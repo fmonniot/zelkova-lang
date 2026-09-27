@@ -80,7 +80,7 @@ use super::name::{Name, QualName};
 use super::position::NodeSpan;
 use super::tuple::Tuple;
 use super::typer::Type;
-use super::ModuleName;
+use super::{ModuleName, PackageName};
 
 mod decision;
 pub use decision::{build as decision_tree, Binding, Decision, Occurrence, Outcome, Step};
@@ -267,8 +267,11 @@ pub enum ReferenceKind {
     /// A declaration of another module, named in full: a named import of whatever that
     /// module emitted.
     ///
-    /// The typer checks it against the type that module's interface declares.
-    Foreign(QualName),
+    /// The typer checks it against the type that module's interface declares. The
+    /// [`PackageName`] is the package that declares the module, which is where the
+    /// import is read from: a module's name says which file it is within its package,
+    /// and the package says which package's directory holds that file.
+    Foreign(QualName, PackageName),
     /// A union constructor: it builds a tagged value rather than reading a binding.
     Constructor(Constructor),
 }
