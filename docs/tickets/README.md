@@ -273,6 +273,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-13](err-13.md) | task | — | open | A type error spells the numeric-literal type `number`, which the language reads as an ordinary type variable |
 | [ERR-14](err-14.md) | task | — | open | A qualified name whose module is not imported is reported as a missing value |
 | [ERR-15](err-15.md) | task | — | open | `TypeNotFound` carries no "did you mean …?" suggestion |
+| [ERR-16](err-16.md) | task | — | open | `ModuleNameCollision` and `ReservedModuleName` have a file to point at and don't |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
