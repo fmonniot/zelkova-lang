@@ -4863,12 +4863,10 @@ fn a_package_with_no_test_modules_compiles_with_its_tests() {
 /// when `compile` never calls `compile_tests`.
 ///
 /// The second half — a build that did not ask for the tests root does not read it —
-/// goes red when `compile_package` is changed to pass `TestRoot::Compiled`. Dropping
-/// the `tests == TestRoot::Compiled` guard around `compile`'s second loop does *not*
-/// turn it red: `compile_in_build` hands back no `TestsEnvironment` for
-/// `TestRoot::Skipped`, so there is nothing to call `compile_tests` with. Two lines
-/// guard this behaviour and the test is red only when the guarding stops entirely,
-/// which is what passing `TestRoot::Compiled` does.
+/// goes red when `compile_package` is changed to pass `TestRoot::Compiled`, the one
+/// place that decides it: `compile`'s second stage runs only for the
+/// `TestsEnvironment` `compile_in_build` hands back, and it hands one back only for
+/// `TestRoot::Compiled`.
 #[test]
 fn a_test_module_that_does_not_check_fails_only_when_tests_are_compiled() {
     let root = fixture_package("package_broken_test");
