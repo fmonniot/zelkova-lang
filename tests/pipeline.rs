@@ -4411,6 +4411,36 @@ fn a_test_dependency_reaches_the_tests_root() {
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }
 
+/// A test build's output tree holds exactly what a plain build of the same package's
+/// `src/` would: `compile_package_with_tests` checks `tests/AppTest.zel` and the
+/// `test-dependency` it reaches through (`acme-expect`), but writes neither
+/// `AppTest.mjs` nor `acme-expect/Expect.mjs`, so a later plain `compile_package` run
+/// never finds a test module a test build left behind.
+///
+/// Mutation-checked two ways, each red on its own: dropping the `root ==
+/// source::SourceRoot::Src` guard in `compile_in_build` writes `AppTest.mjs`; dropping
+/// the `!test_dependency_packages.contains` guard in `compile` also writes
+/// `acme-expect/Expect.mjs`.
+#[test]
+fn a_test_build_writes_the_same_tree_a_plain_build_would() {
+    let root = fixture_package("package_test_dependency");
+    let build_dir = root.join("build");
+    if build_dir.exists() {
+        std::fs::remove_dir_all(&build_dir).unwrap();
+    }
+
+    let result = compile_package_with_tests(&root);
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    assert_eq!(
+        files_under(&build_dir),
+        vec![
+            "js/package-test-dependency/App.mjs".to_string(),
+            "js/zelkova.mjs".to_string(),
+        ]
+    );
+}
+
 /// …and to nothing else. The same import written in `src/` reaches no module, because
 /// a `test-dependency`'s modules are held out of the environment `src/` is checked
 /// against.

@@ -813,6 +813,11 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 ///
 /// It compiles the tests and does not run them: what makes a declaration a test is
 /// [its type](../../docs/spec/packages.md#what-a-test-is), and there is no runner.
+///
+/// A test module and a `test-dependency`'s modules are checked, but neither is written to
+/// `build/js/`: this build's output tree is the same one [`compile_package`] would have
+/// produced from `src/` alone, so a plain build run afterwards never finds a test module
+/// left behind by one that also compiled the tests.
 pub fn compile_package_with_tests(package_dir: &Path) -> Result<(), CompilationError> {
     compile(
         package_dir,
@@ -868,16 +873,21 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
     debug!("phase: resolve the build");
     let build = resolve::resolve(package_dir, manifest)?;
 
-    // Resolved is not compiled. A package reached only through `test-dependencies` is in
-    // the build so that the version and cycle rules can be settled over the union, and a
-    // build that did not ask for the tests has no use for anything it holds: no module
-    // here can import one, since a `test-dependency`'s modules are held out of the
-    // environment `src/` is checked against. Compiling it anyway would parse and check a
-    // package the user never reached for, print its status lines, and fail this build on
-    // an error inside it.
+    // Every package this build reaches only through `test-dependencies` — never through
+    // the plain `dependencies` graph. Computed either way, because it answers two
+    // different questions depending on `tests`, below: whether to compile the package at
+    // all, and whether its modules belong in the build's output.
+    let test_dependency_packages = resolve::test_only_packages(&build, &root_package);
+
+    // A build that did not ask for the tests has no use for a `test-dependency` at all:
+    // no module here can import one, since a `test-dependency`'s modules are held out of
+    // the environment `src/` is checked against. Compiling it anyway would parse and
+    // check a package the user never reached for, print its status lines, and fail this
+    // build on an error inside it. One that did ask for the tests still compiles it —
+    // the tests need its interface — but does not write it; see the loop below.
     let test_only = match tests {
         TestRoot::Compiled => std::collections::HashSet::new(),
-        TestRoot::Skipped => resolve::test_only_packages(&build, &root_package),
+        TestRoot::Skipped => test_dependency_packages.clone(),
     };
 
     // Further steps will produce errors. We aggregate them here and report them at the
@@ -903,8 +913,11 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
     // unwraps — belongs to that package alone and is applied by `compile_in_build`.
     let mut published: HashMap<PackageName, HashMap<Name, Interface>> = HashMap::new();
 
-    // Every module that checked, from every package, held until the whole build is
-    // known to have checked: a module cannot be written while another may still fail.
+    // Every module that checked, from every package that belongs in the build's output,
+    // held until the whole build is known to have checked: a module cannot be written
+    // while another may still fail. A `test-dependency`-only package is compiled when
+    // the tests ask for it, but its modules never land here — see the `continue` and the
+    // `if` around the `extend` below.
     let mut checked: Vec<ModuleToEmit> = Vec::new();
 
     for package in &build {
@@ -934,7 +947,19 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
             &mut print_status,
         ) {
             published.insert(package.name.clone(), compiled.public);
-            checked.extend(compiled.modules);
+
+            // A package reached only through `test-dependencies` is compiled and
+            // published so the tests can be checked against it, but nothing outside a
+            // package's own tests reads its modules — the build's output tree is not
+            // where they belong (see `compile_package_with_tests`'s doc comment).
+            if !test_dependency_packages.contains(&package.name) {
+                checked.extend(compiled.modules);
+            } else {
+                debug!(
+                    "phase: package {} checked for the tests alone — not part of the build's output",
+                    package.name
+                );
+            }
         }
     }
 
@@ -1456,16 +1481,25 @@ fn compile_in_build(
             // source root that the facade's own emitted module has below its package's
             // output directory.
             let root_dir = package.root.join(root.directory());
-            checked.extend(can_mods.into_iter().map(|module| {
-                let name = module.canonical.name.name();
-                let companion = Some(root_dir.join(javascript::module_file(name)))
-                    .filter(|path| module.ir.foreign && path.is_file());
-                ModuleToEmit {
-                    file: module_files.get(name).copied(),
-                    companion,
-                    module,
-                }
-            }));
+
+            // Only `src/` feeds the build's output. A module of `tests/` checks like any
+            // other, but nothing outside the package's own tests ever reads it — there is
+            // no runner ([`docs/spec/toolchain.md`](../../docs/spec/toolchain.md#running-a-packages-tests))
+            // — so it is never handed to `emit_build`. `checked`'s doc comment on
+            // `compile` restates this at the build level, for a whole package rather than
+            // one root.
+            if root == source::SourceRoot::Src {
+                checked.extend(can_mods.into_iter().map(|module| {
+                    let name = module.canonical.name.name();
+                    let companion = Some(root_dir.join(javascript::module_file(name)))
+                        .filter(|path| module.ir.foreign && path.is_file());
+                    ModuleToEmit {
+                        file: module_files.get(name).copied(),
+                        companion,
+                        module,
+                    }
+                }));
+            }
         }
     }
 
