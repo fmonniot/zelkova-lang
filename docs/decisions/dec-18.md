@@ -170,6 +170,17 @@ naming itself something only its dependents call it, and two dependents of one p
 disagree about the path. So an import across a package boundary resolves to a sibling directory,
 which is the other half of why the tree is not flat.
 
+**A facade's companion is renamed on the way into the tree, not the facade.** Both share one
+base name beside the `.zel` source — `Basics.zel`'s companion is `Basics.mjs`, the same name
+`javascript::emit` gives the facade's own emitted module — so one of the two has to be renamed
+before both can sit in `build/js/` together. Renaming the facade was rejected: its path is the
+one every importer builds from a module name (the rest of this decision), so renaming it would
+mean every specifier into a facade disagreeing with the plain [`module_file`
+naming](../../src/compiler/javascript.rs) every other module gets. The companion is renamed
+instead, to `<facade>.companion.mjs`, which cannot collide with a `module_file` path because a
+module name's segments are upper identifiers holding no `.`, so no emitted module's file name
+ever has two dots in it — including on a case-insensitive filesystem.
+
 Lands at: `compile_package`'s emission step, and the *Paths* section of
 `src/compiler/javascript.rs`, which is the only place a path into the output is built.
 

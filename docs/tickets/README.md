@@ -257,6 +257,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-37](bug-37.md) | bug | high | open | A package is not part of a type's identity, so two packages' same-named modules are one type |
 | [BUG-38](bug-38.md) | bug | high | open | A parameterless binding that reaches another only through a function it calls is not ordered after it |
 | BUG-39 | bug | medium | closed 2026-09-23 | A function parameter pattern other than a variable or `_` is never type checked |
+| [BUG-40](bug-40.md) | bug | high | open | Two same-named modules from different packages, both imported, emit colliding local import bindings |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
