@@ -365,7 +365,7 @@ possible.
 -}
 -- `Js.Utils` names `equalInt` and `equalFloat` rather than one facade over
 -- `a` (`LANG-43`); see `add` in the MATHEMATICS section above for why `eq`
--- keeps its own `a -> a -> a`-shaped annotation and picking `equalInt` here
+-- keeps its own `a -> a -> Bool`-shaped annotation and picking `equalInt` here
 -- makes no difference to how `eq` type-checks or is used.
 eq : a -> a -> Bool
 eq =
