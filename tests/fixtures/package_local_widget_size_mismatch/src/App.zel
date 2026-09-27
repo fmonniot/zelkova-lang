@@ -1,0 +1,12 @@
+-- `Widget.Size` and `AcmeWidgets.Size.Size` share a bare type name (`Size`) but not a
+-- module name: the local module here is `Widget`, not `Size`. The pair still has to be
+-- qualified — [`AdtNames::collide`] switches on the bare name colliding, not on the
+-- module names matching too.
+module App exposing (f)
+
+import AcmeWidgets.Size
+import Widget
+
+
+f : Widget.Size -> AcmeWidgets.Size.Size
+f s = s

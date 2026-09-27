@@ -319,6 +319,15 @@ pub enum ErrorKind {
     },
     /// A name the typer's environment does not know. `type_check` turns this into a
     /// [`Solved::UnboundName`] rather than an [`Error`]; that variant says why.
+    ///
+    /// `name` is [`environment_key`]'s `package:Module.name` lookup key, copied
+    /// verbatim from [`Reference::name`] — not a spelling. `message()`'s arm for this
+    /// variant renders it as-is, which would print the package if this variant were
+    /// ever surfaced as a rendered [`Error`]; today `type_check` never does that (see
+    /// above), so the leak has no path to a user yet. Whoever gives this variant a
+    /// live path — `ERR-8`'s planned warning is the likely first one — has to carry a
+    /// displayable name (the bare local name, or a `QualName` rendered the way
+    /// [`Spellings`] would) alongside this key rather than rendering it directly.
     UnboundVariable {
         name: String,
         /// Where the name was written.
@@ -374,6 +383,9 @@ impl ErrorKind {
                     tpe
                 )
             }
+            // `name` is the internal environment key, not a spelling — see the
+            // doc comment on `UnboundVariable` above. Unreachable today only because
+            // nothing renders this variant as an `Error`.
             ErrorKind::UnboundVariable { name, .. } => {
                 format!("cannot find a value named `{}`", name)
             }

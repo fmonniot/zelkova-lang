@@ -3991,9 +3991,68 @@ fn a_local_module_and_a_dependencys_of_one_name_declare_two_types() {
         "expected a unification failure, got {:?}",
         error.kind
     );
-    assert_eq!(
-        error.message(),
-        "cannot match `AcmeWidgets.Size.Size` with `Size.Size`"
+    // Unification is symmetric, so which side each type lands on is not part of the
+    // contract — see the sibling tests at `two_modules_same_named_types_do_not_unify`
+    // and `an_imported_constructor_does_not_build_another_modules_type`. What matters
+    // is that both spellings appear and neither is the bare, unwritable `Size.Size`
+    // for the wrapped dependency.
+    let message = error.message();
+    assert!(
+        message == "cannot match `AcmeWidgets.Size.Size` with `Size.Size`"
+            || message == "cannot match `Size.Size` with `AcmeWidgets.Size.Size`",
+        "both types must be named by the checked package's own spelling, got {:?}",
+        message
+    );
+}
+
+/// The same clash, but with no shared *module* name: a local module named `Widget`
+/// (not `Size`) declares its own `type Size`, and the only thing it shares with the
+/// wrapped dependency's `AcmeWidgets.Size.Size` is the bare type name `Size`.
+///
+/// This pins the broader reading of the ticket's rule, which the PR that implemented
+/// it chose deliberately: [`AdtNames::collide`] switches to the qualified spelling
+/// whenever the message would use one *word* for two declarations, not only when the
+/// two declaring modules also share a name. Under the narrower reading — qualify only
+/// when the two unions share a qualified name — this pair would not collide (`Widget.Size`
+/// as text differs from `Size.Size`), and the message would print both sides through
+/// the bare, unqualified `Display`: `` cannot match `Size` with `Size` ``, which is
+/// exactly as ambiguous as the case this ticket exists to fix.
+///
+/// Mutation-checked by comparing `other.to_name() == name.to_name()` in
+/// `AdtNames::collide` instead of the two `unqualified_name()`s: the pair here no
+/// longer collides (`Widget.Size` and `Size.Size` differ as text), both sides fall
+/// back to the unqualified `Display`, and the message reads `` cannot match `Size`
+/// with `Size` ``, which fails both assertions below.
+#[test]
+fn a_bare_name_clash_with_no_shared_module_name_is_qualified_too() {
+    let root = fixture_package("package_local_widget_size_mismatch");
+
+    let error = compile_package(&root).expect_err("`Widget.Size` is not `AcmeWidgets.Size.Size`");
+
+    let errors = type_errors(&error);
+    let [(module, error)] = errors.as_slice() else {
+        panic!("expected one type error, got {:?}", error);
+    };
+
+    assert_eq!(module.as_str(), "App");
+    assert_eq!(error.declaration.as_str(), "f");
+    assert!(
+        matches!(error.kind, typer::ErrorKind::UnificationFailed { .. }),
+        "expected a unification failure, got {:?}",
+        error.kind
+    );
+
+    let message = error.message();
+    assert!(
+        message.contains("`AcmeWidgets.Size.Size`"),
+        "expected the wrapped dependency's own spelling in the message, got {:?}",
+        message
+    );
+    assert!(
+        !message.contains("`Size.Size`"),
+        "the wrapped dependency's union must not fall back to its bare, unwritable \
+         module-local spelling, got {:?}",
+        message
     );
 }
 
