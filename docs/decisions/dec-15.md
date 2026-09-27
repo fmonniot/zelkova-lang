@@ -1,7 +1,8 @@
 # DEC-15 · The scalar types are declared in Zelkova and known by qualified name: five decisions
 
 **Settled:** 2026-09-14, by the language owner (`SPEC-31`).
-**Status:** live; decision 3's trigger re-scoped by [DEC-17](dec-17.md) decision 3.
+**Status:** live; decision 3's trigger re-scoped by [DEC-17](dec-17.md) decision 3; decision 1
+amended on 2026-09-26 to name the package as well as the module.
 **Where the rule lives:** [Scalar types](../spec/types.md#scalar-types), and [The default
 imports](../spec/modules.md#the-default-imports) for the rule that puts them in scope
 underneath `Basics`.
@@ -67,6 +68,20 @@ a `Name` (`src/compiler/canonical/mod.rs:302`), so a scalar is indistinguishable
 nullary type by the time the typer sees it. Moving it to a `QualName` is the prerequisite for
 everything here, and it is the direction `CLAUDE.md` already gives for everything after
 parsing.
+
+**Amended (2026-09-26, by the language owner):** the five names are qualified by **package**
+as well as module — `Basics.Int` *of `zelkova-core`*. As first written, `Basics.Int` pointed at
+one declaration only because [`zelkova-core` is seen unwrapped in every
+package](../spec/packages.md#zelkova-core-is-a-dependency-of-every-package) and a second module
+answering to `Basics` is a collision. That rule is about spellings, and a wrapped dependency
+escapes it: `acme-basics`' own `Basics` is `AcmeBasics.Basics` to its dependent, collides with
+nothing, and its `type Int = Int` was taken for the scalar, because a package-less qualified
+name could not tell the two declarations apart ([`BUG-37`](../tickets/bug-37.md)). Naming the
+package makes the scalar check rest on identity instead of on the resolver. It costs nothing
+this decision cared about: `zelkova-core` is already the one package name the compiler knows
+without reading a manifest, so the five names are still known without reading the module they
+point at. [Scalar types](../spec/types.md#scalar-types) needs no change — it already says a
+scalar is identified "by where it is declared".
 
 ## 2 — A scalar type is declared in Zelkova, and an opaque one's declaration names itself
 
