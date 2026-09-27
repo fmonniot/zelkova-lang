@@ -391,8 +391,8 @@ A component exports only functions, so a WebAssembly companion exports one of no
 returning the value, and its WIT declares that.
 
 Evaluation is [strict](evaluation-semantics.md#evaluation-is-strict), and an ordinary
-parameterless binding is placed in an evaluation order that reads off which bindings it
-mentions — see
+parameterless binding is placed in an evaluation order that reads off which declarations it
+depends on — see
 [A binding with no parameters is evaluated once](evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once).
 A facade constant has no Zelkova body to place in that order: it names a foreign binding
 directly, so it is evaluated on whatever schedule the target gives that — when the `.mjs` module

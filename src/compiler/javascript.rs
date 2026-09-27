@@ -22,9 +22,8 @@
 //!    3](../../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
 //! 4. **Parameterless bindings** — one `const` each, in
 //!    [`ir::Module::initialisation_order`], so each is initialised after every other one
-//!    it mentions directly. One that reaches another only through a function it calls is
-//!    not ordered after it, and the emitted module throws at load
-//!    ([`BUG-38`](../../../docs/tickets/bug-38.md)).
+//!    it depends on — the ones it mentions, and the ones a function it mentions reaches —
+//!    and no `const` is read before it is initialised.
 //! 5. **Exports** — one `export { … }` naming each exported value by its Zelkova name.
 //!
 //! # Representations

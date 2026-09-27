@@ -537,8 +537,8 @@ fn a_parameterless_binding_is_initialised_after_what_it_mentions() {
 /// `GEN-7`: a module whose declarations all take parameters has nothing to schedule — the
 /// order only ever holds parameterless bindings, and this module declares none.
 ///
-/// Mutation-checked by dropping the `is_parameterless` filter `canonical`'s shared
-/// dependency graph builds its nodes from: `first` and `second` would then both appear.
+/// Mutation-checked by dropping the `is_parameterless` filter `canonical::initialisation_order`
+/// keeps a component's bindings through: `first` and `second` would then both appear.
 #[test]
 fn a_module_of_only_functions_has_an_empty_initialisation_order() {
     let module = ir_of(indoc! {r#"
@@ -560,14 +560,14 @@ fn a_module_of_only_functions_has_an_empty_initialisation_order() {
     );
 }
 
-/// `GEN-7`: a reference to a binding with parameters is not an edge — that value already
-/// exists as a function, so it is never a node in the graph being sorted and never
-/// constrains when the parameterless binding that calls it may run. `usesHelper` mentions
-/// only `helper`, a function, so it has no dependency at all and is the whole order.
+/// `GEN-7`: a function is a node of the graph the order is read from, and a reference to
+/// one is an edge, but the function itself is never scheduled — its value exists before
+/// its body runs. `usesHelper` depends on `helper`, whose body mentions no other
+/// declaration, so `usesHelper` is the whole order.
 ///
-/// Mutation-checked by dropping the `is_parameterless` filter `canonical`'s shared
-/// dependency graph builds its nodes from: `helper` would then be a node too, and the
-/// exact-list assertion below would fail.
+/// Mutation-checked by dropping the `is_parameterless` filter `canonical::initialisation_order`
+/// keeps a component's bindings through: `helper` then comes back in the order too, and
+/// the exact-list assertion below fails.
 #[test]
 fn a_reference_to_a_function_is_not_an_edge_in_the_initialisation_order() {
     let module = ir_of(indoc! {r#"
@@ -599,24 +599,16 @@ fn a_reference_to_a_function_is_not_an_edge_in_the_initialisation_order() {
 /// `GEN-7`: parameterless bindings with no edge between them at all — `a` through `e`
 /// below each reference nothing but a literal — still come back in the same order on
 /// every run, not whatever order `values`' backing `HashMap` happened to iterate them in.
-/// `petgraph::algo::toposort` only orders an edge's source before its target, so among
-/// five bindings unconstrained by any edge, the order falls out of `dependency_graph`'s
-/// node-insertion order; declaring them out of alphabetical order here (`c`, `e`, `a`,
-/// `d`, `b`) checks that the result tracks name order rather than source order.
+/// Among components with no path between them, `canonical::initialisation_order` takes
+/// the one whose name sorts first; declaring them out of alphabetical order here (`c`,
+/// `e`, `a`, `d`, `b`) checks that the result tracks name order rather than source order.
 ///
-/// With no edges, `initialisation_order`'s two reversals — `toposort`'s own DFS-finish
-/// reversal, then this function's edge-direction reversal — cancel out, so a name-sorted
-/// insertion order comes back as plain name-sorted output: `a` .. `e`.
-///
-/// Mutation-checked by reverting `dependency_graph`'s node insertion to raw `HashMap`
-/// order (dropping the sort added for this fix): the exact-list assertion below pins one
-/// specific order out of the 5! = 120 raw `HashMap` orders reachable across process runs,
-/// so — unlike an assertion that only compares two runs to each other, which would pass
-/// on a nondeterministic build whenever a single run happens to iterate consistently with
-/// itself — it fails on all but the roughly one in 120 unlucky runs where raw order
-/// already happens to be alphabetical. Five bindings, not three, is deliberate: with only
-/// three (1-in-6) a false pass from a nondeterministic build shows up often enough in
-/// practice to make a single run of this check unconvincing.
+/// Mutation-checked by dropping the name from the key `initialisation_order` pops ready
+/// components by, so ties fall to the condensed graph's own node order: the order comes
+/// back `e` .. `a`. The exact-list assertion pins one order out of the 5! = 120 possible
+/// ones, so a nondeterministic order would fail it on all but one in 120 runs, where an
+/// assertion comparing two runs to each other could pass whenever a single run happened
+/// to iterate consistently with itself.
 #[test]
 fn independent_parameterless_bindings_come_back_in_name_sorted_order() {
     let module = ir_of(indoc! {r#"

@@ -2534,10 +2534,12 @@ fn a_written_basics_import_coexists_with_the_seed() {
 // ── Scenario 14: A parameterless binding may not depend on itself (LANG-35) ──
 //
 // `docs/spec/evaluation-semantics.md`'s *A binding may not depend on itself*:
-// a parameterless binding is evaluated once, before the program runs, in
-// dependency order, so a cycle among parameterless bindings — one binding
-// long or several — describes no such order. A binding with parameters is
-// untouched: its value is the function, not evaluated until applied.
+// a parameterless binding is evaluated once, before the program runs, after
+// everything it depends on — what it reaches by following mentions, through
+// functions as well as other bindings — so a cycle holding a parameterless
+// binding, one declaration long or several, describes no such order. A cycle
+// of functions only is untouched: a function's value exists before its body
+// runs.
 
 /// `x = x`: the shortest possible cycle, and the one
 /// [`canonical::Error::SelfDependency`]'s message special-cases.
@@ -2561,7 +2563,7 @@ fn self_reference_is_rejected() {
     match &errors[0] {
         canonical::Error::SelfDependency(path) => {
             assert_eq!(
-                path.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+                path.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
                 vec!["x"],
                 "a one-binding cycle names only that binding"
             );
@@ -2589,9 +2591,9 @@ fn self_reference_is_rejected() {
 /// on `values`' `HashMap` iteration order — see `check_self_dependency`'s doc
 /// comment.
 ///
-/// Mutation-checked by hardcoding `filter(|members| members.len() > 2)` in
-/// `check_self_dependency` (so only a three-or-more cycle is ever reported):
-/// this test goes red, `canonicalize_standalone` starts returning `Ok`.
+/// Mutation-checked by making `check_self_dependency` count a component as a
+/// cycle only once it has three or more members: this test goes red,
+/// `canonicalize_standalone` starts returning `Ok`.
 #[test]
 fn mutual_dependency_between_two_bindings_is_rejected() {
     use zelkova_lang::compiler::PhaseError;
@@ -2609,7 +2611,7 @@ fn mutual_dependency_between_two_bindings_is_rejected() {
     match &errors[0] {
         canonical::Error::SelfDependency(path) => {
             assert_eq!(
-                path.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+                path.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
                 vec!["a", "b"]
             );
         }
@@ -2639,12 +2641,13 @@ fn mutual_dependency_between_two_bindings_is_rejected() {
 /// `b`, `b` reaches `a`). The two used to be reported as separate
 /// `SelfDependency` errors — a length-1 one for `a`'s self-loop and a
 /// length-2 one for the `{a, b}` cycle — even though they describe the same
-/// underlying cycle. Only the length-2 report should survive.
+/// underlying cycle. Only the length-2 report should survive:
+/// `check_self_dependency` reports per strongly-connected component, and asks
+/// about an edge to itself only for a component of one.
 ///
-/// Mutation-checked by reverting the `in_larger_scc` guard in
-/// `check_self_dependency` (letting the self-loop pass fire for every node
-/// with a self-edge regardless of SCC membership): this test goes red,
-/// `errors.len()` back to 2.
+/// Mutation-checked by adding a second pass to `check_self_dependency` that
+/// reports every node with an edge to itself on its own, beside the
+/// per-component one: this test goes red, `errors.len()` back to 2.
 #[test]
 fn self_loop_inside_a_larger_cycle_is_reported_once() {
     let source = indoc::indoc! {r#"
@@ -2666,7 +2669,7 @@ fn self_loop_inside_a_larger_cycle_is_reported_once() {
     match &errors[0] {
         canonical::Error::SelfDependency(path) => {
             assert_eq!(
-                path.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+                path.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
                 vec!["a", "b"]
             );
         }
@@ -2674,10 +2677,10 @@ fn self_loop_inside_a_larger_cycle_is_reported_once() {
     }
 }
 
-/// `y = f y`: `f` is an ordinary function (it names a parameter), so it is
-/// never a node of the graph and the reference to it is never an edge — but
-/// `y` also names itself in the same application, and that occurrence is a
-/// self-loop regardless of what else the expression does.
+/// `y = f y`: `y` depends on `f`, but `f`'s body mentions nothing, so `f` is
+/// not part of any cycle — while `y` also names itself in the same
+/// application, and that occurrence is a self-loop regardless of what else
+/// the expression does.
 ///
 /// Mutation-checked by dropping the `Apply` arm from `collect_top_level_refs`
 /// (so only the outermost expression node is ever inspected): this test goes
@@ -2698,9 +2701,9 @@ fn self_dependency_through_a_function_argument_is_rejected() {
     match &errors[0] {
         canonical::Error::SelfDependency(path) => {
             assert_eq!(
-                path.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+                path.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
                 vec!["y"],
-                "f names a parameter, so it is never part of the cycle"
+                "f mentions nothing, so it is never part of the cycle"
             );
         }
         other => panic!("expected SelfDependency, got {:?}", other),
@@ -2710,9 +2713,9 @@ fn self_dependency_through_a_function_argument_is_rejected() {
 /// `f n = f n`: a function may call itself, because its body only runs once
 /// applied — must stay accepted.
 ///
-/// Mutation-checked by dropping the `is_parameterless` guard in
-/// `check_self_dependency` (making every binding, regardless of its
-/// parameters, a node): this test goes red on the self-loop `f` now forms.
+/// Mutation-checked by dropping the `holds_binding` condition in
+/// `check_self_dependency` (reporting every cycle, whatever its members):
+/// this test goes red on the self-loop `f` forms.
 #[test]
 fn self_recursive_function_is_accepted() {
     let source = indoc::indoc! {r#"
@@ -2726,6 +2729,9 @@ fn self_recursive_function_is_accepted() {
 
 /// Mutual recursion between two function bindings must stay accepted, for the
 /// same reason a single self-recursive function does.
+///
+/// Mutation-checked by dropping the `holds_binding` condition in
+/// `check_self_dependency`: the `{isEven, isOdd}` component is then reported.
 #[test]
 fn mutual_recursion_between_two_functions_is_accepted() {
     let source = indoc::indoc! {r#"
@@ -2737,10 +2743,10 @@ fn mutual_recursion_between_two_functions_is_accepted() {
     canonicalize_standalone(source).expect("two functions may call each other freely");
 }
 
-/// A parameterless binding that merely *mentions* a recursive function — as
-/// opposed to depending on its own value — must stay accepted: referencing a
-/// function binding is referencing a value that already exists, not a cycle
-/// among parameterless bindings.
+/// A parameterless binding that mentions a recursive function, which never
+/// mentions it back, must stay accepted: `mentionsRecursive` depends on `f`,
+/// and `f` on itself, but the only cycle is `f`'s, and it holds no
+/// parameterless binding.
 #[test]
 fn mentioning_a_recursive_function_is_accepted() {
     let source = indoc::indoc! {r#"
@@ -2751,6 +2757,98 @@ fn mentioning_a_recursive_function_is_accepted() {
 
     canonicalize_standalone(source).expect(
         "mentioning a recursive function is not itself a cycle among parameterless bindings",
+    );
+}
+
+/// `a = f 1` beside `f x = a`: a cycle that runs through a function. `a` depends on
+/// `f`, and `f`'s body mentions `a`, so initialising `a` would call `f`, which reads
+/// `a` before it has a value. The error names both members, `a` first, marks `f` as
+/// the function it is, and its message does not call `f` a parameterless binding.
+///
+/// Mutation-checked by making `canonical::dependency_graph` add a node for the
+/// parameterless declarations only, as it once did: `f` is no longer a node, the
+/// cycle disappears, and the module is accepted.
+#[test]
+fn a_cycle_through_a_function_is_rejected() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (a)
+
+        a : Int
+        a =
+          f 1
+
+        f : Int -> Int
+        f x =
+          a
+    "#};
+
+    let errors = canonicalize_with_interfaces(source, &HashMap::from([basics_interface()]))
+        .expect_err("initialising `a` calls `f`, which reads `a`");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    let canonical::Error::SelfDependency(members) = &errors[0] else {
+        panic!("expected SelfDependency, got {:?}", errors[0]);
+    };
+    assert_eq!(
+        members
+            .iter()
+            .map(|m| (m.name.as_str(), m.function))
+            .collect::<Vec<_>>(),
+        vec![("a", false), ("f", true)],
+        "both members are named, the binding first and the function marked as one"
+    );
+
+    let message = errors[0].message();
+    assert_eq!(
+        message,
+        "`a` needs its own value before it has one: `a` and the function `f` depend on each other"
+    );
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 2, "expected two labels, got {:?}", labels);
+    assert!(labels[0].primary, "the binding carries the primary label");
+    assert!(
+        labels[1].message.contains("the function `f`"),
+        "the label on `f` says it is a function, got {:?}",
+        labels[1].message
+    );
+}
+
+/// `a = f` beside `f x = a`: `a` mentions `f` without calling it, so initialising it
+/// would never run `f`'s body — and it is rejected all the same. *Depends on* is
+/// transitive mention, not a guess at which mentioned code runs
+/// ([`DEC-19`](../../docs/decisions/dec-19.md)), so this pins the over-approximation
+/// as the rule rather than an accident of the implementation.
+///
+/// Mutation-checked the same way as `a_cycle_through_a_function_is_rejected`: with
+/// only parameterless declarations as nodes, the module is accepted.
+#[test]
+fn mentioning_a_function_that_mentions_the_binding_back_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        a =
+          f
+
+        f x =
+          a
+    "#};
+
+    let errors = canonicalize_standalone(source)
+        .expect_err("`a` depends on `f`, and `f` on `a`, whether or not `a` calls it");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    let canonical::Error::SelfDependency(members) = &errors[0] else {
+        panic!("expected SelfDependency, got {:?}", errors[0]);
+    };
+    assert_eq!(
+        members
+            .iter()
+            .map(|m| (m.name.as_str(), m.function))
+            .collect::<Vec<_>>(),
+        vec![("a", false), ("f", true)]
     );
 }
 

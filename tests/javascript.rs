@@ -503,6 +503,65 @@ fn a_parameterless_binding_is_emitted_after_the_one_it_mentions() {
     );
 }
 
+/// A parameterless binding that reaches another only through a function it calls is
+/// emitted after it: `a` calls `f`, whose body reads `z`, so `const a = f(1n)` would read
+/// `z` before it is initialised if it came first
+/// ([*A binding with no parameters is evaluated
+/// once*](../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once)).
+/// The same module with `a` and `z` swapped is checked too, so the order cannot come from
+/// breaking a tie by name: in one of the two the dependency sorts first, in the other last.
+///
+/// Mutation-checked by making `canonical::dependency_graph` add a node for the
+/// parameterless declarations only, as it once did: the edge through `f` disappears, the
+/// two bindings become independent, and the name tie-break puts `const a = f(1n);` first
+/// in the first module.
+#[test]
+fn a_binding_reached_through_a_function_is_emitted_first() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (a)
+
+        a : Int
+        a =
+          f 1
+
+        f : Int -> Int
+        f x =
+          z
+
+        z : Int
+        z =
+          2
+    "#});
+
+    assert!(
+        position(&text, "const z = 2n;") < position(&text, "const a = f(1n);"),
+        "`f` reads `z`, so `z` has to be initialised before `a` calls `f`, got:\n{}",
+        text
+    );
+
+    let swapped = emitted(indoc! {r#"
+        module Test exposing (z)
+
+        z : Int
+        z =
+          f 1
+
+        f : Int -> Int
+        f x =
+          a
+
+        a : Int
+        a =
+          2
+    "#});
+
+    assert!(
+        position(&swapped, "const a = 2n;") < position(&swapped, "const z = f(1n);"),
+        "`f` reads `a`, so `a` has to be initialised before `z` calls `f`, got:\n{}",
+        swapped
+    );
+}
+
 /// A declaration named `class`, a reserved word in JavaScript, is renamed wherever it is
 /// declared and mentioned, and exported under its own name; `classy` is left alone.
 ///
