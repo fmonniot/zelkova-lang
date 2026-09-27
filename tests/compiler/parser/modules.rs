@@ -570,7 +570,8 @@ fn type_annotation_spans_cover_each_component() {
         panic!("expected an arrow, got {:?}", annotation.kind);
     };
 
-    // The tuple stops at the `)`, where the second `@R` is taken.
+    // The tuple stops at its `)`: `AtomicType` built it, and the arrow around it
+    // is a separate node.
     assert_eq!(left.span.span(), at("(Int, Char)"));
     let result = source.rfind("Int").expect("source has a result type");
     assert_eq!(
