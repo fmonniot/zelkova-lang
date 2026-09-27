@@ -2089,8 +2089,12 @@ pub(crate) fn initialisation_order(module: &Module) -> Vec<Name> {
     };
 
     // An edge `u -> v` means `u` depends on `v`, so a component is ready once every edge
-    // out of it has been satisfied. Counted per edge, and released per edge below, so
-    // the two agree whatever the condensation does with parallel edges.
+    // out of it has been satisfied. `condensation(g, true)` calls `update_edge` for every
+    // original edge between two distinct components, which updates an existing
+    // component-to-component edge's weight rather than duplicating it, so no parallel
+    // edges between distinct components ever reach `condensed` — the count below and the
+    // one edge released per neighbor in the loop are counting the same, already
+    // deduplicated set.
     let mut unsatisfied: Vec<usize> = condensed
         .node_indices()
         .map(|idx| condensed.edges_directed(idx, Direction::Outgoing).count())
