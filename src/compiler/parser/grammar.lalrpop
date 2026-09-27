@@ -387,53 +387,44 @@ Expr = {
 
 // TODO This is actually unqualified OR qualified, depending on the underlying name
 // Let's change the function to take that into account
+//
+// A type that can stand as an argument without being split: a name, a variable, or
+// anything in parentheses. The parenthesised forms live here rather than in `Type`
+// so that `Maybe (Maybe Int)` and `Box (Int -> Int)` are applications like any
+// other, nested to any depth, and so that `(Int, Char) -> Int` needs no special
+// case — the tuple is an `ArgType` and `Type`'s arrow production takes it.
+//
+// The parentheses only group: `(Int)` is `Int`, and keeps the position of the text
+// inside them. `(Int, Char)` is a two-element tuple, whose span covers the
+// parentheses. As in `AtomicExpr`, there is one production per tuple arity so that
+// a tuple of any other size cannot be parsed.
 AtomicType: Type = {
     <l:@L> <n: QualTypeIdent> <r:@R> => Type::unqualified(NodeSpan::new(l, r), n),
     <l:@L> <n: VarIdent> <r:@R> => Type::new(NodeSpan::new(l, r), TypeKind::Variable(n)),
+
+    "(" <Type> ")",
+
+    <l:@L> "(" <a: Type> "," <b: Type> ")" <r:@R> =>
+        Type::new(NodeSpan::new(l, r), TypeKind::Tuple(Tuple::two(a, b))),
+
+    <l:@L> "(" <a: Type> "," <b: Type> "," <c: Type> ")" <r:@R> =>
+        Type::new(NodeSpan::new(l, r), TypeKind::Tuple(Tuple::three(a, b, c))),
 }
 
+// An application binds tighter than an arrow, and its arguments are atomic: `Maybe
+// Maybe Int` is `Maybe` applied to two arguments, and nesting one application in
+// another is written `Maybe (Maybe Int)`.
 ArgType: Type = {
     AtomicType,
 
-    // Here I need to think about this some more (and need better test coverage)
     <l:@L> <name: QualTypeIdent> <types: AtomicType+> <r:@R> => {
         Type::unqualified_with(NodeSpan::new(l, r), name, types)
     },
-
 }
 
+// The arrow associates to the right: `a -> b -> c` is `a -> (b -> c)`.
 Type: Type = {
     ArgType,
-
-    // A parenthesised type, optionally followed by `-> T`. The parentheses
-    // only group: `(Int)` is `Int`, `(Int, Char)` is a two-element tuple. The
-    // trailing arrow is orthogonal to that choice — it does not tell a tuple
-    // from a group, it just wraps whatever was parenthesised as the left
-    // operand of an `Arrow`, so `(Int, Char) -> Int` is a `Tuple::two` *and*
-    // an `Arrow` at once. Appending that arrow when it is present is the whole
-    // of what `Type::parenthesized` does.
-    // As in `AtomicExpr`, there is one production per tuple arity so that a
-    // tuple of any other size cannot be parsed.
-    //
-    // Two spans are taken, not one: `l..m` closes at the `)` and belongs to the
-    // parenthesised type itself, while `l..r` runs past the optional arrow and
-    // belongs to the `Arrow` node built around it.
-    <l:@L> "(" <t: Type> ")" <result:("->" <Type>)?> <r:@R> =>
-        Type::parenthesized(NodeSpan::new(l, r), t, result),
-
-    <l:@L> "(" <a: Type> "," <b: Type> ")" <m:@R> <result:("->" <Type>)?> <r:@R> =>
-        Type::parenthesized(
-            NodeSpan::new(l, r),
-            Type::new(NodeSpan::new(l, m), TypeKind::Tuple(Tuple::two(a, b))),
-            result,
-        ),
-
-    <l:@L> "(" <a: Type> "," <b: Type> "," <c: Type> ")" <m:@R> <result:("->" <Type>)?> <r:@R> =>
-        Type::parenthesized(
-            NodeSpan::new(l, r),
-            Type::new(NodeSpan::new(l, m), TypeKind::Tuple(Tuple::three(a, b, c))),
-            result,
-        ),
 
     <l:@L> <tpe1:ArgType> "->" <tpe2:Type> <r:@R> =>
         Type::new(NodeSpan::new(l, r), TypeKind::Arrow(Box::new(tpe1), Box::new(tpe2))),

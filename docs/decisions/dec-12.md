@@ -210,10 +210,10 @@ predicate is emitted, and nothing runs a program, so no abort can occur
 ([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)). `Failure`'s two constructors
 carry a `String`, which has [no literal syntax](../spec/lexical-structure.md#strings) yet.
 
-Decision 1 is unwritable before [`LANG-9`](../tickets/lang-9.md) lands: a type argument must be a
-bare name today, so `Task (Result Failure String)` is a syntax error and three blocks across the
-two chapters are tagged `expect=unimplemented` for that reason. The shape check itself is
-[`LANG-43`](../tickets/lang-43.md)'s and inherits the same sequencing.
+Decision 1 is writable: `Task (Result Failure String)` parses since
+[`LANG-9`](../tickets/README.md) closed. The three blocks across the two chapters that write it
+are tagged `expect=unimplemented` because nothing declares the `Task` they import. The shape
+check itself is [`LANG-43`](../tickets/lang-43.md)'s.
 
 Decision 7 is writable: `unsafe` is a soft keyword the grammar reads in front of a facade
 signature, and every facade in `std/core` now carries it. Nothing acts on the word yet, because

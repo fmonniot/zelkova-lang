@@ -3,11 +3,11 @@
 **Sizing:** large, and blocked. The two halves are one ticket because neither is useful alone:
 a `Test` nothing runs is a type with no meaning, and a runner with no type to look for has
 nothing to find. It is sequenced after [`GEN-1`](gen-1.md) — running a test means running a
-Zelkova value, and nothing runs one today — and after [`LANG-9`](lang-9.md), since
-`zelkova-test`'s own signatures need a type argument that is not a bare name. What could make
-it bigger: `Test` is a value describing work, so what it holds and how a runner performs it is
-entangled with `Task` and with [`DEC-11`](../decisions/dec-11.md)'s effect model, neither of
-which exists.
+Zelkova value, and nothing runs one today. [`LANG-9`](README.md), which it was also sequenced
+after because `zelkova-test`'s own signatures need a type argument that is not a bare name, is
+closed. What could make it bigger: `Test` is a value describing work, so what it holds and how
+a runner performs it is entangled with `Task` and with [`DEC-11`](../decisions/dec-11.md)'s
+effect model, neither of which exists.
 
 **Location:** `src/compiler/mod.rs` — `compile_package_with_tests`, which compiles both source
 roots and stops there; it has no caller outside `tests/pipeline.rs`, and `src/main.rs` calls

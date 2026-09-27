@@ -525,16 +525,15 @@ fn case_expression_span_stops_at_its_last_branch() {
 /// `PartialEq`, the `test_parse_ok!`s in `types.rs` say nothing about where a type
 /// was written.
 ///
-/// The `Type` productions are also the most intricate spans in the grammar: the
-/// parenthesised form runs `l..r` past an optional `-> T`, while the tuple arities
-/// take a *second* `@R` at the `)` and hand `l..m` to the tuple, so the `Tuple` and
-/// the `Arrow` around it end at different bytes. That split is what this pins.
+/// A tuple followed by an arrow is two nodes built by two productions: the tuple
+/// by `AtomicType`, closing at its `)`, and the `Arrow` by `Type`, running on past
+/// the result. So the `Tuple` and the `Arrow` around it start at the same byte and
+/// end at different ones. That split is what this pins.
 ///
-/// Mutation-checked three ways, each red on its own: making the two-element tuple
-/// production hand the tuple `NodeSpan::new(l, r)` instead of `NodeSpan::new(l, m)`
-/// (the tuple then ends where the arrow does); handing the `Arrow` that same
-/// production builds `NodeSpan::none()`; and making `AtomicType`'s `QualTypeIdent`
-/// production emit `NodeSpan::none()`.
+/// Mutation-checked three ways, each red on its own: making `AtomicType`'s
+/// two-element tuple production emit `NodeSpan::none()`; making `Type`'s arrow
+/// production do the same; and making `AtomicType`'s `QualTypeIdent` production do
+/// the same.
 #[test]
 fn type_annotation_spans_cover_each_component() {
     use codespan_reporting::files::SimpleFile;

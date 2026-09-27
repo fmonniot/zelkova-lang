@@ -13,9 +13,8 @@ explicit-pop match; `src/compiler/parser/grammar.lalrpop` — `VarIdent`, `Atomi
 
 **Depends on:** [LANG-37](lang-37.md), for the `=>` token — a superclass context is written in
 the class head (`class Eq a => Comparable a where`) and reuses the same `ConstrainedType`
-production. [LANG-9](lang-9.md) is not a hard dependency but sequences well before this one: an
-instance head like `instance Comparable (List a)` needs a parenthesised type argument, which
-does not parse today.
+production. [LANG-9](README.md) is closed, so the parenthesised type argument an instance head
+like `instance Comparable (List a)` needs already parses.
 
 **Decided (`SPEC-12`, by the language owner):** members live in a `where` block, one per line.
 Superclasses exist from the start.

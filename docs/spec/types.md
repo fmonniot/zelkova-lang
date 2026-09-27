@@ -144,7 +144,7 @@ An argument may be any type expression. Where that expression is itself an appli
 function, or a tuple, it is parenthesised — application binds tighter than everything else, so
 `Maybe Maybe Colour` would otherwise read as `Maybe` applied to two arguments.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Maybe, nested)
 
 type Maybe a
@@ -155,22 +155,18 @@ nested : Maybe (Maybe a)
 nested = Nothing
 ```
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Box, boxed)
 
 type Box a
   = Box a
 
 boxed : Box (a -> a)
-boxed = Box
-```
+boxed = Box keep
 
-**Not implemented:** neither block parses. An argument must be a bare name or a variable
-today — the grammar has no parenthesised form in argument position at all — so every nested
-type is rejected, including `type Tree a = Node (Tree a) (Tree a)`, the shape a recursive
-container is written in. [`docs/tickets/lang-9.md`](../tickets/lang-9.md) is the ticket. The
-workaround the grammar leaves open is a trap: `Box Maybe a` parses, as `Box` applied to two
-arguments.
+keep : a -> a
+keep x = x
+```
 
 ### Arity is part of the application
 
@@ -763,18 +759,16 @@ type Wrapper
   = Wrap Size -> Size
 ```
 
-A variant's arguments are type expressions under the same rules as anywhere else, including
-the parenthesisation limit in [Applying a type to arguments](#applying-a-type-to-arguments):
+A variant's arguments are type expressions under the same rules as anywhere else, parenthesised
+as in [Applying a type to arguments](#applying-a-type-to-arguments):
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Tree)
 
 type Tree a
   = Node (Tree a) (Tree a)
   | Leaf a
 ```
-
-**Not implemented:** [`lang-9`](../tickets/lang-9.md) again, seen from the declaration side.
 
 ### A variant list has at least one variant
 

@@ -6,9 +6,8 @@ bracket syntax is read against, so nothing else about lists can land before it.
 **Location:** `std/core/src/` — a new `List.zel`. `List.ignored` sits beside it today, carrying
 Elm's whole list API and an `import Elm.Kernel.List`.
 
-**Depends on:** [`LANG-9`](lang-9.md), hard. A type argument must be a bare name, so
-`Cons a (List a)` — the recursive variant this ticket exists to declare — is a syntax error
-until that lands. There is no way to write the type without it.
+**Depended on:** [`LANG-9`](README.md), which is closed: `Cons a (List a)` — the recursive
+variant this ticket exists to declare — parses and checks.
 
 **Decided (`SPEC-22`, by the language owner; [`DEC-7`](../decisions/dec-7.md) decisions 2 and 3):**
 a list is an ordinary two-variant union type declared in `std/core`, exposed **opaquely**, and

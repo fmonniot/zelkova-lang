@@ -96,7 +96,7 @@ LANG-37  `=>` becomes a token; a constrained annotation parses
   │      (the only one that can start today)
   │
 LANG-38  `class` / `instance` declarations, and a `where` block of members
-  │      ← LANG-9 sequences before this: an instance head wants `(List a)`
+  │      ← LANG-9, which lets an instance head write `(List a)`, is closed
   │      ← an instance body is a member list or the single word `derived`;
   │        a class body may carry `derived <member>` — both specified in
   │        the chapter
@@ -316,7 +316,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-6](lang-6.md) | task | — | open | A module's declared name is unrelated to the file it lives in |
 | [LANG-7](lang-7.md) | task | — | open | Nothing checks an import list for duplicates, alias collisions or self-imports |
 | LANG-8 | task | — | closed 2026-09-13 | There is no default import list |
-| [LANG-9](lang-9.md) | task | — | open | A type argument must be a bare name, so `Maybe (Maybe Int)` does not parse |
+| LANG-9 | task | — | closed 2026-09-27 | A type argument must be a bare name, so `Maybe (Maybe Int)` does not parse |
 | [LANG-10](lang-10.md) | task | — | open | A trailing `\|` and a variant-less `type T =` are both accepted |
 | [LANG-11](lang-11.md) | task | — | open | A type annotation may sit anywhere in the file, and a repeated one silently wins |
 | [LANG-12](lang-12.md) | task | — | open | An annotation more general than its body is accepted and silently specialised |
