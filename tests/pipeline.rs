@@ -665,7 +665,7 @@ fn the_stdlib_bitwise_forwards_to_its_facade() {
         .unwrap_or_else(|errors| panic!("Bitwise failed to emit: {:?}", errors));
 
     assert!(
-        text.contains("const and = Js$Bitwise$and;"),
+        text.contains("const and = zelkova_core$Js$Bitwise$and;"),
         "got:\n{}",
         text
     );
@@ -756,7 +756,9 @@ fn a_build_writes_one_directory_per_package() {
     );
     let app = std::fs::read_to_string(js.join("package-namespaced-dependency/App.mjs")).unwrap();
     assert!(
-        app.starts_with("import { small as Size$small } from \"../acme-widgets/Size.mjs\";\n"),
+        app.starts_with(
+            "import { small as acme_widgets$Size$small } from \"../acme-widgets/Size.mjs\";\n"
+        ),
         "got:\n{}",
         app
     );
@@ -4064,8 +4066,7 @@ fn a_bare_name_clash_with_no_shared_module_name_is_qualified_too() {
 /// A declaration the typer could not type is not an error until the build is emitted,
 /// so the assertion is on the whole build rather than on the module's type check: an
 /// untyped `theirs` fails emission as `Unchecked`. What the emitted `Size.mjs` makes of
-/// `theirs` is not asserted — naming a hoisted constructor constant by its package is
-/// [`BUG-40`](../docs/tickets/bug-40.md)'s, which compiles this same fixture.
+/// `theirs` is `a_dependencys_constructor_is_hoisted_under_its_own_package`'s.
 ///
 /// Mutation-checked by leaving the package out of `QualName`'s equality (deriving
 /// `PartialEq` and `Hash` by hand over `module` and `name` only): this module's own
@@ -4085,6 +4086,107 @@ fn a_dependencys_names_resolve_beside_a_local_module_of_the_same_name() {
     );
 
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+/// In the same pair, `App` imports both `Size`s — its own package's, and `acme-widgets`'
+/// as `AcmeWidgets.Size` — and reads each one's `small`. The two are imported under two
+/// local names, one per package, each from its own package's directory, and each
+/// binding reads its own.
+///
+/// Asserted on the emitted text, since the collision this pins compiled `Ok` and wrote
+/// two `import` lines binding one name, which only fails when the module loads.
+///
+/// Mutation-checked by leaving the package out of `javascript::imported`: both imports
+/// then bind `Size$small`, and the test goes red.
+#[test]
+fn two_packages_same_named_modules_import_under_distinct_names() {
+    let build_dir = fresh_build_dir("two_packages_same_named_modules_import_under_distinct_names");
+
+    let result = zelkova_lang::compiler::compile_package_into(
+        &fixture_package("package_local_size_beside_dependency"),
+        &build_dir,
+    );
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    let app = std::fs::read_to_string(build_dir.join("js/app/App.mjs")).unwrap();
+
+    assert!(
+        app.contains(
+            "import { small as acme_widgets$Size$small } from \"../acme-widgets/Size.mjs\";\n"
+        ),
+        "got:\n{}",
+        app
+    );
+    assert!(
+        app.contains("import { small as app$Size$small } from \"./Size.mjs\";\n"),
+        "got:\n{}",
+        app
+    );
+    assert!(
+        app.contains("const mine = app$Size$small;"),
+        "got:\n{}",
+        app
+    );
+    assert!(
+        app.contains("const theirs = acme_widgets$Size$small;"),
+        "got:\n{}",
+        app
+    );
+
+    let mut imported: Vec<&str> = app
+        .lines()
+        .filter(|line| line.starts_with("import "))
+        .filter_map(|line| line.split(" as ").nth(1))
+        .filter_map(|rest| rest.split(' ').next())
+        .collect();
+    let count = imported.len();
+    imported.sort_unstable();
+    imported.dedup();
+    assert_eq!(
+        imported.len(),
+        count,
+        "a local name imported twice:\n{}",
+        app
+    );
+}
+
+/// In the same pair, the local module `Size` mentions `AcmeWidgets.Size.Small`, a
+/// constructor of no arguments of another package's same-named module. It is not this
+/// module's own, so `Size.mjs` hoists a constant for it, named by its package, beside
+/// the one for its own `Mine`, and `theirs` refers to it.
+///
+/// Mutation-checked two ways: by comparing only the module's name, not its package,
+/// when `Emitter::value` decides whether a constructor is this module's own — `Small`
+/// is then taken for `Size`'s own, nothing hoists it and the `const` assertion goes
+/// red; and by leaving the package out of `javascript::hoisted`, which names it
+/// `$Size$Small`.
+#[test]
+fn a_dependencys_constructor_is_hoisted_under_its_own_package() {
+    let build_dir = fresh_build_dir("a_dependencys_constructor_is_hoisted_under_its_own_package");
+
+    let result = zelkova_lang::compiler::compile_package_into(
+        &fixture_package("package_local_size_beside_dependency"),
+        &build_dir,
+    );
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    let size = std::fs::read_to_string(build_dir.join("js/app/Size.mjs")).unwrap();
+
+    assert!(
+        size.contains("const $app$Size$Mine = {$: \"Mine\"};"),
+        "got:\n{}",
+        size
+    );
+    assert!(
+        size.contains("const $acme_widgets$Size$Small = {$: \"Small\"};"),
+        "got:\n{}",
+        size
+    );
+    assert!(
+        size.contains("const theirs = $acme_widgets$Size$Small;"),
+        "got:\n{}",
+        size
+    );
 }
 
 /// A wrapped dependency's own `Basics` collides with nothing — its spelling is

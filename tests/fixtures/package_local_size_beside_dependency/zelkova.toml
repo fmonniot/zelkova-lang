@@ -1,7 +1,7 @@
 # A package holding its own module `Size` and depending, wrapped, on `acme-widgets`,
 # whose own `Size` it reaches as `AcmeWidgets.Size`. Two spellings, so no collision —
-# and two packages, so two different `Size.Size` unions.
-name = "package-local-size-beside-dependency"
+# and two packages, so two different `Size.Size` unions. `App` imports both.
+name = "app"
 version = "0.1.0"
 private-modules = []
 
