@@ -3,9 +3,9 @@
 **Severity:** high (miscompile — a well-formed program compiles successfully, `compile_package`
 returns `Ok(())`, and the `.mjs` file it writes throws `SyntaxError` at load).
 
-**Depends on:** [`BUG-37`](bug-37.md), for the constructor half below — `ir::Constructor` has
-no package to name a hoisted constant by until that ticket puts one in a constructor's
-identity.
+**Unblocked by:** [`BUG-37`](README.md) (closed), which put a package in every `QualName` —
+`ir::Constructor::union` included — so the constructor half below has a package to name a
+hoisted constant by.
 
 **Location:** `src/compiler/javascript.rs`, the *Names* section — `imported(module, name)`
 (~line 356) and `hoisted(union, constructor)` (~line 342), the two functions that name a local
@@ -63,10 +63,10 @@ Two `import` statements binding one name is a `SyntaxError` at module load.
   decides whether a constructor is this module's own by comparing module names without their
   package. Module `Size` of package `app` mentioning `AcmeWidgets.Size.Small` would take
   `Small` for its own, hoist nothing for it, and refer to a `$Size$Small` that no `const`
-  declares — a `ReferenceError`. Today that program does not reach the emitter at all: the
-  typer's `translation.constructors` is keyed by a package-less `QualName`, and a build of it
-  fails with `Emit([Unchecked { name: "theirs" }])`. That is [`BUG-37`](bug-37.md)'s, and it is
-  why this ticket depends on it.
+  declares — a `ReferenceError`. Since [`BUG-37`](README.md) that program reaches the emitter:
+  `tests/fixtures/package_local_size_beside_dependency` is it, `compile_package_into` returns
+  `Ok(())`, and its `Size.mjs` holds `const theirs = $Size$Small;` with no such constant
+  declared.
 
 **Fix:** every local name that refers to a declaration names it by its full identity —
 package, module, name — whether or not anything collides. Every emitted module's text
@@ -108,10 +108,9 @@ Named imports stay named imports — no `import * as`. A named import of an expo
 exist fails when the module loads, which [`GEN-14`](gen-14.md)'s run under `node` catches for
 free; a property read off a namespace object would be `undefined` at run time instead.
 
-How the package reaches `ir::Constructor` is whatever shape [`BUG-37`](bug-37.md) picks for
-putting it in a constructor's identity — a `QualName` carrying a `PackageName`, or the union's
-`ModuleName`. The name functions here take the package as a separate argument, so either
-shape feeds them without a change to this scheme.
+The package reaches `ir::Constructor` through its `union: QualName`, which carries a
+`PackageName` since [`BUG-37`](README.md) (`QualName::package`). The name functions here take
+the package as a separate argument, read off that.
 
 **Acceptance:**
 
@@ -129,6 +128,6 @@ shape feeds them without a change to this scheme.
 - `cargo test --workspace` is green, and `cargo run` still prints `parsed 8 modules`, lists all
   eight as checked, and exits 0.
 
-**Related:** found in review of #244 (`GEN-13`, "write the build"). [`BUG-37`](bug-37.md) is
+**Related:** found in review of #244 (`GEN-13`, "write the build"). [`BUG-37`](README.md) was
 the sibling bug in the type checker: both are a package missing from an identity — there, the
 typer's `QualName`; here, the emitter's local binding name.

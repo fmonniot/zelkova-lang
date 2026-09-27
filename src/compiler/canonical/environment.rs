@@ -449,7 +449,7 @@ fn process_import(
     for (value_name, (node_span, tpe)) in &interface.values {
         insert_foreign_value(
             env,
-            value_name.qualify_with_name(prefix).unwrap().to_name(),
+            value_name.clone().qualify_with(prefix.to_string()),
             tpe.clone(),
             interface.source_span(*node_span),
             &interface.module_name,
@@ -654,11 +654,9 @@ fn insert_foreign_union_type<'a, I: Iterator<Item = &'a TypeConstructor>>(
     variants: I,
 ) {
     // If there is a given qualifier use it, otherwise use the name as is
-    let qualify = |n: &Name| {
-        qualifier
-            .and_then(|q| n.qualify_with_name(q))
-            .map(|q| q.to_name())
-            .unwrap_or(n.clone())
+    let qualify = |n: &Name| match qualifier {
+        Some(q) => n.clone().qualify_with(q.to_string()),
+        None => n.clone(),
     };
 
     env.types.insert(
@@ -1083,7 +1081,10 @@ mod tests {
         // A type's canonical head names the module that declared it, so the
         // `Maybe` this interface exports is `Maybe.Maybe`.
         let type_hk = |name: &str, params| {
-            Type::Type(QualName::parse(format!("Maybe.{}", name)).unwrap(), params)
+            Type::Type(
+                QualName::parse(PackageName::core(), format!("Maybe.{}", name)).unwrap(),
+                params,
+            )
         };
 
         let type_fun = |t1, t2| Type::Arrow(Box::new(t1), Box::new(t2));
@@ -1140,12 +1141,12 @@ mod tests {
                     TypeConstructor {
                         name: "Just".into(),
                         type_parameters: vec![Type::Variable("a".into())],
-                        tpe: QualName::parse("Maybe.Maybe").unwrap(),
+                        tpe: QualName::parse(PackageName::core(), "Maybe.Maybe").unwrap(),
                     },
                     TypeConstructor {
                         name: "Nothing".into(),
                         type_parameters: vec![],
-                        tpe: QualName::parse("Maybe.Maybe").unwrap(),
+                        tpe: QualName::parse(PackageName::core(), "Maybe.Maybe").unwrap(),
                     },
                 ],
             },
@@ -1254,7 +1255,10 @@ mod tests {
                 "length".into(),
                 (
                     NodeSpan::none(),
-                    Type::Type(QualName::parse("Basics.Int").unwrap(), vec![]),
+                    Type::Type(
+                        QualName::parse(PackageName::core(), "Basics.Int").unwrap(),
+                        vec![],
+                    ),
                 ),
             );
 
@@ -1357,28 +1361,43 @@ mod tests {
         let env = new_environment(&js_basics, &interfaces, &vec![], true)?;
 
         let int = env.find_type(&"Int".into()).expect("Int should be seeded");
-        assert_eq!(int.name, QualName::parse("Basics.Int").unwrap());
+        assert_eq!(
+            int.name,
+            QualName::parse(PackageName::core(), "Basics.Int").unwrap()
+        );
         assert_eq!(int.arity(), 0);
 
         let float = env
             .find_type(&"Float".into())
             .expect("Float should be seeded");
-        assert_eq!(float.name, QualName::parse("Basics.Float").unwrap());
+        assert_eq!(
+            float.name,
+            QualName::parse(PackageName::core(), "Basics.Float").unwrap()
+        );
 
         let bool_ = env
             .find_type(&"Bool".into())
             .expect("Bool should be seeded");
-        assert_eq!(bool_.name, QualName::parse("Basics.Bool").unwrap());
+        assert_eq!(
+            bool_.name,
+            QualName::parse(PackageName::core(), "Basics.Bool").unwrap()
+        );
 
         let char_ = env
             .find_type(&"Char".into())
             .expect("Char should be seeded");
-        assert_eq!(char_.name, QualName::parse("Char.Char").unwrap());
+        assert_eq!(
+            char_.name,
+            QualName::parse(PackageName::core(), "Char.Char").unwrap()
+        );
 
         let string = env
             .find_type(&"String".into())
             .expect("String should be seeded");
-        assert_eq!(string.name, QualName::parse("String.String").unwrap());
+        assert_eq!(
+            string.name,
+            QualName::parse(PackageName::core(), "String.String").unwrap()
+        );
 
         // Type names only: no constructor and no value comes with them.
         assert!(

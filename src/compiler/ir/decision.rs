@@ -293,13 +293,17 @@ mod tests {
     use crate::compiler::position::NodeSpan;
     use crate::compiler::tuple::Tuple;
     use crate::compiler::typer::TypeLiteral;
+    use crate::compiler::PackageName;
 
     fn int() -> Type {
         Type::Literal(TypeLiteral::Int)
     }
 
     fn maybe(of: Type) -> Type {
-        Type::Adt(QualName::in_module("Maybe", "Maybe"), vec![of])
+        Type::Adt(
+            QualName::in_module(PackageName::core(), "Maybe", "Maybe"),
+            vec![of],
+        )
     }
 
     fn pattern(kind: TermPatternKind) -> TermPattern {
@@ -318,7 +322,7 @@ mod tests {
 
     fn just() -> Constructor {
         Constructor {
-            union: QualName::in_module("Maybe", "Maybe"),
+            union: QualName::in_module(PackageName::core(), "Maybe", "Maybe"),
             name: Name::new("Just"),
             index: 0,
             arity: 1,

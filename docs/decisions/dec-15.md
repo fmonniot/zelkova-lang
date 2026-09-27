@@ -76,7 +76,7 @@ package](../spec/packages.md#zelkova-core-is-a-dependency-of-every-package) and 
 answering to `Basics` is a collision. That rule is about spellings, and a wrapped dependency
 escapes it: `acme-basics`' own `Basics` is `AcmeBasics.Basics` to its dependent, collides with
 nothing, and its `type Int = Int` was taken for the scalar, because a package-less qualified
-name could not tell the two declarations apart ([`BUG-37`](../tickets/bug-37.md)). Naming the
+name could not tell the two declarations apart ([`BUG-37`](../tickets/README.md)). Naming the
 package makes the scalar check rest on identity instead of on the resolver. It costs nothing
 this decision cared about: `zelkova-core` is already the one package name the compiler knows
 without reading a manifest, so the five names are still known without reading the module they

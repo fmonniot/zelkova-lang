@@ -1,0 +1,10 @@
+# The same pair as `package_local_size_beside_dependency`: a local `Size` beside the
+# wrapped `acme-widgets`' `Size`. `App` passes one union off as the other.
+name = "package-local-size-mismatch"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.acme-widgets]
+path = "../dep_widgets"
+
+[test-dependencies]

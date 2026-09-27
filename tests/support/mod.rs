@@ -16,13 +16,29 @@ use zelkova_lang::compiler::parser;
 use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::{Interface, ModuleName, PackageName};
 
-/// A [`QualName`] from its dotted spelling, for hand-built canonical types.
-pub fn qual(name: &str) -> QualName {
-    QualName::parse(name).expect("a qualified name needs a module prefix")
-}
-
+/// The package every module the helpers below parse or canonicalize belongs to.
 pub fn test_package() -> PackageName {
     PackageName::new("test-project").unwrap()
+}
+
+/// A [`QualName`] from its dotted spelling, declared in `package`, for hand-built
+/// canonical types and expected values.
+///
+/// A qualified name carries the package that declares it, so a test spells the package
+/// too — through this or one of the two shorthands below rather than by hand.
+pub fn qual_in(package: &PackageName, name: &str) -> QualName {
+    QualName::parse(package.clone(), name).expect("a qualified name needs a module prefix")
+}
+
+/// A name declared by a module of [`test_package`] — the module under test's own.
+pub fn test_qual(name: &str) -> QualName {
+    qual_in(&test_package(), name)
+}
+
+/// A name declared by `zelkova-core`: a scalar, or a union of one of the hand-built
+/// interfaces below, which all stand in for `zelkova-core`'s modules.
+pub fn core_qual(name: &str) -> QualName {
+    qual_in(&PackageName::core(), name)
 }
 
 pub fn parse_source(source: &str) -> parser::Module {
@@ -34,6 +50,17 @@ pub fn canonicalize_standalone(source: &str) -> Result<canonical::Module, Vec<ca
     let parsed = parse_source(source);
     let interfaces = HashMap::new();
     canonical::canonicalize(&test_package(), &interfaces, &parsed, false)
+}
+
+/// Canonicalize `source` as a module of `zelkova-core`, with no interfaces available —
+/// what a test declaring one of [the scalars](../../docs/spec/types.md#scalar-types)
+/// needs, since a scalar is declared in `zelkova-core` and nowhere else.
+pub fn canonicalize_core_standalone(
+    source: &str,
+) -> Result<canonical::Module, Vec<canonical::Error>> {
+    let parsed = parse_source(source);
+    let interfaces = HashMap::new();
+    canonical::canonicalize(&PackageName::core(), &interfaces, &parsed, false)
 }
 
 /// Canonicalize `source` as a module of a package exempt from [the default
@@ -67,7 +94,7 @@ pub fn maybe_interface() -> (Name, Interface) {
     let type_var = |name: &str| canonical::Type::Variable(name.into());
     // A canonical type names its declaration in full, so the `Maybe` this
     // interface exports is `Maybe.Maybe`.
-    let type_hk = |name: &str, params| canonical::Type::Type(qual(name), params);
+    let type_hk = |name: &str, params| canonical::Type::Type(core_qual(name), params);
     let type_fun = |t1, t2| canonical::Type::Arrow(Box::new(t1), Box::new(t2));
 
     let mut values = HashMap::new();
@@ -123,19 +150,19 @@ pub fn maybe_interface() -> (Name, Interface) {
                 canonical::TypeConstructor {
                     name: "Just".into(),
                     type_parameters: vec![canonical::Type::Variable("a".into())],
-                    tpe: qual("Maybe.Maybe"),
+                    tpe: core_qual("Maybe.Maybe"),
                 },
                 canonical::TypeConstructor {
                     name: "Nothing".into(),
                     type_parameters: vec![],
-                    tpe: qual("Maybe.Maybe"),
+                    tpe: core_qual("Maybe.Maybe"),
                 },
             ],
         },
     );
 
     let interface = Interface {
-        module_name: ModuleName::new(PackageName::new("zelkova-core").unwrap(), "Maybe".into()),
+        module_name: ModuleName::new(PackageName::core(), "Maybe".into()),
         values,
         unions,
         infixes: HashMap::new(),
@@ -168,7 +195,7 @@ pub fn basics_interface() -> (Name, Interface) {
             .map(|variant| canonical::TypeConstructor {
                 name: (*variant).into(),
                 type_parameters: vec![],
-                tpe: qual(&format!("Basics.{}", name)),
+                tpe: core_qual(&format!("Basics.{}", name)),
             })
             .collect(),
     };
@@ -179,7 +206,7 @@ pub fn basics_interface() -> (Name, Interface) {
     unions.insert("Bool".into(), union("Bool", &["True", "False"]));
 
     let interface = Interface {
-        module_name: ModuleName::new(PackageName::new("zelkova-core").unwrap(), "Basics".into()),
+        module_name: ModuleName::new(PackageName::core(), "Basics".into()),
         values: HashMap::new(),
         unions,
         infixes: HashMap::new(),
@@ -206,7 +233,7 @@ pub fn char_interface() -> (Name, Interface) {
     );
 
     let interface = Interface {
-        module_name: ModuleName::new(PackageName::new("zelkova-core").unwrap(), "Char".into()),
+        module_name: ModuleName::new(PackageName::core(), "Char".into()),
         values: HashMap::new(),
         unions,
         infixes: HashMap::new(),

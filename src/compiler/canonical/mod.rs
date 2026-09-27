@@ -266,8 +266,8 @@ pub struct TypeConstructor {
     pub name: Name,
     /// The types of the parameters
     pub type_parameters: Vec<Type>,
-    /// The type's name once constructed, qualified by the module that declared
-    /// it — `Widget.Size` for a `type Size = …` written in `Widget`.
+    /// The type's name once constructed, qualified by the package and module that
+    /// declared it — `Widget.Size` for a `type Size = …` written in `Widget`.
     ///
     /// Qualified for the same reason [`Type::Type`]'s head is (`AST-4`): a
     /// constructor travels into every module that imports it, and the type it
@@ -320,13 +320,15 @@ pub enum Type {
     /// The module is part of the identity of the type, not decoration on it: a
     /// `type Size` in `Widget` and a `type Size` in `Gadget` are two types, and
     /// two values of them are interchangeable nowhere. Carrying only the
-    /// spelling made them one value here, which is what `AST-4` closed.
+    /// spelling made them one value here, which is what `AST-4` closed. The
+    /// package is part of it for the same reason: a local `Size` and a wrapped
+    /// dependency's, reached as `AcmeWidgets.Size`, both declare `Size.Size`.
     ///
     /// The name is the *declaration's*, never the spelling that reached it.
     /// `import Widget as W` followed by `W.Size` records `Widget.Size`, the same
     /// rule [name resolution](../../../docs/spec/name-resolution.md) states for
     /// values: an alias names a route to a declaration and not a second
-    /// declaration.
+    /// declaration. A dependency's namespace is a route too.
     Type(QualName, Vec<Type>),
     // Record
     // Unit
@@ -613,8 +615,9 @@ pub enum ExpressionKind {
     /// output keeps one directory per package
     /// ([`DEC-18` decision 5](../../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)).
     VarForeign(QualName, PackageName, Type),
-    /// A union constructor, named by the module that declared its union whichever
-    /// module the reference is written in.
+    /// A union constructor, named by the package and module that declared its union
+    /// whichever module the reference is written in. The [`QualName`] carries the
+    /// package: `AcmeWidgets.Size.Small` and a local `Size.Small` are two constructors.
     VarConstructor(QualName, Type),
     Char(char),
     Int(i64),
@@ -674,15 +677,12 @@ impl Expression {
                     ValueType::TopLevel => {
                         ExpressionKind::VarTopLevel(env.module_name().qualify_name(name))
                     }
-                    // Named by the module that declared the value, `m`. The written
-                    // spelling is bare for an exposed value and carries a module or an
-                    // alias for a qualified one (`Js.Basics.add`), and only its last
-                    // segment is the value's own name.
+                    // Named by the package and module that declared the value, `m`. The
+                    // written spelling is bare for an exposed value and carries a module
+                    // or an alias for a qualified one (`Js.Basics.add`), and only its
+                    // last segment is the value's own name.
                     ValueType::Foreign(m, _source, tpe, _origin) => {
-                        let declared = name
-                            .to_qual()
-                            .map(|written| written.unqualified_name())
-                            .unwrap_or_else(|| name.clone());
+                        let declared = name.last_segment();
                         ExpressionKind::VarForeign(
                             m.qualify_name(&declared),
                             m.package().clone(),
@@ -723,15 +723,12 @@ impl Expression {
                     )
                 };
 
-                // Named by the module that declared the union, the way `VarForeign` is
-                // named by the module that declared the value — not by the spelling the
-                // source wrote, which is bare for an exposed constructor and carries the
-                // importer's alias for a qualified one. `qualify_with_name` declines only
-                // an empty module name, which a union's qualified name never has.
-                let name = ctor
-                    .name
-                    .qualify_with_name(&ctor.tpe.module_name())
-                    .unwrap_or_else(|| env.module_name().qualify_name(name));
+                // Named by the package and module that declared the union, the way
+                // `VarForeign` is named by the ones that declared the value — not by the
+                // spelling the source wrote, which is bare for an exposed constructor and
+                // carries the importer's alias or a dependency's namespace for a
+                // qualified one.
+                let name = ctor.tpe.sibling(&ctor.name);
 
                 ExpressionKind::VarConstructor(name, tpe)
             }

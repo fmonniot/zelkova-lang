@@ -285,13 +285,17 @@ mod tests {
 
     /// `Basics.Bool`, written out rather than taken from [`bool_type`].
     ///
-    /// Which module declared the union is the whole of its identity, so an assertion
-    /// built from the function under test would hold for any name that function
-    /// picked — including a bare `Bool`, which would make every module's own `Bool`
-    /// an `if` condition ([`DEC-15`](../../../docs/decisions/dec-15.md) decision 1).
+    /// Which package and module declared the union is the whole of its identity, so an
+    /// assertion built from the function under test would hold for any name that
+    /// function picked — including a bare `Bool`, which would make every module's own
+    /// `Bool` an `if` condition ([`DEC-15`](../../../docs/decisions/dec-15.md) decision 1).
     fn basics_bool() -> Type {
         Type::Adt(
-            crate::compiler::name::QualName::parse("Basics.Bool").expect("a qualified name"),
+            crate::compiler::name::QualName::in_module(
+                crate::compiler::PackageName::core(),
+                "Basics",
+                "Bool",
+            ),
             vec![],
         )
     }

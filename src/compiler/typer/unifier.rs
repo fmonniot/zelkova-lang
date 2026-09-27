@@ -206,7 +206,11 @@ mod tests {
     #[test]
     fn a_bool_from_another_module_is_a_different_type() {
         let local_bool = Type::Adt(
-            crate::compiler::name::QualName::parse("Example.Bool").expect("a qualified name"),
+            crate::compiler::name::QualName::in_module(
+                crate::compiler::PackageName::core(),
+                "Example",
+                "Bool",
+            ),
             vec![],
         );
         let constraints = vec![constraint(local_bool, bool_type())];
@@ -218,6 +222,30 @@ mod tests {
             }
             other => panic!("expected a unification failure, got {:?}", other),
         }
+    }
+
+    /// `Basics.Bool` declared by a package other than `zelkova-core` is a third type:
+    /// the package is as much a part of a union's identity as its module.
+    ///
+    /// Mutation-checked by leaving the package out of `QualName`'s equality (deriving
+    /// `PartialEq` by hand over `module` and `name` only): the two unify and the
+    /// assertion goes red.
+    #[test]
+    fn a_bool_from_another_package_is_a_different_type() {
+        let rival_bool = Type::Adt(
+            crate::compiler::name::QualName::in_module(
+                crate::compiler::PackageName::new("acme-basics").unwrap(),
+                "Basics",
+                "Bool",
+            ),
+            vec![],
+        );
+        let constraints = vec![constraint(rival_bool, bool_type())];
+
+        assert!(matches!(
+            unify(constraints),
+            Err(ErrorKind::UnificationFailed { .. })
+        ));
     }
 
     #[test]

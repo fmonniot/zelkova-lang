@@ -1,0 +1,14 @@
+# `acme-basics` declares a module `Basics` with `type Int = Int`. Wrapped, it is
+# `AcmeBasics.Basics` and collides with nothing — and its `Int` is still not the
+# scalar, which only `zelkova-core`'s `Basics` declares.
+name = "package-wrapped-rival-basics"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../dep_core"
+
+[dependencies.acme-basics]
+path = "../dep_rival_basics"
+
+[test-dependencies]

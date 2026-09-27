@@ -1,0 +1,4 @@
+module Size exposing (Size(..))
+
+
+type Size = Mine

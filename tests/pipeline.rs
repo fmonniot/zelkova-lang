@@ -23,6 +23,7 @@ use zelkova_lang::compiler::resolve;
 use zelkova_lang::compiler::source::{
     load_package_sources, load_package_sources_into, SourceFiles, SourceRoot,
 };
+use zelkova_lang::compiler::typer;
 use zelkova_lang::compiler::{
     check_module, compile_package, compile_package_with_tests, parser, CheckedModule,
     CompilationError, Interface, PackageName, PhaseError,
@@ -2658,7 +2659,11 @@ fn a_parse_failure_does_not_also_report_its_module_as_unheld() {
 /// so a test that has to look *inside* a checked module drives the walker with the
 /// real `check_module` instead — the same seam
 /// `check_in_order_keeps_passing_siblings_with_the_real_checker` uses.
-fn check_fixture(name: &str) -> Vec<CheckedModule> {
+///
+/// `package` is the package the fixture's modules are checked as, whatever its manifest
+/// says: a fixture standing in for `std/core` is checked as `zelkova-core`, since that is
+/// the one package whose `Basics` declares the scalars.
+fn check_fixture(name: &str, package: &PackageName) -> Vec<CheckedModule> {
     let root = fixture_package(name);
     let sources = load_package_sources(&root, SourceRoot::Src)
         .unwrap_or_else(|e| panic!("failed to load sources from {:?}: {:?}", root, e));
@@ -2674,12 +2679,8 @@ fn check_fixture(name: &str) -> Vec<CheckedModule> {
     let walker =
         ModuleWalker::new(&modules, &module_files).expect("no dependency cycle in the fixture");
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
-    let (checked, _errors) = walker.check_in_order(
-        &test_package(),
-        &mut interfaces,
-        &module_files,
-        check_module,
-    );
+    let (checked, _errors) =
+        walker.check_in_order(package, &mut interfaces, &module_files, check_module);
 
     checked
 }
@@ -2755,7 +2756,7 @@ fn foreign_names(value: &canonical::Value) -> Vec<String> {
 fn basics_interface_with_plus() -> (Name, Interface) {
     use zelkova_lang::compiler::position::NodeSpan;
 
-    let int_type = canonical::Type::Type(qual("Basics.Int"), vec![]);
+    let int_type = canonical::Type::Type(core_qual("Basics.Int"), vec![]);
     let add_type = canonical::Type::Arrow(
         Box::new(int_type.clone()),
         Box::new(canonical::Type::Arrow(
@@ -2776,7 +2777,7 @@ fn basics_interface_with_plus() -> (Name, Interface) {
             variants: vec![canonical::TypeConstructor {
                 name: "Int".into(),
                 type_parameters: vec![],
-                tpe: qual("Basics.Int"),
+                tpe: core_qual("Basics.Int"),
             }],
         },
     );
@@ -2863,7 +2864,10 @@ fn default_imports_resolve_without_an_import_line() {
 /// why `check_fixture` does not assert the package compiled as a whole.
 #[test]
 fn an_explicit_default_import_still_compiles() {
-    let checked = check_fixture("package_default_imports");
+    // Its `Basics` stands in for `std/core`'s, `Int` included, so it is checked as
+    // `zelkova-core`: the literals in `1 + 2` are the scalar `Int`, and a `Basics` of
+    // any other package declares an ordinary one.
+    let checked = check_fixture("package_default_imports", &PackageName::core());
     let y = checked_value(&checked, "Explicit", "y");
 
     assert_eq!(
@@ -3886,15 +3890,14 @@ fn two_modules_under_one_name_are_reported_before_anything_is_compiled() {
     );
 }
 
-/// The collision case the scalar types depend on: an unwrapped dependency declaring
-/// its own `Basics` against `zelkova-core`'s, which is always unwrapped.
+/// An unwrapped dependency declaring its own `Basics` collides with `zelkova-core`'s,
+/// which is always unwrapped: two modules answer to the spelling `Basics`, so the
+/// package's `Int` has no one declaration to resolve to.
 ///
-/// `src/compiler/scalars.rs` recognises a scalar by the bare qualified name
-/// `Basics.Int`, with no package in it ([`DEC-15` decision 1]). What keeps that name
-/// pointing at one declaration is this rule: two modules named `Basics` in one
-/// package is an error, so `Int` in any module resolves to exactly one `Basics`.
-/// Both fixtures here declare `type Int = Int`, so without the rule the two would be
-/// indistinguishable to every phase after canonicalization.
+/// The scalars do not rest on this rule — `src/compiler/scalars.rs` recognises one by a
+/// qualified name that includes `zelkova-core` ([`DEC-15` decision 1]), which
+/// [`a_wrapped_dependencys_basics_declares_no_scalar`] pins — but the spelling is still
+/// ambiguous, and that is reported before any module is compiled.
 ///
 /// Mutation-checked the same way as the test above, and additionally by dropping the
 /// `CORE_PACKAGE` arm of `seen_unwrapped`: `zelkova-core` is then wrapped, its
@@ -3933,6 +3936,133 @@ fn a_dependencys_basics_collides_with_cores() {
         "nothing in this package may be compiled, got {:?}",
         error
     );
+}
+
+// ── A package is part of a type's identity ──────────────────────────────────
+//
+// A module's name is unique within its package and not across a build, so a package
+// may hold its own `Size` beside a wrapped dependency's `AcmeWidgets.Size`. The two
+// `Size.Size` unions are two types, and a dependency's own `Basics` declares no scalar
+// ([*What a package boundary cannot
+// rename*](../docs/spec/packages.md#what-a-package-boundary-cannot-rename)).
+
+/// Every type error in a failed build, each with the module it was found in.
+fn type_errors(error: &CompilationError) -> Vec<(&Name, &typer::Error)> {
+    accumulated(error)
+        .into_iter()
+        .filter_map(|error| match unwrap_in_file(error) {
+            CompilationError::Type(errors, module) => {
+                Some(errors.iter().map(move |error| (module, error)))
+            }
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
+/// A local `Size.Size` and a wrapped dependency's `AcmeWidgets.Size.Size` share a module
+/// name and a type name, and are still two types: passing one off as the other is a type
+/// error, and the message names each union the way this package spells it.
+///
+/// The message is asserted whole because `Size.Size` is a substring of
+/// `AcmeWidgets.Size.Size`: written by its declaring module's name alone, the
+/// dependency's union would read `Size.Size` too, and the sentence would say nothing.
+///
+/// Mutation-checked by leaving the package out of `QualName`'s equality (deriving
+/// `PartialEq` and `Hash` by hand over `module` and `name` only): the two unions unify,
+/// the build succeeds and `expect_err` panics. Separately, by writing a qualified union
+/// by `name.to_name()` in `Type::write` instead of through `Spellings::spell`: the
+/// message reads `Size.Size` twice and the assertion goes red.
+#[test]
+fn a_local_module_and_a_dependencys_of_one_name_declare_two_types() {
+    let root = fixture_package("package_local_size_mismatch");
+
+    let error = compile_package(&root).expect_err("`Size.Size` is not `AcmeWidgets.Size.Size`");
+
+    let errors = type_errors(&error);
+    let [(module, error)] = errors.as_slice() else {
+        panic!("expected one type error, got {:?}", error);
+    };
+
+    assert_eq!(module.as_str(), "App");
+    assert_eq!(error.declaration.as_str(), "f");
+    assert!(
+        matches!(error.kind, typer::ErrorKind::UnificationFailed { .. }),
+        "expected a unification failure, got {:?}",
+        error.kind
+    );
+    assert_eq!(
+        error.message(),
+        "cannot match `AcmeWidgets.Size.Size` with `Size.Size`"
+    );
+}
+
+/// In the same pair, the local module `Size` builds the dependency's union with the
+/// dependency's constructor, and that checks: `AcmeWidgets.Size.Small` is a constructor
+/// of `AcmeWidgets.Size.Size`, whatever this module's own union is called. So does
+/// reading the dependency's `small`, although this module declares a `small` of its own.
+///
+/// A declaration the typer could not type is not an error until the build is emitted,
+/// so the assertion is on the whole build rather than on the module's type check: an
+/// untyped `theirs` fails emission as `Unchecked`. What the emitted `Size.mjs` makes of
+/// `theirs` is not asserted — naming a hoisted constructor constant by its package is
+/// [`BUG-40`](../docs/tickets/bug-40.md)'s, which compiles this same fixture.
+///
+/// Mutation-checked by leaving the package out of `QualName`'s equality (deriving
+/// `PartialEq` and `Hash` by hand over `module` and `name` only): this module's own
+/// `Size.Size` then replaces the dependency's in `Translation::of`, `Small` is a
+/// constructor of no union the typer can see, and the build fails with `Emit([Unchecked
+/// { name: "theirs" }])`. Separately, by leaving the package out of `environment_key`:
+/// this module's `small` then replaces the dependency's in the typer's environment,
+/// `theirsSmall` is a type error and the build fails.
+#[test]
+fn a_dependencys_names_resolve_beside_a_local_module_of_the_same_name() {
+    let build_dir =
+        fresh_build_dir("a_dependencys_names_resolve_beside_a_local_module_of_the_same_name");
+
+    let result = zelkova_lang::compiler::compile_package_into(
+        &fixture_package("package_local_size_beside_dependency"),
+        &build_dir,
+    );
+
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+/// A wrapped dependency's own `Basics` collides with nothing — its spelling is
+/// `AcmeBasics.Basics` — and its `type Int = Int` declares an ordinary union, not the
+/// scalar: a scalar is declared in `zelkova-core` and in no other package. So neither
+/// passing it off as `Int` nor giving it a literal type checks.
+///
+/// Mutation-checked by dropping the package comparison from `Scalar::declares`:
+/// `AcmeBasics.Basics.Int` is then the scalar, both declarations check and
+/// `expect_err` panics.
+#[test]
+fn a_wrapped_dependencys_basics_declares_no_scalar() {
+    let root = fixture_package("package_wrapped_rival_basics");
+
+    let error =
+        compile_package(&root).expect_err("`AcmeBasics.Basics.Int` is not the scalar `Int`");
+
+    assert!(
+        resolution_errors(&error).is_empty(),
+        "a wrapped `Basics` collides with nothing, got {:?}",
+        error
+    );
+
+    let mut failed: Vec<(&str, &str)> = type_errors(&error)
+        .into_iter()
+        .map(|(module, error)| {
+            assert!(
+                matches!(error.kind, typer::ErrorKind::UnificationFailed { .. }),
+                "expected a unification failure, got {:?}",
+                error.kind
+            );
+            (module.as_str(), error.declaration.as_str())
+        })
+        .collect();
+    failed.sort_unstable();
+
+    assert_eq!(failed, vec![("App", "f"), ("App", "g")]);
 }
 
 /// A package that depends on itself through a chain is reported rather than followed

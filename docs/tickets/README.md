@@ -254,7 +254,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-34](bug-34.md) | bug | low | open | A failed sub-pass in `canonicalize` reports as if it found nothing, cascading into spurious errors from every later pass that depended on it |
 | BUG-35 | bug | medium | closed 2026-09-16 | The typer identifies a union type by its unqualified name, so two modules' `Size` are one type |
 | BUG-36 | bug | medium | closed 2026-09-23 | A value that reaches an imported constructor or an imported value is never type checked |
-| [BUG-37](bug-37.md) | bug | high | open | A package is not part of a type's identity, so two packages' same-named modules are one type |
+| BUG-37 | bug | high | closed 2026-09-27 | A package is not part of a type's identity, so two packages' same-named modules are one type |
 | [BUG-38](bug-38.md) | bug | high | open | A parameterless binding that reaches another only through a function it calls is not ordered after it |
 | BUG-39 | bug | medium | closed 2026-09-23 | A function parameter pattern other than a variable or `_` is never type checked |
 | [BUG-40](bug-40.md) | bug | high | open | Two same-named modules from different packages, both imported, emit colliding local import bindings |

@@ -28,15 +28,15 @@ use support::*;
 /// [`canonicalize_with_scalars`] arranges; a module handed an empty interface
 /// map has no `Int` at all and is rejected for naming one.
 fn int_t() -> canonical::Type {
-    canonical::Type::Type(qual("Basics.Int"), vec![])
+    canonical::Type::Type(core_qual("Basics.Int"), vec![])
 }
 
 fn char_t() -> canonical::Type {
-    canonical::Type::Type(qual("Char.Char"), vec![])
+    canonical::Type::Type(core_qual("Char.Char"), vec![])
 }
 
 fn bool_t() -> canonical::Type {
-    canonical::Type::Type(qual("Basics.Bool"), vec![])
+    canonical::Type::Type(core_qual("Basics.Bool"), vec![])
 }
 
 /// Canonicalize `source` with `Basics` and `Char` available, so a bare `Int`,
@@ -225,7 +225,7 @@ fn union_type_definition_and_constructor() {
         assert_eq!(v.type_parameters, vec![], "Color variants take no params");
         assert_eq!(
             v.tpe,
-            qual("Test.Color"),
+            test_qual("Test.Color"),
             "variant tpe points back to Test's Color"
         );
     }
@@ -234,7 +234,7 @@ fn union_type_definition_and_constructor() {
     // `Color` is in env so `Type::from_parser_type` returns
     // `Type::Type("Test.Color", [])` for the annotation — the head names the
     // module that declared it.
-    let color_t = canonical::Type::Type(qual("Test.Color"), vec![]);
+    let color_t = canonical::Type::Type(test_qual("Test.Color"), vec![]);
 
     // `Red` as a TypeConstructor expression:
     //   - no type params → tpe = Type::Type("Test.Color", [])
@@ -248,7 +248,7 @@ fn union_type_definition_and_constructor() {
             annotation_span: NodeSpan::none(),
             name: "favorite".into(),
             patterns: vec![],
-            body: c_var_ctor(QualName::from("Test.Red"), color_t.clone()),
+            body: c_var_ctor(test_qual("Test.Red"), color_t.clone()),
             tpe: color_t,
         }
     );
@@ -273,7 +273,7 @@ fn case_expression_local_maybe() {
     // declaration as `Test.Maybe`, and `Type::from_parser_type` applies the
     // written argument to that head.
     let maybe_a = canonical::Type::Type(
-        qual("Test.Maybe"),
+        test_qual("Test.Maybe"),
         vec![canonical::Type::Variable("a".into())],
     );
 
@@ -309,7 +309,7 @@ fn case_expression_local_maybe() {
     let just_ctor = canonical::TypeConstructor {
         name: "Just".into(),
         type_parameters: vec![canonical::Type::Variable("a".into())],
-        tpe: qual("Test.Maybe"),
+        tpe: test_qual("Test.Maybe"),
     };
     assert_eq!(branches[0].pattern, p_ctor(just_ctor, vec![p_var("x")]));
     // Expression is Apply(VarConstructor("Test.Just", _), VarLocal("x"))
@@ -326,7 +326,7 @@ fn case_expression_local_maybe() {
     let nothing_ctor = canonical::TypeConstructor {
         name: "Nothing".into(),
         type_parameters: vec![],
-        tpe: qual("Test.Maybe"),
+        tpe: test_qual("Test.Maybe"),
     };
     assert_eq!(branches[1].pattern, p_ctor(nothing_ctor, vec![]));
     // Expression is VarConstructor("Test.Nothing", _)
@@ -920,7 +920,7 @@ fn module_using_imported_maybe() {
     // the written argument (`a`, the variable in this annotation) surviving rather
     // than being replaced by the declaration's own.
     let maybe_t = canonical::Type::Type(
-        qual("Maybe.Maybe"),
+        core_qual("Maybe.Maybe"),
         vec![canonical::Type::Variable("a".into())],
     );
 
@@ -956,14 +956,14 @@ fn module_using_imported_maybe() {
     let just_ctor = canonical::TypeConstructor {
         name: "Just".into(),
         type_parameters: vec![canonical::Type::Variable("a".into())],
-        tpe: qual("Maybe.Maybe"),
+        tpe: core_qual("Maybe.Maybe"),
     };
     assert_eq!(branches[0].pattern, p_ctor(just_ctor, vec![p_var("x")]));
 
     let nothing_ctor = canonical::TypeConstructor {
         name: "Nothing".into(),
         type_parameters: vec![],
-        tpe: qual("Maybe.Maybe"),
+        tpe: core_qual("Maybe.Maybe"),
     };
     assert_eq!(branches[1].pattern, p_ctor(nothing_ctor, vec![]));
 }
@@ -1086,7 +1086,7 @@ fn opaque_import_of_a_parameterised_type_keeps_its_arity() {
         .expect("an opaque `Maybe` applied to one argument should canonicalize");
 
     let maybe_a = canonical::Type::Type(
-        qual("Maybe.Maybe"),
+        core_qual("Maybe.Maybe"),
         vec![canonical::Type::Variable("a".into())],
     );
 
@@ -1127,7 +1127,7 @@ fn qualified_and_unqualified_spellings_canonicalize_to_one_head() {
     let module = canonicalize_with_interfaces(source, &interfaces)
         .expect("both spellings of `Maybe` should canonicalize");
 
-    let maybe_int = canonical::Type::Type(qual("Maybe.Maybe"), vec![int_t()]);
+    let maybe_int = canonical::Type::Type(core_qual("Maybe.Maybe"), vec![int_t()]);
 
     match module.values.get(&"f".into()).unwrap() {
         canonical::Value::TypedValue { tpe, .. } => assert_eq!(
@@ -1168,7 +1168,7 @@ fn a_type_imported_under_an_alias_records_the_declaring_module() {
         .expect("an aliased `Maybe` should canonicalize");
 
     let maybe_a = canonical::Type::Type(
-        qual("Maybe.Maybe"),
+        core_qual("Maybe.Maybe"),
         vec![canonical::Type::Variable("a".into())],
     );
 
@@ -1217,8 +1217,8 @@ fn two_modules_declaring_one_type_name_are_two_types() {
     let module = canonicalize_with_interfaces(source, &interfaces)
         .expect("a module declaring its own `Size` alongside `Widget`'s should canonicalize");
 
-    let own = canonical::Type::Type(qual("Test.Size"), vec![]);
-    let widgets = canonical::Type::Type(qual("Widget.Size"), vec![]);
+    let own = canonical::Type::Type(test_qual("Test.Size"), vec![]);
+    let widgets = canonical::Type::Type(test_qual("Widget.Size"), vec![]);
 
     match module.values.get(&"resize".into()).unwrap() {
         canonical::Value::TypedValue { tpe, .. } => assert_eq!(
@@ -1346,7 +1346,7 @@ fn a_type_declaration_may_name_its_own_module_s_types() {
     let module = canonicalize_standalone(source)
         .expect("a declaration names the types its own module declares");
 
-    let never = canonical::Type::Type(qual("Test.Never"), vec![]);
+    let never = canonical::Type::Type(test_qual("Test.Never"), vec![]);
 
     let argument_of = |type_name: &str, variant: usize| {
         module.types.get(&type_name.into()).unwrap().variants[variant]
@@ -1385,7 +1385,7 @@ fn a_type_declaration_may_name_a_type_declared_below_it() {
 
     assert_eq!(
         module.types.get(&"Holder".into()).unwrap().variants[0].type_parameters,
-        vec![canonical::Type::Type(qual("Test.Flag"), vec![])]
+        vec![canonical::Type::Type(test_qual("Test.Flag"), vec![])]
     );
 }
 
@@ -2273,8 +2273,8 @@ fn unsafe_is_a_facade_constant_name() {
 // language builds or inspects a value of one, so the declaration writes only
 // the type's own name and contributes no constructor. `scalars::opaque_scalar_of`
 // recognises the four by qualified name, so these sources all declare `Basics`
-// — the one module whose `Int` and `Float` are the scalars rather than ordinary
-// types that share the spelling (`BUG-26`).
+// of `zelkova-core` — the one module whose `Int` and `Float` are the scalars
+// rather than ordinary types that share the spelling (`BUG-26`).
 //
 // All three below are mutation-checked by commenting out the
 // `if let Some(scalar) = scalars::opaque_scalar_of(...)` block `do_types` adds:
@@ -2297,8 +2297,8 @@ fn opaque_scalar_int_is_not_a_value_in_basics() {
         useInt = Int
     "#};
 
-    let errors =
-        canonicalize_standalone(source).expect_err("`Int` is a type, not a value, in `Basics`");
+    let errors = canonicalize_core_standalone(source)
+        .expect_err("`Int` is a type, not a value, in `Basics`");
 
     match errors.as_slice() {
         [canonical::Error::VariantNotFound(name, _, _)] => {
@@ -2322,11 +2322,12 @@ fn opaque_scalar_int_rejects_a_body_other_than_itself() {
         type Int = I32
     "#};
 
-    let errors = canonicalize_standalone(source).expect_err("`Int`'s body must be exactly `Int`");
+    let errors =
+        canonicalize_core_standalone(source).expect_err("`Int`'s body must be exactly `Int`");
 
     match errors.as_slice() {
         [canonical::Error::InvalidScalarDeclaration(name, span)] => {
-            assert_eq!(name.to_name().as_str(), "Basics.Int");
+            assert_eq!(*name, core_qual("Basics.Int"));
             let decl = "type Int = I32";
             let start = source.find(decl).expect("source has the declaration");
             assert_eq!(
@@ -2337,6 +2338,34 @@ fn opaque_scalar_int_rejects_a_body_other_than_itself() {
         }
         other => panic!("expected one InvalidScalarDeclaration, got {:?}", other),
     }
+}
+
+/// The check is keyed on the package as well as the module: a `Basics` of any
+/// package but `zelkova-core` declares an ordinary `Int`, whose body is an ordinary
+/// variant list.
+///
+/// Mutation-checked by dropping the package comparison from `Scalar::declares`: the
+/// declaration is then taken for the scalar and rejected as
+/// `InvalidScalarDeclaration`.
+#[test]
+fn another_packages_basics_declares_an_ordinary_int() {
+    let source = indoc::indoc! {r#"
+        module Basics exposing (..)
+
+        type Int = I32
+    "#};
+
+    let module = canonicalize_standalone(source)
+        .expect("`Basics` of a package other than `zelkova-core` declares no scalar");
+
+    let int = module.types.get(&"Int".into()).expect("`Int` is declared");
+    assert_eq!(
+        int.variants
+            .iter()
+            .map(|variant| variant.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["I32"]
+    );
 }
 
 /// The check is keyed on the qualified name, not the spelling: a module that is
@@ -2410,10 +2439,10 @@ fn scalar_types_resolve_in_an_exempt_package_with_no_import() {
             assert_eq!(
                 tpe,
                 &canonical::Type::Arrow(
-                    Box::new(canonical::Type::Type(qual("Basics.Int"), vec![])),
+                    Box::new(canonical::Type::Type(core_qual("Basics.Int"), vec![])),
                     Box::new(canonical::Type::Arrow(
-                        Box::new(canonical::Type::Type(qual("Basics.Float"), vec![])),
-                        Box::new(canonical::Type::Type(qual("Basics.Bool"), vec![])),
+                        Box::new(canonical::Type::Type(core_qual("Basics.Float"), vec![])),
+                        Box::new(canonical::Type::Type(core_qual("Basics.Bool"), vec![])),
                     )),
                 )
             );
@@ -2489,10 +2518,10 @@ fn a_written_basics_import_coexists_with_the_seed() {
             assert_eq!(
                 tpe,
                 &canonical::Type::Arrow(
-                    Box::new(canonical::Type::Type(qual("Basics.Int"), vec![])),
+                    Box::new(canonical::Type::Type(core_qual("Basics.Int"), vec![])),
                     Box::new(canonical::Type::Arrow(
-                        Box::new(canonical::Type::Type(qual("Basics.Float"), vec![])),
-                        Box::new(canonical::Type::Type(qual("Basics.Bool"), vec![])),
+                        Box::new(canonical::Type::Type(core_qual("Basics.Float"), vec![])),
+                        Box::new(canonical::Type::Type(core_qual("Basics.Bool"), vec![])),
                     )),
                 ),
                 "Int (seeded and imported), Float and Bool (seeded only) all resolve to Basics"

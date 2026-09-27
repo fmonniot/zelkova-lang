@@ -136,6 +136,15 @@ impl PackageName {
         &self.0
     }
 
+    /// `zelkova-core`, [`resolve::CORE_PACKAGE`]: the one package the compiler names
+    /// on its own, because it is where the [scalars](scalars) are declared.
+    ///
+    /// Built without going through [`PackageName::new`]'s check, so that naming a scalar
+    /// needs no `unwrap`; that the constant passes the check is a unit test.
+    pub fn core() -> PackageName {
+        PackageName(resolve::CORE_PACKAGE.to_string())
+    }
+
     /// The prefix this package's modules are named through from outside it: the name
     /// split at its hyphens, each piece capitalised, joined —
     /// [*The namespace*](../../docs/spec/packages.md#the-namespace). `acme-widgets` is
@@ -214,9 +223,9 @@ impl ModuleName {
         &self.package
     }
 
-    /// Simple shortcut to qualify a given name with this module's name
+    /// The name `name`, as declared by this module of this package.
     pub fn qualify_name(&self, name: &Name) -> QualName {
-        name.qualify_with_name(&self.name).unwrap()
+        QualName::in_module(self.package.clone(), self.name.as_str(), name.as_str())
     }
 
     fn as_human_string(&self) -> String {
@@ -1711,6 +1720,16 @@ mod tests {
                 if legal { "be" } else { "not be" }
             );
         }
+    }
+
+    /// `PackageName::core` skips `PackageName::new`'s check, so the check is run here
+    /// instead: the one package name the compiler builds on its own is a legal one.
+    #[test]
+    fn the_core_package_name_is_a_legal_one() {
+        assert_eq!(
+            PackageName::new(resolve::CORE_PACKAGE),
+            Ok(PackageName::core())
+        );
     }
 
     /// Canonicalization failures are errors, and used to be rendered as warnings.

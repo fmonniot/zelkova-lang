@@ -15,7 +15,7 @@ use indoc::indoc;
 use zelkova_lang::compiler::javascript::{self, Error};
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::position::NodeSpan;
-use zelkova_lang::compiler::{check_module, CheckedModule, Interface};
+use zelkova_lang::compiler::{check_module, CheckedModule, Interface, PackageName};
 
 mod support;
 
@@ -242,15 +242,18 @@ fn an_int_literal_ends_in_n_and_a_float_literal_does_not() {
 /// `True` and `False` are JavaScript's `true` and `false`, and `Bool` hoists no constant.
 ///
 /// The fixture is a `Basics` of its own, declaring `Bool` itself, so no interface has to
-/// be built for it.
+/// be built for it. It is checked as a module of `zelkova-core`, since a `Bool` declared by
+/// any other package is an ordinary union.
 ///
 /// Mutation-checked by removing the `scalars::BOOL` arm from `value`: the bindings then
 /// read `$Basics$True` and `$Basics$False`. Removing the `Bool` filter from
 /// `hoisted_constructors` separately turns the no-constant assertion red.
 #[test]
 fn true_is_javascripts_true() {
-    let module = checked_against(
-        indoc! {r#"
+    let module = check_module(
+        &PackageName::core(),
+        &HashMap::from([char_interface()]),
+        &parse_source(indoc! {r#"
             module Basics exposing (Bool(..), yes, no)
 
             type Bool = True | False
@@ -262,9 +265,10 @@ fn true_is_javascripts_true() {
             no : Bool
             no =
               False
-        "#},
-        HashMap::from([char_interface()]),
-    );
+        "#}),
+        false,
+    )
+    .unwrap_or_else(|errors| panic!("the module should check: {:?}", errors));
     let text = emit(&module);
 
     assert!(text.contains("const yes = true;"), "got:\n{}", text);

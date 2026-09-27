@@ -1,0 +1,11 @@
+-- `Size.Size` is this package's one-variant union and `AcmeWidgets.Size.Size` is
+-- `acme-widgets`' two-variant one. They share a module name and a type name, and
+-- are still two types.
+module App exposing (f)
+
+import AcmeWidgets.Size
+import Size
+
+
+f : Size.Size -> AcmeWidgets.Size.Size
+f s = s
