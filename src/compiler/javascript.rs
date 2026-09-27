@@ -975,9 +975,11 @@ impl Emitter {
                 match ctor.arity {
                     0 => {
                         let local = hoisted(&ctor.union, &ctor.name);
-                        let declaring =
-                            ModuleName::new(ctor.union.package().clone(), ctor.union.module_name());
-                        if declaring != self.module {
+                        // Compares the full identity field-wise instead of allocating a
+                        // throwaway `ModuleName` just to compare it against `self.module`.
+                        let declared_here = *ctor.union.package() == *self.module.package()
+                            && ctor.union.module_name() == *self.module.name();
+                        if !declared_here {
                             self.imported_constructors
                                 .insert(local.clone(), ctor.name.clone());
                         }
