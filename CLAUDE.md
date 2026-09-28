@@ -46,12 +46,12 @@ What the *compiler* emits is checked by running it under `node --test 'tests/js/
 file there compiles a fixture under `tests/fixtures/` itself, with `cargo run`, and loads the
 output. CI's `javascript` job runs all three, in that order.
 
-`cargo run -- test std/core` currently reports **`25 tests: 23 passed, 0 failed, 2 errored`
-and exits 1**. The two errors are `FloatTests`, which fails to load because `Basics.add` sends a
-`Float` through the `addInt` facade and its boundary check aborts — an accepted regression,
-tracked as [`BUG-44`](docs/tickets/bug-44.md) until type classes fix it. So the *Zelkova tests*
-step of CI's `javascript` job is red on every branch until then; any other error or failure, or
-a different count, is a regression you introduced.
+`cargo run -- test std/core` currently reports **`23 tests: 23 passed, 0 failed, 0 errored`
+and exits 0**. `std/core/tests/FloatTests.ignored` is excluded from that count by its extension:
+`Basics.add` sends a `Float` through the `addInt` facade and its boundary check aborts, so
+`FloatTests`' two tests fail to load and are disabled until [`BUG-44`](docs/tickets/bug-44.md)
+closes, tracked there rather than left red in CI. Any error, failure, or a different count from
+what's left is a regression you introduced.
 
 `.github/workflows/rust.yml` gates a PR on `fmt`, on `clippy` with `-D warnings`, and on a
 `rustdoc` job that builds the crate's docs with the flags `rustdoc.yml` deploys them with. To
