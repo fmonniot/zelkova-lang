@@ -453,7 +453,7 @@ Operators are subject to maximal munch like every other token, so `a<=b` is `a`,
 and an operator only ends where a character outside that set begins. Two consecutive hyphens
 start a comment, so no operator may contain `--`.
 
-Six spellings are punctuation rather than operator names, and may not be declared or
+Seven spellings are punctuation rather than operator names, and may not be declared or
 redefined:
 
 | Spelling | Means |
@@ -464,6 +464,7 @@ redefined:
 | `->` | a function type, and a `case` branch |
 | `.` | separates the parts of a qualified name |
 | `..` | "everything", in an `exposing` list |
+| `=>` | separates a signature's constraint context from its type |
 
 Every other spelling is available. An operator has no meaning of its own: it is a name, bound
 by an `infix` declaration to an ordinary function, and its precedence and associativity are
@@ -520,7 +521,7 @@ either way — it pins the syntax, which is unchanged — and
 
 ## Punctuation
 
-Beyond the six reserved operator spellings above, these characters are tokens in their own
+Beyond the seven reserved operator spellings above, these characters are tokens in their own
 right:
 
 | Token | Used for |

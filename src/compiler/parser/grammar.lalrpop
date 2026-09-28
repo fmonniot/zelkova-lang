@@ -37,6 +37,7 @@ extern {
         "="  => Token::Equal,
         ","  => Token::Comma,
         "->" => Token::Arrow,
+        "=>" => Token::FatArrow,
         "|"  => Token::Pipe,
         "_"  => Token::Underscore,
         "-"  => Token::Minus,
@@ -430,6 +431,24 @@ Type: Type = {
         Type::new(NodeSpan::new(l, r), TypeKind::Arrow(Box::new(tpe1), Box::new(tpe2))),
 }
 
+// A type with an optional constraint context in front of it: `Comparable a => a -> a`.
+//
+// This is its own nonterminal, one layer above `Type` and reachable only from an
+// annotation, because `=>` belongs to a signature and not to a type: a context
+// cannot be nested inside a larger type, so `Size -> (Comparable a => a)` is a
+// parse error. Folding `<ctx:Type> "=>" <t:Type>` into `Type` itself is ambiguous
+// for LALRPOP, which reports it as a precedence error on `Type`.
+//
+// The context is parsed *as a type*, and that is forced rather than convenient: at
+// the `(` of `(Comparable k, Eq v) =>` an LALR(1) parser cannot tell a list of
+// constraints from a two-tuple type, since they are the same tokens. So `Int -> Int
+// => a` parses here too, and canonicalization is what decides whether the left of
+// `=>` is shaped like a context (`canonical::Error::InvalidConstraint`).
+ConstrainedType: (Option<Type>, Type) = {
+    <Type> => (None, <>),
+    <ctx:Type> "=>" <t:Type> => (Some(ctx), t),
+}
+
 // `@L`/`@R` are captured *inside* each declaration production, never around the
 // `Decl` wrapper. `Decl`'s alternatives are `"open block" <X> "close block"` and the
 // layout pass emits those block tokens zero-width, so a span taken at that level
@@ -446,18 +465,18 @@ Type: Type = {
 // `span` covers the modifier when there is one, so a diagnostic about a misplaced
 // `unsafe` has the word under its caret.
 FunType: FunType = {
-    <l:@L> <name:PlainVarIdent> ":" <tpe:Type> <r:@R> =>
-        FunType { name, tpe, marked_unsafe: false, span: NodeSpan::new(l, r) },
+    <l:@L> <name:PlainVarIdent> ":" <tpe:ConstrainedType> <r:@R> =>
+        FunType::assemble(name, tpe, false, NodeSpan::new(l, r)),
 
     // `unsafe : T` — a facade constant of that name, not a modifier with nothing
     // after it.
-    <l:@L> "unsafe" ":" <tpe:Type> <r:@R> =>
-        FunType { name: Name::new("unsafe"), tpe, marked_unsafe: false, span: NodeSpan::new(l, r) },
+    <l:@L> "unsafe" ":" <tpe:ConstrainedType> <r:@R> =>
+        FunType::assemble(Name::new("unsafe"), tpe, false, NodeSpan::new(l, r)),
 
     // `unsafe f : T`. `VarIdent` rather than `PlainVarIdent`, so that the name
     // being marked may itself be `unsafe`.
-    <l:@L> "unsafe" <name:VarIdent> ":" <tpe:Type> <r:@R> =>
-        FunType { name, tpe, marked_unsafe: true, span: NodeSpan::new(l, r) },
+    <l:@L> "unsafe" <name:VarIdent> ":" <tpe:ConstrainedType> <r:@R> =>
+        FunType::assemble(name, tpe, true, NodeSpan::new(l, r)),
 };
 
 // The inner `@L` starts the `Match`: the patterns and the body, without the name

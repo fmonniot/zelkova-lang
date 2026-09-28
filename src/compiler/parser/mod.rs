@@ -173,6 +173,7 @@ impl Module {
 
         let functions = functions.into_iter().map(|(name, decls)| {
             let mut tpe = None;
+            let mut context = None;
             let mut marked_unsafe = false;
             let mut bindings = vec![];
             // The declarations that make one function were parsed independently, so
@@ -196,13 +197,14 @@ impl Module {
                         span = span.merge(t.span);
                         annotation_span = t.span;
                         marked_unsafe = t.marked_unsafe;
+                        context = t.context;
                         tpe.replace(t.tpe);
                     }
                     _ => panic!("Invalid kind of declaration used in functions, report this error ({:?})", d),
                 }
             }
 
-            Function { name, tpe, marked_unsafe, bindings, span, annotation_span }
+            Function { name, tpe, context, marked_unsafe, bindings, span, annotation_span }
         }).collect::<Vec<_>>();
 
         Module {
@@ -236,6 +238,9 @@ impl Module {
 pub struct Function {
     pub name: Name,
     pub tpe: Option<Type>,
+    /// What the annotation wrote in front of `=>`, if anything — see
+    /// [`FunType::context`]. Always `None` when `tpe` is.
+    pub context: Option<Type>,
     /// True when this function's annotation was written `unsafe name : Type`.
     ///
     /// Read off the [`FunType`] that contributed the annotation, so a function
@@ -354,7 +359,27 @@ pub struct Import {
 #[derive(Debug, PartialEq)]
 pub struct FunType {
     pub name: Name,
+    /// The type after `=>`, or the whole annotation when there is no context.
     pub tpe: Type,
+    /// What was written in front of `=>` — `Comparable a` in
+    /// `min : Comparable a => a -> a -> a` — or `None` for an unconstrained
+    /// annotation.
+    ///
+    /// It is a [`Type`] and not yet a list of constraints, because the grammar
+    /// cannot tell the two apart: `(Comparable k, Eq v)` is the same tokens as a
+    /// two-tuple type, so the `ConstrainedType` production parses the context as a
+    /// type and anything type-shaped reaches here, `Int -> Int` included.
+    /// Canonicalization is what checks that it is one constraint or a tuple of
+    /// them, where its errors carry a span like every other.
+    ///
+    /// A context is a property of a *signature*, so it lives on the signature
+    /// rather than as a [`TypeKind`] variant. `TypeKind` is the shape of every type
+    /// the parser builds, variants and nested arguments included, and a
+    /// `Constrained` case there would be one that every match over it had to handle
+    /// while only ever being legal at the top of an annotation. Here the grammar
+    /// cannot put one anywhere else, and a `class` or `instance` head — the other
+    /// place `=>` is written — reuses the same production and the same pair.
+    pub context: Option<Type>,
     /// True when the annotation was written `unsafe name : Type`.
     ///
     /// The word only means something on a [facade](../../../docs/spec/interop.md)
@@ -439,6 +464,29 @@ pub struct FunBinding {
     pub pattern: Match,
     /// Where this one binding — patterns and body — was written.
     pub span: NodeSpan,
+}
+
+impl FunType {
+    /// Build a signature out of the pieces the grammar captured. The grammar has
+    /// one production per way of spelling the name and the `unsafe` modifier, and
+    /// this is the body they share; `constrained` is what `ConstrainedType`
+    /// produced, the context first.
+    fn assemble(
+        name: Name,
+        constrained: (Option<Type>, Type),
+        marked_unsafe: bool,
+        span: NodeSpan,
+    ) -> FunType {
+        let (context, tpe) = constrained;
+
+        FunType {
+            name,
+            tpe,
+            context,
+            marked_unsafe,
+            span,
+        }
+    }
 }
 
 impl FunBinding {

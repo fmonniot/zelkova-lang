@@ -13,9 +13,15 @@ use unic_ucd_category::GeneralCategory;
 pub enum Token {
     UpperIdentifier(String),
     LowerIdentifier(String),
-    Integer { value: i64 }, // web assembly support i/f 32/64
-    Float { value: f64 },
-    Char { value: char },
+    Integer {
+        value: i64,
+    }, // web assembly support i/f 32/64
+    Float {
+        value: f64,
+    },
+    Char {
+        value: char,
+    },
     True,
     False,
     Operator(String),
@@ -31,6 +37,10 @@ pub enum Token {
     RBracket,
     Comma,
     Arrow,
+    /// `=>`, which separates a signature's constraint context from its type
+    /// (`Comparable a => a -> a -> a`). A symbol of the language rather than an
+    /// operator name, so it cannot be declared with `infix` or exposed as `(=>)`.
+    FatArrow,
     Dot,
     DotDot,
     Underscore,
@@ -871,6 +881,7 @@ where
             "=" => Token::Equal,
             ":" => Token::Colon,
             "->" => Token::Arrow,
+            "=>" => Token::FatArrow,
             "-" => Token::Minus,
             _ => Token::Operator(buf),
         };
@@ -1363,6 +1374,24 @@ mod tests {
                 op("|>"),
                 op("<|"),
                 Token::Pipe
+            ]
+        );
+    }
+
+    /// `=>` is its own token, the separator of a constraint context, and a longer
+    /// run of operator characters that merely starts with it is still one ordinary
+    /// operator: the table matches the whole run, not a prefix of it.
+    ///
+    /// Verified to fail by deleting the `"=>" => Token::FatArrow` arm, which makes
+    /// the first token `Operator("=>")`.
+    #[test]
+    fn fat_arrow() {
+        assert_eq!(
+            tokenize("=> =>> ="),
+            vec![
+                Token::FatArrow,
+                Token::Operator("=>>".to_owned()),
+                Token::Equal
             ]
         );
     }

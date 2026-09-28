@@ -9,9 +9,9 @@ Some(Token::Javascript)` and its siblings) and the `Token` enum;
 `src/compiler/parser/layout.rs` — `Context`, `Contexts`, and `Layout::handle_next_token`'s
 explicit-pop match; `src/compiler/parser/grammar.lalrpop` — `VarIdent`, `AtomicType`, `Union`,
 `Decl`; `src/compiler/parser/mod.rs` — `Declaration`; `src/compiler/canonical/mod.rs` —
-`Module`, `from_parser_module`.
+`Module`, `canonicalize`.
 
-**Depends on:** [LANG-37](lang-37.md), for the `=>` token — a superclass context is written in
+**Depends on:** [LANG-37](README.md), closed, for the `=>` token — a superclass context is written in
 the class head (`class Eq a => Comparable a where`) and reuses the same `ConstrainedType`
 production. [LANG-9](README.md) is closed, so the parenthesised type argument an instance head
 like `instance Comparable (List a)` needs already parses.
@@ -131,7 +131,13 @@ same treatment.
 
    So `class` takes signatures and `instance` takes bindings, and both validate `head` into
    (superclass context, class name, arguments) afterwards — reusing `LANG-37`'s validation, and
-   raising a real error for a head that is not shaped like one.
+   raising a real error for a head that is not shaped like one. Two things `LANG-37`'s
+   validation does not do for it. `validate_context` accepts a tuple, which is right for a
+   superclass context and wrong for the head, so the head needs a check that it is one
+   constraint. And a member signature is a `FunType`, so one written
+   `compare : Eq b => a -> b -> Order` arrives with `FunType::context` set: the conversion has to
+   read that field, whatever the chapter decides a member's context means, and not drop it the
+   way `canonicalize` drops an annotation's today.
 
    **Decided (`SPEC-14`, by the language owner):** each body has a second shape, and both are
    this ticket's to parse. An `instance` body may be the single word `derived` instead of the
@@ -151,7 +157,7 @@ same treatment.
    [LANG-39](lang-39.md).
 
 4. **Both ASTs, same commit.** `parser::Declaration` gains `Class` and `Instance` variants,
-   `canonical::Module` gains somewhere to hold them, and `from_parser_module` converts. What
+   `canonical::Module` gains somewhere to hold them, and `canonicalize` converts. What
    canonicalization *does* with them — resolution, the orphan rule, the instance environment —
    is [LANG-39](lang-39.md); this ticket only has to get them across the boundary without
    dropping anything. `CLAUDE.md`'s invariant is explicit that silently dropping a construct

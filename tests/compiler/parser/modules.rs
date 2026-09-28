@@ -320,6 +320,75 @@ fn infix_precedence_over_255_is_an_error() {
     }
 }
 
+/// `=>` separates a constraint context from a type, so it is a token of the
+/// language and no longer an operator name: `infix left 5 (=>) = f` compiled
+/// before `LANG-37` and is deliberately a parse error now
+/// ([`docs/spec/type-classes.md`](../../../docs/spec/type-classes.md#the-words-this-reserves)).
+/// The parser stops on the `=>` itself, where an operator name was expected.
+///
+/// Verified to fail by deleting the `"=>" => Token::FatArrow` arm of the
+/// tokenizer's operator table: `=>` is then an ordinary `Operator` and the module
+/// parses.
+#[test]
+fn fat_arrow_cannot_be_declared_as_an_infix_operator() {
+    use codespan_reporting::files::SimpleFile;
+    use zelkova_lang::compiler::parser::tokenizer::Token;
+
+    let source = indoc::indoc! {r#"
+    module Main exposing (..)
+
+    infix left 5 (=>) = f
+
+    f : Int -> Int -> Int
+    f a b =
+      a
+    "#}
+    .to_string();
+    let file = SimpleFile::new(
+        "fat_arrow_cannot_be_declared_as_an_infix_operator".to_owned(),
+        source.clone(),
+    );
+
+    let error = parser::parse(&file).expect_err("`=>` is not an operator name");
+
+    match error {
+        parser::Error::UnexpectedToken { token, .. } => {
+            assert_eq!(token.value, Token::FatArrow);
+            let start = source.find("=>").expect("source has the `=>`");
+            assert_eq!(token.span.to_range(), start..start + 2);
+        }
+        other => panic!("expected UnexpectedToken at `=>`, got {:?}", other),
+    }
+}
+
+/// A constraint context belongs to a signature and is written once, at its
+/// front. `ConstrainedType` is reachable only from an annotation, so a context
+/// nested inside a type is a parse error at its `=>`.
+///
+/// Verified to fail by replacing `AtomicType`'s `"(" <Type> ")"` alternative with
+/// `"(" <c:ConstrainedType> ")" => c.1`, which lets the nested context parse.
+#[test]
+fn constraint_context_nested_in_a_type_is_a_parse_error() {
+    use codespan_reporting::files::SimpleFile;
+    use zelkova_lang::compiler::parser::tokenizer::Token;
+
+    let source = indoc::indoc! {r#"
+    module Main exposing (..)
+
+    f : Int -> (Comparable a => a)
+    "#}
+    .to_string();
+    let file = SimpleFile::new(
+        "constraint_context_nested_in_a_type_is_a_parse_error".to_owned(),
+        source,
+    );
+
+    match parser::parse(&file).expect_err("a nested context must not parse") {
+        parser::Error::UnexpectedToken { token, .. } => assert_eq!(token.value, Token::FatArrow),
+        other => panic!("expected UnexpectedToken at `=>`, got {:?}", other),
+    }
+}
+
 // spans
 
 /// `ERR-3`: the one parser test that pins a position rather than a shape.
@@ -684,6 +753,7 @@ test_parse_ok!(
                 type_unqualified(name("Int")),
                 type_unqualified(name("Int")),
             )),
+            context: None,
             marked_unsafe: true,
             bindings: vec![],
             span: no_span(),
@@ -714,6 +784,7 @@ test_parse_ok!(
         functions: vec![Function {
             name: name("unsafe"),
             tpe: Some(type_unqualified(name("Int"))),
+            context: None,
             marked_unsafe: false,
             bindings: vec![],
             span: no_span(),
@@ -744,6 +815,7 @@ test_parse_ok!(
         functions: vec![Function {
             name: name("unsafe"),
             tpe: None,
+            context: None,
             marked_unsafe: false,
             bindings: vec![Match {
                 patterns: vec![],
@@ -780,6 +852,7 @@ test_parse_ok!(
         functions: vec![Function {
             name: name("unsafe"),
             tpe: None,
+            context: None,
             marked_unsafe: false,
             bindings: vec![Match {
                 patterns: vec![Pattern::new(no_span(), PatternKind::Variable(name("x")))],

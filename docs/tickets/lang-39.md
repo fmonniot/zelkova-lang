@@ -5,7 +5,7 @@ namespace, how an instance reaches another module, and which module is allowed t
 
 **Location:** `src/compiler/canonical/environment.rs` — `RootEnvironment`,
 `insert_union_type`, `process_import`; `src/compiler/canonical/mod.rs` — `Error`,
-`from_parser_module`, `Module::to_interface`; `src/compiler/mod.rs` — `Interface`;
+`canonicalize`, `Module::to_interface`; `src/compiler/mod.rs` — `Interface`;
 `src/compiler/dependencies.rs` — `ModuleWalker::check_in_order`, which is the driver that
 builds each interface and hands it to the next module.
 
@@ -86,7 +86,8 @@ rule to a reader, so it is worth writing before the check that produces it.
    every caret it swallowed.
 
 Nothing in the typer changes in this ticket. A constrained annotation still validates and is
-discarded; [LANG-40](lang-40.md) is what starts consuming it.
+discarded here: resolving the class a constraint names, and keeping the context on the canonical
+module, is [LANG-70](lang-70.md), and [LANG-40](lang-40.md) is what starts consuming it.
 
 **Acceptance:** tests in `tests/compiler/canonical.rs`, using the `package=`-style multi-module
 helpers in `tests/support/mod.rs`:
