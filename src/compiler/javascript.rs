@@ -32,8 +32,12 @@
 //! bits](../../../docs/spec/evaluation-semantics.md#numbers); a `Float` is a number, a
 //! `Char` a one-character string. `True` and `False` — the constructors of
 //! [`scalars::BOOL`], recognised by the union's qualified name — are `true` and `false`.
-//! Every other union value is `{$: "Ctor", a: …, b: …}`, arguments in declaration order
-//! ([A union crosses as a tagged
+//! `()` is `undefined` ([The unit value crosses as
+//! `undefined`](../../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)) and a
+//! pattern that names it, at any depth, tests nothing and binds nothing — `undefined`
+//! among `RESERVED` is what keeps a Zelkova binding of that name from changing what a `()`
+//! in its scope reads as. Every other union value is `{$: "Ctor", a: …, b: …}`, arguments
+//! in declaration order ([A union crosses as a tagged
 //! value](../../../docs/spec/interop.md#a-union-crosses-as-a-tagged-value)); a
 //! constructor's arguments past the 26th continue `aa`, `ab`, … — see `field`. A tuple
 //! is an array.
@@ -128,7 +132,7 @@
 //! [`emit`] answers an [`Error`] rather than a module missing a part: for a declaration
 //! with no IR ([`ir::Module::unchecked`]), for a facade signature not marked `unsafe`,
 //! for a facade with no companion for the target being built, and for a construct it
-//! does not emit yet ([`Construct`]) — `()` among them.
+//! does not emit yet ([`Construct`]).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -181,9 +185,6 @@ pub enum Construct {
     /// A function nested inside a declaration's body. The language has no lambda and
     /// [`ir::build`] takes every parameter off the body, so the IR never holds one either.
     Lambda,
-    /// `()`, as an expression or as a pattern. How the unit value is represented is
-    /// [`GEN-20`](../../../docs/tickets/gen-20.md)'s to choose.
-    Unit,
 }
 
 impl Construct {
@@ -191,7 +192,6 @@ impl Construct {
         match self {
             Construct::Let => "a `let` expression",
             Construct::Lambda => "an anonymous function",
-            Construct::Unit => "`()`",
         }
     }
 }
@@ -251,13 +251,22 @@ impl PhaseError for Error {
 // ── Names ─────────────────────────────────────────────────────────────────────
 
 /// The words a Zelkova name is renamed away from, because JavaScript does not accept
-/// them as a binding's name in module code.
+/// them as a binding's name in module code, or because a local binding of that name
+/// would change what an unrelated expression emits as.
 ///
 /// Every reserved word of ECMAScript — including the ones reserved only in strict
 /// mode, which module code always is, and `await`, reserved in a module — plus `eval`
 /// and `arguments`, which strict mode forbids binding. The Zelkova keywords among
 /// them never reach here as a name; they are listed anyway, so that this is the
 /// JavaScript list and not a guess at which part of it Zelkova can spell.
+///
+/// `undefined` is the one entry that is not a keyword: it is an ordinary global that a
+/// local binding can shadow, and `undefined` is a legal Zelkova name. Every `()` this
+/// module emits is the identifier `undefined`
+/// ([*The unit value crosses as
+/// `undefined`*](../../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)), so
+/// a Zelkova binding called `undefined` left unmangled would shadow the global and change
+/// what every `()` in its scope reads as.
 const RESERVED: &[&str] = &[
     "arguments",
     "await",
@@ -302,6 +311,7 @@ const RESERVED: &[&str] = &[
     "true",
     "try",
     "typeof",
+    "undefined",
     "var",
     "void",
     "while",
@@ -940,7 +950,7 @@ impl Emitter {
                 branches,
                 form,
             } => self.case_expression(scrutinee, branches, *form),
-            TypedTermKind::Unit => self.unsupported(Construct::Unit, term.span),
+            TypedTermKind::Unit => "undefined".to_string(),
             TypedTermKind::Let { .. } => self.unsupported(Construct::Let, term.span),
             TypedTermKind::Fun { .. } => self.unsupported(Construct::Lambda, term.span),
         }
@@ -1119,12 +1129,6 @@ impl Emitter {
         branches: &[(ir::TermPattern, Box<TypedTerm>)],
         form: CaseForm,
     ) -> String {
-        for (pattern, _) in branches {
-            if let Some(span) = unit_pattern(pattern) {
-                return self.unsupported(Construct::Unit, span);
-            }
-        }
-
         let declaration = self.declaration.clone().unwrap_or_else(|| Name::new(""));
         let tree = decision_tree(&scrutinee.tpe, branches, &declaration);
         let scrutinee_expr = self.expression(scrutinee);
@@ -1205,25 +1209,6 @@ impl Emitter {
                 )
             }
         }
-    }
-}
-
-/// Where `pattern` writes `()`, at any depth, if it does.
-///
-/// [`decision_tree`] lowers a `()` to no test at all, so emitting the tree would never
-/// meet it; this is what finds it for [`Construct::Unit`] instead.
-fn unit_pattern(pattern: &ir::TermPattern) -> Option<NodeSpan> {
-    match &pattern.kind {
-        ir::TermPatternKind::Unit => Some(pattern.span),
-        ir::TermPatternKind::Anything
-        | ir::TermPatternKind::Bind(_)
-        | ir::TermPatternKind::Literal { .. } => None,
-        ir::TermPatternKind::Constructor { args, .. } => {
-            args.iter().find_map(|arg| unit_pattern(&arg.pattern))
-        }
-        ir::TermPatternKind::Tuple { elements } => elements
-            .iter()
-            .find_map(|element| unit_pattern(&element.pattern)),
     }
 }
 

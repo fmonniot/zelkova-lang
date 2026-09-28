@@ -12,8 +12,8 @@ own, against one chapter section.
 
 **Part of:** [Active work: effects](README.md#active-work-effects), because a failing predicate
 is what [`GEN-16`](gen-16.md)'s `Err (Malformed ..)` reports. Only the forms a program can
-write today are on that path: the scalars, a tuple, a union, and `()` once
-[`GEN-20`](gen-20.md) lands. A record and a list follow their constructs.
+write today are on that path: the scalars, a tuple, a union, and `()`, now that
+[`GEN-20`](README.md) has landed. A record and a list follow their constructs.
 
 **Location:** `src/compiler/javascript.rs`, at whatever
 [`GEN-12`](README.md) emits for a `module foreign` facade's call site. `std/core/src/Js/*.mjs`
@@ -62,7 +62,7 @@ every phase downstream of the boundary is entitled to believe it.
    leaves to code generation. So this ticket inherits whatever [`GEN-1`](gen-1.md)'s program
    settles for them rather than deciding it — and neither is reachable until
    [`LANG-47`](lang-47.md) and [`LANG-44`](lang-44.md) make one writable at all.
-   **`()` depends on where it sits**, as [`GEN-20`](gen-20.md) decided and publishes in the
+   **`()` depends on where it sits**, as [`GEN-20`](README.md) decided and publishes in the
    table's `()` row. Nested inside a tuple, record, list or union, its predicate is
    `v === undefined`, and a record field of type `()` must be present. As a facade's whole
    result it has no predicate: whatever the companion returns is discarded and replaced with
