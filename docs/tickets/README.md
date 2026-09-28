@@ -95,15 +95,15 @@ git show <that-sha>^:TODO.md                    # the nine items in their final 
 
 ## Active work: type classes
 
-`LANG-37` through `LANG-42` are one body of work, filed together after the language owner
-settled the mechanism. The goal is that **a signature can say what it needs of its type** —
+`LANG-37` through `LANG-42`, and `LANG-70` and `LANG-71`, which were filed while working `LANG-37`, are one body
+of work, filed after the language owner settled the mechanism. The goal is that **a signature can say what it needs of its type** —
 `min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what `min`'s type has
 always actually been.
 
-These six get their own section despite sharing the `LANG-` prefix with everything else,
+These eight get their own section despite sharing the `LANG-` prefix with everything else,
 because most `LANG-` tickets each close a complete, independently shippable gap on landing,
-while none of `LANG-37` through `LANG-41` does anything on its own — they're fragments of one
-mechanism that only works once the chain lands. `LANG-42` is the exception; see the graph.
+while none of `LANG-37` through `LANG-41` and `LANG-70` does anything on its own — they're fragments of one
+mechanism that only works once the chain lands. `LANG-42` and `LANG-71` are the exceptions; see the graph.
 
 [`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
 read before picking any of these up: none of them re-argues a decision, and several would look
@@ -114,10 +114,10 @@ They have a dependency order, and three tickets that already existed sit inside 
 beside it:
 
 ```
-LANG-37  `=>` becomes a token; a constrained annotation parses
-  │      (the only one that can start today)
+LANG-37  `=>` becomes a token; a constrained annotation parses   ← closed
   │
 LANG-38  `class` / `instance` declarations, and a `where` block of members
+  │      (the next one to start)
   │      ← LANG-9, which lets an instance head write `(List a)`, is closed
   │      ← an instance body is a member list or the single word `derived`;
   │        a class body may carry `derived <member>` — both specified in
@@ -127,6 +127,12 @@ LANG-39  resolution, the instance environment, and the orphan rule
   │      ← BUG-16, which invented a type for a misspelt instance head, and
   │        BUG-17, which made two instance heads indistinguishable, are
   │        both fixed.
+  │
+LANG-70  a constraint in an annotation is resolved; its context is kept
+  │      ← LANG-37 validated a constraint's shape and dropped it. Its class
+  │        name and argument are not checked, and LANG-40's rigid half has
+  │        no context to read. Not part of LANG-39, whose Problem is the
+  │        declarations rather than their use in an annotation.
   │
 LANG-40  the solver: obligations are collected, deferred and discharged
   │      ← LANG-12 is a HARD prerequisite. Without rigid annotation
@@ -143,6 +149,10 @@ LANG-40  the solver: obligations are collected, deferred and discharged
 
 LANG-41  `Type::Number` retires; an integer literal is an `Int`   ← independent
            ← supersedes ERR-13
+
+LANG-71  a constraint context of four or more constraints parses   ← independent
+           ← LANG-37 reads the context as a tuple type, which has two or three
+             elements; the chapter says "several" with no cap
 ```
 
 **What is not a ticket: dictionary erasure.**
@@ -314,6 +324,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-33 | task | — | closed 2026-09-15 | Which default imports a module gets is a fixed point over the whole package |
 | SPEC-34 | task | — | closed 2026-09-27 | Only `zelkova-core` may declare a module the default imports name, and the exemption is keyed on the package rather than on module names |
 | SPEC-35 | task | — | closed 2026-09-27 | A package cannot be tested with a library that depends on it |
+| [SPEC-36](spec-36.md) | task | — | open | The `double` block in `expressions.md` cannot go red for the reason its paragraph gives |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -350,7 +361,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-34](lang-34.md) | task | — | open | There is no lambda production, so `\x -> x` is read as an operator |
 | LANG-35 | task | — | closed 2026-09-20 | A parameterless binding may depend on itself, and nothing notices |
 | [LANG-36](lang-36.md) | task | — | open | `std/core`'s `Basics` documents three semantics the language does not have |
-| [LANG-37](lang-37.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
+| LANG-37 | task | — | closed 2026-09-27 | A type annotation may carry a constraint context, written `Class a =>` |
 | [LANG-38](lang-38.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [LANG-39](lang-39.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
 | [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |
@@ -383,6 +394,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-67](lang-67.md) | task | — | open | `pow`'s `bigint` branch can materialize an astronomically large intermediate before masking |
 | [LANG-68](lang-68.md) | task | — | open | An unmarked facade signature is not held to the `Task (Result Failure a)` result shape |
 | LANG-69 | task | — | closed 2026-09-27 | There is no `zelkova test`: nothing runs a package's tests |
+| [LANG-70](lang-70.md) | task | — | open | A constraint in an annotation is resolved, and its context reaches the canonical module |
+| [LANG-71](lang-71.md) | task | — | open | A constraint context of four or more constraints does not parse |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
@@ -418,7 +431,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TIDY-6 | task | — | closed 2026-08-26 | Stale doc comment on `canonical_type_to_typer_type` |
 | [TIDY-7](tidy-7.md) | task | — | open | Four label/diagnostic messages in `Error::Tokenizer`'s match are still capitalized |
 | [TIDY-8](tidy-8.md) | task | — | open | Two tokenizer comments describe the `Int` width as unsettled and cite a closed ticket |
-| [TIDY-9](tidy-9.md) | task | — | open | `Interface::arities` is a parallel map, and a miss silently reads as arity 0 |
+| [TIDY-9](tidy-9.md) | task | — | open | `Module::from_declarations` has a `panic!` on a declaration kind its own bucketing rules out |
+| [TIDY-10](tidy-10.md) | task | — | open | `Interface::arities` is a parallel map, and a miss silently reads as arity 0 |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |

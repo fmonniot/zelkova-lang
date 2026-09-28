@@ -226,9 +226,8 @@ module foreign Core.List exposing
 count : (Int -> Bool) -> Int -> Int
 ```
 
-**Not implemented:** a class constraint is rejected on the same grounds, `Comparable a => a`
-being a signature over `a`. A constrained function is specialised, and a facade has no body to
-specialise.
+A class constraint is rejected on the same grounds, `Comparable a => a` being a signature over
+`a`. A constrained function is specialised, and a facade has no body to specialise.
 [Type classes](type-classes.md#a-constrained-function-may-not-be-a-foreign-facade) is the
 chapter.
 

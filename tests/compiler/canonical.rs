@@ -3022,3 +3022,158 @@ fn an_imported_name_is_named_by_the_module_that_declared_it() {
     assert_eq!(head_of(&module, "aliased"), "Maybe.Just");
     assert_eq!(head_of(&module, "aliasedValue"), "Maybe.withDefault");
 }
+
+// ── Scenario 15: a constraint context in front of an annotation (LANG-37) ─────
+//
+// The grammar parses what precedes `=>` as a type, so canonicalization is what
+// decides that it is one constraint or a parenthesised list of them
+// (`docs/spec/type-classes.md#a-constraint-belongs-to-a-signature-not-to-a-type`),
+// and that no facade signature carries one
+// (`docs/spec/type-classes.md#a-constrained-function-may-not-be-a-foreign-facade`).
+
+/// The byte range of `needle`'s only occurrence in `source`.
+fn range_of(source: &str, needle: &str) -> std::ops::Range<usize> {
+    let start = source.find(needle).expect("source contains the needle");
+    assert_eq!(
+        source.rfind(needle),
+        Some(start),
+        "`{}` must occur once in the source for its range to be unambiguous",
+        needle
+    );
+    start..start + needle.len()
+}
+
+/// A well-formed context canonicalizes, and the value's type is the one after
+/// `=>`: the context is validated and then set aside, and nothing about it
+/// leaks into the canonical `Type`.
+///
+/// Verified to fail by making `validate_context` reject every constraint (its
+/// first arm never matching, so an applied name falls through to `Unapplied`):
+/// the module is then rejected and `expect` panics.
+#[test]
+fn well_formed_constraint_context_is_accepted() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (lookup)
+        lookup : (Comparable k, Eq v) => k -> v -> Bool
+        lookup key value =
+          True
+    "#};
+    let module = canonicalize_with_scalars(source).expect("should canonicalize");
+
+    match module.values.get(&"lookup".into()) {
+        Some(canonical::Value::TypedValue { tpe, .. }) => assert_eq!(
+            *tpe,
+            canonical::Type::Arrow(
+                Box::new(canonical::Type::Variable("k".into())),
+                Box::new(canonical::Type::Arrow(
+                    Box::new(canonical::Type::Variable("v".into())),
+                    Box::new(bool_t()),
+                )),
+            )
+        ),
+        other => panic!("expected a TypedValue for `lookup`, got {:?}", other),
+    }
+}
+
+/// `Int -> Int => a -> a` parses — the grammar cannot tell a context from a
+/// type — and is rejected here, naming what was written and putting the caret
+/// under the function type alone rather than the whole annotation.
+///
+/// Verified to fail by deleting the `validate_context` call in `canonicalize`:
+/// the module then canonicalizes cleanly and `expect_err` panics.
+#[test]
+fn function_type_as_constraint_context_is_rejected() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+        f : Int -> Int => a -> a
+        f x =
+          x
+    "#};
+
+    let errors = canonicalize_with_scalars(source)
+        .expect_err("a function type in front of `=>` must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::InvalidConstraint(kind, _) => {
+            assert_eq!(*kind, canonical::InvalidConstraintKind::Arrow)
+        }
+        other => panic!("expected InvalidConstraint, got {:?}", other),
+    }
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(labels[0].span.to_range(), range_of(source, "Int -> Int"));
+}
+
+/// Each member of a parenthesised list is checked on its own, and each bad
+/// one is reported at its own span: `(Int, Char)` is a perfectly good tuple
+/// type and two errors as a context.
+///
+/// Verified to fail by validating the context as a single constraint (dropping
+/// the `Tuple` arm that splits the list in `validate_context`): one
+/// `InvalidConstraint(Tuple, …)` spanning the whole list is then reported
+/// instead of two.
+#[test]
+fn every_malformed_constraint_of_a_list_is_reported_at_its_own_span() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+        f : (Int, Char) => a -> a
+        f x =
+          x
+    "#};
+
+    let errors = canonicalize_with_scalars(source)
+        .expect_err("a context of two bare type names must not compile");
+    assert_eq!(errors.len(), 2, "got {:?}", errors);
+
+    for (error, written) in errors.iter().zip(["Int", "Char"]) {
+        match error {
+            canonical::Error::InvalidConstraint(
+                canonical::InvalidConstraintKind::Unapplied(n),
+                _,
+            ) => {
+                assert_eq!(n.as_str(), written)
+            }
+            other => panic!("expected InvalidConstraint(Unapplied), got {:?}", other),
+        }
+
+        let labels = error.labels();
+        assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+        assert_eq!(labels[0].span.to_range(), range_of(source, written));
+    }
+}
+
+/// A facade signature may not be constrained, however well-formed the
+/// constraint is. The signature's types are all admitted ones, so this is the
+/// only error, and its caret sits under the context.
+///
+/// Verified to fail by disabling the `source.binding_foreign` branch that pushes
+/// `FacadeConstrained` in `canonicalize`: the facade then canonicalizes
+/// cleanly and `expect_err` panics.
+#[test]
+fn constrained_facade_signature_is_rejected() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (compare)
+        compare : Comparable a => Int -> Int -> Int
+    "#};
+
+    let errors = canonicalize_with_scalars(source)
+        .expect_err("a constrained facade signature must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::FacadeConstrained(name, _) => assert_eq!(name.as_str(), "compare"),
+        other => panic!("expected FacadeConstrained, got {:?}", other),
+    }
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(labels[0].span.to_range(), range_of(source, "Comparable a"));
+}

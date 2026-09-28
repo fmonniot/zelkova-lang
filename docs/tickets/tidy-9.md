@@ -1,54 +1,41 @@
-# TIDY-9 · `Interface::arities` is a parallel map, and a miss silently reads as arity 0
+# TIDY-9 · `Module::from_declarations` has a `panic!` on a declaration kind its own bucketing rules out
 
-**Sizing:** small-to-medium — a shape change that touches several call sites but adds no new
-logic; mostly moving an existing `usize` into a tuple in place of a second map.
+**Sizing:** small. One function, no behaviour change.
 
-**Location:** `src/compiler/mod.rs` — `Interface`'s `values`, `infix_functions` and `arities`
-fields; `src/compiler/canonical/mod.rs` — `Module::to_interface`, which builds all three;
-`src/compiler/typer/mod.rs` — the two `.unwrap_or(0)` sites that read `arities` (building
-`foreign_arities` from `interface.arities.get(name)`, and `foreign_arity`'s own
-`self.foreign_arities.get(qname)`); every hand-built `Interface` in `tests/support/mod.rs` and
-inline in test files.
+**Location:** `src/compiler/parser/mod.rs` — `Module::from_declarations`, the
+`_ => panic!("Invalid kind of declaration used in functions, report this error …")` arm in the
+`.map(|(name, decls)| …)` that assembles each `Function`.
 
-**Problem:** `arities: HashMap<Name, usize>` is kept beside `values: HashMap<Name, (NodeSpan,
-Type)>` and `infix_functions: HashMap<Name, (NodeSpan, Type)>` rather than carried in the same
-tuple as each value's type. Both non-test readers of it — the two sites named above — fall back
-to `unwrap_or(0)` on a miss, which is read as "arity 0, a parameterless binding".
+**Found while:** working [LANG-37](README.md), which added a line to that loop. Left alone
+there, because it is not the ticket's change.
 
-Today this is safe by inspection rather than by construction. `canonical::Module::to_interface`
-is the only non-test constructor of `Interface`, and it records an arity for every key of both
-`values` and `infix_functions` (added by the fix for [`BUG-43`](README.md)); every real
-`VarForeign` resolves through one of those two maps, keyed exactly as `to_interface`'s `arities`
-is. The eleven hand-built test interfaces that omit `arities` entirely are the one case the
-fallback exists for, and there it is correct: they all model "every export is a parameterless
-binding".
+**Problem:** `CLAUDE.md`'s *Standing invariants* say no `panic!` on a non-test path, and this is
+one. It cannot fire today: the first loop over `declarations` only inserts a
+`Declaration::Function` or a `Declaration::FunctionType` into the `functions` map, and sends
+imports, infixes and unions to their own vectors. So the panic guards a case the code above it
+has already excluded, and it is there because the map's value type is `Vec<Declaration>` —
+every variant of `Declaration` — rather than one that can only hold the two it does.
 
-The risk is latent, not present. `arities` is a *parallel* map: nothing stops a future change
-from adding a value to `values`, to `infix_functions`, or to some third map, without also
-updating `arities` to match. That omission would silently reintroduce
-[`BUG-43`](README.md)'s miscompile — a genuinely multi-parameter export read as arity 0, so an
-importer calls it one argument at a time instead of directly — with no diagnostic and no test
-that would necessarily catch it, because a hand-built test interface already models the same
-shape as the bug on purpose.
+That is the shape worth fixing. A `panic!` that cannot fire is invisible until someone adds a
+`Declaration` variant that should be bucketed by name, at which point the compiler stays quiet
+and the parser crashes on a user's file. `ERR-1` removed the reachable ones; this one survived
+because it is not reachable.
 
-Found while reviewing the `BUG-43` fix (PR #259); left unfixed there because the PR's own
-`to_interface` change keeps every real path correct today, and the review said so explicitly
-rather than asking for it as part of that fix.
+**Approach:** make the illegal case unrepresentable rather than reporting it. Bucket a name's
+annotation and bindings separately as the first loop reads them — a small struct holding
+`Option<FunType>` and `Vec<FunBinding>`, say — so the second step consumes typed values and the
+`match` has no wildcard arm to panic in. The alternative is to return a `parser::Error` from the
+wildcard arm; it is worse here because the case has no source position and no user could ever
+cause it, so there is nothing to describe. Either way the function must keep producing the same
+`Module` for every input it does today, in particular the merged `span` and the
+`annotation_span` of a function with no body.
 
-**Approach:** carry the arity alongside the type in the same tuple on both `values` and
-`infix_functions` — `HashMap<Name, (NodeSpan, Type, usize)>` in place of `HashMap<Name,
-(NodeSpan, Type)>` plus a separate `arities` map — so a value present in either map always has
-an arity by construction and the omission becomes unrepresentable. This is the same move
-`CLAUDE.md`'s `Tuple<T>` invariant already made for tuple arity: put the rule in the *shape* of
-the type rather than in a check kept in step by hand across two collections. Once done, both
-`unwrap_or(0)` fallbacks in `src/compiler/typer/mod.rs` go away, `Interface::arities` is
-deleted, and every hand-built interface in `tests/support/mod.rs` and elsewhere is updated to
-the new tuple shape (a parameterless binding still writes arity `0` there, just in the same
-tuple as its type).
+Do not touch the `// TODO Error if more than function type is defined` above the loop.
+`LANG-11` owns a repeated annotation, and folding it in here widens a cleanup into a language
+change.
 
-**Acceptance:**
-
-- `Interface` has no `arities` field; `values` and `infix_functions` carry arity in their tuple.
-- `grep -n "unwrap_or(0)" src/compiler/typer/mod.rs` is empty.
-- `cargo test --workspace` is green.
-- `cargo run -- compile std/core` still prints `parsed 8 modules`, lists all eight, and exits 0.
+**Acceptance:** `grep -n 'panic!' src/compiler/parser/mod.rs` finds nothing outside
+`#[cfg(test)]`. `cargo test --workspace` is unchanged and green, and
+`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
+No new test is required, since no behaviour changes; if one is added, mutation-check it per
+`CLAUDE.md`.

@@ -1173,6 +1173,15 @@ pub enum Error {
     /// a per-variant one — the check runs on the shape of the whole variant list,
     /// not on one variant that is wrong among otherwise-good ones.
     InvalidScalarDeclaration(QualName, NodeSpan),
+    /// Something other than a constraint written in front of an annotation's
+    /// `=>`: what was written, and that piece's own span — one constraint of a
+    /// parenthesised list rather than the whole context, so the caret sits under
+    /// the part that is wrong.
+    ///
+    /// The grammar parses a context as a type (see `parser::FunType::context`),
+    /// so every shape a type can take arrives here; `validate_context` is what
+    /// narrows it to one constraint or a tuple of them.
+    InvalidConstraint(InvalidConstraintKind, NodeSpan),
 
     // Binding module
     InfixDeclared(Name, NodeSpan),
@@ -1200,6 +1209,16 @@ pub enum Error {
     /// finest caret available without first teaching that conversion to keep
     /// per-node spans.
     FacadeTypeNotAdmitted(Name, FacadeRejectedKind, NodeSpan),
+    /// A `module foreign` facade signature written with a constraint context:
+    /// the value's name, and the context's span.
+    ///
+    /// A facade is monomorphic — its signature names the types the code behind
+    /// it really handles ([Type
+    /// classes](../../../docs/spec/type-classes.md#a-constrained-function-may-not-be-a-foreign-facade),
+    /// [`DEC-2` decision 6](../../../docs/decisions/dec-2.md)) — and a constrained
+    /// function is specialised per instance out of a body a facade does not have.
+    /// Reported whatever the context's shape, a well-formed one included.
+    FacadeConstrained(Name, NodeSpan),
 
     /// A parameterless binding that depends on itself — [evaluation
     /// semantics](../../../docs/spec/evaluation-semantics.md#a-binding-may-not-depend-on-itself):
@@ -1259,6 +1278,27 @@ pub enum InvalidVariantKind {
     /// variant rather than a suffix of it, `Wrap Int` being its left operand, so
     /// there is no constructor here to keep either.
     Arrow,
+}
+
+/// What was written in front of `=>` in place of a constraint — see
+/// [`Error::InvalidConstraint`].
+///
+/// A constraint is an uppercase name applied to one or more type arguments, and a
+/// context is one constraint or a parenthesised, comma-separated list of them,
+/// which the grammar reads as a tuple type. This names every other shape, one per
+/// remaining [`parser::TypeKind`] case.
+#[derive(Debug, PartialEq, Clone)]
+pub enum InvalidConstraintKind {
+    /// A type variable on its own — `a => a`.
+    Variable(Name),
+    /// An uppercase name with no argument — `Int => a`, and so each half of
+    /// `(Int, Char) => a`. Carries the name so the message can quote it.
+    Unapplied(Name),
+    /// A function type — `Int -> Int => a`.
+    Arrow,
+    /// A tuple inside the parenthesised list — `((Eq a, Eq b), Eq c) => a`. The
+    /// outermost tuple *is* the list, so only one nested in it reaches here.
+    Tuple,
 }
 
 /// The two forms [What a facade signature may not
@@ -1391,6 +1431,24 @@ impl PhaseError for Error {
                 name.unqualified_name(),
                 name.unqualified_name()
             ),
+            Error::InvalidConstraint(kind, _) => match kind {
+                InvalidConstraintKind::Variable(name) => format!(
+                    "only constraints may be written before `=>`, and the type variable `{}` is not one",
+                    name
+                ),
+                InvalidConstraintKind::Unapplied(name) => format!(
+                    "only constraints may be written before `=>`, and `{}` on its own is not one",
+                    name
+                ),
+                InvalidConstraintKind::Arrow => {
+                    "only constraints may be written before `=>`, and a function type is not one"
+                        .to_owned()
+                }
+                InvalidConstraintKind::Tuple => {
+                    "only constraints may be written before `=>`, and a tuple inside the list of constraints is not one"
+                        .to_owned()
+                }
+            },
             Error::InfixDeclared(name, _) => format!(
                 "a `module foreign` facade cannot declare an infix operator, but declares `{}`",
                 name
@@ -1414,6 +1472,10 @@ impl PhaseError for Error {
                     FacadeRejectedKind::Variable => "a type variable",
                     FacadeRejectedKind::Function => "a function type",
                 }
+            ),
+            Error::FacadeConstrained(name, _) => format!(
+                "`{}` is a `module foreign` facade signature, and a facade signature may not carry a constraint",
+                name
             ),
             // A one-binding cycle reads better as its own sentence than as "a
             // cycle of length one" — see the enum's own doc comment.
@@ -1605,6 +1667,21 @@ impl PhaseError for Error {
                     name.unqualified_name()
                 ),
             ),
+            Error::InvalidConstraint(kind, span) => primary(
+                span,
+                match kind {
+                    InvalidConstraintKind::Variable(_) => {
+                        "a type variable, written where a constraint belongs"
+                    }
+                    InvalidConstraintKind::Unapplied(_) => {
+                        "a name with no argument, written where a constraint belongs"
+                    }
+                    InvalidConstraintKind::Arrow => {
+                        "a function type, written where a constraint belongs"
+                    }
+                    InvalidConstraintKind::Tuple => "a tuple, written where a constraint belongs",
+                },
+            ),
             Error::InfixDeclared(_, span) => primary(span, "declared here"),
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
             Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
@@ -1616,6 +1693,7 @@ impl PhaseError for Error {
                     FacadeRejectedKind::Function => "this signature names a function type",
                 },
             ),
+            Error::FacadeConstrained(_, span) => primary(span, "a constraint on a facade signature"),
             Error::SelfDependency(members) => members
                 .iter()
                 .enumerate()
@@ -1657,6 +1735,14 @@ impl PhaseError for Error {
             ],
             Error::FacadeTypeNotAdmitted(..) => vec![
                 "a facade signature may only name a type whose values a target can decide from the value alone, which admits the primitives, tuples and union types applied to admitted types"
+                    .to_owned(),
+            ],
+            Error::InvalidConstraint(..) => vec![
+                "a constraint is a class name followed by the type it constrains, as in `Comparable a`, and several are written in parentheses separated by commas, as in `(Comparable k, Eq v)`"
+                    .to_owned(),
+            ],
+            Error::FacadeConstrained(..) => vec![
+                "a facade signature names the types the code behind it really handles, so the constraint belongs on an ordinary function that calls the facade at those types"
                     .to_owned(),
             ],
             Error::InvalidScalarDeclaration(..) => vec![
@@ -1796,6 +1882,39 @@ fn check_facade_admitted_type(tpe: &Type) -> Result<(), FacadeRejectedKind> {
     }
 }
 
+/// Check that `context` — what an annotation wrote in front of `=>` — is one
+/// constraint or a parenthesised list of them, and hand back each constraint's
+/// class name and arguments.
+///
+/// A constraint here is an uppercase name applied to one or more arguments.
+/// Nothing is resolved: whether the name is a class, and whether its arguments
+/// are types in scope, is not checked, because no class can be declared yet. A
+/// two- or three-tuple is the list; the grammar has no tuple of any other size,
+/// so a single constraint and a list of two or three are the shapes that reach
+/// here. Every malformed constraint of a list is reported, each at its own span.
+fn validate_context(context: &parser::Type) -> Result<Vec<(&Name, &[parser::Type])>, Vec<Error>> {
+    let constraints: Vec<&parser::Type> = match &context.kind {
+        parser::TypeKind::Tuple(tuple) => tuple.iter().collect(),
+        _ => vec![context],
+    };
+
+    collect_accumulate(constraints.into_iter().map(|constraint| {
+        let kind = match &constraint.kind {
+            parser::TypeKind::Unqualified(class, args) if !args.is_empty() => {
+                return Ok((class, args.as_slice()));
+            }
+            parser::TypeKind::Unqualified(name, _) => {
+                InvalidConstraintKind::Unapplied(name.clone())
+            }
+            parser::TypeKind::Variable(name) => InvalidConstraintKind::Variable(name.clone()),
+            parser::TypeKind::Arrow(..) => InvalidConstraintKind::Arrow,
+            parser::TypeKind::Tuple(..) => InvalidConstraintKind::Tuple,
+        };
+
+        Err(Error::InvalidConstraint(kind, constraint.span))
+    }))
+}
+
 /// Transform a given `parser::Module` into a `canonical::Module`.
 ///
 /// Whether this module is exempt from the default imports is not this function's
@@ -1829,6 +1948,27 @@ pub fn canonicalize(
                 .filter(|f| f.marked_unsafe)
                 .map(|f| Error::UnsafeOutsideFacade(f.name.clone(), f.annotation_span)),
         );
+    }
+
+    // A constraint context is validated here, reported on, and then dropped — the
+    // constraints `validate_context` hands back included. The canonical `Type` has
+    // no place for one and nothing downstream reads a context yet, so the type
+    // checker sees only the type after `=>`. Resolving the class names and keeping
+    // the context on the canonical value is the next step of the type-class
+    // program (`LANG-70`, after `LANG-39`'s class table), not an oversight here.
+    for function in source.functions.iter() {
+        if let Some(context) = &function.context {
+            if let Err(malformed) = validate_context(context) {
+                errors.extend(malformed);
+            }
+
+            if source.binding_foreign {
+                errors.push(Error::FacadeConstrained(
+                    function.name.clone(),
+                    context.span,
+                ));
+            }
+        }
     }
 
     let (infixes, types, values) = if source.binding_foreign {

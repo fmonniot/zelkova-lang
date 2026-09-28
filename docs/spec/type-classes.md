@@ -21,9 +21,11 @@ class Comparable a where
   compare : a -> a -> Order
 ```
 
-**Not implemented:** the compiler has none of this, and none of it parses. Every block here
-showing a class, an instance or a constraint is tagged `expect=unimplemented` for that reason,
-and each goes red the day the construct it shows starts working. The type-class ticket program in
+**Not implemented:** of all of this, the compiler reads a constraint and nothing else. A class
+and an instance do not parse, so every block here showing one is tagged `expect=unimplemented`,
+and each goes red the day the construct it shows starts working. A constraint parses and is
+checked to be shaped like one, and is then ignored: see [Constraining an
+annotation](#constraining-an-annotation). The type-class ticket program in
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
 land.
 
@@ -430,7 +432,7 @@ classes that do, but because the declaration the instance names has nothing in i
 A constraint is written in front of the type, separated from it by `=>`. It names a class and
 the variable that class applies to.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Order, min)
 
 type Order
@@ -449,7 +451,7 @@ site, pointing at the call.
 
 Several constraints are parenthesised and comma-separated:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Bit, describe)
 
 type Bit
@@ -461,13 +463,33 @@ describe a b =
   Zero
 ```
 
+**Not implemented:** a constraint is checked to be shaped like one and then ignored. Its class
+name is not resolved, and a constrained annotation is checked exactly as it would be without its
+constraint, so neither block above asks anything of a caller
+([`LANG-70`](../tickets/lang-70.md), [`LANG-40`](../tickets/lang-40.md)).
+
+**Known gap:** a list of any length is a valid context, and one of four or more constraints is
+rejected. The compiler reads the list as a tuple type, and a tuple has two or three elements
+([`LANG-71`](../tickets/lang-71.md)):
+
+```zel expect=parse-error:UnexpectedToken
+module Example exposing (Bit, four)
+
+type Bit
+  = Zero
+
+four : (Eq a, Eq b, Eq c, Eq d) => a -> b -> c -> d -> Bit
+four a b c d =
+  Zero
+```
+
 ### A constraint belongs to a signature, not to a type
 
 `=>` may appear once, at the very front of an annotation, and nowhere else. A constraint is a
 statement about the declaration being annotated; it is not a piece of type syntax that can be
 nested inside a larger type.
 
-```zel expect=unimplemented
+```zel expect=parse-error
 module Example exposing (Size, f)
 
 type Size
@@ -480,7 +502,7 @@ f x =
 
 The left of `=>` must be constraints; a type there is an error:
 
-```zel expect=unimplemented
+```zel expect=canonical-error:InvalidConstraint
 module Example exposing (Size, f)
 
 type Size
@@ -619,7 +641,7 @@ it declares everything else.
 A `module foreign` facade declares signatures with no bodies, backed by a companion
 file. None of those signatures may carry a constraint.
 
-```zel expect=unimplemented
+```zel expect=canonical-error:FacadeConstrained
 module foreign Core.Cmp exposing (compare)
 
 unsafe compare : Comparable a => a -> a -> Int
@@ -675,6 +697,19 @@ are reserved; `where` needs only its one type-variable position excluded.
 
 `=>` is a token of the language rather than a name, so it cannot be declared as an operator.
 
+```zel expect=parse-error
+module Example exposing (both)
+
+type Size
+  = Small
+
+infix left 5 (=>) = both
+
+both : Size -> Size -> Size
+both a b =
+  a
+```
+
 A class's own name reserves nothing either. `Comparable` is an ordinary uppercase name that a
 module declares, no different from a type.
 
@@ -685,8 +720,9 @@ after it: `derived` alone is [the request](#an-instance-may-be-derived), `derive
 [a derivation](#a-class-says-how-it-is-derived) for the member `eq`, and `derived : …` or
 `derived = …` declares a member called `derived`. One token of lookahead settles it.
 
-**Known gap:** none of those four reservations exists today, and each of these blocks goes red
-when the ticket naming it lands. `class` and `instance` as value names ([`LANG-38`](../tickets/lang-38.md)):
+**Known gap:** none of the three reservations of `class`, `instance` and `where` exists today,
+and each of these blocks goes red when the ticket naming it lands. `class` and `instance` as
+value names ([`LANG-38`](../tickets/lang-38.md)):
 
 ```zel expect=ok
 module Example exposing (class, instance)
@@ -711,21 +747,6 @@ module Example exposing (Box)
 
 type Box where
   = Box where
-```
-
-And `=>` as a user-defined infix operator ([`LANG-37`](../tickets/lang-37.md)):
-
-```zel expect=ok
-module Example exposing (both)
-
-type Size
-  = Small
-
-infix left 5 (=>) = both
-
-both : Size -> Size -> Size
-both a b =
-  a
 ```
 
 ## What the standard library declares
