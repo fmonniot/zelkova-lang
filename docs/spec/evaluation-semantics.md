@@ -57,8 +57,6 @@ stuck =
 `first` ignores its second argument, and `stuck` still has no value: `loop 2` is evaluated
 before `first` is entered, and it does not terminate.
 
-A subexpression therefore runs once each time it is reached, whether or not its value is used.
-
 `if` and `case` are the exception; see [Conditional evaluation](#conditional-evaluation),
 below.
 
@@ -216,8 +214,7 @@ fallback =
 `fallback` and `fallback` is evaluated first.
 
 [Declarations are unordered](declarations.md#declarations-are-unordered) as text; this is the
-one place the language puts an order on them, and it reads it off the references rather than off
-the page.
+one place the language puts an order on them, and it reads it off the references.
 
 A binding that *does* name parameters is not evaluated at initialisation at all. Its value is
 the function, and its body runs when the function is applied.
@@ -322,8 +319,7 @@ and the value of a binding.
 
 Every function takes exactly one argument, and a function of several is one that returns a
 function ([Application](expressions.md#application)), so **applying a function to fewer
-arguments than its type has arrows produces a function value** rather than doing part of the
-work:
+arguments than its type has arrows produces a function value**:
 
 ```zel expect=ok
 module Example exposing ()
@@ -416,7 +412,7 @@ compiler holds for a class it recognises.
 There is no `Eq` instance for a function type, and there cannot usefully be one: deciding
 whether two functions agree on every input is not something a program can do. So `f == g` is a
 type error — an unsatisfied constraint, reported where every other unsatisfied constraint is
-reported, rather than something that compiles and then misbehaves.
+reported.
 
 ## Recursion and tail calls
 
@@ -472,9 +468,8 @@ with the same arguments is left to it entirely. A program whose performance depe
 written inside a loop where `f` is applied to a constant, not allocating depends on a particular
 backend, never on the language.
 
-Sharing does not widen [the tail-call rule](#recursion-and-tail-calls): mutual recursion between
-two declarations still carries no stack guarantee. Nor does it name an allocation count for any
-operation — only that reusing an existing value is free.
+Sharing does not widen [the tail-call rule](#recursion-and-tail-calls), and names no allocation
+count for any operation — only that reusing an existing value is free.
 
 ## Numbers
 
@@ -489,10 +484,9 @@ them, and those results are the language's.
 
 A float literal denotes the binary64 value nearest to the decimal number it spells, rounding
 **to nearest, with ties going to the value whose final mantissa bit is even** — the rounding
-IEEE 754 specifies for every decimal-to-binary conversion, and this language has no reason to
-pick anything else. Rounding is total: every literal that [Lexical
-structure](lexical-structure.md#floats) accepts denotes some binary64 value, and none is
-rejected for the value it rounds to. A literal too large in magnitude for any finite binary64
+IEEE 754 specifies for every decimal-to-binary conversion. Rounding is total: every literal
+that [Lexical structure](lexical-structure.md#floats) accepts denotes some binary64 value, and
+none is rejected for the value it rounds to. A literal too large in magnitude for any finite binary64
 value denotes positive infinity; one too small to be distinguished from zero denotes positive
 zero. Both are the *positive* infinity and the *positive* zero, because a float literal's
 grammar never places a `-` before it — a literal is always non-negative — so a negative literal,
@@ -522,12 +516,11 @@ afterwards whether an answer was ever found.
 Rounding is a different thing, and this rule does not reach it. An operation whose exact result
 is too small for binary64 *has* an answer — the nearest representable value, which is a zero —
 and returns it, so `1.0e-300 * 1.0e-300` is `0.0` rather than `nan`, and a literal too small to
-be distinguished from zero denotes positive zero for the same reason. Losing precision, even all
-of it, is not the same as having nothing to return.
+be distinguished from zero denotes positive zero for the same reason.
 
 `Int` has no such value. Every 64-bit two's-complement bit pattern is a number somebody might
 have meant, so whatever an integer operation returns is indistinguishable from a real result,
-and the language names one rather than leaving the operation partial:
+and the language names one:
 
 ```zel expect=ok
 module Example exposing ()
@@ -599,8 +592,6 @@ returns `nan`, an `Int`-returning one returns the value that section names, and 
 returns a value the `Int` type can hold. Nothing checks that either, for the reason nothing
 checks purity: a type annotation with no body is all the compiler ever sees.
 
-How a program *does* reach the outside world is the next section's.
-
 ## Effects
 
 Everything above describes a computation. A program reaches the outside world by producing a
@@ -666,6 +657,13 @@ twice.
 The effects of a `Task` happen in the order it sequences them: `andThen` runs the second only
 once the first has produced a value.
 
+**A `Task` sequences any number of steps in constant stack.** A chain of `andThen`s of any
+length, and a `Task` that builds the next one by calling itself, run without exhausting the
+stack, whether or not any step waits. The guarantee covers the sequencing only: a function a step
+calls uses stack as any other call does, under the [tail-call rule](#recursion-and-tail-calls).
+
+**Not implemented:** nothing runs a `Task` ([`GEN-21`](../tickets/gen-21.md)).
+
 ### An effect that can fail
 
 `Task` takes one type parameter and carries no channel for an error. A failure an effect can
@@ -727,8 +725,8 @@ So every abort a program's own code can cause is attributable to a declaration c
 word.
 
 **Exhaustion.** No memory left to hold a value, or no stack left to enter a call. The second is
-reachable from Zelkova alone, by a recursion the [tail-call rule](#recursion-and-tail-calls) does
-not cover.
+reachable from Zelkova alone, by a recursion that neither the
+[tail-call rule](#recursion-and-tail-calls) nor [a `Task`'s sequencing](#running-a-task) covers.
 
 **The host.** Whatever runs the program can stop it.
 

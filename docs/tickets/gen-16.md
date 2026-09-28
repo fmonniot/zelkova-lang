@@ -1,14 +1,14 @@
 # GEN-16 · The wrapper an effectful facade's call site gets
 
-**Sizing:** medium. The wrapper itself is small. Most of the size is in the tests, which need a
+**Sizing:** medium. The wrapper itself is small: the call site emits a `Task` over one runtime
+helper, `$effect`, which this ticket also writes. Most of the size is in the tests, which need a
 companion that throws, one that rejects, one that returns the wrong shape and one that behaves.
 
 **Part of:** [Active work: effects](README.md#active-work-effects). It is also
 [`GEN-1`](gen-1.md)'s in subject, and deliberately outside that program: the original GEN-1 text
 carried it as inherited work, and it could not be written until the tickets below existed.
 
-**Depends on:** [`SPEC-37`](spec-37.md), for what the wrapper builds and when it calls the
-continuation; [`LANG-74`](lang-74.md), for `Task` and `Failure`; [`GEN-21`](gen-21.md), for
+**Depends on:** [`LANG-74`](lang-74.md), for `Task` and `Failure`; [`GEN-21`](gen-21.md), for
 something that runs what the wrapper builds; [`LANG-68`](lang-68.md), which holds an unmarked
 facade to the result type this wrapper assumes; [`GEN-2`](gen-2.md), for the predicate whose
 failure is `Err (Malformed ..)`. Sequenced after [`GEN-12`](README.md), which emits the `unsafe`
@@ -51,12 +51,21 @@ half it holds.
 **Problem:** the wrapper is the whole of what keeps a throwing `.mjs` from ending the program,
 and nothing emits one. `javascript::emit` refuses an effectful facade signature outright today.
 
-**Approach:** apply [`SPEC-37`](spec-37.md)'s decisions. It settles how a `Task` is
-represented, which continuation the wrapper calls and when, and what a facade constant naming a
-`Task` exports. None of that is restated here. One constraint was fixed before `SPEC-37` and holds
-whatever it decides: [building a `Task` performs nothing](../spec/evaluation-semantics.md#effects).
-The companion is therefore called, and caught, when the `Task` is *run*, never when it is built. A
-wrapper that caught at build time would catch nothing.
+**Approach:** apply [`DEC-22`](../decisions/dec-22.md) decisions
+[4](../decisions/dec-22.md#4--the-wrapper-is-one-runtime-helper-and-a-synchronous-companion-continues-synchronously),
+[5](../decisions/dec-22.md#5--runtask-returns-a-promise-and-owns-every-abort-raised-while-it-runs), for the one-shot
+guard, and [7](../decisions/dec-22.md#7--a-facade-constant-naming-a-task-gets-the-same-wrapper-with-no-arguments).
+None of that is restated here beyond its outline. The call site emits a `Task` whose run function
+calls `$effect` in `runtime/js/zelkova.mjs` with the companion call, the predicate and the
+continuation. `$effect` calls the companion inside a `try` that covers that call and nothing else,
+tells a promise apart with `instanceof Promise`, and returns a `Bounce` for a synchronous value or
+throw and a `Suspend` for a promise, whose two handlers go to `promise.then(onValue, onReject)` —
+never a `.catch` after `.then`, which would turn a later abort into `Threw`. A facade constant
+naming a `Task` gets the same `$effect` call with no arguments, as one module-level `Task`.
+
+[Building a `Task` performs nothing](../spec/evaluation-semantics.md#effects), so the companion is
+called, and caught, when the `Task` is *run*, never when it is built. A wrapper that caught at
+build time would catch nothing.
 
 The predicate that decides whether the returned value matches `a` is [`GEN-2`](gen-2.md)'s. This
 ticket calls one and routes its answer. The routing is the part that differs by facade kind, and
@@ -70,5 +79,7 @@ that returns correctly, after an `await`, yields `Ok` with the value. A fifth, b
 `Task (Result Failure ())` facade, returns a number and yields `Ok ()`. With no string literals, the
 tests match the constructor and do not compare the `String`. That `Threw` carries the host's
 description and `Malformed` names the export is asserted on the emitted wrapper's behaviour in a
-`node --test` check beside `runtime/js/tests/`. `Malformed` may land with [`GEN-2`](gen-2.md), as
-**Depends on** says.
+`node --test` check beside `runtime/js/tests/`, as are two properties of `$effect` no Zelkova
+test can see: a continuation that throws after a companion returned, synchronously or through a
+promise, rejects `$runTask`'s promise and is not turned into `Threw`; and a step handed to `resume`
+twice aborts. `Malformed` may land with [`GEN-2`](gen-2.md), as **Depends on** says.

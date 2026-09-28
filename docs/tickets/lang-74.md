@@ -1,13 +1,16 @@
 # LANG-74 · `std/core` declares no `Task` and no `Failure`
 
 **Sizing:** medium. It adds one module of Zelkova, `std/core/src/Task.zel`, written against a
-representation [`SPEC-37`](spec-37.md) settles, plus its tests. It could grow if writing
+representation [`DEC-22`](../decisions/dec-22.md) settles, plus its tests. It could grow if writing
 `andThen` without lambdas or `let` turns up a typer gap: higher-order partial application
-through a union constructor has not been exercised this hard before.
+through a union constructor has not been exercised this hard before. Two more places it could
+grow: an exposed opaque `Task` whose constructor mentions `Done`, a type the module does not
+export, and helpers taking a `()` parameter, `callWith k a () = k a`. Neither has been compiled
+before.
 
 **Part of:** [Active work: effects](README.md#active-work-effects).
 
-**Depends on:** [`SPEC-37`](spec-37.md), for `Done` and for the helper shape; [`LANG-73`](README.md),
+**Depends on:** [`LANG-73`](README.md),
 for the `String` that `Failure`'s constructors carry — closed, so `std/core` now declares it.
 
 **Location:** `std/core/src/Task.ignored` — Elm's `effect module Task`, over
@@ -27,11 +30,18 @@ at that import, and every later ticket in the effects section needs the type.
 **Approach:**
 
 1. Write `std/core/src/Task.zel`: `module Task exposing (Task, Failure(..), succeed, map, andThen)`.
-   Declare `Task` with the continuation-passing constructor, and `Done` however
-   [`SPEC-37`](spec-37.md) decides. Write the three functions in Zelkova with top-level helpers
+   Declare `Task` with the continuation-passing constructor
+   ([`DEC-22` decision 1](../decisions/dec-22.md#1--a-task-is-continuation-passing)) and `Done` with the three
+   constructors [decision 2](../decisions/dec-22.md#2--done-is-a-union-core-declares-and-does-not-export-and-the-runtime-reads-it)
+   names, in that order and with those names, since the runtime reads them. `Done` is not
+   exposed. Its doc comment says that `Suspend`'s function schedules work and that only the
+   runtime calls it. Write the three functions in Zelkova with top-level helpers
    and partial application, since [`LANG-34`](lang-34.md) (lambdas) and [`LANG-33`](lang-33.md)
-   (`let`) are not on this path. `Task` is exposed opaquely. That is what keeps building one out of
-   parts inside core, per the chapter.
+   (`let`) are not on this path. Every helper that would call a run function or a continuation
+   returns a `Bounce` of that call instead — both handoffs, not only the continuation, as
+   [decision 3](../decisions/dec-22.md#3--every-handoff-bounces-the-loop-yields-every-n-bounces)
+   explains. No helper builds `Suspend` or `Halt`: those are the runtime's. `Task` is exposed
+   opaquely. That is what keeps building one out of parts inside core, per the chapter.
 2. Declare `Failure` with both constructors exposed.
 3. Decide what happens to `Task.ignored`, as [`LANG-73`](README.md) did for `String.ignored`.
    Elm's `map2`…`map5`, `sequence`, `onError`, `mapError`, `perform` and `attempt` are not in the
@@ -57,4 +67,4 @@ partial application, so `javascript::emit` should emit the module as it stands. 
 **Acceptance:** `cargo run -- compile std/core` parses and checks `Task` along with the rest, and
 `stdlib_package_compiles` pins the new count. A module with no `import` can annotate
 `t : Task Int` and write `t = Task.succeed 1`. Outside `zelkova-core`, writing the `Task`
-constructor is a canonicalization error. `cargo test --workspace` is green.
+constructor, or naming `Task.Done`, is a canonicalization error. `cargo test --workspace` is green.

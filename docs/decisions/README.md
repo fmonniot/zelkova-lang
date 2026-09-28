@@ -121,3 +121,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-19](dec-19.md) | A binding depends on what it reaches by mention, through functions too | live |
 | [DEC-20](dec-20.md) | A test-dependency may depend on the package it tests | live |
 | [DEC-21](dec-21.md) | The unit value crosses as `undefined` | live |
+| [DEC-22](dec-22.md) | How a `Task` is represented and run: a survey and eight decisions | live |

@@ -175,8 +175,7 @@ The language owner settled the program's shape on 2026-09-27:
 
 - **A `Task` is continuation-passing.** `zelkova-core` declares it and writes `succeed`, `map`
   and `andThen` in Zelkova. How that is represented and run on each target, including stack
-  depth, JavaScript promises and WebAssembly async, is researched and recorded by
-  [`SPEC-37`](spec-37.md) before anything builds on it.
+  depth, JavaScript promises and WebAssembly async, is [`DEC-22`](../decisions/dec-22.md).
 - **Programs run.** `main` is checked to be a `Task ()`, and `zelkova run` runs it.
 - **Tests wait on effects.** `zelkova-test` gains a `Test` that holds a `Task`, and the `.mjs`
   checks under `std/core/tests/Js/` move to the test-facade layout
@@ -185,14 +184,14 @@ The language owner settled the program's shape on 2026-09-27:
   separate ticket is filed for that.
 
 ```
-SPEC-37  how a `Task` is represented and run, on JavaScript and WebAssembly   ── design, first
+SPEC-37  how a `Task` is represented and run, on JavaScript and WebAssembly   ── closed
 LANG-72  `()` as a type, an expression and a pattern                           ── closed
   └── GEN-20  emit `()`, and publish its JavaScript value                    ── closed
 LANG-73  `std/core` declares `String`                                          ── closed
 LANG-68  an unmarked facade returns `Task (Result Failure a)`; `Task` nowhere else  ── independent
 GEN-2    the boundary predicates                                               ── independent
   │
-  │  SPEC-37 + LANG-73
+  │  SPEC-37 + LANG-73 (both closed)
   ▼
 LANG-74  `std/core` declares `Task`, `Failure`, `succeed`, `map` and `andThen`
   │
@@ -223,8 +222,10 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed`, `map` and `andThen`
 - The rest of Elm's `Task` API: `map2` and up, `sequence`, `onError`, `perform`. `Task (Result e a)`
   makes most of them different functions, and which ones Zelkova wants is a question for after
   [`LANG-74`](lang-74.md).
-- [`GEN-15`](gen-15.md), the WebAssembly backend. `SPEC-37` records the WebAssembly direction so
-  that the JavaScript choice does not foreclose it. Nothing is built for it.
+- [`GEN-15`](gen-15.md), the WebAssembly backend. [`DEC-22` decision
+  6](../decisions/dec-22.md#6--webassembly-the-direction-with-two-open-questions) records the
+  WebAssembly direction so that the JavaScript choice does not foreclose it. Nothing is built for
+  it.
 - [`TEST-3`](test-3.md), CI. It is not a prerequisite, but [`TEST-7`](test-7.md) changes its
   second step, so whichever of the two lands second updates the other.
 
@@ -329,7 +330,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-34 | task | — | closed 2026-09-27 | Only `zelkova-core` may declare a module the default imports name, and the exemption is keyed on the package rather than on module names |
 | SPEC-35 | task | — | closed 2026-09-27 | A package cannot be tested with a library that depends on it |
 | [SPEC-36](spec-36.md) | task | — | open | The `double` block in `expressions.md` cannot go red for the reason its paragraph gives |
-| [SPEC-37](spec-37.md) | task | — | open | How a `Task` is represented and run is undesigned, on either target |
+| SPEC-37 | task | — | closed 2026-09-28 | How a `Task` is represented and run is undesigned, on either target |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
