@@ -1,6 +1,7 @@
 # GEN-20 · Emit `()`
 
-**Sizing:** small. One IR node and its emission in expression and pattern position, once the value's
+**Sizing:** small. The IR already carries `()` and the decision tree already lowers its pattern,
+so what is left is emitting the value and lifting the backend's refusal, once the value's
 JavaScript representation is chosen. The choice is the part that is not small, because a companion
 sees it.
 
@@ -10,11 +11,11 @@ this ticket emits it.
 
 **Depends on:** [`LANG-72`](README.md), now closed.
 
-**Location:** `src/compiler/javascript.rs` — the expression emitter and the decision-tree test a
-pattern becomes; `src/compiler/ir/` — `TypedTermKind::Unit` and `TermPatternKind::Unit`, which
-`decision_tree` already lowers to no test and no binding; `runtime/js/zelkova.mjs`, if the value
-ends up living there. Until this lands, `javascript::emit` refuses both with
-`Construct::Unit`.
+**Location:** `src/compiler/javascript.rs` — the expression emitter, and the `unit_pattern`
+refusal at the top of `Emitter::case_expression`; `src/compiler/ir/` — `TypedTermKind::Unit` and
+`TermPatternKind::Unit`, which `decision_tree` already lowers to no test and no binding;
+`runtime/js/zelkova.mjs`, if the value ends up living there. Until this lands, `javascript::emit`
+refuses both with `Construct::Unit`.
 
 **Problem:** `()` reaches the backend and `javascript::emit` refuses it. The
 effects path needs it emitted in two places. `main`'s `Task ()` is completed with it. And every
@@ -40,8 +41,9 @@ that value is. A companion returning from a check has to produce it. A test comp
    the way [a union's encoding](../spec/interop.md#a-union-crosses-as-a-tagged-value) is published.
    That sentence is a spec change and lands in its own commit ahead of the emitter, per
    [the conventions](../spec/conventions.md#a-spec-change-and-a-semantics-change-do-not-share-a-diff).
-3. Emit the expression. A `()` pattern tests nothing, since the type has one value, so the
-   decision tree binds nothing and branches on nothing.
+3. Emit the expression, and delete the `unit_pattern` refusal in `Emitter::case_expression`
+   (and `unit_pattern` with it). Nothing else is owed to the pattern: `decision_tree` already
+   lowers a `()` to no test and no binding, at any depth.
 
 **Tests:** `tests/javascript.rs` for the emitted text of `x = ()` and of `always () = On`. A
 Zelkova test in `std/core/tests/` that goes through both. That needs nothing from effects:

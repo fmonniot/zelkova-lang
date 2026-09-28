@@ -205,8 +205,8 @@ is only a status check on the compiler as it stands today.
 
 Implemented: modules with `exposing`/`import`/`as`, union types, pattern matching via `case
 … of`, `if/then/else`, function declarations with annotations, infix declarations, tuples, the
-unit type `()` (checked, but refused by the JavaScript backend until `GEN-20`), JS interop via
-facades with companion `.mjs` files, `--` and `{- -}` comments.
+unit type `()` (checked; the JavaScript backend refuses a `()` value or pattern until `GEN-20`),
+JS interop via facades with companion `.mjs` files, `--` and `{- -}` comments.
 
 Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, type
 aliases, and effects (`Task`, and the `main` and test discovery built on it —

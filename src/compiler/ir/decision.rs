@@ -33,8 +33,9 @@
 //! one value. A variable binds the value at its occurrence. A tuple tests nothing,
 //! since a value of a tuple type is always a tuple, and goes on to its elements. A
 //! literal or a constructor is a `Test` at its occurrence; a constructor then goes on
-//! to its arguments. Every `Test` on the way down falls back, as its `default`, to the tree for the branches after this one: a pattern
-//! that fails part-way through fails as a whole.
+//! to its arguments. Every `Test` on the way down falls back, as its `default`, to the
+//! tree for the branches after this one: a pattern that fails part-way through fails as
+//! a whole.
 //!
 //! That fallback tree is copied into each such `default` rather than shared, since a
 //! [`Decision`] is a tree and not a graph. One level deep, as every pattern is today,
