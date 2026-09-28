@@ -209,8 +209,8 @@ TEST-3   CI runs `zelkova test std/core` and the remaining `.mjs` checks
 
 - [`LANG-62`](lang-62.md), core supplied without being written in `dependencies`. `zelkova-test`
   names core by `path`, which works today.
-- [`GEN-11`](gen-11.md), the tail-call loop. Its depth test is written as a Zelkova test once
-  `std/core/tests/` exists.
+- [`GEN-11`](gen-11.md), the tail-call loop. Its depth test is written as a Zelkova test in
+  `std/core/tests/`.
 - [`GEN-16`](gen-16.md) and [`LANG-68`](lang-68.md), everything that needs `Task`, and with them
   a `zelkova run`.
 - [`LANG-42`](lang-42.md). `==` is already structural at run time, because `Basics.eq` reaches

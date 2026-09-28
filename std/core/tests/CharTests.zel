@@ -1,5 +1,11 @@
 -- `Char` literals, matched by a `case` on literal patterns and ordered by `<`. The
 -- double quote is among them because the emitted literal has to escape it.
+--
+-- None of these observes how a `Char` is represented at run time: each literal is
+-- compared with the same literal through the same emission, and `<` holds for
+-- one-character strings and for BigInts alike. Only the escape is pinned. A test
+-- of the representation needs a `Char` facade to see it through, and `std/core` has
+-- none yet (`Char.ignored`).
 module CharTests exposing (letterMatchesItsPattern, doubleQuoteMatchesItsPattern, charsAreOrdered)
 
 import Basics exposing (..)

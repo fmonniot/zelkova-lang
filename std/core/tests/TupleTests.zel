@@ -1,6 +1,7 @@
 -- Tuples taken apart by a pattern, as a parameter and in a `case`, where the order
--- of the elements decides the answer; and two tuples compared with `==`.
-module TupleTests exposing (parameterPatternReadsEachElement, casePatternReadsEachElement, tuplesCompareByElement)
+-- of the elements decides the answer; and two distinct tuples compared with `==`, once
+-- equal and once not.
+module TupleTests exposing (parameterPatternReadsEachElement, casePatternReadsEachElement, equalTuplesAreEqual, tuplesCompareByElement)
 
 import Basics exposing (..)
 import Test exposing (Test)
@@ -26,6 +27,11 @@ parameterPatternReadsEachElement =
 casePatternReadsEachElement : Test
 casePatternReadsEachElement =
   Test.equal (middle (1, 2, 3)) 2
+
+
+equalTuplesAreEqual : Test
+equalTuplesAreEqual =
+  Test.check ((1, 2) == (1, 2))
 
 
 tuplesCompareByElement : Test

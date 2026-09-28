@@ -1,10 +1,12 @@
 -- Union values: a constructor with arguments, built and taken apart by a `case`
 -- whose answer depends on the order of the arguments; and constructors of no
--- arguments, each one module-level constant, compared with `==`.
+-- arguments, each one module-level constant, compared with `==`. Two separately
+-- built values with arguments are compared too, since they are distinct objects.
 module UnionTests exposing
   ( argumentsKeepTheirOrder
   , singleArgumentIsRead
   , sameNullaryConstructorIsEqual
+  , equalArgumentValuesAreEqual
   , differentNullaryConstructorsDiffer
   )
 
@@ -45,6 +47,11 @@ singleArgumentIsRead =
 sameNullaryConstructorIsEqual : Test
 sameNullaryConstructorIsEqual =
   Test.check (On == On)
+
+
+equalArgumentValuesAreEqual : Test
+equalArgumentValuesAreEqual =
+  Test.check (Rect 5 2 == Rect 5 2)
 
 
 differentNullaryConstructorsDiffer : Test
