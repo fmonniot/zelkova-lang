@@ -1,0 +1,43 @@
+module Test exposing (Test, equal, check)
+
+
+{-| A pass-or-fail verdict. A value of this type is a test when a module under
+`tests/` exposes it — see
+[*What a test is*](../../../docs/spec/packages.md#what-a-test-is) — and it carries no
+name of its own: a runner reports the value that held it instead.
+
+Exposed without its constructors, so nothing outside this module can build a `Test`
+except by way of `equal` or `check`.
+-}
+type Test
+  = Pass
+  | Fail
+
+
+{-| A test that passes when the two arguments are equal, and fails otherwise.
+
+    equal (1 + 2) 3
+
+`==` compares structurally at run time even though its type, `a -> a -> Bool`, does
+not say so yet.
+-}
+equal : a -> a -> Test
+equal expected actual =
+  check (expected == actual)
+
+
+{-| A test that passes when given `True` and fails when given `False`.
+
+    check (7 // 0 == 0)
+
+Named `check` rather than `true`: boolean literals are not implemented yet, and
+`true` becomes a keyword once they land.
+-}
+check : Bool -> Test
+check condition =
+  case condition of
+    True ->
+      Pass
+
+    False ->
+      Fail

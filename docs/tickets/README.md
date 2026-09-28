@@ -179,7 +179,7 @@ worked in parallel:
 
 ```
 GEN-17   `zelkova compile [DIR]` — the binary, clap, and the `cargo run` sweep   ── closed
-LANG-63  `zelkova-test` declares `Test`; a pass collects a package's tests
+LANG-63  `zelkova-test` declares `Test`; a pass collects a package's tests       ── closed
 GEN-18   a test build writes its tests, to `build/test/js/`                      ── closed
 SPEC-35  a test-dependency may depend on the package it tests                    ── closed
   │
@@ -374,7 +374,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-60 | task | — | closed 2026-09-16 | The typer gives `Bool` a literal type, so inside `Basics` it does not match `True` and `False` |
 | [LANG-61](lang-61.md) | task | — | open | A `git` dependency is not fetched, and nothing writes or reads `zelkova.lock` |
 | [LANG-62](lang-62.md) | task | — | open | The compiler carries no copy of `zelkova-core`, so a package has to write it in `dependencies` |
-| [LANG-63](lang-63.md) | task | — | open | Nothing declares `Test`, and nothing finds a package's tests |
+| LANG-63 | task | — | closed 2026-09-27 | Nothing declares `Test`, and nothing finds a package's tests |
 | LANG-64 | task | — | closed 2026-09-20 | A shift count is clamped into `0 .. 64` |
 | LANG-65 | task | — | closed 2026-09-21 | Three more `std/core` JavaScript functions still read an `Int` as a number |
 | [LANG-66](lang-66.md) | task | — | open | What a negative `Int` exponent means for `pow` is undecided |

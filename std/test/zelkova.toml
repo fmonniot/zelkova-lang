@@ -1,0 +1,8 @@
+name = "zelkova-test"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../core"
+
+[test-dependencies]

@@ -23,6 +23,7 @@ use zelkova_lang::compiler::resolve;
 use zelkova_lang::compiler::source::{
     load_package_sources, load_package_sources_into, SourceFiles, SourceRoot,
 };
+use zelkova_lang::compiler::test_collection;
 use zelkova_lang::compiler::typer;
 use zelkova_lang::compiler::{
     check_module, compile_package, compile_package_with_tests, parser, CheckedModule,
@@ -62,6 +63,13 @@ fn std_src() -> std::path::PathBuf {
 fn std_package_root() -> std::path::PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     Path::new(&manifest).join("std/core")
+}
+
+/// `std/test`, the `zelkova-test` package — [`std_package_root`], for `zelkova-test`
+/// rather than `zelkova-core`.
+fn zelkova_test_package_root() -> std::path::PathBuf {
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    Path::new(&manifest).join("std/test")
 }
 
 /// Root of one of the small package fixtures under `tests/fixtures/`.
@@ -555,6 +563,22 @@ fn stdlib_package_compiles() {
     );
 
     let result = compile_package(&std_package_root());
+
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+/// `LANG-63`: `std/test`, the `zelkova-test` package, compiles on its own — the same
+/// shape [`stdlib_package_compiles`] pins for `std/core`, and for the same reason: an
+/// *existing* but empty `std/test/src` would still yield zero modules and a green
+/// `compile_package`, so the module list is asserted first.
+#[test]
+fn zelkova_test_package_compiles() {
+    assert_eq!(
+        module_names(&zelkova_test_package_root(), SourceRoot::Src),
+        vec!["src/Test.zel"]
+    );
+
+    let result = compile_package(&zelkova_test_package_root());
 
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }
@@ -4905,6 +4929,43 @@ fn a_test_dependency_does_not_reach_the_src_root() {
             .any(|m| m.contains("cannot find a module named `AcmeExpect.Expect`")),
         "expected the import to fail as an unknown module, got {:?}",
         messages
+    );
+}
+
+/// `LANG-63`: `compile_package_with_tests` hands back the root's checked `tests/`
+/// `Interface`s, and `test_collection::collect` finds a test among them by the
+/// exposed value's full `QualName` — package included — never by the spelling
+/// `Test` alone. The fixture's `tests/AppTest.zel` exposes three values: `addsUp`,
+/// a real `zelkova-test:Test.Test`; `helper`, an unrelated `Int`; and `decoyTest`,
+/// of a type the fixture declares itself and also spells `Test`. Only `addsUp` is
+/// collected.
+///
+/// Neutralise-checked twice. As the ticket's acceptance asks: comparing types through
+/// `name.unqualified_name()` instead of the whole `QualName` in
+/// `test_collection::is_test` makes `decoyTest` join `addsUp` in the collected set,
+/// and this assertion goes red. Separately: dropping the `root_test_interfaces =
+/// ..` assignment in `compile`'s test-tree branch leaves `AppTest` out of what
+/// `compile_package_with_tests` hands back at all, and the `.expect` above panics —
+/// which is what pins that the `Interface`s actually travel out of `compile`'s
+/// private state rather than being computed independently by this test. Both
+/// restored afterwards.
+#[test]
+fn a_test_is_found_by_its_qualname_not_its_spelling() {
+    let root = fixture_package("package_test_collection");
+
+    let interfaces = compile_package_with_tests(&root).expect("expected the fixture to compile");
+
+    let collected = test_collection::collect(&interfaces);
+    let app_test = collected
+        .iter()
+        .find(|module| module.module.name().as_str() == "AppTest")
+        .expect("AppTest must be among the checked test modules");
+
+    assert_eq!(
+        app_test.tests,
+        vec![Name::new("addsUp")],
+        "only the exposed value of the real `Test` type must be collected, got {:?}",
+        app_test.tests
     );
 }
 

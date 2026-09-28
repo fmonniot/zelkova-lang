@@ -554,9 +554,8 @@ What a `Test` holds — a name, a check, a group of other tests — belongs to `
 any library built on it. How a runner is invoked and what it reports is
 [the toolchain's](toolchain.md#running-a-packages-tests).
 
-**Not implemented:** there is no `zelkova-test` package, so nothing declares the `Test` a
-test's type has to be, and no runner finds or runs the values that have it
-([`docs/tickets/lang-63.md`](../tickets/lang-63.md)).
+**Not implemented:** nothing runs a collected test
+([`docs/tickets/lang-69.md`](../tickets/lang-69.md)).
 
 ### `test-dependencies`
 

@@ -101,6 +101,12 @@ pub mod resolve;
 /// detail of one phase.
 pub mod scalars;
 pub mod source;
+/// Collecting a package's tests: the pass over a `tests/` root's checked
+/// [`Interface`]s that finds the exposed values whose type is `zelkova-test`'s
+/// `Test`. Public because [`LANG-69`](../../docs/tickets/lang-69.md)'s runner is its
+/// caller, the way `scalars` and `default_imports` are public for the phase that
+/// reads them.
+pub mod test_collection;
 pub mod tuple;
 pub mod typer;
 
@@ -149,6 +155,17 @@ impl PackageName {
     /// needs no `unwrap`; that the constant passes the check is a unit test.
     pub fn core() -> PackageName {
         PackageName(resolve::CORE_PACKAGE.to_string())
+    }
+
+    /// `zelkova-test`, [`test_collection::TEST_PACKAGE`]: the package that declares
+    /// `Test`, the type [*what a test
+    /// is*](../../docs/spec/packages.md#what-a-test-is) finds a value's test-ness by.
+    ///
+    /// Built the same way [`PackageName::core`] is, without going through
+    /// [`PackageName::new`]'s check, so that naming it needs no `unwrap`; that the
+    /// constant passes the check is a unit test.
+    pub fn test_package() -> PackageName {
+        PackageName(test_collection::TEST_PACKAGE.to_string())
     }
 
     /// Whether this is `zelkova-core`, the one package the default imports and the
@@ -805,6 +822,7 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
         TestRoot::Skipped,
         &package_dir.join(BUILD_DIRECTORY),
     )
+    .map(|_| ())
 }
 
 /// The directory a build's output goes to, beside the root package's manifest and never
@@ -823,7 +841,7 @@ pub const BUILD_DIRECTORY: &str = "build";
 /// the reasons). Nothing is written until every module of every package has checked and
 /// emitted.
 pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), CompilationError> {
-    compile(package_dir, TestRoot::Skipped, build_dir)
+    compile(package_dir, TestRoot::Skipped, build_dir).map(|_| ())
 }
 
 /// [`compile_package`], compiling the package's `tests/` root as well as its `src/`.
@@ -837,7 +855,13 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 ///
 /// It compiles the tests and does not run them: what makes a declaration a test is
 /// [its type](../../docs/spec/packages.md#what-a-test-is), and there is no runner yet
-/// ([`LANG-69`](../../docs/tickets/lang-69.md) is that ticket).
+/// ([`LANG-69`](../../docs/tickets/lang-69.md) is that ticket). What it hands back on
+/// success is the `Interface` of each of the root's own `tests/` modules that
+/// checked — never a test-only package's, and never `src/`'s — so a caller can find
+/// which of their exposed values are tests without a phase dropping the checked
+/// modules once they are emitted. `test_collection::collect` is that pass, and
+/// `LANG-69`'s runner is its only intended caller. Empty when the package holds no
+/// `tests/` at all.
 ///
 /// A test module and every `test-dependency`'s modules are checked and, unlike a plain
 /// build, written — to a tree of their own, `build/test/js/`, laid out exactly like
@@ -846,7 +870,7 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 /// [`compile_package`] would have written it: a test module never turns up there, so a
 /// plain build run afterwards never finds one left behind by a run that also compiled the
 /// tests ([`GEN-18`](../../docs/tickets/README.md)).
-pub fn compile_package_with_tests(package_dir: &Path) -> Result<(), CompilationError> {
+pub fn compile_package_with_tests(package_dir: &Path) -> Result<Vec<Interface>, CompilationError> {
     compile_package_with_tests_into(package_dir, &package_dir.join(BUILD_DIRECTORY))
 }
 
@@ -856,11 +880,15 @@ pub fn compile_package_with_tests(package_dir: &Path) -> Result<(), CompilationE
 pub fn compile_package_with_tests_into(
     package_dir: &Path,
     build_dir: &Path,
-) -> Result<(), CompilationError> {
+) -> Result<Vec<Interface>, CompilationError> {
     compile(package_dir, TestRoot::Compiled, build_dir)
 }
 
-fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), CompilationError> {
+fn compile(
+    package_dir: &Path,
+    tests: TestRoot,
+    build_dir: &Path,
+) -> Result<Vec<Interface>, CompilationError> {
     // Error reporter
     let mut writer = StandardStream::stderr(ColorChoice::Auto);
     let config = codespan_reporting::term::Config {
@@ -954,6 +982,14 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
     // step below only reaches for it when `tests == TestRoot::Compiled`.
     let mut test_tree_modules: Vec<ModuleToEmit> = Vec::new();
 
+    // What `compile_package_with_tests` hands back: the `Interface` of each of the
+    // root's own `tests/` modules that checked — never a test-only package's, and
+    // never `src/`'s. This is what lets a caller find a package's tests
+    // (`test_collection::collect` is that pass) without a phase dropping the checked
+    // modules on the floor once they have been emitted. Stays empty for a build that
+    // did not ask for the tests, or whose root `tests/` did not check.
+    let mut root_test_interfaces: Vec<Interface> = Vec::new();
+
     // The root package's `tests/` is compiled apart from its `src/`, after every
     // test-only package, because a test-only package may depend on the root: that edge
     // names the root's `src/`, and the root's `tests/` in turn needs the test-only
@@ -1026,14 +1062,22 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
         }
 
         debug!("phase: compile the tests of package {}", root.name);
-        test_tree_modules.extend(compile_tests(
+        let root_tests_checked = compile_tests(
             root,
             &build,
             &published,
             environment,
             &mut errors,
             &mut print_status,
-        ));
+        );
+        // Built from the same `ModuleToEmit`s `test_tree_modules` is about to take,
+        // before that move: an `Interface` is cheap to clone off a `CheckedModule`
+        // that is otherwise about to be consumed by emission.
+        root_test_interfaces = root_tests_checked
+            .iter()
+            .map(|to_emit| to_emit.module.to_interface(to_emit.file))
+            .collect();
+        test_tree_modules.extend(root_tests_checked);
     }
 
     // Step 6: generate code, only for a build in which nothing failed. Every module of
@@ -1097,7 +1141,7 @@ fn compile(package_dir: &Path, tests: TestRoot, build_dir: &Path) -> Result<(), 
     }
 
     if errors.is_empty() {
-        Ok(())
+        Ok(root_test_interfaces)
     } else {
         Err(CompilationError::Many(errors))
     }
@@ -2019,6 +2063,16 @@ mod tests {
         assert_eq!(
             PackageName::new(resolve::CORE_PACKAGE),
             Ok(PackageName::core())
+        );
+    }
+
+    /// `PackageName::test_package` skips the check the same way `core` does, so it is
+    /// run here too.
+    #[test]
+    fn the_test_package_name_is_a_legal_one() {
+        assert_eq!(
+            PackageName::new(test_collection::TEST_PACKAGE),
+            Ok(PackageName::test_package())
         );
     }
 

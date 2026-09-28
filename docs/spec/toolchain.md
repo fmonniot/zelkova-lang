@@ -235,8 +235,8 @@ reads its `tests/` root.
 compile either root is the same non-zero exit a failed build already is — a test that did not
 run is not a test that passed.
 
-**Not implemented:** there is no runner, and nothing asks the compiler for a package's tests
-([`docs/tickets/lang-63.md`](../tickets/lang-63.md)).
+**Not implemented:** there is no runner
+([`docs/tickets/lang-69.md`](../tickets/lang-69.md)).
 
 ## The compiler's interface
 
