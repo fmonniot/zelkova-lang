@@ -1,0 +1,33 @@
+-- Tuples taken apart by a pattern, as a parameter and in a `case`, where the order
+-- of the elements decides the answer; and two tuples compared with `==`.
+module TupleTests exposing (parameterPatternReadsEachElement, casePatternReadsEachElement, tuplesCompareByElement)
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+difference : (Int, Int) -> Int
+difference (a, b) =
+  a - b
+
+
+middle : (Int, Int, Int) -> Int
+middle triple =
+  case triple of
+    (_, b, _) ->
+      b
+
+
+parameterPatternReadsEachElement : Test
+parameterPatternReadsEachElement =
+  Test.equal (difference (10, 3)) 7
+
+
+casePatternReadsEachElement : Test
+casePatternReadsEachElement =
+  Test.equal (middle (1, 2, 3)) 2
+
+
+tuplesCompareByElement : Test
+tuplesCompareByElement =
+  Test.equal ((1, 2) == (2, 1)) False

@@ -165,9 +165,9 @@ from there rather than it being filed twice.
 ## Active work: bootstrap
 
 The goal is **`zelkova compile` and `zelkova test`**, so that the language's own behaviour is
-checked by tests written in Zelkova. Today it is checked by Rust tests that assert emitted text,
-plus `.mjs` files that either test a companion directly or hand-copy what the emitter writes
-(`std/core/tests/CaseChecks.mjs`). Neither kind runs the program the compiler actually produced.
+checked by tests written in Zelkova. `std/core/tests/*.zel` holds the first of them, run by
+`zelkova test std/core`: they run the program the compiler actually produced. Beside them sit
+Rust tests that assert emitted text, and `.mjs` files that test a companion directly.
 
 The language owner settled the design on 2026-09-27. Each ticket records its part under
 **Decided**:
@@ -200,7 +200,7 @@ LANG-69  `zelkova test [DIR]` — a generated `run.mjs`, run under node         
   │
   │  + SPEC-35 + BUG-43
   ▼
-GEN-14   std/core's first Zelkova tests; `CaseChecks.mjs` is deleted
+GEN-14   std/core's first Zelkova tests, in its own `tests/` root                ── closed
   │
 TEST-3   CI runs `zelkova test std/core` and the remaining `.mjs` checks
 ```
@@ -411,7 +411,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-11](gen-11.md) | task | — | open | Emit the tail-call loop |
 | GEN-12 | task | — | closed 2026-09-22 | Emit an `unsafe` facade call, and place its companion |
 | GEN-13 | task | — | closed 2026-09-26 | Write the build |
-| [GEN-14](gen-14.md) | task | — | open | Nothing checks that an emitted program computes the right value |
+| GEN-14 | task | — | closed 2026-09-27 | Nothing checks that an emitted program computes the right value |
 | [GEN-15](gen-15.md) | task | — | open | The WebAssembly backend |
 | [GEN-16](gen-16.md) | task | — | open | The wrapper an effectful facade's call site gets |
 | GEN-17 | task | — | closed 2026-09-27 | The compiler has no command line: `src/main.rs` compiles `std/core` and takes no arguments |

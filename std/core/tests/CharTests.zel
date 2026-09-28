@@ -1,0 +1,34 @@
+-- `Char` literals, matched by a `case` on literal patterns and ordered by `<`. The
+-- double quote is among them because the emitted literal has to escape it.
+module CharTests exposing (letterMatchesItsPattern, doubleQuoteMatchesItsPattern, charsAreOrdered)
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+classify : Char -> Int
+classify c =
+  case c of
+    'a' ->
+      1
+
+    '"' ->
+      2
+
+    _ ->
+      3
+
+
+letterMatchesItsPattern : Test
+letterMatchesItsPattern =
+  Test.equal (classify 'a') 1
+
+
+doubleQuoteMatchesItsPattern : Test
+doubleQuoteMatchesItsPattern =
+  Test.equal (classify '"') 2
+
+
+charsAreOrdered : Test
+charsAreOrdered =
+  Test.check ('a' < 'b')

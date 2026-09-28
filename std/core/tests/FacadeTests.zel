@@ -1,0 +1,17 @@
+-- Calls through `Basics` into the `Js.Basics` facade and on into its companion,
+-- `Basics.mjs`: `//` is `Js.Basics.idiv` on two `Int`s, `sqrt` is
+-- `Js.Basics.sqrt` on a `Float`.
+module FacadeTests exposing (integerDivisionTruncates, squareRootOfSixteen)
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+integerDivisionTruncates : Test
+integerDivisionTruncates =
+  Test.equal (7 // 2) 3
+
+
+squareRootOfSixteen : Test
+squareRootOfSixteen =
+  Test.equal (sqrt 16.0) 4.0

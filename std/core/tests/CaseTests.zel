@@ -1,0 +1,40 @@
+-- A `case` over a union of three constructors, run as emitted: each constructor
+-- reaches its own branch and the call returns that branch's value.
+module CaseTests exposing (redIsOne, greenIsTwo, blueIsThree)
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+type Colour
+  = Red
+  | Green
+  | Blue
+
+
+label : Colour -> Int
+label c =
+  case c of
+    Red ->
+      1
+
+    Green ->
+      2
+
+    Blue ->
+      3
+
+
+redIsOne : Test
+redIsOne =
+  Test.equal (label Red) 1
+
+
+greenIsTwo : Test
+greenIsTwo =
+  Test.equal (label Green) 2
+
+
+blueIsThree : Test
+blueIsThree =
+  Test.equal (label Blue) 3

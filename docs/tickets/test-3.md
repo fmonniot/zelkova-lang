@@ -6,11 +6,11 @@ matter (see **Approach**).
 
 **Part of:** the [bootstrap](README.md#active-work-bootstrap) section, as its last step.
 Re-scoped on 2026-09-27. This ticket used to be only about `node --test` over the companion
-checks. Once [`GEN-14`](gen-14.md) lands, `std/core` also holds Zelkova tests run by
+checks. Since [`GEN-14`](README.md), `std/core` also holds Zelkova tests run by
 `zelkova test`, and both kinds of check belong in one job.
 
-**Depends on:** [`GEN-14`](gen-14.md), which gives `zelkova test std/core` something to run.
-The `node --test` half has no dependency and could land first.
+**Depends on:** [`GEN-14`](README.md), now closed, which gave `zelkova test std/core` something
+to run. The `node --test` half has no dependency and could land first.
 
 **Location:** `.github/workflows/rust.yml`, whose `test`, `fmt` and `clippy` jobs all run only
 `cargo`. `CLAUDE.md`'s *Commands* section. `std/core/tests/Js/*.mjs`, the companion checks in
@@ -28,7 +28,7 @@ runtime behaviour, is invisible on a pull request. [`BUG-24`](README.md) and
 **Approach:** one job, two steps, in this order:
 
 1. `cargo run -- test std/core`, which runs `std/core`'s Zelkova tests ([`LANG-69`](README.md),
-   [`GEN-14`](gen-14.md)).
+   [`GEN-14`](README.md)).
 2. `node --test 'std/core/tests/**/*.mjs'`, which runs the companion checks that are not
    Zelkova tests yet.
 
