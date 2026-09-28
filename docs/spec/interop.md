@@ -82,7 +82,9 @@ facade to it**. Two targets means two mechanisms, and a type is admitted when it
 
 - **JavaScript needs a predicate**: a piece of JavaScript that decides, from a value alone,
   whether that value belongs to that type. A value the companion hands back is run through the
-  predicate of the type its signature declares, on every crossing.
+  predicate of the type its signature declares, on every crossing; an argument handed to the
+  companion is not — the type checker already proved it to be of its declared type, so nothing
+  walks it a second time.
 - **WebAssembly needs a spelling**: a WIT type that means what the Zelkova type means. The
   component's declared interface is checked against the facade once, when the component is
   loaded, and nothing is checked per call.
@@ -133,10 +135,10 @@ unsafe rgb : Int -> (Int, Int, Int)
 unsafe luminance : (Int, Int, Int) -> Float
 ```
 
-The two mechanisms cost different things. A predicate walks the whole value, so a facade taking
-a list of a thousand tuples checks a thousand tuples on the way in, once per crossing; the same
-facade on a WebAssembly target checks nothing at the call, because the interface was checked
-when the component loaded.
+The two mechanisms cost different things. A predicate walks the whole value, so a facade
+returning a list of a thousand tuples checks a thousand tuples on the way out, once per
+crossing; the same facade on a WebAssembly target checks nothing at the call, because the
+interface was checked when the component loaded.
 
 **Not implemented:** `String` has no [literal syntax](lexical-structure.md#strings) yet,
 records have no brace token ([`LANG-47`](../tickets/lang-47.md)) and lists no literal production
@@ -352,8 +354,10 @@ the second [aborts the program](evaluation-semantics.md#when-a-program-aborts).
 exactly as any other crossing is, and a value that fails
 [aborts](evaluation-semantics.md#when-a-program-aborts).
 
-**Not implemented:** the wrapper an effectful facade's call site needs is not generated
-([`GEN-16`](../tickets/gen-16.md)).
+**Not implemented:** a companion that throws does not abort naming its export — the check is
+only run over a *returned* value, so a throw propagates as the companion's own exception
+instead ([`GEN-23`](../tickets/gen-23.md)). The wrapper an effectful facade's call site needs is
+not generated either ([`GEN-16`](../tickets/gen-16.md)).
 
 ## Facade constants
 

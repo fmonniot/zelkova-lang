@@ -439,6 +439,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-20 | task | — | closed 2026-09-28 | Emit `()` |
 | [GEN-21](gen-21.md) | task | — | open | The JavaScript runtime cannot run a `Task` |
 | [GEN-22](gen-22.md) | task | — | open | There is no `zelkova run`: nothing runs a program's `main` |
+| [GEN-23](gen-23.md) | task | — | open | An `unsafe` facade's forwarding code does not catch what its companion throws |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

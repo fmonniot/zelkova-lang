@@ -734,5 +734,9 @@ An abort says what caused it, and one caused by a facade names the export whose 
 
 Only the first is a promise broken. The other two are the runtime running out of what it needs.
 
-**Not implemented:** nothing runs a program's `main` ([`GEN-1`](../tickets/gen-1.md)), so the
-only aborts anything reaches today are those of a module `zelkova test` loads.
+**Not implemented:** a companion that throws does not abort naming its export — the check above
+runs only over a *returned* value, so a throw propagates as the companion's own exception
+instead ([`GEN-23`](../tickets/gen-23.md)). Nothing runs a program's `main` either
+([`GEN-1`](../tickets/gen-1.md)), so today an abort is reached only by loading or calling a
+compiled module directly — what `zelkova test` does, and what a fixture that imports `zelkova
+compile`'s own output the same way does too.
