@@ -1424,10 +1424,11 @@ fn a_unit_pattern_emits_with_no_test() {
 /// A `()` written as a tuple's element emits the same way as one at the top of a
 /// pattern: no test, no binding for it, and the tuple's other element bound as usual.
 ///
-/// Mutation-checked by making `decision_tree`'s pattern-compilation step treat
-/// `TermPatternKind::Unit` as an ordinary literal instead of as `Anything`: `second`
-/// then emits a test against it that never matches, and the branch becomes
-/// unreachable.
+/// Mutation-checked the same way as
+/// [`a_unit_pattern_emits_with_no_test`]: restoring the deleted `unit_pattern` loop at
+/// the top of `Emitter::case_expression` refuses `second` too, since that loop walks a
+/// pattern to any depth and `()` here is nested inside the tuple rather than at the
+/// top.
 #[test]
 fn a_nested_unit_pattern_emits_with_no_test() {
     let text = emitted(indoc! {r#"

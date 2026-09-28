@@ -205,7 +205,7 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed`, `map` and `andThen`
   ├── LANG-75  `main` is checked to be a `Task ()`                   ← + LANG-72, closed
   │     └── GEN-22  `zelkova run [DIR]`                              ← + GEN-21
   │
-  └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ← + GEN-21, GEN-20 closed
+  └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ← + GEN-21, GEN-20 (closed)
         │
         │  + GEN-16
         ▼
