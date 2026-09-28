@@ -95,15 +95,15 @@ git show <that-sha>^:TODO.md                    # the nine items in their final 
 
 ## Active work: type classes
 
-`LANG-37` through `LANG-42`, and `LANG-70` which was filed while working `LANG-37`, are one body
+`LANG-37` through `LANG-42`, and `LANG-70` and `LANG-71`, which were filed while working `LANG-37`, are one body
 of work, filed after the language owner settled the mechanism. The goal is that **a signature can say what it needs of its type** —
 `min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what `min`'s type has
 always actually been.
 
-These seven get their own section despite sharing the `LANG-` prefix with everything else,
+These eight get their own section despite sharing the `LANG-` prefix with everything else,
 because most `LANG-` tickets each close a complete, independently shippable gap on landing,
 while none of `LANG-37` through `LANG-41` and `LANG-70` does anything on its own — they're fragments of one
-mechanism that only works once the chain lands. `LANG-42` is the exception; see the graph.
+mechanism that only works once the chain lands. `LANG-42` and `LANG-71` are the exceptions; see the graph.
 
 [`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
 read before picking any of these up: none of them re-argues a decision, and several would look
@@ -149,6 +149,10 @@ LANG-40  the solver: obligations are collected, deferred and discharged
 
 LANG-41  `Type::Number` retires; an integer literal is an `Int`   ← independent
            ← supersedes ERR-13
+
+LANG-71  a constraint context of four or more constraints parses   ← independent
+           ← LANG-37 reads the context as a tuple type, which has two or three
+             elements; the chapter says "several" with no cap
 ```
 
 **What is not a ticket: dictionary erasure.**
@@ -320,6 +324,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-33 | task | — | closed 2026-09-15 | Which default imports a module gets is a fixed point over the whole package |
 | SPEC-34 | task | — | closed 2026-09-27 | Only `zelkova-core` may declare a module the default imports name, and the exemption is keyed on the package rather than on module names |
 | SPEC-35 | task | — | closed 2026-09-27 | A package cannot be tested with a library that depends on it |
+| [SPEC-36](spec-36.md) | task | — | open | The `double` block in `expressions.md` cannot go red for the reason its paragraph gives |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -390,6 +395,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-68](lang-68.md) | task | — | open | An unmarked facade signature is not held to the `Task (Result Failure a)` result shape |
 | LANG-69 | task | — | closed 2026-09-27 | There is no `zelkova test`: nothing runs a package's tests |
 | [LANG-70](lang-70.md) | task | — | open | A constraint in an annotation is resolved, and its context reaches the canonical module |
+| [LANG-71](lang-71.md) | task | — | open | A constraint context of four or more constraints does not parse |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |

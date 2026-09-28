@@ -5,7 +5,7 @@ it stops being discarded, because [LANG-40](lang-40.md) reads it from there. Cou
 shape turns out to need the canonical `Type` to change.
 
 **Location:** `src/compiler/canonical/mod.rs` — `validate_context`, `InvalidConstraintKind`, and
-the loop over `source.functions` in `from_parser_module` that validates a context and then
+the loop over `source.functions` in `canonicalize` that validates a context and then
 drops it; `src/compiler/canonical/environment.rs` — `RootEnvironment`, once
 [LANG-39](lang-39.md) has given it a class table.
 
@@ -15,7 +15,7 @@ environment knows.
 
 **Found while:** working [LANG-37](README.md), which made `Comparable a => a -> a` parse and
 validated its *shape* only. It left three things undone on purpose, because each needs a class to
-exist. `LANG-37`'s ticket and the discard-site comment in `from_parser_module` both said
+exist. `LANG-37`'s ticket and the discard-site comment in `canonicalize` both said
 `LANG-39` would do them, but `LANG-39`'s own Problem lists four things — a class's members, an
 instance crossing a module, a duplicate instance, an orphan — and none of them is a constraint
 in an annotation. Nothing else on the type-class program owns it, and `LANG-40`'s rigid half
@@ -58,8 +58,11 @@ context out of every match over `Type`, and is what the parser AST did for the s
 own signature carry a context if `LANG-38` gives it one. Read `LANG-40`'s Approach step 4 and
 `LANG-39`'s class-member paragraph — a member's type outside its class is
 `Comparable a => a -> a -> Order` — and pick the one both can read, and say why in a doc comment
-at the site. Remove the discard comment in `from_parser_module`, which says this ticket's work
-is `LANG-39`'s, in the same commit.
+at the site. While the shape is being decided, the parser side has an invariant kept by a doc
+comment and not by a type: `parser::Function::context` is "always `None` when `tpe` is". An
+`Annotation { context, tpe }` (or `tpe: Option<(Option<Type>, Type)>`) on `parser::Function`
+makes it unrepresentable, and this is the natural ticket to do that in. Replace the discard comment in `canonicalize` (the one above the loop over
+`source.functions`) with one that says what the context is now, in the same commit.
 
 **The spec blocks this will break.** The two `expect=ok` blocks under *Constraining an
 annotation* (`min`, `describe`) name `Comparable`, `Eq` and nothing declares them: they pass
@@ -69,7 +72,7 @@ later than this one, so nothing else will repair them. Once `LANG-38` lets a blo
 class, make each block declare the class it names (the chapter's own *Declaring a class* blocks
 are the form) rather than retagging them; they should stay `expect=ok`. Delete the chapter's
 **Not implemented:** paragraph after that heading, or shorten it to what still holds, and drop
-its `LANG-39` reference if this ticket is what closes it. `cargo test --test spec` will not tell
+its `LANG-70` reference if this ticket is what closes it. `cargo test --test spec` will not tell
 you the blocks need this until it is red, so run it before assuming the change is clean.
 
 **Acceptance:** tests in `tests/compiler/canonical.rs`, each asserting the variant and a

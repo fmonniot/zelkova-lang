@@ -5,7 +5,7 @@ namespace, how an instance reaches another module, and which module is allowed t
 
 **Location:** `src/compiler/canonical/environment.rs` — `RootEnvironment`,
 `insert_union_type`, `process_import`; `src/compiler/canonical/mod.rs` — `Error`,
-`from_parser_module`, `Module::to_interface`; `src/compiler/mod.rs` — `Interface`;
+`canonicalize`, `Module::to_interface`; `src/compiler/mod.rs` — `Interface`;
 `src/compiler/dependencies.rs` — `ModuleWalker::check_in_order`, which is the driver that
 builds each interface and hands it to the next module.
 

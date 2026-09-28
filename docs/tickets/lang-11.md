@@ -58,6 +58,12 @@ canonicalizes with `tpe: Type("B")` — so the type checker is checking the body
 annotation the reader may well have taken as superseded, and would report a mismatch against
 `B` on a declaration whose first stated type is `A`.
 
+The overwrite drops more than the type. `from_declarations` also assigns `context = t.context`
+([LANG-37](README.md)), so a malformed constraint on a superseded annotation
+(`f : Int => a -> a` above `f : a -> a`) is never validated and compiles without error. Reporting
+the repeat covers it; a fix that keeps the last annotation and stays silent would leave the first
+one's context unchecked.
+
 Found while writing [`docs/spec/types.md`](../spec/types.md) (`SPEC-5`).
 
 **Approach:** two changes, and the duplicate one is worth landing on its own if the other
