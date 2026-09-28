@@ -666,6 +666,13 @@ twice.
 The effects of a `Task` happen in the order it sequences them: `andThen` runs the second only
 once the first has produced a value.
 
+**A `Task` sequences any number of steps in constant stack.** A chain of `andThen`s of any
+length, and a `Task` that builds the next one by calling itself, run without exhausting the
+stack, whether or not any step waits. The guarantee covers the sequencing only: a function a step
+calls uses stack as any other call does, under the [tail-call rule](#recursion-and-tail-calls).
+
+**Not implemented:** nothing runs a `Task` ([`GEN-21`](../tickets/gen-21.md)).
+
 ### An effect that can fail
 
 `Task` takes one type parameter and carries no channel for an error. A failure an effect can
@@ -727,8 +734,8 @@ So every abort a program's own code can cause is attributable to a declaration c
 word.
 
 **Exhaustion.** No memory left to hold a value, or no stack left to enter a call. The second is
-reachable from Zelkova alone, by a recursion the [tail-call rule](#recursion-and-tail-calls) does
-not cover.
+reachable from Zelkova alone, by a recursion that neither the
+[tail-call rule](#recursion-and-tail-calls) nor [a `Task`'s sequencing](#running-a-task) covers.
 
 **The host.** Whatever runs the program can stop it.
 
