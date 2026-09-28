@@ -212,17 +212,86 @@ TEST-3   CI runs `zelkova test std/core` and the remaining `.mjs` checks        
 - [`GEN-11`](gen-11.md), the tail-call loop. Its depth test is written as a Zelkova test in
   `std/core/tests/`.
 - [`GEN-16`](gen-16.md) and [`LANG-68`](lang-68.md), everything that needs `Task`, and with them
-  a `zelkova run`.
+  a `zelkova run`. They are the [effects](#active-work-effects) section's now.
 - [`LANG-42`](lang-42.md). `==` is already structural at run time, because `Basics.eq` reaches
   `_Utils_eq`, so `Test.equal` needs no `Eq` to work. It gains an `Eq a =>` constraint when
   that ticket lands.
 
 **What comes after.** Porting `std/core/tests/Js/*.mjs` into Zelkova tests is the obvious next
-step. It is not filed yet, because [*Testing a companion*](../spec/interop.md#testing-a-companion)
-specifies a companion's checks as a facade whose checks are `Task`s, and a port through
-`Basics` would test something different. That needs deciding first. A richer `Test`, with names,
+step. It is [`TEST-7`](test-7.md), at the end of the [effects](#active-work-effects) section,
+because [*Testing a companion*](../spec/interop.md#testing-a-companion) specifies a companion's
+checks as a facade whose checks are `Task`s. A richer `Test`, with names,
 groups and failure messages, waits on string literals, [`LANG-44`](lang-44.md) and
 [`LANG-34`](lang-34.md).
+
+## Active work: effects
+
+The goal is **a `Task` that runs**: a facade can declare an effect, a program's `main` runs, and a
+`Test` can wait on a `Task`. That last one is what lets `std/core`'s companion checks become
+Zelkova tests. What a `Task` is was settled in [`DEC-11`](../decisions/dec-11.md), and what a
+broken companion does in [`DEC-12`](../decisions/dec-12.md). The chapters are
+[Effects](../spec/evaluation-semantics.md#effects) and
+[An effectful facade](../spec/interop.md#an-effectful-facade). Nothing in them is implemented.
+
+The language owner settled the program's shape on 2026-09-27:
+
+- **A `Task` is continuation-passing.** `zelkova-core` declares it and writes `succeed`, `map`
+  and `andThen` in Zelkova. How that is represented and run on each target, including stack
+  depth, JavaScript promises and WebAssembly async, is researched and recorded by
+  [`SPEC-37`](spec-37.md) before anything builds on it.
+- **Programs run.** `main` is checked to be a `Task ()`, and `zelkova run` runs it.
+- **Tests wait on effects.** `zelkova-test` gains a `Test` that holds a `Task`, and the `.mjs`
+  checks under `std/core/tests/Js/` move to the test-facade layout
+  [*Testing a companion*](../spec/interop.md#testing-a-companion) specifies.
+- **[`LANG-68`](lang-68.md) also rejects `Task` outside the whole of a facade's result,** and no
+  separate ticket is filed for that.
+
+```
+SPEC-37  how a `Task` is represented and run, on JavaScript and WebAssembly   ── design, first
+LANG-72  `()` as a type, an expression and a pattern                           ── independent
+  └── GEN-20  emit `()`, and publish its JavaScript value
+LANG-73  `std/core` declares `String`                                          ── independent
+LANG-68  an unmarked facade returns `Task (Result Failure a)`; `Task` nowhere else  ── independent
+GEN-2    the boundary predicates                                               ── independent
+  │
+  │  SPEC-37 + LANG-73
+  ▼
+LANG-74  `std/core` declares `Task`, `Failure`, `succeed`, `map` and `andThen`
+  │
+  ├── GEN-21   the runtime runs a `Task`
+  │     │
+  │     │  + LANG-68 + GEN-2
+  │     ▼
+  │   GEN-16   the wrapper an effectful facade's call gets: `Ok`, `Threw`, `Malformed`
+  │
+  ├── LANG-75  `main` is checked to be a `Task ()`                   ← + LANG-72
+  │     └── GEN-22  `zelkova run [DIR]`                              ← + GEN-21
+  │
+  └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ← + GEN-21, GEN-20
+        │
+        │  + GEN-16
+        ▼
+      TEST-7   `std/core`'s companion checks become Zelkova tests
+```
+
+Five tickets have no prerequisite and can start in parallel: `SPEC-37`, `LANG-72`, `LANG-73`,
+`LANG-68` (against a synthetic `Task` interface, as its **Tests** say) and `GEN-2`.
+
+**Deliberately off the path**, each one because the goal does not need it:
+
+- **String literals.** `Failure` carries a `String`, but the wrapper builds it from a JavaScript
+  string, and no ticket above writes one in source. They have no ticket yet;
+  [Strings](../spec/lexical-structure.md#strings) is the chapter.
+- [`LANG-34`](lang-34.md) and [`LANG-33`](lang-33.md), lambdas and `let`. `andThen` and a chain
+  of effects are writable with named helpers and partial application. That is clumsy, and it is
+  enough.
+- The rest of Elm's `Task` API: `map2` and up, `sequence`, `onError`, `perform`. `Task (Result e a)`
+  makes most of them different functions, and which ones Zelkova wants is a question for after
+  [`LANG-74`](lang-74.md).
+- [`GEN-15`](gen-15.md), the WebAssembly backend. `SPEC-37` records the WebAssembly direction so
+  that the JavaScript choice does not foreclose it. Nothing is built for it.
+- [`TEST-3`](test-3.md), CI. It is not a prerequisite, but [`TEST-7`](test-7.md) changes its
+  second step, so whichever of the two lands second updates the other.
 
 ## Tickets
 
@@ -325,6 +394,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-34 | task | — | closed 2026-09-27 | Only `zelkova-core` may declare a module the default imports name, and the exemption is keyed on the package rather than on module names |
 | SPEC-35 | task | — | closed 2026-09-27 | A package cannot be tested with a library that depends on it |
 | [SPEC-36](spec-36.md) | task | — | open | The `double` block in `expressions.md` cannot go red for the reason its paragraph gives |
+| [SPEC-37](spec-37.md) | task | — | open | How a `Task` is represented and run is undesigned, on either target |
 | [LANG-1](lang-1.md) | task | — | open | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -396,6 +466,11 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-69 | task | — | closed 2026-09-27 | There is no `zelkova test`: nothing runs a package's tests |
 | [LANG-70](lang-70.md) | task | — | open | A constraint in an annotation is resolved, and its context reaches the canonical module |
 | [LANG-71](lang-71.md) | task | — | open | A constraint context of four or more constraints does not parse |
+| [LANG-72](lang-72.md) | task | — | open | `()` is not recognised as a type, an expression or a pattern |
+| [LANG-73](lang-73.md) | task | — | open | `std/core` declares no `String`, so no annotation can name one |
+| [LANG-74](lang-74.md) | task | — | open | `std/core` declares no `Task` and no `Failure` |
+| [LANG-75](lang-75.md) | task | — | open | The manifest's `main` is read, and nothing checks what it names |
+| [LANG-76](lang-76.md) | task | — | open | A `Test` cannot hold a `Task`, so no effectful check can be a test |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
@@ -417,6 +492,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-17 | task | — | closed 2026-09-27 | The compiler has no command line: `src/main.rs` compiles `std/core` and takes no arguments |
 | GEN-18 | task | — | closed 2026-09-27 | A build that compiles the tests writes none of them, so nothing can run one |
 | GEN-19 | task | — | closed 2026-09-27 | Production and test output should be at the same folder level |
+| [GEN-20](gen-20.md) | task | — | open | Emit `()` |
+| [GEN-21](gen-21.md) | task | — | open | The JavaScript runtime cannot run a `Task` |
+| [GEN-22](gen-22.md) | task | — | open | There is no `zelkova run`: nothing runs a program's `main` |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
@@ -440,3 +518,4 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TEST-4 | task | — | closed 2026-09-11 | A facade's `.mjs` companion test lives in the compiler repo, not in the package that ships the companion |
 | [TEST-5](test-5.md) | task | — | open | Two `manifest` unit tests can be handed the same temporary directory, so the suite fails intermittently |
 | [TEST-6](test-6.md) | task | — | open | The `tests/cli.rs` tests that run `zelkova` on a shared fixture write one `build/` between them |
+| [TEST-7](test-7.md) | task | — | open | `std/core`'s companion checks are run by `node --test` and not as Zelkova tests |

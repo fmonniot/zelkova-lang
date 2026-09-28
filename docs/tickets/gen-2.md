@@ -10,6 +10,11 @@ around, and [`LANG-43`](README.md). Sibling to [`GEN-1`](gen-1.md)'s program rat
 member of it: this is a bounded piece of output that can be written, tested and reviewed on its
 own, against one chapter section.
 
+**Part of:** [Active work: effects](README.md#active-work-effects), because a failing predicate
+is what [`GEN-16`](gen-16.md)'s `Err (Malformed ..)` reports. Only the forms a program can
+write today are on that path: the scalars, a tuple, a union, and `()` once
+[`GEN-20`](gen-20.md) lands. A record and a list follow their constructs.
+
 **Location:** `src/compiler/javascript.rs`, at whatever
 [`GEN-12`](README.md) emits for a `module foreign` facade's call site. `std/core/src/Js/*.mjs`
 are the companions the emitted checks sit in front of.
@@ -78,5 +83,4 @@ returns a value of the wrong shape — a string where the signature says `Int`, 
 carrying a constructor name the type does not declare — runs it under `node`, and asserts the
 boundary check reports it rather than the wrong value propagating. A second test asserts the
 same facade called correctly returns its value unchanged, so the check is shown not to reject
-what it should accept. `cargo run -- compile std/core` still prints `parsed 8 modules` and
-lists all eight.
+what it should accept. `cargo run -- compile std/core` still parses and checks every module it did before.

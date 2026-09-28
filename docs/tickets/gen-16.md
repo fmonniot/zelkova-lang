@@ -1,21 +1,25 @@
 # GEN-16 · The wrapper an effectful facade's call site gets
 
-**Sizing:** medium, and **blocked** — see below. The wrapper itself is small; what it builds
-does not exist.
+**Sizing:** medium. The wrapper itself is small. Most of the size is in the tests, which need a
+companion that throws, one that rejects, one that returns the wrong shape and one that behaves.
 
-**Blocked on:** `Task` and `Failure` existing at all; and
-[`LANG-68`](lang-68.md), which is what holds an unmarked facade to the result type this wrapper
-assumes. Sequence after [`GEN-12`](README.md), which emits the `unsafe` half of the same call
-site.
+**Part of:** [Active work: effects](README.md#active-work-effects). It is also
+[`GEN-1`](gen-1.md)'s in subject, and deliberately outside that program: the original GEN-1 text
+carried it as inherited work, and it could not be written until the tickets below existed.
 
-**Part of:** [`GEN-1`](gen-1.md) in subject, and deliberately outside its program: the original
-GEN-1 text carried this as inherited work, and it cannot be written until the three blockers
-above clear.
+**Depends on:** [`SPEC-37`](spec-37.md), for what the wrapper builds and when it calls the
+continuation; [`LANG-74`](lang-74.md), for `Task` and `Failure`; [`GEN-21`](gen-21.md), for
+something that runs what the wrapper builds; [`LANG-68`](lang-68.md), which holds an unmarked
+facade to the result type this wrapper assumes; [`GEN-2`](gen-2.md), for the predicate whose
+failure is `Err (Malformed ..)`. Sequenced after [`GEN-12`](README.md), which emits the `unsafe`
+half of the same call site. If `GEN-2` is the last of these still open, this ticket may land first
+with `Threw` and `Ok` only. The `Malformed` case then lands with `GEN-2`, and each PR says which
+half it holds.
 
 **Location:** `src/compiler/javascript.rs`, at the facade call site
 [`GEN-12`](README.md) emits. `src/compiler/canonical/mod.rs` — `Value::TypedValue`'s
 `marked_unsafe`, which is the flag that decides which of the two shapes a call gets.
-`std/core/src/Task.ignored` is the module that would declare the types, and it does not compile.
+`std/core/src/Task.zel`, once [`LANG-74`](lang-74.md) writes it, declares the types the wrapper builds.
 
 **Decided ([`docs/spec/interop.md`](../spec/interop.md#an-effectful-facade) and
 [`DEC-12`](../decisions/dec-12.md)):**
@@ -40,23 +44,25 @@ above clear.
   each time the `Task` is run.
 
 **Problem:** the wrapper is the whole of what keeps a throwing `.mjs` from ending the program,
-and nothing emits one. Today it is also unreachable: every facade in the tree is marked
-`unsafe`, nothing declares `Task` or `Failure`, and nothing holds an unmarked facade to a `Task`
-result — so an unmarked facade is read as if it carried `unsafe` ([`LANG-68`](lang-68.md)).
+and nothing emits one. `javascript::emit` refuses an effectful facade signature outright today.
 
-**Approach:** not settled, and it depends on decisions `Task` itself has not made. What this
-ticket needs from whatever declares `Task`: how a `Task` is represented at runtime, since the
-wrapper builds one; and what running one does, since the catch has to be around the *running*
-rather than around the building — [building a `Task` performs
-nothing](../spec/evaluation-semantics.md#effects), so a wrapper that caught at build time would
-catch nothing.
+**Approach:** apply [`SPEC-37`](spec-37.md)'s decisions. It settles how a `Task` is
+represented, which continuation the wrapper calls and when, and what a facade constant naming a
+`Task` exports. None of that is restated here. One constraint was fixed before `SPEC-37` and holds
+whatever it decides: [building a `Task` performs nothing](../spec/evaluation-semantics.md#effects).
+The companion is therefore called, and caught, when the `Task` is *run*, never when it is built. A
+wrapper that caught at build time would catch nothing.
 
-The predicate that decides whether the returned value matches `a` is [`GEN-2`](gen-2.md)'s; this
-ticket calls one and routes its answer. The routing is the part that differs by facade kind and
-is stated in [`GEN-2`](gen-2.md)'s first point.
+The predicate that decides whether the returned value matches `a` is [`GEN-2`](gen-2.md)'s. This
+ticket calls one and routes its answer. The routing is the part that differs by facade kind, and
+it is stated in [`GEN-2`](gen-2.md)'s first point.
 
-**Acceptance:** not written while the blockers stand. What it will have to show: a companion
-that throws yields `Err (Threw ..)` carrying the host's description, a companion that returns a
-value of the wrong shape yields `Err (Malformed ..)` naming the export, and a companion that
-returns correctly yields `Ok` with the value — all three asserted as Zelkova tests run by
-`zelkova test` ([`LANG-69`](README.md)), in the root [`GEN-14`](README.md) set up.
+**Acceptance:** four companions, each behind an unmarked facade under `std/core/tests/`, asserted
+as Zelkova tests that `zelkova test` runs through [`LANG-76`](lang-76.md)'s `Test` over a `Task`:
+one that throws synchronously yields `Err (Threw _)`; one whose promise rejects yields
+`Err (Threw _)`; one that returns a value of the wrong shape yields `Err (Malformed _)`; and one
+that returns correctly, after an `await`, yields `Ok` with the value. With no string literals, the
+tests match the constructor and do not compare the `String`. That `Threw` carries the host's
+description and `Malformed` names the export is asserted on the emitted wrapper's behaviour in a
+`node --test` check beside `runtime/js/tests/`. `Malformed` may land with [`GEN-2`](gen-2.md), as
+**Depends on** says.

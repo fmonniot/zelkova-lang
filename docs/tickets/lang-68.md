@@ -1,10 +1,15 @@
 # LANG-68 · An unmarked facade signature is not held to the `Task (Result Failure a)` result shape
 
-**Sizing:** small-to-medium. The check is one more case in the same walk [`LANG-43`](README.md)
-added — a shape match on the result piece left after arrows are stripped, guarded by
-`marked_unsafe` — plus a new `Error` variant. The one open question in Approach below (whether
-this ticket also has to reject `Task` appearing anywhere other than that result position) is
-what could make it larger.
+**Sizing:** small-to-medium. The check is two more cases in the same walk [`LANG-43`](README.md)
+added. One is a shape match on the result piece left after arrows are stripped, guarded by
+`marked_unsafe`. The other rejects `Task` in every other position. Each gets a new `Error`
+variant.
+
+**Part of:** [Active work: effects](README.md#active-work-effects).
+
+**Depends on:** nothing to start, since fixtures build a synthetic `Task` interface. Once
+[`LANG-74`](lang-74.md) lands, `Task.Task` is the real qualified name to match on, so landing
+after it is simpler.
 
 **Location:** `src/compiler/canonical/mod.rs` — `check_facade_admitted_type` and
 `facade_signature_pieces`, both added by [`LANG-43`](README.md), and the `Error` enum in the
@@ -27,12 +32,10 @@ two forms with no runtime predicate, and every other admitted type — including
 have required `unsafe` to write — passes. The two shapes an `unsafe` keyword is meant to tell
 apart are read as the same thing, because the keyword itself is never read.
 
-[`DEC-12`](../decisions/dec-12.md#what-nothing-checks) and
-[`docs/spec/interop.md`](../spec/interop.md#an-effectful-facade) both already name this as the
-compiler's own gap, without a ticket to point at: `DEC-12`'s "What nothing checks" section says
-outright that "nothing checks the shape itself yet either," and [`GEN-16`](gen-16.md), the
-wrapper this check is a prerequisite for, lists it in its own **Blocked on:** field as "a check,
-not yet ticketed."
+[`DEC-12`](../decisions/dec-12.md#what-nothing-checks)'s "What nothing checks", and three
+**Not implemented:** paragraphs in [`docs/spec/interop.md`](../spec/interop.md#an-effectful-facade)
+(in its opening, under *An effectful facade* and under *An `unsafe` facade*), all name this as the compiler's own gap
+and cite this ticket.
 
 **Approach:**
 
@@ -50,16 +53,16 @@ not yet ticketed."
    - **`unsafe`**: unchanged. The result is walked as any other admitted type.
 3. Push onto the branch's existing error accumulation, per `CLAUDE.md`'s *A pass that emitted an
    error must not report success* — the same discipline `LANG-43` followed.
-4. **Open question this ticket does not decide:** [An effectful
-   facade](../spec/interop.md#an-effectful-facade) also states "`Task` may appear only as the
-   whole of a result type. Not as an argument; and not nested inside another type." Nothing
-   enforces that sentence either, and it is a different question from the one this ticket
-   answers — a `Task` written as a parameter, or nested inside a `Maybe`, reaches
-   `check_facade_admitted_type` today as an ordinary `Type::Type` and is accepted as long as its
-   own arguments are, since the walk has no notion of `Task` as a distinguished name outside the
-   one result position this ticket adds a case for. Whether that is this ticket's scope too, or
-   a sibling ticket's, is an open call — say which was picked, and why, before implementing.
-5. `std/core` declares no `Task`, `Result` or `Failure` yet ([`GEN-1`](gen-1.md)), and every
+4. **`Task` anywhere else in a facade signature is rejected too.** [An effectful
+   facade](../spec/interop.md#an-effectful-facade) also says "`Task` may appear only as the
+   whole of a result type. Not as an argument; and not nested inside another type." The same
+   walk enforces it: a `Task` in any argument piece, or nested inside another type in the
+   result piece (a `Maybe (Task Int)`, or a `Task` inside the `a` of `Task (Result Failure a)`),
+   is an error, in an `unsafe` facade as much as in an unmarked one. `Task` is recognised by
+   qualified name (`Task.Task`), never by spelling, so a user's own type called `Task` is not
+   affected. Decided on 2026-09-27 by the language owner: it is the same walk over the same
+   chapter section, so it stays in this ticket and does not become a sibling.
+5. `std/core` declares no `Task` or `Failure` yet ([`LANG-74`](lang-74.md)), and every
    facade in the tree already carries `unsafe` ([`LANG-53`](README.md)), so this check accepts
    every signature `std/core` currently writes without requiring any rewrite.
    `cargo run -- compile std/core` should be unaffected.
@@ -68,10 +71,13 @@ not yet ticketed."
 needs to declare `Task`, `Result` and `Failure` for a fixture to construct the admitted shape at
 all — `tests/support/mod.rs`'s `basics_interface()`/`char_interface()` are the pattern to
 follow, and building one is part of this ticket rather than something it can inherit, since
-`std/core`'s own `Task` module does not compile ([`GEN-1`](gen-1.md)). Cases: an unmarked facade
-over `Task (Result Failure a)` accepted; an unmarked facade over `Task (Result Failure Int)`
+`std/core`'s own `Task` module does not exist before [`LANG-74`](lang-74.md). Cases: an unmarked facade
+over `Task (Result Failure String)` accepted; an unmarked facade over `Task (Result Failure Int)`
 accepted; an unmarked facade over a bare `Int` rejected; an unmarked facade over `Task Int`
-(wrong shape inside `Task`) rejected; an `unsafe` facade over a bare `Int` still accepted.
+(wrong shape inside `Task`) rejected; an `unsafe` facade over a bare `Int` still accepted;
+a `Task` as an argument rejected; `Maybe (Task Int)` as a result rejected;
+`Task (Result Failure (Task Int))` rejected; an `unsafe` facade returning `Task Int` rejected;
+a facade naming a user-declared `Task` from another module treated as any other union.
 Neutralise the new branch and confirm each shape-specific case goes red before trusting it.
 
 **Interactions:**
@@ -94,6 +100,7 @@ the worktree it was found in could not itself commit to `main`.
 **Acceptance:** an unmarked `module foreign` facade signature whose result type, after the
 signature's own top-level arrows are stripped, is anything other than `Task (Result Failure a)`
 is rejected with a diagnostic whose caret sits under that annotation. A facade marked `unsafe`
-is unaffected. `docs/decisions/dec-12.md`'s "What nothing checks" section and
-[`GEN-16`](gen-16.md)'s **Blocked on:** field are updated to point here instead of describing
-the gap as unticketed. `cargo test --test spec` stays green.
+is not held to that shape. A `Task` in any position other than the whole of an unmarked facade's
+result is rejected, whether or not the facade is marked `unsafe`. Those three paragraphs in
+[`docs/spec/interop.md`](../spec/interop.md) drop their sentences about this check. `docs/decisions/dec-12.md`'s "What nothing
+checks" drops the same claim. `cargo test --test spec` stays green.
