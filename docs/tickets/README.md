@@ -162,68 +162,6 @@ at runtime — a constraint on code generation, which has not started. It is rec
 `docs/spec/type-classes.md` and `docs/spec/interop.md`, and [`GEN-1`](gen-1.md) inherits it
 from there rather than it being filed twice.
 
-## Active work: bootstrap
-
-The goal is **`zelkova compile` and `zelkova test`**, so that the language's own behaviour is
-checked by tests written in Zelkova. `std/core/tests/*.zel` holds the first of them, run by
-`zelkova test std/core`: they run the program the compiler actually produced. Beside them sit
-Rust tests that assert emitted text, and `.mjs` files that test a companion directly.
-
-The language owner settled the design on 2026-09-27. Each ticket records its part under
-**Decided**:
-
-- **The binary is `zelkova`, with clap subcommands.** They are `compile [DIR]` and
-  `test [DIR]`, where `DIR` defaults to `.`. A bare `cargo run` stops compiling `std/core`, and
-  `cargo run -- compile std/core` is the smoke test from `GEN-17` on.
-- **A `Test` is a pass-or-fail verdict built from a `Bool`,** reported under the name of the
-  value that holds it. `zelkova-test`, under `std/test/`, exposes `Test.equal` and `Test.check`.
-  That needs no string literal, list, lambda, unit or `Task`, and all five are unimplemented. It
-  is the bootstrap shape and not the final surface, which grows once those constructs land.
-- **A package may test-depend on a library that depends on it.** That is what lets
-  `zelkova-core` use `zelkova-test` and keep its tests in its own `tests/` root.
-- **`zelkova test` runs under `node`.** `cargo test` still never does
-  ([`DEC-18` decision 6](../decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node)).
-
-The minimal path has eight tickets. The first five have no prerequisite among them and can be
-worked in parallel:
-
-```
-GEN-17   `zelkova compile [DIR]` — the binary, clap, and the `cargo run` sweep   ── closed
-LANG-63  `zelkova-test` declares `Test`; a pass collects a package's tests       ── closed
-GEN-18   a test build writes its tests, to `build/test/js/`                      ── closed
-SPEC-35  a test-dependency may depend on the package it tests                    ── closed
-BUG-43   a call to an imported multi-parameter function is emitted curried       ── closed
-  │
-  │  GEN-17 + LANG-63 + GEN-18
-  ▼
-LANG-69  `zelkova test [DIR]` — a generated `run.mjs`, run under node            ── closed
-  │
-  │  + SPEC-35 + BUG-43
-  ▼
-GEN-14   std/core's first Zelkova tests, in its own `tests/` root                ── closed
-  │
-TEST-3   CI runs `zelkova test std/core` and the remaining `.mjs` checks         ── closed
-```
-
-**Deliberately off the path**, each one because the bootstrap does not need it:
-
-- [`LANG-62`](lang-62.md), core supplied without being written in `dependencies`. `zelkova-test`
-  names core by `path`, which works today.
-- [`GEN-11`](gen-11.md), the tail-call loop. Its depth test is written as a Zelkova test in
-  `std/core/tests/`.
-- [`GEN-16`](gen-16.md) and [`LANG-68`](lang-68.md), everything that needs `Task`, and with them
-  a `zelkova run`. They are the [effects](#active-work-effects) section's now.
-- [`LANG-42`](lang-42.md). `==` is already structural at run time, because `Basics.eq` reaches
-  `_Utils_eq`, so `Test.equal` needs no `Eq` to work. It gains an `Eq a =>` constraint when
-  that ticket lands.
-
-**What comes after.** Porting `std/core/tests/Js/*.mjs` into Zelkova tests is the obvious next
-step. It is [`TEST-7`](test-7.md), at the end of the [effects](#active-work-effects) section,
-because [*Testing a companion*](../spec/interop.md#testing-a-companion) specifies a companion's
-checks as a facade whose checks are `Task`s. A richer `Test`, with names,
-groups and failure messages, waits on string literals, [`LANG-44`](lang-44.md) and
-[`LANG-34`](lang-34.md).
-
 ## Active work: effects
 
 The goal is **a `Task` that runs**: a facade can declare an effect, a program's `main` runs, and a
