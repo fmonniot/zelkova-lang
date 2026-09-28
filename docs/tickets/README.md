@@ -202,7 +202,7 @@ LANG-69  `zelkova test [DIR]` — a generated `run.mjs`, run under node         
   ▼
 GEN-14   std/core's first Zelkova tests, in its own `tests/` root                ── closed
   │
-TEST-3   CI runs `zelkova test std/core` and the remaining `.mjs` checks
+TEST-3   CI runs `zelkova test std/core` and the remaining `.mjs` checks         ── closed
 ```
 
 **Deliberately off the path**, each one because the bootstrap does not need it:
@@ -436,7 +436,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |
-| [TEST-3](test-3.md) | task | — | open | CI runs neither a package's Zelkova tests nor a `.mjs` companion's checks |
+| TEST-3 | task | — | closed 2026-09-27 | CI runs neither a package's Zelkova tests nor a `.mjs` companion's checks |
 | TEST-4 | task | — | closed 2026-09-11 | A facade's `.mjs` companion test lives in the compiler repo, not in the package that ships the companion |
 | [TEST-5](test-5.md) | task | — | open | Two `manifest` unit tests can be handed the same temporary directory, so the suite fails intermittently |
 | [TEST-6](test-6.md) | task | — | open | The `tests/cli.rs` tests that run `zelkova` on a shared fixture write one `build/` between them |

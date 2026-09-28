@@ -39,9 +39,11 @@ default for a missing required subcommand.
 
 `cargo test` never loads a `.mjs` companion. A companion's checks belong to the package that
 ships it, under that package's own `tests/` root — `std/core/tests/Js/` holds the ones that
-exist — and run with `node --test 'std/core/tests/**/*.mjs'`, not wired into CI. Where
-such a file goes and why is [*Testing a companion*](docs/spec/interop.md#testing-a-companion);
-each file's header says what it covers.
+exist — and run with `node --test 'std/core/tests/**/*.mjs'`, which needs Node 21 or later to
+expand the quoted glob itself. Where such a file goes and why is
+[*Testing a companion*](docs/spec/interop.md#testing-a-companion); each file's header says what
+it covers. `std/core`'s Zelkova tests run with `cargo run -- test std/core`. CI's `javascript`
+job runs both, in that order.
 
 `.github/workflows/rust.yml` gates a PR on `fmt`, on `clippy` with `-D warnings`, and on a
 `rustdoc` job that builds the crate's docs with the flags `rustdoc.yml` deploys them with. To
