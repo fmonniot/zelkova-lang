@@ -33,7 +33,6 @@ jobs:
   fmt:
     name: Check formatting
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +45,6 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -56,3 +54,17 @@ jobs:
       - uses: actions-rs-plus/clippy-check@v2.1.1
         with:
           args: --workspace --all-features
+
+  rustdoc:
+    name: Rustdoc
+    runs-on: ubuntu-latest
+    # The same flags `rustdoc.yml` builds the published docs with, so a change that would break
+    # that deploy on `main` fails here first. Keep the two `env` blocks in step.
+    env:
+      RUSTFLAGS: "-D warnings -W unreachable-pub"
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc -p zelkova-lang --no-deps

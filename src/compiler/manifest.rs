@@ -5,7 +5,7 @@
 //! with `serde`/`toml`, and validates each field on its own terms — a legal package
 //! [`name`](Manifest::name), a three-integer [`version`](Manifest::version), and each
 //! `dependencies`/`test-dependencies` entry naming exactly one source. `private_modules` is
-//! checked against the modules the package actually holds by [`compile_package`]'s caller,
+//! checked against the modules the package actually holds by [`compile_package`](super::compile_package)'s caller,
 //! once source loading has produced that list — this module only knows the manifest, never
 //! the package's files, so [`load`] returns the names as written.
 //!
@@ -27,7 +27,7 @@ pub const MANIFEST_FILE_NAME: &str = "zelkova.toml";
 
 /// A validated `zelkova.toml`.
 ///
-/// Built only by [`load`], which is the one place a [`RawManifest`] — the shape `serde`
+/// Built only by [`load`], which is the one place a `RawManifest` — the shape `serde`
 /// deserializes directly, still full of unchecked strings — is turned into this one field by
 /// field. `private_modules` holds the names exactly as written; whether each one names a
 /// module the package actually holds is checked by the caller once it has loaded the
@@ -146,7 +146,7 @@ fn wrapped_by_default() -> bool {
 ///
 /// Like [`SourceFileError`](super::source::files::SourceFileError), a manifest error has no
 /// [`Span`](super::position::Span) to render: the location it would want is a byte range in
-/// `zelkova.toml`, which is not a file the [`Files`](super::source::files::Files) database
+/// `zelkova.toml`, which is not a file the [`SourceFiles`](super::source::SourceFiles) database
 /// holds. Every variant therefore carries the `manifest_path` it was found in, so that its
 /// [`message`](PhaseError::message) can name the file on its own — which is the whole of the
 /// location a reader gets, and is why every variant but
@@ -161,7 +161,7 @@ pub enum ManifestError {
         manifest_path: PathBuf,
         message: String,
     },
-    /// `zelkova.toml` is not well-formed TOML, or does not have the shape [`RawManifest`]
+    /// `zelkova.toml` is not well-formed TOML, or does not have the shape `RawManifest`
     /// expects — a missing required field among them.
     Malformed {
         manifest_path: PathBuf,

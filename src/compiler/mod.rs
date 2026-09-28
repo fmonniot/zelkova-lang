@@ -57,10 +57,9 @@ use std::io::Write;
 use std::path::Path;
 
 pub mod canonical;
-/// The imports every module gets without writing them. Public because it is a rule
-/// about the language rather than an implementation detail of one phase, and
-/// because two phases read it: canonicalization synthesises the imports, and
-/// `dependencies` puts the matching edges in the import graph.
+// Public because it is a rule about the language rather than an implementation detail of
+// one phase, and because two phases read it: canonicalization synthesises the imports, and
+// `dependencies` puts the matching edges in the import graph.
 pub mod default_imports;
 // Public so that `tests/pipeline.rs` can drive `ModuleWalker::check_in_order` with the
 // real `check_module`, which is the only seam that observes the modules that checked
@@ -74,38 +73,28 @@ pub mod dependencies;
 // that defines it has to be nameable. It also puts the last phase module on the
 // same footing as `canonical`, `typer` and `parser`.
 pub mod exhaustiveness;
-/// The intermediate representation code generation reads, and what the typer solved
-/// for one module. Public because it is the compiler's hand-off to a backend and
-/// `check_module` returns one.
+// Public because it is the compiler's hand-off to a backend and `check_module` returns one.
 pub mod ir;
-/// The JavaScript backend: the text of the ES module one checked module emits as, and
-/// where in the output tree each file goes. Public so that its tests reach `emit`
-/// directly, on a module no package holds.
+// Public so that its tests reach `emit` directly, on a module no package holds.
 pub mod javascript;
-/// `zelkova.toml`: reading it, and the shape it has to have. Public for the same
-/// reason as `source` and `dependencies` — `manifest::ManifestError` is reachable
-/// from the public `CompilationError::Manifest`.
+// Public for the same reason as `source` and `dependencies` — `manifest::ManifestError` is
+// reachable from the public `CompilationError::Manifest`.
 pub mod manifest;
 pub mod name;
-/// Writing a build's output to disk. Public for the same reason as `manifest`:
-/// `output::Error` is reachable from the public `CompilationError::Output`.
+// Public for the same reason as `manifest`: `output::Error` is reachable from the public
+// `CompilationError::Output`.
 pub mod output;
 pub mod parser;
 pub mod position;
-/// Which packages a build is made from, and what each module is called inside the
-/// package that imports it. Public for the same reason as `manifest`:
-/// `resolve::Error` is reachable from the public `CompilationError::Resolution`.
+// Public for the same reason as `manifest`: `resolve::Error` is reachable from the public
+// `CompilationError::Resolution`.
 pub mod resolve;
-/// The five type names the compiler knows. Public for the same reason as
-/// `default_imports`: it is a rule about the language rather than an implementation
-/// detail of one phase.
+// Public for the same reason as `default_imports`: it is a rule about the language rather
+// than an implementation detail of one phase.
 pub mod scalars;
 pub mod source;
-/// Collecting a package's tests: the pass over a `tests/` root's checked
-/// [`Interface`]s that finds the exposed values whose type is `zelkova-test`'s
-/// `Test`. Public because [`LANG-69`](../../docs/tickets/lang-69.md)'s runner is its
-/// caller, the way `scalars` and `default_imports` are public for the phase that
-/// reads them.
+// Public because `LANG-69`'s runner (docs/tickets/lang-69.md) is its caller, the way
+// `scalars` and `default_imports` are public for the phase that reads them.
 pub mod test_collection;
 pub mod tuple;
 pub mod typer;
@@ -149,7 +138,7 @@ impl PackageName {
     }
 
     /// `zelkova-core`, [`resolve::CORE_PACKAGE`]: the one package the compiler names
-    /// on its own, because it is where the [scalars](scalars) are declared.
+    /// on its own, because it is where the [scalars] are declared.
     ///
     /// Built without going through [`PackageName::new`]'s check, so that naming a scalar
     /// needs no `unwrap`; that the constant passes the check is a unit test.
@@ -364,7 +353,7 @@ impl Interface {
 ///
 /// # `file`: when a label is not about the module under check
 ///
-/// A [`codespan_reporting::Label`] needs a file id as well as a byte range. Most
+/// A [`codespan_reporting::diagnostic::Label`] needs a file id as well as a byte range. Most
 /// labels don't carry one themselves: a phase only ever sees one module, so its
 /// spans belong to the file that module was read from, and [`compile_package`] —
 /// the only place that knows which file that is — supplies it for the whole

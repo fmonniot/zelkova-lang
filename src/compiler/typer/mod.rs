@@ -8,10 +8,10 @@
 //! the space, make mistake and (hopefully) learn something :)
 //!
 //! Some papers on type inference:
-//! - http://steshaw.org/hm/hindley-milner.pdf
-//! - https://pdfs.semanticscholar.org/8983/233b3dff2c5b94efb31235f62bddc22dc899.pdf
-//! - http://gallium.inria.fr/~fpottier/publis/fpottier-elaboration.pdf
-//! - http://gallium.inria.fr/~fpottier/publis/emlti-final.pdf
+//! - <http://steshaw.org/hm/hindley-milner.pdf>
+//! - <https://pdfs.semanticscholar.org/8983/233b3dff2c5b94efb31235f62bddc22dc899.pdf>
+//! - <http://gallium.inria.fr/~fpottier/publis/fpottier-elaboration.pdf>
+//! - <http://gallium.inria.fr/~fpottier/publis/emlti-final.pdf>
 //!
 //! A type inference problem consists of a type environment Γ , an expression t, and a type T of kind ?
 //!
@@ -320,14 +320,14 @@ pub enum ErrorKind {
     /// A name the typer's environment does not know. `type_check` turns this into a
     /// [`Solved::UnboundName`] rather than an [`Error`]; that variant says why.
     ///
-    /// `name` is [`environment_key`]'s `package:Module.name` lookup key, copied
+    /// `name` is `environment_key`'s `package:Module.name` lookup key, copied
     /// verbatim from [`Reference::name`] — not a spelling. `message()`'s arm for this
     /// variant renders it as-is, which would print the package if this variant were
     /// ever surfaced as a rendered [`Error`]; today `type_check` never does that (see
     /// above), so the leak has no path to a user yet. Whoever gives this variant a
     /// live path — `ERR-8`'s planned warning is the likely first one — has to carry a
     /// displayable name (the bare local name, or a `QualName` rendered the way
-    /// [`Spellings`] would) alongside this key rather than rendering it directly.
+    /// `Spellings` would) alongside this key rather than rendering it directly.
     UnboundVariable {
         name: String,
         /// Where the name was written.
@@ -550,7 +550,7 @@ impl PhaseError for Error {
 /// declaration that forwards an imported value, builds an imported constructor or
 /// matches on one is checked like any other. Each use of one of those names gets a
 /// fresh instance of its declared type, so one declaration can use `Just` or
-/// `Maybe.withDefault` at two types — see [`Types`].
+/// `Maybe.withDefault` at two types — see `Types`.
 pub fn type_check(
     module: &Module,
     interfaces: &HashMap<Name, Interface>,

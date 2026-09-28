@@ -11,7 +11,7 @@ use log::trace;
 use std::collections::HashMap;
 
 #[derive(Debug)]
-pub enum ValueType {
+pub(crate) enum ValueType {
     Local,
     TopLevel,
     /// A value found through exactly one import, together with where it was
@@ -60,7 +60,7 @@ pub enum ImportOrigin {
 /// whether the importing module also has the backing function in scope never enters
 /// into it — see [`InfixFunction`].
 #[derive(Debug, Clone)]
-pub struct InfixEntry {
+pub(crate) struct InfixEntry {
     pub infix: Infix,
     pub declaration: InfixDeclaration,
     pub function: InfixFunction,
@@ -76,7 +76,7 @@ pub struct InfixEntry {
 /// (`canonical/mod.rs`) builds the operator's canonical value out of this variant
 /// and never looks the function's name up in the importing module's own scope.
 #[derive(Debug, Clone)]
-pub enum InfixFunction {
+pub(crate) enum InfixFunction {
     /// Declared by the module under check, as a top-level value. `do_infixes`
     /// registers an `infix` only after finding the declaration it names among this
     /// module's functions, so nothing further has to be checked at the use site.
@@ -172,13 +172,13 @@ impl InfixDeclaration {
 /// what the entry would need were a form with a body — a type alias — to reuse this
 /// same map.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeArity {
+pub(crate) struct TypeArity {
     pub name: QualName,
     pub variables: Vec<Name>,
 }
 
 impl TypeArity {
-    pub fn arity(&self) -> usize {
+    pub(crate) fn arity(&self) -> usize {
         self.variables.len()
     }
 }
@@ -190,7 +190,7 @@ impl TypeArity {
 /// As a whole, the aim of the canonical AST is to not have to worry about the
 /// Environment in later phases. We still need one to translate the parser AST.
 /// The good news being, it can be local to the canonicalization function.
-pub trait Environment<'parent>: std::fmt::Debug {
+pub(crate) trait Environment<'parent>: std::fmt::Debug {
     fn find_type(&self, name: &Name) -> Option<&TypeArity>;
 
     fn module_name(&self) -> &ModuleName;
@@ -274,7 +274,7 @@ pub trait Environment<'parent>: std::fmt::Debug {
 /// candidates are module names, where a `.` separates two segments of one
 /// identifier rather than a module from a value. `process_import` calls
 /// [`suggest`](crate::utils::suggest) over the whole string instead.
-pub fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>) -> Option<Name> {
+pub(crate) fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>) -> Option<Name> {
     match target.as_str().rsplit_once('.') {
         Some((prefix, local)) => {
             let locals: Vec<String> = candidates
@@ -332,7 +332,7 @@ pub fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>) -> Op
 /// and the implicit one is exactly what this package does not receive. Only
 /// the type names arrive this way: no constructor and no value, so a module
 /// reached by this can annotate a `Bool` and cannot write a `True`.
-pub fn new_environment(
+pub(crate) fn new_environment(
     module_name: &ModuleName,
     interfaces: &HashMap<Name, Interface>,
     imports: &[parser::Import],
@@ -827,7 +827,7 @@ impl PhaseError for EnvError {
 /// This is opposed to a ScopedEnvironment which contains
 /// additional information available only to a scoped expression (eg. local variable)
 #[derive(Debug)]
-pub struct RootEnvironment {
+pub(crate) struct RootEnvironment {
     module_name: ModuleName,
     infixes: HashMap<Name, InfixEntry>,
     types: HashMap<Name, TypeArity>,
@@ -837,7 +837,7 @@ pub struct RootEnvironment {
 
 impl RootEnvironment {
     // TODO Do we need a local/foreign distinction for infixes ? (or in general ?)
-    pub fn insert_local_infix(&mut self, name: Name, infix: Infix) {
+    pub(crate) fn insert_local_infix(&mut self, name: Name, infix: Infix) {
         let declaration = InfixDeclaration::InThisModule(infix.span);
 
         self.infixes.insert(
@@ -852,7 +852,7 @@ impl RootEnvironment {
 
     // TODO Use insert_foreign_value (and rename to remove the foreign part)
     // TODO Return an error if declaration already exists
-    pub fn insert_top_level_value(&mut self, name: Name) {
+    pub(crate) fn insert_top_level_value(&mut self, name: Name) {
         self.variables.insert(name, ValueType::TopLevel);
     }
 
@@ -866,7 +866,7 @@ impl RootEnvironment {
     /// carries it, so the whole set can be registered up front and each entry's
     /// constructors filled in by [`insert_union_type`](Self::insert_union_type)
     /// once the bodies exist.
-    pub fn insert_declared_type(&mut self, name: &Name, variables: Vec<Name>) {
+    pub(crate) fn insert_declared_type(&mut self, name: &Name, variables: Vec<Name>) {
         // The declaration is the module under check's own, so this environment's
         // module name is the one it belongs to (`AST-4`).
         let qualified = self.module_name.qualify_name(name);
@@ -881,7 +881,7 @@ impl RootEnvironment {
     }
 
     // TODO Use insert_foreign_union_type (and rename to remove the foreign part)
-    pub fn insert_union_type(&mut self, name: Name, union: UnionType) {
+    pub(crate) fn insert_union_type(&mut self, name: Name, union: UnionType) {
         self.insert_declared_type(&name, union.variables);
 
         for tctor in union.variants {
@@ -947,7 +947,7 @@ impl<'p> Environment<'p> for RootEnvironment {
 
 /// An Environment scoped to a module's sub expression (`let`, function, etc…)
 #[derive(Debug)]
-pub struct ScopedEnvironment<'root, 'parent> {
+pub(crate) struct ScopedEnvironment<'root, 'parent> {
     parent: &'parent dyn Environment<'root>,
     variables: HashMap<Name, ValueType>,
 }
@@ -1017,7 +1017,7 @@ impl<'root, 'parent> Environment<'parent> for ScopedEnvironment<'root, 'parent> 
 }
 
 impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
-    pub fn expose_pattern(&mut self, pattern: &Pattern) {
+    pub(crate) fn expose_pattern(&mut self, pattern: &Pattern) {
         match &pattern.kind {
             PatternKind::Anything => (),
             PatternKind::Int(_) => (),

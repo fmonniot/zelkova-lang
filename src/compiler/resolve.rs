@@ -28,7 +28,7 @@
 //! and recording the result in `zelkova.lock` is [the toolchain
 //! appendix](../../../docs/spec/toolchain.md#where-a-dependency-comes-from)'s, and none
 //! of it is written yet — so an entry naming one is
-//! [`Error::UnsupportedSource`](Error::UnsupportedSource) rather than a package quietly
+//! [`Error::UnsupportedSource`] rather than a package quietly
 //! missing from the build.
 //!
 //! `zelkova-core` is a dependency of every package and [is not written in
@@ -167,9 +167,9 @@ pub struct LocalModule {
 
 /// Every way resolving a build, or naming the modules in one, can fail.
 ///
-/// Like a [`ManifestError`](super::manifest::ManifestError), none of these has a span:
+/// Like a [`ManifestError`], none of these has a span:
 /// what each is about is a `zelkova.toml`, which is not a file the
-/// [`Files`](super::source::files::Files) database holds, so every variant names the
+/// [`SourceFiles`](super::source::SourceFiles) database holds, so every variant names the
 /// manifest it was found in inside its own message.
 #[derive(Debug)]
 pub enum Error {
