@@ -174,7 +174,7 @@ The language owner settled the design on 2026-09-27. Each ticket records its par
 - **`zelkova test` runs under `node`.** `cargo test` still never does
   ([`DEC-18` decision 6](../decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node)).
 
-The minimal path has seven tickets. The first four have no prerequisite among them and can be
+The minimal path has eight tickets. The first five have no prerequisite among them and can be
 worked in parallel:
 
 ```
@@ -182,12 +182,13 @@ GEN-17   `zelkova compile [DIR]` — the binary, clap, and the `cargo run` sweep
 LANG-63  `zelkova-test` declares `Test`; a pass collects a package's tests       ── closed
 GEN-18   a test build writes its tests, to `build/test/js/`                      ── closed
 SPEC-35  a test-dependency may depend on the package it tests                    ── closed
+BUG-43   a call to an imported multi-parameter function is emitted curried       ── open
   │
   │  GEN-17 + LANG-63 + GEN-18
   ▼
 LANG-69  `zelkova test [DIR]` — a generated `run.mjs`, run under node            ── closed
   │
-  │  + SPEC-35
+  │  + SPEC-35 + BUG-43
   ▼
 GEN-14   std/core's first Zelkova tests; `CaseChecks.mjs` is deleted
   │
@@ -203,8 +204,8 @@ TEST-3   CI runs `zelkova test std/core` and the remaining `.mjs` checks
 - [`GEN-16`](gen-16.md) and [`LANG-68`](lang-68.md), everything that needs `Task`, and with them
   a `zelkova run`.
 - [`LANG-42`](lang-42.md). `==` is already structural at run time, because `Basics.eq` reaches
-  `_Utils_eq`, so `Test.equal` works before `Eq` exists. It gains an `Eq a =>` constraint when
-  that ticket lands.
+  `_Utils_eq`, so `Test.equal` needs no `Eq` to work once [`BUG-43`](bug-43.md) is fixed. It
+  gains an `Eq a =>` constraint when that ticket lands.
 
 **What comes after.** Porting `std/core/tests/Js/*.mjs` into Zelkova tests is the obvious next
 step. It is not filed yet, because [*Testing a companion*](../spec/interop.md#testing-a-companion)
@@ -262,6 +263,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-40 | bug | high | closed 2026-09-27 | Two same-named modules from different packages emit colliding local import bindings |
 | [BUG-41](bug-41.md) | bug | low | open | A union reached only transitively has no spelling, and `Spellings::spell` falls back to a name that can still collide |
 | [BUG-42](bug-42.md) | bug | low | open | A module-name collision with a test-dependency's module is found only after `src/` checks |
+| [BUG-43](bug-43.md) | bug | high | open | A call to another module's function of two or more parameters is emitted one argument at a time against a plain n-ary function |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -420,3 +422,5 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |
 | [TEST-3](test-3.md) | task | — | open | CI runs neither a package's Zelkova tests nor a `.mjs` companion's checks |
 | TEST-4 | task | — | closed 2026-09-11 | A facade's `.mjs` companion test lives in the compiler repo, not in the package that ships the companion |
+| [TEST-5](test-5.md) | task | — | open | Two `manifest` unit tests can be handed the same temporary directory, so the suite fails intermittently |
+| [TEST-6](test-6.md) | task | — | open | The `tests/cli.rs` tests that run `zelkova` on a shared fixture write one `build/` between them |

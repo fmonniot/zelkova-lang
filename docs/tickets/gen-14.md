@@ -11,8 +11,10 @@ as a fixture package checked by hand-written `node --test` assertions. It is now
 use of `zelkova test`. The behavioural checks it always asked for are written in Zelkova, in
 `std/core`'s own `tests/` root.
 
-**Depends on:** [`LANG-69`](README.md), now closed (`zelkova test` exists), and [`SPEC-35`](README.md)
-(`zelkova-core` may test-depend on `zelkova-test`).
+**Depends on:** [`LANG-69`](README.md), now closed (`zelkova test` exists), [`SPEC-35`](README.md)
+(`zelkova-core` may test-depend on `zelkova-test`), and [`BUG-43`](bug-43.md) (without it a call
+to an imported function of two or more parameters, `Test.equal` and `//` among them, throws when
+it runs).
 
 **Location:** `std/core/zelkova.toml`, whose `test-dependencies` is empty, and
 `std/core/tests/`. `std/core/tests/CaseChecks.mjs` is the file to delete: it is a hand-copied
