@@ -33,7 +33,6 @@ jobs:
   fmt:
     name: Check formatting
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +45,6 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
