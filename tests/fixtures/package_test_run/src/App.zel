@@ -1,0 +1,16 @@
+module App exposing (Color(..), isWarm)
+
+
+type Color
+  = Red
+  | Blue
+
+
+isWarm : Color -> Bool
+isWarm color =
+  case color of
+    Red ->
+      True
+
+    Blue ->
+      False

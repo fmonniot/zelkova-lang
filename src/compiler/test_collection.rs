@@ -8,8 +8,7 @@
 //! values that have that type.
 //!
 //! It does not run anything, and does not decide how a runner reports what it finds —
-//! that is [`LANG-69`](../../../docs/tickets/lang-69.md)'s pass, the only caller this
-//! one is written for.
+//! that is [`test_runner`](super::test_runner)'s, the only caller this one is written for.
 //!
 //! # Identified by type, never by spelling
 //!

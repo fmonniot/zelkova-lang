@@ -27,8 +27,9 @@ Three facts about the tree bound every candidate below, and none of them is a ma
 - **There is no evaluator.** `src/compiler/` ends at the typer, `exhaustiveness.rs` is a stub,
   and code generation has not started ([`GEN-1`](../tickets/gen-1.md)). Nothing runs a Zelkova
   expression, at compile time or at any other time.
-- **Nothing runs a package's tests.** A module under `tests/` is compiled and its tests are
-  collected, and no runner runs them ([`LANG-69`](../tickets/lang-69.md)).
+- **A package's tests run under `node`, not in the compiler.** A module under `tests/` is
+  compiled and its tests are collected, and `zelkova test` runs them as emitted JavaScript.
+  Nothing evaluates one at compile time.
 - **The typer is Hindley–Milner** over `Term`/`Constraint`. It has a vocabulary for the type of a
   function and none for a property of its values.
 
@@ -72,8 +73,7 @@ none of the cases that motivated it, so the partial coverage is worse than none.
 
 Generate the equations as a test of the package declaring the class and let a test run fail:
 later than compile time, earlier than the program, and in principle good for any `R` whose values
-can be produced. It is gated on a test runner, which does not exist
-([`LANG-69`](../tickets/lang-69.md)), and on obtaining values of an arbitrary `R` — which is the
+can be produced. It is gated on obtaining values of an arbitrary `R` — which is the
 walk run backwards from a description of the type, the thing [the
 chapter rules out for a member taking no
 `a`](../spec/type-classes.md#a-class-says-how-it-is-derived) and does not intend to grow. Without

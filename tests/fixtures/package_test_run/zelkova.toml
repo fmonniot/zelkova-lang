@@ -1,0 +1,13 @@
+# The fixture `zelkova test` is run against: `tests/AppTest.zel` holds one passing and one
+# failing test, so a run reports both and exits non-zero. `tests/cli.rs` runs it with no
+# `node` on `PATH`, since `cargo test` never runs one; the run itself is checked by hand.
+name = "package-test-run"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies.zelkova-test]
+path = "../../../std/test"
+wrapped = false

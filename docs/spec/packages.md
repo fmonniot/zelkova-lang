@@ -554,9 +554,6 @@ What a `Test` holds — a name, a check, a group of other tests — belongs to `
 any library built on it. How a runner is invoked and what it reports is
 [the toolchain's](toolchain.md#running-a-packages-tests).
 
-**Not implemented:** nothing runs a collected test
-([`docs/tickets/lang-69.md`](../tickets/lang-69.md)).
-
 ### `test-dependencies`
 
 `test-dependencies` maps package names to entries of exactly the shape `dependencies` takes.

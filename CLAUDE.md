@@ -20,6 +20,7 @@ maintains is the one the next reader trusts.
 cargo test --workspace         # full suite: unit tests + tests/ + the tools/ crates'
 cargo build
 cargo run -- compile std/core  # compiles std/core — the de-facto smoke test
+cargo run -- test <dir>        # compiles a package and its tests, runs them under node
 cargo run -p spec-site -- --out site   # renders the site locally; open site/index.html
 cargo fmt --all
 cargo clippy --workspace --all-features
