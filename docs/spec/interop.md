@@ -110,7 +110,7 @@ mechanisms:
 | `Bool` | the value is a boolean | `bool` |
 | `Char` | the value is a string of one character | `char` |
 | `String` | the value is a string | `string` |
-| `()` | the value is the one value that type has | nothing: no parameter, and no result |
+| `()` | the value is `undefined`; a result is discarded rather than checked, and a parameter keeps its slot | nothing: no parameter, and no result |
 | A tuple | the value is an array of the tuple's length, each element satisfying its component's predicate | `tuple` of its components' spellings |
 | A record | the value is an object with exactly the record's fields, each field satisfying its own predicate | a `record` of the same fields |
 | A list | the value is an array, every element of which satisfies the element type's predicate | `list` of the element's spelling |
@@ -196,6 +196,27 @@ argument and terminates because a Zelkova value is immutable and can hold no cyc
 above, but nothing in the pipeline produces it, writes it or runs it. No WebAssembly is produced,
 no predicate is run and no interface is read; the predicates are what
 [`GEN-2`](../tickets/gen-2.md) emits.
+
+### The unit value crosses as `undefined`
+
+`()` has one value, and its JavaScript representation is that value: `undefined`
+([DEC-21](../decisions/dec-21.md)). Every `()` Zelkova code produces is `undefined`, so equality
+(`Js/Utils.eq`'s `x === y`) and any future printer read one value.
+
+**A result of `()` is discarded, not checked.** A facade whose result is `()` — `unsafe f : X
+-> ()`, or the payload of `Task (Result Failure ())` — ignores whatever its companion returns
+and yields `undefined`. The value is replaced rather than passed through, so a companion's
+`42` in a slot typed `()` never reaches Zelkova as that value.
+
+**A parameter of `()` keeps its slot.** A companion is handed `undefined` where the signature
+declares a `()` parameter, so [the plain parameter list](#the-javascript-companion) a companion
+is promised keeps its positions. This is where the two targets differ: WIT declares no
+parameter there at all. An omitted trailing argument reads as `undefined` in JavaScript, so a
+companion may leave a trailing `()` parameter undeclared.
+
+**Nested, the check is strict.** A `()` inside a tuple, a record, a list or a union argument a
+companion returns must be `undefined` — `v === undefined` — checked like any other field or
+element. A record field of type `()` must be present, as `{ f: undefined }`.
 
 ### What a facade signature may not name
 
