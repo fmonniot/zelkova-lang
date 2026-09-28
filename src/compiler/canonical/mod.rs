@@ -14,6 +14,7 @@
 //!
 //! TODO Rename this to core ? I feel it's going to be te main internal representation of the language.
 use super::parser;
+use super::resolve::CORE_PACKAGE;
 use super::scalars;
 use super::Interface;
 use super::PhaseError;
@@ -1223,6 +1224,37 @@ pub enum Error {
     /// finest caret available without first teaching that conversion to keep
     /// per-node spans.
     FacadeTypeNotAdmitted(Name, FacadeRejectedKind, NodeSpan),
+    /// An unmarked `module foreign` facade signature whose result type — the
+    /// last piece `facade_signature_pieces` returns, once
+    /// `check_facade_admitted_type` has already accepted it — is not exactly
+    /// `Task (Result Failure a)`: the value's name, and `function.annotation_span`.
+    ///
+    /// [An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)
+    /// settles the shape: a facade declares an effect unless its signature is
+    /// marked [`unsafe`](../../../docs/spec/interop.md#an-unsafe-facade), and an
+    /// effectful facade's result type must be exactly `Task (Result Failure a)`.
+    /// Never raised for a signature `function.marked_unsafe` — `unsafe` removes
+    /// the requirement, not the boundary check itself.
+    ///
+    /// The span is the whole annotation rather than the offending piece of it,
+    /// for the same reason [`Error::FacadeTypeNotAdmitted`] uses it — a
+    /// canonical `Type` carries no span of its own.
+    FacadeResultNotEffect(Name, NodeSpan),
+    /// `Task` named anywhere in a `module foreign` facade signature other than
+    /// the whole of an unmarked facade's result: the value's name, and
+    /// `function.annotation_span`.
+    ///
+    /// [An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)
+    /// confines `Task` to that one position — never as an argument, and never
+    /// nested inside another type, whether or not the signature is marked
+    /// [`unsafe`](../../../docs/spec/interop.md#an-unsafe-facade). `Task` is
+    /// recognised by the qualified name of its declaration
+    /// (`is_task_declaration`) and never by spelling, so a module's own type
+    /// named `Task` is an ordinary union here, not this.
+    ///
+    /// The span is the whole annotation, as [`Error::FacadeTypeNotAdmitted`]'s
+    /// is.
+    FacadeTaskMisplaced(Name, NodeSpan),
     /// A `module foreign` facade signature written with a constraint context:
     /// the value's name, and the context's span.
     ///
@@ -1499,6 +1531,14 @@ impl PhaseError for Error {
                     FacadeRejectedKind::Function => "a function type",
                 }
             ),
+            Error::FacadeResultNotEffect(name, _) => format!(
+                "`{}` is a `module foreign` facade signature with no `unsafe`, so it must return `Task (Result Failure a)`",
+                name
+            ),
+            Error::FacadeTaskMisplaced(name, _) => format!(
+                "`{}` names `Task` somewhere other than the whole of an unmarked facade's result",
+                name
+            ),
             Error::FacadeConstrained(name, _) => format!(
                 "`{}` is a `module foreign` facade signature, and a facade signature may not carry a constraint",
                 name
@@ -1723,6 +1763,13 @@ impl PhaseError for Error {
                     FacadeRejectedKind::Function => "this signature names a function type",
                 },
             ),
+            Error::FacadeResultNotEffect(_, span) => {
+                primary(span, "this signature must return `Task (Result Failure a)`")
+            }
+            Error::FacadeTaskMisplaced(_, span) => primary(
+                span,
+                "this signature names `Task` outside the one position it may occupy",
+            ),
             Error::FacadeConstrained(_, span) => primary(span, "a constraint on a facade signature"),
             Error::SelfDependency(members) => members
                 .iter()
@@ -1769,6 +1816,14 @@ impl PhaseError for Error {
             ],
             Error::InvalidConstraint(..) => vec![
                 "a constraint is a class name followed by the type it constrains, as in `Comparable a`, and several are written in parentheses separated by commas, as in `(Comparable k, Eq v)`"
+                    .to_owned(),
+            ],
+            Error::FacadeResultNotEffect(..) => vec![
+                "a facade declares an effect unless its signature is marked `unsafe`, and an effectful facade's result type must be exactly `Task (Result Failure a)` — any other result type needs `unsafe` to write"
+                    .to_owned(),
+            ],
+            Error::FacadeTaskMisplaced(..) => vec![
+                "`Task` may appear only as the whole of an unmarked facade's result type — not as an argument, and not nested inside another type"
                     .to_owned(),
             ],
             Error::FacadeConstrained(..) => vec![
@@ -1912,6 +1967,104 @@ fn check_facade_admitted_type(tpe: &Type) -> Result<(), FacadeRejectedKind> {
         Type::Tuple(tuple) => tuple.iter().try_for_each(check_facade_admitted_type),
         Type::Unit => Ok(()),
     }
+}
+
+/// Whether `name` is the declaration `module` of `zelkova-core` writes `item`
+/// as — `is_core_declaration(name, "Task", "Failure")` for `Task.Failure`.
+///
+/// All three parts have to match, the same way [`scalars::Scalar::declares`]
+/// recognises a scalar: a module named `Task` can only belong to
+/// `zelkova-core` ([`default_imports`](super::default_imports)'s doc comment
+/// says why), so this is what keeps a package's own `Task` module — were one
+/// ever allowed — or a differently-named module's own `Task` type from being
+/// misread as the one [`Error::FacadeResultNotEffect`] and
+/// [`Error::FacadeTaskMisplaced`] care about.
+fn is_core_declaration(name: &QualName, module: &str, item: &str) -> bool {
+    name.package().as_str() == CORE_PACKAGE
+        && name.module_name().as_str() == module
+        && name.unqualified_name().as_str() == item
+}
+
+/// Whether `name` is `Task.Task`'s declaration.
+fn is_task_declaration(name: &QualName) -> bool {
+    is_core_declaration(name, "Task", "Task")
+}
+
+/// Whether `name` is `Result.Result`'s declaration.
+fn is_result_declaration(name: &QualName) -> bool {
+    is_core_declaration(name, "Result", "Result")
+}
+
+/// Whether `name` is `Task.Failure`'s declaration.
+fn is_failure_declaration(name: &QualName) -> bool {
+    is_core_declaration(name, "Task", "Failure")
+}
+
+/// Whether `Task` — recognised by [`is_task_declaration`], never by spelling —
+/// appears anywhere inside `tpe`, at the top or nested inside a tuple or
+/// another type's arguments.
+///
+/// What [`Error::FacadeTaskMisplaced`] is raised from: `Task` may appear only
+/// as the whole of an unmarked facade's result
+/// (`docs/spec/interop.md#an-effectful-facade`), so every other piece of a
+/// facade signature, and the payload inside an accepted `Task (Result Failure
+/// a)` result, is walked with this rather than left to
+/// [`check_facade_admitted_type`], which does not know `Task` from any other
+/// union.
+fn contains_task(tpe: &Type) -> bool {
+    match tpe {
+        Type::Type(name, args) => is_task_declaration(name) || args.iter().any(contains_task),
+        Type::Tuple(tuple) => tuple.iter().any(contains_task),
+        Type::Arrow(param, rest) => contains_task(param) || contains_task(rest),
+        Type::Variable(_) | Type::Unit => false,
+    }
+}
+
+/// Whether `tpe`'s own outermost constructor is `Task` — true of `Task Int`
+/// and of `Task (Result Failure a)` alike, and false of `Maybe (Task Int)`,
+/// where `Task` is present but not in that position.
+///
+/// [`effectful_result_payload`] tells the two admitted shapes apart; this is
+/// what lets the caller tell "the right shape with the wrong contents" apart
+/// from "`Task` in a position that was never going to be it", which is what
+/// distinguishes [`Error::FacadeResultNotEffect`] from
+/// [`Error::FacadeTaskMisplaced`].
+fn is_task_applied(tpe: &Type) -> bool {
+    matches!(tpe, Type::Type(name, _) if is_task_declaration(name))
+}
+
+/// The payload `a` of `tpe`, when `tpe` is exactly the shape an unmarked
+/// facade's result must be — `Task (Result Failure a)`, `Task`, `Result` and
+/// `Failure` each recognised by the qualified name of their declaration and
+/// never by spelling. `None` for any other shape, `Task Int` and
+/// `Maybe (Task Int)` included — those are [`Error::FacadeResultNotEffect`],
+/// not this function's business to name.
+fn effectful_result_payload(tpe: &Type) -> Option<&Type> {
+    let Type::Type(task, task_args) = tpe else {
+        return None;
+    };
+    if !is_task_declaration(task) {
+        return None;
+    }
+    let [result_tpe] = task_args.as_slice() else {
+        return None;
+    };
+    let Type::Type(result, result_args) = result_tpe else {
+        return None;
+    };
+    if !is_result_declaration(result) {
+        return None;
+    }
+    let [failure_tpe, payload] = result_args.as_slice() else {
+        return None;
+    };
+    let Type::Type(failure, failure_args) = failure_tpe else {
+        return None;
+    };
+    if !is_failure_declaration(failure) || !failure_args.is_empty() {
+        return None;
+    }
+    Some(payload)
 }
 
 /// Check that `context` — what an annotation wrote in front of `=>` — is one
@@ -2069,6 +2222,70 @@ pub fn canonicalize(
                     kind,
                     function.annotation_span,
                 ))?
+            }
+
+            // `Task` is confined to the whole of an unmarked facade's result
+            // (`docs/spec/interop.md#an-effectful-facade`), so a parameter
+            // piece may never hold one, whether or not the signature is
+            // `unsafe`. Reached only once the loop above admits every piece,
+            // so nothing here still hides a bare type variable or function
+            // type for `contains_task` to misread.
+            let pieces = facade_signature_pieces(&tpe);
+            if let Some((&result, parameters)) = pieces.split_last() {
+                if parameters.iter().copied().any(contains_task) {
+                    Err(Error::FacadeTaskMisplaced(
+                        function.name.clone(),
+                        function.annotation_span,
+                    ))?
+                }
+
+                // The result is held to the required effect shape unless the
+                // signature says `unsafe` (`DEC-12` decision 1 and 7): an
+                // unmarked facade's result must be exactly
+                // `Task (Result Failure a)`, and `unsafe` is what removes that
+                // requirement rather than any shape `check_facade_admitted_type`
+                // already accepted. `Task` still may not appear anywhere else —
+                // nested in the payload `a` above, nested under some other type
+                // (`Maybe (Task Int)`), or anywhere at all in an `unsafe`
+                // facade's result, which gets no exemption from this.
+                //
+                // `is_task_applied(result)` tells "the right shape with the
+                // wrong contents" (`Task Int`) apart from "`Task` in a position
+                // that was never going to be it" (`Maybe (Task Int)`), which is
+                // what keeps the two error variants pointed at what each is
+                // actually about.
+                if function.marked_unsafe {
+                    if contains_task(result) {
+                        Err(Error::FacadeTaskMisplaced(
+                            function.name.clone(),
+                            function.annotation_span,
+                        ))?
+                    }
+                } else if is_task_applied(result) {
+                    match effectful_result_payload(result) {
+                        Some(payload) if contains_task(payload) => {
+                            Err(Error::FacadeTaskMisplaced(
+                                function.name.clone(),
+                                function.annotation_span,
+                            ))?
+                        }
+                        Some(_) => {}
+                        None => Err(Error::FacadeResultNotEffect(
+                            function.name.clone(),
+                            function.annotation_span,
+                        ))?,
+                    }
+                } else if contains_task(result) {
+                    Err(Error::FacadeTaskMisplaced(
+                        function.name.clone(),
+                        function.annotation_span,
+                    ))?
+                } else {
+                    Err(Error::FacadeResultNotEffect(
+                        function.name.clone(),
+                        function.annotation_span,
+                    ))?
+                }
             }
 
             let name = function.name.clone();

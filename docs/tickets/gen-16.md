@@ -9,8 +9,8 @@ companion that throws, one that rejects, one that returns the wrong shape and on
 carried it as inherited work, and it could not be written until the tickets below existed.
 
 **Depends on:** [`LANG-74`](lang-74.md), for `Task` and `Failure`; [`GEN-21`](gen-21.md), for
-something that runs what the wrapper builds; [`LANG-68`](lang-68.md), which holds an unmarked
-facade to the result type this wrapper assumes; [`GEN-2`](gen-2.md), for the predicate whose
+something that runs what the wrapper builds; [`LANG-68`](README.md) (closed), which holds an
+unmarked facade to the result type this wrapper assumes; [`GEN-2`](gen-2.md), for the predicate whose
 failure is `Err (Malformed ..)`. Sequenced after [`GEN-12`](README.md), which emits the `unsafe`
 half of the same call site. If `GEN-2` is the last of these still open, this ticket may land first
 with `Threw` and `Ok` only. The `Malformed` case then lands with `GEN-2`, and each PR says which

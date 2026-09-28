@@ -211,15 +211,15 @@ predicate is emitted, and nothing runs a program, so no abort can occur
 carry a `String`, which has [no literal syntax](../spec/lexical-structure.md#strings) yet.
 
 Decision 1 is writable: `Task (Result Failure String)` parses since
-[`LANG-9`](../tickets/README.md) closed. The three blocks across the two chapters that write it
-are tagged `expect=unimplemented` because nothing declares the `Task` they import, and
-[`LANG-68`](../tickets/lang-68.md) is what will check the shape itself.
+[`LANG-9`](../tickets/README.md) closed, and canonicalization holds an unmarked facade's result
+to exactly that shape. The three blocks across the two chapters that write it are still tagged
+`expect=unimplemented`, because nothing declares the `Task` they import.
 
 Decision 7 is writable: `unsafe` is a soft keyword the grammar reads in front of a facade
-signature, and every facade in `std/core` now carries it. Nothing acts on the word yet, because
-the two things it chooses between — the wrapper an effectful facade gets and the bare call an
-`unsafe` one gets — are both [`GEN-1`](../tickets/gen-1.md)'s, and the check that an unmarked
-facade declares the result type decision 1 requires is [`LANG-68`](../tickets/lang-68.md)'s.
+signature, and every facade in `std/core` now carries it. Canonicalization reads the word to
+decide whether a signature's result must be `Task (Result Failure a)`; the wrapper an effectful
+facade gets and the bare call an `unsafe` one gets — the other thing the word chooses between —
+are still [`GEN-1`](../tickets/gen-1.md)'s.
 
 ## Sources
 

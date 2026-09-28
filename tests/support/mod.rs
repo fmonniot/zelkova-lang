@@ -236,3 +236,130 @@ pub fn char_interface() -> (Name, Interface) {
 
     ("Char".into(), interface)
 }
+
+/// Build a minimal `String` interface declaring the scalar `String.String`,
+/// opaque, for the same reason as [`char_interface`].
+pub fn string_interface() -> (Name, Interface) {
+    let mut unions = HashMap::new();
+    unions.insert(
+        "String".into(),
+        canonical::UnionType {
+            // Hand-built, not canonicalized from source: no position behind it.
+            span: NodeSpan::none(),
+            variables: vec![],
+            variants: vec![],
+        },
+    );
+
+    let interface = Interface {
+        module_name: ModuleName::new(PackageName::core(), "String".into()),
+        values: HashMap::new(),
+        unions,
+        infixes: HashMap::new(),
+        infix_functions: HashMap::new(),
+        arities: HashMap::new(),
+        file: None,
+    };
+
+    ("String".into(), interface)
+}
+
+/// Build a minimal `Result` interface declaring `Result.Result`, with its two
+/// constructors — `Ok` and `Err`, matching [the default
+/// imports](../../docs/spec/modules.md#the-default-imports) — for a fixture that
+/// needs the `Result Failure a` payload an unmarked facade's result carries
+/// ([`LANG-68`](../../docs/tickets/README.md)).
+pub fn result_interface() -> (Name, Interface) {
+    let mut unions = HashMap::new();
+    unions.insert(
+        "Result".into(),
+        canonical::UnionType {
+            // Hand-built, not canonicalized from source: no position behind it.
+            span: NodeSpan::none(),
+            variables: vec!["e".into(), "a".into()],
+            variants: vec![
+                canonical::TypeConstructor {
+                    name: "Ok".into(),
+                    type_parameters: vec![canonical::Type::Variable("a".into())],
+                    tpe: core_qual("Result.Result"),
+                },
+                canonical::TypeConstructor {
+                    name: "Err".into(),
+                    type_parameters: vec![canonical::Type::Variable("e".into())],
+                    tpe: core_qual("Result.Result"),
+                },
+            ],
+        },
+    );
+
+    let interface = Interface {
+        module_name: ModuleName::new(PackageName::core(), "Result".into()),
+        values: HashMap::new(),
+        unions,
+        infixes: HashMap::new(),
+        infix_functions: HashMap::new(),
+        arities: HashMap::new(),
+        file: None,
+    };
+
+    ("Result".into(), interface)
+}
+
+/// Build a minimal `Task` interface declaring `Task.Task` — opaque, exposed
+/// without its constructors like the real one
+/// (`docs/spec/evaluation-semantics.md#effects`) — and `Task.Failure`, with its
+/// two constructors `Threw` and `Malformed`
+/// (`docs/spec/evaluation-semantics.md#an-effect-that-can-fail`). Neither
+/// constructor's argument is built as a `String`: what the constructors hold
+/// is irrelevant to the shape a facade's result type is checked against
+/// ([`LANG-68`](../../docs/tickets/README.md)), which only ever looks at
+/// `Task.Failure`'s name.
+///
+/// `zelkova-core` declares no `Task` module yet
+/// ([`LANG-74`](../../docs/tickets/lang-74.md)), so this stands in for it the
+/// way [`maybe_interface`] and [`basics_interface`] already do for modules
+/// that exist.
+pub fn task_interface() -> (Name, Interface) {
+    let mut unions = HashMap::new();
+    unions.insert(
+        "Task".into(),
+        canonical::UnionType {
+            // Hand-built, not canonicalized from source: no position behind it.
+            span: NodeSpan::none(),
+            variables: vec!["a".into()],
+            variants: vec![],
+        },
+    );
+    unions.insert(
+        "Failure".into(),
+        canonical::UnionType {
+            // Hand-built, not canonicalized from source: no position behind it.
+            span: NodeSpan::none(),
+            variables: vec![],
+            variants: vec![
+                canonical::TypeConstructor {
+                    name: "Threw".into(),
+                    type_parameters: vec![],
+                    tpe: core_qual("Task.Failure"),
+                },
+                canonical::TypeConstructor {
+                    name: "Malformed".into(),
+                    type_parameters: vec![],
+                    tpe: core_qual("Task.Failure"),
+                },
+            ],
+        },
+    );
+
+    let interface = Interface {
+        module_name: ModuleName::new(PackageName::core(), "Task".into()),
+        values: HashMap::new(),
+        unions,
+        infixes: HashMap::new(),
+        infix_functions: HashMap::new(),
+        arities: HashMap::new(),
+        file: None,
+    };
+
+    ("Task".into(), interface)
+}

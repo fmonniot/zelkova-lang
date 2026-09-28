@@ -382,6 +382,8 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             NoTypeInBinding(..) => vec!["NoTypeInBinding"],
             UnsafeOutsideFacade(..) => vec!["UnsafeOutsideFacade"],
             FacadeTypeNotAdmitted(..) => vec!["FacadeTypeNotAdmitted"],
+            FacadeResultNotEffect(..) => vec!["FacadeResultNotEffect"],
+            FacadeTaskMisplaced(..) => vec!["FacadeTaskMisplaced"],
             FacadeConstrained(..) => vec!["FacadeConstrained"],
             TypeArityMismatch(..) => vec!["TypeArityMismatch"],
             TypeNotFound(..) => vec!["TypeNotFound"],
