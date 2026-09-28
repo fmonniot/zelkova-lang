@@ -2656,6 +2656,34 @@ fn unsafe_facade_returning_task_is_rejected() {
     }
 }
 
+/// An `unsafe` facade naming `Task` as an argument — `unsafe` only removes
+/// the effect-shape requirement on the *result*; the parameter-position check
+/// runs unconditionally, before the `marked_unsafe` branch is even reached,
+/// so `Task` is rejected as an argument whether or not the signature is
+/// `unsafe`, exactly as
+/// [`task_as_an_argument_is_rejected`] shows for an unmarked one.
+///
+/// Verified to fail by neutralising the `parameters.iter().copied().any(contains_task)`
+/// check: the module then canonicalizes cleanly and `expect_err` panics.
+#[test]
+fn unsafe_facade_task_as_an_argument_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (run)
+
+        unsafe run : Task Int -> Int
+    "#};
+
+    let errors = canonicalize_with_effects(source)
+        .expect_err("`unsafe` grants no exemption from `Task` as a facade's argument");
+
+    match errors.as_slice() {
+        [canonical::Error::FacadeTaskMisplaced(name, _)] => {
+            assert_eq!(name.as_str(), "run");
+        }
+        other => panic!("expected one FacadeTaskMisplaced, got {:?}", other),
+    }
+}
+
 /// A facade naming a user-declared `Task` — from a module named `Widgets`,
 /// not `Task` — canonicalizes as an ordinary union, with no
 /// `FacadeTaskMisplaced` in sight: `Task` is recognised by the qualified name

@@ -2212,9 +2212,12 @@ pub fn canonicalize(
             // (`docs/spec/interop.md#which-types-may-cross-the-boundary`).
             // One bad signature must not hide the next, so this pushes onto
             // `errors` the same way the checks above do rather than
-            // returning early out of the whole facade.
-            if let Some(kind) = facade_signature_pieces(&tpe)
-                .into_iter()
+            // returning early out of the whole facade. Walked once and
+            // reused below for the `Task`-placement check.
+            let pieces = facade_signature_pieces(&tpe);
+            if let Some(kind) = pieces
+                .iter()
+                .copied()
                 .find_map(|piece| check_facade_admitted_type(piece).err())
             {
                 Err(Error::FacadeTypeNotAdmitted(
@@ -2230,7 +2233,6 @@ pub fn canonicalize(
             // `unsafe`. Reached only once the loop above admits every piece,
             // so nothing here still hides a bare type variable or function
             // type for `contains_task` to misread.
-            let pieces = facade_signature_pieces(&tpe);
             if let Some((&result, parameters)) = pieces.split_last() {
                 if parameters.iter().copied().any(contains_task) {
                     Err(Error::FacadeTaskMisplaced(
