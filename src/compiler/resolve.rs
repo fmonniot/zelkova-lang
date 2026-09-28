@@ -28,7 +28,7 @@
 //! and recording the result in `zelkova.lock` is [the toolchain
 //! appendix](../../../docs/spec/toolchain.md#where-a-dependency-comes-from)'s, and none
 //! of it is written yet — so an entry naming one is
-//! [`Error::UnsupportedSource`](Error::UnsupportedSource) rather than a package quietly
+//! [`Error::UnsupportedSource`] rather than a package quietly
 //! missing from the build.
 //!
 //! `zelkova-core` is a dependency of every package and [is not written in

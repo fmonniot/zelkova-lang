@@ -15,7 +15,7 @@
 //! ahead of the module's own, so a name arriving implicitly is indistinguishable
 //! from one written by hand. [`dependencies::ModuleWalker::new`](crate::compiler::dependencies::ModuleWalker::new)
 //! adds the matching edge to the import graph, because a module can only resolve
-//! against an [`Interface`](crate::compiler::Interface) that already exists — so
+//! against an [`Interface`] that already exists — so
 //! `Basics` has to be *checked* before the module that never named it, and nothing
 //! but the dependency graph decides that order.
 //!
