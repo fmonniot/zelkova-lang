@@ -1,7 +1,7 @@
 //! The JavaScript backend: one checked module in, the text of one ES module out.
 //!
 //! [`emit`] reads the [`ir::Module`] a [`CheckedModule`] carries, beside the
-//! [`canonical::Module`] it was built from for the one thing the IR does not hold — which
+//! [`canonical::Module`](super::canonical::Module) it was built from for the one thing the IR does not hold — which
 //! names the module exports. It produces text and writes nothing: `compile_package` writes
 //! it, to the path [`module_file`] gives, once the whole build has checked and emitted.
 //!
@@ -35,7 +35,7 @@
 //! Every other union value is `{$: "Ctor", a: …, b: …}`, arguments in declaration order
 //! ([A union crosses as a tagged
 //! value](../../../docs/spec/interop.md#a-union-crosses-as-a-tagged-value)); a
-//! constructor's arguments past the 26th continue `aa`, `ab`, … — see [`field`]. A tuple
+//! constructor's arguments past the 26th continue `aa`, `ab`, … — see `field`. A tuple
 //! is an array.
 //!
 //! A constructor is not exported. An importer that builds one builds its own object of
@@ -94,15 +94,15 @@
 //!
 //! [`ir::decision_tree`] turns a `case`'s branches — and a parameter written as a
 //! pattern, which the IR holds as a single-branch match on it
-//! ([`ir::CaseForm::Parameter`]) and which reaches [`Emitter::case_expression`] the
+//! ([`ir::CaseForm::Parameter`]) and which reaches `Emitter::case_expression` the
 //! same way — into the [`Decision`] tree a backend walks instead of re-deriving which
-//! test distinguishes which branch. [`Emitter::case_expression`] binds the scrutinee to
+//! test distinguishes which branch. `Emitter::case_expression` binds the scrutinee to
 //! `$scrutinee` once, since the tree tests it more than once and re-evaluating it per
 //! test would evaluate it once per test — observable through non-termination ([Order of
 //! evaluation](../../../docs/spec/evaluation-semantics.md#order-of-evaluation)) — and
 //! walks the tree into an `if`/`else` chain inside an immediately invoked function,
 //! since a `case` is an expression and JavaScript's `if` is a statement. A
-//! [`Decision::Test`] becomes an `if` on the value [`occurrence_expr`] reads off
+//! [`Decision::Test`] becomes an `if` on the value `occurrence_expr` reads off
 //! `$scrutinee`: `.$ === "Ctor"` for a constructor, an equality check for a literal. A
 //! [`Decision::Leaf`] declares its bindings as `const`s ahead of a `return`, all of it
 //! inside its own block — a binding may repeat a name the scrutinee expression reads

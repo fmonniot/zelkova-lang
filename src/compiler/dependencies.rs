@@ -73,7 +73,7 @@ pub struct Cycle {
     /// what the summary note is built from. Not necessarily every module in the
     /// component: a component with several overlapping loops has more than one
     /// cycle in it, and picking the shortest one through a single start node (see
-    /// [`cycle_walk`]) can leave others out. Finding a cycle that covers every
+    /// `cycle_walk`) can leave others out. Finding a cycle that covers every
     /// member is the Hamiltonian cycle problem, and no such cycle need exist, so
     /// this does not try; the members left out are in [`Cycle::others`] instead,
     /// and the note names them so a user does not break one loop and immediately
@@ -86,7 +86,7 @@ pub struct Cycle {
     pub others: Vec<Name>,
     /// `edges[i]` is the `import` written in `path[i]` that names `path[i + 1]`
     /// (or `path[0]`, for the last edge). Same length as `path`, and every entry
-    /// is a real `import`, because [`cycle_walk`] only ever returns a path whose
+    /// is a real `import`, because `cycle_walk` only ever returns a path whose
     /// consecutive pairs are edges of the graph.
     pub edges: Vec<CycleEdge>,
 }

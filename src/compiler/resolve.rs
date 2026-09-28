@@ -167,9 +167,9 @@ pub struct LocalModule {
 
 /// Every way resolving a build, or naming the modules in one, can fail.
 ///
-/// Like a [`ManifestError`](super::manifest::ManifestError), none of these has a span:
+/// Like a [`ManifestError`], none of these has a span:
 /// what each is about is a `zelkova.toml`, which is not a file the
-/// [`Files`](super::source::files::Files) database holds, so every variant names the
+/// [`SourceFiles`](super::source::SourceFiles) database holds, so every variant names the
 /// manifest it was found in inside its own message.
 #[derive(Debug)]
 pub enum Error {

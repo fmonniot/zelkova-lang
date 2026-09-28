@@ -1,7 +1,7 @@
 //! Module providing a transformation from a textual source code to a serie of tokens.
 //!
 //! Directly inspired by the great work on the RustPython team
-//! https://github.com/RustPython/RustPython/blob/master/parser/src/lexer.rs
+//! <https://github.com/RustPython/RustPython/blob/master/parser/src/lexer.rs>
 
 use crate::compiler::position::{spanned, BytePos, Position, Spanned};
 use log::trace; // Location in RustPython

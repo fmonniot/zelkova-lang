@@ -28,7 +28,7 @@ use super::{Interface, ModuleName, PackageName};
 
 /// The package that declares `Test`. [`PackageName::test_package`] is the checked,
 /// legal-by-construction form of this string; this constant is what that method (and
-/// [`test_type`]) is built from.
+/// `test_type`) is built from.
 pub const TEST_PACKAGE: &str = "zelkova-test";
 
 /// `zelkova-test`'s `Test`: the module and the name its one declaration writes.

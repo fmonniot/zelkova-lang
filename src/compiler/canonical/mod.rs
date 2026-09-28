@@ -289,7 +289,7 @@ pub struct TypeConstructor {
 ///
 /// The reason `ERR-3` recorded is that a `Type` does not always come from the module
 /// being canonicalized: `Type::from_parser_type` resolves a name through the
-/// [`Environment`], which clones types straight out of the [`Interface`]s of the
+/// `Environment`, which clones types straight out of the [`Interface`]s of the
 /// modules this one imports, so the `Type` handed back may well have been *written
 /// in a different file* — and a bare span on it would be read as a position in the
 /// importing module's source. `ERR-5` settled that half: a [`SpanLabel`] can now
@@ -1107,7 +1107,7 @@ pub enum Error {
     ///
     /// The declarations of the module under check are in scope here as much as
     /// its imports are, so this is a name neither half offers. Only the
-    /// `TypeKind::Unqualified` arm of [`Type::from_parser_type`] raises it: a
+    /// `TypeKind::Unqualified` arm of `Type::from_parser_type` raises it: a
     /// type *variable* arrives as `TypeKind::Variable` and is bound by the
     /// annotation it appears in, so it resolves through nothing and cannot
     /// reach here.
@@ -1155,7 +1155,7 @@ pub enum Error {
     ///
     /// The span is the whole annotation rather than the offending piece of it,
     /// because a canonical `Type` carries no span of its own — see
-    /// [`Type::from_parser_type`]'s doc comment — and the annotation is the
+    /// `Type::from_parser_type`'s doc comment — and the annotation is the
     /// finest caret available without first teaching that conversion to keep
     /// per-node spans.
     FacadeTypeNotAdmitted(Name, FacadeRejectedKind, NodeSpan),
@@ -1166,14 +1166,14 @@ pub enum Error {
     /// depends on, and a cycle through it describes no such order. *Depends on* is
     /// transitive mention: the declarations its body mentions, the ones *their* bodies
     /// mention, and so on, through functions as well as parameterless bindings — see
-    /// [`dependency_graph`].
+    /// `dependency_graph`.
     ///
     /// One entry per member of the cycle — every declaration of one strongly-connected
     /// component of that graph — each carrying its own declaration's span
     /// (`Value::span()`) and whether it is a function. Length 1 for a parameterless
     /// binding that mentions itself (`x = x`), length 2 or more for a cycle running
     /// through several declarations (`a = b` beside `b = a`, or `a = f 1` beside `f x =
-    /// a`). [`check_self_dependency`] orders the members parameterless bindings first,
+    /// a`). `check_self_dependency` orders the members parameterless bindings first,
     /// then functions, each group by name, so the first entry is always a parameterless
     /// binding and the order is not an artifact of traversal. `labels()` gives that first
     /// entry the primary label and every other entry a secondary one.
@@ -1204,7 +1204,7 @@ pub struct CycleMember {
 /// A variant is a constructor name followed by zero or more type arguments, and
 /// nothing else. The grammar does not enforce that: it parses a variant list with
 /// the general `Type` production, so every shape a type expression can take reaches
-/// [`do_types`]. This enum names the three that are not a variant, one per remaining
+/// `do_types`. This enum names the three that are not a variant, one per remaining
 /// [`parser::TypeKind`], so each can say what it is in the words of the source.
 #[derive(Debug, PartialEq, Clone)]
 pub enum InvalidVariantKind {
@@ -1758,7 +1758,7 @@ fn check_facade_admitted_type(tpe: &Type) -> Result<(), FacadeRejectedKind> {
 /// Transform a given `parser::Module` into a `canonical::Module`.
 ///
 /// Whether this module is exempt from the default imports is not this function's
-/// question to answer: [`new_environment`] derives it from `package` itself
+/// question to answer: `new_environment` derives it from `package` itself
 /// ([`PackageName::is_core`]) once `name` is built.
 pub fn canonicalize(
     package: &PackageName,

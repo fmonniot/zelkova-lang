@@ -10,7 +10,7 @@
 //! # Why the list lives here and not in canonicalization
 //!
 //! Two phases need it, for two halves of one behaviour.
-//! [`canonical::environment::new_environment`](crate::compiler::canonical::environment::new_environment)
+//! `canonical::environment::new_environment`
 //! turns each entry into a [`parser::Import`] and runs it through `process_import`
 //! ahead of the module's own, so a name arriving implicitly is indistinguishable
 //! from one written by hand. [`dependencies::ModuleWalker::new`](crate::compiler::dependencies::ModuleWalker::new)

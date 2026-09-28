@@ -27,7 +27,7 @@ pub use error::Error;
 use std::collections::HashMap;
 
 lalrpop_mod!(
-    #[allow(clippy::all, non_fmt_panics)]
+    #[allow(clippy::all, non_fmt_panics, unreachable_pub)]
     grammar,
     "/compiler/parser/grammar.rs"
 );
@@ -244,7 +244,7 @@ pub struct Function {
     pub bindings: Vec<Match>,
     /// The annotation and every binding, merged into one span.
     ///
-    /// A `Function` is assembled in [`Module::from_declarations`] out of
+    /// A `Function` is assembled in `Module::from_declarations` out of
     /// declarations the grammar saw separately, so this covers the annotation
     /// *and* the body rather than either alone — which is what a type mismatch
     /// between the two is actually about.

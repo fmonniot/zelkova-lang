@@ -12,7 +12,7 @@
 //! before the new one is known to succeed, so a write failure partway through would
 //! leave nothing at all rather than the last good build.
 //!
-//! `write` also serializes itself process-wide with [`WRITE_LOCK`]. Write-then-prune
+//! `write` also serializes itself process-wide with `WRITE_LOCK`. Write-then-prune
 //! is not safe to run twice at once even so: two calls racing on the same directory can
 //! still have one's prune remove a directory or file the other is mid-write into, which
 //! is exactly the race this repository's own test suite hit once pruning was added —

@@ -44,7 +44,7 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 /// instance: without the tie-break, `foldl`/`foldr` or two sibling
 /// constructors would produce a different suggestion from one run to the next
 /// for unchanged source.
-pub fn suggest<'a, I>(target: &str, candidates: I) -> Option<&'a str>
+pub(crate) fn suggest<'a, I>(target: &str, candidates: I) -> Option<&'a str>
 where
     I: IntoIterator<Item = &'a str>,
 {
@@ -64,7 +64,7 @@ where
 ///
 /// The generic signature, assuming `I: FromIterator` would look like `Iterator<Result<T, E>> -> Result<I<T>, I<E>>`.
 /// I wish this was part of the standard library, but as it is not here is my custom version.
-pub fn collect_accumulate<T, E, I, R>(iterator: I) -> Result<R, Vec<E>>
+pub(crate) fn collect_accumulate<T, E, I, R>(iterator: I) -> Result<R, Vec<E>>
 where
     I: Iterator<Item = Result<T, E>>,
     R: FromIterator<T>,

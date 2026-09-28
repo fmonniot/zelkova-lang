@@ -132,7 +132,7 @@ pub struct Module {
     /// bindings with no path between them, where dependencies alone leave the order
     /// unconstrained.
     ///
-    /// [`canonical::initialisation_order`] computes it, from the same dependency graph
+    /// `canonical::initialisation_order` computes it, from the same dependency graph
     /// `canonical::canonicalize` reads to reject a cycle (`LANG-35`) rather than a second
     /// one built from the same rule; see that function's doc comment for the assumption
     /// this relies on and which phase discharges it.
@@ -384,7 +384,7 @@ pub enum TermKind {
 ///
 /// A parameter written as a pattern — `first (x, _) = x` — is a match like any other,
 /// and it is translated as one: the parameter becomes a plain one named by
-/// [`pattern_parameter`], and the declaration's body a single-branch `Case` on it. So a
+/// `pattern_parameter`, and the declaration's body a single-branch `Case` on it. So a
 /// backend lowers a pattern in either position the same way, and the term language keeps
 /// one binding construct, [`TermKind::Fun`], that only ever binds a name.
 ///
@@ -397,7 +397,7 @@ pub enum CaseForm {
     /// A `case … of` expression.
     Expression,
     /// A parameter the declaration wrote as a pattern. The `Case` has exactly one
-    /// branch, and its scrutinee is the local reference [`pattern_parameter`] names.
+    /// branch, and its scrutinee is the local reference `pattern_parameter` names.
     Parameter,
 }
 

@@ -217,7 +217,7 @@ where
     I: Iterator<Item = Result<Spanned<Position, Token>, Error>>,
 {
     /// Create and initialize a new `Layout` iterator
-    pub fn new(iter: I) -> Layout<I> {
+    pub(crate) fn new(iter: I) -> Layout<I> {
         Layout {
             tokens: iter,
             contexts: Contexts::new(),
