@@ -143,8 +143,8 @@ records have no brace token ([`LANG-47`](../tickets/lang-47.md)) and lists no li
 ([`LANG-44`](../tickets/lang-44.md)) — so three of those rows are about types a program cannot
 write today. Both constructs are specified, in [Records](records.md) and [Lists](lists.md), and
 neither chapter publishes an encoding: what a record and a list look like across either boundary
-belongs to code generation. Nothing runs a predicate or reads a WIT interface either —
-[`GEN-2`](../tickets/gen-2.md) is the ticket that emits them.
+belongs to code generation. Nothing reads a WIT interface either, since no WebAssembly is
+produced ([`GEN-15`](../tickets/gen-15.md)).
 
 ### A union crosses as a tagged value
 
@@ -184,10 +184,8 @@ one breaks every companion that mentions it.
 A union may be recursive, and the JavaScript predicate follows it: the walk descends into each
 argument and terminates because a Zelkova value is immutable and can hold no cycle.
 
-**Not implemented:** the JavaScript the compiler can produce builds a union value in the encoding
-above, but nothing in the pipeline produces it, writes it or runs it. No WebAssembly is produced,
-no predicate is run and no interface is read; the predicates are what
-[`GEN-2`](../tickets/gen-2.md) emits.
+**Not implemented:** no WebAssembly is produced and no interface is read
+([`GEN-15`](../tickets/gen-15.md)).
 
 ### The unit value crosses as `undefined`
 
@@ -321,8 +319,8 @@ inside another type.
 [publishes `read`](packages.md#what-a-package-exposes) to other packages.
 
 **Not implemented:** neither block above compiles, because nothing declares the `Task` or the
-`Failure` they import. No wrapper is generated, and nothing is checked at either boundary
-([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)).
+`Failure` they import. No wrapper is generated, so code generation refuses an effectful facade
+rather than checking what its companion returns ([`GEN-16`](../tickets/gen-16.md)).
 
 ## An `unsafe` facade
 
@@ -354,9 +352,8 @@ the second [aborts the program](evaluation-semantics.md#when-a-program-aborts).
 exactly as any other crossing is, and a value that fails
 [aborts](evaluation-semantics.md#when-a-program-aborts).
 
-**Not implemented:** crossing the boundary runs no check against the declared type in either
-direction ([`GEN-2`](../tickets/gen-2.md)), and the wrapper an effectful facade's call site needs
-is not generated ([`GEN-16`](../tickets/gen-16.md)).
+**Not implemented:** the wrapper an effectful facade's call site needs is not generated
+([`GEN-16`](../tickets/gen-16.md)).
 
 ## Facade constants
 
@@ -466,7 +463,7 @@ check.
 
 **Not implemented:** none of this runs. Nothing declares `Task` or `Failure`, so the `zel` block
 does not compile. No wrapper is generated around an effectful call either
-([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)), so a `Test` whose checks are
+([`GEN-16`](../tickets/gen-16.md)), so a `Test` whose checks are
 `Task`s cannot be written.
 `zelkova test` runs a `Test` that is `Pass` or `Fail`; it cannot run a `Task`. Until it can, a
 companion test under `tests/` is a `.mjs` file that the target's own test runner is pointed at

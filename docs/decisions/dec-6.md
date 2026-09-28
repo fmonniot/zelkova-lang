@@ -141,6 +141,6 @@ what closed it: `Js.Utils` is monomorphic now, so calling one of its facades wit
 wrong type is a type error rather than a call `_Utils_cmp` had to refuse at runtime. What decision
 4 adds is the other end — a companion returning a value its declared type does not describe is
 caught where it crosses rather than believed by everything downstream. The work is
-[`GEN-2`](../tickets/gen-2.md), a sibling of [`GEN-1`](../tickets/gen-1.md) rather than a part of
+[`GEN-2`](../tickets/README.md), a sibling of [`GEN-1`](../tickets/gen-1.md) rather than a part of
 it: `GEN-1` is a whole phase, this is a bounded piece of its output with a chapter section to
 check it against.

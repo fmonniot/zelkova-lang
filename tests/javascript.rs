@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use indoc::indoc;
-use zelkova_lang::compiler::javascript::{self, Error};
+use zelkova_lang::compiler::javascript::{self, Error, Unions, Unpredicated};
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::{check_module, CheckedModule, Interface, PackageName};
@@ -34,8 +34,14 @@ fn checked(source: &str) -> CheckedModule {
     )
 }
 
+/// The unions a single module's boundary checks can read: its own. A fixture checked
+/// against the support interfaces has no other module of its build to read one from.
+fn unions_of(module: &CheckedModule) -> Unions {
+    Unions::of([module])
+}
+
 fn emit(module: &CheckedModule) -> String {
-    javascript::emit(module, true)
+    javascript::emit(module, true, &unions_of(module))
         .unwrap_or_else(|errors| panic!("expected the module to emit, got {:?}", errors))
 }
 
@@ -46,7 +52,8 @@ fn emitted(source: &str) -> String {
 
 /// The errors `source` fails to emit with, insisting that it fails.
 fn refused(source: &str) -> Vec<Error> {
-    match javascript::emit(&checked(source), true) {
+    let module = checked(source);
+    match javascript::emit(&module, true, &unions_of(&module)) {
         Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
         Err(errors) => errors,
     }
@@ -55,7 +62,8 @@ fn refused(source: &str) -> Vec<Error> {
 /// The errors `source` fails to emit with when no companion is available for the
 /// target being built, insisting that it fails.
 fn refused_without_companion(source: &str) -> Vec<Error> {
-    match javascript::emit(&checked(source), false) {
+    let module = checked(source);
+    match javascript::emit(&module, false, &unions_of(&module)) {
         Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
         Err(errors) => errors,
     }
@@ -1262,11 +1270,14 @@ fn a_declaration_with_no_ir_is_refused() {
 /// An `unsafe` facade emits a module that imports its companion under an alias and
 /// re-exports its names: a two-parameter export is a plain function whose body is a
 /// direct, saturated call to the companion, and a zero-parameter one (a facade
-/// constant) is a `const` bound to the companion's value.
+/// constant) is a `const` bound to the companion's value. Each value the companion hands
+/// back is run through the predicate of its declared type, and the runtime's `$abort` is
+/// called, naming the export, when it fails.
 ///
 /// Mutation-checked by reverting `Emitter::facade_declaration` to build the function's
 /// call one argument at a time (`$companion$add(a)(b)`) instead of the plain parameter list:
-/// this test's `assert_eq!` then fails on the function's body.
+/// this test's `assert_eq!` then fails on the function's body. And by returning
+/// `$returned` in place of `checked` in both arms: the text then has no check at all.
 #[test]
 fn an_unsafe_facade_re_exports_its_companion() {
     let text = emitted(indoc! {r#"
@@ -1279,17 +1290,239 @@ fn an_unsafe_facade_re_exports_its_companion() {
     assert_eq!(
         text,
         indoc! {r#"
+            import { $abort } from "../zelkova.mjs";
             import { add as $companion$add, pi as $companion$pi } from "./Test.companion.mjs";
 
             function add(a, b) {
-              return $companion$add(a, b);
+              const $returned = $companion$add(a, b);
+              return typeof $returned === "bigint" && BigInt.asIntN(64, $returned) === $returned ? $returned : $abort("`Test.add`'s companion returned a value its declared type, `Int`, does not admit");
             }
 
-            const pi = $companion$pi;
+            const pi = (($returned) => typeof $returned === "number" ? $returned : $abort("`Test.pi`'s companion returned a value its declared type, `Float`, does not admit"))($companion$pi);
 
             export { add, pi };
         "#}
     );
+}
+
+/// A facade whose result is `()` calls its companion and returns `undefined` whatever
+/// it answered, so nothing is checked and nothing can fail; a facade constant of type
+/// `()` is `undefined`, its export still imported so a companion missing it fails to link
+/// ([The unit value crosses as
+/// `undefined`](../docs/spec/interop.md#the-unit-value-crosses-as-undefined)).
+///
+/// Mutation-checked by deleting the `canonical::Type::Unit` branch at the top of
+/// `Emitter::facade_declaration`: both declarations then check `$returned === undefined`
+/// and import `$abort`.
+#[test]
+fn a_facade_result_of_unit_is_discarded_not_checked() {
+    let text = emitted(indoc! {r#"
+        module foreign Test exposing (log, nothing)
+
+        unsafe log : Int -> ()
+        unsafe nothing : ()
+    "#});
+
+    assert_eq!(
+        text,
+        indoc! {r#"
+            import { log as $companion$log, nothing as $companion$nothing } from "./Test.companion.mjs";
+
+            function log(a) {
+              $companion$log(a);
+              return undefined;
+            }
+
+            const nothing = undefined;
+
+            export { log, nothing };
+        "#}
+    );
+}
+
+/// A tuple result is an array of the tuple's length whose elements each pass their own
+/// predicate; a `Char` is a string of exactly one code point, a `Bool` a boolean, and a
+/// `()` nested inside the tuple — unlike a whole result of `()` — must be `undefined`.
+///
+/// Mutation-checked by dropping the `length` test from `Predicates::test`'s tuple arm,
+/// and separately by making its `Unit` arm answer `true`: the text no longer matches
+/// either time.
+#[test]
+fn a_tuple_result_is_checked_element_by_element() {
+    let text = emitted(indoc! {r#"
+        module foreign Test exposing (split)
+
+        unsafe split : Int -> (Char, Bool, ())
+    "#});
+
+    assert!(
+        text.contains(
+            "return Array.isArray($returned) && $returned.length === 3 \
+             && typeof $returned[0] === \"string\" \
+             && $returned[0].length === ($returned[0].codePointAt(0) > 0xFFFF ? 2 : 1) \
+             && typeof $returned[1] === \"boolean\" \
+             && $returned[2] === undefined ? $returned : $abort("
+        ),
+        "got:\n{}",
+        text
+    );
+}
+
+/// `lib` and a `facade` importing it, checked in that order, and the text the facade
+/// emits with both modules' unions to read — as `compile_package` hands [`Unions`] every
+/// module of the build.
+fn facade_across(lib: &str, facade: &str) -> Result<String, Vec<Error>> {
+    let mut interfaces = HashMap::from([basics_interface(), char_interface(), maybe_interface()]);
+    let lib = checked_against(lib, interfaces.clone());
+    interfaces.insert(lib.canonical.name.name().clone(), lib.to_interface(None));
+    let facade = checked_against(facade, interfaces);
+
+    javascript::emit(&facade, true, &Unions::of([&lib, &facade]))
+}
+
+/// A union result is decided by a function of the union's own, emitted into the facade:
+/// it answers `false` for anything but an object, then reads `$` against every
+/// constructor of the declaration — even when the declaring module exposes the type
+/// without them, as `Shape` does here — checks each argument, read off `a`, `b`, …,
+/// against the type its constructor declares, and answers `false` for a `$` naming no
+/// constructor.
+///
+/// Mutation-checked by dropping the `default:` case `Predicates::union_function` pushes,
+/// and separately by reading each argument off `field(index + 1)`: the text no longer
+/// matches either time.
+#[test]
+fn a_union_result_is_checked_against_its_declaration() {
+    let text = facade_across(
+        indoc! {r#"
+            module Shape exposing (Shape)
+
+            type Shape
+              = Circle Int
+              | Rect Int Float
+              | Empty
+        "#},
+        indoc! {r#"
+            module foreign Test exposing (make)
+
+            import Shape exposing (Shape)
+
+            unsafe make : Int -> Shape
+        "#},
+    )
+    .unwrap_or_else(|errors| panic!("expected the facade to emit, got {:?}", errors));
+
+    assert!(
+        text.contains(indoc! {r#"
+            function $is$test_project$Shape$Shape($v0) {
+              if (typeof $v0 !== "object" || $v0 === null) {
+                return false;
+              }
+              switch ($v0.$) {
+                case "Circle":
+                  return typeof $v0.a === "bigint" && BigInt.asIntN(64, $v0.a) === $v0.a;
+                case "Rect":
+                  return typeof $v0.a === "bigint" && BigInt.asIntN(64, $v0.a) === $v0.a && typeof $v0.b === "number";
+                case "Empty":
+                  return true;
+                default:
+                  return false;
+              }
+            }
+
+            function make(a) {
+              const $returned = $companion$make(a);
+              return $is$test_project$Shape$Shape($returned) ? $returned : $abort("#}),
+        "got:\n{}",
+        text
+    );
+}
+
+/// A union with a type variable takes one predicate per variable, which the call site
+/// builds from the type the union is applied to; a recursive union's function calls
+/// itself, rather than being built again, and threads its own variable's predicate
+/// through.
+///
+/// Mutation-checked by deleting the `contains_key` early return in `Predicates::union`:
+/// building `Tree` then recurses until the stack overflows, and the test aborts.
+#[test]
+fn a_recursive_parameterised_union_calls_itself_with_its_variable() {
+    let text = facade_across(
+        indoc! {r#"
+            module Tree exposing (Tree(..))
+
+            type Tree a
+              = Leaf
+              | Node (Tree a) a (Tree a)
+        "#},
+        indoc! {r#"
+            module foreign Test exposing (build)
+
+            import Tree exposing (Tree)
+
+            unsafe build : Int -> Tree Char
+        "#},
+    )
+    .unwrap_or_else(|errors| panic!("expected the facade to emit, got {:?}", errors));
+
+    assert!(
+        text.contains("function $is$test_project$Tree$Tree($v0, $p0) {"),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.contains(
+            "return $is$test_project$Tree$Tree($v0.a, ($v1) => $p0($v1)) && $p0($v0.b) \
+             && $is$test_project$Tree$Tree($v0.c, ($v1) => $p0($v1));"
+        ),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.contains(
+            "return $is$test_project$Tree$Tree($returned, ($v0) => typeof $v0 === \"string\" \
+             && $v0.length === ($v0.codePointAt(0) > 0xFFFF ? 2 : 1)) ? $returned : $abort("
+        ),
+        "got:\n{}",
+        text
+    );
+}
+
+/// A union a facade may name but no predicate can decide — one of its constructors
+/// declares a function-typed argument — is refused where its predicate would be built,
+/// naming the constructor, and a second facade declaration naming the same union is
+/// refused too rather than calling a predicate that was never finished.
+///
+/// Mutation-checked by deleting the `self.functions.remove(&name)` in
+/// `Predicates::union`: `second` then emits a call to an empty function and only `first`
+/// is refused.
+#[test]
+fn a_union_holding_a_function_has_no_predicate() {
+    let errors = facade_across(
+        indoc! {r#"
+            module Handler exposing (Handler(..))
+
+            type Handler
+              = Handler (Int -> Int)
+        "#},
+        indoc! {r#"
+            module foreign Test exposing (first, second)
+
+            import Handler exposing (Handler)
+
+            unsafe first : Int -> Handler
+            unsafe second : Handler
+        "#},
+    )
+    .err()
+    .expect("expected the facade to be refused");
+
+    let refusal = |name: &str| Error::NoPredicate {
+        name: Name::new(name),
+        span: NodeSpan::none(),
+        found: Unpredicated::Function,
+        constructor: Some(test_qual("Handler.Handler")),
+    };
+    assert_eq!(errors, vec![refusal("first"), refusal("second")]);
 }
 
 /// A facade signature not marked `unsafe` declares an effect, which this backend does
@@ -1298,8 +1531,9 @@ fn an_unsafe_facade_re_exports_its_companion() {
 /// unmarked signature with (`LANG-68`) — since this test is about the backend's own
 /// refusal and not about that check.
 ///
-/// Mutation-checked by dropping the `!marked_unsafe` check in
-/// `Emitter::facade_declaration`: `add` then emits the `unsafe` shape.
+/// Mutation-checked by matching `marked_unsafe: _` in `Emitter::facade_declaration`:
+/// `add` is then taken for an `unsafe` facade and refused as `Error::NoPredicate`, the
+/// `Task` it names having no declaration in the build.
 #[test]
 fn an_effectful_facade_signature_is_refused() {
     let source = indoc! {r#"
@@ -1320,7 +1554,7 @@ fn an_effectful_facade_signature_is_refused() {
         ]),
     );
 
-    let errors = match javascript::emit(&module, true) {
+    let errors = match javascript::emit(&module, true, &unions_of(&module)) {
         Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
         Err(errors) => errors,
     };

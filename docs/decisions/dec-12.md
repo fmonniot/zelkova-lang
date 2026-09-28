@@ -106,7 +106,7 @@ something the author did not plan for, `Malformed` is a `.mjs` that disagrees wi
 above it. The second is always a bug in hand-written JavaScript and never a condition a caller
 should be handling.
 
-This also answers [`GEN-2`](../tickets/gen-2.md)'s first open question, which asked what a failing
+This also answers [`GEN-2`](../tickets/README.md)'s first open question, which asked what a failing
 predicate does and recorded a thrown JavaScript error as *the only one available while the
 language has no error type of its own*. It now has one.
 
@@ -205,9 +205,10 @@ can assert anything without writing it down.
 
 ## What nothing checks
 
-`zelkova-core` declares no `Task` and therefore no `Failure`, no wrapper is generated, no
-predicate is emitted, and nothing runs a program, so no abort can occur
-([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)). `Failure`'s two constructors
+`zelkova-core` declares no `Task` and therefore no `Failure`, and no wrapper is generated
+([`GEN-16`](../tickets/gen-16.md)), so no check yet ends in `Err (Malformed ..)`. An `unsafe`
+facade's result is checked, and decision 3's abort is what a failing check does
+([`GEN-2`](../tickets/README.md)). `Failure`'s two constructors
 carry a `String`, which has [no literal syntax](../spec/lexical-structure.md#strings) yet.
 
 Decision 1 is writable: `Task (Result Failure String)` parses since

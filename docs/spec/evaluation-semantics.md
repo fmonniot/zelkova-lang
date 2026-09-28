@@ -734,5 +734,5 @@ An abort says what caused it, and one caused by a facade names the export whose 
 
 Only the first is a promise broken. The other two are the runtime running out of what it needs.
 
-**Not implemented:** nothing runs a program, so nothing aborts ([`GEN-1`](../tickets/gen-1.md)),
-and no predicate exists to fail ([`GEN-2`](../tickets/gen-2.md)).
+**Not implemented:** nothing runs a program's `main` ([`GEN-1`](../tickets/gen-1.md)), so the
+only aborts anything reaches today are those of a module `zelkova test` loads.

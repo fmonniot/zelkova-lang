@@ -1,0 +1,13 @@
+# The fixture `tests/js/BoundaryChecks.mjs` compiles and loads. `src/Boundary.zel` is an
+# `unsafe` facade whose companion, `src/Boundary.mjs`, returns what each signature declares
+# from the exports named `right…` and a value of the wrong shape from those named `wrong…`;
+# `src/App.zel` is ordinary Zelkova calling some of them.
+# `cargo test` never loads it; `node --test 'tests/js/**/*.mjs'` does.
+name = "package-boundary-check"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]

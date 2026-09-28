@@ -176,10 +176,11 @@ design that makes all conversions explicit.
 -- `Js.Basics` names `addInt` and `addFloat` rather than one facade over `a`
 -- (`LANG-43`), since a facade signature may not name a type variable. `add`
 -- itself keeps its `a -> a -> a` annotation — the language still has no way
--- to write the real restriction — and picks one of the two: which one makes
--- no difference here, because `addInt` and `addFloat` are the same
--- JavaScript function underneath, and every *use* of `add` is checked
--- against this declared annotation rather than against that choice.
+-- to write the real restriction — and every *use* of `add` is checked
+-- against that annotation. It forwards to `addInt` whatever `a` is, so on two
+-- `Float`s `addInt`'s boundary check is handed a JavaScript number where its
+-- signature declares an `Int`, and aborts the program. That is `BUG-44`,
+-- which a `Number` class picking the facade per instantiation closes.
 add : a -> a -> a
 add =
   Js.Basics.addInt
@@ -189,7 +190,8 @@ add =
 
 See [`(+)`](#+) for why `a` is not the restriction it looks like.
 -}
--- See `add` above for why `subInt` is picked over `subFloat`.
+-- Forwards to `subInt` whatever `a` is, so a `Float` subtraction aborts at
+-- `subInt`'s boundary check: see `add` above, and `BUG-44`.
 sub : a -> a -> a
 sub =
   Js.Basics.subInt
@@ -199,7 +201,8 @@ sub =
 
 See [`(+)`](#+) for why `a` is not the restriction it looks like.
 -}
--- See `add` above for why `mulInt` is picked over `mulFloat`.
+-- Forwards to `mulInt` whatever `a` is, so a `Float` multiplication aborts at
+-- `mulInt`'s boundary check: see `add` above, and `BUG-44`.
 mul : a -> a -> a
 mul =
   Js.Basics.mulInt
@@ -249,7 +252,8 @@ idiv =
     3^2 == 9
     3^3 == 27
 -}
--- See `add` above for why `powInt` is picked over `powFloat`.
+-- Forwards to `powInt` whatever `a` is, so a `Float` exponentiation aborts at
+-- `powInt`'s boundary check: see `add` above, and `BUG-44`.
 pow : a -> a -> a
 pow =
   Js.Basics.powInt
