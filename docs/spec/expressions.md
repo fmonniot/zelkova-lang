@@ -66,9 +66,10 @@ double x =
 ```
 
 **Not implemented:** a constraint is read and then ignored, so nothing holds `a` to `Number`
-([`LANG-40`](../tickets/lang-40.md)). Once something does, that declaration is an error: `2` is an `Int`, so `mul x 2` forces `a` to be `Int` and the
-annotation promises more than the body supports. `double x = add x x` is the way to write it,
-and a class that wants numeric constants declares them as members.
+([`LANG-40`](../tickets/lang-40.md)). Once something does, that declaration is an error: `2` is
+an `Int`, so `mul x 2` forces `a` to be `Int` and the annotation promises more than the body
+supports. `double x = add x x` is the way to write it, and a class that wants numeric constants
+declares them as members.
 
 **Known gap:** the type checker gives an integer literal an internal type that unifies with
 `Int` *and* `Float`, so a declaration annotated `Float` with a body of `1` is accepted today.

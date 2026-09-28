@@ -468,6 +468,21 @@ name is not resolved, and a constrained annotation is checked exactly as it woul
 constraint, so neither block above asks anything of a caller
 ([`LANG-70`](../tickets/lang-70.md), [`LANG-40`](../tickets/lang-40.md)).
 
+**Known gap:** a list of any length is a valid context, and one of four or more constraints is
+rejected. The compiler reads the list as a tuple type, and a tuple has two or three elements
+([`LANG-71`](../tickets/lang-71.md)):
+
+```zel expect=parse-error:UnexpectedToken
+module Example exposing (Bit, four)
+
+type Bit
+  = Zero
+
+four : (Eq a, Eq b, Eq c, Eq d) => a -> b -> c -> d -> Bit
+four a b c d =
+  Zero
+```
+
 ### A constraint belongs to a signature, not to a type
 
 `=>` may appear once, at the very front of an annotation, and nowhere else. A constraint is a
