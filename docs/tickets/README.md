@@ -219,8 +219,8 @@ is closed), `LANG-73`, `LANG-68` (against a synthetic `Task` interface, as its *
 **Deliberately off the path**, each one because the goal does not need it:
 
 - **String literals.** `Failure` carries a `String`, but the wrapper builds it from a JavaScript
-  string, and no ticket above writes one in source. They have no ticket yet;
-  [Strings](../spec/lexical-structure.md#strings) is the chapter.
+  string, and no ticket above writes one in source. [`LANG-77`](lang-77.md) tracks implementing
+  them; [Strings](../spec/lexical-structure.md#strings) is the chapter.
 - [`LANG-34`](lang-34.md) and [`LANG-33`](lang-33.md), lambdas and `let`. `andThen` and a chain
   of effects are writable with named helpers and partial application. That is clumsy, and it is
   enough.
@@ -410,6 +410,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-74](lang-74.md) | task | — | open | `std/core` declares no `Task` and no `Failure` |
 | [LANG-75](lang-75.md) | task | — | open | The manifest's `main` is read, and nothing checks what it names |
 | [LANG-76](lang-76.md) | task | — | open | A `Test` cannot hold a `Task`, so no effectful check can be a test |
+| [LANG-77](lang-77.md) | task | — | open | String literals are specified but not tokenized |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
