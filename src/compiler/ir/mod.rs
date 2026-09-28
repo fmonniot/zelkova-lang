@@ -590,9 +590,9 @@ pub enum TypedTermKind {
     Tuple(Tuple<TypedTerm>),
     /// The unit value, `()`. Its type is always [`Type::Unit`].
     ///
-    /// No backend emits it yet: its representation on a target is
-    /// [`GEN-20`](../../../docs/tickets/gen-20.md)'s to choose, and until then
-    /// [`javascript::emit`](crate::compiler::javascript::emit) refuses it.
+    /// [`javascript::emit`](crate::compiler::javascript::emit) emits it as `undefined`
+    /// ([The unit value crosses as
+    /// `undefined`](../../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)).
     Unit,
     Case {
         scrutinee: Box<TypedTerm>,
