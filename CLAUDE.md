@@ -37,14 +37,14 @@ checked list, a parse failure or a panic is a regression you introduced.
 `cargo run` with no subcommand compiles nothing — it prints usage and exits non-zero, clap's
 default for a missing required subcommand.
 
-`cargo test` never loads a `.mjs` companion. A companion's checks belong to the package that
-ships it, under that package's own `tests/` root — `std/core/tests/Js/` holds the ones that
-exist — and run with `node --test 'std/core/tests/**/*.mjs'`. Where such a file goes and why is
-[*Testing a companion*](docs/spec/interop.md#testing-a-companion); each file's header says what
-it covers. `std/core`'s Zelkova tests run with `cargo run -- test std/core`. What the *compiler*
-emits is checked by running it under `node --test 'tests/js/**/*.mjs'`: each file there compiles
-a fixture under `tests/fixtures/` itself, with `cargo run`, and loads the output. CI's
-`javascript` job runs all three, in that order.
+`cargo test` never loads a `.mjs` companion. `std/core`'s Zelkova tests run with `cargo run --
+test std/core`. A companion's checks belong to the package that ships it, under that package's
+own `tests/` root — `std/core/tests/Js/` holds the ones that exist — and run with `node --test
+'std/core/tests/**/*.mjs'`. Where such a file goes and why is [*Testing a
+companion*](docs/spec/interop.md#testing-a-companion); each file's header says what it covers.
+What the *compiler* emits is checked by running it under `node --test 'tests/js/**/*.mjs'`: each
+file there compiles a fixture under `tests/fixtures/` itself, with `cargo run`, and loads the
+output. CI's `javascript` job runs all three, in that order.
 
 `cargo run -- test std/core` currently reports **`25 tests: 23 passed, 0 failed, 2 errored`
 and exits 1**. The two errors are `FloatTests`, which fails to load because `Basics.add` sends a

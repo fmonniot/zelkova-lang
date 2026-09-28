@@ -1125,8 +1125,12 @@ impl Predicates<'_> {
         self.functions.insert(name.clone(), String::new());
 
         // A union no predicate can be built for leaves no entry behind, so another facade
-        // declaration naming it meets the same error rather than a call to a function
-        // that was never finished.
+        // declaration naming *that* union meets the same error rather than a call to a
+        // function that was never finished. That covers this union only: a mutually
+        // recursive union built successfully while this one was still in progress (it
+        // found this union's placeholder and used it) keeps its own `functions` entry,
+        // even though the removal below just deleted the predicate that entry calls — a
+        // facade naming only the other union gets no diagnostic for that.
         match self.union_function(union, &name, declaration) {
             Ok(function) => {
                 self.functions.insert(name.clone(), function);
