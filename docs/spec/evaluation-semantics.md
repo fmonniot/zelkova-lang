@@ -404,9 +404,8 @@ alike a b =
   eq a b
 ```
 
-**Not implemented:** no part of a class parses — `class`, `instance` and `=>` are ordinary
-identifiers today ([`LANG-37`](../tickets/lang-37.md),
-[`LANG-38`](../tickets/lang-38.md)), and `std/core` declares no classes
+**Not implemented:** a class does not parse — `class` and `instance` are ordinary identifiers
+today ([`LANG-38`](../tickets/lang-38.md)) — and `std/core` declares no classes
 ([`LANG-42`](../tickets/lang-42.md)). A type asks for the definition above rather than writing
 it out by declaring an instance whose body is `derived` — and what that yields is the definition
 [`Eq`'s own declaration supplies](type-classes.md#a-class-says-how-it-is-derived), not one the

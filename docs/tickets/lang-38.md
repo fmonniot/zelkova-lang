@@ -11,7 +11,7 @@ explicit-pop match; `src/compiler/parser/grammar.lalrpop` — `VarIdent`, `Atomi
 `Decl`; `src/compiler/parser/mod.rs` — `Declaration`; `src/compiler/canonical/mod.rs` —
 `Module`, `from_parser_module`.
 
-**Depends on:** [LANG-37](lang-37.md), for the `=>` token — a superclass context is written in
+**Depends on:** [LANG-37](README.md), closed, for the `=>` token — a superclass context is written in
 the class head (`class Eq a => Comparable a where`) and reuses the same `ConstrainedType`
 production. [LANG-9](README.md) is closed, so the parenthesised type argument an instance head
 like `instance Comparable (List a)` needs already parses.

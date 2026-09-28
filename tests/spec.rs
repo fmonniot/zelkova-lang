@@ -382,10 +382,12 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             NoTypeInBinding(..) => vec!["NoTypeInBinding"],
             UnsafeOutsideFacade(..) => vec!["UnsafeOutsideFacade"],
             FacadeTypeNotAdmitted(..) => vec!["FacadeTypeNotAdmitted"],
+            FacadeConstrained(..) => vec!["FacadeConstrained"],
             TypeArityMismatch(..) => vec!["TypeArityMismatch"],
             TypeNotFound(..) => vec!["TypeNotFound"],
             InvalidVariant(..) => vec!["InvalidVariant"],
             InvalidScalarDeclaration(..) => vec!["InvalidScalarDeclaration"],
+            InvalidConstraint(..) => vec!["InvalidConstraint"],
             SelfDependency(..) => vec!["SelfDependency"],
         }
     }

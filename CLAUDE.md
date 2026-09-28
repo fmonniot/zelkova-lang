@@ -222,9 +222,9 @@ classes**, without higher-kinded variables, are what replaces them:
 through LANG-42 program in [`docs/tickets/README.md`](docs/tickets/README.md) carries the order
 the six implementing tickets have to land in. Read the chapter before touching any of it.
 
-One of its rules constrains diffs outside that program today: **`=>`, `class` and `instance`
-become reserved, and `where` becomes reserved as a type variable.** All four are ordinary
-identifiers now, so this is a breaking change — and `instance C T where …` currently
-*misparses* as a function declaration named `instance` rather than being rejected. Four more
-cross-cutting rules — instance placement, `derived` bodies, no constraint on a facade
-signature, and the two constraints codegen inherits — are stated in the chapter.
+One of its rules constrains diffs outside that program today: **`class` and `instance` become
+reserved, and `where` becomes reserved as a type variable.** All three are ordinary identifiers
+now, so this is a breaking change — and `instance C T where …` currently *misparses* as a
+function declaration named `instance` rather than being rejected. Four more cross-cutting rules
+— instance placement, `derived` bodies, no constraint on a facade signature, and the two
+constraints codegen inherits — are stated in the chapter.

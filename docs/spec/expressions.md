@@ -65,8 +65,8 @@ double x =
   mul x 2
 ```
 
-**Not implemented:** constraints do not parse ([`LANG-37`](../tickets/lang-37.md)). Once they
-do, that declaration is an error: `2` is an `Int`, so `mul x 2` forces `a` to be `Int` and the
+**Not implemented:** a constraint is read and then ignored, so nothing holds `a` to `Number`
+([`LANG-40`](../tickets/lang-40.md)). Once something does, that declaration is an error: `2` is an `Int`, so `mul x 2` forces `a` to be `Int` and the
 annotation promises more than the body supports. `double x = add x x` is the way to write it,
 and a class that wants numeric constants declares them as members.
 

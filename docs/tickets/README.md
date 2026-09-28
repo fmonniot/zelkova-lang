@@ -114,10 +114,10 @@ They have a dependency order, and three tickets that already existed sit inside 
 beside it:
 
 ```
-LANG-37  `=>` becomes a token; a constrained annotation parses
-  │      (the only one that can start today)
+LANG-37  `=>` becomes a token; a constrained annotation parses   ← closed
   │
 LANG-38  `class` / `instance` declarations, and a `where` block of members
+  │      (the next one to start)
   │      ← LANG-9, which lets an instance head write `(List a)`, is closed
   │      ← an instance body is a member list or the single word `derived`;
   │        a class body may carry `derived <member>` — both specified in
@@ -350,7 +350,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-34](lang-34.md) | task | — | open | There is no lambda production, so `\x -> x` is read as an operator |
 | LANG-35 | task | — | closed 2026-09-20 | A parameterless binding may depend on itself, and nothing notices |
 | [LANG-36](lang-36.md) | task | — | open | `std/core`'s `Basics` documents three semantics the language does not have |
-| [LANG-37](lang-37.md) | task | — | open | A type annotation may carry a constraint context, written `Class a =>` |
+| LANG-37 | task | — | closed 2026-09-27 | A type annotation may carry a constraint context, written `Class a =>` |
 | [LANG-38](lang-38.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [LANG-39](lang-39.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
 | [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |

@@ -15,6 +15,10 @@ fn module_custom_type(tpe: UnionType) -> Module {
 }
 
 fn module_function_type(tpe: Type) -> Module {
+    module_constrained_function_type("main", None, tpe)
+}
+
+fn module_constrained_function_type(function: &str, context: Option<Type>, tpe: Type) -> Module {
     Module {
         name: name("Main"),
         binding_foreign: false,
@@ -23,8 +27,9 @@ fn module_function_type(tpe: Type) -> Module {
         infixes: vec![],
         types: vec![],
         functions: vec![Function {
-            name: "main".into(),
+            name: function.into(),
             tpe: Some(tpe),
+            context,
             marked_unsafe: false,
             bindings: vec![],
             span: no_span(),
@@ -329,4 +334,55 @@ test_parse_ok!(
             type_unqualified_with(name("Leaf"), vec![type_variable(name("a"))]),
         ],
     })
+);
+
+// Constraint contexts (`Class a =>`)
+//
+// The context is parsed as a type and carried beside the annotation's type on
+// `FunType::context`; nothing here checks that it is shaped like a constraint,
+// which is canonicalization's job. Every unconstrained annotation above pins the
+// other half: `module_function_type` expects `context: None`.
+//
+// Verified to fail by making `ConstrainedType`'s `=>` alternative return
+// `(None, t)`: both tests then see `context: None`. Deleting that alternative
+// instead turns both into an `UnexpectedToken` at `=>`.
+
+test_parse_ok!(
+    type_annotation_single_constraint,
+    r#"
+    module Main exposing (..)
+
+    min : Comparable a => a -> a -> a
+    "#,
+    module_constrained_function_type(
+        "min",
+        Some(type_unqualified_with(
+            name("Comparable"),
+            vec![type_variable(name("a"))],
+        )),
+        type_arrow(
+            type_variable(name("a")),
+            type_arrow(type_variable(name("a")), type_variable(name("a"))),
+        ),
+    )
+);
+
+test_parse_ok!(
+    type_annotation_constraint_list,
+    r#"
+    module Main exposing (..)
+
+    lookup : (Comparable k, Eq v) => k -> v -> Bool
+    "#,
+    module_constrained_function_type(
+        "lookup",
+        Some(type_tuple2(
+            type_unqualified_with(name("Comparable"), vec![type_variable(name("k"))]),
+            type_unqualified_with(name("Eq"), vec![type_variable(name("v"))]),
+        )),
+        type_arrow(
+            type_variable(name("k")),
+            type_arrow(type_variable(name("v")), type_unqualified(name("Bool"))),
+        ),
+    )
 );
