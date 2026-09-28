@@ -156,7 +156,7 @@ Lands at: `src/compiler/javascript.rs`.
 output go beside the package root rather than beside any source it read, and marks itself
 **Provisional:**. Two things it does not settle were settled here.
 
-**One directory per package**, `build/js/<package-name>/`, rather than one flat tree. A build
+**One directory per package**, `build/out/js/<package-name>/`, rather than one flat tree. A build
 holds several packages and [at most one version of
 each](../spec/packages.md#one-version-of-each); a flat tree would have to encode the package
 into every file name to keep two packages' same-named modules apart — the collision a
@@ -173,7 +173,7 @@ which is the other half of why the tree is not flat.
 **A facade's companion is renamed on the way into the tree, not the facade.** Both share one
 base name beside the `.zel` source — `Basics.zel`'s companion is `Basics.mjs`, the same name
 `javascript::emit` gives the facade's own emitted module — so one of the two has to be renamed
-before both can sit in `build/js/` together. Renaming the facade was rejected: its path is the
+before both can sit in `build/out/js/` together. Renaming the facade was rejected: its path is the
 one every importer builds from a module name (the rest of this decision), so renaming it would
 mean every specifier into a facade disagreeing with the plain [`module_file`
 naming](../../src/compiler/javascript.rs) every other module gets. The companion is renamed
