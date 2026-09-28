@@ -55,7 +55,7 @@ gitignored and `cargo run -- compile std/core` writes it on every invocation.
 ([decision 6](../decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node)).
 Rust tests for the IR, the decision tree, the tail-call marking, the initialisation order and
 the emitted text; `node --test` for whether the emitted program computes the right value.
-**`cargo test` does not shell out to `node`.** It converges with [`TEST-3`](test-3.md)'s CI job.
+**`cargo test` does not shell out to `node`.** It converges with [`TEST-3`](README.md)'s CI job.
 
 **7 — The program covers the language the front end accepts today**
 ([decision 7](../decisions/dec-18.md#7--the-program-covers-the-language-the-front-end-accepts-today)) —

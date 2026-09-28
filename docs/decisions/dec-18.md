@@ -226,8 +226,8 @@ assertions alone would be a backend checked entirely by eye, which is what
 `LANG-56` documented the cost of: it landed with no Rust test behind it, because nothing in
 `cargo test` loads a `.mjs`.
 
-This converges rather than duplicating. [`TEST-3`](../tickets/test-3.md) is already open to put
-the existing companion checks in CI; one job runs both and its glob widens.
+This converges rather than duplicating. [`TEST-3`](../tickets/README.md) put the existing
+companion checks in CI; one job runs both.
 
 A `zelkova` binary that compiles *and* runs is the destination for this, and
 `zelkova test` is its first run command. It was deliberately **not** a prerequisite:

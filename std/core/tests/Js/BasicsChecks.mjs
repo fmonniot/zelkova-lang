@@ -266,6 +266,8 @@ test('GUARD pow still computes on Floats', () => {
 // on a negative BigInt exponent, and pow does not catch it. This pins that
 // today's behaviour is "throws", not some silently invented value, so a
 // later fix for LANG-66 is what has to touch this test, not an accident.
+// It asserts the error's type, not V8's wording, which differs between Node
+// versions.
 test('PINS pow still throws on a negative Int exponent, pending LANG-66', () => {
-    assert.throws(() => pow(2n, -1n), /Exponent must be positive/);
+    assert.throws(() => pow(2n, -1n), RangeError);
 });

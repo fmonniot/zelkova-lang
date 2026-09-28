@@ -18,6 +18,33 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
 
+  javascript:
+    name: JavaScript checks
+    runs-on: ubuntu-latest
+    # `cargo test` executes only Rust, so this is the one job that runs the JavaScript the
+    # compiler emits and the companions `std/core` ships. It gates like every other job: what
+    # it checks is runtime behaviour, which nothing else here would catch.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Pinned rather than taken from the runner image, whose preinstalled Node moves under
+      # us. The floor is 21: `node --test` expands a quoted glob itself only from there on.
+      # 24 is the current LTS.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Zelkova tests
+        run: cargo run -- test std/core
+      # Runs even when the step above failed, so one red step does not hide the other.
+      - name: Companion checks
+        if: ${{ !cancelled() }}
+        run: |
+          # `node --test` passes on a glob that matches no file. This lists what it will run,
+          # and `grep .` fails the step when that list is empty.
+          find std/core/tests -name '*.mjs' | grep .
+          node --test 'std/core/tests/**/*.mjs'
+
   site:
     name: Build the site
     runs-on: ubuntu-latest
