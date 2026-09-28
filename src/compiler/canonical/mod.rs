@@ -1914,7 +1914,7 @@ pub fn canonicalize(
     // no place for one and nothing downstream reads a context yet, so the type
     // checker sees only the type after `=>`. Resolving the class names and keeping
     // the context on the canonical value is the next step of the type-class
-    // program (`LANG-39`), not an oversight here.
+    // program (`LANG-70`, after `LANG-39`'s class table), not an oversight here.
     for function in source.functions.iter() {
         if let Some(context) = &function.context {
             if let Err(malformed) = validate_context(context) {

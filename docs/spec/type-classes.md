@@ -466,7 +466,7 @@ describe a b =
 **Not implemented:** a constraint is checked to be shaped like one and then ignored. Its class
 name is not resolved, and a constrained annotation is checked exactly as it would be without its
 constraint, so neither block above asks anything of a caller
-([`LANG-39`](../tickets/lang-39.md), [`LANG-40`](../tickets/lang-40.md)).
+([`LANG-70`](../tickets/lang-70.md), [`LANG-40`](../tickets/lang-40.md)).
 
 ### A constraint belongs to a signature, not to a type
 

@@ -95,14 +95,14 @@ git show <that-sha>^:TODO.md                    # the nine items in their final 
 
 ## Active work: type classes
 
-`LANG-37` through `LANG-42` are one body of work, filed together after the language owner
-settled the mechanism. The goal is that **a signature can say what it needs of its type** —
+`LANG-37` through `LANG-42`, and `LANG-70` which was filed while working `LANG-37`, are one body
+of work, filed after the language owner settled the mechanism. The goal is that **a signature can say what it needs of its type** —
 `min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what `min`'s type has
 always actually been.
 
-These six get their own section despite sharing the `LANG-` prefix with everything else,
+These seven get their own section despite sharing the `LANG-` prefix with everything else,
 because most `LANG-` tickets each close a complete, independently shippable gap on landing,
-while none of `LANG-37` through `LANG-41` does anything on its own — they're fragments of one
+while none of `LANG-37` through `LANG-41` and `LANG-70` does anything on its own — they're fragments of one
 mechanism that only works once the chain lands. `LANG-42` is the exception; see the graph.
 
 [`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
@@ -127,6 +127,12 @@ LANG-39  resolution, the instance environment, and the orphan rule
   │      ← BUG-16, which invented a type for a misspelt instance head, and
   │        BUG-17, which made two instance heads indistinguishable, are
   │        both fixed.
+  │
+LANG-70  a constraint in an annotation is resolved; its context is kept
+  │      ← LANG-37 validated a constraint's shape and dropped it. Its class
+  │        name and argument are not checked, and LANG-40's rigid half has
+  │        no context to read. Not part of LANG-39, whose Problem is the
+  │        declarations rather than their use in an annotation.
   │
 LANG-40  the solver: obligations are collected, deferred and discharged
   │      ← LANG-12 is a HARD prerequisite. Without rigid annotation
@@ -383,6 +389,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-67](lang-67.md) | task | — | open | `pow`'s `bigint` branch can materialize an astronomically large intermediate before masking |
 | [LANG-68](lang-68.md) | task | — | open | An unmarked facade signature is not held to the `Task (Result Failure a)` result shape |
 | LANG-69 | task | — | closed 2026-09-27 | There is no `zelkova test`: nothing runs a package's tests |
+| [LANG-70](lang-70.md) | task | — | open | A constraint in an annotation is resolved, and its context reaches the canonical module |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
@@ -417,6 +424,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TIDY-6 | task | — | closed 2026-08-26 | Stale doc comment on `canonical_type_to_typer_type` |
 | [TIDY-7](tidy-7.md) | task | — | open | Four label/diagnostic messages in `Error::Tokenizer`'s match are still capitalized |
 | [TIDY-8](tidy-8.md) | task | — | open | Two tokenizer comments describe the `Int` width as unsettled and cite a closed ticket |
+| [TIDY-9](tidy-9.md) | task | — | open | `Module::from_declarations` has a `panic!` on a declaration kind its own bucketing rules out |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |

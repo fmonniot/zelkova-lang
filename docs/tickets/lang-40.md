@@ -9,8 +9,9 @@ it may not be able to answer yet.
 `value_to_term_and_annotation`; `src/compiler/typer/constraint.rs` — `collect`;
 `src/compiler/typer/unifier.rs` — `unify`, `unify_one_constraint`.
 
-**Depends on:** [LANG-39](lang-39.md), for an instance environment to discharge against; and
-[LANG-12](lang-12.md), for rigid annotation variables. The second is the one that is easy to
+**Depends on:** [LANG-39](lang-39.md), for an instance environment to discharge against;
+[LANG-70](lang-70.md), for an annotation's context to reach the canonical module resolved; and
+[LANG-12](lang-12.md), for rigid annotation variables. The last is the one that is easy to
 get wrong by sequencing, so it is worth spelling out.
 
 **Why `LANG-12` comes first.** `canonical_type_to_typer_type` turns every variable written in

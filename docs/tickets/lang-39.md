@@ -86,7 +86,8 @@ rule to a reader, so it is worth writing before the check that produces it.
    every caret it swallowed.
 
 Nothing in the typer changes in this ticket. A constrained annotation still validates and is
-discarded; [LANG-40](lang-40.md) is what starts consuming it.
+discarded here: resolving the class a constraint names, and keeping the context on the canonical
+module, is [LANG-70](lang-70.md), and [LANG-40](lang-40.md) is what starts consuming it.
 
 **Acceptance:** tests in `tests/compiler/canonical.rs`, using the `package=`-style multi-module
 helpers in `tests/support/mod.rs`:
