@@ -1519,3 +1519,112 @@ fn a_nested_unit_pattern_against_an_int_is_a_type_error() {
         labels
     );
 }
+
+// ── `Task`, as `std/core/src/Task.zel` declares it ───────────────────────────
+
+/// The interfaces a module outside `zelkova-core` sees when the real `Task.zel` is in
+/// the build: `Basics`, `Char`, and `Task` itself, checked from `std/core`'s source
+/// rather than the hand-built double `task_interface` supplies.
+fn interfaces_with_task() -> HashMap<Name, zelkova_lang::compiler::Interface> {
+    let source = include_str!("../std/core/src/Task.zel");
+    let core = zelkova_lang::compiler::PackageName::new("zelkova-core").unwrap();
+    let task = check_module(&core, &HashMap::new(), &parse_source(source))
+        .unwrap_or_else(|error| panic!("expected Task.zel to check, got {:?}", error));
+
+    let mut interfaces = HashMap::from([basics_interface(), char_interface()]);
+    interfaces.insert(task.canonical.name.name().clone(), task.to_interface(None));
+    interfaces
+}
+
+/// `source`, a module of an ordinary package, checked against [`interfaces_with_task`].
+fn run_with_task(
+    source: &str,
+) -> Result<zelkova_lang::compiler::CheckedModule, zelkova_lang::compiler::CompilationError> {
+    check_module(
+        &test_package(),
+        &interfaces_with_task(),
+        &parse_source(source),
+    )
+}
+
+/// `Task.succeed` and `Task.map` have the types the
+/// [chapter](../docs/spec/evaluation-semantics.md#sequencing) writes, and a module with
+/// no `import` reaches `Task` through the default imports.
+///
+/// Each annotation is the whole signature, so a `succeed` or `map` typed any more
+/// loosely or differently (`map` with its arguments swapped, say) would not unify with it.
+///
+/// Mutation-checked by swapping `map`'s two parameters in `Task.zel`'s annotation: the
+/// `map` line below then fails to type.
+#[test]
+fn task_succeed_and_map_have_the_documented_signatures() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        one : Task Int
+        one = Task.succeed 1
+
+        wrap : Int -> Task Int
+        wrap = Task.succeed
+
+        mapped : (Int -> Bool) -> Task Int -> Task Bool
+        mapped = Task.map
+    "#};
+
+    if let Err(error) = run_with_task(source) {
+        panic!("expected the module to type check, got {:?}", error);
+    }
+}
+
+/// A `Task Int` where a `Task Bool` is expected is a type error, so `Task`'s parameter
+/// is a real one and not something the checker ignores.
+///
+/// Mutation-checked by making `unify_one_constraint`'s ADT arm compare no arguments
+/// (`.filter(|_| false)` before its `collect`): `bools = ints` then checks.
+#[test]
+fn a_task_int_where_a_task_bool_is_expected_is_a_type_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        ints : Task Int
+        ints = Task.succeed 1
+
+        bools : Task Bool
+        bools = ints
+    "#};
+
+    match run_with_task(source) {
+        Err(CompilationError::Type(errors, _)) => {
+            assert_eq!(errors.len(), 1, "expected one type error, got {:?}", errors)
+        }
+        other => panic!("expected a type error, got {:?}", other.map(|_| ())),
+    }
+}
+
+/// Outside `zelkova-core`, neither `Task`'s constructor nor `Done` can be named: the
+/// type is exposed opaquely, and `Done` not at all. Naming either is a canonicalization
+/// error, not a type error, so the checker never sees the source.
+///
+/// Mutation-checked by exposing `Task(..)` in `Task.zel`'s header (the constructor line
+/// then checks) and, separately, by adding `Done` to it (the `Done` line then checks).
+#[test]
+fn outside_core_the_task_constructor_and_done_cannot_be_named() {
+    let constructor = indoc::indoc! {r#"
+        module Test exposing (..)
+        forged : Task Int
+        forged = Task.Task
+    "#};
+    let done = indoc::indoc! {r#"
+        module Test exposing (..)
+        stop : Task.Done -> Int
+        stop _ = 1
+    "#};
+
+    for source in [constructor, done] {
+        match run_with_task(source) {
+            Err(CompilationError::Canonical(_, _)) => {}
+            other => panic!(
+                "expected a canonicalization error, got {:?}",
+                other.map(|_| ())
+            ),
+        }
+    }
+}

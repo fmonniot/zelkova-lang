@@ -63,10 +63,10 @@
 //! Anything missing is left out, and the names it would have brought fail at the
 //! place they are *used*, with a caret under them.
 //!
-//! That is what makes the list land in stages without a second change: `List`,
-//! `Char` and `Task` are `.ignored` files under `std/core/src` today, so their
-//! entries do nothing. Each starts working on the day its module compiles —
-//! `String`'s already does, since `LANG-73`.
+//! That is what makes the list land in stages without a second change: `List`
+//! and `Char` are `.ignored` files under `std/core/src` today, so their entries do
+//! nothing. Each starts working on the day its module compiles — `String`'s and
+//! `Task`'s already do, since `LANG-73` and `LANG-74`.
 
 use super::name::Name;
 use super::parser;

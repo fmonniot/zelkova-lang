@@ -12,7 +12,7 @@
 //! Reading a manifest is where a build starts and not what it is:
 //! [`resolve`](super::resolve) is what follows both dependency maps to the other packages
 //! and decides what each module is called in each of them. `main` is validated here and read
-//! nowhere, since there is no `Task` for a program's entry point to hold.
+//! nowhere, since nothing yet checks that it names a `Task ()`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

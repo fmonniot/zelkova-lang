@@ -315,10 +315,11 @@ pub fn result_interface() -> (Name, Interface) {
 /// ([`LANG-68`](../../docs/tickets/README.md)), which only ever looks at
 /// `Task.Failure`'s name.
 ///
-/// `zelkova-core` declares no `Task` module yet
-/// ([`LANG-74`](../../docs/tickets/lang-74.md)), so this stands in for it the
-/// way [`maybe_interface`] and [`basics_interface`] already do for modules
-/// that exist.
+/// `std/core/src/Task.zel` declares the real one. This stands in for it the way
+/// [`maybe_interface`] and [`basics_interface`] do for their modules, so a test that
+/// only needs the names does not have to check `std/core` first. Nothing reads
+/// `Task.zel` to build it, so only the names a facade's result is checked against
+/// are kept in step.
 pub fn task_interface() -> (Name, Interface) {
     let mut unions = HashMap::new();
     unions.insert(

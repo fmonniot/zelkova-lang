@@ -643,6 +643,9 @@ Nothing about `Task` is built into the language beyond the name and
 over a type it declares, and which shape it picks is core's: a program outside core cannot
 observe the difference.
 
+**Not implemented:** `zelkova-core` exports `succeed` and `map` and no `andThen`
+([`LANG-78`](../tickets/lang-78.md)).
+
 ### Running a `Task`
 
 A program hands the runtime one `Task`, and running the program is running that `Task`. The
@@ -699,8 +702,9 @@ reporting a missing file apart from a broken companion, is `String -> Task (Resu
 [publishes `read`](packages.md#what-a-package-exposes) outside its package is where the two
 `Result`s collapse into the one its dependents see.
 
-**Not implemented:** `zelkova-core` declares no `Task` and no `Failure`, so the `read` block
-under [Where a `Task` comes from](#where-a-task-comes-from) fails at its import. The block above
+**Not implemented:** the `read` block under [Where a `Task` comes from](#where-a-task-comes-from)
+fails at its `import Task`, because this harness compiles a block against a stand-in `Basics` and
+nothing else, and `zelkova-core`'s own `Task` is not among its interfaces. The block above
 compiles by naming `module Task`, which puts it in the core package and gets it the
 [scalar type names](types.md#scalar-types) — `String` included — directly rather than through
 an [import](modules.md#the-default-imports) `zelkova-core` does not ship. No facade

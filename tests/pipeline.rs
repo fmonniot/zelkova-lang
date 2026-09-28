@@ -559,6 +559,7 @@ fn stdlib_package_compiles() {
             "src/Maybe.zel",
             "src/Result.zel",
             "src/String.zel",
+            "src/Task.zel",
             "src/Tuple.zel",
         ]
     );
@@ -811,7 +812,7 @@ fn a_build_writes_one_directory_per_package() {
     );
 }
 
-/// `GEN-13`'s acceptance, the same tree `cargo run` writes: `std/core`'s nine modules,
+/// `GEN-13`'s acceptance, the same tree `cargo run` writes: `std/core`'s ten modules,
 /// the three `Js/*` companions beside their facades, and the runtime.
 ///
 /// Mutation-checked by leaving out the runtime `emit_build` starts from: `out/js/zelkova.mjs`
@@ -837,6 +838,7 @@ fn the_stdlib_build_writes_every_module_and_companion() {
             "out/js/zelkova-core/Maybe.mjs",
             "out/js/zelkova-core/Result.mjs",
             "out/js/zelkova-core/String.mjs",
+            "out/js/zelkova-core/Task.mjs",
             "out/js/zelkova-core/Tuple.mjs",
             "out/js/zelkova.mjs",
         ]

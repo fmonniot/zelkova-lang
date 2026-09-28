@@ -610,5 +610,5 @@ depended on as a library, and the module holding `main` may be one of the privat
 
 **Not implemented:** `main` is read and nothing checks what it names, so a `main` naming a
 module the package does not hold, or one exposing no value called `main`, is accepted. Nothing
-yet turns a package into something that runs either: `zelkova-core` declares no `Task`, so the
-block above does not compile.
+yet turns a package into something that runs either, and the block above does not compile
+under the spec harness, which has no `Task` among its interfaces.

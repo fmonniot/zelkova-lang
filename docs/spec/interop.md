@@ -320,9 +320,10 @@ inside another type.
 (Result IoError String))` — two `Result`s, collapsed into one by the module that
 [publishes `read`](packages.md#what-a-package-exposes) to other packages.
 
-**Not implemented:** neither block above compiles, because nothing declares the `Task` or the
-`Failure` they import. No wrapper is generated, so code generation refuses an effectful facade
-rather than checking what its companion returns ([`GEN-16`](../tickets/gen-16.md)).
+**Not implemented:** neither block above compiles under this harness, which compiles a block
+against a stand-in `Basics` and nothing else, so their `import Task` finds no module even though
+`zelkova-core` declares `Task` and `Failure`. No wrapper is generated, so code generation
+refuses an effectful facade rather than checking what its companion returns ([`GEN-16`](../tickets/gen-16.md)).
 
 ## An `unsafe` facade
 
