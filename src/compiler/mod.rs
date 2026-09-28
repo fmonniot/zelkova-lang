@@ -324,9 +324,10 @@ pub struct Interface {
     ///
     /// An importer reads it for the same reason the module declaring the value reads its
     /// own declarations' arities: a call supplying that many arguments is a direct call,
-    /// and a use of the value as anything else goes through the runtime's `$curry`
+    /// and a partial application, or a use as a value of one taking two or more, goes
+    /// through the runtime's `$curry`
     /// ([`DEC-18` decision
-    /// 3](../../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
+    /// 3](../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
     /// The typer's translation is where it is read, into [`ir::ReferenceKind::Foreign`].
     ///
     /// [`canonical::Module::to_interface`] records one for every value either map holds.
