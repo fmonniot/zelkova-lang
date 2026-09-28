@@ -147,9 +147,8 @@ facade on a WebAssembly target checks nothing at the call, because the interface
 when the component loaded.
 
 **Not implemented:** `String` has no [literal syntax](lexical-structure.md#strings) yet,
-[`()` is not recognised](types.md#the-unit-type) in either position, records have no brace token
-([`LANG-47`](../tickets/lang-47.md)) and lists no literal production
-([`LANG-44`](../tickets/lang-44.md)) — so four of those rows are about types a program cannot
+records have no brace token ([`LANG-47`](../tickets/lang-47.md)) and lists no literal production
+([`LANG-44`](../tickets/lang-44.md)) — so three of those rows are about types a program cannot
 write today. Both constructs are specified, in [Records](records.md) and [Lists](lists.md), and
 neither chapter publishes an encoding: what a record and a list look like across either boundary
 belongs to code generation. Nothing runs a predicate or reads a WIT interface either —
@@ -459,10 +458,10 @@ A runner finds [a value of type `Test` a module under `tests/`
 exposes](packages.md#what-a-test-is), so `Core.PrimTest` imports the facade and exposes one per
 check.
 
-**Not implemented:** none of this runs. The `zel` block does not parse, because
-[`()` is not recognised](types.md#the-unit-type) in either signature. Nothing declares `Task` or
-`Failure`, and no wrapper is generated around an effectful call ([`GEN-1`](../tickets/gen-1.md),
-[`GEN-2`](../tickets/gen-2.md)), so a `Test` whose checks are `Task`s cannot be written.
+**Not implemented:** none of this runs. Nothing declares `Task` or `Failure`, so the `zel` block
+does not compile. No wrapper is generated around an effectful call either
+([`GEN-1`](../tickets/gen-1.md), [`GEN-2`](../tickets/gen-2.md)), so a `Test` whose checks are
+`Task`s cannot be written.
 `zelkova test` runs a `Test` that is `Pass` or `Fail`; it cannot run a `Task`. Until it can, a
 companion test under `tests/` is a `.mjs` file that the target's own test runner is pointed at
 directly, and the facade half of the pair is not written yet.

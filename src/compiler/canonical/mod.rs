@@ -364,11 +364,18 @@ pub enum Type {
     /// declaration. A dependency's namespace is a route too.
     Type(QualName, Vec<Type>),
     // Record
-    // Unit
     Arrow(Box<Type>, Box<Type>),
     /// A tuple type. Zelkova keeps Elm's restriction of two or three elements,
     /// which [`Tuple`] carries in its shape.
     Tuple(Tuple<Type>),
+    /// [The unit type](../../../docs/spec/types.md#the-unit-type), `()`.
+    ///
+    /// A form of its own rather than a [`Type::Type`] naming a declaration: `()` is
+    /// syntax, declared nowhere and resolved through no environment, so no module can
+    /// declare a type that shares its spelling and there is no name for a lookup to
+    /// find. Contrast the [`scalars`], which are declared in `std/core` and known by
+    /// the qualified name of that declaration.
+    Unit,
     // Alias
 }
 
@@ -421,6 +428,7 @@ impl Type {
             parser::TypeKind::Tuple(tuple) => Ok(Type::Tuple(
                 tuple.try_map(|t| Type::from_parser_type(env, t))?,
             )),
+            parser::TypeKind::Unit => Ok(Type::Unit),
         }
     }
 
@@ -541,6 +549,9 @@ pub enum PatternKind {
     /// A tuple pattern. Zelkova keeps Elm's restriction of two or three
     /// elements, which [`Tuple`] carries in its shape.
     Tuple(Tuple<Pattern>),
+    /// The unit pattern, `()`: it matches the one value of the unit type and binds
+    /// nothing.
+    Unit,
 
     Constructor {
         ctor: TypeConstructor,
@@ -573,6 +584,7 @@ impl Pattern {
             parser::PatternKind::Tuple(tuple) => {
                 PatternKind::Tuple(tuple.try_map(|p| Pattern::from_parser(p, env))?)
             }
+            parser::PatternKind::Unit => PatternKind::Unit,
             parser::PatternKind::Constructor(name, args) => {
                 // `p.span` covers the constructor and its arguments, which is the
                 // text a "no such constructor" caret should sit under.
@@ -677,7 +689,8 @@ pub enum ExpressionKind {
     // Accessor
     // Access
     // Update (record)
-    // Unit
+    /// The unit value, `()`.
+    Unit,
     /// A tuple expression. Zelkova keeps Elm's restriction of two or three
     /// elements, which [`Tuple`] carries in its shape.
     Tuple(Tuple<Expression>),
@@ -801,6 +814,7 @@ impl Expression {
             parser::ExpressionKind::Tuple(tuple) => {
                 ExpressionKind::Tuple(tuple.try_map(|e| Expression::from_parser(e, env))?)
             }
+            parser::ExpressionKind::Unit => ExpressionKind::Unit,
             parser::ExpressionKind::Case(expr, branches) => {
                 let expr = Expression::from_parser(expr, env)?;
 
@@ -1264,7 +1278,7 @@ pub struct CycleMember {
 /// A variant is a constructor name followed by zero or more type arguments, and
 /// nothing else. The grammar does not enforce that: it parses a variant list with
 /// the general `Type` production, so every shape a type expression can take reaches
-/// `do_types`. This enum names the three that are not a variant, one per remaining
+/// `do_types`. This enum names the four that are not a variant, one per remaining
 /// [`parser::TypeKind`], so each can say what it is in the words of the source.
 #[derive(Debug, PartialEq, Clone)]
 pub enum InvalidVariantKind {
@@ -1274,6 +1288,8 @@ pub enum InvalidVariantKind {
     LowercaseName(Name),
     /// A tuple type — `type Pair = (Int, Int)`.
     Tuple,
+    /// The unit type — `type Nothing = ()`.
+    Unit,
     /// A function type — `type Wrapper = Wrap Int -> Int`. The arrow is the *whole*
     /// variant rather than a suffix of it, `Wrap Int` being its left operand, so
     /// there is no constructor here to keep either.
@@ -1299,6 +1315,8 @@ pub enum InvalidConstraintKind {
     /// A tuple inside the parenthesised list — `((Eq a, Eq b), Eq c) => a`. The
     /// outermost tuple *is* the list, so only one nested in it reaches here.
     Tuple,
+    /// The unit type — `() => a`.
+    Unit,
 }
 
 /// The two forms [What a facade signature may not
@@ -1420,6 +1438,10 @@ impl PhaseError for Error {
                     "a variant is a constructor name followed by its arguments, and this one is a tuple type"
                         .to_owned()
                 }
+                InvalidVariantKind::Unit => {
+                    "a variant is a constructor name followed by its arguments, and this one is the unit type"
+                        .to_owned()
+                }
                 InvalidVariantKind::Arrow => {
                     "a variant is a constructor name followed by its arguments, and this one is a function type"
                         .to_owned()
@@ -1446,6 +1468,10 @@ impl PhaseError for Error {
                 }
                 InvalidConstraintKind::Tuple => {
                     "only constraints may be written before `=>`, and a tuple inside the list of constraints is not one"
+                        .to_owned()
+                }
+                InvalidConstraintKind::Unit => {
+                    "only constraints may be written before `=>`, and the unit type is not one"
                         .to_owned()
                 }
             },
@@ -1657,6 +1683,7 @@ impl PhaseError for Error {
                 match kind {
                     InvalidVariantKind::LowercaseName(_) => "this begins with a lowercase letter",
                     InvalidVariantKind::Tuple => "a tuple type, written where a variant belongs",
+                    InvalidVariantKind::Unit => "the unit type, written where a variant belongs",
                     InvalidVariantKind::Arrow => "a function type, written where a variant belongs",
                 },
             ),
@@ -1680,6 +1707,9 @@ impl PhaseError for Error {
                         "a function type, written where a constraint belongs"
                     }
                     InvalidConstraintKind::Tuple => "a tuple, written where a constraint belongs",
+                    InvalidConstraintKind::Unit => {
+                        "the unit type, written where a constraint belongs"
+                    }
                 },
             ),
             Error::InfixDeclared(_, span) => primary(span, "declared here"),
@@ -1872,13 +1902,15 @@ fn facade_signature_pieces(tpe: &Type) -> Vec<&Type> {
 /// rejected, the latter regardless of depth — a function type is inadmissible
 /// wherever it is found, not only at the top of the signature.
 /// `Type::Type` and `Type::Tuple` recurse into their own arguments, which may
-/// still hide either form.
+/// still hide either form. `Type::Unit` is admitted: it has one value, and the
+/// table gives it a predicate like any other admitted type.
 fn check_facade_admitted_type(tpe: &Type) -> Result<(), FacadeRejectedKind> {
     match tpe {
         Type::Variable(_) => Err(FacadeRejectedKind::Variable),
         Type::Arrow(_, _) => Err(FacadeRejectedKind::Function),
         Type::Type(_, args) => args.iter().try_for_each(check_facade_admitted_type),
         Type::Tuple(tuple) => tuple.iter().try_for_each(check_facade_admitted_type),
+        Type::Unit => Ok(()),
     }
 }
 
@@ -1909,6 +1941,7 @@ fn validate_context(context: &parser::Type) -> Result<Vec<(&Name, &[parser::Type
             parser::TypeKind::Variable(name) => InvalidConstraintKind::Variable(name.clone()),
             parser::TypeKind::Arrow(..) => InvalidConstraintKind::Arrow,
             parser::TypeKind::Tuple(..) => InvalidConstraintKind::Tuple,
+            parser::TypeKind::Unit => InvalidConstraintKind::Unit,
         };
 
         Err(Error::InvalidConstraint(kind, constraint.span))
@@ -2170,7 +2203,8 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
         | ExpressionKind::Char(_)
         | ExpressionKind::Int(_)
         | ExpressionKind::Float(_)
-        | ExpressionKind::Bool(_) => {}
+        | ExpressionKind::Bool(_)
+        | ExpressionKind::Unit => {}
         ExpressionKind::Apply(a, b) => {
             collect_top_level_refs(a, out);
             collect_top_level_refs(b, out);
@@ -2566,7 +2600,7 @@ fn do_types(
 
         // A variant is a constructor name and its arguments, which the parser spells
         // `TypeKind::Unqualified`. It is the grammar's general `Type` production that
-        // parses a variant list, though, so the three other kinds arrive here too —
+        // parses a variant list, though, so the four other kinds arrive here too —
         // and each is a declaration the user wrote that has no meaning, not a variant
         // this pass may leave out. Skipping one deletes a constructor from the
         // declaration and reports nothing, which was `BUG-18`.
@@ -2600,6 +2634,9 @@ fn do_types(
                 )),
                 parser::TypeKind::Tuple(_) => {
                     Err(Error::InvalidVariant(InvalidVariantKind::Tuple, t.span))
+                }
+                parser::TypeKind::Unit => {
+                    Err(Error::InvalidVariant(InvalidVariantKind::Unit, t.span))
                 }
                 parser::TypeKind::Arrow(_, _) => {
                     Err(Error::InvalidVariant(InvalidVariantKind::Arrow, t.span))

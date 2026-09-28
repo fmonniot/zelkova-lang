@@ -334,7 +334,7 @@ size is representable anywhere in the language.
 
 ## The unit type
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (nothingUseful)
 
 nothingUseful : ()
@@ -344,11 +344,6 @@ nothingUseful = ()
 `()` is the type with exactly one value, and that value is also written `()`. It is what a
 function returns when it has nothing to say, and what a function takes when it needs nothing
 meaningful.
-
-**Not implemented:** `()` is not recognised in either position. In a type the grammar reaches
-for a type expression after the `(` and finds the `)`; in an expression the same happens. The
-`.ignored` modules under `std/core/src/` use it freely (`Task x ()`), which is one of the
-things keeping them ignored.
 
 ## Scalar types
 

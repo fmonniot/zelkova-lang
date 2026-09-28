@@ -85,6 +85,8 @@ pub enum TypeKind {
     Variable(Name),
     /// A tuple type, of two or three elements — see [`Tuple`].
     Tuple(Tuple<Type>),
+    /// The unit type, `()`. Not a tuple: [`Tuple`] has no arity of zero.
+    Unit,
 }
 
 impl Type {
@@ -538,7 +540,6 @@ pub struct Match {
 /// ## Missing Patterns
 /// - `Record [Name]`
 /// - `Alias Pattern (Name)`
-/// - `Unit`
 /// - `Ctor Name [Pattern]`
 /// - `CtorQual Name Name [Pattern]`
 /// - `List [Pattern]`
@@ -555,6 +556,8 @@ pub enum PatternKind {
     Literal(Literal),
     /// A tuple pattern, of two or three elements — see [`Tuple`].
     Tuple(Tuple<Pattern>),
+    /// The unit pattern, `()`, which matches the one value of the unit type.
+    Unit,
     Constructor(Name, Vec<Pattern>),
     Anything,
 }
@@ -592,6 +595,8 @@ pub enum ExpressionKind {
     TypeConstructor(Name),
     /// A tuple expression, of two or three elements — see [`Tuple`].
     Tuple(Tuple<Expression>),
+    /// The unit value, `()`.
+    Unit,
     Case(Box<Expression>, Vec<CaseBranch>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
     /// A run of infix operator applications, exactly as the grammar saw them —

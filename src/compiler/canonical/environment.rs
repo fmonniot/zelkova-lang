@@ -1024,6 +1024,7 @@ impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
             PatternKind::Float(_) => (),
             PatternKind::Char(_) => (),
             PatternKind::Bool(_) => (),
+            PatternKind::Unit => (),
 
             PatternKind::Variable(n) => {
                 self.variables.insert(n.clone(), ValueType::Local);

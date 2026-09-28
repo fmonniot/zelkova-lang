@@ -3177,3 +3177,184 @@ fn constrained_facade_signature_is_rejected() {
     assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
     assert_eq!(labels[0].span.to_range(), range_of(source, "Comparable a"));
 }
+
+// ── Scenario 16: the unit type, `()` (LANG-72) ───────────────────────────────
+//
+// `()` is its own form in all three positions — a type, an expression and a
+// pattern — and never a tuple: `Tuple` holds two or three elements by its shape.
+// Each position's grammar production builds its own `Unit` node, and
+// canonicalization carries it over unchanged. `NodeSpan`'s equality is blind, so
+// each test also pins where the node was written.
+
+/// The byte range of `needle`'s last occurrence in `source` — the body, in a
+/// declaration whose annotation spells the same text first.
+fn last_range_of(source: &str, needle: &str) -> std::ops::Range<usize> {
+    let start = source.rfind(needle).expect("source contains the needle");
+    start..start + needle.len()
+}
+
+/// `()` as a type and as an expression, in the chapter's own example
+/// (`docs/spec/types.md#the-unit-type`).
+///
+/// Verified to fail by deleting the `"(" ")"` production from `AtomicType` in
+/// `grammar.lalrpop` (the annotation stops parsing) and, separately, from
+/// `AtomicExpr` (the body stops parsing); and by mapping
+/// `parser::ExpressionKind::Unit` to `ExpressionKind::Int(0)` in
+/// `Expression::from_parser`, which the whole-value comparison catches.
+#[test]
+fn unit_type_and_value_canonicalize() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (nothingUseful)
+        nothingUseful : ()
+        nothingUseful = ()
+    "#};
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    let value = module.values.get(&"nothingUseful".into()).unwrap();
+    assert_eq!(
+        value,
+        &canonical::Value::TypedValue {
+            marked_unsafe: false,
+            span: NodeSpan::none(),
+            annotation_span: NodeSpan::none(),
+            name: "nothingUseful".into(),
+            patterns: vec![],
+            body: canonical::Expression::bare(canonical::ExpressionKind::Unit),
+            tpe: canonical::Type::Unit,
+        }
+    );
+
+    match value {
+        canonical::Value::TypedValue { body, .. } => assert_eq!(
+            body.span.to_range(),
+            Some(last_range_of(source, "()")),
+            "the value's span must cover both parentheses"
+        ),
+        other => panic!("expected a TypedValue, got {:?}", other),
+    }
+}
+
+/// `()` as a parameter's pattern, in the patterns chapter's own example
+/// (`docs/spec/patterns.md#the-unit-pattern`): it binds nothing, and the
+/// parameter's type is the unit type.
+///
+/// Verified to fail by deleting the `"(" ")"` production from `Pattern` in
+/// `grammar.lalrpop` (the binding stops parsing), and by mapping
+/// `parser::PatternKind::Unit` to `PatternKind::Anything` in
+/// `Pattern::from_parser`, which the comparison catches.
+#[test]
+fn unit_pattern_canonicalizes() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (Flag, always)
+        type Flag
+          = On
+          | Off
+        always : () -> Flag
+        always () =
+          On
+    "#};
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    let patterns = match module.values.get(&"always".into()) {
+        Some(canonical::Value::TypedValue { patterns, .. }) => patterns,
+        other => panic!("expected a TypedValue for `always`, got {:?}", other),
+    };
+
+    assert_eq!(
+        patterns,
+        &vec![(
+            canonical::Pattern::bare(canonical::PatternKind::Unit),
+            canonical::Type::Unit,
+        )]
+    );
+    assert_eq!(
+        patterns[0].0.span.to_range(),
+        Some(last_range_of(source, "()")),
+        "the pattern's span must cover both parentheses"
+    );
+}
+
+/// The unit type in variant position is rejected like a tuple type is, with the
+/// caret over it.
+///
+/// Verified to fail by changing the `parser::TypeKind::Unit` arm of `do_types` to
+/// report `InvalidVariantKind::Tuple`: the variant match then panics.
+#[test]
+fn unit_in_variant_position_is_rejected() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        type Nothing
+          = ()
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("`()` is not a variant");
+
+    match &errors[0] {
+        canonical::Error::InvalidVariant(canonical::InvalidVariantKind::Unit, _) => (),
+        other => panic!("expected InvalidVariant(Unit), got {:?}", other),
+    }
+
+    assert!(
+        errors[0].message().contains("unit type"),
+        "the message must name what was written, got {:?}",
+        errors[0].message()
+    );
+
+    assert_eq!(
+        only_invalid_variant_label(&errors).span.to_range(),
+        variant_range(source, "()"),
+        "the caret must cover the unit type"
+    );
+}
+
+/// The unit type in front of `=>` is not a constraint.
+///
+/// Verified to fail by changing the `parser::TypeKind::Unit` arm of
+/// `validate_context` to report `InvalidConstraintKind::Tuple`: the kind
+/// assertion then fails.
+#[test]
+fn unit_as_constraint_context_is_rejected() {
+    use zelkova_lang::compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+        f : () => a -> a
+        f x =
+          x
+    "#};
+
+    let errors =
+        canonicalize_with_scalars(source).expect_err("`()` in front of `=>` must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::InvalidConstraint(kind, _) => {
+            assert_eq!(*kind, canonical::InvalidConstraintKind::Unit)
+        }
+        other => panic!("expected InvalidConstraint, got {:?}", other),
+    }
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(labels[0].span.to_range(), range_of(source, "()"));
+}
+
+/// `()` is an admitted type
+/// (`docs/spec/interop.md#which-types-may-cross-the-boundary`), as a facade's
+/// parameter, as its result, and as a tuple's element.
+///
+/// Verified to fail by changing `check_facade_admitted_type`'s `Type::Unit` arm
+/// to `Err(FacadeRejectedKind::Variable)`: the module is then rejected and
+/// `expect` panics.
+#[test]
+fn facade_signature_over_unit_is_accepted() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (tick, wrap)
+        unsafe tick : () -> ()
+        unsafe wrap : Int -> (Int, ())
+    "#};
+
+    canonicalize_with_scalars(source).expect("`()` is admitted in a facade signature");
+}

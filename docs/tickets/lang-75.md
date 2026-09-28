@@ -7,8 +7,8 @@ the typer gave one of its values.
 
 **Part of:** [Active work: effects](README.md#active-work-effects).
 
-**Depends on:** [`LANG-72`](lang-72.md) and [`LANG-74`](lang-74.md). Without them, `Task ()` cannot
-be written, so there is nothing for a `main` to match.
+**Depends on:** [`LANG-72`](README.md), now closed, and [`LANG-74`](lang-74.md). Without them,
+`Task ()` cannot be written, so there is nothing for a `main` to match.
 
 **Location:** `src/compiler/manifest.rs` — `Manifest::main`, validated as a module name and passed
 on; `src/compiler/mod.rs` — `compile_in_build`, where a package's checked modules and their

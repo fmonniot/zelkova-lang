@@ -1347,3 +1347,175 @@ fn an_int_literal_wider_than_u32_keeps_its_value() {
         other => panic!("expected an integer literal, got {:?}", other),
     }
 }
+
+// ── The unit type (LANG-72) ───────────────────────────────────────────────────
+
+/// `()` has the unit type, annotated as in [the chapter's own
+/// example](../docs/spec/types.md#the-unit-type) or not. The unannotated
+/// declaration is the one that pins the value's own constraint: under an annotation
+/// the body's fresh variable would be solved to `()` by the annotation alone.
+///
+/// Mutation-checked by deleting the constraint `constraint::collect` pushes for
+/// `TypedTermKind::Unit`: `unit` then renders as an unsolved variable.
+#[test]
+fn unit_value_has_the_unit_type() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (nothingUseful)
+        nothingUseful : ()
+        nothingUseful = ()
+        unit = ()
+    "#};
+
+    let solved = solved(source);
+
+    let annotated = typed_declaration(&solved, "nothingUseful");
+    assert_eq!(format!("{}", annotated.tpe), "()");
+    assert!(
+        matches!(annotated.kind, TypedTermKind::Unit),
+        "expected the unit value, got {:?}",
+        annotated.kind
+    );
+    assert_eq!(format!("{}", typed_declaration(&solved, "unit").tpe), "()");
+}
+
+/// A parameter written `()` is typed, as in [the patterns chapter's
+/// example](../docs/spec/patterns.md#the-unit-pattern). Without an annotation, the
+/// pattern is the only thing saying what the parameter's type is.
+///
+/// Mutation-checked by making `pattern_constraints` place no constraint for a
+/// `TermPatternKind::Unit`: `ignore` then renders with an unsolved parameter.
+#[test]
+fn a_unit_pattern_parameter_is_typed() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (Flag, always)
+        type Flag
+          = On
+          | Off
+        always : () -> Flag
+        always () =
+          On
+        ignore () =
+          Off
+    "#};
+
+    let solved = solved(source);
+
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "always").tpe),
+        "() -> Flag"
+    );
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "ignore").tpe),
+        "() -> Flag"
+    );
+}
+
+/// `()` where an `Int` is expected is a type error, and the caret sits under the
+/// `()` with the annotation behind it.
+///
+/// Mutation-checked two ways, each red on its own: deleting the constraint
+/// `constraint::collect` pushes for `TypedTermKind::Unit` (the module then checks),
+/// and giving that constraint `NodeSpan::none()` instead of the term's span (the
+/// primary label falls back to the whole declaration).
+#[test]
+fn unit_where_an_int_is_expected_is_a_type_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (x)
+        x : Int
+        x = ()
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(error.message(), "cannot match `Int` with `()`");
+
+    let labels = error.labels();
+    assert_eq!(
+        ranges(&labels),
+        vec![range_of(source, "()"), range_of(source, "x : Int")],
+        "expected a caret under `()` and the annotation behind it"
+    );
+    assert!(labels[0].primary, "`()` is what has to change");
+    assert_eq!(labels[0].message, "this unit value");
+}
+
+/// A `()` pattern where the argument is an `Int` is the parameter's mismatch.
+///
+/// Mutation-checked by making `pattern_constraints` place no constraint for a
+/// `TermPatternKind::Unit`: the module then checks.
+#[test]
+fn a_unit_pattern_against_an_int_is_a_type_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (bad)
+        bad : Int -> Int
+        bad () = 1
+    "#};
+    let error = one_type_error(source);
+
+    let labels = error.labels();
+    assert_eq!(
+        ranges(&labels).first(),
+        Some(&range_of(source, "()")),
+        "expected the caret under the pattern, got {:?}",
+        labels
+    );
+    assert_eq!(labels[0].message, "this pattern");
+}
+
+/// A `()` written as a tuple's element is typed, as `_` there is: `()` is irrefutable,
+/// so `translate_sub_pattern` admits it below the top of a pattern. Without an
+/// annotation, the nested `()` is the only thing saying what the second element's type
+/// is.
+///
+/// Mutation-checked two ways, each red on its own: dropping `PatternKind::Unit` from
+/// `translate_sub_pattern`'s admitted shapes (neither declaration is typed), and making
+/// `pattern_constraints` place no constraint for a `TermPatternKind::Unit` (`second`
+/// then renders with an unsolved element).
+#[test]
+fn a_nested_unit_pattern_is_typed() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (first)
+        first : (Int, ()) -> Int
+        first (x, ()) = x
+        second (c, ()) = 'a'
+    "#};
+
+    let solved = solved(source);
+
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "first").tpe),
+        "( Int, () ) -> Int"
+    );
+    // `c`'s type is left free, and a free variable renders under its numeric id.
+    let second = format!("{}", typed_declaration(&solved, "second").tpe);
+    assert!(second.ends_with(", () ) -> Char"), "got {}", second);
+}
+
+/// A `()` written as a tuple's element, where that element is an `Int`, is a type error
+/// with the caret under the nested `()` — reported by the typer, rather than the
+/// declaration going untyped and surfacing only at code generation.
+///
+/// Mutation-checked two ways, each red on its own: dropping `PatternKind::Unit` from
+/// `translate_sub_pattern`'s admitted shapes (the declaration is then skipped and no type
+/// error is reported), and making `pattern_constraints` place no constraint for a
+/// `TermPatternKind::Unit` (the module then checks).
+#[test]
+fn a_nested_unit_pattern_against_an_int_is_a_type_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (bad)
+        bad : (Int, Int) -> Int
+        bad (x, ()) = x
+    "#};
+    let error = one_type_error(source);
+    // `()` also occurs inside `(x, ())`'s own parentheses, so the needle is the nested
+    // `()` and the tuple's closing parenthesis after it.
+    let nested = range_of(source, "())");
+    let nested = nested.start..nested.start + 2;
+
+    let labels = error.labels();
+    assert_eq!(
+        ranges(&labels).first(),
+        Some(&nested),
+        "expected the caret under the nested `()`, got {:?}",
+        labels
+    );
+}

@@ -127,7 +127,8 @@
 //!
 //! [`emit`] answers an [`Error`] rather than a module missing a part: for a declaration
 //! with no IR ([`ir::Module::unchecked`]), for a facade signature not marked `unsafe`,
-//! and for a facade with no companion for the target being built.
+//! for a facade with no companion for the target being built, and for a construct it
+//! does not emit yet ([`Construct`]) — `()` among them.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -180,6 +181,9 @@ pub enum Construct {
     /// A function nested inside a declaration's body. The language has no lambda and
     /// [`ir::build`] takes every parameter off the body, so the IR never holds one either.
     Lambda,
+    /// `()`, as an expression or as a pattern. How the unit value is represented is
+    /// [`GEN-20`](../../../docs/tickets/gen-20.md)'s to choose.
+    Unit,
 }
 
 impl Construct {
@@ -187,6 +191,7 @@ impl Construct {
         match self {
             Construct::Let => "a `let` expression",
             Construct::Lambda => "an anonymous function",
+            Construct::Unit => "`()`",
         }
     }
 }
@@ -935,6 +940,7 @@ impl Emitter {
                 branches,
                 form,
             } => self.case_expression(scrutinee, branches, *form),
+            TypedTermKind::Unit => self.unsupported(Construct::Unit, term.span),
             TypedTermKind::Let { .. } => self.unsupported(Construct::Let, term.span),
             TypedTermKind::Fun { .. } => self.unsupported(Construct::Lambda, term.span),
         }
@@ -1113,6 +1119,12 @@ impl Emitter {
         branches: &[(ir::TermPattern, Box<TypedTerm>)],
         form: CaseForm,
     ) -> String {
+        for (pattern, _) in branches {
+            if let Some(span) = unit_pattern(pattern) {
+                return self.unsupported(Construct::Unit, span);
+            }
+        }
+
         let declaration = self.declaration.clone().unwrap_or_else(|| Name::new(""));
         let tree = decision_tree(&scrutinee.tpe, branches, &declaration);
         let scrutinee_expr = self.expression(scrutinee);
@@ -1193,6 +1205,25 @@ impl Emitter {
                 )
             }
         }
+    }
+}
+
+/// Where `pattern` writes `()`, at any depth, if it does.
+///
+/// [`decision_tree`] lowers a `()` to no test at all, so emitting the tree would never
+/// meet it; this is what finds it for [`Construct::Unit`] instead.
+fn unit_pattern(pattern: &ir::TermPattern) -> Option<NodeSpan> {
+    match &pattern.kind {
+        ir::TermPatternKind::Unit => Some(pattern.span),
+        ir::TermPatternKind::Anything
+        | ir::TermPatternKind::Bind(_)
+        | ir::TermPatternKind::Literal { .. } => None,
+        ir::TermPatternKind::Constructor { args, .. } => {
+            args.iter().find_map(|arg| unit_pattern(&arg.pattern))
+        }
+        ir::TermPatternKind::Tuple { elements } => elements
+            .iter()
+            .find_map(|element| unit_pattern(&element.pattern)),
     }
 }
 

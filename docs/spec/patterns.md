@@ -697,7 +697,7 @@ firstOf xs =
 `()` matches the one value of the unit type, and binds nothing. It differs from `_` in the
 same position by saying which type is being ignored.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Flag, always)
 
 type Flag
@@ -708,9 +708,6 @@ always : () -> Flag
 always () =
   On
 ```
-
-**Not implemented:** `()` is not recognised in a pattern, a type or an expression; see
-[Types](types.md#the-unit-type).
 
 ## Record patterns
 

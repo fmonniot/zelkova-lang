@@ -1357,3 +1357,142 @@ fn an_exposed_operator_exports_its_function() {
 
     assert!(text.ends_with("export { add };\n"), "got:\n{}", text);
 }
+
+/// `()` as an expression is refused, with an error naming the declaration and the
+/// span of the `()`, rather than emitted as some representation nobody has chosen:
+/// what the unit value is on this target is `GEN-20`'s decision.
+///
+/// Mutation-checked by emitting `TypedTermKind::Unit` as `undefined` in
+/// `Emitter::expression` instead of calling `unsupported`: the module then emits.
+#[test]
+fn a_unit_value_is_refused() {
+    let source = indoc! {r#"
+        module Test exposing (nothingUseful)
+
+        nothingUseful : ()
+        nothingUseful =
+          ()
+    "#};
+    let errors = refused(source);
+
+    // `NodeSpan`'s equality ignores the span, so the span is compared on its own.
+    assert_eq!(
+        errors,
+        vec![Error::Unsupported {
+            construct: javascript::Construct::Unit,
+            declaration: Name::new("nothingUseful"),
+            span: NodeSpan::none(),
+        }]
+    );
+    let start = source.rfind("()").expect("the source writes `()`");
+    match &errors[0] {
+        Error::Unsupported { span, .. } => {
+            assert_eq!(span.to_range(), Some(start..start + 2))
+        }
+        other => panic!("expected an unsupported construct, got {:?}", other),
+    }
+}
+
+/// `()` as a pattern is refused too, in a parameter or a `case` branch, with the caret
+/// under the `()`. The decision tree lowers it to no test at all, and a parameter
+/// merely typed `()` already emits, so nothing about the pattern itself is unsettled:
+/// it is refused because this backend refuses every `()` a module writes until
+/// `GEN-20` lifts the refusal and emits the value in the same change.
+///
+/// Mutation-checked two ways, each red on its own: deleting the `unit_pattern` loop at
+/// the top of `Emitter::case_expression` (both declarations then emit), and refusing at
+/// the scrutinee's span instead of the one `unit_pattern` found (`viaCase`'s caret then
+/// sits under `u` — `always`'s would not move, since a parameter's scrutinee carries
+/// its pattern's span).
+#[test]
+fn a_unit_pattern_is_refused() {
+    let source = indoc! {r#"
+        module Test exposing (Flag(..), always, viaCase)
+
+        type Flag
+          = On
+          | Off
+
+        always : () -> Flag
+        always () =
+          On
+
+        viaCase : () -> Flag
+        viaCase u =
+          case u of
+            () ->
+              Off
+    "#};
+    let errors = refused(source);
+
+    // `NodeSpan`'s equality ignores the span, so each span is compared on its own.
+    assert_eq!(
+        errors,
+        vec![
+            Error::Unsupported {
+                construct: javascript::Construct::Unit,
+                declaration: Name::new("always"),
+                span: NodeSpan::none(),
+            },
+            Error::Unsupported {
+                construct: javascript::Construct::Unit,
+                declaration: Name::new("viaCase"),
+                span: NodeSpan::none(),
+            },
+        ]
+    );
+    let parameter = position(source, "always () =") + "always ".len();
+    // Both annotations write `() ->` too; the branch's is the last.
+    let branch = source.rfind("() ->").expect("the branch writes `() ->`");
+    let spans: Vec<_> = errors
+        .iter()
+        .map(|error| match error {
+            Error::Unsupported { span, .. } => span.to_range(),
+            other => panic!("expected an unsupported construct, got {:?}", other),
+        })
+        .collect();
+    assert_eq!(
+        spans,
+        vec![Some(parameter..parameter + 2), Some(branch..branch + 2),]
+    );
+}
+
+/// A `()` written as a tuple's element is refused as one at the top of a pattern is,
+/// with the caret under the nested `()` rather than the whole parameter: the typer
+/// admits it there, so the declaration reaches this backend instead of being refused
+/// as one the type checker could not check.
+///
+/// Mutation-checked three ways, each red on its own: dropping `PatternKind::Unit` from
+/// `typer::translate_sub_pattern`'s admitted shapes (the error is then
+/// `Error::Unchecked`), making `unit_pattern`'s `Tuple` arm answer `None` (`second`
+/// then emits), and refusing at the scrutinee's span instead of the one `unit_pattern`
+/// found (the caret then covers all of `(x, ())`).
+#[test]
+fn a_nested_unit_pattern_is_refused() {
+    let source = indoc! {r#"
+        module Test exposing (second)
+
+        second : (Int, ()) -> Int
+        second (x, ()) =
+          x
+    "#};
+    let errors = refused(source);
+
+    // `NodeSpan`'s equality ignores the span, so the span is compared on its own.
+    assert_eq!(
+        errors,
+        vec![Error::Unsupported {
+            construct: javascript::Construct::Unit,
+            declaration: Name::new("second"),
+            span: NodeSpan::none(),
+        }]
+    );
+    // The annotation writes `())` too; the pattern's is the last.
+    let start = source.rfind("())").expect("the pattern writes `())`");
+    match &errors[0] {
+        Error::Unsupported { span, .. } => {
+            assert_eq!(span.to_range(), Some(start..start + 2))
+        }
+        other => panic!("expected an unsupported construct, got {:?}", other),
+    }
+}

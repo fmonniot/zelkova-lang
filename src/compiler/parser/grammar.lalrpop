@@ -189,6 +189,10 @@ AtomicExpr: Expression = {
     // expression is returned keeping the position of the text inside the parentheses.
     "(" <e: Expr> ")" => e,
 
+    // The unit value. Nothing between the parentheses, so it is neither a grouping
+    // nor a tuple — `Tuple` has no arity for it — and it gets a node of its own.
+    <l:@L> "(" ")" <r:@R> => Expression::new(NodeSpan::new(l, r), ExpressionKind::Unit),
+
     <l:@L> "(" <a: Expr> "," <b: Expr> ")" <r:@R> =>
         Expression::new(NodeSpan::new(l, r), ExpressionKind::Tuple(Tuple::two(a, b))),
 
@@ -304,6 +308,9 @@ Pattern: Pattern = {
     // parenthesised form builds no node and keeps the inner pattern's span.
     "(" <p: Pattern> ")" => p,
 
+    // The unit pattern, a node of its own for the reason `AtomicExpr` gives.
+    <l:@L> "(" ")" <r:@R> => Pattern::new(NodeSpan::new(l, r), PatternKind::Unit),
+
     <l:@L> "(" <a: Pattern> "," <b: Pattern> ")" <r:@R> =>
         Pattern::new(NodeSpan::new(l, r), PatternKind::Tuple(Tuple::two(a, b))),
 
@@ -398,12 +405,15 @@ Expr = {
 // The parentheses only group: `(Int)` is `Int`, and keeps the position of the text
 // inside them. `(Int, Char)` is a two-element tuple, whose span covers the
 // parentheses. As in `AtomicExpr`, there is one production per tuple arity so that
-// a tuple of any other size cannot be parsed.
+// a tuple of any other size cannot be parsed. `()` is the unit type, which is its
+// own form rather than a tuple of none.
 AtomicType: Type = {
     <l:@L> <n: QualTypeIdent> <r:@R> => Type::unqualified(NodeSpan::new(l, r), n),
     <l:@L> <n: VarIdent> <r:@R> => Type::new(NodeSpan::new(l, r), TypeKind::Variable(n)),
 
     "(" <Type> ")",
+
+    <l:@L> "(" ")" <r:@R> => Type::new(NodeSpan::new(l, r), TypeKind::Unit),
 
     <l:@L> "(" <a: Type> "," <b: Type> ")" <r:@R> =>
         Type::new(NodeSpan::new(l, r), TypeKind::Tuple(Tuple::two(a, b))),

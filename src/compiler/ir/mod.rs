@@ -378,6 +378,8 @@ pub enum TermKind {
         body: Box<Term>,
     },
     Tuple(Tuple<Term>),
+    /// The unit value, `()`.
+    Unit,
     Case {
         scrutinee: Box<Term>,
         branches: Vec<(TermPattern, Box<Term>)>,
@@ -463,6 +465,10 @@ pub enum TermPatternKind {
         /// their types.
         elements: Tuple<SubPattern>,
     },
+    /// Matches the one value of the unit type: constrains the matched value to
+    /// [`Type::Unit`] and binds nothing. Since that
+    /// type has a single value, [`decision_tree`] builds no test for it.
+    Unit,
 }
 
 /// A pattern written in a position inside another one — a constructor's argument or a
@@ -473,9 +479,10 @@ pub enum TermPatternKind {
 /// any other pattern written there constrains this type the way a `case` branch's
 /// pattern constrains the scrutinee's.
 ///
-/// Today the pattern is only ever a [`TermPatternKind::Bind`] or a
-/// [`TermPatternKind::Anything`]: `typer::translate_pattern` refuses anything nested
-/// deeper (`LANG-16`). The shape does not assume it.
+/// Today the pattern is only ever a [`TermPatternKind::Bind`], a
+/// [`TermPatternKind::Anything`] or a [`TermPatternKind::Unit`]:
+/// `typer::translate_pattern` refuses anything else nested (`LANG-16`). The shape does
+/// not assume it.
 #[derive(Debug, Clone)]
 pub struct SubPattern {
     pub tpe: Type,
@@ -494,7 +501,8 @@ impl TermPattern {
 
     fn collect_bindings(&self, tpe: &Type, bindings: &mut Vec<(String, Type)>) {
         match &self.kind {
-            TermPatternKind::Anything | TermPatternKind::Literal { .. } => {}
+            TermPatternKind::Anything | TermPatternKind::Literal { .. } | TermPatternKind::Unit => {
+            }
             TermPatternKind::Bind(name) => bindings.push((name.clone(), tpe.clone())),
             TermPatternKind::Constructor { args, .. } => {
                 for arg in args {
@@ -580,6 +588,12 @@ pub enum TypedTermKind {
         body: Box<TypedTerm>,
     },
     Tuple(Tuple<TypedTerm>),
+    /// The unit value, `()`. Its type is always [`Type::Unit`].
+    ///
+    /// No backend emits it yet: its representation on a target is
+    /// [`GEN-20`](../../../docs/tickets/gen-20.md)'s to choose, and until then
+    /// [`javascript::emit`](crate::compiler::javascript::emit) refuses it.
+    Unit,
     Case {
         scrutinee: Box<TypedTerm>,
         branches: Vec<(TermPattern, Box<TypedTerm>)>,

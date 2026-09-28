@@ -29,23 +29,25 @@
 //!
 //! A branch's pattern is lowered by walking it, and then its sub-patterns, depth first
 //! and left to right, each at the [`Occurrence`] that leads to it from the scrutinee. A
-//! wildcard tests nothing and binds nothing. A variable binds the value at its
-//! occurrence. A tuple tests nothing, since a value of a tuple type is always a tuple,
-//! and goes on to its elements. A literal or a constructor is a `Test` at its
-//! occurrence; a constructor then goes on to its arguments. Every `Test` on the way down
-//! falls back, as its `default`, to the tree for the branches after this one: a pattern
-//! that fails part-way through fails as a whole.
+//! wildcard tests nothing and binds nothing, and neither does `()`, whose type has
+//! one value. A variable binds the value at its occurrence. A tuple tests nothing,
+//! since a value of a tuple type is always a tuple, and goes on to its elements. A
+//! literal or a constructor is a `Test` at its occurrence; a constructor then goes on
+//! to its arguments. Every `Test` on the way down falls back, as its `default`, to the
+//! tree for the branches after this one: a pattern that fails part-way through fails as
+//! a whole.
 //!
 //! That fallback tree is copied into each such `default` rather than shared, since a
 //! [`Decision`] is a tree and not a graph. One level deep, as every pattern is today,
 //! that is one copy per branch; a pattern with several refutable sub-patterns copies it
 //! once per refutable sub-pattern.
 //!
-//! Today `typer::translate_pattern` admits only a name or `_` below the top of a pattern
-//! (`LANG-16`), so no `Test` below [`Occurrence::Root`] is ever built from real source,
-//! and every binding is at most one step deep. Nothing here assumes it: the day
-//! `LANG-16` lifts that refusal, a nested pattern lowers through the same walk. This
-//! module's own tests build such a pattern by hand to pin that.
+//! Today `typer::translate_pattern` admits only a name, `_` or `()` below the top of a
+//! pattern (`LANG-16`), none of which is a `Test`, so no `Test` below
+//! [`Occurrence::Root`] is ever built from real source, and every binding is at most one
+//! step deep. Nothing here assumes it: the day `LANG-16` lifts that refusal, a nested
+//! pattern lowers through the same walk. This module's own tests build such a pattern by
+//! hand to pin that.
 
 use crate::compiler::name::Name;
 
@@ -236,7 +238,11 @@ fn lower<'a>(
     };
 
     match &pattern.kind {
-        TermPatternKind::Anything => lower(pending, bindings, body, on_fail),
+        // The unit type has one value, so a value of it always matches `()`: no test,
+        // and nothing to bind.
+        TermPatternKind::Anything | TermPatternKind::Unit => {
+            lower(pending, bindings, body, on_fail)
+        }
         TermPatternKind::Bind(name) => {
             bindings.push(Binding {
                 name: name.clone(),
@@ -282,7 +288,7 @@ fn lower<'a>(
 
 #[cfg(test)]
 mod tests {
-    //! Nothing in real source reaches the recursion below the top of a pattern yet
+    //! Nothing in real source builds a `Test` below the top of a pattern yet
     //! (`LANG-16`), so these build a nested [`TermPattern`] by hand, the shape
     //! `typer::translate_pattern` will produce once it admits one, and pin what
     //! [`build`] makes of it.
