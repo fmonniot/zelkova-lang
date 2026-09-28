@@ -1,6 +1,11 @@
 -- `Float` literals and arithmetic: a division whose result is not a whole number,
 -- and a sum that shows a `Float` is a binary floating-point number, since
 -- `0.1 + 0.2` comes out just above `0.3`.
+--
+-- Both tests are expected to error, not pass, until `BUG-44` closes: `additionIsBinaryFloatingPoint`
+-- reaches `Basics.add`, whose facade forwards a `Float` through `Int`'s boundary check
+-- and aborts the module while it loads, which takes `divisionKeepsTheFraction` down
+-- with it even though `/` alone would not abort.
 module FloatTests exposing (divisionKeepsTheFraction, additionIsBinaryFloatingPoint)
 
 import Basics exposing (..)

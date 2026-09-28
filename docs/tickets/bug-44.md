@@ -6,8 +6,10 @@ price of landing [`GEN-2`](README.md) before type classes.)
 
 **Location:** `std/core/src/Basics.zel` — `add`, `sub`, `mul` and `pow`, each annotated
 `a -> a -> a` and bound to `Js.Basics.addInt`, `subInt`, `mulInt` and `powInt`; `append`, bound
-to `Js.Utils.appendInt` the same way. `src/compiler/javascript.rs` — `Emitter::facade_declaration`,
-which emits the check that aborts. `std/core/tests/FloatTests.zel` — the tests it breaks.
+to `Js.Utils.appendInt` the same way; `fromPolar`, `toPolar` and `degrees`, declared over `Float`
+with no `a` in sight but calling `mul`/`add` internally, so they abort too.
+`src/compiler/javascript.rs` — `Emitter::facade_declaration`, which emits the check that
+aborts. `std/core/tests/FloatTests.zel` — the tests it breaks.
 
 **Depends on:** [`LANG-42`](lang-42.md), which gives `Basics` a `Number` class whose `Float`
 instance can forward to `addFloat` while the `Int` instance forwards to `addInt`. That in turn
@@ -40,7 +42,17 @@ Both tests in the module error, not only the one that adds: a test is a paramete
 evaluated when `FloatTests` loads, so the first abort takes the module with it. The command
 exits 1, and so does the *Zelkova tests* step of CI's `javascript` job.
 
-`sub`, `mul` and `pow` fail the same way on a `Float`. `append` names `Js.Utils.appendInt`, whose
+`sub`, `mul` and `pow` fail the same way on a `Float`, and so does anything built from them.
+`fromPolar` and `toPolar` are declared `(Float,Float) -> (Float,Float)`, with no `a` anywhere
+in their signature, but both call `mul` (and `toPolar` also `add`) internally, so they abort on
+**every** call — a reader sees `mulInt`'s message, since `mul` is the argument evaluated first
+in both. `degrees` calls `mul` too and aborts the same way. It also carries an independent
+defect: its `180` is compiled as a `bigint`, and `fdiv` cannot divide the `Float` `mul` would
+have produced by one — the same "a bare integer literal is typed `Number`, not `Int`" gap
+[`LANG-41`](lang-41.md) is filed to close, which lists `std/core/src/` literals needing a point
+as its expected diff. `degrees`'s `mul` call aborts first today, so that second defect is not
+what a reader of the current error sees; fixing this ticket without also giving `180` a decimal
+point would just trade one abort for the other. `append` names `Js.Utils.appendInt`, whose
 companion concatenates two JavaScript strings and throws on anything else, so a `String` append
 would abort at the same check once a string can be written ([`LANG-77`](lang-77.md)).
 Comparisons are unaffected: `ltInt` and `equalInt` return a `Bool` whatever they are handed,
@@ -59,7 +71,9 @@ privileged.
 **Acceptance:** `cargo run -- test std/core` reports every test passing, `FloatTests`' two
 included, and exits 0. The line in `CLAUDE.md`'s *Commands* section giving `23 passed, 2
 errored` as that command's expected result is restored to all-passing, and the comments on
-`add`, `sub`, `mul` and `pow` in `std/core/src/Basics.zel` stop naming this ticket.
+`add`, `sub`, `mul`, `pow`, `fromPolar`, `toPolar` and `degrees` in `std/core/src/Basics.zel`
+stop naming this ticket. `degrees` additionally needs `180` written `180.0`
+([`LANG-41`](lang-41.md)) — check it by hand, since nothing tests `degrees` today.
 
 **Found:** while working [`GEN-2`](README.md), which escalated it rather than choosing; the
 language owner chose to land the check with this regression rather than wait for type classes.

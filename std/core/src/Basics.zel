@@ -688,6 +688,12 @@ radians angleInRadians =
 
     degrees 180 == 3.141592653589793
 -}
+-- Calls `mul`, so it aborts on every call the same way `add` does on a `Float`: see
+-- `add` above, and `BUG-44`. Independently, the `180` below is compiled as an `Int`
+-- and `fdiv` cannot divide a `Float` by one — `LANG-41` is what makes a bare integer
+-- literal `Int` rather than a `Number` that happens to unify with `Float`, and fixing
+-- it means giving `180` a point. `mul`'s abort fires first today, so that second
+-- defect stays invisible until both land.
 degrees : Float -> Float
 degrees angleInDegrees =
   fdiv (mul angleInDegrees pi) 180
@@ -817,6 +823,8 @@ atan2 =
 
     fromPolar (sqrt 2, degrees 45) == (1, 1)
 -}
+-- Calls `mul` twice, so it aborts on every call the same way `add` does on a `Float`,
+-- even though nothing here names `a`: see `add` above, and `BUG-44`.
 fromPolar : (Float,Float) -> (Float,Float)
 fromPolar (radius, theta) =
   ( mul radius (cos theta)
@@ -829,6 +837,8 @@ fromPolar (radius, theta) =
     toPolar (3, 4) == ( 5, 0.9272952180016122)
     toPolar (5,12) == (13, 1.1760052070951352)
 -}
+-- Calls `mul` and `add`, so it aborts on every call the same way `add` does on a
+-- `Float`, even though nothing here names `a`: see `add` above, and `BUG-44`.
 toPolar : (Float,Float) -> (Float,Float)
 toPolar ( x, y ) =
   ( sqrt (add (mul x x) (mul y y))
