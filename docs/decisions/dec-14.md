@@ -127,6 +127,6 @@ a package's `src/` at all, and it is [`GEN-1`](../tickets/gen-1.md)'s.
 
 All of it. No compiler pass, no test and no harness observes any of the four decisions above, and
 the spec section they produced is held only to failing to parse on its modifier. A `.mjs`
-companion is not a module, so the compiler walking `tests/` does not observe it either: until a
-runner runs what is under there, the rule is kept by whoever places the next file. `zelkova
-test` does not: it imports the modules that hold a `Test` and no `.mjs` file beside them.
+companion is not a module, so the compiler walking `tests/` does not observe it either, and
+`zelkova test` imports only the emitted modules that hold a `Test`, so it does not run one.
+Until a runner does, the rule is kept by whoever places the next file.
