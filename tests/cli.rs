@@ -247,3 +247,104 @@ fn test_without_node_on_path_fails_naming_node() {
 
     let _ = std::fs::remove_dir_all(package_dir.join("build"));
 }
+
+/// A directory holding one executable named `node` that runs `script`, for a test to put on
+/// `PATH` in place of the real one. `cargo test` never runs a real `node`
+/// ([`DEC-18` decision 6](../docs/decisions/dec-18.md)); what these tests pin is what
+/// `zelkova test` does with the way a `node` ended, which a stub can end in any way.
+///
+/// `name` keeps each test's directory its own, since the tests of this file run in parallel.
+#[cfg(unix)]
+fn stub_node_dir(name: &str, script: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("stub-node-{}", name));
+    std::fs::create_dir_all(&dir).expect("failed to create the stub directory");
+    let node = dir.join("node");
+    std::fs::write(&node, format!("#!/bin/sh\n{}\n", script)).expect("failed to write the stub");
+    std::fs::set_permissions(&node, std::fs::Permissions::from_mode(0o755))
+        .expect("failed to make the stub executable");
+    dir
+}
+
+/// A copy of the `package_test_run` fixture under its own directory, its two `std/` paths made
+/// absolute so the copy can sit anywhere. The tests that put a stub `node` on `PATH` each get
+/// their own, because running `zelkova test` writes `build/` beside the manifest and the
+/// tests of this file run in parallel: two processes writing one `build/` prune each other's
+/// files.
+#[cfg(unix)]
+fn scratch_test_run_package(name: &str) -> PathBuf {
+    let fixture = fixture_package("package_test_run");
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("package-test-run-{}", name));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("failed to create the scratch package");
+    for tree in ["src", "tests"] {
+        let copied = Command::new("cp")
+            .arg("-R")
+            .arg(fixture.join(tree))
+            .arg(dir.join(tree))
+            .status()
+            .expect("failed to run `cp`");
+        assert!(copied.success(), "failed to copy `{}`", tree);
+    }
+    let std_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("std");
+    let manifest = std::fs::read_to_string(fixture.join("zelkova.toml"))
+        .expect("failed to read the fixture's manifest")
+        .replace("../../../std", &std_root.display().to_string());
+    std::fs::write(dir.join("zelkova.toml"), manifest).expect("failed to write the manifest");
+    dir
+}
+
+/// Like [`run`], with `PATH` set to `path` alone.
+#[cfg(unix)]
+fn run_with_path(cwd: &Path, path: &Path, args: &[&str]) -> Output {
+    Command::new(zelkova_bin())
+        .args(args)
+        .current_dir(cwd)
+        .env("PATH", path)
+        .output()
+        .expect("failed to run the zelkova binary")
+}
+
+/// The exit code `node` ends with is the exit code `zelkova test` ends with: a stub `node`
+/// that is handed the entry point and exits 3 makes the run exit 3, not 0 and not a fixed 1.
+/// The stub exits 9 when it is not handed `run.mjs`, so the code also shows the entry point
+/// reached `node`.
+///
+/// Neutralised two ways, each going red (exit code 0 instead of 3): replacing
+/// `Ok(code) => std::process::exit(code)` in `main` with `Ok(_) => {}`, and replacing
+/// `status.code().ok_or(..)` in `test_runner::run` with `Ok(0)`.
+#[cfg(unix)]
+#[test]
+fn test_exits_with_the_code_node_exits_with() {
+    let package_dir = scratch_test_run_package("exit-code");
+    let stub = stub_node_dir(
+        "exit-code",
+        "case \"$1\" in */run.mjs) exit 3 ;; *) exit 9 ;; esac",
+    );
+    let output = run_with_path(&package_dir, &stub, &["test"]);
+
+    assert_eq!(output.status.code(), Some(3), "{:?}", output);
+}
+
+/// A `node` that a signal ended has no exit code, and the tests it was running did not
+/// finish: `zelkova test` reports that and exits non-zero rather than reading the missing
+/// code as a pass.
+///
+/// Neutralised by replacing `status.code().ok_or(..)` in `test_runner::run` with
+/// `Ok(status.code().unwrap_or(0))`. This test went red (exit code 0) under that change.
+#[cfg(unix)]
+#[test]
+fn test_fails_when_node_is_ended_by_a_signal() {
+    let package_dir = scratch_test_run_package("signal");
+    let stub = stub_node_dir("signal", "kill -9 $$");
+    let output = run_with_path(&package_dir, &stub, &["test"]);
+
+    assert_eq!(output.status.code(), Some(1), "{:?}", output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("`node` ended before the tests finished"),
+        "expected the error to say node ended early, got: {}",
+        stderr
+    );
+}

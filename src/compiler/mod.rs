@@ -54,7 +54,7 @@ use codespan_reporting::term::{self};
 use log::debug;
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub mod canonical;
 // Public because it is a rule about the language rather than an implementation detail of
@@ -829,6 +829,13 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
 /// interface*](../../docs/spec/toolchain.md#the-compilers-interface)).
 pub const BUILD_DIRECTORY: &str = "build";
 
+/// The tree a build that compiled the tests writes below `build_dir`: `build_dir/test/js/`,
+/// laid out like `build_dir/out/js/`. Both the write of that tree and the entry point
+/// [`test_runner::run`] puts in it name it through here.
+pub(crate) fn test_tree(build_dir: &Path) -> PathBuf {
+    build_dir.join("test").join("js")
+}
+
 /// [`compile_package`], writing its output below `build_dir` rather than below the
 /// package's own `build/`.
 ///
@@ -1118,7 +1125,7 @@ fn compile(
         if let Some(test_files) = test_files.filter(|_| errors.is_empty()) {
             debug!("phase: write the test build");
             errors.extend(
-                output::write(&build_dir.join("test").join("js"), &test_files)
+                output::write(&test_tree(build_dir), &test_files)
                     .into_iter()
                     .map(CompilationError::Output),
             );

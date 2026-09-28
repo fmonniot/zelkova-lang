@@ -22,9 +22,11 @@
 //! once*](../../../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once))
 //! and a test is such a binding, so a module whose test aborts fails to load. A static
 //! import would take the whole run down with it. An `import()` that rejects instead marks
-//! every test collected from that module as errored, carrying the message of what was
-//! thrown, and the run moves on to the next module. An errored test counts against the exit
-//! code exactly as a failed one does.
+//! every test collected from that module as errored, saying the module failed to load and
+//! carrying the message of what was thrown, and the run moves on to the next module. An
+//! errored test counts against the exit code exactly as a failed one does.
+//!
+//! This phase is the only place the compiler starts `node`.
 //!
 //! A module that holds no test is left out of the list: there is nothing to attribute a
 //! failure to, so loading it could only turn a package with no tests into a failing one.
@@ -35,7 +37,8 @@ use std::process::Command;
 use super::name::Name;
 use super::test_collection::{self, ModuleTests};
 use super::{
-    compile_package_with_tests, javascript, CompilationError, PhaseError, BUILD_DIRECTORY,
+    compile_package_with_tests, javascript, test_tree, CompilationError, PhaseError,
+    BUILD_DIRECTORY,
 };
 
 /// The entry point's file name, at the root of `build/test/js/`, beside the runtime.
@@ -104,11 +107,7 @@ pub fn run(package_dir: &Path) -> Result<i32, CompilationError> {
         return Ok(0);
     }
 
-    let entry = package_dir
-        .join(BUILD_DIRECTORY)
-        .join("test")
-        .join("js")
-        .join(RUN_FILE);
+    let entry = test_tree(&package_dir.join(BUILD_DIRECTORY)).join(RUN_FILE);
     std::fs::write(&entry, entry_point(&modules)).map_err(|error| {
         CompilationError::TestRun(Error::WriteEntryPoint {
             path: entry.clone(),
@@ -204,7 +203,7 @@ for (const { module, file, tests } of modules) {
     // test that aborts takes its whole module with it. Say so for each of its tests.
     const message = error instanceof Error ? error.message : String(error);
     for (const test of tests) {
-      console.log(`ERROR ${module}.${test}: ${message}`);
+      console.log(`ERROR ${module}.${test}: module failed to load: ${message}`);
       errored += 1;
     }
     continue;
@@ -274,21 +273,26 @@ mod tests {
 
     /// What the generated code does with what it reads, which is the part of the entry
     /// point that is not data: it loads a module by a dynamic `import()` it can catch,
-    /// counts only a `$` of `"Pass"` as a pass, reports a module that failed to load against
-    /// each of its tests, and turns any test not passing into exit code 1.
+    /// reads each collected export off the loaded module by its name, counts only a `$` of
+    /// `"Pass"` as a pass, reports a module that failed to load against each of its tests,
+    /// and turns any test not passing into exit code 1.
     ///
     /// Mutation-checked by deleting the `process.exitCode = 1;` line from `TAIL`: the last
-    /// assertion goes red. Deleting the `try`/`catch` fails the third, and comparing `$`
-    /// against a different tag fails the second.
+    /// assertion goes red. Deleting the `try`/`catch` fails the `catch (error)` one,
+    /// comparing `$` against a different tag fails the `value.$` one, and reading the export
+    /// by another key fails the `loaded[test]` one.
     #[test]
     fn the_entry_point_reports_and_sets_the_exit_code() {
         let text = entry_point(&[module("acme", "AppTest", &["addsUp"])]);
 
         assert!(text.contains("await import(file)"), "{}", text);
+        assert!(text.contains("const value = loaded[test];"), "{}", text);
         assert!(text.contains("value.$ === \"Pass\""), "{}", text);
         assert!(text.contains("catch (error)"), "{}", text);
         assert!(
-            text.contains("console.log(`ERROR ${module}.${test}: ${message}`);"),
+            text.contains(
+                "console.log(`ERROR ${module}.${test}: module failed to load: ${message}`);"
+            ),
             "{}",
             text
         );
