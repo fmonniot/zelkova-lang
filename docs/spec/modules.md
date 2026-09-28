@@ -836,7 +836,7 @@ module foreign Below exposing (twice)
 unsafe twice : Int -> Int
 ```
 
-**Known gap:** `std/core` ships three of the eight, so `List`, `Char` and `Task` bring
+**Known gap:** `std/core` ships five of the eight, so `List`, `Char` and `Task` bring
 nothing: a program naming `Char.toUpper` or annotating a `List` is rejected where the name
 is written. Each entry starts working on the day its module compiles.
 
