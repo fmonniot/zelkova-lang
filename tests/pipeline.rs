@@ -4940,6 +4940,40 @@ fn a_test_dependency_does_not_reach_the_src_root() {
     );
 }
 
+/// `BUG-43`'s fixture (`package_test_cross_module_calls`) is otherwise reached only by
+/// `cargo run -- test`, which `cargo test` never runs ([`DEC-18` decision
+/// 6](../docs/decisions/dec-18.md)) — so a `cargo test` run never even compiled it, let
+/// alone checked what it emits. This pins that it compiles under
+/// `compile_package_with_tests_into`, against the real `zelkova-core` and `zelkova-test`
+/// interfaces rather than the hand-built ones `tests/javascript.rs`'s `emitted_across`
+/// uses, and that the emitted `PickTest.mjs` calls `Lib.pick` directly with both
+/// arguments — the cross-module call BUG-43 fixed.
+///
+/// Mutation-checked by reverting `canonical::Module::to_interface` to record no arities
+/// at all (an empty map in place of the one built from `emitted_arity`): the emitted call
+/// goes back to `pick(true)(false)` and this assertion goes red.
+#[test]
+fn cross_module_arity_fixture_compiles_and_calls_directly() {
+    let build_dir =
+        fresh_build_dir("cross_module_arity_fixture_compiles_and_calls_directly");
+
+    let result = zelkova_lang::compiler::compile_package_with_tests_into(
+        &fixture_package("package_test_cross_module_calls"),
+        &build_dir,
+    );
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    let pick_test = std::fs::read_to_string(
+        build_dir.join("test/js/package-test-cross-module-calls/PickTest.mjs"),
+    )
+    .unwrap();
+    assert!(
+        pick_test.contains("package_test_cross_module_calls$Lib$pick(true, false)"),
+        "expected a direct call supplying both arguments, got:\n{}",
+        pick_test
+    );
+}
+
 /// `LANG-63`: `compile_package_with_tests` hands back the root's checked `tests/`
 /// `Interface`s, and `test_collection::collect` finds a test among them by the
 /// exposed value's full `QualName` — package included — never by the spelling
