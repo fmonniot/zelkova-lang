@@ -33,6 +33,11 @@ half it holds.
   [`Err (Threw ..)`](../spec/evaluation-semantics.md#an-effect-that-can-fail) for a failure the
   companion raised, and `Err (Malformed ..)` for a value that does not match. A thrown exception
   and a rejected promise are both `Threw`.
+- **A `()` payload is discarded, not checked** ([`GEN-20`](gen-20.md)). For
+  `Task (Result Failure ())` the wrapper ignores whatever the companion returns, or its promise
+  resolves to, and yields `Ok ()` with `()` as `undefined`. A companion ending on a call it does
+  not mean to return — `a.push(x)`, `map.set(k, v)` — is therefore `Ok`, never `Malformed`. It
+  still catches: a throw or a rejection is `Threw` as for any other payload.
 - **A result that never arrives is not a failure.** It is a `Task` that never produces a value,
   which is the second of the [two outcomes](../spec/evaluation-semantics.md#two-outcomes).
 - An [`unsafe`](../spec/interop.md#an-unsafe-facade) facade gets **no wrapper** — its companion
@@ -57,11 +62,12 @@ The predicate that decides whether the returned value matches `a` is [`GEN-2`](g
 ticket calls one and routes its answer. The routing is the part that differs by facade kind, and
 it is stated in [`GEN-2`](gen-2.md)'s first point.
 
-**Acceptance:** four companions, each behind an unmarked facade under `std/core/tests/`, asserted
+**Acceptance:** five companions, each behind an unmarked facade under `std/core/tests/`, asserted
 as Zelkova tests that `zelkova test` runs through [`LANG-76`](lang-76.md)'s `Test` over a `Task`:
 one that throws synchronously yields `Err (Threw _)`; one whose promise rejects yields
 `Err (Threw _)`; one that returns a value of the wrong shape yields `Err (Malformed _)`; and one
-that returns correctly, after an `await`, yields `Ok` with the value. With no string literals, the
+that returns correctly, after an `await`, yields `Ok` with the value. A fifth, behind a
+`Task (Result Failure ())` facade, returns a number and yields `Ok ()`. With no string literals, the
 tests match the constructor and do not compare the `String`. That `Threw` carries the host's
 description and `Malformed` names the export is asserted on the emitted wrapper's behaviour in a
 `node --test` check beside `runtime/js/tests/`. `Malformed` may land with [`GEN-2`](gen-2.md), as

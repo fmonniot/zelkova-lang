@@ -62,6 +62,13 @@ every phase downstream of the boundary is entitled to believe it.
    leaves to code generation. So this ticket inherits whatever [`GEN-1`](gen-1.md)'s program
    settles for them rather than deciding it — and neither is reachable until
    [`LANG-47`](lang-47.md) and [`LANG-44`](lang-44.md) make one writable at all.
+   **`()` depends on where it sits**, as [`GEN-20`](gen-20.md) decided and publishes in the
+   table's `()` row. Nested inside a tuple, record, list or union, its predicate is
+   `v === undefined`, and a record field of type `()` must be present. As a facade's whole
+   result it has no predicate: whatever the companion returns is discarded and replaced with
+   `undefined`, never passed through, so nothing is checked and nothing can fail — the
+   [WIT column's](../spec/interop.md#which-types-may-cross-the-boundary) "no result", read in
+   JavaScript. That holds for an `unsafe` facade as much as for an effectful one.
 4. **Recursion and cost.** A predicate for a recursive union is a recursive walk, and it
    terminates because a Zelkova value is immutable and holds no cycle. It costs the size of the
    value at each crossing, which the chapter states rather than hides; a first version should
