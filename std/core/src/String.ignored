@@ -90,7 +90,8 @@ characters with different widths.
 This is not true in Elm. You must use double quotes for a `String`, and you must
 use single quotes for a [`Char`](Char#Char).
 -}
-type String = String -- NOTE: The compiler provides the real implementation.
+-- The declaration lives in `String.zel` now (LANG-73). This file is a `.ignored`
+-- reference for porting the rest of the module, not a second declaration of the type.
 
 
 {-| Determine if a string is empty.

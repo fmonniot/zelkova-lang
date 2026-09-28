@@ -415,8 +415,8 @@ to [the default imports](modules.md#the-default-imports), which is also where th
 covers arises — a [facade](interop.md) underneath `Basics`. It supplies the five type names and
 nothing else, so a module reaching `Bool` that way can annotate one and cannot write a `True`.
 
-**Not implemented:** `Char` and `String` do not compile, so neither declares the scalar it is
-named for.
+**Not implemented:** `Char` does not compile, so it does not declare the scalar it is named
+for.
 
 ## Type annotations
 

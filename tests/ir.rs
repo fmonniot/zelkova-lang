@@ -704,7 +704,7 @@ fn a_declaration_with_no_ir_is_named_rather_than_dropped() {
 
 /// Every module of the standard library comes back with an IR.
 ///
-/// This is `cargo run`'s eight modules, checked the way the compiler checks them —
+/// This is `cargo run`'s nine modules, checked the way the compiler checks them —
 /// dependency order, each against the interfaces of the ones before it — and it is the
 /// only test here that runs over real source rather than a module written for it. What
 /// it establishes is coverage: the shape above is not one that only holds for four-line
@@ -734,7 +734,7 @@ fn every_module_of_the_standard_library_gets_an_ir() {
                 .unwrap_or_else(|e| panic!("parse error in {:?}: {:?}", file.file().name(), e))
         })
         .collect();
-    assert_eq!(modules.len(), 8, "std/core holds eight modules");
+    assert_eq!(modules.len(), 9, "std/core holds nine modules");
 
     let module_files = HashMap::new();
     let package = PackageName::new("zelkova-core").unwrap();
@@ -745,7 +745,7 @@ fn every_module_of_the_standard_library_gets_an_ir() {
         walker.check_in_order(&package, &mut interfaces, &module_files, check_module);
 
     assert!(errors.is_empty(), "std/core must check: {:?}", errors);
-    assert_eq!(checked.len(), 8);
+    assert_eq!(checked.len(), 9);
 
     for module in &checked {
         assert_eq!(

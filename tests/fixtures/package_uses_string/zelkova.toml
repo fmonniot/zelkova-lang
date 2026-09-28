@@ -1,0 +1,12 @@
+# `Uses.zel` annotates `f : String -> String` and writes no `import` at all —
+# `String` has to reach it purely through the default imports (`LANG-73`), against
+# the real `std/core`, not a lightweight fixture double, since the point is whether
+# `std/core/src/String.zel` itself resolves.
+name = "package-uses-string"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]

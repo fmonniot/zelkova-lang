@@ -1,0 +1,6 @@
+module Uses exposing (f)
+
+
+f : String -> String
+f s =
+  s
