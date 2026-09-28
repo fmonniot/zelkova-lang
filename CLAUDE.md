@@ -42,9 +42,13 @@ exist — and run with `node --test 'std/core/tests/**/*.mjs'`, not wired into C
 such a file goes and why is [*Testing a companion*](docs/spec/interop.md#testing-a-companion);
 each file's header says what it covers.
 
-Note that `.github/workflows/rust.yml` marks the `fmt` and `clippy` jobs `continue-on-error:
-true`, so **CI does not actually gate on them**. Run both locally; a red clippy will not be
-caught for you.
+`.github/workflows/rust.yml` gates a PR on `fmt`, on `clippy` with `-D warnings`, and on a
+`rustdoc` job that builds the crate's docs with the flags `rustdoc.yml` deploys them with. To
+reproduce that last one locally:
+
+```sh
+RUSTFLAGS="-D warnings -W unreachable-pub" RUSTDOCFLAGS="-D warnings" cargo doc -p zelkova-lang --no-deps
+```
 
 ## Where work is tracked
 
