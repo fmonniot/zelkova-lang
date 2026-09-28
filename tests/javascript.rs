@@ -1293,17 +1293,37 @@ fn an_unsafe_facade_re_exports_its_companion() {
 }
 
 /// A facade signature not marked `unsafe` declares an effect, which this backend does
-/// not wrap yet, so it is refused rather than emitted as if it were `unsafe`.
+/// not wrap yet, so it is refused rather than emitted as if it were `unsafe`. The
+/// result is `Task (Result Failure Int)` — the one shape canonicalization admits an
+/// unmarked signature with (`LANG-68`) — since this test is about the backend's own
+/// refusal and not about that check.
 ///
 /// Mutation-checked by dropping the `!marked_unsafe` check in
 /// `Emitter::facade_declaration`: `add` then emits the `unsafe` shape.
 #[test]
 fn an_effectful_facade_signature_is_refused() {
-    let errors = refused(indoc! {r#"
+    let source = indoc! {r#"
         module foreign Test exposing (add)
 
-        add : Int -> Int -> Int
-    "#});
+        import Task exposing (Task, Failure)
+
+        add : Int -> Int -> Task (Result Failure Int)
+    "#};
+    let module = checked_against(
+        source,
+        HashMap::from([
+            basics_interface(),
+            char_interface(),
+            maybe_interface(),
+            task_interface(),
+            result_interface(),
+        ]),
+    );
+
+    let errors = match javascript::emit(&module, true) {
+        Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
+        Err(errors) => errors,
+    };
 
     // `NodeSpan`'s equality ignores the span, so this compares the variant and the name.
     assert_eq!(

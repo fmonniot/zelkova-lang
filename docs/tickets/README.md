@@ -180,15 +180,15 @@ The language owner settled the program's shape on 2026-09-27:
 - **Tests wait on effects.** `zelkova-test` gains a `Test` that holds a `Task`, and the `.mjs`
   checks under `std/core/tests/Js/` move to the test-facade layout
   [*Testing a companion*](../spec/interop.md#testing-a-companion) specifies.
-- **[`LANG-68`](lang-68.md) also rejects `Task` outside the whole of a facade's result,** and no
-  separate ticket is filed for that.
+- **[`LANG-68`](README.md) (closed) also rejects `Task` outside the whole of a facade's result,**
+  and no separate ticket is filed for that.
 
 ```
 SPEC-37  how a `Task` is represented and run, on JavaScript and WebAssembly   ── closed
 LANG-72  `()` as a type, an expression and a pattern                           ── closed
   └── GEN-20  emit `()`, and publish its JavaScript value                    ── closed
 LANG-73  `std/core` declares `String`                                          ── closed
-LANG-68  an unmarked facade returns `Task (Result Failure a)`; `Task` nowhere else  ── independent
+LANG-68  an unmarked facade returns `Task (Result Failure a)`; `Task` nowhere else  ── closed
 GEN-2    the boundary predicates                                               ── independent
   │
   │  SPEC-37 + LANG-73 (both closed)
@@ -398,7 +398,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-65 | task | — | closed 2026-09-21 | Three more `std/core` JavaScript functions still read an `Int` as a number |
 | [LANG-66](lang-66.md) | task | — | open | What a negative `Int` exponent means for `pow` is undecided |
 | [LANG-67](lang-67.md) | task | — | open | `pow`'s `bigint` branch can materialize an astronomically large intermediate before masking |
-| [LANG-68](lang-68.md) | task | — | open | An unmarked facade signature is not held to the `Task (Result Failure a)` result shape |
+| LANG-68 | task | — | closed 2026-09-28 | An unmarked facade signature is not held to the `Task (Result Failure a)` result shape |
 | LANG-69 | task | — | closed 2026-09-27 | There is no `zelkova test`: nothing runs a package's tests |
 | [LANG-70](lang-70.md) | task | — | open | A constraint in an annotation is resolved, and its context reaches the canonical module |
 | [LANG-71](lang-71.md) | task | — | open | A constraint context of four or more constraints does not parse |

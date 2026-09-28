@@ -576,9 +576,12 @@ fn open_exposing_with_unannotated_declaration_is_error() {
 
 #[test]
 fn foreign_facade_module() {
+    // `add` is `unsafe` — LANG-68 holds an *unmarked* facade to a
+    // `Task (Result Failure a)` result, and this scenario is about the
+    // placeholder `Value::TypedValue` a facade builds, not that check.
     let source = indoc::indoc! {r#"
         module foreign Test exposing (add)
-        add : Int -> Int -> Int
+        unsafe add : Int -> Int -> Int
     "#};
     let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
@@ -588,7 +591,7 @@ fn foreign_facade_module() {
     assert_eq!(
         module.values.get(&"add".into()).unwrap(),
         &canonical::Value::TypedValue {
-            marked_unsafe: false,
+            marked_unsafe: true,
             span: NodeSpan::none(),
             annotation_span: NodeSpan::none(),
             name: "add".into(),
@@ -2178,7 +2181,9 @@ fn constructor_applications_remain_valid_variants() {
 // ── Scenario 13: `unsafe` on a facade signature ──────────────────────────────
 
 /// The modifier survives the parser and canonicalization, landing on the value
-/// the facade declares.
+/// the facade declares. `fdiv` is unmarked, so its result is `Task (Result
+/// Failure Int)` — the shape LANG-68 holds an unmarked signature to — rather
+/// than the plain `Int -> Int -> Int` this scenario predates that check with.
 ///
 /// Verified to fail by pinning `marked_unsafe: false` at the facade branch's
 /// `Value::TypedValue` in `canonical/mod.rs`.
@@ -2186,10 +2191,13 @@ fn constructor_applications_remain_valid_variants() {
 fn unsafe_facade_signature_is_marked() {
     let source = indoc::indoc! {r#"
         module foreign Test exposing (idiv, fdiv)
+
+        import Task exposing (Task, Failure)
+
         unsafe idiv : Int -> Int -> Int
-        fdiv : Int -> Int -> Int
+        fdiv : Int -> Int -> Task (Result Failure Int)
     "#};
-    let module = canonicalize_with_scalars(source).expect("should canonicalize");
+    let module = canonicalize_with_effects(source).expect("should canonicalize");
 
     let marked = |name: &str| match module.values.get(&name.into()) {
         Some(canonical::Value::TypedValue { marked_unsafe, .. }) => *marked_unsafe,
@@ -2241,7 +2249,9 @@ fn unsafe_outside_a_facade_is_error() {
 }
 
 /// `unsafe : Int` names a facade constant; it is not a modifier with its name
-/// missing, and it is not rejected as a stray `unsafe`.
+/// missing, and it is not rejected as a stray `unsafe`. The constant is
+/// unmarked, so its type is `Task (Result Failure Int)` rather than the bare
+/// `Int` this scenario predates LANG-68's effect-shape check with.
 ///
 /// Verified to fail by making `FunType`'s `"unsafe" ":" Type` alternative set
 /// `marked_unsafe: true`, which turns the value into a marked one.
@@ -2249,9 +2259,12 @@ fn unsafe_outside_a_facade_is_error() {
 fn unsafe_is_a_facade_constant_name() {
     let source = indoc::indoc! {r#"
         module foreign Test exposing (unsafe)
-        unsafe : Int
+
+        import Task exposing (Task, Failure)
+
+        unsafe : Task (Result Failure Int)
     "#};
-    let module = canonicalize_with_scalars(source).expect("should canonicalize");
+    let module = canonicalize_with_effects(source).expect("should canonicalize");
 
     match module.values.get(&"unsafe".into()) {
         Some(canonical::Value::TypedValue {
@@ -2353,6 +2366,349 @@ fn facade_signature_over_admitted_tuple_is_accepted() {
     "#};
 
     canonicalize_with_scalars(source).expect("a tuple of admitted types must canonicalize");
+}
+
+// ── LANG-68: an unmarked facade's result must be `Task (Result Failure a)`,
+//    and `Task` may appear nowhere else ────────────────────────────────────
+//
+// `docs/spec/interop.md#an-effectful-facade` settles the shape: a facade
+// declares an effect by default, so an unmarked signature's result must be
+// exactly `Task (Result Failure a)`; `unsafe` is what removes that
+// requirement (`DEC-12` decisions 1 and 7). The same chapter section confines
+// `Task` to that one position — never an argument, never nested inside
+// another type — whether or not the signature is `unsafe`.
+//
+// `zelkova-core` declares neither `Task` nor `Result` yet (`LANG-74`), so
+// every fixture below hands `canonicalize_with_interfaces` the synthetic
+// `task_interface`/`result_interface` built for exactly this, beside the
+// scalars `canonicalize_with_scalars` already supplies.
+
+/// The interface map every test below uses: [`scalar_interfaces`] plus
+/// `Task`, `Result` and `String` — the three `zelkova-core` modules an
+/// unmarked facade's required result shape can name.
+fn effect_interfaces() -> HashMap<zelkova_lang::compiler::name::Name, Interface> {
+    let mut interfaces = scalar_interfaces();
+    for (name, interface) in [task_interface(), result_interface(), string_interface()] {
+        interfaces.insert(name, interface);
+    }
+    interfaces
+}
+
+fn canonicalize_with_effects(source: &str) -> Result<canonical::Module, Vec<canonical::Error>> {
+    canonicalize_with_interfaces(source, &effect_interfaces())
+}
+
+/// An interface for a module named `Widgets`, declaring its own union spelled
+/// `Task` — the fixture [`facade_naming_a_user_declared_task_is_an_ordinary_union`]
+/// needs to show that `Task` is recognised by the qualified name of its
+/// declaration and never by spelling: `Widgets.Task` shares four letters with
+/// `Task.Task` and nothing else.
+fn widgets_task_interface() -> (zelkova_lang::compiler::name::Name, Interface) {
+    let mut unions = HashMap::new();
+    unions.insert(
+        "Task".into(),
+        canonical::UnionType {
+            span: NodeSpan::none(),
+            variables: vec![],
+            variants: vec![canonical::TypeConstructor {
+                name: "Noop".into(),
+                type_parameters: vec![],
+                tpe: qual_in(&test_package(), "Widgets.Task"),
+            }],
+        },
+    );
+
+    let interface = Interface {
+        module_name: zelkova_lang::compiler::ModuleName::new(test_package(), "Widgets".into()),
+        values: HashMap::new(),
+        unions,
+        infixes: HashMap::new(),
+        infix_functions: HashMap::new(),
+        arities: HashMap::new(),
+        file: None,
+    };
+
+    ("Widgets".into(), interface)
+}
+
+/// `Task (Result Failure String)`, unmarked — the shape
+/// [`docs/spec/interop.md`](../../../docs/spec/interop.md#an-effectful-facade)'s
+/// own `read` example writes, and the first of the two payload types the
+/// ticket's test list asks for.
+///
+/// Verified to fail by neutralising the new `is_task_applied(result)` branch
+/// to always fall through to the `else` arm: this then reports
+/// `FacadeResultNotEffect` instead of canonicalizing, and `expect` panics.
+#[test]
+fn unmarked_facade_over_task_result_failure_string_is_accepted() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (read)
+
+        import Task exposing (Task, Failure)
+
+        read : String -> Task (Result Failure String)
+    "#};
+
+    canonicalize_with_effects(source)
+        .expect("`Task (Result Failure String)` is exactly the required shape");
+}
+
+/// `Task (Result Failure Int)`, unmarked — the second payload type the
+/// ticket's test list asks for, and a facade constant rather than a function.
+#[test]
+fn unmarked_facade_over_task_result_failure_int_is_accepted() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (now)
+
+        import Task exposing (Task, Failure)
+
+        now : Task (Result Failure Int)
+    "#};
+
+    canonicalize_with_effects(source)
+        .expect("`Task (Result Failure Int)` is exactly the required shape");
+}
+
+/// A bare `Int` result on an unmarked facade — no `Task` in sight — is the
+/// simplest shape mismatch there is.
+///
+/// Verified to fail by neutralising the new checks — commenting out the
+/// `else if is_task_applied(result) ... else if contains_task(result) ...
+/// else` chain that follows the existing `FacadeTypeNotAdmitted` check: the
+/// module then canonicalizes cleanly and `expect_err` panics.
+#[test]
+fn unmarked_facade_over_bare_int_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (now)
+
+        now : Int
+    "#};
+
+    let errors = canonicalize_with_effects(source)
+        .expect_err("an unmarked facade's result must be `Task (Result Failure a)`");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::FacadeResultNotEffect(name, _) => {
+            assert_eq!(name.as_str(), "now");
+        }
+        other => panic!("expected FacadeResultNotEffect, got {:?}", other),
+    }
+
+    let annotation = "now : Int";
+    let start = source.find(annotation).expect("source has the annotation");
+
+    use zelkova_lang::compiler::PhaseError;
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + annotation.len()),
+        "the caret must cover the whole annotation, the finest span in hand"
+    );
+}
+
+/// `Task Int`, unmarked — `Task` is in the one position it may occupy, but
+/// what it wraps is not `Result Failure a`. This is what tells
+/// `is_task_applied` apart from a plain shape check: the outer shape is
+/// right and the inner one is wrong, which is still `FacadeResultNotEffect`
+/// and not `FacadeTaskMisplaced`.
+#[test]
+fn unmarked_facade_over_task_int_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (now)
+
+        now : Task Int
+    "#};
+
+    let errors =
+        canonicalize_with_effects(source).expect_err("`Task Int` is not `Task (Result Failure a)`");
+
+    match errors.as_slice() {
+        [canonical::Error::FacadeResultNotEffect(name, _)] => {
+            assert_eq!(name.as_str(), "now");
+        }
+        other => panic!("expected one FacadeResultNotEffect, got {:?}", other),
+    }
+}
+
+/// `unsafe` removes the effect-shape requirement (`DEC-12` decision 7): the
+/// same bare `Int` that [`unmarked_facade_over_bare_int_is_rejected`] rejects
+/// canonicalizes cleanly once the signature says `unsafe`.
+///
+/// Verified to fail by neutralising the `function.marked_unsafe` guard to
+/// always take the unmarked branch: this then reports `FacadeResultNotEffect`
+/// and `expect` panics.
+#[test]
+fn unsafe_facade_over_bare_int_is_accepted() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (magic)
+
+        unsafe magic : Int
+    "#};
+
+    canonicalize_with_effects(source).expect("`unsafe` is not held to the effect result shape");
+}
+
+/// `Task` named as an argument — never admitted, marked or not.
+///
+/// Verified to fail by neutralising the `parameters.iter().copied().any(contains_task)`
+/// check: the module then canonicalizes cleanly and `expect_err` panics.
+#[test]
+fn task_as_an_argument_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (run)
+
+        import Task exposing (Task, Failure)
+
+        run : Task Int -> Task (Result Failure Int)
+    "#};
+
+    let errors = canonicalize_with_effects(source)
+        .expect_err("`Task` may not be named as a facade's argument");
+
+    match errors.as_slice() {
+        [canonical::Error::FacadeTaskMisplaced(name, _)] => {
+            assert_eq!(name.as_str(), "run");
+        }
+        other => panic!("expected one FacadeTaskMisplaced, got {:?}", other),
+    }
+}
+
+/// `Maybe (Task Int)` as a result — `Task` is present, but not at the top, so
+/// this is `FacadeTaskMisplaced` rather than `FacadeResultNotEffect`, unlike
+/// the bare-`Int` and `Task Int` mismatches above that never mention `Task`
+/// in the wrong place.
+#[test]
+fn task_nested_in_another_type_as_a_result_is_rejected() {
+    let mut interfaces = effect_interfaces();
+    let (name, interface) = maybe_interface();
+    interfaces.insert(name, interface);
+
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (run)
+
+        run : Int -> Maybe (Task Int)
+    "#};
+
+    let errors = canonicalize_with_interfaces(source, &interfaces)
+        .expect_err("`Task` nested inside `Maybe` is not the required result shape");
+
+    match errors.as_slice() {
+        [canonical::Error::FacadeTaskMisplaced(name, _)] => {
+            assert_eq!(name.as_str(), "run");
+        }
+        other => panic!("expected one FacadeTaskMisplaced, got {:?}", other),
+    }
+}
+
+/// `Task (Result Failure (Task Int))` — the outer three levels are exactly
+/// the required shape, and `Task` reappears inside the payload `a`.
+///
+/// Verified to fail by neutralising the `contains_task(payload)` check inside
+/// the `is_task_applied` branch: this then accepts the signature and
+/// `expect_err` panics.
+#[test]
+fn task_nested_in_the_payload_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (run)
+
+        import Task exposing (Task, Failure)
+
+        run : Task (Result Failure (Task Int))
+    "#};
+
+    let errors = canonicalize_with_effects(source)
+        .expect_err("`Task` inside the payload `a` is not admitted");
+
+    match errors.as_slice() {
+        [canonical::Error::FacadeTaskMisplaced(name, _)] => {
+            assert_eq!(name.as_str(), "run");
+        }
+        other => panic!("expected one FacadeTaskMisplaced, got {:?}", other),
+    }
+}
+
+/// An `unsafe` facade returning `Task Int` — `unsafe` only removes the
+/// effect-shape *requirement*; it grants no exemption from the "`Task`
+/// nowhere else" rule, so `Task` at the top of an `unsafe` result is rejected
+/// exactly like `Task` anywhere else would be.
+///
+/// Verified to fail by neutralising the `if function.marked_unsafe { if
+/// contains_task(result) ... }` branch: this then accepts the signature and
+/// `expect_err` panics.
+#[test]
+fn unsafe_facade_returning_task_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (run)
+
+        unsafe run : Int -> Task Int
+    "#};
+
+    let errors =
+        canonicalize_with_effects(source).expect_err("`unsafe` does not admit `Task` as a result");
+
+    match errors.as_slice() {
+        [canonical::Error::FacadeTaskMisplaced(name, _)] => {
+            assert_eq!(name.as_str(), "run");
+        }
+        other => panic!("expected one FacadeTaskMisplaced, got {:?}", other),
+    }
+}
+
+/// An `unsafe` facade naming `Task` as an argument — `unsafe` only removes
+/// the effect-shape requirement on the *result*; the parameter-position check
+/// runs unconditionally, before the `marked_unsafe` branch is even reached,
+/// so `Task` is rejected as an argument whether or not the signature is
+/// `unsafe`, exactly as
+/// [`task_as_an_argument_is_rejected`] shows for an unmarked one.
+///
+/// Verified to fail by neutralising the `parameters.iter().copied().any(contains_task)`
+/// check: the module then canonicalizes cleanly and `expect_err` panics.
+#[test]
+fn unsafe_facade_task_as_an_argument_is_rejected() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (run)
+
+        unsafe run : Task Int -> Int
+    "#};
+
+    let errors = canonicalize_with_effects(source)
+        .expect_err("`unsafe` grants no exemption from `Task` as a facade's argument");
+
+    match errors.as_slice() {
+        [canonical::Error::FacadeTaskMisplaced(name, _)] => {
+            assert_eq!(name.as_str(), "run");
+        }
+        other => panic!("expected one FacadeTaskMisplaced, got {:?}", other),
+    }
+}
+
+/// A facade naming a user-declared `Task` — from a module named `Widgets`,
+/// not `Task` — canonicalizes as an ordinary union, with no
+/// `FacadeTaskMisplaced` in sight: `Task` is recognised by the qualified name
+/// of its declaration and never by spelling.
+///
+/// Verified to fail by neutralising `is_task_declaration` to compare only
+/// `name.unqualified_name()` against `"Task"`, dropping the module and
+/// package: `Widgets.Task` is then misread as the real one and this starts
+/// reporting `FacadeTaskMisplaced` instead of canonicalizing.
+#[test]
+fn facade_naming_a_user_declared_task_is_an_ordinary_union() {
+    let mut interfaces = scalar_interfaces();
+    let (name, interface) = widgets_task_interface();
+    interfaces.insert(name, interface);
+
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (run)
+
+        import Widgets exposing (Task)
+
+        unsafe run : Task -> Int
+    "#};
+
+    canonicalize_with_interfaces(source, &interfaces)
+        .expect("a module's own `Task` is an ordinary union, not the effect type");
 }
 
 // ── LANG-59: an opaque scalar's declaration is not an ordinary union ─────────
@@ -3149,8 +3505,9 @@ fn every_malformed_constraint_of_a_list_is_reported_at_its_own_span() {
 }
 
 /// A facade signature may not be constrained, however well-formed the
-/// constraint is. The signature's types are all admitted ones, so this is the
-/// only error, and its caret sits under the context.
+/// constraint is. `compare` is `unsafe`, so LANG-68's effect-shape check has
+/// nothing to say about it and this is the only error; its caret sits under
+/// the context.
 ///
 /// Verified to fail by disabling the `source.binding_foreign` branch that pushes
 /// `FacadeConstrained` in `canonicalize`: the facade then canonicalizes
@@ -3161,7 +3518,7 @@ fn constrained_facade_signature_is_rejected() {
 
     let source = indoc::indoc! {r#"
         module foreign Test exposing (compare)
-        compare : Comparable a => Int -> Int -> Int
+        unsafe compare : Comparable a => Int -> Int -> Int
     "#};
 
     let errors = canonicalize_with_scalars(source)
