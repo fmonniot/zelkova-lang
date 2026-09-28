@@ -1,4 +1,4 @@
-# PERF-2 · Every `Basics` operator is called through `$curry`, because its declaration has no parameters
+# PERF-2 · Every `Basics` operator backed by a parameterless binding is called through `$curry`
 
 **Sizing:** small once decided. The change is either a rewrite of `std/core/src/Basics.zel`'s
 and `Bitwise.zel`'s forwarding declarations or one rule about a parameterless binding's arity.

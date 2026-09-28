@@ -409,7 +409,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
 | AST-4 | task | — | closed 2026-09-15 | A canonical type carries an unqualified name, so two types of one name are one type |
 | PERF-1 | task | — | closed 2026-08-25 | Reduce cloning in the `Layout` iterator |
-| [PERF-2](perf-2.md) | task | — | open | Every `Basics` operator is called through `$curry`, because its declaration has no parameters |
+| [PERF-2](perf-2.md) | task | — | open | Every `Basics` operator backed by a parameterless binding is called through `$curry` |
 | TIDY-1 | task | — | closed 2026-08-25 | Make `Name`'s inner `String` private |
 | TIDY-2 | task | — | closed 2026-08-25 | Replace the tokenizer's keyword `HashMap` with a `match` |
 | TIDY-3 | task | — | closed 2026-08-25 | Fix the `associativy` typo |
@@ -418,6 +418,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TIDY-6 | task | — | closed 2026-08-26 | Stale doc comment on `canonical_type_to_typer_type` |
 | [TIDY-7](tidy-7.md) | task | — | open | Four label/diagnostic messages in `Error::Tokenizer`'s match are still capitalized |
 | [TIDY-8](tidy-8.md) | task | — | open | Two tokenizer comments describe the `Int` width as unsettled and cite a closed ticket |
+| [TIDY-9](tidy-9.md) | task | — | open | `Interface::arities` is a parallel map, and a miss silently reads as arity 0 |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |
