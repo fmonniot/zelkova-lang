@@ -4954,8 +4954,7 @@ fn a_test_dependency_does_not_reach_the_src_root() {
 /// goes back to `pick(true)(false)` and this assertion goes red.
 #[test]
 fn cross_module_arity_fixture_compiles_and_calls_directly() {
-    let build_dir =
-        fresh_build_dir("cross_module_arity_fixture_compiles_and_calls_directly");
+    let build_dir = fresh_build_dir("cross_module_arity_fixture_compiles_and_calls_directly");
 
     let result = zelkova_lang::compiler::compile_package_with_tests_into(
         &fixture_package("package_test_cross_module_calls"),
