@@ -384,6 +384,159 @@ fn an_imported_nullary_constructor_is_hoisted_by_the_importer() {
     assert!(!text.contains("$test_project$Test$"), "got:\n{}", text);
 }
 
+/// `Lib` checked on its own and `Test` against its interface, the way a build orders them,
+/// so a call across the boundary is what the front end makes of it and not a hand-built
+/// stand-in. Answers both modules' emitted text, `Lib`'s first.
+fn emitted_across(lib: &str, test: &str) -> (String, String) {
+    let mut interfaces = HashMap::from([basics_interface(), char_interface(), maybe_interface()]);
+    let lib = checked_against(lib, interfaces.clone());
+    interfaces.insert(lib.canonical.name.name().clone(), lib.to_interface(None));
+    let test = checked_against(test, interfaces);
+
+    (emit(&lib), emit(&test))
+}
+
+/// A module exports a declaration of two parameters as the plain two-parameter function it
+/// emitted, and a module importing it reads its arity from the interface: a call supplying
+/// both arguments is a direct call, and a partial application goes through `$curry`, as it
+/// would inside `Lib`.
+///
+/// Mutation-checked two ways: by dropping the `ReferenceKind::Foreign` arm of
+/// `Emitter::application`, which calls the import one argument at a time,
+/// `test_project$Lib$pick(n)(n)`; and by recording no arity in
+/// `canonical::Module::to_interface`, which reads the import as a parameterless binding's
+/// and turns both calls red.
+#[test]
+fn an_exported_function_is_called_directly_by_an_importer() {
+    let (lib, test) = emitted_across(
+        indoc! {r#"
+            module Lib exposing (pick)
+
+            pick : Int -> Int -> Int
+            pick a b =
+              a
+        "#},
+        indoc! {r#"
+            module Test exposing (both, one)
+
+            import Lib
+
+            both : Int -> Int
+            both n =
+              Lib.pick n n
+
+            one : Int -> Int
+            one =
+              Lib.pick 1
+        "#},
+    );
+
+    assert_eq!(
+        lib,
+        indoc! {r#"
+            function pick(a, b) {
+              return a;
+            }
+
+            export { pick };
+        "#}
+    );
+    assert!(
+        test.contains("function both(n) {\n  return test_project$Lib$pick(n, n);\n}"),
+        "got:\n{}",
+        test
+    );
+    assert!(
+        test.contains("const one = $curry(test_project$Lib$pick, 2)(1n);"),
+        "got:\n{}",
+        test
+    );
+}
+
+/// An imported operator is a call of the function its `infix` declaration names, with
+/// that function's arity, even when `Lib`'s header exposes only the operator — the arity
+/// then travels with the function's type in the interface's `infix_functions`.
+///
+/// Mutation-checked by recording arities for `values` alone in
+/// `canonical::Module::to_interface`: `n +++ n` then reads `test_project$Lib$plus(n)(n)`.
+#[test]
+fn an_imported_operator_is_a_direct_call_of_its_function() {
+    let (_, test) = emitted_across(
+        indoc! {r#"
+            module Lib exposing ((+++))
+
+            infix left 6 (+++) = plus
+
+            plus : Int -> Int -> Int
+            plus a b =
+              a
+        "#},
+        indoc! {r#"
+            module Test exposing (double)
+
+            import Lib exposing ((+++))
+
+            double : Int -> Int
+            double n =
+              n +++ n
+        "#},
+    );
+
+    assert!(
+        test.contains("return test_project$Lib$plus(n, n);"),
+        "got:\n{}",
+        test
+    );
+}
+
+/// A parameterless binding whose value is another module's function of two parameters —
+/// `Basics`' `add = Js.Basics.addInt` is the shape — holds that function `$curry`'d, since a
+/// caller of the binding sees arity 0 and calls it one argument at a time. An imported
+/// function of one parameter already takes its argument one at a time and is not wrapped.
+///
+/// Mutation-checked by making `Emitter::value`'s `ReferenceKind::Foreign` arm return the
+/// bare import whatever its arity: `add` then holds the raw two-parameter function.
+#[test]
+fn a_binding_to_an_imported_function_holds_it_curried() {
+    let (_, test) = emitted_across(
+        indoc! {r#"
+            module foreign Lib exposing (addInt, negateInt)
+
+            unsafe addInt : Int -> Int -> Int
+            unsafe negateInt : Int -> Int
+        "#},
+        indoc! {r#"
+            module Test exposing (double, negate)
+
+            import Lib
+
+            add : Int -> Int -> Int
+            add =
+              Lib.addInt
+
+            negate : Int -> Int
+            negate =
+              Lib.negateInt
+
+            double : Int -> Int
+            double n =
+              add n n
+        "#},
+    );
+
+    assert!(
+        test.contains("const add = $curry(test_project$Lib$addInt, 2);"),
+        "got:\n{}",
+        test
+    );
+    assert!(
+        test.contains("const negate = test_project$Lib$negateInt;"),
+        "got:\n{}",
+        test
+    );
+    assert!(test.contains("return add(n)(n);"), "got:\n{}", test);
+}
+
 /// A constructor with arguments is a tagged object with its arguments in `a`, `b`, `c`,
 /// in the order they are written, and is not hoisted.
 ///

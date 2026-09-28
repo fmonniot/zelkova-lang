@@ -272,7 +272,13 @@ pub enum ReferenceKind {
     /// [`PackageName`] is the package that declares the module, which is where the
     /// import is read from: a module's name says which file it is within its package,
     /// and the package says which package's directory holds that file.
-    Foreign(QualName, PackageName),
+    ///
+    /// The `usize` is the declaration's arity, read from the same interface
+    /// ([`Interface::arities`](crate::compiler::Interface::arities)): the count a call has
+    /// to supply to be a direct call, exactly as [`Declaration::arity`] is for a
+    /// [`TopLevel`](Self::TopLevel) name. A module exports each declaration as the
+    /// plain n-ary function it emitted, so an importer needs the arity to call it.
+    Foreign(QualName, PackageName, usize),
     /// A union constructor: it builds a tagged value rather than reading a binding.
     Constructor(Constructor),
 }
@@ -310,9 +316,9 @@ pub enum Saturation {
     /// This node supplies the last of the arguments the callee takes.
     Saturated,
     /// It does not — either because arguments are still missing, because the spine has
-    /// already run past the callee's arity, or because the callee's arity is not known
-    /// here at all. A callee that is a parameter is a value rather than a declaration and
-    /// has no arity; an imported one has an arity this module cannot see.
+    /// already run past the callee's arity, or because the callee has no arity at all. A
+    /// callee that is a parameter, or any other expression that is not a name, is a value
+    /// rather than a declaration and has no arity.
     Partial,
 }
 
@@ -721,9 +727,9 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
             // A facade signature: the type is the one canonicalization recorded, and
             // the arity is what the companion's parameter list has to be.
             Some(Solved::NoBody) => match facade_signature(value, &mut counter) {
-                Some((arity, tpe)) => declarations.push(Declaration {
+                Some(tpe) => declarations.push(Declaration {
                     name: name.clone(),
-                    arity,
+                    arity: module.emitted_arity(value),
                     tpe,
                     body: None,
                     span,
@@ -799,32 +805,23 @@ fn peel(term: TypedTerm, arity: usize) -> (Vec<TypeBinder>, TypedTerm) {
     (parameters, term)
 }
 
-/// The arity and the type of a facade's signature, when it has one to read.
+/// The type of a facade's signature, when it has one to read.
 ///
-/// A facade declaration has no parameters to count — it is a signature and a synthetic
-/// body — so its arity is the number of arrows in the type it declares: the companion's
-/// export takes a parameter list of that length, and no arrow at all is [a facade
-/// constant](../../../docs/spec/interop.md#facade-constants).
+/// Its arity is not read here: a facade declaration has no parameters to count — it is a
+/// signature and a synthetic body — and [`canonical::Module::emitted_arity`] counts the
+/// arrows of the type it declares instead, since the companion's export takes a parameter
+/// list of that length and no arrow at all is [a facade
+/// constant](../../../docs/spec/interop.md#facade-constants). That is the count a module
+/// importing the facade reads from its interface too.
 ///
 /// `None` is a facade declaration carrying no annotation, which nothing produces today —
 /// a facade's declarations are signatures — and which would have no type to emit against.
-fn facade_signature(value: &canonical::Value, counter: &mut u32) -> Option<(usize, Type)> {
+fn facade_signature(value: &canonical::Value, counter: &mut u32) -> Option<Type> {
     match value {
         canonical::Value::Value { .. } => None,
         canonical::Value::TypedValue { tpe, .. } => {
             let mut variables = HashMap::new();
-            let translated =
-                crate::compiler::typer::canonical_type_to_typer_type(tpe, &mut variables, counter)?;
-
-            Some((signature_arity(tpe), translated))
+            crate::compiler::typer::canonical_type_to_typer_type(tpe, &mut variables, counter)
         }
-    }
-}
-
-/// How many arguments a value of this type takes: the length of its arrow spine.
-fn signature_arity(tpe: &canonical::Type) -> usize {
-    match tpe {
-        canonical::Type::Arrow(_, result) => 1 + signature_arity(result),
-        _ => 0,
     }
 }

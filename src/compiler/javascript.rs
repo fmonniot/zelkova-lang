@@ -49,10 +49,22 @@
 //! `f(a, b)`, or for a constructor the object itself. Every other application calls a
 //! *function value*, one argument per JavaScript call: `g(a)(b)`. What makes that
 //! correct is that every function value the emitted code hands around accepts being
-//! called one argument at a time. A declaration of two or more parameters, and a
-//! constructor of two or more arguments, is `$curry(f, n)` wherever it is used as a value
-//! rather than called, so a partial application such as `pick 1` is `$curry(pick,
-//! 2)(1n)`; a one-parameter function already takes its argument one at a time.
+//! called one argument at a time. A declaration of two or more parameters — this
+//! module's or another's — and a constructor of two or more arguments, is `$curry(f, n)`
+//! wherever it is used as a value rather than called, so a partial application such as
+//! `pick 1` is `$curry(pick, 2)(1n)`; a one-parameter function already takes its
+//! argument one at a time.
+//!
+//! A value another module declares is called the same way as one of this module's
+//! ([`ir::ReferenceKind::Foreign`] carries its arity). A module exports each declaration
+//! as it emitted it — a declaration with parameters as the plain n-ary `function`, a
+//! parameterless binding as its `const` — and its [`Interface`](super::Interface)
+//! records how many parameters each takes, so an importer's `Lib.pick a b` is a direct
+//! call of its import, `app$Lib$pick(a, b)`, as `pick a b` is inside `Lib`. A
+//! parameterless binding has arity 0 and is called one argument at a time wherever it
+//! is called, which is why a binding whose value is a function of two or more
+//! parameters, such as `Basics`' `add = Js.Basics.addInt`, holds that function
+//! `$curry`'d.
 //!
 //! One argument per call is also what keeps the [order of
 //! evaluation](../../../docs/spec/evaluation-semantics.md#order-of-evaluation): `g a b`
@@ -62,9 +74,6 @@
 //! `&&` and `||` reach this module as ordinary applications of the functions their
 //! `infix` declarations name, so they are emitted as calls, never as JavaScript's own
 //! operators.
-//!
-//! A value another module declares has an arity this module cannot see, so it is called
-//! one argument at a time like any other value ([`ir::ReferenceKind::Foreign`]).
 //!
 //! # A facade
 //!
@@ -130,7 +139,7 @@ use super::ir::{
 };
 use super::name::{Name, QualName};
 use super::position::NodeSpan;
-use super::{scalars, CheckedModule, ModuleName, PhaseError, SpanLabel};
+use super::{scalars, CheckedModule, ModuleName, PackageName, PhaseError, SpanLabel};
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 
@@ -953,15 +962,13 @@ impl Emitter {
                     _ => local,
                 }
             }
-            ReferenceKind::Foreign(qname, package) => {
-                let module = qname.module_name().as_str().to_string();
-                let name = qname.unqualified_name().as_str().to_string();
-                let local = imported(package.as_str(), &module, &name);
-                self.imports
-                    .entry((package.as_str().to_string(), module))
-                    .or_default()
-                    .insert(name);
-                local
+            ReferenceKind::Foreign(qname, package, arity) => {
+                let local = self.import(qname, package);
+                if *arity >= 2 {
+                    self.curry(&local, *arity)
+                } else {
+                    local
+                }
             }
             ReferenceKind::Constructor(ctor) => {
                 if scalars::BOOL.declares(&ctor.union) {
@@ -1003,6 +1010,19 @@ impl Emitter {
         }
     }
 
+    /// The local name the value `qname` of another module is imported under, recording
+    /// the import so the module's import section names it.
+    fn import(&mut self, qname: &QualName, package: &PackageName) -> String {
+        let module = qname.module_name().as_str().to_string();
+        let name = qname.unqualified_name().as_str().to_string();
+        let local = imported(package.as_str(), &module, &name);
+        self.imports
+            .entry((package.as_str().to_string(), module))
+            .or_default()
+            .insert(name);
+        local
+    }
+
     /// An application spine: a direct call up to the node the IR marks saturated, if
     /// there is one, then one call per remaining argument.
     fn application(&mut self, term: &TypedTerm) -> String {
@@ -1034,6 +1054,14 @@ impl Emitter {
                             mangle(qname.unqualified_name().as_str()),
                             supplied.join(", ")
                         ),
+                        &arguments[last + 1..],
+                    )
+                }
+                ReferenceKind::Foreign(qname, package, _) => {
+                    let local = self.import(qname, package);
+                    let supplied = self.arguments(&arguments[..=last]);
+                    (
+                        format!("{}({})", local, supplied.join(", ")),
                         &arguments[last + 1..],
                     )
                 }

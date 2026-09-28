@@ -159,7 +159,7 @@ impl Module {
         // here — one that is already exposed by name is inserted twice
         // otherwise, which `insert_foreign_value` reads as the same value
         // imported from two places.
-        let infix_functions = infixes
+        let infix_functions: HashMap<Name, (NodeSpan, Type)> = infixes
             .values()
             .filter(|infix| !values.contains_key(&infix.function_name))
             .filter_map(|infix| match self.values.get(&infix.function_name) {
@@ -170,13 +170,44 @@ impl Module {
             })
             .collect();
 
+        let arities = values
+            .keys()
+            .chain(infix_functions.keys())
+            .filter_map(|name| {
+                self.values
+                    .get(name)
+                    .map(|value| (name.clone(), self.emitted_arity(value)))
+            })
+            .collect();
+
         super::Interface {
             module_name: self.name.clone(),
             values,
             unions,
             infixes,
             infix_functions,
+            arities,
             file,
+        }
+    }
+
+    /// How many parameters `value`, one of this module's declarations, is emitted with:
+    /// the count a call has to supply to be a direct call.
+    ///
+    /// For a declaration with a body that is [`Value::arity`], the parameters it was
+    /// written with. A `module foreign` facade's declaration is a signature with no
+    /// parameters to count, and its forwarding function takes one parameter per arrow in
+    /// the signature ([`Type::arrow_count`]), the [plain parameter
+    /// list](../../../docs/spec/interop.md#the-javascript-companion) its companion's
+    /// export takes.
+    ///
+    /// [`to_interface`](Self::to_interface) records it for each exported value, so that
+    /// an importer's call site is saturated at the same count this module's own call
+    /// sites are.
+    pub fn emitted_arity(&self, value: &Value) -> usize {
+        match value {
+            Value::TypedValue { tpe, .. } if self.binding_foreign => tpe.arrow_count(),
+            value => value.arity(),
         }
     }
 }
@@ -393,6 +424,15 @@ impl Type {
         }
     }
 
+    /// How many arguments a value of this type takes before its result is not a
+    /// function: the length of its arrow spine. `Int -> Int -> Bool` is 2, `Int` is 0.
+    pub fn arrow_count(&self) -> usize {
+        match self {
+            Type::Arrow(_, result) => 1 + result.arrow_count(),
+            _ => 0,
+        }
+    }
+
     // TODO Write some tests
     fn to_linear_types(tpe: &Type) -> Vec<Type> {
         match tpe {
@@ -460,15 +500,16 @@ impl Value {
     /// number of arrows in the declaration's type: `f : Int -> Int -> Int` written `f a =
     /// add a` has arity 1, and returns a function for the second argument.
     ///
-    /// The rule lives here rather than at either of its two readers because they feed
-    /// two fields a backend reads together, from two different phases. `typer`'s
-    /// `Translation` uses it as the callee's arity at every call site naming this
-    /// declaration, which is what decides
-    /// [`ir::Saturation`](crate::compiler::ir::Saturation); `ir::build` uses it as
+    /// The rule lives here rather than at any of its readers because they feed fields a
+    /// backend reads together, from different phases. `typer`'s `Translation` uses it as
+    /// the callee's arity at every call site naming this declaration, which is what
+    /// decides [`ir::Saturation`](crate::compiler::ir::Saturation); `ir::build` uses it as
     /// [`ir::Declaration::arity`](crate::compiler::ir::Declaration::arity), the count a
-    /// direct call has to supply. Two copies that drifted apart would mark a call site
-    /// saturated at a count the emitted function does not take. A facade signature has no
-    /// patterns to count and never reaches here — `ir::build` reads its arrows instead.
+    /// direct call has to supply; and [`Module::to_interface`] records it, through
+    /// [`Module::emitted_arity`], for a module that imports the declaration. Copies that
+    /// drifted apart would mark a call site saturated at a count the emitted function
+    /// does not take. A facade signature has no patterns to count, and
+    /// [`Module::emitted_arity`] reads its arrows instead.
     pub fn arity(&self) -> usize {
         // Two arms rather than an or-pattern: a `TypedValue`'s patterns each carry the
         // type the annotation gave them, so the two fields are different types.

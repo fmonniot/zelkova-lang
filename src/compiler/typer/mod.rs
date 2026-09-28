@@ -743,11 +743,11 @@ type Unions<'a> = HashMap<QualName, &'a canonical::UnionType>;
 /// Everything the translation from the canonical AST reads besides the expression in
 /// front of it.
 ///
-/// Each of the three answers a question the canonical node cannot: which union a
-/// constructor belongs to and where in it, and how many arguments a call has to supply
-/// before it is a direct call. All three are facts of the module and of what it
-/// imports, which is why they are gathered once here — the declaration being translated
-/// is the only thing that changes between calls.
+/// Each of them answers a question the canonical node cannot: which union a constructor
+/// belongs to and where in it, and how many arguments a call has to supply before it is a
+/// direct call. All of them are facts of the module and of what it imports, which is why
+/// they are gathered once here — the declaration being translated is the only thing that
+/// changes between calls.
 struct Translation<'a> {
     /// Every union in reach — this module's own, and every one an imported
     /// [`Interface`] exposes — keyed by the qualified name that identifies each
@@ -769,6 +769,15 @@ struct Translation<'a> {
     /// decides an application's [`Saturation`]. The rule itself — parameter count, not
     /// arrow count — is [`canonical::Value::arity`], which `ir::build` reads too.
     arities: HashMap<Name, usize>,
+    /// How many parameters each value an imported [`Interface`] exposes is emitted with
+    /// ([`Interface::arities`]), keyed the way a `VarForeign` spells it: its name
+    /// qualified by the package and module that declared it.
+    ///
+    /// It is the same fact as [`arities`](Self::arities), recorded by the module that
+    /// declared the value, so a call to it is saturated at the count its emitted function
+    /// takes. It is also what [`ReferenceKind::Foreign`] carries, since a backend using an
+    /// imported function as a value needs its arity too.
+    foreign_arities: HashMap<QualName, usize>,
 }
 
 impl<'a> Translation<'a> {
@@ -779,10 +788,23 @@ impl<'a> Translation<'a> {
     /// in front of the typer are the ones that win.
     fn of(module: &'a Module, interfaces: &'a HashMap<Name, Interface>) -> Translation<'a> {
         let mut unions: Unions<'a> = HashMap::new();
+        let mut foreign_arities = HashMap::new();
 
         for interface in interfaces.values() {
             for (name, union_type) in &interface.unions {
                 unions.insert(interface.module_name.qualify_name(name), union_type);
+            }
+
+            // Every value the typer's environment registers for this interface, so that
+            // every `VarForeign` it can type has an arity here. One the interface did not
+            // record is read as a parameterless binding's: see `Interface::arities`.
+            for name in interface
+                .values
+                .keys()
+                .chain(interface.infix_functions.keys())
+            {
+                let arity = interface.arities.get(name).copied().unwrap_or(0);
+                foreign_arities.insert(interface.module_name.qualify_name(name), arity);
             }
         }
 
@@ -802,6 +824,7 @@ impl<'a> Translation<'a> {
             unions,
             constructors,
             arities,
+            foreign_arities,
         }
     }
 
@@ -815,28 +838,40 @@ impl<'a> Translation<'a> {
             unions,
             constructors,
             arities: HashMap::new(),
+            foreign_arities: HashMap::new(),
         }
     }
 
     /// How many arguments the callee of an application spine takes, when this module
     /// knows.
     ///
-    /// `None` is what makes an application [`Saturation::Partial`], and it is the honest
-    /// answer three times over: a local is a value rather than a declaration and has no
-    /// arity at all; an imported value's arity belongs to the module that declared it
-    /// and is not in the canonical AST here; and a callee that is itself an expression —
-    /// the result of a `case`, say — is a value too. A backend that cannot prove a call
-    /// saturated goes through `$curry`, which is correct for every one of them.
+    /// A declaration of this module, one of another module and a constructor each have
+    /// one. `None` is what makes an application [`Saturation::Partial`], and it is the
+    /// honest answer twice over: a local is a value rather than a declaration and has no
+    /// arity at all, and a callee that is itself an expression — the result of a `case`,
+    /// say — is a value too. A backend that cannot prove a call saturated goes through
+    /// `$curry`, which is correct for both.
     fn callee_arity(&self, callee: &canonical::Expression) -> Option<usize> {
         match &callee.kind {
             canonical::ExpressionKind::VarTopLevel(qname) => {
                 self.arities.get(&qname.unqualified_name()).copied()
             }
+            canonical::ExpressionKind::VarForeign(qname, _, _) => Some(self.foreign_arity(qname)),
             canonical::ExpressionKind::VarConstructor(qname, _) => {
                 self.constructors.get(qname).map(|ctor| ctor.arity)
             }
             _ => None,
         }
+    }
+
+    /// The arity of `qname`, a value another module declares, as its interface recorded
+    /// it — 0 for one no interface in reach records, the arity of a parameterless binding.
+    ///
+    /// Every name canonicalization resolves to a `VarForeign` is one an interface in
+    /// reach exposes, so the fallback is for a hand-built interface map; see
+    /// [`Interface::arities`].
+    fn foreign_arity(&self, qname: &QualName) -> usize {
+        self.foreign_arities.get(qname).copied().unwrap_or(0)
     }
 }
 
@@ -1028,7 +1063,11 @@ fn canonical_expr_to_term(
         canonical::ExpressionKind::VarForeign(qname, package, _) => {
             TermKind::Identifier(Reference {
                 name: environment_key(qname),
-                kind: ReferenceKind::Foreign(qname.clone(), package.clone()),
+                kind: ReferenceKind::Foreign(
+                    qname.clone(),
+                    package.clone(),
+                    translation.foreign_arity(qname),
+                ),
             })
         }
         // A constructor builds a tagged value rather than reading a binding, so it
@@ -2602,7 +2641,7 @@ mod tests {
                 canonical::Type::Variable("a".into())
             ))
             .kind,
-            ReferenceKind::Foreign(lib_size, lib)
+            ReferenceKind::Foreign(lib_size, lib, 0)
         );
         assert_eq!(
             reference(canonical::ExpressionKind::VarConstructor(

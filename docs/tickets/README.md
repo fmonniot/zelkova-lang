@@ -192,7 +192,7 @@ GEN-17   `zelkova compile [DIR]` — the binary, clap, and the `cargo run` sweep
 LANG-63  `zelkova-test` declares `Test`; a pass collects a package's tests       ── closed
 GEN-18   a test build writes its tests, to `build/test/js/`                      ── closed
 SPEC-35  a test-dependency may depend on the package it tests                    ── closed
-BUG-43   a call to an imported multi-parameter function is emitted curried       ── open
+BUG-43   a call to an imported multi-parameter function is emitted curried       ── closed
   │
   │  GEN-17 + LANG-63 + GEN-18
   ▼
@@ -214,8 +214,8 @@ TEST-3   CI runs `zelkova test std/core` and the remaining `.mjs` checks
 - [`GEN-16`](gen-16.md) and [`LANG-68`](lang-68.md), everything that needs `Task`, and with them
   a `zelkova run`.
 - [`LANG-42`](lang-42.md). `==` is already structural at run time, because `Basics.eq` reaches
-  `_Utils_eq`, so `Test.equal` needs no `Eq` to work once [`BUG-43`](bug-43.md) is fixed. It
-  gains an `Eq a =>` constraint when that ticket lands.
+  `_Utils_eq`, so `Test.equal` needs no `Eq` to work. It gains an `Eq a =>` constraint when
+  that ticket lands.
 
 **What comes after.** Porting `std/core/tests/Js/*.mjs` into Zelkova tests is the obvious next
 step. It is not filed yet, because [*Testing a companion*](../spec/interop.md#testing-a-companion)
@@ -273,7 +273,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-40 | bug | high | closed 2026-09-27 | Two same-named modules from different packages emit colliding local import bindings |
 | [BUG-41](bug-41.md) | bug | low | open | A union reached only transitively has no spelling, and `Spellings::spell` falls back to a name that can still collide |
 | [BUG-42](bug-42.md) | bug | low | open | A module-name collision with a test-dependency's module is found only after `src/` checks |
-| [BUG-43](bug-43.md) | bug | high | open | A call to another module's function of two or more parameters is emitted one argument at a time against a plain n-ary function |
+| BUG-43 | bug | high | closed 2026-09-28 | A call to another module's function of two or more parameters is emitted one argument at a time against a plain n-ary function |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -422,6 +422,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
 | AST-4 | task | — | closed 2026-09-15 | A canonical type carries an unqualified name, so two types of one name are one type |
 | PERF-1 | task | — | closed 2026-08-25 | Reduce cloning in the `Layout` iterator |
+| [PERF-2](perf-2.md) | task | — | open | Every `Basics` operator backed by a parameterless binding is called through `$curry` |
 | TIDY-1 | task | — | closed 2026-08-25 | Make `Name`'s inner `String` private |
 | TIDY-2 | task | — | closed 2026-08-25 | Replace the tokenizer's keyword `HashMap` with a `match` |
 | TIDY-3 | task | — | closed 2026-08-25 | Fix the `associativy` typo |
@@ -431,6 +432,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TIDY-7](tidy-7.md) | task | — | open | Four label/diagnostic messages in `Error::Tokenizer`'s match are still capitalized |
 | [TIDY-8](tidy-8.md) | task | — | open | Two tokenizer comments describe the `Int` width as unsettled and cite a closed ticket |
 | [TIDY-9](tidy-9.md) | task | — | open | `Module::from_declarations` has a `panic!` on a declaration kind its own bucketing rules out |
+| [TIDY-10](tidy-10.md) | task | — | open | `Interface::arities` is a parallel map, and a miss silently reads as arity 0 |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |

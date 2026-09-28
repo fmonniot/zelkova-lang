@@ -671,6 +671,12 @@ fn every_stdlib_module_emits() {
 /// written qualified — `and = Js.Bitwise.and` — so every one is type checked against
 /// the facade's interface and the module emits.
 ///
+/// `and` is a parameterless binding, so an importer calls it one argument at a time, and
+/// its value is `Js.Bitwise.and`, a function of two parameters used as a value: it is
+/// `$curry`'d at its declaration. Emitting the bare import instead is mutation-checked by
+/// making `Emitter::value`'s `ReferenceKind::Foreign` arm return `local` whatever the
+/// arity.
+///
 /// Mutation-checked two ways, each making `emit` refuse all seven declarations as
 /// unchecked: dropping the loop over `interfaces` from `type_check`'s first pass, and
 /// qualifying a `VarForeign` with the whole written spelling in
@@ -688,7 +694,7 @@ fn the_stdlib_bitwise_forwards_to_its_facade() {
         .unwrap_or_else(|errors| panic!("Bitwise failed to emit: {:?}", errors));
 
     assert!(
-        text.contains("const and = zelkova_core$Js$Bitwise$and;"),
+        text.contains("const and = $curry(zelkova_core$Js$Bitwise$and, 2);"),
         "got:\n{}",
         text
     );
@@ -1637,6 +1643,7 @@ fn helper_interface() -> (Name, Interface) {
         unions: HashMap::new(),
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
+        arities: HashMap::new(),
         file: None,
     };
 
@@ -2891,6 +2898,7 @@ fn basics_interface_with_plus() -> (Name, Interface) {
         unions,
         infixes,
         infix_functions: HashMap::new(),
+        arities: HashMap::new(),
         file: None,
     };
 
@@ -4929,6 +4937,39 @@ fn a_test_dependency_does_not_reach_the_src_root() {
             .any(|m| m.contains("cannot find a module named `AcmeExpect.Expect`")),
         "expected the import to fail as an unknown module, got {:?}",
         messages
+    );
+}
+
+/// `BUG-43`'s fixture (`package_test_cross_module_calls`) is otherwise reached only by
+/// `cargo run -- test`, which `cargo test` never runs ([`DEC-18` decision
+/// 6](../docs/decisions/dec-18.md)) — so a `cargo test` run never even compiled it, let
+/// alone checked what it emits. This pins that it compiles under
+/// `compile_package_with_tests_into`, against the real `zelkova-core` and `zelkova-test`
+/// interfaces rather than the hand-built ones `tests/javascript.rs`'s `emitted_across`
+/// uses, and that the emitted `PickTest.mjs` calls `Lib.pick` directly with both
+/// arguments — the cross-module call BUG-43 fixed.
+///
+/// Mutation-checked by reverting `canonical::Module::to_interface` to record no arities
+/// at all (an empty map in place of the one built from `emitted_arity`): the emitted call
+/// goes back to `pick(true)(false)` and this assertion goes red.
+#[test]
+fn cross_module_arity_fixture_compiles_and_calls_directly() {
+    let build_dir = fresh_build_dir("cross_module_arity_fixture_compiles_and_calls_directly");
+
+    let result = zelkova_lang::compiler::compile_package_with_tests_into(
+        &fixture_package("package_test_cross_module_calls"),
+        &build_dir,
+    );
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+
+    let pick_test = std::fs::read_to_string(
+        build_dir.join("test/js/package-test-cross-module-calls/PickTest.mjs"),
+    )
+    .unwrap();
+    assert!(
+        pick_test.contains("package_test_cross_module_calls$Lib$pick(true, false)"),
+        "expected a direct call supplying both arguments, got:\n{}",
+        pick_test
     );
 }
 
