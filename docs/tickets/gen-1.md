@@ -115,8 +115,8 @@ GEN-14  the end-to-end check   ── closed, in the bootstrap section, run by `
 
 Unscheduled, filed to keep their context: [`GEN-15`](gen-15.md) the WebAssembly backend,
 [`GEN-16`](gen-16.md) the wrapper an effectful facade's call site gets. [`GEN-17`](README.md),
-the `zelkova` binary, closed in the bootstrap section. [`GEN-2`](gen-2.md), the boundary
-predicates, sequences after [`GEN-12`](README.md) and [`LANG-43`](README.md) as it always did.
+the `zelkova` binary, closed in the bootstrap section. [`GEN-2`](README.md), the boundary
+predicates, closed after [`GEN-12`](README.md) and [`LANG-43`](README.md).
 
 **Acceptance:** every ticket above is closed, and this file is tombstoned with them. What the
 program as a whole has to show is [`GEN-14`](README.md)'s. Since 2026-09-27 that is Zelkova

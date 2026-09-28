@@ -44,6 +44,13 @@ jobs:
           # and `grep .` fails the step when that list is empty.
           find std/core/tests -name '*.mjs' | grep .
           node --test 'std/core/tests/**/*.mjs'
+      # The behavioural half of what the compiler emits: each file compiles its own fixture
+      # under tests/fixtures/ with this checkout's compiler, then loads the output.
+      - name: Compiler checks
+        if: ${{ !cancelled() }}
+        run: |
+          find tests/js -name '*.mjs' | grep .
+          node --test 'tests/js/**/*.mjs'
 
   site:
     name: Build the site

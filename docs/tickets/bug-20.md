@@ -83,7 +83,7 @@ JavaScript harness and pins all of it; run it with `node --test 'tests/js/*.test
 Two things that guard deliberately does *not* settle. It reads the object tuple encoding this
 file was copied with, while
 [Which types may cross the boundary](../spec/interop.md#which-types-may-cross-the-boundary)
-says a tuple crosses as an array; [`GEN-2`](gen-2.md) is what chooses, and until it does, an
+says a tuple crosses as an array; [`GEN-2`](README.md) is what chooses, and until it does, an
 array is a value `_Utils_cmp` cannot compare and is rejected as one. And it is a runtime
 failure, not a compile-time one — which is the half below that remains.
 

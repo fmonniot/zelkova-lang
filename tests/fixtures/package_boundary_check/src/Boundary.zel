@@ -1,0 +1,16 @@
+module foreign Boundary exposing
+  ( rightInt, wrongIntString, wrongIntNumber, wrongIntTooWide
+  , rightShape, wrongShapeConstructor, wrongShapeArgument
+  )
+
+import Shape exposing (Shape)
+
+
+unsafe rightInt : Int -> Int
+unsafe wrongIntString : Int -> Int
+unsafe wrongIntNumber : Int -> Int
+unsafe wrongIntTooWide : Int -> Int
+
+unsafe rightShape : Int -> Shape
+unsafe wrongShapeConstructor : Int -> Shape
+unsafe wrongShapeArgument : Int -> Shape

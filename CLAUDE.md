@@ -37,12 +37,21 @@ checked list, a parse failure or a panic is a regression you introduced.
 `cargo run` with no subcommand compiles nothing — it prints usage and exits non-zero, clap's
 default for a missing required subcommand.
 
-`cargo test` never loads a `.mjs` companion. A companion's checks belong to the package that
-ships it, under that package's own `tests/` root — `std/core/tests/Js/` holds the ones that
-exist — and run with `node --test 'std/core/tests/**/*.mjs'`. Where such a file goes and why is
-[*Testing a companion*](docs/spec/interop.md#testing-a-companion); each file's header says what
-it covers. `std/core`'s Zelkova tests run with `cargo run -- test std/core`. CI's `javascript`
-job runs both, in that order.
+`cargo test` never loads a `.mjs` companion. `std/core`'s Zelkova tests run with `cargo run --
+test std/core`. A companion's checks belong to the package that ships it, under that package's
+own `tests/` root — `std/core/tests/Js/` holds the ones that exist — and run with `node --test
+'std/core/tests/**/*.mjs'`. Where such a file goes and why is [*Testing a
+companion*](docs/spec/interop.md#testing-a-companion); each file's header says what it covers.
+What the *compiler* emits is checked by running it under `node --test 'tests/js/**/*.mjs'`: each
+file there compiles a fixture under `tests/fixtures/` itself, with `cargo run`, and loads the
+output. CI's `javascript` job runs all three, in that order.
+
+`cargo run -- test std/core` currently reports **`23 tests: 23 passed, 0 failed, 0 errored`
+and exits 0**. `std/core/tests/FloatTests.ignored` is excluded from that count by its extension:
+`Basics.add` sends a `Float` through the `addInt` facade and its boundary check aborts, so
+`FloatTests`' two tests fail to load and are disabled until [`BUG-44`](docs/tickets/bug-44.md)
+closes, tracked there rather than left red in CI. Any error, failure, or a different count from
+what's left is a regression you introduced.
 
 `.github/workflows/rust.yml` gates a PR on `fmt`, on `clippy` with `-D warnings`, and on a
 `rustdoc` job that builds the crate's docs with the flags `rustdoc.yml` deploys them with. To
@@ -105,7 +114,7 @@ from, beside the `ir::Module` a backend will read.
 | Type checking | `src/compiler/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`. **Wired into `check_module`** |
 | Exhaustiveness | `src/compiler/exhaustiveness.rs` | **stub** — `check` inspects nothing and accepts every module. `Error::NonExhaustiveMatch` exists and renders, but nothing constructs it yet |
 | Backend IR | `src/compiler/ir/` | the shape a backend reads: a type on every node, the four kinds of name apart, arity, saturation and a constructor's place in its declaration. `ir::build` turns the canonical module and what the typer solved into one `ir::Module`. Its module doc comment is where the WebAssembly constraints are written, and is what to read before changing the shape |
-| Code generation | `src/compiler/javascript.rs`, `src/compiler/output.rs` | `javascript::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `javascript.rs`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included; it refuses an effectful facade signature, a facade with no companion, and a module holding a declaration the typer could not check. Its module doc comment has the shape, the representations and the call rule |
+| Code generation | `src/compiler/javascript.rs`, `src/compiler/output.rs` | `javascript::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `javascript.rs`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included, and an `unsafe` facade's forwarding code runs its companion's result through the predicate of the declared type (*The boundary check*); it refuses an effectful facade signature, a facade with no companion, a facade result no predicate decides, and a module holding a declaration the typer could not check. Its module doc comment has the shape, the representations and the call rule |
 
 `Name` (`src/compiler/name.rs`) is an unqualified identifier; `QualName` is one that carries
 its module. Everything after parsing should be reaching for `QualName`.

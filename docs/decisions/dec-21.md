@@ -85,6 +85,6 @@ to in JavaScript, and what a `Promise<void>` resolves to — which is exactly th
 (Result Failure ())` unwraps into. Elm uses `0` (or `{ $: '#0' }` in a debug build) but never
 hands it to foreign code, so it answers a question Elm never had to ask.
 
-[`GEN-16`](../tickets/gen-16.md) and [`GEN-2`](../tickets/gen-2.md) are what make the discard
-and the nested check real code: this entry settles what they build toward, not the wrapper or
-the predicate emitter themselves.
+[`GEN-2`](../tickets/README.md) made the discard and the nested check real code;
+[`GEN-16`](../tickets/gen-16.md) is what is left to build toward: this entry settles what both
+build toward, not the wrapper or the predicate emitter themselves.

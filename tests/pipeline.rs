@@ -639,8 +639,8 @@ fn check_std_core() -> Vec<CheckedModule> {
 ///
 /// The unit tests in `tests/javascript.rs` pin the *shape* of what a facade emits as;
 /// this only pins that the three real signatures do not hit an edge their small
-/// fixtures miss — an arrow count is readable whatever the types are, and code
-/// generation reads none of them.
+/// fixtures miss — among them, that every result type they declare has a boundary
+/// predicate, which is read off the result's type.
 ///
 /// Mutation-checked by reverting `emit`'s `ir.foreign` branch to the old blanket
 /// refusal: this test then panics on the first facade.
@@ -654,7 +654,7 @@ fn the_stdlib_facades_emit() {
             .find(|m| m.canonical.name.name().as_str() == name)
             .unwrap_or_else(|| panic!("{} did not check", name));
 
-        javascript::emit(module, true)
+        javascript::emit(module, true, &javascript::Unions::of(&checked))
             .unwrap_or_else(|errors| panic!("{} failed to emit: {:?}", name, errors));
     }
 }
@@ -680,7 +680,7 @@ fn every_stdlib_module_emits() {
 
     for module in &checked {
         let name = module.canonical.name.name().as_str();
-        javascript::emit(module, true)
+        javascript::emit(module, true, &javascript::Unions::of(&checked))
             .unwrap_or_else(|errors| panic!("{} failed to emit: {:?}", name, errors));
     }
 }
@@ -708,7 +708,7 @@ fn the_stdlib_bitwise_forwards_to_its_facade() {
         .find(|m| m.canonical.name.name().as_str() == "Bitwise")
         .expect("Bitwise did not check");
 
-    let text = javascript::emit(bitwise, false)
+    let text = javascript::emit(bitwise, false, &javascript::Unions::of(&checked))
         .unwrap_or_else(|errors| panic!("Bitwise failed to emit: {:?}", errors));
 
     assert!(

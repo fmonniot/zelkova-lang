@@ -1,0 +1,27 @@
+module App exposing (next, broken, shape, brokenShape)
+
+import Boundary
+import Shape exposing (Shape)
+
+
+{-| Ordinary Zelkova calling the facade, so a value crosses the boundary on the way
+into a module that trusts its type.
+-}
+next : Int -> Int
+next n =
+  Boundary.rightInt n
+
+
+broken : Int -> Int
+broken n =
+  Boundary.wrongIntString n
+
+
+shape : Int -> Shape
+shape n =
+  Boundary.rightShape n
+
+
+brokenShape : Int -> Shape
+brokenShape n =
+  Boundary.wrongShapeConstructor n

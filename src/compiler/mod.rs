@@ -1106,7 +1106,16 @@ fn compile(
     // emitted — in `src/` or in `tests/` — also leaves the build with no output at all.
     if errors.is_empty() {
         debug!("phase: codegen");
-        let files = emit_build(checked, &mut errors);
+        // Every union of the build, read by a facade's boundary checks: a facade may name
+        // a union any module of the build declares, and a test-only package's or the
+        // root's `tests/` modules are part of the build their facades see.
+        let unions = javascript::Unions::of(
+            checked
+                .iter()
+                .chain(test_tree_modules.iter())
+                .map(|to_emit| &to_emit.module),
+        );
+        let files = emit_build(checked, &unions, &mut errors);
 
         // A build that also compiled the tests writes a second, complete tree at
         // `<build_dir>/test/js/`, laid out exactly like `<build_dir>/out/js/` — the runtime,
@@ -1122,7 +1131,7 @@ fn compile(
         let test_files = (tests == TestRoot::Compiled).then(|| {
             debug!("phase: codegen (tests)");
             let mut test_files = files.clone();
-            test_files.extend(emit_modules(test_tree_modules, &mut errors));
+            test_files.extend(emit_modules(test_tree_modules, &unions, &mut errors));
             test_files
         });
 
@@ -1217,12 +1226,16 @@ fn to_modules_to_emit(
 /// A module that cannot be emitted pushes its errors onto `errors`, tagged with the
 /// file it came from, and every other module is still emitted so that one refusal
 /// cannot hide the next. The caller writes the files only when `errors` stays empty.
-fn emit_build(checked: Vec<ModuleToEmit>, errors: &mut Vec<CompilationError>) -> Vec<output::File> {
+fn emit_build(
+    checked: Vec<ModuleToEmit>,
+    unions: &javascript::Unions,
+    errors: &mut Vec<CompilationError>,
+) -> Vec<output::File> {
     let mut files = vec![output::File {
         path: javascript::RUNTIME_FILE.into(),
         contents: output::Contents::Text(javascript::RUNTIME.to_string()),
     }];
-    files.extend(emit_modules(checked, errors));
+    files.extend(emit_modules(checked, unions, errors));
     files
 }
 
@@ -1235,6 +1248,7 @@ fn emit_build(checked: Vec<ModuleToEmit>, errors: &mut Vec<CompilationError>) ->
 /// extra modules must not emit a second runtime file to sit unused beside the first.
 fn emit_modules(
     checked: Vec<ModuleToEmit>,
+    unions: &javascript::Unions,
     errors: &mut Vec<CompilationError>,
 ) -> Vec<output::File> {
     let mut files = Vec::new();
@@ -1248,7 +1262,7 @@ fn emit_modules(
         let name = module.canonical.name.clone();
         let package_dir = std::path::PathBuf::from(name.package().as_str());
 
-        match javascript::emit(&module, companion.is_some()) {
+        match javascript::emit(&module, companion.is_some(), unions) {
             Ok(text) => {
                 files.push(output::File {
                     path: package_dir.join(javascript::module_file(name.name())),

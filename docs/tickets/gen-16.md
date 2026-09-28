@@ -10,11 +10,10 @@ carried it as inherited work, and it could not be written until the tickets belo
 
 **Depends on:** [`LANG-74`](lang-74.md), for `Task` and `Failure`; [`GEN-21`](gen-21.md), for
 something that runs what the wrapper builds; [`LANG-68`](README.md) (closed), which holds an
-unmarked facade to the result type this wrapper assumes; [`GEN-2`](gen-2.md), for the predicate whose
-failure is `Err (Malformed ..)`. Sequenced after [`GEN-12`](README.md), which emits the `unsafe`
-half of the same call site. If `GEN-2` is the last of these still open, this ticket may land first
-with `Threw` and `Ok` only. The `Malformed` case then lands with `GEN-2`, and each PR says which
-half it holds.
+unmarked facade to the result type this wrapper assumes; [`GEN-2`](README.md) (closed), for the
+predicate whose failure is `Err (Malformed ..)`. Sequenced after [`GEN-12`](README.md), which
+emits the `unsafe` half of the same call site. `GEN-2` emitted the predicates and the `unsafe`
+half's check only, since an effectful facade was still refused, so `Malformed` lands here.
 
 **Location:** `src/compiler/javascript.rs`, at the facade call site
 [`GEN-12`](README.md) emits. `src/compiler/canonical/mod.rs` — `Value::TypedValue`'s
@@ -67,9 +66,13 @@ naming a `Task` gets the same `$effect` call with no arguments, as one module-le
 called, and caught, when the `Task` is *run*, never when it is built. A wrapper that caught at
 build time would catch nothing.
 
-The predicate that decides whether the returned value matches `a` is [`GEN-2`](gen-2.md)'s. This
-ticket calls one and routes its answer. The routing is the part that differs by facade kind, and
-it is stated in [`GEN-2`](gen-2.md)'s first point.
+The predicate that decides whether the returned value matches `a` already exists:
+`Predicates::test` in `src/compiler/javascript.rs` builds it for an `unsafe` facade's result, as
+that module's *The boundary check* describes. This ticket calls the same predicate and routes a
+failure to `Err (Malformed ..)` where an `unsafe` facade's check calls `$abort`
+([Which types may cross the boundary](../spec/interop.md#which-types-may-cross-the-boundary)).
+`$abort`'s description names the export whose companion returned the value, and `Malformed`'s
+string should too.
 
 **Acceptance:** five companions, each behind an unmarked facade under `std/core/tests/`, asserted
 as Zelkova tests that `zelkova test` runs through [`LANG-76`](lang-76.md)'s `Test` over a `Task`:
@@ -82,4 +85,4 @@ description and `Malformed` names the export is asserted on the emitted wrapper'
 `node --test` check beside `runtime/js/tests/`, as are two properties of `$effect` no Zelkova
 test can see: a continuation that throws after a companion returned, synchronously or through a
 promise, rejects `$runTask`'s promise and is not turned into `Threw`; and a step handed to `resume`
-twice aborts. `Malformed` may land with [`GEN-2`](gen-2.md), as **Depends on** says.
+twice aborts.

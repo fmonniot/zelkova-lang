@@ -1,0 +1,9 @@
+module Shape exposing (Shape)
+
+
+{-| Exposed without its constructors: the boundary check still reads `$` against
+both of them, off the declaration rather than off what an importer can see.
+-}
+type Shape
+  = Circle Int
+  | Square Int

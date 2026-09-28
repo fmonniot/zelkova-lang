@@ -1,7 +1,7 @@
 //! The JavaScript backend: one checked module in, the text of one ES module out.
 //!
 //! [`emit`] reads the [`ir::Module`] a [`CheckedModule`] carries, beside the
-//! [`canonical::Module`](super::canonical::Module) it was built from for the one thing the IR does not hold — which
+//! [`canonical::Module`] it was built from for the one thing the IR does not hold — which
 //! names the module exports. It produces text and writes nothing: `compile_package` writes
 //! it, to the path [`module_file`] gives, once the whole build has checked and emitted.
 //!
@@ -17,8 +17,10 @@
 //!    declares, then one per such constructor of another module's that it mentions, which
 //!    every mention of it refers to ([`DEC-18` decision
 //!    4](../../../docs/decisions/dec-18.md#4--a-constructor-of-no-arguments-is-hoisted-to-one-module-level-constant)).
-//! 3. **Functions** — one `function` per declaration that takes parameters, with exactly
-//!    as many JavaScript parameters as it was written with ([`DEC-18` decision
+//! 3. **Functions** — in a facade, first the union predicates its boundary checks call
+//!    ([*The boundary check*](#the-boundary-check)), in name order; then one `function`
+//!    per declaration that takes parameters, with exactly as many JavaScript parameters
+//!    as it was written with ([`DEC-18` decision
 //!    3](../../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
 //! 4. **Parameterless bindings** — one `const` each, in
 //!    [`ir::Module::initialisation_order`], so each is initialised after every other one
@@ -103,6 +105,47 @@
 //! The companion is imported from [`companion_file`], beside the facade's own emitted
 //! file and renamed so that the two do not share one path.
 //!
+//! # The boundary check
+//!
+//! A value a companion hands back is run through the predicate of the type its signature
+//! declares ([Which types may cross the
+//! boundary](../../../docs/spec/interop.md#which-types-may-cross-the-boundary)): the
+//! forwarding code binds the companion's result to `$returned` and returns it unchanged
+//! when the predicate holds, and calls the runtime's `$abort` otherwise, naming the
+//! export — module and value — whose companion returned it ([When a program
+//! aborts](../../../docs/spec/evaluation-semantics.md#when-a-program-aborts)). Only the
+//! `unsafe` shape exists today, so aborting is the only destination a failing check has
+//! here.
+//!
+//! **Only the result is checked.** An argument on its way out to the companion is a
+//! Zelkova value the type checker already proved to be of its declared type, so nothing
+//! is run over it.
+//!
+//! **A result of `()` is discarded, not checked**: the companion is called, and the
+//! forwarding code returns `undefined` whatever it answered ([The unit value crosses as
+//! `undefined`](../../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)). A
+//! facade constant of type `()` is `undefined`, its export still imported so that a
+//! companion missing it fails to link.
+//!
+//! Every other admitted type is decided by an expression over the value, built by
+//! `Predicates::test`: a scalar by its `typeof` — an `Int` also by `BigInt.asIntN(64, v)
+//! === v`, which holds exactly for a `bigint` the 64-bit range holds, and a `Char` by
+//! being a string of exactly one code point — a tuple as an array of its length whose
+//! elements each pass, and a `()` nested anywhere as `v === undefined`. A union is
+//! decided by a function of its own, `$is$<package>$<module>$<union>` (see `predicate`),
+//! emitted into the facade that needs it: it reads `$` against the declaration's
+//! constructors and checks each argument against the type that constructor declares for
+//! it, and it takes one predicate per type variable of the union, so `Maybe Int` is
+//! `$is$…$Maybe(v, ($v0) => …)`. A recursive union's function calls itself, which
+//! terminates because a Zelkova value holds no cycle; the walk costs the size of the
+//! value at every crossing.
+//!
+//! The declaration a union predicate is read off is the one its declaring module
+//! canonicalized — every constructor of it, whether or not the module exposes them —
+//! which is why [`emit`] is handed [`Unions`], every union of the build, rather than
+//! reading the facade's imports: an importer's view of an opaque type has no
+//! constructors. A result type with no predicate at all is [`Error::NoPredicate`].
+//!
 //! # A `case`
 //!
 //! [`ir::decision_tree`] turns a `case`'s branches — and a parameter written as a
@@ -131,19 +174,20 @@
 //!
 //! [`emit`] answers an [`Error`] rather than a module missing a part: for a declaration
 //! with no IR ([`ir::Module::unchecked`]), for a facade signature not marked `unsafe`,
-//! for a facade with no companion for the target being built, and for a construct it
-//! does not emit yet ([`Construct`]).
+//! for a facade with no companion for the target being built, for a facade result no
+//! predicate can decide, and for a construct it does not emit yet ([`Construct`]).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 
-use super::canonical::{ExportType, Exports, Value};
+use super::canonical::{self, ExportType, Exports, Value};
 use super::ir::{
     self, decision_tree, CaseForm, Decision, LiteralValue, Occurrence, Outcome, ReferenceKind,
     Saturation, Step, TypedTerm, TypedTermKind,
 };
 use super::name::{Name, QualName};
 use super::position::NodeSpan;
+use super::typer::Type;
 use super::{scalars, CheckedModule, ModuleName, PackageName, PhaseError, SpanLabel};
 
 // ── Errors ────────────────────────────────────────────────────────────────────
@@ -167,6 +211,22 @@ pub enum Error {
     /// A declaration the typer could not check has no IR to emit, and a module emitted
     /// without it would be missing a value its source declares.
     Unchecked { name: Name, span: NodeSpan },
+    /// A facade signature whose result type has no predicate, so the value its
+    /// companion hands back cannot be checked ([Which types may cross the
+    /// boundary](../../../docs/spec/interop.md#which-types-may-cross-the-boundary)).
+    ///
+    /// The signature's own type expression is held to the admitted forms before this
+    /// phase (`canonical::Error::FacadeTypeNotAdmitted`), but a union it names is
+    /// checked through its constructors' declared arguments, which that check does not
+    /// read — so a union holding a function type is refused here, where its predicate
+    /// is built. Catching it in canonicalization instead is `BUG-45`. `constructor` is
+    /// the innermost constructor the offending type was declared in, when it was one.
+    NoPredicate {
+        name: Name,
+        span: NodeSpan,
+        found: Unpredicated,
+        constructor: Option<QualName>,
+    },
     /// A construct this backend does not emit yet.
     Unsupported {
         construct: Construct,
@@ -196,6 +256,39 @@ impl Construct {
     }
 }
 
+/// The part of a facade's result type that no predicate decides — see
+/// [`Error::NoPredicate`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum Unpredicated {
+    /// A function type: `typeof v === "function"` decides that a value is *some*
+    /// function, not the one declared.
+    Function,
+    /// A type variable, which excludes no value. Only a union's own variables are
+    /// bound, each to the predicate of the type it is applied to.
+    Variable(Name),
+    /// A union no module of the build declares, so there are no constructors to read
+    /// `$` against. [`Unions::of`] over every checked module leaves none.
+    Undeclared(QualName),
+}
+
+impl Unpredicated {
+    fn describe(&self) -> String {
+        match self {
+            Unpredicated::Function => {
+                "a function type, which no predicate can tell apart from another".to_string()
+            }
+            Unpredicated::Variable(name) => format!(
+                "the type variable `{}`, which excludes no value",
+                name.as_str()
+            ),
+            Unpredicated::Undeclared(union) => format!(
+                "`{}`, whose declaration is not part of this build",
+                union.to_name().as_str()
+            ),
+        }
+    }
+}
+
 impl PhaseError for Error {
     fn message(&self) -> String {
         match self {
@@ -212,6 +305,26 @@ impl PhaseError for Error {
                 "`{}` cannot be compiled to JavaScript, because the type checker could not check it",
                 name.as_str()
             ),
+            Error::NoPredicate {
+                name,
+                found,
+                constructor,
+                ..
+            } => {
+                let within = match constructor {
+                    Some(constructor) => format!(
+                        ", declared as an argument of the constructor `{}`",
+                        constructor.to_name().as_str()
+                    ),
+                    None => String::new(),
+                };
+                format!(
+                    "the value `{}`'s companion returns cannot be checked where it crosses into Zelkova: its type holds {}{}",
+                    name.as_str(),
+                    found.describe(),
+                    within
+                )
+            }
             Error::Unsupported {
                 construct,
                 declaration,
@@ -233,6 +346,7 @@ impl PhaseError for Error {
             Error::MissingCompanion { .. } => return Vec::new(),
             Error::Effectful { span, .. } => (span, "not marked `unsafe`"),
             Error::Unchecked { span, .. } => (span, "this declaration"),
+            Error::NoPredicate { span, .. } => (span, "this signature"),
             Error::Unsupported { span, .. } => (span, "not supported by the JavaScript backend"),
         };
 
@@ -332,8 +446,15 @@ const RESERVED: &[&str] = &[
 /// Every other name an emitted module declares is the emitter's own, and each is built
 /// so that it cannot be one this function returns, nor one another item here returns:
 ///
-/// - the runtime's helpers, `$curry` and `$abort`, and the `$scrutinee` a `case` binds:
-///   a `$` and a word that is not in [`RESERVED`], and no other `$`;
+/// - the runtime's helpers, `$curry` and `$abort`, the `$scrutinee` a `case` binds, and
+///   the names a boundary check binds — `$returned`, the value a companion handed back,
+///   and inside a union predicate `$v0`, `$v1`, … for the value under test and `$p0`,
+///   `$p1`, … for the predicates of the union's type variables: a `$` and a word that is
+///   not in [`RESERVED`], and no other `$`;
+/// - a union predicate, [`predicate`]: `$is`, then the same segments as a hoisted
+///   constructor's, so its second segment is a package — lowercase, where the second
+///   segment of a hoisted constructor, even of a package named `is`, is a module's and
+///   uppercase;
 /// - a value imported from another module, [`imported`]: it contains a `$`, does not
 ///   start with one, and its first segment — the package — is lowercase, where a module
 ///   segment is uppercase;
@@ -392,6 +513,22 @@ fn hoisted(union: &QualName, constructor: &Name) -> String {
         package_segment(union.package().as_str()),
         union.module_name().as_str().replace('.', "$"),
         constructor.as_str()
+    )
+}
+
+/// The function deciding whether a value belongs to `union`: `$is`, then the package
+/// declaring it ([`package_segment`]), its module's segments and its own name, joined by
+/// `$` — `Maybe.Maybe` of `zelkova-core` is `$is$zelkova_core$Maybe$Maybe`.
+///
+/// Emitted by the facade whose boundary check calls it, never exported: two facades
+/// checking one union each hold their own copy, as two importers of a constructor each
+/// hoist their own constant.
+fn predicate(union: &QualName) -> String {
+    format!(
+        "$is${}${}${}",
+        package_segment(union.package().as_str()),
+        union.module_name().as_str().replace('.', "$"),
+        union.unqualified_name().as_str()
     )
 }
 
@@ -551,7 +688,18 @@ fn companion_specifier(module: &Name) -> String {
 
 /// A JavaScript string literal holding `c` and nothing else.
 fn char_literal(c: char) -> String {
-    let escaped = match c {
+    format!("\"{}\"", escaped(c))
+}
+
+/// A JavaScript string literal holding `text`, each character escaped as
+/// [`char_literal`] escapes it.
+fn string_literal(text: &str) -> String {
+    format!("\"{}\"", text.chars().map(escaped).collect::<String>())
+}
+
+/// `c` as it is written inside a JavaScript string literal.
+fn escaped(c: char) -> String {
+    match c {
         '"' => "\\\"".to_string(),
         '\\' => "\\\\".to_string(),
         '\n' => "\\n".to_string(),
@@ -563,9 +711,7 @@ fn char_literal(c: char) -> String {
             format!("\\u{{{:x}}}", c as u32)
         }
         c => c.to_string(),
-    };
-
-    format!("\"{}\"", escaped)
+    }
 }
 
 /// A JavaScript number literal for `f`.
@@ -596,8 +742,15 @@ fn float_literal(f: f64) -> String {
 /// knows where `module`'s source came from — so a facade with no companion is
 /// [`Error::MissingCompanion`] rather than something this function discovers.
 ///
+/// `unions` is where a facade's boundary checks read each union they reach off its
+/// declaration; see [`Unions`]. A module that is not a facade reads nothing from it.
+///
 /// See this module's documentation for the shape of the text.
-pub fn emit(module: &CheckedModule, has_companion: bool) -> Result<String, Vec<Error>> {
+pub fn emit(
+    module: &CheckedModule,
+    has_companion: bool,
+    unions: &Unions,
+) -> Result<String, Vec<Error>> {
     let ir = &module.ir;
 
     if ir.foreign && !has_companion {
@@ -631,6 +784,10 @@ pub fn emit(module: &CheckedModule, has_companion: bool) -> Result<String, Vec<E
     let mut functions = Vec::new();
     let mut constants: HashMap<&Name, String> = HashMap::new();
     let mut companion_imports: Vec<String> = Vec::new();
+    let mut predicates = Predicates {
+        unions,
+        functions: BTreeMap::new(),
+    };
 
     for declaration in &ir.declarations {
         emitter.declaration = Some(declaration.name.clone());
@@ -639,6 +796,7 @@ pub fn emit(module: &CheckedModule, has_companion: bool) -> Result<String, Vec<E
             emitter.facade_declaration(
                 &module.canonical,
                 declaration,
+                &mut predicates,
                 &mut functions,
                 &mut constants,
                 &mut companion_imports,
@@ -683,6 +841,14 @@ pub fn emit(module: &CheckedModule, has_companion: bool) -> Result<String, Vec<E
     if !emitter.errors.is_empty() {
         return Err(emitter.errors);
     }
+
+    // The union predicates the boundary checks call go ahead of every other function,
+    // in name order — a function declaration is hoisted, so the order is for the reader.
+    let functions: Vec<String> = predicates
+        .functions
+        .into_values()
+        .chain(functions)
+        .collect();
 
     // The parameterless bindings, in the order they have to be initialised. Every one
     // of them is in that order; a binding that somehow was not would still be emitted,
@@ -828,6 +994,238 @@ fn exports(module: &CheckedModule) -> Vec<String> {
         .collect()
 }
 
+// ── The boundary check ────────────────────────────────────────────────────────
+
+/// Every union a build declares, by its qualified name, as its declaring module
+/// canonicalized it: what a facade's boundary check reads a union's constructors, and
+/// the type each declares for each of its arguments, off.
+///
+/// It is built from the checked modules themselves, never from an [`Interface`](super::Interface):
+/// an interface exposing a type without its constructors hands over none of them, and
+/// the predicate of such a type still reads `$` against every constructor its
+/// declaration has.
+#[derive(Debug, Default)]
+pub struct Unions(HashMap<QualName, canonical::UnionType>);
+
+impl Unions {
+    /// Every union declared by one of `modules`. `compile_package` passes every module
+    /// of the build, so each union a facade can name is one of them.
+    pub fn of<'a>(modules: impl IntoIterator<Item = &'a CheckedModule>) -> Unions {
+        let mut unions = HashMap::new();
+        for module in modules {
+            for (name, union) in &module.canonical.types {
+                unions.insert(module.canonical.name.qualify_name(name), union.clone());
+            }
+        }
+        Unions(unions)
+    }
+}
+
+/// Why no predicate could be built: what was found, and the innermost constructor whose
+/// declared argument held it, if it was inside one. Boxed, since it is the error half of
+/// every `Result` the predicate builders return and is much larger than the text half.
+type NoPredicate = Box<(Unpredicated, Option<QualName>)>;
+
+/// The union predicates one facade's boundary checks call, built as the checks need
+/// them.
+struct Predicates<'a> {
+    unions: &'a Unions,
+    /// Each union predicate's text, by its name ([`predicate`]). A union's entry is
+    /// inserted, empty, before its body is built, so a recursive union meets its own
+    /// name here and calls it rather than building it again.
+    functions: BTreeMap<String, String>,
+}
+
+impl Predicates<'_> {
+    /// A JavaScript expression that is `true` exactly when `value` — an expression
+    /// without side effects, evaluated as often as the test needs it — belongs to
+    /// `tpe`. A conjunction of `===` tests and calls, so it needs no parentheses beside
+    /// another `&&` or ahead of a `?`.
+    ///
+    /// `parameters` binds each type variable in scope — inside a union predicate, the
+    /// union's own — to the name of the predicate its argument was given as. `depth`
+    /// is how many parameters of nested arrow functions are already in scope, so each
+    /// one gets its own name.
+    fn test(
+        &mut self,
+        tpe: &canonical::Type,
+        value: &str,
+        depth: usize,
+        parameters: &HashMap<&Name, String>,
+    ) -> Result<String, NoPredicate> {
+        match tpe {
+            canonical::Type::Unit => Ok(format!("{} === undefined", value)),
+            canonical::Type::Tuple(tuple) => {
+                let mut tests = vec![
+                    format!("Array.isArray({})", value),
+                    format!("{}.length === {}", value, tuple.iter().count()),
+                ];
+                for (index, element) in tuple.iter().enumerate() {
+                    tests.push(self.test(
+                        element,
+                        &format!("{}[{}]", value, index),
+                        depth,
+                        parameters,
+                    )?);
+                }
+                Ok(tests.join(" && "))
+            }
+            canonical::Type::Variable(name) => match parameters.get(name) {
+                Some(predicate) => Ok(format!("{}({})", predicate, value)),
+                None => Err(Box::new((Unpredicated::Variable(name.clone()), None))),
+            },
+            canonical::Type::Arrow(..) => Err(Box::new((Unpredicated::Function, None))),
+            canonical::Type::Type(name, arguments) => match scalars::scalar_of(name) {
+                Some(scalars::INT) => Ok(format!(
+                    "typeof {v} === \"bigint\" && BigInt.asIntN(64, {v}) === {v}",
+                    v = value
+                )),
+                Some(scalars::FLOAT) => Ok(format!("typeof {} === \"number\"", value)),
+                Some(scalars::BOOL) => Ok(format!("typeof {} === \"boolean\"", value)),
+                // One code point: a string of one UTF-16 unit, or of the two a code
+                // point past `0xFFFF` takes. An empty string's `codePointAt(0)` is
+                // `undefined`, which asks for a length of one and fails it.
+                Some(scalars::CHAR) => Ok(format!(
+                    "typeof {v} === \"string\" && {v}.length === ({v}.codePointAt(0) > 0xFFFF ? 2 : 1)",
+                    v = value
+                )),
+                Some(scalars::STRING) => Ok(format!("typeof {} === \"string\"", value)),
+                _ => {
+                    let function = self.union(name)?;
+                    let mut call = vec![value.to_string()];
+                    for argument in arguments {
+                        let parameter = format!("$v{}", depth);
+                        let test = self.test(argument, &parameter, depth + 1, parameters)?;
+                        call.push(format!("({}) => {}", parameter, test));
+                    }
+                    Ok(format!("{}({})", function, call.join(", ")))
+                }
+            },
+        }
+    }
+
+    /// The name of the predicate deciding `union`, building its function first when
+    /// this facade has not needed it yet.
+    ///
+    /// The function takes the value as `$v0` and one predicate per type variable of the
+    /// union, `$p0`, `$p1`, … in declaration order. It answers `false` for anything but
+    /// a non-null object, and otherwise switches on `$`: each constructor tests its
+    /// arguments, read off the fields [`field`] names, against the types it declares
+    /// for them, and a `$` naming no constructor of the declaration is `false`.
+    fn union(&mut self, union: &QualName) -> Result<String, NoPredicate> {
+        let name = predicate(union);
+        if self.functions.contains_key(&name) {
+            return Ok(name);
+        }
+
+        let unions = self.unions;
+        let Some(declaration) = unions.0.get(union) else {
+            return Err(Box::new((Unpredicated::Undeclared(union.clone()), None)));
+        };
+        self.functions.insert(name.clone(), String::new());
+
+        // A union no predicate can be built for leaves no entry behind, so another facade
+        // declaration naming *that* union meets the same error rather than a call to a
+        // function that was never finished. That covers this union only: a mutually
+        // recursive union built successfully while this one was still in progress (it
+        // found this union's placeholder and used it) keeps its own `functions` entry,
+        // even though the removal below just deleted the predicate that entry calls — a
+        // facade naming only the other union gets no diagnostic for that.
+        match self.union_function(union, &name, declaration) {
+            Ok(function) => {
+                self.functions.insert(name.clone(), function);
+                Ok(name)
+            }
+            Err(error) => {
+                self.functions.remove(&name);
+                Err(error)
+            }
+        }
+    }
+
+    /// The text of the function [`Predicates::union`] names `name`, deciding `union`
+    /// against `declaration`.
+    fn union_function(
+        &mut self,
+        union: &QualName,
+        name: &str,
+        declaration: &canonical::UnionType,
+    ) -> Result<String, NoPredicate> {
+        let predicates: Vec<String> = (0..declaration.variables.len())
+            .map(|index| format!("$p{}", index))
+            .collect();
+        let parameters: HashMap<&Name, String> = declaration
+            .variables
+            .iter()
+            .zip(predicates.iter().cloned())
+            .collect();
+
+        let mut cases = Vec::new();
+        for constructor in &declaration.variants {
+            let mut tests = Vec::new();
+            for (index, argument) in constructor.type_parameters.iter().enumerate() {
+                let value = format!("$v0.{}", field(index));
+                let test =
+                    self.test(argument, &value, 1, &parameters)
+                        .map_err(|mut no_predicate| {
+                            if no_predicate.1.is_none() {
+                                no_predicate.1 = Some(union.sibling(&constructor.name));
+                            }
+                            no_predicate
+                        })?;
+                tests.push(test);
+            }
+            let test = if tests.is_empty() {
+                "true".to_string()
+            } else {
+                tests.join(" && ")
+            };
+            cases.push(format!(
+                "    case {}:\n      return {};",
+                string_literal(constructor.name.as_str()),
+                test
+            ));
+        }
+        cases.push("    default:\n      return false;".to_string());
+
+        let signature: Vec<&str> = std::iter::once("$v0")
+            .chain(predicates.iter().map(String::as_str))
+            .collect();
+        Ok(format!(
+            "function {}({}) {{\n  if (typeof $v0 !== \"object\" || $v0 === null) {{\n    return false;\n  }}\n  switch ($v0.$) {{\n{}\n  }}\n}}",
+            name,
+            signature.join(", "),
+            cases.join("\n")
+        ))
+    }
+}
+
+/// The canonical type left once `arity` arrows are taken off the front of `tpe` — a
+/// facade signature's result, `tpe` itself for a facade constant.
+fn canonical_result(tpe: &canonical::Type, arity: usize) -> &canonical::Type {
+    let mut result = tpe;
+    for _ in 0..arity {
+        match result {
+            canonical::Type::Arrow(_, rest) => result = rest,
+            _ => break,
+        }
+    }
+    result
+}
+
+/// [`canonical_result`] over the typer's type of the same signature, which is the one
+/// that can be written out the way the source spells it.
+fn typer_result(tpe: &Type, arity: usize) -> &Type {
+    let mut result = tpe;
+    for _ in 0..arity {
+        match result {
+            Type::Fun { return_tpe, .. } => result = return_tpe,
+            _ => break,
+        }
+    }
+    result
+}
+
 // ── Emitting an expression ────────────────────────────────────────────────────
 
 struct Emitter {
@@ -869,53 +1267,102 @@ impl Emitter {
     /// One `module foreign` facade declaration's forwarding code, appended to
     /// `functions` or `constants` — a plain function at arity one or more, a `const`
     /// at arity zero — plus the companion import it needs, appended to
-    /// `companion_imports`.
+    /// `companion_imports`, and any union predicate its boundary check calls, added to
+    /// `predicates`. See this module's doc comment, "The boundary check", for what the
+    /// forwarding code does with the companion's result.
     ///
     /// Only for a signature marked `unsafe`: one that is not declares an effect
     /// ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)),
     /// which this backend does not wrap yet, so [`Error::Effectful`] is pushed instead
-    /// and nothing is appended for it.
+    /// and nothing is appended for it. A result type no predicate decides pushes
+    /// [`Error::NoPredicate`] and appends nothing either.
     fn facade_declaration<'a>(
         &mut self,
-        canonical: &super::canonical::Module,
+        canonical: &canonical::Module,
         declaration: &'a ir::Declaration,
+        predicates: &mut Predicates,
         functions: &mut Vec<String>,
         constants: &mut HashMap<&'a Name, String>,
         companion_imports: &mut Vec<String>,
     ) {
-        let marked_unsafe = matches!(
-            canonical.values.get(&declaration.name),
+        let signature = match canonical.values.get(&declaration.name) {
             Some(Value::TypedValue {
                 marked_unsafe: true,
+                tpe,
                 ..
-            })
-        );
+            }) => tpe,
+            _ => {
+                self.errors.push(Error::Effectful {
+                    name: declaration.name.clone(),
+                    span: declaration.span,
+                });
+                return;
+            }
+        };
 
-        if !marked_unsafe {
-            self.errors.push(Error::Effectful {
-                name: declaration.name.clone(),
-                span: declaration.span,
-            });
-            return;
-        }
+        // What the companion hands back: the signature with the arrows of its own
+        // parameter list — `arity` of them — taken off the front.
+        let result = canonical_result(signature, declaration.arity);
 
         // The companion's export is imported under an alias — never the plain name,
         // which this method is about to declare a local binding under, and a module
         // cannot import and declare the same name twice.
         let local = mangle(declaration.name.as_str());
         let alias = companion_alias(declaration.name.as_str());
+        let parameters: Vec<String> = (0..declaration.arity).map(field).collect();
+        let call = format!("{}({})", alias, parameters.join(", "));
+
+        if matches!(result, canonical::Type::Unit) {
+            companion_imports.push(format!("{} as {}", declaration.name.as_str(), alias));
+            if declaration.arity == 0 {
+                constants.insert(&declaration.name, format!("const {} = undefined;", local));
+            } else {
+                functions.push(format!(
+                    "function {}({}) {{\n  {};\n  return undefined;\n}}",
+                    local,
+                    parameters.join(", "),
+                    call
+                ));
+            }
+            return;
+        }
+
+        let test = match predicates.test(result, "$returned", 0, &HashMap::new()) {
+            Ok(test) => test,
+            Err(no_predicate) => {
+                let (found, constructor) = *no_predicate;
+                self.errors.push(Error::NoPredicate {
+                    name: declaration.name.clone(),
+                    span: declaration.span,
+                    found,
+                    constructor,
+                });
+                return;
+            }
+        };
+
         companion_imports.push(format!("{} as {}", declaration.name.as_str(), alias));
+        self.runtime.insert("$abort");
+        let description = string_literal(&format!(
+            "`{}.{}`'s companion returned a value its declared type, `{}`, does not admit",
+            self.module.name().as_str(),
+            declaration.name.as_str(),
+            typer_result(&declaration.tpe, declaration.arity)
+        ));
+        let checked = format!("{} ? $returned : $abort({})", test, description);
 
         if declaration.arity == 0 {
-            constants.insert(&declaration.name, format!("const {} = {};", local, alias));
+            constants.insert(
+                &declaration.name,
+                format!("const {} = (($returned) => {})({});", local, checked, alias),
+            );
         } else {
-            let parameters: Vec<String> = (0..declaration.arity).map(field).collect();
             functions.push(format!(
-                "function {}({}) {{\n  return {}({});\n}}",
+                "function {}({}) {{\n  const $returned = {};\n  return {};\n}}",
                 local,
                 parameters.join(", "),
-                alias,
-                parameters.join(", ")
+                call,
+                checked
             ));
         }
     }

@@ -146,6 +146,8 @@ LANG-40  the solver: obligations are collected, deferred and discharged
   │
   └── LANG-42  `std/core` declares Eq, Comparable, Number, Appendable
                  ← needs LANG-41, which is independent of this order
+                 ← fixes BUG-44: until `Number` picks `addFloat` for a `Float`,
+                   `Basics.add` calls `addInt` and GEN-2's check aborts
 
 LANG-41  `Type::Number` retires; an integer literal is an `Int`   ← independent
            ← supersedes ERR-13
@@ -189,7 +191,9 @@ LANG-72  `()` as a type, an expression and a pattern                           �
   └── GEN-20  emit `()`, and publish its JavaScript value                    ── closed
 LANG-73  `std/core` declares `String`                                          ── closed
 LANG-68  an unmarked facade returns `Task (Result Failure a)`; `Task` nowhere else  ── closed
-GEN-2    the boundary predicates                                               ── independent
+GEN-2    the boundary predicates                                               ── closed
+           ← left BUG-44 open: `Float` arithmetic aborts at the `Int` facades'
+             check until LANG-42, in the type-classes program, fixes it
   │
   │  SPEC-37 + LANG-73 (both closed)
   ▼
@@ -197,7 +201,7 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed`, `map` and `andThen`
   │
   ├── GEN-21   the runtime runs a `Task`
   │     │
-  │     │  + LANG-68 + GEN-2
+  │     │  + LANG-68 + GEN-2 (both closed)
   │     ▼
   │   GEN-16   the wrapper an effectful facade's call gets: `Ok`, `Threw`, `Malformed`
   │
@@ -279,6 +283,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-41](bug-41.md) | bug | low | open | A union reached only transitively has no spelling, and `Spellings::spell` falls back to a name that can still collide |
 | [BUG-42](bug-42.md) | bug | low | open | A module-name collision with a test-dependency's module is found only after `src/` checks |
 | BUG-43 | bug | high | closed 2026-09-28 | A call to another module's function of two or more parameters is emitted one argument at a time against a plain n-ary function |
+| [BUG-44](bug-44.md) | bug | medium | open | `Float` arithmetic aborts at the `Int` facade's boundary check |
+| [BUG-45](bug-45.md) | bug | low | open | A facade signature may name a union whose constructors hold a type no predicate decides |
+| [BUG-46](bug-46.md) | bug | low | open | `Js.Utils.compareInt` and `compareFloat` declare an `Int` result their companion returns as a number |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -411,7 +418,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
-| [GEN-2](gen-2.md) | task | — | open | Emit the boundary predicate a facade signature promises |
+| GEN-2 | task | — | closed 2026-09-28 | Emit the boundary predicate a facade signature promises |
 | GEN-3 | task | — | closed 2026-09-21 | The typer hands back the types it solved |
 | GEN-4 | task | — | closed 2026-09-21 | The backend IR |
 | GEN-5 | task | — | closed 2026-09-23 | A `case` becomes a decision tree in the IR |
@@ -432,6 +439,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-20 | task | — | closed 2026-09-28 | Emit `()` |
 | [GEN-21](gen-21.md) | task | — | open | The JavaScript runtime cannot run a `Task` |
 | [GEN-22](gen-22.md) | task | — | open | There is no `zelkova run`: nothing runs a program's `main` |
+| [GEN-23](gen-23.md) | task | — | open | An `unsafe` facade's forwarding code does not catch what its companion throws |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |
@@ -448,6 +456,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TIDY-8](tidy-8.md) | task | — | open | Two tokenizer comments describe the `Int` width as unsettled and cite a closed ticket |
 | [TIDY-9](tidy-9.md) | task | — | open | `Module::from_declarations` has a `panic!` on a declaration kind its own bucketing rules out |
 | [TIDY-10](tidy-10.md) | task | — | open | `Interface::arities` is a parallel map, and a miss silently reads as arity 0 |
+| [TIDY-11](tidy-11.md) | task | — | open | `BUG-20` and `Js/Utils.mjs` describe a tuple encoding and a test file that no longer match the tree |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |
@@ -456,3 +465,4 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TEST-5](test-5.md) | task | — | open | Two `manifest` unit tests can be handed the same temporary directory, so the suite fails intermittently |
 | [TEST-6](test-6.md) | task | — | open | The `tests/cli.rs` tests that run `zelkova` on a shared fixture write one `build/` between them |
 | [TEST-7](test-7.md) | task | — | open | `std/core`'s companion checks are run by `node --test` and not as Zelkova tests |
+| [TEST-8](test-8.md) | task | — | open | CI never runs the runtime's own checks, `runtime/js/tests/zelkovaChecks.mjs` |
