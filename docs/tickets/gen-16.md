@@ -33,7 +33,7 @@ half it holds.
   [`Err (Threw ..)`](../spec/evaluation-semantics.md#an-effect-that-can-fail) for a failure the
   companion raised, and `Err (Malformed ..)` for a value that does not match. A thrown exception
   and a rejected promise are both `Threw`.
-- **A `()` payload is discarded, not checked** ([`GEN-20`](gen-20.md)). For
+- **A `()` payload is discarded, not checked** ([`GEN-20`](README.md)). For
   `Task (Result Failure ())` the wrapper ignores whatever the companion returns, or its promise
   resolves to, and yields `Ok ()` with `()` as `undefined`. A companion ending on a call it does
   not mean to return — `a.push(x)`, `map.set(k, v)` — is therefore `Ok`, never `Malformed`. It

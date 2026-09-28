@@ -187,7 +187,7 @@ The language owner settled the program's shape on 2026-09-27:
 ```
 SPEC-37  how a `Task` is represented and run, on JavaScript and WebAssembly   ── design, first
 LANG-72  `()` as a type, an expression and a pattern                           ── closed
-  └── GEN-20  emit `()`, and publish its JavaScript value
+  └── GEN-20  emit `()`, and publish its JavaScript value                    ── closed
 LANG-73  `std/core` declares `String`                                          ── independent
 LANG-68  an unmarked facade returns `Task (Result Failure a)`; `Task` nowhere else  ── independent
 GEN-2    the boundary predicates                                               ── independent
@@ -205,16 +205,16 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed`, `map` and `andThen`
   ├── LANG-75  `main` is checked to be a `Task ()`                   ← + LANG-72, closed
   │     └── GEN-22  `zelkova run [DIR]`                              ← + GEN-21
   │
-  └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ← + GEN-21, GEN-20
+  └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ← + GEN-21, GEN-20 closed
         │
         │  + GEN-16
         ▼
       TEST-7   `std/core`'s companion checks become Zelkova tests
 ```
 
-Five tickets have no open prerequisite and can start in parallel: `SPEC-37`, `GEN-20` (`LANG-72`
-is closed), `LANG-73`, `LANG-68` (against a synthetic `Task` interface, as its **Tests** say) and
-`GEN-2`.
+Four tickets have no open prerequisite and can start in parallel: `SPEC-37`, `LANG-73`, `LANG-68`
+(against a synthetic `Task` interface, as its **Tests** say) and `GEN-2`. `GEN-20` (`LANG-72`
+closed) is done.
 
 **Deliberately off the path**, each one because the goal does not need it:
 
@@ -431,7 +431,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-17 | task | — | closed 2026-09-27 | The compiler has no command line: `src/main.rs` compiles `std/core` and takes no arguments |
 | GEN-18 | task | — | closed 2026-09-27 | A build that compiles the tests writes none of them, so nothing can run one |
 | GEN-19 | task | — | closed 2026-09-27 | Production and test output should be at the same folder level |
-| [GEN-20](gen-20.md) | task | — | open | Emit `()` |
+| GEN-20 | task | — | closed 2026-09-28 | Emit `()` |
 | [GEN-21](gen-21.md) | task | — | open | The JavaScript runtime cannot run a `Task` |
 | [GEN-22](gen-22.md) | task | — | open | There is no `zelkova run`: nothing runs a program's `main` |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
