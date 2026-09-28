@@ -1393,15 +1393,21 @@ fn a_unit_value_is_refused() {
     }
 }
 
-/// `()` as a pattern is refused too, although the decision tree lowers it to no test
-/// at all: emitting it would still settle what a function taking `()` is handed.
+/// `()` as a pattern is refused too, in a parameter or a `case` branch, with the caret
+/// under the `()`. The decision tree lowers it to no test at all, and a parameter
+/// merely typed `()` already emits, so nothing about the pattern itself is unsettled:
+/// it is refused because this backend refuses every `()` a module writes until
+/// `GEN-20` lifts the refusal and emits the value in the same change.
 ///
-/// Mutation-checked by deleting the `unit_pattern` loop at the top of
-/// `Emitter::case_expression`: `always` then emits as a one-parameter function.
+/// Mutation-checked two ways, each red on its own: deleting the `unit_pattern` loop at
+/// the top of `Emitter::case_expression` (both declarations then emit), and refusing at
+/// the scrutinee's span instead of the one `unit_pattern` found (`viaCase`'s caret then
+/// sits under `u` — `always`'s would not move, since a parameter's scrutinee carries
+/// its pattern's span).
 #[test]
 fn a_unit_pattern_is_refused() {
-    let errors = refused(indoc! {r#"
-        module Test exposing (Flag(..), always)
+    let source = indoc! {r#"
+        module Test exposing (Flag(..), always, viaCase)
 
         type Flag
           = On
@@ -1410,15 +1416,44 @@ fn a_unit_pattern_is_refused() {
         always : () -> Flag
         always () =
           On
-    "#});
 
+        viaCase : () -> Flag
+        viaCase u =
+          case u of
+            () ->
+              Off
+    "#};
+    let errors = refused(source);
+
+    // `NodeSpan`'s equality ignores the span, so each span is compared on its own.
     assert_eq!(
         errors,
-        vec![Error::Unsupported {
-            construct: javascript::Construct::Unit,
-            declaration: Name::new("always"),
-            span: NodeSpan::none(),
-        }]
+        vec![
+            Error::Unsupported {
+                construct: javascript::Construct::Unit,
+                declaration: Name::new("always"),
+                span: NodeSpan::none(),
+            },
+            Error::Unsupported {
+                construct: javascript::Construct::Unit,
+                declaration: Name::new("viaCase"),
+                span: NodeSpan::none(),
+            },
+        ]
+    );
+    let parameter = position(source, "always () =") + "always ".len();
+    // Both annotations write `() ->` too; the branch's is the last.
+    let branch = source.rfind("() ->").expect("the branch writes `() ->`");
+    let spans: Vec<_> = errors
+        .iter()
+        .map(|error| match error {
+            Error::Unsupported { span, .. } => span.to_range(),
+            other => panic!("expected an unsupported construct, got {:?}", other),
+        })
+        .collect();
+    assert_eq!(
+        spans,
+        vec![Some(parameter..parameter + 2), Some(branch..branch + 2),]
     );
 }
 
