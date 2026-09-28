@@ -9,8 +9,8 @@ layout.
 "what comes after" that the bootstrap section left unfiled because it needed `Task` first.
 
 **Depends on:** [`LANG-76`](lang-76.md), for a `Test` that holds a `Task`; [`GEN-16`](gen-16.md),
-for the wrapper that turns a check that throws into `Err (Threw ..)`; [`LANG-72`](lang-72.md) and
-[`GEN-20`](gen-20.md), for the `()` in each check's type; [`LANG-68`](lang-68.md), so that the new
+for the wrapper that turns a check that throws into `Err (Threw ..)`; [`LANG-72`](README.md) (closed)
+and [`GEN-20`](gen-20.md), for the `()` in each check's type; [`LANG-68`](lang-68.md), so that the new
 facades are held to the shape they declare.
 
 **Location:** `std/core/tests/Js/BasicsChecks.mjs` (29 checks), `BitwiseChecks.mjs` (12),

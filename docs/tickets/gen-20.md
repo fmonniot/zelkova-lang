@@ -5,16 +5,18 @@ JavaScript representation is chosen. The choice is the part that is not small, b
 sees it.
 
 **Part of:** [Active work: effects](README.md#active-work-effects). This is the sibling
-[`GEN-1` decision 7](gen-1.md) asks for: [`LANG-72`](lang-72.md) makes `()` parse and check, and
+[`GEN-1` decision 7](gen-1.md) asks for: [`LANG-72`](README.md) made `()` parse and check, and
 this ticket emits it.
 
-**Depends on:** [`LANG-72`](lang-72.md).
+**Depends on:** [`LANG-72`](README.md), now closed.
 
 **Location:** `src/compiler/javascript.rs` — the expression emitter and the decision-tree test a
-pattern becomes; `src/compiler/ir/` — whatever node `LANG-72` gives `()`; `runtime/js/zelkova.mjs`,
-if the value ends up living there.
+pattern becomes; `src/compiler/ir/` — `TypedTermKind::Unit` and `TermPatternKind::Unit`, which
+`decision_tree` already lowers to no test and no binding; `runtime/js/zelkova.mjs`, if the value
+ends up living there. Until this lands, `javascript::emit` refuses both with
+`Construct::Unit`.
 
-**Problem:** once `LANG-72` lands, `()` reaches the backend and `javascript::emit` refuses it. The
+**Problem:** `()` reaches the backend and `javascript::emit` refuses it. The
 effects path needs it emitted in two places. `main`'s `Task ()` is completed with it. And every
 [test facade](../spec/interop.md#testing-a-companion) `Task (Result Failure ())` is completed with
 it, by a companion that does not know Zelkova exists.

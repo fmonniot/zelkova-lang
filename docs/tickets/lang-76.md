@@ -7,7 +7,7 @@ the first time `Test` grows since the bootstrap fixed it at `Pass | Fail`.
 **Part of:** [Active work: effects](README.md#active-work-effects).
 
 **Depends on:** [`LANG-74`](lang-74.md), for `Task` and `Failure`; [`GEN-21`](gen-21.md), for
-`$runTask`; [`LANG-72`](lang-72.md) and [`GEN-20`](gen-20.md), if the surface names
+`$runTask`; [`LANG-72`](README.md) (closed) and [`GEN-20`](gen-20.md), if the surface names
 `Task (Result Failure ())`, which the leaning option below does.
 
 **Location:** `std/test/src/Test.zel` — `Test`, `equal`, `check`; `src/compiler/test_runner.rs` —
