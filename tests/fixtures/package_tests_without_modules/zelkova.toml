@@ -1,8 +1,7 @@
-name = "zelkova-core"
+name = "package-tests-without-modules"
 version = "0.1.0"
 private-modules = []
 
 [dependencies]
 
 [test-dependencies]
-zelkova-test = { path = "../test", wrapped = false }

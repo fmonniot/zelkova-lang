@@ -54,7 +54,7 @@ oversight.
 
 **Acceptance:** a test asserts the emitted text for a declaration with a marked call contains
 the loop and for one without does not. The behavioural half is Zelkova tests in `std/core/tests/`,
-run by `zelkova test std/core` ([`GEN-14`](gen-14.md) sets that root up). One test runs a
+run by `zelkova test std/core` ([`GEN-14`](README.md) set that root up). One test runs a
 self-recursive function in tail position to a depth where a non-tail emission exhausts Node's
 stack, and asserts the answer. A comment beside the test says why that depth was chosen. A
 second test covers the crossing case: a two-parameter tail-recursive declaration whose recursive

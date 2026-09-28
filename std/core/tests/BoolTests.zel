@@ -1,0 +1,16 @@
+-- A `Bool` produced by a comparison, compared against the constructors `True` and
+-- `False` written in the source.
+module BoolTests exposing (lessThanHolds, lessThanFails)
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+lessThanHolds : Test
+lessThanHolds =
+  Test.equal (3 < 5) True
+
+
+lessThanFails : Test
+lessThanFails =
+  Test.equal (5 < 3) False

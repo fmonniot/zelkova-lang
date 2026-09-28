@@ -1,0 +1,17 @@
+-- `Float` literals and arithmetic: a division whose result is not a whole number,
+-- and a sum that shows a `Float` is a binary floating-point number, since
+-- `0.1 + 0.2` comes out just above `0.3`.
+module FloatTests exposing (divisionKeepsTheFraction, additionIsBinaryFloatingPoint)
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+divisionKeepsTheFraction : Test
+divisionKeepsTheFraction =
+  Test.equal (7.0 / 2.0) 3.5
+
+
+additionIsBinaryFloatingPoint : Test
+additionIsBinaryFloatingPoint =
+  Test.check (0.1 + 0.2 > 0.3)

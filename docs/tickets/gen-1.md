@@ -2,7 +2,7 @@
 
 **This ticket is the program's index, not a unit of work.** The design session on 2026-09-20
 settled what a backend consumes, how a function value is represented, where output goes and how
-it is tested, and broke the work into `GEN-3` through [`GEN-14`](gen-14.md), each
+it is tested, and broke the work into `GEN-3` through [`GEN-14`](README.md), each
 sized for one sitting. What is written below is the part that belongs to no single one of them:
 the decisions they inherit and the order they land in. It is tombstoned when the last of them
 closes.
@@ -110,7 +110,7 @@ GEN-9   emit a module   ── closed
    │
 GEN-13  write the build   ── closed
    │
-GEN-14  the end-to-end check   ── moved to the bootstrap section, run by `zelkova test`
+GEN-14  the end-to-end check   ── closed, in the bootstrap section, run by `zelkova test`
 ```
 
 Unscheduled, filed to keep their context: [`GEN-15`](gen-15.md) the WebAssembly backend,
@@ -119,6 +119,6 @@ the `zelkova` binary, closed in the bootstrap section. [`GEN-2`](gen-2.md), the 
 predicates, sequences after [`GEN-12`](README.md) and [`LANG-43`](README.md) as it always did.
 
 **Acceptance:** every ticket above is closed, and this file is tombstoned with them. What the
-program as a whole has to show is [`GEN-14`](gen-14.md)'s. Since 2026-09-27 that is Zelkova
+program as a whole has to show is [`GEN-14`](README.md)'s. Since 2026-09-27 that is Zelkova
 tests in `std/core/tests/` run by `zelkova test`, including one call through a facade into its
 companion. The self-tail-call depth check moved to [`GEN-11`](gen-11.md)'s own acceptance.

@@ -775,10 +775,10 @@ fn a_reserved_word_is_mangled_and_a_name_containing_one_is_not() {
 /// the whole module — since the nesting and the fall-through are the part every other
 /// test below takes for granted.
 ///
-/// Kept in sync by hand with `std/core/tests/CaseChecks.mjs`'s `label`, which hand-copies
-/// this exact shape until [`GEN-14`](../docs/tickets/gen-14.md) lets it import real build output instead — a
-/// change here that changes what gets emitted has to be carried there too, or that
-/// fixture starts asserting on stale text.
+/// This pins the text only. That the emitted `case` returns each branch's value when run
+/// is checked by `std/core/tests/CaseTests.zel`, under `cargo run -- test std/core`.
+/// What a value no branch matches does is pinned here alone: the abort cannot be
+/// asserted from inside Zelkova.
 ///
 /// Mutation-checked by having `Emitter::decision`'s `Test` arm drop the `else` and
 /// concatenate `matched` and `default` one after the other: the `Green`/`Blue` arms

@@ -1,0 +1,17 @@
+-- `Int` arithmetic, which is 64 bits: a sum that stays in range, and the largest
+-- `Int` plus one, which wraps to the smallest. The smallest is written
+-- `0 - 9223372036854775807 - 1` because a literal cannot be negative.
+module IntTests exposing (additionInRange, additionWrapsAtSixtyFourBits)
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+additionInRange : Test
+additionInRange =
+  Test.equal (40 + 2) 42
+
+
+additionWrapsAtSixtyFourBits : Test
+additionWrapsAtSixtyFourBits =
+  Test.equal (9223372036854775807 + 1) (0 - 9223372036854775807 - 1)

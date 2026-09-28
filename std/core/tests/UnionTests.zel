@@ -1,0 +1,59 @@
+-- Union values: a constructor with arguments, built and taken apart by a `case`
+-- whose answer depends on the order of the arguments; and constructors of no
+-- arguments, each one module-level constant, compared with `==`. Two separately
+-- built values with arguments are compared too, since they are distinct objects.
+module UnionTests exposing
+  ( argumentsKeepTheirOrder
+  , singleArgumentIsRead
+  , sameNullaryConstructorIsEqual
+  , equalArgumentValuesAreEqual
+  , differentNullaryConstructorsDiffer
+  )
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+type Shape
+  = Circle Int
+  | Rect Int Int
+
+
+type Light
+  = Off
+  | On
+
+
+measure : Shape -> Int
+measure shape =
+  case shape of
+    Circle r ->
+      r
+
+    Rect w h ->
+      w - h
+
+
+argumentsKeepTheirOrder : Test
+argumentsKeepTheirOrder =
+  Test.equal (measure (Rect 5 2)) 3
+
+
+singleArgumentIsRead : Test
+singleArgumentIsRead =
+  Test.equal (measure (Circle 4)) 4
+
+
+sameNullaryConstructorIsEqual : Test
+sameNullaryConstructorIsEqual =
+  Test.check (On == On)
+
+
+equalArgumentValuesAreEqual : Test
+equalArgumentValuesAreEqual =
+  Test.check (Rect 5 2 == Rect 5 2)
+
+
+differentNullaryConstructorsDiffer : Test
+differentNullaryConstructorsDiffer =
+  Test.equal (On == Off) False

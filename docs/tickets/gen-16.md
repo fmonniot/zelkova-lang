@@ -59,4 +59,4 @@ is stated in [`GEN-2`](gen-2.md)'s first point.
 that throws yields `Err (Threw ..)` carrying the host's description, a companion that returns a
 value of the wrong shape yields `Err (Malformed ..)` naming the export, and a companion that
 returns correctly yields `Ok` with the value — all three asserted as Zelkova tests run by
-`zelkova test` ([`LANG-69`](README.md)), in the root [`GEN-14`](gen-14.md) sets up.
+`zelkova test` ([`LANG-69`](README.md)), in the root [`GEN-14`](README.md) set up.

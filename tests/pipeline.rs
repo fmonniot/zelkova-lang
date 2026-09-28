@@ -5011,8 +5011,8 @@ fn a_test_is_found_by_its_qualname_not_its_spelling() {
 }
 
 /// A package that holds no tests compiles as one. `package_checks` has no `tests/`
-/// directory at all and `std/core` has one holding a companion `.mjs` and no `.zel`,
-/// so between them both ways of holding no test modules are covered — and neither is
+/// directory at all and `package_tests_without_modules` has one holding a `.mjs` and no
+/// `.zel`, so between them both ways of holding no test modules are covered — and neither is
 /// the missing-source-root failure a package with no `src/` is.
 ///
 /// Mutation-checked by dropping the `SourceRoot::Tests` early return in
@@ -5029,18 +5029,18 @@ fn a_package_with_no_test_modules_compiles_with_its_tests() {
     let result = compile_package_with_tests(&no_root);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
-    let core = std_package_root();
+    let no_modules = fixture_package("package_tests_without_modules");
     assert!(
-        core.join("tests").exists(),
-        "`std/core` must have a `tests/` for this half to mean anything"
+        no_modules.join("tests").exists(),
+        "the fixture must have a `tests/` for this half to mean anything"
     );
     assert_eq!(
-        module_names(&core, SourceRoot::Tests),
+        module_names(&no_modules, SourceRoot::Tests),
         Vec::<String>::new(),
-        "`std/core/tests` holds a companion and no module"
+        "the fixture's `tests/` holds a `.mjs` and no module"
     );
 
-    let result = compile_package_with_tests(&core);
+    let result = compile_package_with_tests(&no_modules);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }
 
