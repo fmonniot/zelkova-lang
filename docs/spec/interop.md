@@ -70,9 +70,8 @@ target — a facade over a browser API, say.
 ### The JavaScript companion
 
 An ES module. Its exports take a **plain parameter list**: a Zelkova function of two arguments
-is backed by a JavaScript function of two arguments, called directly. There is no
-curried-wrapper convention to observe on the JavaScript side — currying is the compiler's
-business.
+is backed by a JavaScript function of two arguments, called directly. Currying is the
+compiler's business.
 
 ### The WebAssembly companion
 
@@ -110,7 +109,7 @@ mechanisms:
 | `Bool` | the value is a boolean | `bool` |
 | `Char` | the value is a string of one character | `char` |
 | `String` | the value is a string | `string` |
-| `()` | the value is the one value that type has | nothing: no parameter, and no result |
+| `()` | the value is `undefined`; a result is [discarded](#the-unit-value-crosses-as-undefined) | nothing: no parameter, and no result |
 | A tuple | the value is an array of the tuple's length, each element satisfying its component's predicate | `tuple` of its components' spellings |
 | A record | the value is an object with exactly the record's fields, each field satisfying its own predicate | a `record` of the same fields |
 | A list | the value is an array, every element of which satisfies the element type's predicate | `list` of the element's spelling |
@@ -137,9 +136,6 @@ module foreign Core.Colour exposing
 unsafe rgb : Int -> (Int, Int, Int)
 unsafe luminance : (Int, Int, Int) -> Float
 ```
-
-JavaScript has one number type where Zelkova has two, and the `Int` predicate is what separates
-them. WIT has both and needs no separating.
 
 The two mechanisms cost different things. A predicate walks the whole value, so a facade taking
 a list of a thousand tuples checks a thousand tuples on the way in, once per crossing; the same
@@ -196,6 +192,23 @@ argument and terminates because a Zelkova value is immutable and can hold no cyc
 above, but nothing in the pipeline produces it, writes it or runs it. No WebAssembly is produced,
 no predicate is run and no interface is read; the predicates are what
 [`GEN-2`](../tickets/gen-2.md) emits.
+
+### The unit value crosses as `undefined`
+
+`()` has one value, and in JavaScript it is `undefined` ([DEC-21](../decisions/dec-21.md)).
+
+**A result of `()` is discarded, not checked.** A facade whose result is `()` — `unsafe f : X
+-> ()`, or the payload of `Task (Result Failure ())` — ignores whatever its companion returns
+and yields `undefined`.
+
+**A parameter of `()` keeps its slot.** A companion is handed `undefined` where the signature
+declares a `()` parameter, so its positions match [the plain parameter
+list](#the-javascript-companion) the signature describes. A companion may leave a trailing `()`
+parameter undeclared, since JavaScript reads an omitted trailing argument as `undefined`.
+
+**Nested, the check is strict.** A `()` inside a tuple, a record, a list or a union argument a
+companion returns must be `undefined`, checked like any other field or element. A record field
+of type `()` must be present, as `{ f: undefined }`.
 
 ### What a facade signature may not name
 

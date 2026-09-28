@@ -1,0 +1,35 @@
+-- `()` as an expression, passed to `always`, and as a pattern in two positions:
+-- `always`'s own parameter, and a `case` branch `viaCase` matches against. `always` here
+-- shadows `Basics.always` (`LANG-29`), which is deliberate: this module needs one of its
+-- own shape, `() -> Flag`, not `Basics`' `a -> b -> a`.
+module UnitTests exposing (parameterPatternMatches, casePatternMatches)
+
+import Basics exposing (..)
+import Test exposing (Test)
+
+
+type Flag
+  = On
+  | Off
+
+
+always : () -> Flag
+always () =
+  On
+
+
+viaCase : () -> Flag
+viaCase u =
+  case u of
+    () ->
+      Off
+
+
+parameterPatternMatches : Test
+parameterPatternMatches =
+  Test.equal (always ()) On
+
+
+casePatternMatches : Test
+casePatternMatches =
+  Test.equal (viaCase ()) Off

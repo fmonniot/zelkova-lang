@@ -1358,55 +1358,40 @@ fn an_exposed_operator_exports_its_function() {
     assert!(text.ends_with("export { add };\n"), "got:\n{}", text);
 }
 
-/// `()` as an expression is refused, with an error naming the declaration and the
-/// span of the `()`, rather than emitted as some representation nobody has chosen:
-/// what the unit value is on this target is `GEN-20`'s decision.
+/// `()` as an expression emits as `undefined`
+/// ([The unit value crosses as
+/// `undefined`](../docs/spec/interop.md#the-unit-value-crosses-as-undefined)).
 ///
-/// Mutation-checked by emitting `TypedTermKind::Unit` as `undefined` in
-/// `Emitter::expression` instead of calling `unsupported`: the module then emits.
+/// Mutation-checked by reverting `Emitter::expression`'s `TypedTermKind::Unit` arm to
+/// call `self.unsupported(Construct::Unit, term.span)`: the module is then refused
+/// instead of emitted.
 #[test]
-fn a_unit_value_is_refused() {
-    let source = indoc! {r#"
+fn a_unit_value_emits_as_undefined() {
+    let text = emitted(indoc! {r#"
         module Test exposing (nothingUseful)
 
         nothingUseful : ()
         nothingUseful =
           ()
-    "#};
-    let errors = refused(source);
+    "#});
 
-    // `NodeSpan`'s equality ignores the span, so the span is compared on its own.
-    assert_eq!(
-        errors,
-        vec![Error::Unsupported {
-            construct: javascript::Construct::Unit,
-            declaration: Name::new("nothingUseful"),
-            span: NodeSpan::none(),
-        }]
+    assert!(
+        text.contains("const nothingUseful = undefined;"),
+        "got:\n{}",
+        text
     );
-    let start = source.rfind("()").expect("the source writes `()`");
-    match &errors[0] {
-        Error::Unsupported { span, .. } => {
-            assert_eq!(span.to_range(), Some(start..start + 2))
-        }
-        other => panic!("expected an unsupported construct, got {:?}", other),
-    }
 }
 
-/// `()` as a pattern is refused too, in a parameter or a `case` branch, with the caret
-/// under the `()`. The decision tree lowers it to no test at all, and a parameter
-/// merely typed `()` already emits, so nothing about the pattern itself is unsettled:
-/// it is refused because this backend refuses every `()` a module writes until
-/// `GEN-20` lifts the refusal and emits the value in the same change.
+/// `()` as a pattern — a parameter, as `always` writes it, or a `case` branch, as
+/// `viaCase` writes it — tests nothing and binds nothing: `decision_tree` already
+/// lowers it to a [`Decision::Leaf`] with no test ahead of it, so both declarations
+/// return their body unconditionally.
 ///
-/// Mutation-checked two ways, each red on its own: deleting the `unit_pattern` loop at
-/// the top of `Emitter::case_expression` (both declarations then emit), and refusing at
-/// the scrutinee's span instead of the one `unit_pattern` found (`viaCase`'s caret then
-/// sits under `u` — `always`'s would not move, since a parameter's scrutinee carries
-/// its pattern's span).
+/// Mutation-checked by restoring the deleted `unit_pattern` loop at the top of
+/// `Emitter::case_expression`: both declarations are then refused instead of emitted.
 #[test]
-fn a_unit_pattern_is_refused() {
-    let source = indoc! {r#"
+fn a_unit_pattern_emits_with_no_test() {
+    let text = emitted(indoc! {r#"
         module Test exposing (Flag(..), always, viaCase)
 
         type Flag
@@ -1422,77 +1407,77 @@ fn a_unit_pattern_is_refused() {
           case u of
             () ->
               Off
-    "#};
-    let errors = refused(source);
+    "#});
 
-    // `NodeSpan`'s equality ignores the span, so each span is compared on its own.
-    assert_eq!(
-        errors,
-        vec![
-            Error::Unsupported {
-                construct: javascript::Construct::Unit,
-                declaration: Name::new("always"),
-                span: NodeSpan::none(),
-            },
-            Error::Unsupported {
-                construct: javascript::Construct::Unit,
-                declaration: Name::new("viaCase"),
-                span: NodeSpan::none(),
-            },
-        ]
+    assert!(
+        text.contains("function always($0) {\n  return (() => {\n  const $scrutinee = $0;\n  {\n    return $test_project$Test$On;\n  }\n})();\n}"),
+        "got:\n{}",
+        text
     );
-    let parameter = position(source, "always () =") + "always ".len();
-    // Both annotations write `() ->` too; the branch's is the last.
-    let branch = source.rfind("() ->").expect("the branch writes `() ->`");
-    let spans: Vec<_> = errors
-        .iter()
-        .map(|error| match error {
-            Error::Unsupported { span, .. } => span.to_range(),
-            other => panic!("expected an unsupported construct, got {:?}", other),
-        })
-        .collect();
-    assert_eq!(
-        spans,
-        vec![Some(parameter..parameter + 2), Some(branch..branch + 2),]
+    assert!(
+        text.contains("function viaCase(u) {\n  return (() => {\n  const $scrutinee = u;\n  {\n    return $test_project$Test$Off;\n  }\n})();\n}"),
+        "got:\n{}",
+        text
     );
 }
 
-/// A `()` written as a tuple's element is refused as one at the top of a pattern is,
-/// with the caret under the nested `()` rather than the whole parameter: the typer
-/// admits it there, so the declaration reaches this backend instead of being refused
-/// as one the type checker could not check.
+/// A `()` written as a tuple's element emits the same way as one at the top of a
+/// pattern: no test, no binding for it, and the tuple's other element bound as usual.
 ///
-/// Mutation-checked three ways, each red on its own: dropping `PatternKind::Unit` from
-/// `typer::translate_sub_pattern`'s admitted shapes (the error is then
-/// `Error::Unchecked`), making `unit_pattern`'s `Tuple` arm answer `None` (`second`
-/// then emits), and refusing at the scrutinee's span instead of the one `unit_pattern`
-/// found (the caret then covers all of `(x, ())`).
+/// Mutation-checked the same way as
+/// [`a_unit_pattern_emits_with_no_test`]: restoring the deleted `unit_pattern` loop at
+/// the top of `Emitter::case_expression` refuses `second` too, since that loop walks a
+/// pattern to any depth and `()` here is nested inside the tuple rather than at the
+/// top.
 #[test]
-fn a_nested_unit_pattern_is_refused() {
-    let source = indoc! {r#"
+fn a_nested_unit_pattern_emits_with_no_test() {
+    let text = emitted(indoc! {r#"
         module Test exposing (second)
 
         second : (Int, ()) -> Int
         second (x, ()) =
           x
-    "#};
-    let errors = refused(source);
+    "#});
 
-    // `NodeSpan`'s equality ignores the span, so the span is compared on its own.
-    assert_eq!(
-        errors,
-        vec![Error::Unsupported {
-            construct: javascript::Construct::Unit,
-            declaration: Name::new("second"),
-            span: NodeSpan::none(),
-        }]
+    assert!(
+        text.contains(
+            "const $scrutinee = $0;\n  {\n    const x = $scrutinee[0];\n    return x;\n  }"
+        ),
+        "got:\n{}",
+        text
     );
-    // The annotation writes `())` too; the pattern's is the last.
-    let start = source.rfind("())").expect("the pattern writes `())`");
-    match &errors[0] {
-        Error::Unsupported { span, .. } => {
-            assert_eq!(span.to_range(), Some(start..start + 2))
-        }
-        other => panic!("expected an unsupported construct, got {:?}", other),
-    }
+}
+
+/// A binding named `undefined` is mangled to `$undefined`, so declaring one does not
+/// change what a `()` elsewhere in the module reads as: without the mangling, `const
+/// undefined = 1n;` would shadow the global for the rest of the module, and
+/// `nothingUseful`'s `()` would read `1n` rather than the one value `()` has.
+///
+/// Mutation-checked by dropping `"undefined"` from `RESERVED`: the binding then emits
+/// as `const undefined = 1n;`, which this test's `assert!` no longer finds.
+#[test]
+fn a_binding_named_undefined_is_mangled() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (undefined, nothingUseful)
+
+        undefined : Int
+        undefined =
+          1
+
+        nothingUseful : ()
+        nothingUseful =
+          ()
+    "#});
+
+    assert!(text.contains("const $undefined = 1n;"), "got:\n{}", text);
+    assert!(
+        text.contains("const nothingUseful = undefined;"),
+        "got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("export { nothingUseful, $undefined as undefined };"),
+        "got:\n{}",
+        text
+    );
 }
