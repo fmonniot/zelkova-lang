@@ -1,0 +1,18 @@
+module AddTest exposing (twoAndTwoIsFour)
+
+import Test
+
+
+double : Int -> Int
+double n =
+  n + n
+
+
+twoAndTwoIsFour : Test.Test
+twoAndTwoIsFour =
+  case double 2 of
+    4 ->
+      Test.check True
+
+    _ ->
+      Test.check False

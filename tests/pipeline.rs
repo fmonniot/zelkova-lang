@@ -671,6 +671,12 @@ fn every_stdlib_module_emits() {
 /// written qualified — `and = Js.Bitwise.and` — so every one is type checked against
 /// the facade's interface and the module emits.
 ///
+/// `and` is a parameterless binding, so an importer calls it one argument at a time, and
+/// its value is `Js.Bitwise.and`, a function of two parameters used as a value: it is
+/// `$curry`'d at its declaration. Emitting the bare import instead is mutation-checked by
+/// making `Emitter::value`'s `ReferenceKind::Foreign` arm return `local` whatever the
+/// arity.
+///
 /// Mutation-checked two ways, each making `emit` refuse all seven declarations as
 /// unchecked: dropping the loop over `interfaces` from `type_check`'s first pass, and
 /// qualifying a `VarForeign` with the whole written spelling in
@@ -688,7 +694,7 @@ fn the_stdlib_bitwise_forwards_to_its_facade() {
         .unwrap_or_else(|errors| panic!("Bitwise failed to emit: {:?}", errors));
 
     assert!(
-        text.contains("const and = zelkova_core$Js$Bitwise$and;"),
+        text.contains("const and = $curry(zelkova_core$Js$Bitwise$and, 2);"),
         "got:\n{}",
         text
     );
@@ -1637,6 +1643,7 @@ fn helper_interface() -> (Name, Interface) {
         unions: HashMap::new(),
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
+        arities: HashMap::new(),
         file: None,
     };
 
@@ -2891,6 +2898,7 @@ fn basics_interface_with_plus() -> (Name, Interface) {
         unions,
         infixes,
         infix_functions: HashMap::new(),
+        arities: HashMap::new(),
         file: None,
     };
 

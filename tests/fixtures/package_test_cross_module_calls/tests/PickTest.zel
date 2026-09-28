@@ -1,0 +1,9 @@
+module PickTest exposing (picksTheFirst)
+
+import Lib
+import Test
+
+
+picksTheFirst : Test.Test
+picksTheFirst =
+  Test.check (Lib.pick True False)

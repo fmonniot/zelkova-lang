@@ -125,8 +125,27 @@ depends on it not doing so was already depending on a backend rather than on the
 It needs two facts at the call site — the callee's arity and whether the call is saturated —
 which is part of why the IR carries them (decision 1).
 
-Lands at: `runtime/js/zelkova.mjs` for the helper, and `src/compiler/javascript.rs` for the
-call-site rule.
+**A module exports each declaration as it emitted it, and its arity crosses in the
+interface.** Added on 2026-09-28 with the fix for [`BUG-43`](../tickets/README.md), which found
+the rule above silent about a callee in another module. A declaration with parameters is
+exported as the plain n-ary function, and the `Interface` an importer is checked against
+records how many parameters each exported value takes, so a call that supplies every argument
+of an imported declaration is as direct as a call to one of the module's own. The alternative
+considered there was to export every function of two or more parameters already `$curry`'d, so
+that an importer would need no arity. That would make every call across a module boundary a
+partial application, and every operator a program writes is such a call, since `+` and `==`
+are declared in `Basics`. It would also put a bridge back on the facade boundary, which the
+paragraph above says needs none.
+
+A parameterless binding has arity 0 wherever it is called from, so one whose value is a
+function of two or more parameters, such as `Basics`' `add = Js.Basics.addInt`, holds that
+function `$curry`'d, and a call to it goes through the helper. This entry does not settle
+whether `Basics` should write such declarations with parameters instead, or whether a binding
+like that should take the arity of what it names, which is eta-expansion and a language rule:
+[`PERF-2`](../tickets/perf-2.md) holds both.
+
+Lands at: `runtime/js/zelkova.mjs` for the helper, `src/compiler/javascript.rs` for the
+call-site rule, and `canonical::Module::emitted_arity` for the arity an interface records.
 
 ## 4 — A constructor of no arguments is hoisted to one module-level constant
 

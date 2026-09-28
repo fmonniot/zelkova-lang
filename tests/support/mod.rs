@@ -157,6 +157,7 @@ pub fn maybe_interface() -> (Name, Interface) {
         unions,
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
+        arities: HashMap::new(),
         file: None,
     };
 
@@ -201,6 +202,7 @@ pub fn basics_interface() -> (Name, Interface) {
         unions,
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
+        arities: HashMap::new(),
         file: None,
     };
 
@@ -228,6 +230,7 @@ pub fn char_interface() -> (Name, Interface) {
         unions,
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
+        arities: HashMap::new(),
         file: None,
     };
 

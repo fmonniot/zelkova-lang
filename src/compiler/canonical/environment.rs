@@ -1155,6 +1155,7 @@ mod tests {
             unions,
             infixes: HashMap::new(),
             infix_functions: HashMap::new(),
+            arities: HashMap::new(),
             file: None,
         };
 
@@ -1270,6 +1271,7 @@ mod tests {
                     unions,
                     infixes: HashMap::new(),
                     infix_functions: HashMap::new(),
+                    arities: HashMap::new(),
                     file: None,
                 },
             )
@@ -1765,6 +1767,7 @@ mod tests {
             unions: HashMap::new(),
             infixes,
             infix_functions: HashMap::new(),
+            arities: HashMap::new(),
             file: None,
         };
 

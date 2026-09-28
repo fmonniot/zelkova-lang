@@ -110,6 +110,7 @@ mod tests {
             unions: HashMap::new(),
             infixes: HashMap::new(),
             infix_functions: HashMap::new(),
+            arities: HashMap::new(),
             file: None,
         }
     }

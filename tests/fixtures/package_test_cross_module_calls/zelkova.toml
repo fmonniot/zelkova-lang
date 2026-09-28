@@ -1,0 +1,16 @@
+# The fixture `zelkova test` is run against to check that a call to another module's function
+# of two or more parameters runs. Each module under `tests/` holds one test, so each errors or
+# passes on its own: `PickTest` calls `Lib.pick`, declared in `src/`; `AddTest` adds with `+`,
+# which `Basics` declares; `EqualTest` is `Test.equal 1 1`, which reaches `Basics.eq` from the
+# `zelkova-test` package. `cargo test` never runs `node`, so the run itself is checked by hand:
+# `cargo run -- test tests/fixtures/package_test_cross_module_calls` reports all three passing.
+name = "package-test-cross-module-calls"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies.zelkova-test]
+path = "../../../std/test"
+wrapped = false

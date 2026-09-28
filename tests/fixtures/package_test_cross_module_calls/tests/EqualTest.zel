@@ -1,0 +1,8 @@
+module EqualTest exposing (oneIsOne)
+
+import Test
+
+
+oneIsOne : Test.Test
+oneIsOne =
+  Test.equal 1 1

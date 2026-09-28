@@ -318,6 +318,21 @@ pub struct Interface {
     /// exposed operator is importable by name only when the header says so too
     /// (`BUG-9`), and then it is [`values`](Self::values) that carries it.
     pub infix_functions: HashMap<Name, (NodeSpan, canonical::Type)>,
+    /// How many parameters each value in [`values`](Self::values) and
+    /// [`infix_functions`](Self::infix_functions) is emitted with, keyed the same way:
+    /// [`canonical::Module::emitted_arity`].
+    ///
+    /// An importer reads it for the same reason the module declaring the value reads its
+    /// own declarations' arities: a call supplying that many arguments is a direct call,
+    /// and a use of the value as anything else goes through the runtime's `$curry`
+    /// ([`DEC-18` decision
+    /// 3](../../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
+    /// The typer's translation is where it is read, into [`ir::ReferenceKind::Foreign`].
+    ///
+    /// [`canonical::Module::to_interface`] records one for every value either map holds.
+    /// A value missing from it — which only a hand-built interface in a test can leave
+    /// out — is read as arity 0, the arity of a parameterless binding.
+    pub arities: HashMap<Name, usize>,
     /// The file this interface's module was read from, when the caller knows it.
     ///
     /// It is what makes a diagnostic about an imported name able to underline that
