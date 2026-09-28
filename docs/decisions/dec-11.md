@@ -136,4 +136,4 @@ The mechanism has no implementation and this decision did not give it one. Every
 chapters gained is held only to failing to compile — the three that name `Task` in a facade
 signature among them, since nothing declares the `Task` they import. That is the only
 accountability any of this carries until [`GEN-1`](../tickets/gen-1.md) emits a runtime and a
-runner runs a package's tests ([`LANG-69`](../tickets/lang-69.md)).
+`zelkova test` runs a package's tests through it.

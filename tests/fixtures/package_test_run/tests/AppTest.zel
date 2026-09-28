@@ -1,0 +1,14 @@
+module AppTest exposing (redIsWarm, blueIsWarm)
+
+import App exposing (Color(..))
+import Test
+
+
+redIsWarm : Test.Test
+redIsWarm =
+  Test.check (App.isWarm Red)
+
+
+blueIsWarm : Test.Test
+blueIsWarm =
+  Test.check (App.isWarm Blue)

@@ -462,8 +462,8 @@ check.
 
 **Not implemented:** none of this runs. The `zel` block does not parse, because
 [`()` is not recognised](types.md#the-unit-type) in either signature. Nothing declares `Task` or
-`Failure`, no wrapper is generated around an effectful call ([`GEN-1`](../tickets/gen-1.md),
-[`GEN-2`](../tickets/gen-2.md)), and there is no runner to run a `Test`
-([`LANG-69`](../tickets/lang-69.md)). Until there is, a companion test
-under `tests/` is a `.mjs` file that the target's own test runner is pointed at directly, and
-the facade half of the pair is not written yet.
+`Failure`, and no wrapper is generated around an effectful call ([`GEN-1`](../tickets/gen-1.md),
+[`GEN-2`](../tickets/gen-2.md)), so a `Test` whose checks are `Task`s cannot be written.
+`zelkova test` runs a `Test` that is `Pass` or `Fail`, and has no `Task` to run. Until it does, a
+companion test under `tests/` is a `.mjs` file that the target's own test runner is pointed at
+directly, and the facade half of the pair is not written yet.

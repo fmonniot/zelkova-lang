@@ -27,7 +27,7 @@ runtime behaviour, is invisible on a pull request. [`BUG-24`](README.md) and
 
 **Approach:** one job, two steps, in this order:
 
-1. `cargo run -- test std/core`, which runs `std/core`'s Zelkova tests ([`LANG-69`](lang-69.md),
+1. `cargo run -- test std/core`, which runs `std/core`'s Zelkova tests ([`LANG-69`](README.md),
    [`GEN-14`](gen-14.md)).
 2. `node --test 'std/core/tests/**/*.mjs'`, which runs the companion checks that are not
    Zelkova tests yet.

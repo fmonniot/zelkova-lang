@@ -93,9 +93,11 @@ pub mod resolve;
 // than an implementation detail of one phase.
 pub mod scalars;
 pub mod source;
-// Public because `LANG-69`'s runner (docs/tickets/lang-69.md) is its caller, the way
+// Public because `test_runner`, and `zelkova test` through it, is its caller, the way
 // `scalars` and `default_imports` are public for the phase that reads them.
 pub mod test_collection;
+// Public because `CompilationError::TestRun` carries its `Error`, and `zelkova test` calls `run`.
+pub mod test_runner;
 pub mod tuple;
 pub mod typer;
 
@@ -595,6 +597,10 @@ pub enum CompilationError {
     /// A file of the build's output could not be written. Raised only once every module
     /// of the build has checked and emitted, since nothing is written before that.
     Output(output::Error),
+    /// A package's tests were compiled and could not be run: `zelkova test` could not
+    /// write its entry point or could not run `node`. A test that ran and did not pass is
+    /// not this; it is the exit code of the run.
+    TestRun(test_runner::Error),
 
     /// An error together with the file the module it belongs to was read from.
     ///
@@ -698,6 +704,10 @@ impl CompilationError {
             }
             // A path on disk, not a place in any source, so there is nothing to label.
             CompilationError::Output(error) => Diagnostic::error()
+                .with_message(error.message())
+                .with_notes(error.notes()),
+            // Like `Output`, about the machine and not about any source.
+            CompilationError::TestRun(error) => Diagnostic::error()
                 .with_message(error.message())
                 .with_notes(error.notes()),
             // A dependency cycle belongs to the package, not to any one module, so it
@@ -843,14 +853,13 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 /// [`compile_package`].
 ///
 /// It compiles the tests and does not run them: what makes a declaration a test is
-/// [its type](../../docs/spec/packages.md#what-a-test-is), and there is no runner yet
-/// ([`LANG-69`](../../docs/tickets/lang-69.md) is that ticket). What it hands back on
-/// success is the `Interface` of each of the root's own `tests/` modules that
-/// checked — never a test-only package's, and never `src/`'s — so a caller can find
-/// which of their exposed values are tests without a phase dropping the checked
-/// modules once they are emitted. `test_collection::collect` is that pass, and
-/// `LANG-69`'s runner is its only intended caller. Empty when the package holds no
-/// `tests/` at all.
+/// [its type](../../docs/spec/packages.md#what-a-test-is), and running one is
+/// [`test_runner::run`]'s. What it hands back on success is the `Interface` of each of
+/// the root's own `tests/` modules that checked — never a test-only package's, and never
+/// `src/`'s — so a caller can find which of their exposed values are tests without a phase
+/// dropping the checked modules once they are emitted. `test_collection::collect` is that
+/// pass, and `test_runner::run` is its caller. Empty when the package holds no `tests/` at
+/// all.
 ///
 /// A test module and every `test-dependency`'s modules are checked and, unlike a plain
 /// build, written — to a tree of their own, `build/test/js/`, laid out exactly like

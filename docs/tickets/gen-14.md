@@ -11,7 +11,7 @@ as a fixture package checked by hand-written `node --test` assertions. It is now
 use of `zelkova test`. The behavioural checks it always asked for are written in Zelkova, in
 `std/core`'s own `tests/` root.
 
-**Depends on:** [`LANG-69`](lang-69.md) (`zelkova test` exists) and [`SPEC-35`](README.md)
+**Depends on:** [`LANG-69`](README.md), now closed (`zelkova test` exists), and [`SPEC-35`](README.md)
 (`zelkova-core` may test-depend on `zelkova-test`).
 
 **Location:** `std/core/zelkova.toml`, whose `test-dependencies` is empty, and
@@ -40,8 +40,7 @@ dependency. A Rust test that skips when `node` is absent is a green test that pr
    - **A `case`** over a three-constructor union, returning each branch's value. This is what
      `CaseChecks.mjs` covered. The half that checks a value no branch matches *aborts* stays
      with the Rust text pin. An abort cannot be asserted from inside Zelkova, and
-     [`LANG-69`](lang-69.md) would report it as an errored module rather than as a failing
-     test.
+     `zelkova test` reports it as an errored module rather than as a failing test.
    - **A call through a `module foreign` facade into its companion.** `Basics` arithmetic
      reaches `Js.Basics`, so something as small as `Test.equal (7 // 2) 3` exercises the
      boundary, the placement of the companion, and the `BigInt` representation of an `Int`.

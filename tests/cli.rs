@@ -131,7 +131,7 @@ fn compile_routes_explicit_dir_to_compile_package() {
 /// code rather than, say, swallowing the `Err` and exiting 0.
 ///
 /// Neutralised by changing `std::process::exit(1)` to `std::process::exit(0)` at the
-/// end of `main`. This test went red (exit code 0 instead of the expected non-zero)
+/// end of `fail` in `main.rs`. This test went red (exit code 0 instead of the expected non-zero)
 /// under that change, confirming it is that call — not clap or `compile_package`
 /// itself — that this test pins.
 #[test]
@@ -150,4 +150,100 @@ fn compile_failure_exits_non_zero_with_diagnostic() {
         "expected the type error's diagnostic on stderr, got: {}",
         stderr
     );
+}
+
+/// A `PATH` naming a directory that does not exist, so that no `node` is found however the
+/// machine is set up — and so that no test in this file can run one. `cargo test` never
+/// invokes `node` ([`DEC-18` decision 6](../docs/decisions/dec-18.md)).
+const NO_NODE_PATH: &str = "/nonexistent-zelkova-cli-test-path";
+
+/// Like [`run`], with `PATH` set to [`NO_NODE_PATH`]. The binary is started by its absolute
+/// path, so the missing `PATH` only affects what the binary itself looks up.
+fn run_without_node(cwd: &Path, args: &[&str]) -> Output {
+    Command::new(zelkova_bin())
+        .args(args)
+        .current_dir(cwd)
+        .env("PATH", NO_NODE_PATH)
+        .output()
+        .expect("failed to run the zelkova binary")
+}
+
+/// `zelkova test` on a package that does not compile exits 1 and runs nothing: the build's
+/// diagnostic is on stderr, no entry point was written, and — because the run happens with
+/// no `node` reachable — an attempt to start one would have shown up as an error naming it.
+///
+/// Neutralised by replacing the `?` after `compile_package_with_tests(package_dir)` in
+/// `test_runner::run` with `.unwrap_or_default()`, so a failed build carries on with nothing
+/// collected. This test went red (exit code 0 and "no tests found") under that change.
+#[test]
+fn test_on_a_package_that_does_not_compile_exits_1_without_running_node() {
+    let package_dir = fixture_package("package_type_error");
+    let output = run_without_node(&package_dir, &["test"]);
+
+    assert_eq!(output.status.code(), Some(1), "{:?}", output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cannot match"),
+        "expected the type error's diagnostic on stderr, got: {}",
+        stderr
+    );
+    assert!(
+        !stderr.contains("`node`"),
+        "a package that does not compile must not reach the `node` step, got: {}",
+        stderr
+    );
+    assert!(!package_dir.join("build/test/js/run.mjs").exists());
+}
+
+/// A package that holds no test says so and exits 0 — it has not failed any — without
+/// `node`: with none reachable, the run still succeeds.
+///
+/// Neutralised by deleting the `if modules.iter().all(..)` early return in
+/// `test_runner::run`. This test went red (the run wrote an entry point and failed to find
+/// `node`) under that change.
+#[test]
+fn test_on_a_package_with_no_tests_exits_0_without_running_node() {
+    let package_dir = fixture_package("package_no_tests");
+    let output = run_without_node(&package_dir, &["test"]);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "expected success, got {:?}\nstderr: {}",
+        output.status,
+        stderr
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "no tests found\n");
+
+    let _ = std::fs::remove_dir_all(package_dir.join("build"));
+}
+
+/// When `node` cannot be started, `zelkova test` says so by name and exits non-zero. It
+/// never reports success for tests that did not run.
+///
+/// Run from inside the fixture with no directory argument, so this also pins that
+/// `Test { dir }` defaults to `.`. The fixture holds two tests, so the run does reach the
+/// `node` step.
+///
+/// Neutralised by replacing the `map_err(..)?` on `Command::status` in `test_runner::run`
+/// with an `unwrap_or_else` that falls back to the status of `true`. This test went red
+/// (exit code 0) under that change.
+#[test]
+fn test_without_node_on_path_fails_naming_node() {
+    let package_dir = fixture_package("package_test_run");
+    let output = run_without_node(&package_dir, &["test"]);
+
+    assert!(
+        !output.status.success(),
+        "a run that could not start `node` must not succeed, got {:?}",
+        output.status
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("could not run `node`"),
+        "expected an error naming `node`, got: {}",
+        stderr
+    );
+
+    let _ = std::fs::remove_dir_all(package_dir.join("build"));
 }

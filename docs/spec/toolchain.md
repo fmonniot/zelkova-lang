@@ -235,9 +235,6 @@ reads its `tests/` root.
 compile either root is the same non-zero exit a failed build already is — a test that did not
 run is not a test that passed.
 
-**Not implemented:** there is no runner
-([`docs/tickets/lang-69.md`](../tickets/lang-69.md)).
-
 ## The compiler's interface
 
 **Known gap:** nothing is fetched, nothing is cached, and no `zelkova.lock` is read or written
@@ -256,3 +253,9 @@ The binary is `zelkova`, and compiling is one subcommand of it: `zelkova compile
 `DIR` names the package root and defaults to the current directory. A bare `zelkova` with no
 subcommand compiles nothing — it prints usage and exits non-zero, the same as an unrecognised
 subcommand would.
+
+Running a package's tests is another: `zelkova test [DIR]`, with the same `DIR`. It reports each
+test under `<Module>.<value>`, where `<Module>` is the test module's name within its package,
+and it exits non-zero when any test did not pass. It runs the tests under `node`, which it looks
+for on `PATH`; `zelkova compile` does not need it. A package that holds no test is a run that
+passes.

@@ -185,7 +185,7 @@ SPEC-35  a test-dependency may depend on the package it tests                   
   │
   │  GEN-17 + LANG-63 + GEN-18
   ▼
-LANG-69  `zelkova test [DIR]` — a generated `run.mjs`, run under node
+LANG-69  `zelkova test [DIR]` — a generated `run.mjs`, run under node            ── closed
   │
   │  + SPEC-35
   ▼
@@ -380,7 +380,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-66](lang-66.md) | task | — | open | What a negative `Int` exponent means for `pow` is undecided |
 | [LANG-67](lang-67.md) | task | — | open | `pow`'s `bigint` branch can materialize an astronomically large intermediate before masking |
 | [LANG-68](lang-68.md) | task | — | open | An unmarked facade signature is not held to the `Task (Result Failure a)` result shape |
-| [LANG-69](lang-69.md) | task | — | open | There is no `zelkova test`: nothing runs a package's tests |
+| LANG-69 | task | — | closed 2026-09-27 | There is no `zelkova test`: nothing runs a package's tests |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
