@@ -7,8 +7,8 @@ through a union constructor has not been exercised this hard before.
 
 **Part of:** [Active work: effects](README.md#active-work-effects).
 
-**Depends on:** [`SPEC-37`](spec-37.md), for `Done` and for the helper shape; [`LANG-73`](lang-73.md),
-for the `String` that `Failure`'s constructors carry.
+**Depends on:** [`SPEC-37`](spec-37.md), for `Done` and for the helper shape; [`LANG-73`](README.md),
+for the `String` that `Failure`'s constructors carry — closed, so `std/core` now declares it.
 
 **Location:** `std/core/src/Task.ignored` — Elm's `effect module Task`, over
 `Elm.Kernel.Scheduler`, `Platform` and `Task x a`. None of that carries over: it is two type
@@ -33,7 +33,7 @@ at that import, and every later ticket in the effects section needs the type.
    (`let`) are not on this path. `Task` is exposed opaquely. That is what keeps building one out of
    parts inside core, per the chapter.
 2. Declare `Failure` with both constructors exposed.
-3. Decide what happens to `Task.ignored`, as [`LANG-73`](lang-73.md) does for `String.ignored`.
+3. Decide what happens to `Task.ignored`, as [`LANG-73`](README.md) did for `String.ignored`.
    Elm's `map2`…`map5`, `sequence`, `onError`, `mapError`, `perform` and `attempt` are not in the
    chapter and are out of scope. `Task (Result e a)` makes most of them a different function
    anyway, and a later ticket can decide which ones Zelkova wants.

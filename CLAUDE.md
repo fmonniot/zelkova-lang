@@ -30,7 +30,7 @@ Bare `cargo test` runs only the compiler's own tests and silently skips `tools/s
 use `--workspace`. `tools/spec-doc` carries no tests of its own; its logic is exercised through
 `tests/spec.rs`, which depends on it.
 
-`cargo run -- compile std/core` prints `parsed 8 modules`, then lists all eight as checked, and
+`cargo run -- compile std/core` prints `parsed 9 modules`, then lists all nine as checked, and
 **exits 0**. It is a genuine pass/fail smoke test: any error, any module missing from the
 checked list, a parse failure or a panic is a regression you introduced.
 `tests/pipeline.rs::stdlib_package_compiles` pins the same thing as a test. A bare `zelkova` or

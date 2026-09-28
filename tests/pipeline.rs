@@ -558,11 +558,29 @@ fn stdlib_package_compiles() {
             "src/Js/Utils.zel",
             "src/Maybe.zel",
             "src/Result.zel",
+            "src/String.zel",
             "src/Tuple.zel",
         ]
     );
 
     let result = compile_package(&std_package_root());
+
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+/// `LANG-73`: `String` reaches an ordinary module through [the default
+/// imports](../docs/spec/modules.md#the-default-imports) with no `import` written for
+/// it, now that `std/core/src/String.zel` compiles — against the real `std/core`
+/// rather than a fixture double, since the point under test is whether that module
+/// resolves.
+///
+/// Mutation-checked by reverting `std/core/src/String.zel` to its pre-fix, non-compiling
+/// state (renaming it back to `.ignored`): `String` then names nothing and `f`'s
+/// annotation fails canonicalization with a `TypeNotFound`, and `compile_package`
+/// comes back `Err` instead of `Ok`.
+#[test]
+fn a_dependent_of_std_core_can_annotate_string_with_no_import() {
+    let result = compile_package(&fixture_package("package_uses_string"));
 
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 }
@@ -793,7 +811,7 @@ fn a_build_writes_one_directory_per_package() {
     );
 }
 
-/// `GEN-13`'s acceptance, the same tree `cargo run` writes: `std/core`'s eight modules,
+/// `GEN-13`'s acceptance, the same tree `cargo run` writes: `std/core`'s nine modules,
 /// the three `Js/*` companions beside their facades, and the runtime.
 ///
 /// Mutation-checked by leaving out the runtime `emit_build` starts from: `out/js/zelkova.mjs`
@@ -818,6 +836,7 @@ fn the_stdlib_build_writes_every_module_and_companion() {
             "out/js/zelkova-core/Js/Utils.mjs",
             "out/js/zelkova-core/Maybe.mjs",
             "out/js/zelkova-core/Result.mjs",
+            "out/js/zelkova-core/String.mjs",
             "out/js/zelkova-core/Tuple.mjs",
             "out/js/zelkova.mjs",
         ]

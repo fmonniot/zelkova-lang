@@ -188,7 +188,7 @@ The language owner settled the program's shape on 2026-09-27:
 SPEC-37  how a `Task` is represented and run, on JavaScript and WebAssembly   ── design, first
 LANG-72  `()` as a type, an expression and a pattern                           ── closed
   └── GEN-20  emit `()`, and publish its JavaScript value                    ── closed
-LANG-73  `std/core` declares `String`                                          ── independent
+LANG-73  `std/core` declares `String`                                          ── closed
 LANG-68  an unmarked facade returns `Task (Result Failure a)`; `Task` nowhere else  ── independent
 GEN-2    the boundary predicates                                               ── independent
   │
@@ -211,10 +211,6 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed`, `map` and `andThen`
         ▼
       TEST-7   `std/core`'s companion checks become Zelkova tests
 ```
-
-Four tickets have no open prerequisite and can start in parallel: `SPEC-37`, `LANG-73`, `LANG-68`
-(against a synthetic `Task` interface, as its **Tests** say) and `GEN-2`. `GEN-20` (`LANG-72`
-closed) is done.
 
 **Deliberately off the path**, each one because the goal does not need it:
 
@@ -406,7 +402,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-70](lang-70.md) | task | — | open | A constraint in an annotation is resolved, and its context reaches the canonical module |
 | [LANG-71](lang-71.md) | task | — | open | A constraint context of four or more constraints does not parse |
 | LANG-72 | task | — | closed 2026-09-28 | `()` is not recognised as a type, an expression or a pattern |
-| [LANG-73](lang-73.md) | task | — | open | `std/core` declares no `String`, so no annotation can name one |
+| LANG-73 | task | — | closed 2026-09-28 | `std/core` declares no `String`, so no annotation can name one |
 | [LANG-74](lang-74.md) | task | — | open | `std/core` declares no `Task` and no `Failure` |
 | [LANG-75](lang-75.md) | task | — | open | The manifest's `main` is read, and nothing checks what it names |
 | [LANG-76](lang-76.md) | task | — | open | A `Test` cannot hold a `Task`, so no effectful check can be a test |
