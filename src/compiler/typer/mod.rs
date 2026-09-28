@@ -1327,10 +1327,12 @@ fn translate_pattern(
 /// a value of type `tpe`.
 ///
 /// It is translated by [`translate_pattern`] like a pattern anywhere else, so the
-/// [`SubPattern`] it becomes can hold any pattern at all — but only a variable or `_` is
-/// admitted here today, and anything nested deeper is refused with `None`: lifting that
+/// [`SubPattern`] it becomes can hold any pattern at all — but only a variable, `_` or
+/// `()` is admitted here today, and anything else is refused with `None`: lifting that
 /// is `LANG-16`'s, and the typer's handling of a refutable sub-pattern would have to be
-/// written with it.
+/// written with it. All three admitted shapes are irrefutable, `()` because its type has
+/// one value; `()` still constrains the position's type, which `pattern_constraints`
+/// does at any depth.
 fn translate_sub_pattern(
     pattern: &canonical::Pattern,
     tpe: Type,
@@ -1338,7 +1340,9 @@ fn translate_sub_pattern(
     counter: &mut u32,
 ) -> Option<SubPattern> {
     match &pattern.kind {
-        canonical::PatternKind::Variable(_) | canonical::PatternKind::Anything => {}
+        canonical::PatternKind::Variable(_)
+        | canonical::PatternKind::Anything
+        | canonical::PatternKind::Unit => {}
         _ => return None,
     }
     Some(SubPattern {

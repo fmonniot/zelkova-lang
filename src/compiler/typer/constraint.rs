@@ -226,9 +226,9 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
 ///
 /// The pattern's own constraint comes first, then its sub-patterns', left to right and
 /// depth first. A variable or `_` constrains nothing: a variable's type is `against`
-/// already, as `TermPattern::bindings` gives it. Today no sub-pattern is anything else
-/// (`LANG-16`), so the recursion adds no constraint yet; it is here so a nested pattern
-/// is constrained the day one is admitted.
+/// already, as `TermPattern::bindings` gives it. Today the only other sub-pattern
+/// admitted is `()` (`LANG-16`), so the recursion's only constraint is a nested `()`'s;
+/// the rest of it is here so a nested pattern is constrained the day one is admitted.
 fn pattern_constraints(
     pattern: &TermPattern,
     against: &Type,

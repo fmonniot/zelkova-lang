@@ -1460,3 +1460,62 @@ fn a_unit_pattern_against_an_int_is_a_type_error() {
     );
     assert_eq!(labels[0].message, "this pattern");
 }
+
+/// A `()` written as a tuple's element is typed, as `_` there is: `()` is irrefutable,
+/// so `translate_sub_pattern` admits it below the top of a pattern. Without an
+/// annotation, the nested `()` is the only thing saying what the second element's type
+/// is.
+///
+/// Mutation-checked two ways, each red on its own: dropping `PatternKind::Unit` from
+/// `translate_sub_pattern`'s admitted shapes (neither declaration is typed), and making
+/// `pattern_constraints` place no constraint for a `TermPatternKind::Unit` (`second`
+/// then renders with an unsolved element).
+#[test]
+fn a_nested_unit_pattern_is_typed() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (first)
+        first : (Int, ()) -> Int
+        first (x, ()) = x
+        second (c, ()) = 'a'
+    "#};
+
+    let solved = solved(source);
+
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "first").tpe),
+        "( Int, () ) -> Int"
+    );
+    // `c`'s type is left free, and a free variable renders under its numeric id.
+    let second = format!("{}", typed_declaration(&solved, "second").tpe);
+    assert!(second.ends_with(", () ) -> Char"), "got {}", second);
+}
+
+/// A `()` written as a tuple's element, where that element is an `Int`, is a type error
+/// with the caret under the nested `()` — reported by the typer, rather than the
+/// declaration going untyped and surfacing only at code generation.
+///
+/// Mutation-checked two ways, each red on its own: dropping `PatternKind::Unit` from
+/// `translate_sub_pattern`'s admitted shapes (the declaration is then skipped and no type
+/// error is reported), and making `pattern_constraints` place no constraint for a
+/// `TermPatternKind::Unit` (the module then checks).
+#[test]
+fn a_nested_unit_pattern_against_an_int_is_a_type_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (bad)
+        bad : (Int, Int) -> Int
+        bad (x, ()) = x
+    "#};
+    let error = one_type_error(source);
+    // `()` also occurs inside `(x, ())`'s own parentheses, so the needle is the nested
+    // `()` and the tuple's closing parenthesis after it.
+    let nested = range_of(source, "())");
+    let nested = nested.start..nested.start + 2;
+
+    let labels = error.labels();
+    assert_eq!(
+        ranges(&labels).first(),
+        Some(&nested),
+        "expected the caret under the nested `()`, got {:?}",
+        labels
+    );
+}

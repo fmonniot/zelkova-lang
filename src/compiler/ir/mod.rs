@@ -479,9 +479,10 @@ pub enum TermPatternKind {
 /// any other pattern written there constrains this type the way a `case` branch's
 /// pattern constrains the scrutinee's.
 ///
-/// Today the pattern is only ever a [`TermPatternKind::Bind`] or a
-/// [`TermPatternKind::Anything`]: `typer::translate_pattern` refuses anything nested
-/// deeper (`LANG-16`). The shape does not assume it.
+/// Today the pattern is only ever a [`TermPatternKind::Bind`], a
+/// [`TermPatternKind::Anything`] or a [`TermPatternKind::Unit`]:
+/// `typer::translate_pattern` refuses anything else nested (`LANG-16`). The shape does
+/// not assume it.
 #[derive(Debug, Clone)]
 pub struct SubPattern {
     pub tpe: Type,
