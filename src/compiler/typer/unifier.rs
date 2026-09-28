@@ -63,6 +63,7 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
         (Type::Literal(TypeLiteral::Float), Type::Literal(TypeLiteral::Float)) => {
             Ok(Substitution::empty())
         }
+        (Type::Unit, Type::Unit) => Ok(Substitution::empty()),
         // A constraint between two compound types decomposes into constraints between
         // their components, and each of those keeps this constraint's origin: they are
         // about the same text, required for the same reason. Left stays left, so the

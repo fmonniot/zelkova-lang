@@ -17,6 +17,7 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
         TermKind::Bool(value) => (types.fresh_var(), TypedTermKind::Bool(value)),
         TermKind::Char(value) => (types.fresh_var(), TypedTermKind::Char(value)),
         TermKind::Float(value) => (types.fresh_var(), TypedTermKind::Float(value)),
+        TermKind::Unit => (types.fresh_var(), TypedTermKind::Unit),
         TermKind::Fun { param, body } => {
             let param = TypeBinder::new(param, types.fresh_var());
             types.add_binder(param.clone());

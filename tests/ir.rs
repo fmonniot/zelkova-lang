@@ -1233,3 +1233,27 @@ fn a_bool_constructor_is_tested_by_value_like_a_bool_literal() {
         )
     );
 }
+
+/// A `()` branch matches unconditionally — the unit type has one value — so the tree
+/// it lowers to is one leaf with no `Test` and no binding, the way a wildcard's is.
+///
+/// Mutation-checked by having `decision::lower`'s `Unit` arm bind the value the way
+/// its `Bind` arm binds a name: the leaf's bindings come out non-empty and the
+/// assertion goes red.
+#[test]
+fn a_unit_branch_is_a_leaf_with_no_bindings() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (always_one)
+
+        always_one : () -> Int
+        always_one u =
+          case u of
+            () ->
+              1
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "always_one"), "always_one");
+
+    assert!(matches!(bodies[0].kind, TypedTermKind::Int(1)));
+    assert_eq!(tree, leaf(vec![], bodies[0]));
+}

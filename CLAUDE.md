@@ -105,7 +105,7 @@ from, beside the `ir::Module` a backend will read.
 | Type checking | `src/compiler/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`. **Wired into `check_module`** |
 | Exhaustiveness | `src/compiler/exhaustiveness.rs` | **stub** — `check` inspects nothing and accepts every module. `Error::NonExhaustiveMatch` exists and renders, but nothing constructs it yet |
 | Backend IR | `src/compiler/ir/` | the shape a backend reads: a type on every node, the four kinds of name apart, arity, saturation and a constructor's place in its declaration. `ir::build` turns the canonical module and what the typer solved into one `ir::Module`. Its module doc comment is where the WebAssembly constraints are written, and is what to read before changing the shape |
-| Code generation | `src/compiler/javascript.rs`, `src/compiler/output.rs` | `javascript::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `javascript.rs`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included; it refuses an effectful facade signature, a facade with no companion, and a module holding a declaration the typer could not check. Its module doc comment has the shape, the representations and the call rule |
+| Code generation | `src/compiler/javascript.rs`, `src/compiler/output.rs` | `javascript::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `javascript.rs`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included; it refuses an effectful facade signature, a facade with no companion, a module holding a declaration the typer could not check, and `()` in an expression or a pattern. Its module doc comment has the shape, the representations and the call rule |
 
 `Name` (`src/compiler/name.rs`) is an unqualified identifier; `QualName` is one that carries
 its module. Everything after parsing should be reaching for `QualName`.
@@ -204,11 +204,12 @@ it describes.
 is only a status check on the compiler as it stands today.
 
 Implemented: modules with `exposing`/`import`/`as`, union types, pattern matching via `case
-… of`, `if/then/else`, function declarations with annotations, infix declarations, tuples, JS
-interop via facades with companion `.mjs` files, `--` and `{- -}` comments.
+… of`, `if/then/else`, function declarations with annotations, infix declarations, tuples, the
+unit type `()` (checked, but refused by the JavaScript backend until `GEN-20`), JS interop via
+facades with companion `.mjs` files, `--` and `{- -}` comments.
 
-Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, the
-unit type, type aliases, and effects (`Task`, and the `main` and test discovery built on it —
+Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, type
+aliases, and effects (`Task`, and the `main` and test discovery built on it —
 the manifest's `main` field is read, but nothing checks what it names).
 **Multi-clause function declarations** — a deliberate
 divergence from Elm — parse but are rejected by canonicalization

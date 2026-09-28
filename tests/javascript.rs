@@ -1357,3 +1357,67 @@ fn an_exposed_operator_exports_its_function() {
 
     assert!(text.ends_with("export { add };\n"), "got:\n{}", text);
 }
+
+/// `()` as an expression is refused, with an error naming the declaration and the
+/// span of the `()`, rather than emitted as some representation nobody has chosen:
+/// what the unit value is on this target is `GEN-20`'s decision.
+///
+/// Mutation-checked by emitting `TypedTermKind::Unit` as `undefined` in
+/// `Emitter::expression` instead of calling `unsupported`: the module then emits.
+#[test]
+fn a_unit_value_is_refused() {
+    let source = indoc! {r#"
+        module Test exposing (nothingUseful)
+
+        nothingUseful : ()
+        nothingUseful =
+          ()
+    "#};
+    let errors = refused(source);
+
+    // `NodeSpan`'s equality ignores the span, so the span is compared on its own.
+    assert_eq!(
+        errors,
+        vec![Error::Unsupported {
+            construct: javascript::Construct::Unit,
+            declaration: Name::new("nothingUseful"),
+            span: NodeSpan::none(),
+        }]
+    );
+    let start = source.rfind("()").expect("the source writes `()`");
+    match &errors[0] {
+        Error::Unsupported { span, .. } => {
+            assert_eq!(span.to_range(), Some(start..start + 2))
+        }
+        other => panic!("expected an unsupported construct, got {:?}", other),
+    }
+}
+
+/// `()` as a pattern is refused too, although the decision tree lowers it to no test
+/// at all: emitting it would still settle what a function taking `()` is handed.
+///
+/// Mutation-checked by deleting the `unit_pattern` loop at the top of
+/// `Emitter::case_expression`: `always` then emits as a one-parameter function.
+#[test]
+fn a_unit_pattern_is_refused() {
+    let errors = refused(indoc! {r#"
+        module Test exposing (Flag(..), always)
+
+        type Flag
+          = On
+          | Off
+
+        always : () -> Flag
+        always () =
+          On
+    "#});
+
+    assert_eq!(
+        errors,
+        vec![Error::Unsupported {
+            construct: javascript::Construct::Unit,
+            declaration: Name::new("always"),
+            span: NodeSpan::none(),
+        }]
+    );
+}

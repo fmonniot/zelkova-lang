@@ -65,6 +65,9 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                 span,
             ));
         }
+        TypedTermKind::Unit => {
+            constraints.push(Constraint::new(tpe.clone(), Type::Unit, Reason::Unit, span));
+        }
         TypedTermKind::Fun { param, body } => {
             let param_tpe = Box::new(param.tpe.clone());
             let return_tpe = Box::new(body.tpe.clone());
@@ -234,6 +237,7 @@ fn pattern_constraints(
 ) {
     let (own, subs): (Option<Type>, Vec<&SubPattern>) = match &pattern.kind {
         TermPatternKind::Literal { tpe, .. } => (Some(tpe.clone()), vec![]),
+        TermPatternKind::Unit => (Some(Type::Unit), vec![]),
         TermPatternKind::Constructor {
             ctor,
             adt_args,

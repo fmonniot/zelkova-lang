@@ -89,6 +89,8 @@ pub enum Reason {
     LetBody,
     /// A tuple's type is the tuple of its elements' types.
     TupleElements,
+    /// `()` is the unit type's one value.
+    Unit,
 }
 
 impl Reason {
@@ -119,6 +121,7 @@ impl Reason {
             Reason::LetBinding => "the value bound here",
             Reason::LetBody => "the body of this `let`",
             Reason::TupleElements => "this tuple",
+            Reason::Unit => "this unit value",
         }
     }
 
@@ -144,6 +147,7 @@ impl Reason {
             Reason::LetBinding => "expected because of this value",
             Reason::LetBody => "expected because of this `let` body",
             Reason::TupleElements => "expected because of this tuple",
+            Reason::Unit => "expected because of this unit value",
         }
     }
 
@@ -903,8 +907,8 @@ fn constructors_of(unions: &Unions) -> HashMap<QualName, Constructor> {
 }
 
 /// Convert a canonical type to the typer's simplified Type representation.
-/// The match covers all four `canonical::Type` variants — `Variable`, `Arrow`, `Tuple`
-/// (either arity), and `Type` including named types with parameters — and every arm's
+/// The match covers all five `canonical::Type` variants — `Variable`, `Arrow`, `Tuple`
+/// (either arity), `Unit`, and `Type` including named types with parameters — and every arm's
 /// own base case returns `Some`; a `None` only ever arises by propagating up from a
 /// nested recursive call. As of today no `canonical::Type` shape actually reaches such
 /// a case, so the function always returns `Some`. The `Option` return stays in place for
@@ -957,6 +961,7 @@ pub(crate) fn canonical_type_to_typer_type(
                 .ok()?;
             Some(Type::Tuple(elements))
         }
+        canonical::Type::Unit => Some(Type::Unit),
         canonical::Type::Type(name, args) => {
             if args.is_empty() {
                 if let Some(literal) = scalar_literal(name) {
@@ -1136,6 +1141,7 @@ fn canonical_expr_to_term(
                 .ok()?;
             TermKind::Tuple(elements)
         }
+        canonical::ExpressionKind::Unit => TermKind::Unit,
         canonical::ExpressionKind::Case(scrutinee_expr, branches) => {
             let scrutinee = canonical_expr_to_term(scrutinee_expr, translation, counter)?;
             let term_branches: Vec<(TermPattern, Box<Term>)> = branches
@@ -1212,6 +1218,7 @@ fn translate_pattern(
             tpe: Type::Literal(TypeLiteral::Char),
             value: LiteralValue::Char(*value),
         },
+        canonical::PatternKind::Unit => TermPatternKind::Unit,
         // `Basics`' own `True` and `False` are tested by value, exactly as `true` and
         // `false` are, so a backend meets one vocabulary for a `Bool` whichever
         // spelling the source used — a `case` mixing them included. The type is the
@@ -1518,6 +1525,15 @@ pub enum Type {
         return_tpe: Box<Type>,
     },
     Tuple(Tuple<Type>),
+    /// [The unit type](../../../docs/spec/types.md#the-unit-type), `()`, whose one
+    /// value is also written `()`.
+    ///
+    /// A variant of its own, the way [`Type::Tuple`] is, rather than a [`Type::Adt`]
+    /// known by the qualified name of a declaration the way `Bool` is: nothing
+    /// declares `()`, it is a form of type expression and never a name, so there is
+    /// no declaration to name and no same-spelled type it has to be told apart from.
+    /// See `canonical::Type::Unit`.
+    Unit,
     /// A named algebraic data type, e.g. `Maybe Int` declared in `Maybe` →
     /// `Adt(Maybe.Maybe, [Literal(Int)])`.
     ///
@@ -1649,6 +1665,7 @@ impl std::fmt::Debug for Type {
             } => write!(f, "Fun({:?} -> {:?})", param_tpe, return_tpe),
             Type::Tuple(Tuple::Two(a, b)) => write!(f, "({:?}, {:?})", a, b),
             Type::Tuple(Tuple::Three(a, b, c)) => write!(f, "({:?}, {:?}, {:?})", a, b, c),
+            Type::Unit => write!(f, "()"),
             Type::Adt(name, args) if args.is_empty() => write!(f, "{}", name.to_name()),
             Type::Adt(name, args) => write!(f, "{}({:?})", name.to_name(), args),
         }
@@ -1676,7 +1693,7 @@ impl Type {
     /// name the rendering will contain, not only the one at the top.
     fn collect_adt_names<'a>(&'a self, out: &mut Vec<&'a QualName>) {
         match self {
-            Type::Literal(_) | Type::Number | Type::Variable(_) => {}
+            Type::Literal(_) | Type::Number | Type::Variable(_) | Type::Unit => {}
             Type::Fun {
                 param_tpe,
                 return_tpe,
@@ -1753,6 +1770,7 @@ impl Type {
                 c.write(f, names)?;
                 write!(f, " )")
             }
+            Type::Unit => write!(f, "()"),
             Type::Adt(name, args) => {
                 match names {
                     AdtNames::Unqualified => write!(f, "{}", name.unqualified_name())?,
@@ -1949,6 +1967,7 @@ impl Substitution {
             | TypedTermKind::Bool(_)
             | TypedTermKind::Char(_)
             | TypedTermKind::Float(_)
+            | TypedTermKind::Unit
             | TypedTermKind::Identifier(_)) => kind,
             TypedTermKind::Fun { param, body } => TypedTermKind::Fun {
                 param: self.apply_binder(param),
@@ -2024,7 +2043,9 @@ impl Substitution {
 
     fn apply_pattern(&self, pattern: TermPattern) -> TermPattern {
         let kind = match pattern.kind {
-            kind @ (TermPatternKind::Anything | TermPatternKind::Bind(_)) => kind,
+            kind @ (TermPatternKind::Anything
+            | TermPatternKind::Bind(_)
+            | TermPatternKind::Unit) => kind,
             TermPatternKind::Literal { tpe, value } => TermPatternKind::Literal {
                 tpe: self.apply_type(&tpe),
                 value,
@@ -2061,7 +2082,7 @@ impl Substitution {
 
     fn substitute(tpe: Type, tvar: &TypeVariable, replacement: &Type) -> Type {
         match tpe {
-            Type::Literal(_) | Type::Number => tpe,
+            Type::Literal(_) | Type::Number | Type::Unit => tpe,
             Type::Fun {
                 param_tpe,
                 return_tpe,
@@ -2206,7 +2227,7 @@ impl Types {
     /// the same fresh one throughout.
     fn instantiate(&mut self, tpe: Type, fresh: &mut HashMap<TypeVariable, Type>) -> Type {
         match tpe {
-            Type::Literal(_) | Type::Number => tpe,
+            Type::Literal(_) | Type::Number | Type::Unit => tpe,
             Type::Variable(tvar) => {
                 if let Some(replacement) = fresh.get(&tvar) {
                     return replacement.clone();
@@ -2361,6 +2382,7 @@ mod tests {
                 Type::Literal(TypeLiteral::Char) => "Char".to_owned(),
                 Type::Literal(TypeLiteral::Float) => "Float".to_owned(),
                 Type::Number => "number".to_owned(),
+                Type::Unit => "()".to_owned(),
                 Type::Variable(TypeVariable { id }) => {
                     if let Some(name) = self.known.get(&id) {
                         name.clone()
