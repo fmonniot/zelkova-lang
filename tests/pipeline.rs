@@ -734,7 +734,7 @@ fn files_under(dir: &Path) -> Vec<String> {
     out
 }
 
-/// `GEN-13`: a build that checks writes `js/` below its build directory — the runtime at
+/// `GEN-13`: a build that checks writes `out/js/` below its build directory — the runtime at
 /// its root, then one directory per package of the build holding one file per module,
 /// named after the module within its own package and never the namespace the dependent
 /// writes (`AcmeWidgets.Size` is `acme-widgets/Size.mjs`), with a facade's companion
@@ -744,7 +744,7 @@ fn files_under(dir: &Path) -> Vec<String> {
 ///
 /// Mutation-checked three ways: dropping the push of the companion in `emit_build` loses
 /// `Native.companion.mjs`; writing each module to its package-less `module_file` puts
-/// every file at the root of `js/`; and dropping the package comparison in
+/// every file at the root of `out/js/`; and dropping the package comparison in
 /// `javascript::module_specifier` has `App.mjs` import `./Size.mjs`. Each turns this red.
 #[test]
 fn a_build_writes_one_directory_per_package() {
@@ -759,16 +759,16 @@ fn a_build_writes_one_directory_per_package() {
     assert_eq!(
         files_under(&build_dir),
         vec![
-            "js/acme-widgets/Hidden.mjs",
-            "js/acme-widgets/Native.companion.mjs",
-            "js/acme-widgets/Native.mjs",
-            "js/acme-widgets/Size.mjs",
-            "js/package-namespaced-dependency/App.mjs",
-            "js/zelkova.mjs",
+            "out/js/acme-widgets/Hidden.mjs",
+            "out/js/acme-widgets/Native.companion.mjs",
+            "out/js/acme-widgets/Native.mjs",
+            "out/js/acme-widgets/Size.mjs",
+            "out/js/package-namespaced-dependency/App.mjs",
+            "out/js/zelkova.mjs",
         ]
     );
 
-    let js = build_dir.join("js");
+    let js = build_dir.join("out").join("js");
     assert_eq!(
         std::fs::read_to_string(js.join("zelkova.mjs")).unwrap(),
         javascript::RUNTIME
@@ -790,7 +790,7 @@ fn a_build_writes_one_directory_per_package() {
 /// `GEN-13`'s acceptance, the same tree `cargo run` writes: `std/core`'s eight modules,
 /// the three `Js/*` companions beside their facades, and the runtime.
 ///
-/// Mutation-checked by leaving out the runtime `emit_build` starts from: `js/zelkova.mjs`
+/// Mutation-checked by leaving out the runtime `emit_build` starts from: `out/js/zelkova.mjs`
 /// goes missing and this turns red.
 #[test]
 fn the_stdlib_build_writes_every_module_and_companion() {
@@ -802,18 +802,18 @@ fn the_stdlib_build_writes_every_module_and_companion() {
     assert_eq!(
         files_under(&build_dir),
         vec![
-            "js/zelkova-core/Basics.mjs",
-            "js/zelkova-core/Bitwise.mjs",
-            "js/zelkova-core/Js/Basics.companion.mjs",
-            "js/zelkova-core/Js/Basics.mjs",
-            "js/zelkova-core/Js/Bitwise.companion.mjs",
-            "js/zelkova-core/Js/Bitwise.mjs",
-            "js/zelkova-core/Js/Utils.companion.mjs",
-            "js/zelkova-core/Js/Utils.mjs",
-            "js/zelkova-core/Maybe.mjs",
-            "js/zelkova-core/Result.mjs",
-            "js/zelkova-core/Tuple.mjs",
-            "js/zelkova.mjs",
+            "out/js/zelkova-core/Basics.mjs",
+            "out/js/zelkova-core/Bitwise.mjs",
+            "out/js/zelkova-core/Js/Basics.companion.mjs",
+            "out/js/zelkova-core/Js/Basics.mjs",
+            "out/js/zelkova-core/Js/Bitwise.companion.mjs",
+            "out/js/zelkova-core/Js/Bitwise.mjs",
+            "out/js/zelkova-core/Js/Utils.companion.mjs",
+            "out/js/zelkova-core/Js/Utils.mjs",
+            "out/js/zelkova-core/Maybe.mjs",
+            "out/js/zelkova-core/Result.mjs",
+            "out/js/zelkova-core/Tuple.mjs",
+            "out/js/zelkova.mjs",
         ]
     );
 }
@@ -936,12 +936,12 @@ fn a_build_that_cannot_be_emitted_writes_nothing() {
 }
 
 /// `GEN-18`: a test build whose `tests/` root holds a module that checks but cannot be
-/// emitted writes neither tree — not `test/js/`, and not `js/` either, though every
+/// emitted writes neither tree — not `test/js/`, and not `out/js/` either, though every
 /// module of `src/` emitted cleanly. The facade here sits under `tests/` with no
 /// companion beside it, which [`javascript::emit`] refuses.
 ///
 /// Mutation-checked by moving the test tree's `emit_modules` call in `compile` back
-/// after the write of `js/`: `js/` is written in full and this turns red.
+/// after the write of `out/js/`: `out/js/` is written in full and this turns red.
 #[test]
 fn a_test_build_whose_tests_cannot_be_emitted_writes_nothing() {
     let package =
@@ -4195,7 +4195,7 @@ fn two_packages_same_named_modules_import_under_distinct_names() {
     );
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
-    let app = std::fs::read_to_string(build_dir.join("js/app/App.mjs")).unwrap();
+    let app = std::fs::read_to_string(build_dir.join("out/js/app/App.mjs")).unwrap();
 
     assert!(
         app.contains(
@@ -4257,7 +4257,7 @@ fn a_dependencys_constructor_is_hoisted_under_its_own_package() {
     );
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
-    let size = std::fs::read_to_string(build_dir.join("js/app/Size.mjs")).unwrap();
+    let size = std::fs::read_to_string(build_dir.join("out/js/app/Size.mjs")).unwrap();
 
     assert!(
         size.contains("const $app$Size$Mine = {$: \"Mine\"};"),
@@ -4851,7 +4851,7 @@ fn a_test_dependency_reaches_the_tests_root() {
 
 /// `GEN-18`: a test build writes a second, complete tree at `test/js/` — the root's
 /// `tests/AppTest.zel` and the `test-dependency` it reaches through (`acme-expect`)
-/// beside everything a plain build already writes — while `js/` itself stays exactly
+/// beside everything a plain build already writes — while `out/js/` itself stays exactly
 /// what a plain build of the same package's `src/` would write: neither `AppTest.mjs`
 /// nor `acme-expect/Expect.mjs` ever lands there, so a later plain `compile_package` run
 /// never finds a test module a test build left behind.
@@ -4873,8 +4873,8 @@ fn a_test_build_writes_a_second_tree_beside_the_plain_one() {
     assert_eq!(
         files_under(&build_dir),
         vec![
-            "js/package-test-dependency/App.mjs".to_string(),
-            "js/zelkova.mjs".to_string(),
+            "out/js/package-test-dependency/App.mjs".to_string(),
+            "out/js/zelkova.mjs".to_string(),
             "test/js/acme-expect/Expect.mjs".to_string(),
             "test/js/package-test-dependency/App.mjs".to_string(),
             "test/js/package-test-dependency/AppTest.mjs".to_string(),
@@ -4889,7 +4889,7 @@ fn a_test_build_writes_a_second_tree_beside_the_plain_one() {
 /// `test-dependency` — is never compiled, let alone written.
 ///
 /// Mutation-checked by having `compile`'s first loop not `continue` past a `test_only`
-/// package: `js/acme-expect/Expect.mjs` then appears and this goes red.
+/// package: `out/js/acme-expect/Expect.mjs` then appears and this goes red.
 #[test]
 fn a_plain_build_writes_no_test_tree() {
     let build_dir = fresh_build_dir("a_plain_build_writes_no_test_tree");
@@ -4903,8 +4903,8 @@ fn a_plain_build_writes_no_test_tree() {
     assert_eq!(
         files_under(&build_dir),
         vec![
-            "js/package-test-dependency/App.mjs".to_string(),
-            "js/zelkova.mjs".to_string(),
+            "out/js/package-test-dependency/App.mjs".to_string(),
+            "out/js/zelkova.mjs".to_string(),
         ]
     );
 }
@@ -5207,14 +5207,14 @@ fn a_test_dependency_may_depend_on_the_package_it_tests() {
     let result = compile_package_with_tests(&root);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
-    // `acme-check` and `LibTest` are checked for the tests and never written to `js/` —
+    // `acme-check` and `LibTest` are checked for the tests and never written to `out/js/` —
     // only `test/js/` holds them, beside `acme-lib`'s own modules (`GEN-18`).
     assert_eq!(
         files_under(&build_dir),
         vec![
-            "js/acme-lib/Internal.mjs".to_string(),
-            "js/acme-lib/Lib.mjs".to_string(),
-            "js/zelkova.mjs".to_string(),
+            "out/js/acme-lib/Internal.mjs".to_string(),
+            "out/js/acme-lib/Lib.mjs".to_string(),
+            "out/js/zelkova.mjs".to_string(),
             "test/js/acme-check/Check.mjs".to_string(),
             "test/js/acme-lib/Internal.mjs".to_string(),
             "test/js/acme-lib/Lib.mjs".to_string(),
@@ -5285,9 +5285,9 @@ fn a_plain_build_leaves_a_test_dependency_on_its_dependent_uncompiled() {
     assert_eq!(
         files_under(&build_dir),
         vec![
-            "js/acme-lib/Internal.mjs".to_string(),
-            "js/acme-lib/Lib.mjs".to_string(),
-            "js/zelkova.mjs".to_string(),
+            "out/js/acme-lib/Internal.mjs".to_string(),
+            "out/js/acme-lib/Lib.mjs".to_string(),
+            "out/js/zelkova.mjs".to_string(),
         ]
     );
 }

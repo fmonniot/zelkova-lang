@@ -2,9 +2,9 @@
 //!
 //! What goes where is [`javascript`](super::javascript)'s — its *Paths* section is the
 //! only place a path into the output tree is built. This module takes the files a
-//! build produced, each with its path under `build/js/`, and writes them: writing each
+//! build produced, each with its path under `build/out/js/`, and writes them: writing each
 //! in turn, stopping at the first one that fails, and — only once every one of them has
-//! landed — removing whatever else was already below `build/js/` that this build did
+//! landed — removing whatever else was already below `build/out/js/` that this build did
 //! not just write.
 //!
 //! Pruning runs *after* writing, and only once writing succeeded in full, rather than
@@ -27,7 +27,7 @@
 //! It is only ever reached with a whole build's files, once every module of every
 //! package has checked and emitted: `compile_package` calls it when its error vector is
 //! empty and at no other time. A build that failed to check or emit anywhere never
-//! reaches this module at all, so `build/js/` is left exactly as an earlier successful
+//! reaches this module at all, so `build/out/js/` is left exactly as an earlier successful
 //! build (if any) wrote it.
 
 use std::collections::HashSet;
@@ -43,12 +43,12 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 /// One file of a build's output.
 ///
 /// `Clone` because a test build's tree at `build/test/js/` starts as a copy of what
-/// `compile` already emitted for `build/js/` — the runtime, the root's `src/` and every
+/// `compile` already emitted for `build/out/js/` — the runtime, the root's `src/` and every
 /// plain dependency's modules — and adds its own extra files rather than emitting that
 /// shared half a second time.
 #[derive(Debug, Clone)]
 pub struct File {
-    /// Where it goes, relative to `build/js/`.
+    /// Where it goes, relative to `build/out/js/`.
     pub path: PathBuf,
     pub contents: Contents,
 }

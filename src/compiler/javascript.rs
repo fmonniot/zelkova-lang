@@ -411,11 +411,11 @@ fn field(index: usize) -> String {
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 //
-// The output of a build is one tree, `build/js/` beside the root package's manifest
+// The output of a build is one tree, `build/out/js/` beside the root package's manifest
 // ([`DEC-18` decision 5](../../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)):
 //
 // ```text
-// build/js/
+// build/out/js/
 //   zelkova.mjs                      the runtime, RUNTIME_FILE
 //   zelkova-core/                    one directory per package of the build
 //     Maybe.mjs                      one file per module, module_file
@@ -427,7 +427,7 @@ fn field(index: usize) -> String {
 // specifiers are built from the same shape, so what is written and what is imported
 // cannot disagree. `compile_package` writes the tree.
 
-/// The runtime's file name, at the root of `build/js/`, above every package's directory.
+/// The runtime's file name, at the root of `build/out/js/`, above every package's directory.
 pub const RUNTIME_FILE: &str = "zelkova.mjs";
 
 /// The runtime module's text, the one file of the output that is not generated.
@@ -483,7 +483,7 @@ pub fn companion_file(module: &Name) -> PathBuf {
 /// `package`, by.
 ///
 /// Within one package it is a path inside that package's directory. Across a package
-/// boundary it climbs out of `from`'s package to `build/js/` and into `package`'s
+/// boundary it climbs out of `from`'s package to `build/out/js/` and into `package`'s
 /// sibling directory — which is why every package of the build has its own directory
 /// rather than the whole build sharing one tree.
 fn module_specifier(from: &ModuleName, package: &str, to: &Name) -> String {
@@ -506,7 +506,7 @@ fn module_specifier(from: &ModuleName, package: &str, to: &Name) -> String {
 }
 
 /// The specifier the module named `from` imports the runtime by: [`RUNTIME_FILE`] at
-/// the root of `build/js/`, one level above `from`'s package directory.
+/// the root of `build/out/js/`, one level above `from`'s package directory.
 fn runtime_specifier(from: &Name) -> String {
     format!("{}{}", "../".repeat(depth(from) + 1), RUNTIME_FILE)
 }

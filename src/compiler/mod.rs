@@ -36,7 +36,7 @@
 //!     1. Bonus point to parallelize the tree branches which are not dependent on each others
 //! 6. Once every module of every package has checked, emit each one as JavaScript
 //!    (`javascript::emit`) and, if that failed nowhere either, write the build to
-//!    `build/js/` (`output::write`). A build with any error writes nothing. A build that
+//!    `build/out/js/` (`output::write`). A build with any error writes nothing. A build that
 //!    also compiled the tests (step 1's exception) writes a second, complete tree at
 //!    `build/test/js/` — the runtime, then one directory per package, holding every
 //!    package of the build (a test-only one included) and the root's `tests/` modules
@@ -802,7 +802,7 @@ enum TestRoot {
 /// dependency of it, and the whole build shares one file database and one error
 /// accumulator: an error in any package of it makes this return `Err`.
 ///
-/// A build that checks writes its JavaScript to `build/js/` beside `package_dir`'s
+/// A build that checks writes its JavaScript to `build/out/js/` beside `package_dir`'s
 /// manifest — see [`compile_package_into`] for what that tree holds. One that emitted
 /// any error writes nothing.
 pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
@@ -822,7 +822,7 @@ pub const BUILD_DIRECTORY: &str = "build";
 /// [`compile_package`], writing its output below `build_dir` rather than below the
 /// package's own `build/`.
 ///
-/// The output is one tree, `<build_dir>/js/`: the runtime at its root, then one
+/// The output is one tree, `<build_dir>/out/js/`: the runtime at its root, then one
 /// directory per package of the build holding one `.mjs` file per module of that
 /// package, named after the module within its own package, and each facade's companion
 /// beside the facade ([`javascript`]'s *Paths* section has the names, [`DEC-18` decision
@@ -854,8 +854,8 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 ///
 /// A test module and every `test-dependency`'s modules are checked and, unlike a plain
 /// build, written — to a tree of their own, `build/test/js/`, laid out exactly like
-/// `build/js/` and holding every package of the build (a test-only one included) plus the
-/// root's `tests/` modules beside its `src/` ones. `build/js/` itself is left exactly as
+/// `build/out/js/` and holding every package of the build (a test-only one included) plus the
+/// root's `tests/` modules beside its `src/` ones. `build/out/js/` itself is left exactly as
 /// [`compile_package`] would have written it: a test module never turns up there, so a
 /// plain build run afterwards never finds one left behind by a run that also compiled the
 /// tests ([`GEN-18`](../../docs/tickets/README.md)).
@@ -1077,7 +1077,7 @@ fn compile(
         let files = emit_build(checked, &mut errors);
 
         // A build that also compiled the tests writes a second, complete tree at
-        // `<build_dir>/test/js/`, laid out exactly like `<build_dir>/js/` — the runtime,
+        // `<build_dir>/test/js/`, laid out exactly like `<build_dir>/out/js/` — the runtime,
         // then one directory per package — but holding every package of the build (a
         // test-only one included) and the root's `tests/` modules beside its `src/` ones
         // (`docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest`).
@@ -1085,7 +1085,7 @@ fn compile(
         // runtime, the root's `src/` and every plain dependency's modules — so the test
         // tree reuses it rather than emitting those modules a second time, and only
         // `test_tree_modules` (the test-only packages' and the root's `tests/`) is new
-        // work. That work happens here, before `js/` is written, so a module of the test
+        // work. That work happens here, before `out/js/` is written, so a module of the test
         // tree that cannot be emitted blocks both writes.
         let test_files = (tests == TestRoot::Compiled).then(|| {
             debug!("phase: codegen (tests)");
@@ -1097,14 +1097,14 @@ fn compile(
         if errors.is_empty() {
             debug!("phase: write the build");
             errors.extend(
-                output::write(&build_dir.join("js"), &files)
+                output::write(&build_dir.join("out").join("js"), &files)
                     .into_iter()
                     .map(CompilationError::Output),
             );
         }
 
         // Gated on `errors.is_empty()` a second time so a plain build's own failure to
-        // write `js/` — an unlikely I/O error, not a checking one — does not also
+        // write `out/js/` — an unlikely I/O error, not a checking one — does not also
         // attempt the test tree.
         if let Some(test_files) = test_files.filter(|_| errors.is_empty()) {
             debug!("phase: write the test build");

@@ -401,7 +401,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-16](gen-16.md) | task | — | open | The wrapper an effectful facade's call site gets |
 | GEN-17 | task | — | closed 2026-09-27 | The compiler has no command line: `src/main.rs` compiles `std/core` and takes no arguments |
 | GEN-18 | task | — | closed 2026-09-27 | A build that compiles the tests writes none of them, so nothing can run one |
-| [GEN-19](gen-19.md) | task | — | open | Production and test output should be at the same folder level |
+| GEN-19 | task | — | closed 2026-09-27 | Production and test output should be at the same folder level |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

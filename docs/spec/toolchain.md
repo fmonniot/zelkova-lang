@@ -244,7 +244,7 @@ run is not a test that passed.
 ([`docs/tickets/lang-61.md`](../tickets/lang-61.md)), so none of the rest of this appendix
 exists. What does: the compiler is pointed at a package root, reads that package's manifest,
 compiles every package reachable from it through a `path` entry, dependencies first, and writes
-their JavaScript to `build/js/` beside that manifest.
+their JavaScript to `build/out/js/` beside that manifest.
 
 **Provisional:** what it becomes is a compiler pointed at a package root — the directory holding
 `zelkova.toml` — which resolves, compiles every module of `src/`, and writes its output beside

@@ -44,7 +44,7 @@ refers to
 ([decision 4](../decisions/dec-18.md#4--a-constructor-of-no-arguments-is-hoisted-to-one-module-level-constant)).
 A constructor *with* arguments is not.
 
-**5 — Output goes to `build/js/<package-name>/<module path>.mjs`**, beside the root package's
+**5 — Output goes to `build/out/js/<package-name>/<module path>.mjs`**, beside the root package's
 manifest, one directory per package, each module named by its name *within its own package*
 ([decision 5](../decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)).
 A build that emitted any error writes no output
