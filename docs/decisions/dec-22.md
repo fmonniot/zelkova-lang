@@ -222,8 +222,8 @@ final value. It hands the `Task` a final continuation that resolves that promise
 **Every entry into the loop is wrapped in one `try` that rejects `$runTask`'s promise** — the
 first entry and every resumption. So an abort raised in a continuation reaches the caller of the
 `$runTask` it belongs to, even after a `Suspend`. That matters to
-[`LANG-76`](../tickets/README.md), where several tests' `Task`s may be in flight at once and
-each abort belongs to one test. The alternative — the resumption running outside any `try`, and
+[`LANG-76`](../tickets/README.md), where each abort belongs to one test and is reported
+against it. The alternative — the resumption running outside any `try`, and
 an abort there becoming an unhandled rejection — is abort semantics for `zelkova run`, where Node
 exits non-zero, and loses the attribution for a test.
 

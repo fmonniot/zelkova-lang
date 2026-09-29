@@ -1,0 +1,19 @@
+module NeverTest exposing (aPasses, bNeverFinishes, cNeverRuns)
+
+import Effects
+import Test exposing (Test)
+
+
+aPasses : Test
+aPasses =
+  Test.check True
+
+
+bNeverFinishes : Test
+bNeverFinishes =
+  Test.succeeds Effects.never
+
+
+cNeverRuns : Test
+cNeverRuns =
+  Test.check True

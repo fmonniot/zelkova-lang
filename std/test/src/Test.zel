@@ -21,6 +21,9 @@ constructors by name, so the two change together:
   literals.
 - `Awaiting` holds a `Task`. The runner runs it and judges the `Test` it produces
   the same way, which may be another `Awaiting`.
+
+The runner also reads the `Maybe` a `Fail` carries by its compiled shape, `Just` and
+the value it holds, so a change to `Maybe`'s representation changes the runner too.
 -}
 type Test
   = Pass

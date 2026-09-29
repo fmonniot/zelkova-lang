@@ -19,6 +19,10 @@
 // around it, which ends the run at `hAborts`; dropping the branch that prints a `Just`
 // reason; and starting every test's `Task` before awaiting any, which fails `gAfterSlow`.
 // Deleting `process.exitCode = 1;` turns the second red.
+//
+// The last test runs the fixture tests/fixtures/package_test_never_settles, whose second
+// test's `Task` never finishes. Mutation-checked by deleting the `process.on("exit", ...)`
+// handler from `TAIL`: node's exit code 13 and no report of the test turn it red.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -61,5 +65,24 @@ describe("zelkova test over Tests that hold a Task", () => {
 
   test("exits 1 when a test built from a Task did not pass", () => {
     assert.equal(run.status, 1, run.stderr);
+  });
+});
+
+describe("zelkova test over a Test whose Task never finishes", () => {
+  test("reports it as errored, prints the summary and exits 1", () => {
+    const never = join(repository, "tests", "fixtures", "package_test_never_settles");
+    const result = spawnSync("cargo", ["run", "--quiet", "--", "test", never], {
+      cwd: repository,
+      encoding: "utf8",
+    });
+    const out = result.stdout
+      .split("\n")
+      .filter((line) => /^(pass |FAIL |ERROR )/.test(line) || /^\d+ tests?:/.test(line));
+    assert.deepEqual(out, [
+      "pass  NeverTest.aPasses",
+      "ERROR NeverTest.bNeverFinishes: its Task never finished",
+      "2 tests: 1 passed, 0 failed, 1 errored",
+    ]);
+    assert.equal(result.status, 1, result.stderr);
   });
 });

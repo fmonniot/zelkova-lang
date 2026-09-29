@@ -41,6 +41,16 @@
 //! which `run.mjs` imports `$runTask` from, is the one static import: it sits beside
 //! `run.mjs` at the root of `build/test/js/` and evaluates no test.
 //!
+//! A `Task` that never finishes leaves the entry point waiting on a promise nothing
+//! settles. When that leaves the event loop empty, `node` ends the process and the entry
+//! point's `exit` handler reports the test being run as errored, saying its `Task` never
+//! finished, then prints the summary and sets exit code `1`; the tests listed after it do
+//! not run and are not counted. A `Task` that keeps the event loop alive for ever, such as
+//! a live timer, is not detected: there is no timeout, and the run hangs.
+//!
+//! The entry point is also coupled to the shape `Maybe` compiles to, which it reads for a
+//! `Fail`'s reason: a `$` of `"Just"` and the value in `a`.
+//!
 //! This phase is the only place the compiler starts `node`.
 //!
 //! A module that holds no test is left out of the list: there is nothing to attribute a
@@ -220,6 +230,24 @@ let passed = 0;
 let failed = 0;
 let errored = 0;
 
+function summarize() {
+  const total = passed + failed + errored;
+  console.log(`${total} ${total === 1 ? \"test\" : \"tests\"}: ${passed} passed, ${failed} failed, ${errored} errored`);
+}
+
+// The test whose `Task` is being run, and null once it has been judged. Node ends a process
+// whose top-level `await` can never be woken, and it runs this handler before it does, so
+// a test still named here is one whose `Task` never finished.
+let inFlight = null;
+process.on(\"exit\", () => {
+  if (inFlight !== null) {
+    console.log(`ERROR ${inFlight}: its Task never finished`);
+    errored += 1;
+    summarize();
+    process.exitCode = 1;
+  }
+});
+
 for (const { module, file, tests } of modules) {
   let loaded;
   try {
@@ -236,6 +264,7 @@ for (const { module, file, tests } of modules) {
   }
   for (const test of tests) {
     let value = loaded[test];
+    inFlight = `${module}.${test}`;
     try {
       // A `Test` that holds a `Task` is judged by the `Test` the `Task` produces, which may
       // hold another `Task`. Awaiting one before starting the next keeps the tests running
@@ -248,8 +277,10 @@ for (const { module, file, tests } of modules) {
       const message = error instanceof Error ? error.message : String(error);
       console.log(`ERROR ${module}.${test}: ${message}`);
       errored += 1;
+      inFlight = null;
       continue;
     }
+    inFlight = null;
     if (value !== undefined && value !== null && value.$ === \"Pass\") {
       console.log(`pass  ${module}.${test}`);
       passed += 1;
@@ -263,8 +294,7 @@ for (const { module, file, tests } of modules) {
   }
 }
 
-const total = passed + failed + errored;
-console.log(`${total} ${total === 1 ? \"test\" : \"tests\"}: ${passed} passed, ${failed} failed, ${errored} errored`);
+summarize();
 if (failed + errored > 0) {
   process.exitCode = 1;
 }
@@ -350,6 +380,10 @@ mod tests {
     /// `$runTask` from the runtime beside it, keeps handing an `Awaiting`'s `Task` to it
     /// and awaiting the `Test` produced until the value is something else, reports a
     /// rejected run as errored, and prints the reason a `Fail` carries in a `Just`.
+    ///
+    /// The `exit` handler for a `Task` that never finishes is mutation-checked by renaming
+    /// its event: the assertion on it goes red.
+    ///
     /// Running the text is `tests/js/TestRunnerChecks.mjs`'s.
     ///
     /// Mutation-checked by turning the `while` into an `if`, which fails the loop's
@@ -375,6 +409,11 @@ mod tests {
         );
         assert!(
             text.contains("console.log(`ERROR ${module}.${test}: ${message}`);"),
+            "{}",
+            text
+        );
+        assert!(
+            text.contains("process.on(\"exit\"") && text.contains("its Task never finished"),
             "{}",
             text
         );
