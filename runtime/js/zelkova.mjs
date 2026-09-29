@@ -220,7 +220,9 @@ function describeThrown(thrown) {
 // and fails the predicate — gives a `Bounce`; a throw gives a `Bounce` of `Threw`; a `Promise`
 // gives a `Suspend` whose function hands the two handlers to `promise.then(onValue, onReject)`,
 // never a `.catch` after a `.then`, for the same reason. Each handler resumes the loop with the
-// step the synchronous cases would have bounced.
+// step the synchronous cases would have bounced. A promise's value is checked inside that step,
+// so a predicate that throws is an abort the loop's `try` turns into a rejection of
+// `$runTask`'s promise, as it is for a synchronous value.
 //
 // The step is one-shot: run a second time it aborts, naming the export. A promise settles once
 // and a companion returns once, so only a defect in this function or in the loop reaches that.
@@ -261,7 +263,7 @@ export function $effect(call, check, exported, k) {
       $: 'Suspend',
       a: (resume) => {
         value.then(
-          (settled) => resume(stepFor(returned(settled))),
+          (settled) => resume(() => stepFor(returned(settled))()),
           (rejected) => resume(stepFor(threw(rejected))),
         );
       },

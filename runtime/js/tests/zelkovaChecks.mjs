@@ -357,6 +357,27 @@ test('a continuation that throws after a companion\'s promise resolved rejects, 
   await assert.rejects($runTask(chained), (error) => error === boom);
 });
 
+test('a predicate that throws rejects $runTask, for a synchronous companion', async () => {
+  // Mutation checked by wrapping the predicate call in a `try` that returns a `Threw`: the
+  // rejection becomes an `Err` and this goes red.
+  const boom = new Error('predicate blew up');
+  const throwing = () => { throw boom; };
+  await assert.rejects($runTask(effect(() => 1n, throwing)), (error) => error === boom);
+});
+
+test('a predicate that throws rejects $runTask, for a companion\'s promise', async () => {
+  // Mutation checked by computing `returned(settled)` in the `onValue` handler, outside the step
+  // (`resume(stepFor(returned(settled)))`): the handler's derived promise rejects unhandled and
+  // `$runTask` never settles, which the timeout below reports.
+  const boom = new Error('predicate blew up');
+  const throwing = () => { throw boom; };
+  const settled = await Promise.race([
+    $runTask(effect(async () => 1n, throwing)).then(() => 'resolved', (error) => error),
+    new Promise((resolve) => setTimeout(() => resolve('hung'), 200)),
+  ]);
+  assert.equal(settled, boom);
+});
+
 test('a step handed to resume twice aborts, naming the export', () => {
   // Mutation checked by dropping the `used` test in `stepFor`: the second call then runs `k`
   // again and does not throw.
