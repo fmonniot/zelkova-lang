@@ -1,0 +1,10 @@
+module App exposing (main)
+
+
+main : Task ()
+main =
+  helper
+
+
+helper =
+  Task.succeed ()

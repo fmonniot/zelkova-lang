@@ -9,7 +9,8 @@
 //!
 //! [`check`] reads a module that already checked. The type it compares is the one
 //! inference solved for `main` — [`ir::Declaration::tpe`](super::ir::Declaration::tpe) —
-//! and `Task` is recognised by the qualified name of its declaration in `zelkova-core`,
+//! or, for a `main` the typer left unchecked, the one its annotation declares. `Task` is
+//! recognised by the qualified name of its declaration in `zelkova-core`,
 //! never by spelling, so a union some other module calls `Task` is not it.
 //!
 //! # Which packages are checked
@@ -22,9 +23,12 @@
 //! names nothing, and would fail the moment it was compiled on its own. Checking it only
 //! as the root would make one package valid in one build and invalid in another.
 
+use std::collections::HashMap;
+
+use super::canonical::ExportType;
 use super::name::{Name, QualName};
 use super::position::NodeSpan;
-use super::typer::Type;
+use super::typer::{canonical_type_to_typer_type, Type};
 use super::{CheckedModule, PhaseError, SpanLabel};
 
 /// The name a program's entry point has in the module the manifest names.
@@ -46,9 +50,10 @@ pub enum Error {
     },
     /// The module exposes `main`, and its type is not `Task ()`.
     MainNotTask {
-        /// The type inference solved for `main`. `None` when inference did not reach it —
-        /// the typer marks a declaration it cannot yet model as unchecked rather than
-        /// failing it — so nothing is known about its type, and it is not accepted.
+        /// The type `main` was judged to have: the one inference solved, or, when the typer
+        /// marked `main` unchecked rather than failing it, the one its annotation
+        /// declares. `None` only when the annotation cannot be read as a typer type,
+        /// which no annotation today is.
         found: Option<Type>,
         /// `main`'s annotation, which every exposed value has
         /// ([*An exposed declaration must be
@@ -63,11 +68,11 @@ pub fn check(module: &CheckedModule) -> Result<(), Error> {
     let main = Name::new(MAIN);
     let canonical = &module.canonical;
 
-    // `values` holds every declaration, exposed or not; only the interface is trimmed to
-    // what the header exposes, so that is what says whether `main` is reachable.
+    // `values` holds every declaration, exposed or not; only the header says which of
+    // them are reachable.
     let declared = canonical.values.get(&main);
-    let interface = canonical.to_interface(None);
-    let Some(value) = declared.filter(|_| interface.values.contains_key(&main)) else {
+    let exposed = canonical.exports.exposes(&main, &ExportType::Value);
+    let Some(value) = declared.filter(|_| exposed) else {
         return Err(Error::MainNotExposed {
             exposing: canonical.exposing_span,
             declared: declared.map(|value| value.span()),
@@ -75,14 +80,21 @@ pub fn check(module: &CheckedModule) -> Result<(), Error> {
     };
 
     // An exposed `main` that the typer could not check is in `unchecked` rather than
-    // `declarations`, and has no solved type. It is not accepted: nothing is known about
-    // its type.
+    // `declarations`, and has no solved type. Its annotation is judged instead: every
+    // exposed value has one, and canonicalization has already validated it. Emission
+    // reports the unchecked declaration itself.
     let found = module
         .ir
         .declarations
         .iter()
         .find(|declaration| declaration.name == main)
-        .map(|declaration| declaration.tpe.clone());
+        .map(|declaration| declaration.tpe.clone())
+        .or_else(|| match value {
+            super::canonical::Value::TypedValue { tpe, .. } => {
+                canonical_type_to_typer_type(tpe, &mut HashMap::new(), &mut 0)
+            }
+            _ => None,
+        });
 
     match found {
         Some(tpe) if is_task_of_unit(&tpe) => Ok(()),
@@ -143,7 +155,7 @@ impl PhaseError for Error {
                 ),
             },
             Error::MainNotTask { found: None, .. } => {
-                "the type of `main` could not be inferred, and a program's `main` must have \
+                "the type of `main` could not be determined, and a program's `main` must have \
                  type `Task ()`"
                     .to_string()
             }

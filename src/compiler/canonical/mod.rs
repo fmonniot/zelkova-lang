@@ -232,7 +232,7 @@ impl Exports {
     /// operator or a type that happened to share the spelling. Union types ask
     /// [`union_visibility`](Self::union_visibility) instead, which has a third
     /// answer for the opaque case.
-    fn exposes(&self, name: &Name, kind: &ExportType) -> bool {
+    pub(crate) fn exposes(&self, name: &Name, kind: &ExportType) -> bool {
         match self {
             Exports::Everything => true,
             Exports::Specifics(specifics) => specifics.get(name) == Some(kind),
