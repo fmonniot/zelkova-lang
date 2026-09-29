@@ -600,6 +600,7 @@ fn field(index: usize) -> String {
 // ```text
 // build/out/js/
 //   zelkova.mjs                      the runtime, RUNTIME_FILE
+//   main.mjs                         the entry point `zelkova run` adds, program_runner::MAIN_FILE
 //   zelkova-core/                    one directory per package of the build
 //     Maybe.mjs                      one file per module, module_file
 //     Js/Basics.mjs                  a facade's module, like any other

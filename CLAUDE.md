@@ -21,6 +21,7 @@ cargo test --workspace         # full suite: unit tests + tests/ + the tools/ cr
 cargo build
 cargo run -- compile std/core  # compiles std/core — the de-facto smoke test
 cargo run -- test <dir>        # compiles a package and its tests, runs them under node
+cargo run -- run <dir>         # compiles a program and runs its `main` under node
 cargo run -p spec-site -- --out site   # renders the site locally; open site/index.html
 cargo fmt --all
 cargo clippy --workspace --all-features
@@ -216,9 +217,9 @@ unit type `()` (checked and emitted, as `undefined` on JavaScript), JS interop v
 companion `.mjs` files, `--` and `{- -}` comments.
 
 Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, type
-aliases, and running a program (`std/core` declares `Task`, `Failure`, `succeed` and `map`,
-and `zelkova test` runs a `Test` that holds a `Task`, but the manifest's `main` is only checked
-to name a `src/` module exposing `main : Task ()` — nothing runs it).
+aliases, and a `Task` that does more than `succeed` and `map` (`std/core` declares `Task`,
+`Failure`, `succeed` and `map`; `zelkova run` runs a package's `main`, and `zelkova test` runs
+a `Test` that holds a `Task`).
 **Multi-clause function declarations** — a deliberate
 divergence from Elm — parse but are rejected by canonicalization
 (`Error::MultipleBindingsUnsupported`); `LANG-20` is the ticket. The standard library under

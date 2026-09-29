@@ -665,8 +665,6 @@ length, and a `Task` that builds the next one by calling itself, run without exh
 stack, whether or not any step waits. The guarantee covers the sequencing only: a function a step
 calls uses stack as any other call does, under the [tail-call rule](#recursion-and-tail-calls).
 
-**Not implemented:** no command runs a `Task` ([`GEN-22`](../tickets/gen-22.md)).
-
 ### An effect that can fail
 
 `Task` takes one type parameter and carries no channel for an error. A failure an effect can
@@ -740,7 +738,4 @@ Only the first is a promise broken. The other two are the runtime running out of
 
 **Not implemented:** a companion that throws does not abort naming its export — the check above
 runs only over a *returned* value, so a throw propagates as the companion's own exception
-instead ([`GEN-23`](../tickets/gen-23.md)). Nothing runs a program's `main` either
-([`GEN-1`](../tickets/gen-1.md)), so today an abort is reached only by loading or calling a
-compiled module directly — what `zelkova test` does, and what a fixture that imports `zelkova
-compile`'s own output the same way does too.
+instead ([`GEN-23`](../tickets/gen-23.md)).

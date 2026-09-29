@@ -267,18 +267,22 @@ fn stub_node_dir(name: &str, script: &str) -> PathBuf {
     dir
 }
 
-/// A copy of the `package_test_run` fixture under its own directory, its two `std/` paths made
-/// absolute so the copy can sit anywhere. The tests that put a stub `node` on `PATH` each get
-/// their own, because running `zelkova test` writes `build/` beside the manifest and the
-/// tests of this file run in parallel: two processes writing one `build/` prune each other's
-/// files.
+/// A copy of the fixture `fixture` under its own directory, its `std/` paths made absolute so
+/// the copy can sit anywhere. The tests that put a stub `node` on `PATH` each get their own,
+/// because running `zelkova` writes `build/` beside the manifest and the tests of this file
+/// run in parallel: two processes writing one `build/` prune each other's files.
+///
+/// `name` keeps each test's directory its own, so it is unique per test and not per fixture.
 #[cfg(unix)]
-fn scratch_test_run_package(name: &str) -> PathBuf {
-    let fixture = fixture_package("package_test_run");
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("package-test-run-{}", name));
+fn scratch_package(fixture: &str, name: &str) -> PathBuf {
+    let fixture = fixture_package(fixture);
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("package-scratch-{}", name));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("failed to create the scratch package");
     for tree in ["src", "tests"] {
+        if !fixture.join(tree).exists() {
+            continue;
+        }
         let copied = Command::new("cp")
             .arg("-R")
             .arg(fixture.join(tree))
@@ -293,6 +297,12 @@ fn scratch_test_run_package(name: &str) -> PathBuf {
         .replace("../../../std", &std_root.display().to_string());
     std::fs::write(dir.join("zelkova.toml"), manifest).expect("failed to write the manifest");
     dir
+}
+
+/// A copy of the `package_test_run` fixture: see [`scratch_package`].
+#[cfg(unix)]
+fn scratch_test_run_package(name: &str) -> PathBuf {
+    scratch_package("package_test_run", name)
 }
 
 /// Like [`run`], with `PATH` set to `path` alone.
@@ -345,6 +355,156 @@ fn test_fails_when_node_is_ended_by_a_signal() {
     assert!(
         stderr.contains("`node` ended before the tests finished"),
         "expected the error to say node ended early, got: {}",
+        stderr
+    );
+}
+
+/// A stub `node` that records being started, by creating the returned marker file with a
+/// shell redirect (`PATH` holds only the stub), and then ends with `code`. A test that must show `node` was never started asserts the marker is
+/// absent. The stub exits 9 when it is not handed a `main.mjs`, so the exit code also shows
+/// the entry point reached it.
+#[cfg(unix)]
+fn recording_stub_node(name: &str, code: i32) -> (PathBuf, PathBuf) {
+    let marker = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("node-started-{}", name));
+    let _ = std::fs::remove_file(&marker);
+    let stub = stub_node_dir(
+        name,
+        &format!(
+            ": > '{}'\ncase \"$1\" in */main.mjs) exit {} ;; *) exit 9 ;; esac",
+            marker.display(),
+            code
+        ),
+    );
+    (stub, marker)
+}
+
+/// `zelkova run` on a package with no `main` — a library — exits 1 saying so, compiles
+/// nothing and never starts `node`.
+///
+/// Neutralised by replacing the `let Some(main) = .. else` in `program_runner::run` with
+/// `let main = Name::new("App")`: the run then compiles the library and starts the stub,
+/// and this test went red (the marker exists, and there is no error naming `main`).
+#[cfg(unix)]
+#[test]
+fn run_on_a_package_with_no_main_exits_1_without_starting_node() {
+    let package_dir = scratch_package("package_no_tests", "run-no-main");
+    let (stub, marker) = recording_stub_node("run-no-main", 0);
+    let output = run_with_path(&package_dir, &stub, &["run"]);
+
+    assert_eq!(output.status.code(), Some(1), "{:?}", output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("has no `main`, so there is nothing to run"),
+        "expected the error to say there is no `main`, got: {}",
+        stderr
+    );
+    assert!(!marker.exists(), "`node` must not be started");
+    assert!(!package_dir.join("build").exists(), "nothing is compiled");
+}
+
+/// `zelkova run` on a program that does not compile exits 1 with the build's diagnostic,
+/// writes no entry point and never starts `node`.
+///
+/// Neutralised by replacing the `?` after `compile_package(package_dir)` in
+/// `program_runner::run` with `let _ =`: the run then carries on to write the entry point,
+/// and this test went red ("could not write" on stderr).
+#[cfg(unix)]
+#[test]
+fn run_on_a_package_that_does_not_compile_exits_1_without_starting_node() {
+    let package_dir = scratch_package("package_run_type_error", "run-type-error");
+    let (stub, marker) = recording_stub_node("run-type-error", 0);
+    let output = run_with_path(&package_dir, &stub, &["run"]);
+
+    assert_eq!(output.status.code(), Some(1), "{:?}", output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cannot match"),
+        "expected the type error's diagnostic on stderr, got: {}",
+        stderr
+    );
+    assert!(
+        !stderr.contains("could not write"),
+        "a build that failed must stop before the entry point, got: {}",
+        stderr
+    );
+    assert!(!marker.exists(), "`node` must not be started");
+    assert!(!package_dir.join("build/out/js/main.mjs").exists());
+}
+
+/// The exit code `node` ends with is the exit code `zelkova run` ends with: a stub `node`
+/// handed the entry point that exits 3 makes the run exit 3 — not 0 and not a fixed 1 — and
+/// the entry point it was handed is the one `run` wrote at `build/out/js/main.mjs`.
+///
+/// Neutralised two ways, each going red (exit code 0 instead of 3): replacing
+/// `status.code().ok_or(..)` in `program_runner::run` with `Ok(0)`, and replacing
+/// `Command::Run { dir } => ..` in `main` with one that maps the result to `Ok(0)`.
+#[cfg(unix)]
+#[test]
+fn run_exits_with_the_code_node_exits_with() {
+    let package_dir = scratch_package("package_main_ok", "run-exit-code");
+    let (stub, marker) = recording_stub_node("run-exit-code", 3);
+    let output = run_with_path(&package_dir, &stub, &["run"]);
+
+    assert_eq!(output.status.code(), Some(3), "{:?}", output);
+    assert!(marker.exists(), "`node` must be started");
+    let entry = std::fs::read_to_string(package_dir.join("build/out/js/main.mjs"))
+        .expect("the entry point must be written");
+    assert!(entry.contains("./package-main-ok/App.mjs"), "{}", entry);
+}
+
+/// A stub `node` that ends with 0 makes `zelkova run` exit 0.
+///
+/// Neutralised by replacing `Ok(0) => {}` in `main` with `Ok(_) => std::process::exit(1)`.
+/// This test went red (exit code 1) under that change.
+#[cfg(unix)]
+#[test]
+fn run_exits_0_when_node_does() {
+    let package_dir = scratch_package("package_main_ok", "run-exit-zero");
+    let (stub, _marker) = recording_stub_node("run-exit-zero", 0);
+    let output = run_with_path(&package_dir, &stub, &["run"]);
+
+    assert_eq!(output.status.code(), Some(0), "{:?}", output);
+}
+
+/// A `node` that a signal ended has no exit code and the program did not finish: `zelkova
+/// run` reports that and exits non-zero.
+///
+/// Neutralised by replacing `status.code().ok_or(..)` in `program_runner::run` with
+/// `Ok(status.code().unwrap_or(0))`. This test went red (exit code 0) under that change.
+#[cfg(unix)]
+#[test]
+fn run_fails_when_node_is_ended_by_a_signal() {
+    let package_dir = scratch_package("package_main_ok", "run-signal");
+    let stub = stub_node_dir("run-signal", "kill -9 $$");
+    let output = run_with_path(&package_dir, &stub, &["run"]);
+
+    assert_eq!(output.status.code(), Some(1), "{:?}", output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("`node` ended before the program finished"),
+        "{}",
+        stderr
+    );
+}
+
+/// When `node` cannot be started, `zelkova run` says so by name and exits non-zero. It runs
+/// from inside the package with no directory argument, so this also pins that `Run { dir }`
+/// defaults to `.`.
+///
+/// Neutralised by replacing the `map_err(..)?` on `Command::status` in
+/// `program_runner::run` with an `unwrap_or_else` that falls back to the status of `true`.
+/// This test went red (exit code 0) under that change.
+#[cfg(unix)]
+#[test]
+fn run_without_node_on_path_fails_naming_node() {
+    let package_dir = scratch_package("package_main_ok", "run-no-node");
+    let output = run_without_node(&package_dir, &["run"]);
+
+    assert_eq!(output.status.code(), Some(1), "{:?}", output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("could not run `node`"),
+        "expected an error naming `node`, got: {}",
         stderr
     );
 }

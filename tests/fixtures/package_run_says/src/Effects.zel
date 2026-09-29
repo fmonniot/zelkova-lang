@@ -1,0 +1,6 @@
+module foreign Effects exposing (say)
+
+import Task exposing (Task, Failure)
+
+
+say : Int -> Task (Result Failure ())

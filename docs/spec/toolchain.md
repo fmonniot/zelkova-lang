@@ -258,3 +258,15 @@ Running a package's tests is another: `zelkova test [DIR]`, with the same `DIR`,
 status is the one [*Running a package's tests*](#running-a-packages-tests) gives. It reports each
 test under `<Module>.<value>` and runs them under `node`, which it looks for on `PATH`;
 `zelkova compile` does not need it.
+
+Running a program is a third: `zelkova run [DIR]`, with the same `DIR`.
+
+**Provisional:** it compiles the package, and it is an error for that package to have no
+[`main`](packages.md#programs). It then hands `main` to the runtime as
+[the one `Task` a program runs](evaluation-semantics.md#running-a-task) under `node`, which it
+looks for on `PATH`, and exits `0` when that `Task` completes. It exits non-zero when the build
+fails, when `node` cannot be run, and when the program
+[aborts](evaluation-semantics.md#when-a-program-aborts); an abort's description is written to
+standard error. `zelkova compile` does not write the entry point `node` is handed, so
+`node build/out/js/main.mjs` after a compile finds no file: every build removes the files it did
+not write.

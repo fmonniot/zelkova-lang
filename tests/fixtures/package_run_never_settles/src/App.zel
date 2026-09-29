@@ -1,0 +1,19 @@
+module App exposing (main)
+
+import Effects
+import Task exposing (Task, Failure)
+
+
+ignore : Result Failure () -> ()
+ignore result =
+  case result of
+    Ok _ ->
+      ()
+
+    Err _ ->
+      ()
+
+
+main : Task ()
+main =
+  Task.map ignore Effects.never
