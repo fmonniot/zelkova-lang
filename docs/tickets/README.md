@@ -207,15 +207,14 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed` and `map`             
   │     │
   │     │  + LANG-68 + GEN-2 (both closed)
   │     ▼
-  │   GEN-16   the wrapper an effectful facade's call gets: `Ok`, `Threw`, `Malformed`
-  │            (the wrapper is built; its Zelkova-level tests are what is left)
+  │   GEN-16   the wrapper an effectful facade's call gets: `Ok`, `Threw`, `Malformed`  ── closed
   │
   ├── LANG-75  `main` is checked to be a `Task ()`                   ── closed
   │     └── GEN-22  `zelkova run [DIR]`                              ← + GEN-21 (closed)
   │
   └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ── closed
         │
-        │  + GEN-16
+        │  + GEN-16 (closed)
         ▼
       TEST-7   `std/core`'s companion checks become Zelkova tests
 ```
@@ -437,7 +436,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-13 | task | — | closed 2026-09-26 | Write the build |
 | GEN-14 | task | — | closed 2026-09-27 | Nothing checks that an emitted program computes the right value |
 | [GEN-15](gen-15.md) | task | — | open | The WebAssembly backend |
-| [GEN-16](gen-16.md) | task | — | open | The wrapper an effectful facade's call site gets |
+| GEN-16 | task | — | closed 2026-09-29 | The wrapper an effectful facade's call site gets |
 | GEN-17 | task | — | closed 2026-09-27 | The compiler has no command line: `src/main.rs` compiles `std/core` and takes no arguments |
 | GEN-18 | task | — | closed 2026-09-27 | A build that compiles the tests writes none of them, so nothing can run one |
 | GEN-19 | task | — | closed 2026-09-27 | Production and test output should be at the same folder level |

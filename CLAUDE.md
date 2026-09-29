@@ -46,7 +46,7 @@ What the *compiler* emits is checked by running it under `node --test 'tests/js/
 file there compiles a fixture under `tests/fixtures/` itself, with `cargo run`, and loads the
 output or runs its tests. CI's `javascript` job runs all three, in that order.
 
-`cargo run -- test std/core` currently reports **`27 tests: 27 passed, 0 failed, 0 errored`
+`cargo run -- test std/core` currently reports **`32 tests: 32 passed, 0 failed, 0 errored`
 and exits 0**. `std/core/tests/FloatTests.ignored` is excluded from that count by its extension:
 `Basics.add` sends a `Float` through the `addInt` facade and its boundary check aborts, so
 `FloatTests`' two tests fail to load and are disabled until [`BUG-44`](docs/tickets/bug-44.md)

@@ -4,7 +4,7 @@
 is in deciding the abort message's wording and in the fixture the acceptance check needs.
 
 **Part of:** [`GEN-2`](gen-2.md) (closed), whose boundary check this extends. Not
-[`GEN-16`](gen-16.md): that ticket's wrapper is for an *effectful* facade's `Task`/`Result`
+[`GEN-16`](README.md) (closed): that ticket's wrapper is for an *effectful* facade's `Task`/`Result`
 forwarding, a separate call site — an `unsafe` facade gets no wrapper by design
 (`docs/spec/interop.md#an-unsafe-facade`, and GEN-16's own text: "An unsafe facade gets no
 wrapper — its companion is called directly, and one that throws aborts the program. That half is
