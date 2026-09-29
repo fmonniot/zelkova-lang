@@ -738,5 +738,4 @@ Only the first is a promise broken. The other two are the runtime running out of
 
 **Not implemented:** a companion that throws does not abort naming its export — the check above
 runs only over a *returned* value, so a throw propagates as the companion's own exception
-instead ([`GEN-23`](../tickets/gen-23.md)). `zelkova run` reports an abort by its
-description, but a companion that throws reaches it as the companion's own exception.
+instead ([`GEN-23`](../tickets/gen-23.md)).

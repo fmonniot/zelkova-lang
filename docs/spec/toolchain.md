@@ -267,4 +267,6 @@ Running a program is a third: `zelkova run [DIR]`, with the same `DIR`.
 looks for on `PATH`, and exits `0` when that `Task` completes. It exits non-zero when the build
 fails, when `node` cannot be run, and when the program
 [aborts](evaluation-semantics.md#when-a-program-aborts); an abort's description is written to
-standard error. A package that has no `main` or does not compile is never handed to `node`.
+standard error. `zelkova compile` does not write the entry point `node` is handed, so
+`node build/out/js/main.mjs` after a compile finds no file: every build removes the files it did
+not write.
