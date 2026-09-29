@@ -837,7 +837,8 @@ unsafe twice : Int -> Int
 ```
 
 **Known gap:** `std/core` ships six of the eight, so `List` and `Char` bring nothing: a
-program naming `Char.toUpper` or annotating a `List` is rejected where the name is written. Each entry starts working on the day its module compiles.
+program naming `Char.toUpper` or annotating a `List` is rejected where the name is written. Each entry starts working on the day its module
+compiles.
 
 ## Packages
 

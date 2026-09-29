@@ -1554,8 +1554,10 @@ fn run_with_task(
 /// Each annotation is the whole signature, so a `succeed` or `map` typed any more
 /// loosely or differently (`map` with its arguments swapped, say) would not unify with it.
 ///
-/// Mutation-checked by swapping `map`'s two parameters in `Task.zel`'s annotation: the
-/// `map` line below then fails to type.
+/// Mutation-checked by narrowing `map`'s annotation in `Task.zel` to
+/// `(a -> a) -> Task a -> Task a`, which keeps `Task.zel` itself valid: the `mapped` line
+/// below then fails to type. (Swapping `map`'s parameters instead breaks `Task.zel`, and
+/// every test here goes red at load.)
 #[test]
 fn task_succeed_and_map_have_the_documented_signatures() {
     let source = indoc::indoc! {r#"

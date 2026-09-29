@@ -171,7 +171,8 @@ The goal is **a `Task` that runs**: a facade can declare an effect, a program's 
 Zelkova tests. What a `Task` is was settled in [`DEC-11`](../decisions/dec-11.md), and what a
 broken companion does in [`DEC-12`](../decisions/dec-12.md). The chapters are
 [Effects](../spec/evaluation-semantics.md#effects) and
-[An effectful facade](../spec/interop.md#an-effectful-facade). Nothing in them is implemented.
+[An effectful facade](../spec/interop.md#an-effectful-facade). `Task`, `Failure`, `succeed` and `map` are declared in `std/core`;
+nothing else in them is implemented.
 
 The language owner settled the program's shape on 2026-09-27:
 

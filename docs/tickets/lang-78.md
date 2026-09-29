@@ -1,7 +1,7 @@
 # LANG-78 · `std/core`'s `Task` has no `andThen`
 
 **Sizing:** small. It adds one exported function and its two helpers to `std/core/src/Task.zel`,
-plus a signature test, an emit test and the spec retag. It could grow if a lambda turns out to
+plus a signature test, an emit test and removing the spec paragraph. It could grow if a lambda turns out to
 change how `andThen` should be written: the shape in `DEC-22` decision 3 uses named helpers and
 partial application, and this ticket does not settle whether lambdas make it simpler.
 
@@ -18,8 +18,8 @@ whose **Not implemented:** paragraph cites this ticket.
 
 **Problem:** [*Sequencing*](../spec/evaluation-semantics.md#sequencing) says core gives `Task` an
 `andThen : (a -> Task b) -> Task a -> Task b`. `Task.zel` exports `succeed` and `map` and no
-`andThen`, so a program cannot run one `Task` after another, and `GEN-21`'s and `LANG-76`'s
-sequencing checks have nothing of core's to call.
+`andThen`, so a program cannot run one `Task` after another, and `GEN-21`'s sequencing
+check has nothing of core's to call.
 
 **Approach:**
 
@@ -28,8 +28,8 @@ sequencing checks have nothing of core's to call.
    Both handoffs return a `Bounce`, as
    [decision 3](../decisions/dec-22.md#3--every-handoff-bounces-the-loop-yields-every-n-bounces)
    explains: the outer run function is reached by a `Bounce`, and so is the `Task` that `f`
-   returns. The decision's illustration is `andThenRun f run k = Bounce (callWith run (continueWith f k))`
-   with `continueWith f k a = case f a of Task next -> Bounce (callWith next k)`.
+   returns. The decision's illustration is
+   `andThenRun f run k = Bounce (callWith run (continueWith f k))` with `continueWith f k a = case f a of Task next -> Bounce (callWith next k)`.
 2. No helper builds `Suspend` or `Halt`: those are the runtime's.
 3. Whether lambdas are used at all is this ticket's to decide once it is worked. The illustration
    in `DEC-22` needs none, and `succeed` and `map` in `Task.zel` are written without any.

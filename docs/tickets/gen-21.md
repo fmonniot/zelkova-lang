@@ -27,8 +27,10 @@ repeated here, so that the two do not drift. In short: one exported function, `$
 returns a JavaScript `Promise` of the `Task`'s final value. It hands the `Task` a final
 continuation that resolves the promise and returns `Halt`, and drives a loop over `Done` —
 `Bounce` calls its step, `Suspend` calls its function with a `resume` that re-enters the loop,
-`Halt` stops. Every N bounces the loop yields to the host with a macrotask; choosing N and the
-primitive is this ticket's. Every entry into the loop, the first and each resumption, is wrapped
+`Halt` stops. The emitted `Bounce` thunk is a curried partial application, so the loop calls
+it as `step(undefined)`; `step()` would return the partial function, not a `Done`. Every N
+bounces the loop yields to the host with a macrotask; choosing N and the primitive is this
+ticket's. Every entry into the loop, the first and each resumption, is wrapped
 in one `try` that rejects the promise. Its callers are generated entry points (`run.mjs` and the
 program entry `GEN-22` writes), never emitted module code.
 

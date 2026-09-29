@@ -192,12 +192,11 @@ impl DefaultImport {
     /// The test for a [`Unqualified::Type`] or [`Unqualified::TypeAndVariants`]
     /// entry is that the interface declares a **union** of the module's own name.
     /// That is what `Maybe`, `Result` and `List` are, and `Char` and `String`, whose
-    /// declarations in `std/core` are each a one-constructor union of their own name. It is an assumption about
-    /// [`Task`](../../../docs/spec/evaluation-semantics.md#effects), which is not
-    /// ported yet and which the chapter does not oblige to be a union: if `Task`
-    /// arrives as anything else — a type alias, or a type the compiler knows
-    /// without a declaration — this entry is silently dropped and nothing here goes
-    /// red. Whoever ports `Task` has to widen this test rather than trust it.
+    /// declarations in `std/core` are each a one-constructor union of their own name, as
+    /// is [`Task`](../../../docs/spec/evaluation-semantics.md#effects). The chapter does
+    /// not oblige `Task` to be a union: if it were declared as anything else — a type
+    /// alias, or a type the compiler knows without a declaration — this entry would be
+    /// silently dropped and nothing here would go red.
     fn satisfied_by(&self, interface: &Interface) -> bool {
         match self.unqualified {
             Unqualified::Everything | Unqualified::Nothing => true,

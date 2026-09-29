@@ -817,10 +817,9 @@ type alias Pair = (Size, Size)
 ```
 
 **Not implemented:** `type alias` is a syntax error — the grammar reads `type` and then wants
-an uppercase name, and `alias` is neither. Several modules under `std/core/src/` already write
-aliases (`Task.ignored`, `Array.ignored`) and the documentation comments in `Maybe.zel` and
-`Result.zel` use them in their examples, so this is a hole in the compiler rather than a
-question about the language.
+an uppercase name, and `alias` is neither. Several modules under `std/core/src/` write aliases
+(`Array.ignored`) and the documentation comments in `Maybe.zel` and `Result.zel` use them in
+their examples, so this is a hole in the compiler rather than a question about the language.
 
 `Pair` above is *not* a new type that happens to be a pair; it is `(Size, Size)`, spelled
 differently. A function annotated `Pair -> Size` accepts a `(Size, Size)` with no conversion,
