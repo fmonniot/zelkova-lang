@@ -456,9 +456,9 @@ export function idivRefusesAFraction() {
 
 **A test companion may import the companion it checks as a module of the target**, which is what
 the second export above does: `Core.Prim` is reached as a `.mjs` file, with no boundary between
-them. It names that file by the shortest relative path between the two in the package's
-source, out of `tests/` and into `src/`, and that import reaches the same companion however a
-build places the two files. A value crossing a boundary is checked against the type its
+them. A test companion must name that file by the shortest relative path between the two in the
+package's source, out of `tests/` and into `src/`; that import reaches the same companion
+however a build places the two files. A value crossing a boundary is checked against the type its
 signature declares, so a test written *above* `Core.Prim` can hand `idiv` only what `Int`
 admits. What a companion does with a value outside that set is a question only the target can
 ask it.

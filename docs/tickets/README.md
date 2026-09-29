@@ -468,3 +468,4 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TEST-6](test-6.md) | task | — | open | The `tests/cli.rs` tests that run `zelkova` on a shared fixture write one `build/` between them |
 | TEST-7 | task | — | closed 2026-09-29 | `std/core`'s companion checks are run by `node --test` and not as Zelkova tests |
 | [TEST-8](test-8.md) | task | — | open | CI never runs the runtime's own checks, `runtime/js/tests/zelkovaChecks.mjs` |
+| [TEST-9](test-9.md) | task | — | open | A test companion's import of a companion under test that the build does not rewrite fails at run time, with a build path in the message |
