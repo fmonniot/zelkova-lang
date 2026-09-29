@@ -136,6 +136,10 @@ pub struct Module {
     pub name: Name,
     pub binding_foreign: bool,
     pub exposing: Exposing,
+    /// Where the header's `exposing (...)` was written, the keyword and the list together.
+    /// A diagnostic about what the module exposes as a whole, rather than about one name
+    /// in the list, points here.
+    pub exposing_span: NodeSpan,
     pub imports: Vec<Import>,
     pub infixes: Vec<Infix>,
     pub types: Vec<UnionType>,
@@ -147,6 +151,7 @@ impl Module {
         modifier: Option<tokenizer::Token>,
         name: Name,
         exposing: Exposing,
+        exposing_span: NodeSpan,
         declarations: Vec<Declaration>,
     ) -> Module {
         let binding_foreign = matches!(modifier, Some(tokenizer::Token::Foreign));
@@ -213,6 +218,7 @@ impl Module {
             name,
             binding_foreign,
             exposing,
+            exposing_span,
             imports,
             infixes,
             types,

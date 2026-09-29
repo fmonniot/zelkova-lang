@@ -1,0 +1,10 @@
+module App exposing (main)
+
+
+main : Int
+main =
+  helper
+
+
+helper =
+  1

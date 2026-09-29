@@ -611,9 +611,13 @@ Decl: Declaration = {
 
 // entry point for our parser, a source file always start by
 // declaring the module
+//
+// `el`/`er` bracket the header's `exposing (...)`, keyword and list together: it is what a
+// diagnostic about what the module exposes as a whole points at.
 pub Module: Module = 
     "open block"
-        "module" <modifier: "foreign"?> <name: QualTypeIdent> "exposing" <exposing:Exposing>
-    "close block" <declarations:Decl*> => Module::from_declarations(<>);
+        "module" <modifier: "foreign"?> <name: QualTypeIdent> <el:@L> "exposing" <exposing:Exposing> <er:@R>
+    "close block" <declarations:Decl*> =>
+        Module::from_declarations(modifier, name, exposing, NodeSpan::new(el, er), declarations);
 
 // TODO Maybe something for the REPL. Might just be Decl.

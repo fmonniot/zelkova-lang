@@ -560,6 +560,7 @@ mod tests {
             name: Name::new(name),
             binding_foreign: false,
             exposing: Exposing::Open,
+            exposing_span: NodeSpan::none(),
             imports,
             infixes: vec![],
             types: vec![],
@@ -597,6 +598,7 @@ mod tests {
         let canonical = canonical::Module {
             name: ModuleName::new(package.clone(), source.name.clone()),
             exports: canonical::Exports::Everything,
+            exposing_span: source.exposing_span,
             infixes: HashMap::new(),
             types: HashMap::new(),
             values: HashMap::new(),

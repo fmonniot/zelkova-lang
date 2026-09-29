@@ -1,0 +1,11 @@
+# `main` names `App`, which declares `main : Task ()` and leaves it out of its `exposing`
+# list, so the package's entry point exposes no `main`.
+name = "package-main-not-exposed"
+version = "0.1.0"
+main = "App"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]

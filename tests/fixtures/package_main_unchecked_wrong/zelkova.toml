@@ -1,0 +1,10 @@
+# `main` is exposed and refers to an unannotated declaration, so the typer leaves it unchecked.
+name = "package-main-unchecked-wrong"
+version = "0.1.0"
+main = "App"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]

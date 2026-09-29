@@ -1,0 +1,10 @@
+# `main` names `App`, which exposes a `main` of type `Int`.
+name = "package-main-not-task"
+version = "0.1.0"
+main = "App"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]

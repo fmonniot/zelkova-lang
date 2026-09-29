@@ -209,7 +209,7 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed` and `map`             
   │     ▼
   │   GEN-16   the wrapper an effectful facade's call gets: `Ok`, `Threw`, `Malformed`
   │
-  ├── LANG-75  `main` is checked to be a `Task ()`                   ← + LANG-72, closed
+  ├── LANG-75  `main` is checked to be a `Task ()`                   ── closed
   │     └── GEN-22  `zelkova run [DIR]`                              ← + GEN-21 (closed)
   │
   └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ← + GEN-21, GEN-20 (both closed)
@@ -415,7 +415,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-72 | task | — | closed 2026-09-28 | `()` is not recognised as a type, an expression or a pattern |
 | LANG-73 | task | — | closed 2026-09-28 | `std/core` declares no `String`, so no annotation can name one |
 | LANG-74 | task | — | closed 2026-09-28 | `std/core` declares no `Task` and no `Failure` |
-| [LANG-75](lang-75.md) | task | — | open | The manifest's `main` is read, and nothing checks what it names |
+| LANG-75 | task | — | closed 2026-09-29 | The manifest's `main` is read, and nothing checks what it names |
 | [LANG-76](lang-76.md) | task | — | open | A `Test` cannot hold a `Task`, so no effectful check can be a test |
 | [LANG-77](lang-77.md) | task | — | open | String literals are specified but not tokenized |
 | [LANG-78](lang-78.md) | task | — | open | `std/core`'s `Task` has no `andThen` |

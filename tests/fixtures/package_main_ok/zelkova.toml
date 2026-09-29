@@ -1,0 +1,11 @@
+# A program: `main` names `App`, which exposes `main : Task ()` built with `Task.succeed`,
+# the example `docs/spec/packages.md#programs` shows. Every `main` check passes.
+name = "package-main-ok"
+version = "0.1.0"
+main = "App"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]
