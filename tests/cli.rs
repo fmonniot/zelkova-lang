@@ -359,8 +359,8 @@ fn test_fails_when_node_is_ended_by_a_signal() {
     );
 }
 
-/// A stub `node` that records being started, by creating the returned marker file with a shell redirect (`PATH` holds only the stub), and then
-/// ends with `code`. A test that must show `node` was never started asserts the marker is
+/// A stub `node` that records being started, by creating the returned marker file with a
+/// shell redirect (`PATH` holds only the stub), and then ends with `code`. A test that must show `node` was never started asserts the marker is
 /// absent. The stub exits 9 when it is not handed a `main.mjs`, so the exit code also shows
 /// the entry point reached it.
 #[cfg(unix)]

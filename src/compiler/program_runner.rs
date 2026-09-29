@@ -28,7 +28,9 @@
 //!
 //! A `Task` that never finishes leaves the entry point waiting on a promise nothing
 //! settles. When that leaves the event loop empty, `node` ends the process and the entry
-//! point's `exit` handler says the `Task` never finished and sets exit code `1`. A `Task`
+//! point's `exit` handler says the `Task` never finished and sets exit code `1`. `node`
+//! writes its own `Warning: Detected unsettled top-level await` to standard error first, and
+//! whether it does, and how it words it, is `node`'s and varies by version. A `Task`
 //! that keeps the event loop alive for ever, such as a live timer, is not detected.
 //!
 //! This phase and [`test_runner`](super::test_runner) are the only places the compiler

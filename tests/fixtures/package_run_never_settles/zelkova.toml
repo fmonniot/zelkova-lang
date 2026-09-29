@@ -1,0 +1,12 @@
+# The program `tests/js/RunChecks.mjs` runs with `zelkova run` to see what a `Task` that
+# never finishes does: `main` waits on a promise nothing settles and nothing keeps the event
+# loop alive. `cargo test` never runs it; `node --test 'tests/js/**/*.mjs'` does.
+name = "package-run-never-settles"
+version = "0.1.0"
+main = "App"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]

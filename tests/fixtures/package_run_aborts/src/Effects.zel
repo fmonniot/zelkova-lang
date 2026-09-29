@@ -1,0 +1,4 @@
+module foreign Effects exposing (boom)
+
+
+unsafe boom : Int -> Int

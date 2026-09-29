@@ -1,0 +1,14 @@
+module App exposing (main)
+
+import Effects
+import Task exposing (Task)
+
+
+answer : Int
+answer =
+  Effects.boom 1
+
+
+main : Task ()
+main =
+  Task.succeed ()
