@@ -182,6 +182,8 @@
 //! # What is refused
 //!
 //! [`emit`] answers an [`Error`] rather than a module missing a part: for a declaration
+//! with no IR ([`ir::Module::unchecked`]), for a facade declaration with no type signature,
+//! for a facade signature not marked `unsafe` whose result is not `Task (Result Failure a)`,
 //! for a facade with no companion for the target being built, for a facade result no
 //! predicate can decide, and for a construct it does not emit yet ([`Construct`]).
 
@@ -217,6 +219,11 @@ pub enum Error {
     /// (`canonical::Error::FacadeResultNotEffect`); this is what is left if one reaches
     /// the backend anyway.
     NotAnEffect { name: Name, span: NodeSpan },
+    /// A facade declaration the canonical module holds no type signature for, so there
+    /// is no result type to build a wrapper or a boundary check from. Canonicalization
+    /// refuses an unannotated facade declaration first; this is what is left if one
+    /// reaches the backend anyway.
+    NoSignature { name: Name, span: NodeSpan },
     /// A declaration the typer could not check has no IR to emit, and a module emitted
     /// without it would be missing a value its source declares.
     Unchecked { name: Name, span: NodeSpan },
@@ -310,6 +317,10 @@ impl PhaseError for Error {
                 "`{}` is not marked `unsafe`, and its result is not `Task (Result Failure a)`, so no wrapper can be built for it",
                 name.as_str()
             ),
+            Error::NoSignature { name, .. } => format!(
+                "the facade declaration `{}` has no type signature, so its boundary cannot be built",
+                name.as_str()
+            ),
             Error::Unchecked { name, .. } => format!(
                 "`{}` cannot be compiled to JavaScript, because the type checker could not check it",
                 name.as_str()
@@ -354,6 +365,7 @@ impl PhaseError for Error {
             // alone.
             Error::MissingCompanion { .. } => return Vec::new(),
             Error::NotAnEffect { span, .. } => (span, "not marked `unsafe`"),
+            Error::NoSignature { span, .. } => (span, "this declaration"),
             Error::Unchecked { span, .. } => (span, "this declaration"),
             Error::NoPredicate { span, .. } => (span, "this signature"),
             Error::Unsupported { span, .. } => (span, "not supported by the JavaScript backend"),
@@ -1300,7 +1312,7 @@ impl Emitter {
                 marked_unsafe, tpe, ..
             }) => (tpe, *marked_unsafe),
             _ => {
-                self.errors.push(Error::NotAnEffect {
+                self.errors.push(Error::NoSignature {
                     name: declaration.name.clone(),
                     span: declaration.span,
                 });

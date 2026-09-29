@@ -12,10 +12,11 @@
 use std::collections::HashMap;
 
 use indoc::indoc;
+use zelkova_lang::compiler::canonical::Value;
 use zelkova_lang::compiler::javascript::{self, Error, Unions, Unpredicated};
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::position::NodeSpan;
-use zelkova_lang::compiler::{check_module, CheckedModule, Interface, PackageName};
+use zelkova_lang::compiler::{check_module, CheckedModule, Interface, PackageName, PhaseError};
 
 mod support;
 
@@ -1640,6 +1641,78 @@ fn an_unsafe_facade_beside_an_effectful_one_is_not_wrapped() {
         text
     );
     assert!(text.contains("function effectful(a) {\n  return {$: \"Task\""));
+}
+
+/// The errors a facade module fails to emit with once `edit` has changed its canonical module.
+/// Canonicalization refuses each shape these tests need before the backend sees it, so the
+/// module is checked as a valid `unsafe` facade and then edited by hand.
+fn refused_after(edit: impl FnOnce(&mut CheckedModule)) -> Vec<Error> {
+    let mut module = checked(indoc! {r#"
+        module foreign Test exposing (add)
+
+        unsafe add : Int -> Int -> Int
+    "#});
+    edit(&mut module);
+    match javascript::emit(&module, true, &unions_of(&module)) {
+        Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
+        Err(errors) => errors,
+    }
+}
+
+/// A facade signature not marked `unsafe` whose result is not `Task (Result Failure a)` has no
+/// payload to check, and is refused as `NotAnEffect`, naming the value and blaming the
+/// signature's mark. `Int -> Int -> Int` unmarked is what canonicalization refuses first, so the
+/// mark is cleared by hand.
+///
+/// Mutation-checked by dropping the `NotAnEffect` push from `effectful_result_payload`'s `None`
+/// arm: no error is reported and this goes red.
+#[test]
+fn an_unmarked_facade_signature_that_is_not_a_task_is_refused_as_not_an_effect() {
+    let errors = refused_after(|module| {
+        if let Some(Value::TypedValue { marked_unsafe, .. }) =
+            module.canonical.values.get_mut(&Name::new("add"))
+        {
+            *marked_unsafe = false;
+        }
+    });
+
+    // `NodeSpan`'s equality ignores the span, so this compares the variant and the name.
+    assert_eq!(
+        errors,
+        vec![Error::NotAnEffect {
+            name: Name::new("add"),
+            span: NodeSpan::none(),
+        }]
+    );
+    assert_eq!(
+        errors[0].message(),
+        "`add` is not marked `unsafe`, and its result is not `Task (Result Failure a)`, so no wrapper can be built for it"
+    );
+}
+
+/// A facade declaration the canonical module holds no signature for is refused as
+/// `NoSignature`, whose message claims nothing about an `unsafe` mark or a `Task`, since there
+/// is no signature to read either from.
+///
+/// Mutation-checked by pushing `NotAnEffect` at the `_` arm again: the variant assertion goes
+/// red.
+#[test]
+fn a_facade_declaration_with_no_signature_is_refused_as_no_signature() {
+    let errors = refused_after(|module| {
+        module.canonical.values.remove(&Name::new("add"));
+    });
+
+    assert_eq!(
+        errors,
+        vec![Error::NoSignature {
+            name: Name::new("add"),
+            span: NodeSpan::none(),
+        }]
+    );
+    assert_eq!(
+        errors[0].message(),
+        "the facade declaration `add` has no type signature, so its boundary cannot be built"
+    );
 }
 
 /// A facade with no companion for the target being built is refused, naming the facade
