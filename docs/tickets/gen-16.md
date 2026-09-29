@@ -8,7 +8,7 @@ companion that throws, one that rejects, one that returns the wrong shape and on
 [`GEN-1`](gen-1.md)'s in subject, and deliberately outside that program: the original GEN-1 text
 carried it as inherited work, and it could not be written until the tickets below existed.
 
-**Depends on:** [`LANG-74`](README.md), for `Task` and `Failure`; [`GEN-21`](gen-21.md), for
+**Depends on:** [`LANG-74`](README.md), for `Task` and `Failure`; [`GEN-21`](README.md) (closed), for
 something that runs what the wrapper builds; [`LANG-68`](README.md) (closed), which holds an
 unmarked facade to the result type this wrapper assumes; [`GEN-2`](README.md) (closed), for the
 predicate whose failure is `Err (Malformed ..)`. Sequenced after [`GEN-12`](README.md), which

@@ -203,16 +203,16 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed` and `map`             
   │
   ├── LANG-78  `Task.andThen`                                        ← + LANG-34 (lambdas)
   │
-  ├── GEN-21   the runtime runs a `Task`
+  ├── GEN-21   the runtime runs a `Task`                             ── closed
   │     │
   │     │  + LANG-68 + GEN-2 (both closed)
   │     ▼
   │   GEN-16   the wrapper an effectful facade's call gets: `Ok`, `Threw`, `Malformed`
   │
   ├── LANG-75  `main` is checked to be a `Task ()`                   ← + LANG-72, closed
-  │     └── GEN-22  `zelkova run [DIR]`                              ← + GEN-21
+  │     └── GEN-22  `zelkova run [DIR]`                              ← + GEN-21 (closed)
   │
-  └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ← + GEN-21, GEN-20 (closed)
+  └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ← + GEN-21, GEN-20 (both closed)
         │
         │  + GEN-16
         ▼
@@ -441,7 +441,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-18 | task | — | closed 2026-09-27 | A build that compiles the tests writes none of them, so nothing can run one |
 | GEN-19 | task | — | closed 2026-09-27 | Production and test output should be at the same folder level |
 | GEN-20 | task | — | closed 2026-09-28 | Emit `()` |
-| [GEN-21](gen-21.md) | task | — | open | The JavaScript runtime cannot run a `Task` |
+| GEN-21 | task | — | closed 2026-09-29 | The JavaScript runtime cannot run a `Task` |
 | [GEN-22](gen-22.md) | task | — | open | There is no `zelkova run`: nothing runs a program's `main` |
 | [GEN-23](gen-23.md) | task | — | open | An `unsafe` facade's forwarding code does not catch what its companion throws |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |

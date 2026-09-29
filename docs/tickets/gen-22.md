@@ -8,7 +8,7 @@ three. The toolchain appendix gains a paragraph first.
 Zelkova program something that runs.
 
 **Depends on:** [`LANG-75`](lang-75.md), so that what is run is known to be a `Task ()`;
-[`GEN-21`](gen-21.md), for `$runTask`. Nothing here needs [`GEN-16`](gen-16.md): a `main` of
+[`GEN-21`](README.md) (closed), for `$runTask`. Nothing here needs [`GEN-16`](gen-16.md): a `main` of
 `Task.succeed ()` exercises all of it. A program that does anything observable does need an
 effectful facade, and so the end-to-end acceptance below waits for `GEN-16` as well.
 
