@@ -96,11 +96,20 @@
 //! [`emit`] has no path of its own to check that with, so the caller decides.
 //!
 //! A signature not marked `unsafe` declares an effect
-//! ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)), and
-//! wrapping one in the `Result` its call site is owed is
-//! [`GEN-16`](../../../docs/tickets/gen-16.md)'s, blocked on `Task` existing at all.
-//! [`emit`] answers [`Error::Effectful`] for one rather than emitting the `unsafe`
-//! shape for it.
+//! ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)), and its
+//! forwarding code builds a `Task` instead of calling the companion: the `Task`'s run
+//! function calls the runtime's `$effect` with a function that calls the companion, the
+//! predicate of the payload type `a` of the signature's `Task (Result Failure a)` (`null`
+//! for a `()` payload, which is discarded), the export's name and the continuation it was
+//! handed. The companion is therefore called when the `Task` is run, never when it is built,
+//! and `$effect` is what catches a throw or a rejection as `Err (Threw ..)` and turns a
+//! value that fails the predicate into `Err (Malformed ..)`
+//! ([DEC-22 decision 4](../../../docs/decisions/dec-22.md#4--the-wrapper-is-one-runtime-helper-and-a-synchronous-companion-continues-synchronously)).
+//! The emitted text builds the `Task` as `{$: "Task", a: ($k) => $effect(..)}` and knows
+//! nothing of `Done`. A facade constant naming a `Task` gets the same `Task`, as one
+//! module-level `const`, and its companion export is called with no arguments each time the
+//! `Task` is run ([DEC-22 decision
+//! 7](../../../docs/decisions/dec-22.md#7--a-facade-constant-naming-a-task-gets-the-same-wrapper-with-no-arguments)).
 //!
 //! The companion is imported from [`companion_file`], beside the facade's own emitted
 //! file and renamed so that the two do not share one path.
@@ -113,9 +122,9 @@
 //! forwarding code binds the companion's result to `$returned` and returns it unchanged
 //! when the predicate holds, and calls the runtime's `$abort` otherwise, naming the
 //! export — module and value — whose companion returned it ([When a program
-//! aborts](../../../docs/spec/evaluation-semantics.md#when-a-program-aborts)). Only the
-//! `unsafe` shape exists today, so aborting is the only destination a failing check has
-//! here.
+//! aborts](../../../docs/spec/evaluation-semantics.md#when-a-program-aborts)). An
+//! effectful facade's `$effect` runs the same predicate over the payload and routes a
+//! failure to `Err (Malformed ..)` where this check aborts.
 //!
 //! **Only the result is checked.** An argument on its way out to the companion is a
 //! Zelkova value the type checker already proved to be of its declared type, so nothing
@@ -173,7 +182,6 @@
 //! # What is refused
 //!
 //! [`emit`] answers an [`Error`] rather than a module missing a part: for a declaration
-//! with no IR ([`ir::Module::unchecked`]), for a facade signature not marked `unsafe`,
 //! for a facade with no companion for the target being built, for a facade result no
 //! predicate can decide, and for a construct it does not emit yet ([`Construct`]).
 
@@ -202,12 +210,13 @@ pub enum Error {
     /// [`emit`] has no path of its own to check a companion's presence on disk with —
     /// its caller does, and says so through [`emit`]'s `has_companion` parameter.
     MissingCompanion { module: Name, target: &'static str },
-    /// A facade signature not marked `unsafe`. It declares an effect
-    /// ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)), and
-    /// the wrapper its call site is owed is [`GEN-16`](../../../docs/tickets/gen-16.md)'s,
-    /// blocked on `Task` existing at all — so this is refused rather than emitted as
-    /// if it were `unsafe`.
-    Effectful { name: Name, span: NodeSpan },
+    /// A facade signature not marked `unsafe` whose result type is not `Task (Result
+    /// Failure a)`, so there is no payload for the wrapper to check
+    /// ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)).
+    /// Canonicalization refuses such a signature first
+    /// (`canonical::Error::FacadeResultNotEffect`); this is what is left if one reaches
+    /// the backend anyway.
+    NotAnEffect { name: Name, span: NodeSpan },
     /// A declaration the typer could not check has no IR to emit, and a module emitted
     /// without it would be missing a value its source declares.
     Unchecked { name: Name, span: NodeSpan },
@@ -297,8 +306,8 @@ impl PhaseError for Error {
                 module.as_str(),
                 target
             ),
-            Error::Effectful { name, .. } => format!(
-                "`{}` declares an effect, which the JavaScript backend does not wrap yet",
+            Error::NotAnEffect { name, .. } => format!(
+                "`{}` is not marked `unsafe`, and its result is not `Task (Result Failure a)`, so no wrapper can be built for it",
                 name.as_str()
             ),
             Error::Unchecked { name, .. } => format!(
@@ -344,7 +353,7 @@ impl PhaseError for Error {
             // declaration's — so this names the facade and the target in `message()`
             // alone.
             Error::MissingCompanion { .. } => return Vec::new(),
-            Error::Effectful { span, .. } => (span, "not marked `unsafe`"),
+            Error::NotAnEffect { span, .. } => (span, "not marked `unsafe`"),
             Error::Unchecked { span, .. } => (span, "this declaration"),
             Error::NoPredicate { span, .. } => (span, "this signature"),
             Error::Unsupported { span, .. } => (span, "not supported by the JavaScript backend"),
@@ -446,7 +455,8 @@ const RESERVED: &[&str] = &[
 /// Every other name an emitted module declares is the emitter's own, and each is built
 /// so that it cannot be one this function returns, nor one another item here returns:
 ///
-/// - the runtime's helpers, `$curry` and `$abort`, the `$scrutinee` a `case` binds, and
+/// - the runtime's helpers, `$curry`, `$abort` and `$effect`, the `$scrutinee` a `case`
+///   binds, the `$k` an effectful facade's `Task` is handed, and
 ///   the names a boundary check binds — `$returned`, the value a companion handed back,
 ///   and inside a union predicate `$v0`, `$v1`, … for the value under test and `$p0`,
 ///   `$p1`, … for the predicates of the union's type variables: a `$` and a word that is
@@ -1271,11 +1281,11 @@ impl Emitter {
     /// `predicates`. See this module's doc comment, "The boundary check", for what the
     /// forwarding code does with the companion's result.
     ///
-    /// Only for a signature marked `unsafe`: one that is not declares an effect
-    /// ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)),
-    /// which this backend does not wrap yet, so [`Error::Effectful`] is pushed instead
-    /// and nothing is appended for it. A result type no predicate decides pushes
-    /// [`Error::NoPredicate`] and appends nothing either.
+    /// A signature marked `unsafe` calls the companion directly. One that is not declares
+    /// an effect ([An effectful
+    /// facade](../../../docs/spec/interop.md#an-effectful-facade)), and its forwarding
+    /// code is the `Task` this module's *A facade* section describes. A result type no predicate decides
+    /// pushes [`Error::NoPredicate`] and appends nothing.
     fn facade_declaration<'a>(
         &mut self,
         canonical: &canonical::Module,
@@ -1285,14 +1295,12 @@ impl Emitter {
         constants: &mut HashMap<&'a Name, String>,
         companion_imports: &mut Vec<String>,
     ) {
-        let signature = match canonical.values.get(&declaration.name) {
+        let (signature, marked_unsafe) = match canonical.values.get(&declaration.name) {
             Some(Value::TypedValue {
-                marked_unsafe: true,
-                tpe,
-                ..
-            }) => tpe,
+                marked_unsafe, tpe, ..
+            }) => (tpe, *marked_unsafe),
             _ => {
-                self.errors.push(Error::Effectful {
+                self.errors.push(Error::NotAnEffect {
                     name: declaration.name.clone(),
                     span: declaration.span,
                 });
@@ -1301,8 +1309,23 @@ impl Emitter {
         };
 
         // What the companion hands back: the signature with the arrows of its own
-        // parameter list — `arity` of them — taken off the front.
+        // parameter list — `arity` of them — taken off the front. For an effect, the
+        // payload of the `Task (Result Failure a)` that remains.
         let result = canonical_result(signature, declaration.arity);
+        let result = if marked_unsafe {
+            result
+        } else {
+            match canonical::effectful_result_payload(result) {
+                Some(payload) => payload,
+                None => {
+                    self.errors.push(Error::NotAnEffect {
+                        name: declaration.name.clone(),
+                        span: declaration.span,
+                    });
+                    return;
+                }
+            }
+        };
 
         // The companion's export is imported under an alias — never the plain name,
         // which this method is about to declare a local binding under, and a module
@@ -1312,8 +1335,58 @@ impl Emitter {
         let parameters: Vec<String> = (0..declaration.arity).map(field).collect();
         let call = format!("{}({})", alias, parameters.join(", "));
 
-        if matches!(result, canonical::Type::Unit) {
-            companion_imports.push(format!("{} as {}", declaration.name.as_str(), alias));
+        // `None` is a `()` result: discarded, so nothing is checked.
+        let test = if matches!(result, canonical::Type::Unit) {
+            None
+        } else {
+            match predicates.test(result, "$returned", 0, &HashMap::new()) {
+                Ok(test) => Some(test),
+                Err(no_predicate) => {
+                    let (found, constructor) = *no_predicate;
+                    self.errors.push(Error::NoPredicate {
+                        name: declaration.name.clone(),
+                        span: declaration.span,
+                        found,
+                        constructor,
+                    });
+                    return;
+                }
+            }
+        };
+
+        companion_imports.push(format!("{} as {}", declaration.name.as_str(), alias));
+
+        if !marked_unsafe {
+            let export = format!(
+                "{}.{}",
+                self.module.name().as_str(),
+                declaration.name.as_str()
+            );
+            self.runtime.insert("$effect");
+            let check = match &test {
+                Some(test) => format!("($returned) => {}", test),
+                None => "null".to_string(),
+            };
+            let task = format!(
+                "{{$: \"Task\", a: ($k) => $effect(() => {}, {}, {}, $k)}}",
+                call,
+                check,
+                string_literal(&export)
+            );
+            if declaration.arity == 0 {
+                constants.insert(&declaration.name, format!("const {} = {};", local, task));
+            } else {
+                functions.push(format!(
+                    "function {}({}) {{\n  return {};\n}}",
+                    local,
+                    parameters.join(", "),
+                    task
+                ));
+            }
+            return;
+        }
+
+        let Some(test) = test else {
             if declaration.arity == 0 {
                 constants.insert(&declaration.name, format!("const {} = undefined;", local));
             } else {
@@ -1325,23 +1398,8 @@ impl Emitter {
                 ));
             }
             return;
-        }
-
-        let test = match predicates.test(result, "$returned", 0, &HashMap::new()) {
-            Ok(test) => test,
-            Err(no_predicate) => {
-                let (found, constructor) = *no_predicate;
-                self.errors.push(Error::NoPredicate {
-                    name: declaration.name.clone(),
-                    span: declaration.span,
-                    found,
-                    constructor,
-                });
-                return;
-            }
         };
 
-        companion_imports.push(format!("{} as {}", declaration.name.as_str(), alias));
         self.runtime.insert("$abort");
         let description = string_literal(&format!(
             "`{}.{}`'s companion returned a value its declared type, `{}`, does not admit",

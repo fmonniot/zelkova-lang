@@ -322,9 +322,7 @@ inside another type.
 
 **Not implemented:** neither block above compiles under this harness, which compiles a block
 against a stand-in `Basics` and nothing else, so their `import Task` finds no module even though
-`zelkova-core` declares `Task` and `Failure`. No wrapper is generated, so code generation
-refuses an effectful facade rather than checking what its companion returns
-([`GEN-16`](../tickets/gen-16.md)).
+`zelkova-core` declares `Task` and `Failure`.
 
 ## An `unsafe` facade
 
@@ -358,8 +356,7 @@ exactly as any other crossing is, and a value that fails
 
 **Not implemented:** a companion that throws does not abort naming its export — the check is
 only run over a *returned* value, so a throw propagates as the companion's own exception
-instead ([`GEN-23`](../tickets/gen-23.md)). The wrapper an effectful facade's call site needs is
-not generated either ([`GEN-16`](../tickets/gen-16.md)).
+instead ([`GEN-23`](../tickets/gen-23.md)).
 
 ## Facade constants
 
@@ -468,9 +465,8 @@ exposes](packages.md#what-a-test-is), so `Core.PrimTest` imports the facade and 
 check.
 
 **Not implemented:** none of this runs. The spec harness compiles a block against a stand-in
-`Basics` only, so the `zel` block does not compile there. No wrapper is generated around an
-effectful call either ([`GEN-16`](../tickets/gen-16.md)), so a `Test` whose checks are `Task`s
-cannot be written.
-`zelkova test` runs a `Test` that is `Pass` or `Fail`; it cannot run a `Task`. Until it can, a
+`Basics` only, so the `zel` block does not compile there. `zelkova test` runs a `Test` that is
+`Pass` or `Fail`; it cannot run a `Task` ([`LANG-76`](../tickets/lang-76.md)), so a `Test` whose
+checks are `Task`s cannot be written. Until it can, a
 companion test under `tests/` is a `.mjs` file that the target's own test runner is pointed at
 directly, and the facade half of the pair is not written yet.

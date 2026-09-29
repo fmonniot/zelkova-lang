@@ -2039,7 +2039,7 @@ fn is_task_applied(tpe: &Type) -> bool {
 /// never by spelling. `None` for any other shape, `Task Int` and
 /// `Maybe (Task Int)` included — those are [`Error::FacadeResultNotEffect`],
 /// not this function's business to name.
-fn effectful_result_payload(tpe: &Type) -> Option<&Type> {
+pub(crate) fn effectful_result_payload(tpe: &Type) -> Option<&Type> {
     let Type::Type(task, task_args) = tpe else {
         return None;
     };

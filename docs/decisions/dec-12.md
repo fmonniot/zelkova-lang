@@ -205,11 +205,7 @@ can assert anything without writing it down.
 
 ## What nothing checks
 
-`zelkova-core` declares no `Task` and therefore no `Failure`, and no wrapper is generated
-([`GEN-16`](../tickets/gen-16.md)), so no check yet ends in `Err (Malformed ..)`. An `unsafe`
-facade's result is checked, and decision 3's abort is what a failing check does
-([`GEN-2`](../tickets/README.md)). `Failure`'s two constructors
-carry a `String`, which has [no literal syntax](../spec/lexical-structure.md#strings) yet.
+`Failure`'s two constructors carry a `String`, which has [no literal syntax](../spec/lexical-structure.md#strings) yet.
 
 Decision 1 is writable: `Task (Result Failure String)` parses since
 [`LANG-9`](../tickets/README.md) closed, and canonicalization holds an unmarked facade's result

@@ -86,5 +86,5 @@ to in JavaScript, and what a `Promise<void>` resolves to — which is exactly th
 hands it to foreign code, so it answers a question Elm never had to ask.
 
 [`GEN-2`](../tickets/README.md) made the discard and the nested check real code;
-[`GEN-16`](../tickets/gen-16.md) is what is left to build toward: this entry settles what both
-build toward, not the wrapper or the predicate emitter themselves.
+[`GEN-16`](../tickets/README.md) built the wrapper on it: this entry settles what both build
+toward, not the wrapper or the predicate emitter themselves.

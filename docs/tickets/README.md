@@ -208,6 +208,7 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed` and `map`             
   │     │  + LANG-68 + GEN-2 (both closed)
   │     ▼
   │   GEN-16   the wrapper an effectful facade's call gets: `Ok`, `Threw`, `Malformed`
+  │            (the wrapper is built; its Zelkova-level tests wait on LANG-76)
   │
   ├── LANG-75  `main` is checked to be a `Task ()`                   ← + LANG-72, closed
   │     └── GEN-22  `zelkova run [DIR]`                              ← + GEN-21 (closed)

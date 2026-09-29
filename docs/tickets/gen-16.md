@@ -14,6 +14,7 @@ unmarked facade to the result type this wrapper assumes; [`GEN-2`](README.md) (c
 predicate whose failure is `Err (Malformed ..)`. Sequenced after [`GEN-12`](README.md), which
 emits the `unsafe` half of the same call site. `GEN-2` emitted the predicates and the `unsafe`
 half's check only, since an effectful facade was still refused, so `Malformed` lands here.
+[`LANG-76`](lang-76.md), for the Zelkova tests the acceptance asks for.
 
 **Location:** `src/compiler/javascript.rs`, at the facade call site
 [`GEN-12`](README.md) emits. `src/compiler/canonical/mod.rs` — `Value::TypedValue`'s
@@ -47,8 +48,10 @@ half's check only, since an effectful facade was still refused, so `Malformed` l
   whose JavaScript companion exports a **function** rather than a value: the effect has to happen
   each time the `Task` is run.
 
-**Problem:** the wrapper is the whole of what keeps a throwing `.mjs` from ending the program,
-and nothing emits one. `javascript::emit` refuses an effectful facade signature outright today.
+**Problem:** the wrapper is the whole of what keeps a throwing `.mjs` from ending the program.
+`javascript::emit` builds it, and `runtime/js/zelkova.mjs`'s `$effect` is where it acts. What is
+left is the Zelkova-level half of the acceptance below, which cannot be written until a `Test`
+can hold a `Task`.
 
 **Approach:** apply [`DEC-22`](../decisions/dec-22.md) decisions
 [4](../decisions/dec-22.md#4--the-wrapper-is-one-runtime-helper-and-a-synchronous-companion-continues-synchronously),
@@ -74,15 +77,26 @@ failure to `Err (Malformed ..)` where an `unsafe` facade's check calls `$abort`
 `$abort`'s description names the export whose companion returned the value, and `Malformed`'s
 string should too.
 
+**Done:** the emitter builds the `Task` (`{$: "Task", a: ($k) => $effect(..)}`, one module-level
+value for a facade constant), `$effect` is written in `runtime/js/zelkova.mjs`, and every
+behaviour the acceptance below names is asserted in JavaScript: the emitted text in
+`tests/javascript.rs`; `Ok`, `Threw`, `Malformed`, the discarded `()` payload and when the
+companion is called over the fixture `tests/fixtures/package_effectful_facade` in
+`tests/js/EffectChecks.mjs`; and `$effect` itself, the two properties of it no Zelkova test can
+see included, in `runtime/js/tests/zelkovaChecks.mjs`.
+
+**Remaining:** the Zelkova tests the acceptance asks for. Nothing can run them until
+[`LANG-76`](lang-76.md) lands.
+
 **Acceptance:** five companions, each behind an unmarked facade under `std/core/tests/`, asserted
 as Zelkova tests that `zelkova test` runs through [`LANG-76`](lang-76.md)'s `Test` over a `Task`:
 one that throws synchronously yields `Err (Threw _)`; one whose promise rejects yields
 `Err (Threw _)`; one that returns a value of the wrong shape yields `Err (Malformed _)`; and one
 that returns correctly, after an `await`, yields `Ok` with the value. A fifth, behind a
 `Task (Result Failure ())` facade, returns a number and yields `Ok ()`. With no string literals, the
-tests match the constructor and do not compare the `String`. That `Threw` carries the host's
-description and `Malformed` names the export is asserted on the emitted wrapper's behaviour in a
-`node --test` check beside `runtime/js/tests/`, as are two properties of `$effect` no Zelkova
-test can see: a continuation that throws after a companion returned, synchronously or through a
-promise, rejects `$runTask`'s promise and is not turned into `Threw`; and a step handed to `resume`
-twice aborts.
+tests match the constructor and do not compare the `String`. The fixture's `Effects.zel` and
+`Effects.mjs` are the five to move or copy. The rest of the original acceptance is done: that
+`Threw` carries the host's description and `Malformed` names the export is asserted on the emitted
+wrapper's behaviour beside the runtime, as are a continuation that throws after a companion
+returned, synchronously or through a promise, rejecting `$runTask`'s promise rather than becoming
+`Threw`, and a step handed to `resume` twice aborting.
