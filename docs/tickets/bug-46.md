@@ -33,7 +33,7 @@ a JavaScript number satisfies, and an `Order`-shaped union would need the compan
 
 **Acceptance:** the checks in `std/core/tests/Js/UtilsChecks.mjs` assert that `compareInt` and
 `compareFloat` return a value their declared result admits, and
-`node --test 'std/core/tests/**/*.mjs'` passes.
+`cargo run -- test std/core` passes.
 
 **Found:** by the first attempt at [`GEN-2`](README.md), while surveying which `std/core`
 facades return what their signatures declare. Left unfixed there because nothing calls them.

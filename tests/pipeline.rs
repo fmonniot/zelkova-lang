@@ -1025,6 +1025,70 @@ fn a_test_build_whose_tests_cannot_be_emitted_writes_nothing() {
     assert!(!build_dir.exists(), "got {:?}", files_under(&build_dir));
 }
 
+/// A test companion imports the companion it checks by their path in the source tree,
+/// out of `tests/` and into `src/`
+/// ([*Testing a companion*](../docs/spec/interop.md#testing-a-companion)). The test tree
+/// holds both in one package directory under their `.companion.mjs` names, so that import
+/// is written there as the path between the two — and only the test companion's text
+/// changes: the companion under test is copied as it is.
+///
+/// Mutation-checked by leaving `companion_imports` empty in `compile`: the test companion
+/// is copied byte for byte, keeps `../src/Native.mjs`, and this turns red.
+#[test]
+fn a_test_companion_imports_the_companion_it_checks_by_its_build_path() {
+    let package = fresh_build_dir(
+        "a_test_companion_imports_the_companion_it_checks_by_its_build_path_package",
+    );
+    std::fs::create_dir_all(package.join("src")).unwrap();
+    std::fs::create_dir_all(package.join("tests")).unwrap();
+    std::fs::write(
+        package.join("zelkova.toml"),
+        "name = \"checked-companion\"\nversion = \"0.1.0\"\nprivate-modules = []\n\n[dependencies]\n\n[test-dependencies]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("src/Native.zel"),
+        indoc::indoc! {r#"
+            module foreign Native exposing (answer)
+
+            unsafe answer : ()
+        "#},
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("src/Native.mjs"),
+        "export const answer = undefined;\n",
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("tests/NativeChecks.zel"),
+        indoc::indoc! {r#"
+            module foreign NativeChecks exposing (answerIsUnit)
+
+            unsafe answerIsUnit : ()
+        "#},
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("tests/NativeChecks.mjs"),
+        "import { answer } from '../src/Native.mjs';\nexport const answerIsUnit = answer;\n",
+    )
+    .unwrap();
+    let build_dir = package.join("build");
+
+    zelkova_lang::compiler::compile_package_with_tests_into(&package, &build_dir).unwrap();
+
+    let written = |path: &str| std::fs::read_to_string(build_dir.join(path)).unwrap();
+    assert_eq!(
+        written("test/js/checked-companion/NativeChecks.companion.mjs"),
+        "import { answer } from './Native.companion.mjs';\nexport const answerIsUnit = answer;\n"
+    );
+    assert_eq!(
+        written("test/js/checked-companion/Native.companion.mjs"),
+        "export const answer = undefined;\n"
+    );
+}
+
 // ── Test 14: a type error reaches the user as a real diagnostic ──────────────
 
 /// `ERR-2`: a type error must render as an `error` naming both types.

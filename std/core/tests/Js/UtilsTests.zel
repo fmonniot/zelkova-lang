@@ -1,0 +1,158 @@
+-- One `Test` per check `Js.UtilsChecks` declares, each passing when its check's
+-- `Task` produces `Ok ()`. A failed check is reported with the description of what its
+-- companion threw.
+module Js.UtilsTests exposing
+  ( compareOrdersNumbers
+  , compareOrdersStrings
+  , compareOrdersProdTuples
+  , compareOrdersDebugTuples
+  , compareStopsAtAPairsArity
+  , compareRefusesAUnionValue
+  , compareRefusesAUnionAgainstAPrimitive
+  , compareRefusesAnArray
+  , compareRefusesARecord
+  , compareRefusesAFunction
+  , compareRefusesNullAndUndefined
+  , compareRefusesTuplesOfDifferentSizes
+  , compareRefusesANestedUnion
+  , comparisonOperatorsRefuseWhatCompareRefuses
+  , comparisonOperatorsAnswerOnNumbers
+  , compareOrdersTwoInts
+  , comparisonOperatorsAnswerOnTwoInts
+  , appendConcatenatesTwoStrings
+  , appendRefusesAStringAndANonString
+  , appendRefusesAUnionValue
+  , appendRefusesAConsList
+  , appendRefusesArrays
+  , appendRefusesARecordAndAFunction
+  , equalityOnTwoFunctionsIsFalse
+  , aFunctionEqualsItself
+  )
+
+import Js.UtilsChecks as Checks
+import Test exposing (Test)
+
+
+compareOrdersNumbers : Test
+compareOrdersNumbers =
+  Test.succeeds Checks.compareOrdersNumbers
+
+
+compareOrdersStrings : Test
+compareOrdersStrings =
+  Test.succeeds Checks.compareOrdersStrings
+
+
+compareOrdersProdTuples : Test
+compareOrdersProdTuples =
+  Test.succeeds Checks.compareOrdersProdTuples
+
+
+compareOrdersDebugTuples : Test
+compareOrdersDebugTuples =
+  Test.succeeds Checks.compareOrdersDebugTuples
+
+
+compareStopsAtAPairsArity : Test
+compareStopsAtAPairsArity =
+  Test.succeeds Checks.compareStopsAtAPairsArity
+
+
+compareRefusesAUnionValue : Test
+compareRefusesAUnionValue =
+  Test.succeeds Checks.compareRefusesAUnionValue
+
+
+compareRefusesAUnionAgainstAPrimitive : Test
+compareRefusesAUnionAgainstAPrimitive =
+  Test.succeeds Checks.compareRefusesAUnionAgainstAPrimitive
+
+
+compareRefusesAnArray : Test
+compareRefusesAnArray =
+  Test.succeeds Checks.compareRefusesAnArray
+
+
+compareRefusesARecord : Test
+compareRefusesARecord =
+  Test.succeeds Checks.compareRefusesARecord
+
+
+compareRefusesAFunction : Test
+compareRefusesAFunction =
+  Test.succeeds Checks.compareRefusesAFunction
+
+
+compareRefusesNullAndUndefined : Test
+compareRefusesNullAndUndefined =
+  Test.succeeds Checks.compareRefusesNullAndUndefined
+
+
+compareRefusesTuplesOfDifferentSizes : Test
+compareRefusesTuplesOfDifferentSizes =
+  Test.succeeds Checks.compareRefusesTuplesOfDifferentSizes
+
+
+compareRefusesANestedUnion : Test
+compareRefusesANestedUnion =
+  Test.succeeds Checks.compareRefusesANestedUnion
+
+
+comparisonOperatorsRefuseWhatCompareRefuses : Test
+comparisonOperatorsRefuseWhatCompareRefuses =
+  Test.succeeds Checks.comparisonOperatorsRefuseWhatCompareRefuses
+
+
+comparisonOperatorsAnswerOnNumbers : Test
+comparisonOperatorsAnswerOnNumbers =
+  Test.succeeds Checks.comparisonOperatorsAnswerOnNumbers
+
+
+compareOrdersTwoInts : Test
+compareOrdersTwoInts =
+  Test.succeeds Checks.compareOrdersTwoInts
+
+
+comparisonOperatorsAnswerOnTwoInts : Test
+comparisonOperatorsAnswerOnTwoInts =
+  Test.succeeds Checks.comparisonOperatorsAnswerOnTwoInts
+
+
+appendConcatenatesTwoStrings : Test
+appendConcatenatesTwoStrings =
+  Test.succeeds Checks.appendConcatenatesTwoStrings
+
+
+appendRefusesAStringAndANonString : Test
+appendRefusesAStringAndANonString =
+  Test.succeeds Checks.appendRefusesAStringAndANonString
+
+
+appendRefusesAUnionValue : Test
+appendRefusesAUnionValue =
+  Test.succeeds Checks.appendRefusesAUnionValue
+
+
+appendRefusesAConsList : Test
+appendRefusesAConsList =
+  Test.succeeds Checks.appendRefusesAConsList
+
+
+appendRefusesArrays : Test
+appendRefusesArrays =
+  Test.succeeds Checks.appendRefusesArrays
+
+
+appendRefusesARecordAndAFunction : Test
+appendRefusesARecordAndAFunction =
+  Test.succeeds Checks.appendRefusesARecordAndAFunction
+
+
+equalityOnTwoFunctionsIsFalse : Test
+equalityOnTwoFunctionsIsFalse =
+  Test.succeeds Checks.equalityOnTwoFunctionsIsFalse
+
+
+aFunctionEqualsItself : Test
+aFunctionEqualsItself =
+  Test.succeeds Checks.aFunctionEqualsItself

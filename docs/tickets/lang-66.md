@@ -64,7 +64,8 @@ which today shows no negative-exponent example.
 chosen, and why. `Basics.zel`'s doc comment for `pow` gains a worked example with a negative
 `Int` exponent matching the decision. `Js/Basics.mjs`'s `pow` implements it — a guard before the
 `**` if a stand-in value was picked (options 1–3), or an unchanged `pow` with the restriction
-enforced elsewhere if option 4 was picked. A `node --test` check in
-`std/core/tests/Js/BasicsChecks.mjs` pins the chosen behaviour for at least one negative `Int`
-exponent, replacing `PINS pow still throws on a negative Int exponent, pending LANG-66`, whose
-name and body cite this ticket by number and are exactly what is stale once it closes.
+enforced elsewhere if option 4 was picked. A check in `std/core/tests/Js/BasicsChecks.mjs` pins
+the chosen behaviour for at least one negative `Int` exponent, replacing
+`powThrowsOnANegativeIntExponent` (`PINS pow still throws on a negative Int exponent, pending
+LANG-66`), whose comment and body cite this ticket by number and are exactly what is stale once
+it closes.

@@ -1104,7 +1104,7 @@ fn compile(
         }
 
         debug!("phase: compile the tests of package {}", root.name);
-        let root_tests_checked = compile_tests(
+        let mut root_tests_checked = compile_tests(
             root,
             &build,
             &published,
@@ -1112,6 +1112,29 @@ fn compile(
             &mut errors,
             &mut print_status,
         );
+
+        // A test companion imports the companion it checks by its path in the source
+        // tree, across the two roots, which reaches nothing in the build
+        // ([*Testing a companion*](../../docs/spec/interop.md#testing-a-companion)). Each
+        // companion of the root's `src/` is one it may check, and `checked` holds every
+        // one of them by now.
+        let targets: Vec<&Name> = checked
+            .iter()
+            .filter(|to_emit| {
+                to_emit.companion.is_some() && to_emit.module.canonical.name.package() == &root.name
+            })
+            .map(|to_emit| to_emit.module.canonical.name.name())
+            .collect();
+        for to_emit in root_tests_checked
+            .iter_mut()
+            .filter(|to_emit| to_emit.companion.is_some())
+        {
+            let checks = to_emit.module.canonical.name.name();
+            to_emit.companion_imports = targets
+                .iter()
+                .map(|target| javascript::test_companion_import(checks, target))
+                .collect();
+        }
         // Built from the same `ModuleToEmit`s `test_tree_modules` is about to take,
         // before that move: an `Interface` is cheap to clone off a `CheckedModule`
         // that is otherwise about to be consumed by emission.
@@ -1211,6 +1234,11 @@ struct ModuleToEmit {
     /// `None` for every other module, and for a facade with no companion, which
     /// [`javascript::emit`] refuses.
     companion: Option<std::path::PathBuf>,
+    /// The imports its companion spells for the source tree, each beside the specifier
+    /// that replaces it in the build ([`javascript::test_companion_import`]). Empty for
+    /// every module but a facade of the root package's `tests/` with a companion, which
+    /// [`compile`] fills in once it knows the companions of `src/` that one may import.
+    companion_imports: Vec<(String, String)>,
 }
 
 /// Pair each checked module of one source root with what emitting and writing it needs:
@@ -1235,6 +1263,7 @@ fn to_modules_to_emit(
             ModuleToEmit {
                 file: module_files.get(name).copied(),
                 companion,
+                companion_imports: Vec::new(),
                 module,
             }
         })
@@ -1278,6 +1307,7 @@ fn emit_modules(
         module,
         file,
         companion,
+        companion_imports,
     } in checked
     {
         let name = module.canonical.name.clone();
@@ -1291,9 +1321,17 @@ fn emit_modules(
                 });
 
                 if let Some(companion) = companion {
+                    let contents = if companion_imports.is_empty() {
+                        output::Contents::Copy(companion)
+                    } else {
+                        output::Contents::Rewritten {
+                            from: companion,
+                            imports: companion_imports,
+                        }
+                    };
                     files.push(output::File {
                         path: package_dir.join(javascript::companion_file(name.name())),
-                        contents: output::Contents::Copy(companion),
+                        contents,
                     });
                 }
             }

@@ -49,7 +49,7 @@ shapes work:
 
 Either keeps the `Float` branch (`Math.pow`) untouched — this is a `bigint`-only gap.
 
-**Acceptance:** a `node --test` addition in `std/core/tests/Js/BasicsChecks.mjs` calls `pow`
+**Acceptance:** a check added to `std/core/tests/Js/BasicsChecks.mjs` calls `pow`
 with a large non-negative `Int` exponent (e.g. `pow(2n, 10000000000000n)`) and asserts it
 returns promptly with the correct wrapped 64-bit answer, rather than hanging or exhausting
 memory. `pow`'s existing small-exponent checks (`pow(3n, 2n)`, `pow(2n, 64n)`, `pow(2n, 63n)`)

@@ -97,9 +97,10 @@ settles how a companion is found and emitted.
 
 ## 4 — The layout is adopted before anything can run it
 
-Nothing above runs: an effectful facade's call is wrapped in a `Task` over the runtime's
-`$effect` ([`GEN-16`](../tickets/README.md)), but no runner runs that `Task`, and none runs a
-companion's checks, since `zelkova test` runs `Test` values only.
+When this was decided, nothing above ran: an effectful facade's call was wrapped in a `Task`
+over the runtime's `$effect` ([`GEN-16`](../tickets/README.md)), but no runner ran that `Task`,
+and none ran a companion's checks, since `zelkova test` ran `Test` values only.
+[*What nothing checks*](#what-nothing-checks) says what runs now.
 
 The alternative was to place the file where decision 1's runner-up put it and move it when the
 runner arrives. That buys a sibling import for a year and costs two normative rules — an interim
@@ -125,8 +126,10 @@ a package's `src/` at all, and it is [`GEN-1`](../tickets/gen-1.md)'s.
 
 ## What nothing checks
 
-All of it. No compiler pass, no test and no harness observes any of the four decisions above, and
-the spec section they produced is held only to failing to parse on its modifier. A `.mjs`
-companion is not a module, so the compiler walking `tests/` does not observe it either, and
-`zelkova test` imports only the emitted modules that hold a `Test`, so it does not run one.
-Until a runner does, the rule is kept by whoever places the next file.
+The layout runs: `std/core`'s three test facades under `tests/Js/` declare every check as an
+effect, `zelkova test` runs each one through `Test.succeeds`, and each test companion imports
+the companion it checks by its path across the two roots, which the build rewrites to where it
+placed that companion. What no pass observes is the rules themselves. A `.mjs` file under
+`tests/` that no facade names is ignored, a test facade marked `unsafe` compiles, and a test
+companion that reaches its target by any path but the shortest one is copied as written and
+fails to load. Those are kept by whoever places the next file.

@@ -1,11 +1,10 @@
 // The JavaScript checks over runtime/js/zelkova.mjs, the hand-written runtime `GEN-8` added.
 //
-// Where this file sits follows docs/spec/interop.md's "Testing a companion", the pattern
-// std/core/tests/Js/UtilsChecks.mjs already uses: a companion's test is JavaScript, not
-// Zelkova, and sits under the package's own tests/ root. `zelkova.mjs` is not a facade
-// companion — it backs no `.zel` module — but it is still hand-written JavaScript with no
-// runner able to find a Zelkova `Test` yet, so it is checked the same interim way, registered
-// with Node's own test runner and pointed at directly:
+// `zelkova.mjs` is hand-written JavaScript but not a package's companion: it backs no `.zel`
+// module and belongs to no package, so there is no test facade to declare these checks in
+// (docs/spec/interop.md's "Testing a companion" is how a package's companion is checked).
+// They are registered with Node's own test runner instead, and Node is pointed at them
+// directly:
 //
 //   node --test 'runtime/js/tests/**/*.mjs'
 //

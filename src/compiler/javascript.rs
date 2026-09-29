@@ -656,7 +656,8 @@ pub fn module_file(module: &Name) -> PathBuf {
 ///
 /// The companion is copied byte for byte, so one that imports a sibling `.mjs` by a
 /// relative specifier finds the emitted module of that name there, not the sibling it
-/// was written beside.
+/// was written beside. The one import a build rewrites is a test companion's of the
+/// companion it checks ([`test_companion_import`]).
 pub fn companion_file(module: &Name) -> PathBuf {
     let mut path = module_file(module);
     path.set_extension("companion.mjs");
@@ -705,6 +706,55 @@ fn companion_specifier(module: &Name) -> String {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     format!("./{}", name)
+}
+
+/// How the companion of the test facade `checks`, a module of a package's `tests/` root,
+/// imports the companion of the facade `target`, a module of the same package's `src/`
+/// root: the specifier it spells in its source, then the one that replaces it in the
+/// build.
+///
+/// A test companion imports the companion it checks by the relative path between the two
+/// files as they sit in the package's source
+/// ([*Testing a companion*](../../../docs/spec/interop.md#testing-a-companion)): climb
+/// out of `tests/` to the package's root, then down into `src/` — from
+/// `tests/Js/BasicsChecks.mjs`, `Js.Basics`'s is `../../src/Js/Basics.mjs`. The build
+/// holds both roots' modules in one package directory and renames each companion
+/// ([`companion_file`]), so that path reaches nothing there. What does is the path from
+/// `checks`' [`companion_file`] to `target`'s, climbing to the package's directory and
+/// down again — `../Js/Basics.companion.mjs` — which is the companion the build wrote
+/// for `target`, the one the facade `target` calls.
+///
+/// Only the shortest spelling is produced: a specifier that reaches the same file by a
+/// longer path, `./../../src/Js/Basics.mjs`, is not this one.
+pub fn test_companion_import(checks: &Name, target: &Name) -> (String, String) {
+    let target_path = target.as_str().replace('.', "/");
+    let source = format!("{}src/{}.mjs", "../".repeat(depth(checks) + 1), target_path);
+    let build = match depth(checks) {
+        0 => format!("./{}.companion.mjs", target_path),
+        depth => format!("{}{}.companion.mjs", "../".repeat(depth), target_path),
+    };
+    (source, build)
+}
+
+/// `text` with every string literal spelling one of `imports`' first specifiers replaced
+/// by the same literal spelling its second, with the quote it was written with.
+///
+/// Only a literal delimited by `'` or `"` and holding exactly that specifier is replaced —
+/// a template literal, or the specifier as part of a longer string, is left as it is. The
+/// text is not parsed, so a literal inside a comment is replaced along with the ones in
+/// `import` declarations: a comment holding the exact quoted path to a companion under
+/// test is the only thing that changes that should not.
+pub fn rewrite_imports(text: &str, imports: &[(String, String)]) -> String {
+    let mut text = text.to_string();
+    for (from, to) in imports {
+        for quote in ['\'', '"'] {
+            text = text.replace(
+                &format!("{quote}{from}{quote}"),
+                &format!("{quote}{to}{quote}"),
+            );
+        }
+    }
+    text
 }
 
 // ── Literals ──────────────────────────────────────────────────────────────────
@@ -1905,6 +1955,45 @@ mod tests {
             PathBuf::from("Js/Basics.companion.mjs")
         );
         assert_eq!(companion_specifier(&name), "./Basics.companion.mjs");
+    }
+
+    /// A test companion's source-relative import of the companion it checks climbs out
+    /// of `tests/` and into `src/`, and becomes the path between the two companions'
+    /// files in the build — at any depth of either module.
+    #[test]
+    fn a_test_companion_imports_its_target_by_the_build_path() {
+        assert_eq!(
+            test_companion_import(&Name::new("Js.BasicsChecks"), &Name::new("Js.Basics")),
+            (
+                "../../src/Js/Basics.mjs".to_string(),
+                "../Js/Basics.companion.mjs".to_string()
+            )
+        );
+        assert_eq!(
+            test_companion_import(&Name::new("PrimChecks"), &Name::new("Core.Prim")),
+            (
+                "../src/Core/Prim.mjs".to_string(),
+                "./Core/Prim.companion.mjs".to_string()
+            )
+        );
+    }
+
+    /// Both quotes are rewritten, and a specifier inside a longer string or a template
+    /// literal is not.
+    #[test]
+    fn an_import_is_rewritten_only_where_a_whole_literal_spells_it() {
+        let imports = vec![("../src/A.mjs".to_string(), "./A.companion.mjs".to_string())];
+        let text = "import { a } from '../src/A.mjs';\n\
+                    import { b } from \"../src/A.mjs\";\n\
+                    const c = '../src/A.mjs.bak';\n\
+                    const d = `../src/A.mjs`;\n";
+        assert_eq!(
+            rewrite_imports(text, &imports),
+            "import { a } from './A.companion.mjs';\n\
+             import { b } from \"./A.companion.mjs\";\n\
+             const c = '../src/A.mjs.bak';\n\
+             const d = `../src/A.mjs`;\n"
+        );
     }
 
     #[test]
