@@ -1,0 +1,11 @@
+# `main` names `App`, which exposes a `main : Task ()` whose `Task` is the one `Effect`
+# declares, not `zelkova-core`'s. The two share a spelling and are different types.
+name = "package-main-own-task"
+version = "0.1.0"
+main = "App"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]

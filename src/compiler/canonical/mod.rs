@@ -54,6 +54,9 @@ pub use parser::Associativity;
 pub struct Module {
     pub name: ModuleName,
     pub exports: Exports,
+    /// Where the header's `exposing (...)` was written — `parser::Module::exposing_span`,
+    /// carried through. A diagnostic about what the module exposes as a whole points here.
+    pub exposing_span: NodeSpan,
     /// Operator name to infix details
     pub infixes: HashMap<Name, Infix>,
     pub types: HashMap<Name, UnionType>,
@@ -2378,6 +2381,7 @@ pub fn canonicalize(
         Ok(Module {
             name,
             exports,
+            exposing_span: source.exposing_span,
             infixes,
             types,
             values,

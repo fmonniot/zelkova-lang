@@ -5380,3 +5380,217 @@ fn a_dependency_cycle_through_the_root_is_reported_whichever_map_reaches_it_firs
     names.sort_unstable();
     assert_eq!(names, ["acme-back", "package-cycle-via-test-dependency"]);
 }
+
+// ── A program's `main` ───────────────────────────────────────────────────────
+
+/// The one error a build of `root` fails with, whatever it is wrapped in.
+fn only_error(root: &Path, error: CompilationError) -> CompilationError {
+    let CompilationError::Many(mut errors) = error else {
+        panic!(
+            "expected Err(CompilationError::Many(..)) from {:?}, got {:?}",
+            root, error
+        );
+    };
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+    errors.remove(0)
+}
+
+/// The byte range `needle` occupies in `root`'s `src/App.zel`, found from the left.
+fn range_in_app(root: &Path, needle: &str) -> std::ops::Range<usize> {
+    let source =
+        std::fs::read_to_string(root.join("src").join("App.zel")).expect("fixture is readable");
+    let start = source
+        .find(needle)
+        .unwrap_or_else(|| panic!("`src/App.zel` holds {:?}", needle));
+    start..(start + needle.len())
+}
+
+/// [Programs](../docs/spec/packages.md#programs)' own example: `main = Task.succeed ()`,
+/// annotated `Task ()`, in the module the manifest names. It compiles.
+///
+/// Mutation-checked by making `program::is_task_of_unit` answer `false`: the build then
+/// fails with a `MainNotTask` naming `Task ()`.
+#[test]
+fn a_main_of_type_task_unit_compiles() {
+    let root = fixture_package("package_main_ok");
+    assert_eq!(module_names(&root, SourceRoot::Src), vec!["src/App.zel"]);
+
+    let result = compile_package(&root);
+
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+}
+
+/// `main = "Program"` names a module that exists only under `tests/`, which does not
+/// count, so the manifest names no module the package holds — whether or not the build
+/// compiled the tests. The error is the manifest's and has no span to point at.
+///
+/// Mutation-checked by deleting the `if let Some(main) = &package.manifest.main` call in
+/// `compile_in_build`: both builds compile.
+#[test]
+fn a_main_naming_no_module_under_src_is_a_manifest_error() {
+    let root = fixture_package("package_main_module_missing");
+    assert_eq!(
+        module_names(&root, SourceRoot::Tests),
+        vec!["tests/Program.zel"]
+    );
+
+    let without_tests = compile_package(&root).map(|_| ());
+    let with_tests = compile_package_with_tests(&root).map(|_| ());
+
+    for result in [without_tests, with_tests] {
+        let error = only_error(
+            &root,
+            result.expect_err("`main` names no module under `src/`"),
+        );
+        let CompilationError::Manifest(manifest_errors) = &error else {
+            panic!("expected a CompilationError::Manifest, got {:?}", error);
+        };
+        match manifest_errors.as_slice() {
+            [manifest::ManifestError::MainModuleNotFound { name, .. }] => {
+                assert_eq!(name, &Name::from("Program"));
+            }
+            other => panic!("expected one MainModuleNotFound, got {:?}", other),
+        }
+        assert!(
+            error.as_diagnostic().labels.is_empty(),
+            "`zelkova.toml` is not a file a label can point into"
+        );
+    }
+}
+
+/// `App` declares `main : Task ()` and exposes only `helper`. The caret is under the
+/// header's `exposing (helper)`, which is what has to change, and a secondary label
+/// shows the `main` it left out.
+///
+/// Mutation-checked two ways: making `program::check` look `main` up in
+/// `canonical.values` alone, ignoring what the header exposes, compiles the fixture; and
+/// building `parser::Module::exposing_span` as `NodeSpan::none()` in the grammar drops
+/// the primary label.
+#[test]
+fn a_main_module_exposing_no_main_is_an_error_at_its_exposing_list() {
+    let root = fixture_package("package_main_not_exposed");
+
+    let error = only_error(
+        &root,
+        compile_package(&root).expect_err("`App` does not expose `main`"),
+    );
+    match unwrap_in_file(&error) {
+        CompilationError::Program(program_errors, module) => {
+            assert_eq!(module, &Name::from("App"));
+            assert!(
+                matches!(
+                    program_errors.as_slice(),
+                    [zelkova_lang::compiler::program::Error::MainNotExposed { .. }]
+                ),
+                "got {:?}",
+                program_errors
+            );
+        }
+        other => panic!("expected a Program error, got {:?}", other),
+    }
+
+    let diagnostic = error.as_diagnostic();
+    assert_eq!(diagnostic.labels.len(), 2, "got {:?}", diagnostic.labels);
+    assert_eq!(diagnostic.labels[0].style, LabelStyle::Primary);
+    assert_eq!(
+        diagnostic.labels[0].range,
+        range_in_app(&root, "exposing (helper)")
+    );
+    assert_eq!(diagnostic.labels[1].style, LabelStyle::Secondary);
+    let declaration = range_in_app(&root, "main : Task ()");
+    let body = range_in_app(&root, "Task.succeed ()");
+    assert_eq!(diagnostic.labels[1].range, declaration.start..body.end);
+}
+
+/// `App` exposes `main : Int`. The diagnostic prints the type `main` has, and the caret
+/// is under its annotation.
+///
+/// Mutation-checked by making `program::is_task_of_unit` answer `true`: the fixture
+/// compiles.
+#[test]
+fn a_main_of_another_type_is_an_error_at_its_annotation() {
+    let root = fixture_package("package_main_not_task");
+
+    let error = only_error(
+        &root,
+        compile_package(&root).expect_err("`main : Int` is not a `Task ()`"),
+    );
+    match unwrap_in_file(&error) {
+        CompilationError::Program(program_errors, module) => {
+            assert_eq!(module, &Name::from("App"));
+            match program_errors.as_slice() {
+                [zelkova_lang::compiler::program::Error::MainNotTask {
+                    found: Some(found), ..
+                }] => assert_eq!(found.to_string(), "Int"),
+                other => panic!("expected one MainNotTask, got {:?}", other),
+            }
+        }
+        other => panic!("expected a Program error, got {:?}", other),
+    }
+
+    let diagnostic = error.as_diagnostic();
+    assert!(
+        diagnostic.message.contains("`Int`"),
+        "the headline names the type `main` has: {}",
+        diagnostic.message
+    );
+    assert_eq!(diagnostic.labels.len(), 1, "got {:?}", diagnostic.labels);
+    assert_eq!(diagnostic.labels[0].style, LabelStyle::Primary);
+    assert_eq!(
+        diagnostic.labels[0].range,
+        range_in_app(&root, "main : Int")
+    );
+}
+
+/// `main : Task ()` where `Task` is a union `Effect` declares. `Task` is known by the
+/// qualified name of `zelkova-core`'s declaration, so this one is another type that
+/// happens to print the same, and the headline says which `Task` it is.
+///
+/// Mutation-checked by making `program::is_core_task` compare the unqualified name alone:
+/// the fixture compiles.
+#[test]
+fn a_main_of_a_task_some_other_module_declares_is_an_error() {
+    let root = fixture_package("package_main_own_task");
+
+    let error = only_error(
+        &root,
+        compile_package(&root).expect_err("`Effect.Task` is not `Task.Task`"),
+    );
+    match unwrap_in_file(&error) {
+        CompilationError::Program(program_errors, _) => assert!(
+            matches!(
+                program_errors.as_slice(),
+                [zelkova_lang::compiler::program::Error::MainNotTask { .. }]
+            ),
+            "got {:?}",
+            program_errors
+        ),
+        other => panic!("expected a Program error, got {:?}", other),
+    }
+    let message = error.as_diagnostic().message;
+    assert!(message.contains("`Effect.Task`"), "got {}", message);
+}
+
+/// A dependency's `main` is checked like the root's: `package-main-not-task` is a
+/// dependency here, not the package the compiler was pointed at, and its `main : Int`
+/// still fails the build.
+///
+/// Mutation-checked by running the check only when `package.name` is the build's root:
+/// the fixture compiles.
+#[test]
+fn a_dependencys_main_is_checked_too() {
+    let root = fixture_package("package_depends_on_broken_program");
+
+    let error = only_error(
+        &root,
+        compile_package(&root).expect_err("the dependency's `main` is an `Int`"),
+    );
+    assert!(
+        matches!(
+            unwrap_in_file(&error),
+            CompilationError::Program(_, module) if module == &Name::from("App")
+        ),
+        "got {:?}",
+        error
+    );
+}

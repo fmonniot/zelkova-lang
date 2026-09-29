@@ -1,0 +1,8 @@
+module App exposing (main)
+
+import Effect exposing (Task(..))
+
+
+main : Task ()
+main =
+  Task ()

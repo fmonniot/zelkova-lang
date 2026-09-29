@@ -13,6 +13,7 @@ test_parse_ok!(
         name: name("Maybe"),
         binding_foreign: true,
         exposing: Exposing::Explicit(vec![Exposed::bare(ExposedKind::Lower(name("map")))]),
+        exposing_span: no_span(),
         imports: vec![],
         infixes: vec![],
         types: vec![],
@@ -97,6 +98,7 @@ test_parse_ok!(
             Exposed::bare(ExposedKind::Lower(name("map3"))),
             Exposed::bare(ExposedKind::Lower(name("withDefault"))),
         ]),
+        exposing_span: no_span(),
         imports: vec![],
         infixes: vec![],
         types: vec![],
@@ -118,6 +120,7 @@ test_parse_ok!(
         name: name("Maybe"),
         binding_foreign: false,
         exposing: Exposing::Open,
+        exposing_span: no_span(),
         imports: vec![
             Import {
                 span: no_span(),
@@ -150,6 +153,7 @@ test_parse_ok!(
         name: name("Maybe"),
         binding_foreign: false,
         exposing: Exposing::Open,
+        exposing_span: no_span(),
         imports: vec![
             Import {
                 span: no_span(),
@@ -183,6 +187,7 @@ test_parse_ok!(
         name: name("Maybe"),
         binding_foreign: false,
         exposing: Exposing::Open,
+        exposing_span: no_span(),
         imports: vec![
             Import {
                 span: no_span(),
@@ -231,6 +236,7 @@ test_parse_ok!(
         name: name("Maybe"),
         binding_foreign: false,
         exposing: Exposing::Open,
+        exposing_span: no_span(),
         imports: vec![],
         infixes: vec![Infix {
             span: no_span(),
@@ -255,6 +261,7 @@ test_parse_ok!(
         name: name("Maybe"),
         binding_foreign: false,
         exposing: Exposing::Open,
+        exposing_span: no_span(),
         imports: vec![],
         infixes: vec![Infix {
             span: no_span(),
@@ -279,6 +286,7 @@ test_parse_ok!(
         name: name("Maybe"),
         binding_foreign: false,
         exposing: Exposing::Open,
+        exposing_span: no_span(),
         imports: vec![],
         infixes: vec![Infix {
             span: no_span(),
@@ -744,6 +752,7 @@ test_parse_ok!(
         name: name("Prim"),
         binding_foreign: true,
         exposing: Exposing::Explicit(vec![Exposed::bare(ExposedKind::Lower(name("idiv")))]),
+        exposing_span: no_span(),
         imports: vec![],
         infixes: vec![],
         types: vec![],
@@ -778,6 +787,7 @@ test_parse_ok!(
         name: name("Prim"),
         binding_foreign: true,
         exposing: Exposing::Explicit(vec![Exposed::bare(ExposedKind::Lower(name("unsafe")))]),
+        exposing_span: no_span(),
         imports: vec![],
         infixes: vec![],
         types: vec![],
@@ -809,6 +819,7 @@ test_parse_ok!(
         name: name("Main"),
         binding_foreign: false,
         exposing: Exposing::Open,
+        exposing_span: no_span(),
         imports: vec![],
         infixes: vec![],
         types: vec![],
@@ -846,6 +857,7 @@ test_parse_ok!(
         name: name("Main"),
         binding_foreign: false,
         exposing: Exposing::Open,
+        exposing_span: no_span(),
         imports: vec![],
         infixes: vec![],
         types: vec![],

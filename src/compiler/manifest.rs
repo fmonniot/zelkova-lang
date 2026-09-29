@@ -11,8 +11,9 @@
 //!
 //! Reading a manifest is where a build starts and not what it is:
 //! [`resolve`](super::resolve) is what follows both dependency maps to the other packages
-//! and decides what each module is called in each of them. `main` is validated here and read
-//! nowhere, since nothing yet checks that it names a `Task ()`.
+//! and decides what each module is called in each of them. `main` is validated here as a
+//! module name, and what it names is checked once the package's `src/` has checked — see
+//! [`program`](super::program).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -150,7 +151,8 @@ fn wrapped_by_default() -> bool {
 /// holds. Every variant therefore carries the `manifest_path` it was found in, so that its
 /// [`message`](PhaseError::message) can name the file on its own — which is the whole of the
 /// location a reader gets, and is why every variant but
-/// [`PrivateModuleNotFound`](ManifestError::PrivateModuleNotFound) goes back to the caller
+/// [`PrivateModuleNotFound`](ManifestError::PrivateModuleNotFound) and
+/// [`MainModuleNotFound`](ManifestError::MainModuleNotFound) goes back to the caller
 /// unrendered, the same way loading errors already do.
 #[derive(Debug)]
 pub enum ManifestError {
@@ -206,6 +208,14 @@ pub enum ManifestError {
     /// module, and folds it into the normal per-package error accumulation rather than the
     /// unrendered path the rest of this enum takes.
     PrivateModuleNotFound { manifest_path: PathBuf, name: Name },
+    /// `main` names a module this package does not hold under `src/` — a module under
+    /// `tests/` does not count.
+    ///
+    /// Raised after the package's `src/` has checked, for the same reason as
+    /// [`PrivateModuleNotFound`](ManifestError::PrivateModuleNotFound), and by the check
+    /// [`program`](super::program) describes, whose other two failures are about the
+    /// module the name finds.
+    MainModuleNotFound { manifest_path: PathBuf, name: Name },
 }
 
 impl PhaseError for ManifestError {
@@ -287,6 +297,28 @@ impl PhaseError for ManifestError {
                 manifest_path.display(),
                 name
             ),
+            ManifestError::MainModuleNotFound {
+                manifest_path,
+                name,
+            } => format!(
+                "`main` in `{}` names `{}`, which is not a module under this package's `src/`",
+                manifest_path.display(),
+                name
+            ),
+        }
+    }
+
+    fn notes(&self) -> Vec<String> {
+        match self {
+            ManifestError::MainModuleNotFound { .. } => vec![
+                "`main` is set in the manifest, and the manifest is not a source file a \
+                 diagnostic can point into, so this error has no location"
+                    .to_string(),
+                "`main` names a module by its name within the package, and that module must \
+                 be under `src/`"
+                    .to_string(),
+            ],
+            _ => Vec::new(),
         }
     }
 }

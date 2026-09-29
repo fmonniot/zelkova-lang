@@ -1,0 +1,13 @@
+# A library with no `main` of its own, depending on `package_main_not_task`, whose `main` is
+# an `Int`. A dependency's `main` is checked like the root's, so this build fails on it.
+name = "package-depends-on-broken-program"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[dependencies.package-main-not-task]
+path = "../package_main_not_task"
+
+[test-dependencies]

@@ -218,7 +218,8 @@ companion `.mjs` files, `--` and `{- -}` comments.
 Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, type
 aliases, and running effects (`std/core` declares `Task`, `Failure`, `succeed` and `map`, but
 nothing runs a `Task`, and the `main` and test discovery built on it are absent — the
-manifest's `main` field is read, but nothing checks what it names).
+manifest's `main` is checked to name a `src/` module exposing `main : Task ()`, but nothing
+runs it).
 **Multi-clause function declarations** — a deliberate
 divergence from Elm — parse but are rejected by canonicalization
 (`Error::MultipleBindingsUnsupported`); `LANG-20` is the ticket. The standard library under

@@ -1,0 +1,12 @@
+# `main` names `Program`, which is a module under `tests/` and not under `src/`. A module
+# under `tests/` is not part of the program, so `main` names nothing this package holds —
+# compiled with its tests or without.
+name = "package-main-module-missing"
+version = "0.1.0"
+main = "Program"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]

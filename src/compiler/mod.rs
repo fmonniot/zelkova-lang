@@ -86,6 +86,9 @@ pub mod name;
 pub mod output;
 pub mod parser;
 pub mod position;
+// Public for the same reason as `manifest`: `program::Error` is reachable from the public
+// `CompilationError::Program`.
+pub mod program;
 // Public for the same reason as `manifest`: `resolve::Error` is reachable from the public
 // `CompilationError::Resolution`.
 pub mod resolve;
@@ -418,7 +421,7 @@ pub struct SpanLabel {
 ///
 /// Not every error can. `labels` defaults to empty and that is a real answer, not a
 /// stub: an error raised while walking a node the grammar does not span — an
-/// `exposing` list, say — has nowhere to point, and renders as message-plus-notes
+/// `import`'s `exposing` list, say — has nowhere to point, and renders as message-plus-notes
 /// with no caret, exactly as every phase after parsing used to. An error that groups
 /// others (`canonical::Error::Many`, `EnvironmentErrors`) has no position of its own
 /// and flattens its members' labels instead, the way it already flattens their
@@ -581,7 +584,9 @@ pub enum CompilationError {
     /// package's source root is derived from its manifest, so there is nothing to walk
     /// until the manifest is known good — with one exception:
     /// [`PrivateModuleNotFound`](manifest::ManifestError::PrivateModuleNotFound) needs the
-    /// package's parsed modules and is pushed after them.
+    /// package's parsed modules and is pushed after them, and
+    /// [`MainModuleNotFound`](manifest::ManifestError::MainModuleNotFound) needs its checked
+    /// ones and is pushed after those.
     ///
     /// It carries no [`SourceFileId`] either way. A manifest error's location is a byte
     /// range in `zelkova.toml`, and that file is never read into the database, so each
@@ -607,6 +612,9 @@ pub enum CompilationError {
     /// Exhaustiveness checking failed for the named module. Unreachable while
     /// `exhaustiveness::check` is a stub, but rendered like any other phase.
     Exhaustiveness(Vec<exhaustiveness::Error>, Name),
+    /// The named module is its package's `main`, checked, and is not fit to be a
+    /// program's entry point ([`program`]).
+    Program(Vec<program::Error>, Name),
     DependenciesError(dependencies::Error),
     /// The named module checked and could not be emitted as JavaScript.
     Emit(Vec<javascript::Error>, Name),
@@ -656,6 +664,7 @@ impl CompilationError {
             CompilationError::Canonical(_, module)
             | CompilationError::Type(_, module)
             | CompilationError::Exhaustiveness(_, module)
+            | CompilationError::Program(_, module)
             | CompilationError::Emit(_, module) => Some(module),
             CompilationError::InFile(inner, _) => inner.module(),
             _ => None,
@@ -675,11 +684,11 @@ impl CompilationError {
             CompilationError::InFile(inner, id) => inner.as_diagnostic_in(Some(*id)),
             // The one phase that carries spans renders its own labelled diagnostic.
             CompilationError::Source(err, file_id) => err.diagnostic(*file_id),
-            // Only `PrivateModuleNotFound` ever reaches this arm: every other
-            // `ManifestError` is raised before the file database exists and goes back to
-            // the caller unrendered. That one is pushed after parsing, so a database does
-            // exist here — but the location this error wants is a byte range in
-            // `zelkova.toml`, which is not a file that database holds, so it renders with
+            // Only `PrivateModuleNotFound` and `MainModuleNotFound` ever reach this arm:
+            // every other `ManifestError` is raised before the file database exists and
+            // goes back to the caller unrendered. Those two are pushed after parsing, so a
+            // database does exist here — but the location they want is a byte range in
+            // `zelkova.toml`, which is not a file that database holds, so they render with
             // no label and each error names itself and its manifest in a note.
             CompilationError::Manifest(errors) => Diagnostic::error()
                 .with_message("Error in the package manifest")
@@ -714,6 +723,9 @@ impl CompilationError {
             }
             CompilationError::Exhaustiveness(errors, module) => {
                 phase_diagnostic(module, "exhaustiveness", errors, file)
+            }
+            CompilationError::Program(errors, module) => {
+                phase_diagnostic(module, "program", errors, file)
             }
             CompilationError::Emit(errors, module) => {
                 phase_diagnostic(module, "code generation", errors, file)
@@ -1558,6 +1570,17 @@ fn compile_in_build(
         return None;
     }
 
+    // Step 5b: a program's entry point ([`program`]). It runs only once every module of
+    // `src/` has checked, since the check reads the type inference solved for `main`, and
+    // for every package of the build that declares `main` — the root and any dependency
+    // alike; `program`'s documentation says why.
+    //
+    // A failure here fails the build, and the package is still published: its interfaces
+    // are sound, and a dependent checked against them reports only its own errors.
+    if let Some(main) = &package.manifest.main {
+        check_main(package, main, &checked, errors);
+    }
+
     // Step 6: what this package offers whoever depends on it. Every module of `src/`
     // except the ones `private-modules` names and every `module foreign` facade, which
     // is package-internal by its own declaration whatever the manifest says
@@ -1606,6 +1629,42 @@ fn compile_in_build(
         modules: checked,
         tests,
     })
+}
+
+/// Check the module the manifest's `main` names among `checked`, the modules of
+/// `package`'s `src/` that checked, and push what is wrong with it onto `errors`.
+///
+/// A name matching no module of `src/` is the manifest's error, not a module's, so it is a
+/// [`ManifestError::MainModuleNotFound`](manifest::ManifestError::MainModuleNotFound) and
+/// renders with no location. `checked` holds `src/` alone, which is what keeps a module
+/// under `tests/` from counting. Anything wrong with the module it finds is a
+/// [`CompilationError::Program`] carrying that module's file, so its labels point into it.
+fn check_main(
+    package: &resolve::ResolvedPackage,
+    main: &Name,
+    checked: &[ModuleToEmit],
+    errors: &mut Vec<CompilationError>,
+) {
+    let Some(entry) = checked
+        .iter()
+        .find(|to_emit| to_emit.module.canonical.name.name() == main)
+    else {
+        errors.push(CompilationError::Manifest(vec![
+            manifest::ManifestError::MainModuleNotFound {
+                manifest_path: package.manifest_path(),
+                name: main.clone(),
+            },
+        ]));
+        return;
+    };
+
+    if let Err(error) = program::check(&entry.module) {
+        let error = CompilationError::Program(vec![error], main.clone());
+        errors.push(match entry.file {
+            Some(file) => CompilationError::InFile(Box::new(error), file),
+            None => error,
+        });
+    }
 }
 
 /// Check the `tests/` root of the package the compiler was pointed at, which

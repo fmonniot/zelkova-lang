@@ -7,6 +7,7 @@ fn module(body: Expression) -> Module {
         name: name("Main"),
         binding_foreign: false,
         exposing: Exposing::Open,
+        exposing_span: no_span(),
         imports: vec![],
         infixes: vec![],
         types: vec![],
