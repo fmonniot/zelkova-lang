@@ -1,0 +1,13 @@
+# The fixture `tests/js/TestRunnerChecks.mjs` runs `zelkova test` against to see what the
+# run does when a test's `Task` never finishes: `tests/NeverTest.zel` holds one such test
+# between two that pass. `cargo test` never runs it; `node --test 'tests/js/**/*.mjs'` does.
+name = "package-test-never-settles"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies.zelkova-test]
+path = "../../../std/test"
+wrapped = false

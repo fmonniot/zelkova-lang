@@ -1,0 +1,64 @@
+-- Collected in name order, which is the order they run and are reported in.
+module TaskTest exposing
+  ( aPasses, bFails, cSucceedsOnOk, dFailsWithTheReason, eFailsOnThrew
+  , fSlow, gAfterSlow, hAborts, iNestedFails, jNestedPasses
+  )
+
+import Effects
+import Task exposing (Task, Failure(..))
+import Test exposing (Test)
+
+
+aPasses : Test
+aPasses =
+  Test.task (Task.succeed (Test.check True))
+
+
+bFails : Test
+bFails =
+  Test.task (Task.succeed (Test.check False))
+
+
+cSucceedsOnOk : Test
+cSucceedsOnOk =
+  Test.succeeds (Task.succeed (Ok ()))
+
+
+dFailsWithTheReason : Test
+dFailsWithTheReason =
+  Test.succeeds (Task.succeed (Err (Threw (Effects.reason 4))))
+
+
+eFailsOnThrew : Test
+eFailsOnThrew =
+  Test.succeeds Effects.throws
+
+
+fSlow : Test
+fSlow =
+  Test.succeeds Effects.slow
+
+
+gAfterSlow : Test
+gAfterSlow =
+  Test.succeeds Effects.afterSlow
+
+
+hAborts : Test
+hAborts =
+  Test.task (Task.map abortingCheck (Task.succeed 1))
+
+
+abortingCheck : Int -> Test
+abortingCheck n =
+  Test.equal (Effects.aborts n) 0
+
+
+iNestedFails : Test
+iNestedFails =
+  Test.task (Task.succeed (Test.task (Task.succeed (Test.check False))))
+
+
+jNestedPasses : Test
+jNestedPasses =
+  Test.task (Task.succeed (Test.task (Task.succeed (Test.check True))))

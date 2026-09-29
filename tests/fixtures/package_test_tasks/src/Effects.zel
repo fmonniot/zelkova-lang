@@ -1,0 +1,11 @@
+module foreign Effects exposing (throws, slow, afterSlow, reason, aborts)
+
+import Task exposing (Task, Failure)
+
+
+throws : Task (Result Failure ())
+slow : Task (Result Failure ())
+afterSlow : Task (Result Failure ())
+
+unsafe reason : Int -> String
+unsafe aborts : Int -> Int

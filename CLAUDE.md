@@ -44,9 +44,9 @@ own `tests/` root — `std/core/tests/Js/` holds the ones that exist — and run
 companion*](docs/spec/interop.md#testing-a-companion); each file's header says what it covers.
 What the *compiler* emits is checked by running it under `node --test 'tests/js/**/*.mjs'`: each
 file there compiles a fixture under `tests/fixtures/` itself, with `cargo run`, and loads the
-output. CI's `javascript` job runs all three, in that order.
+output or runs its tests. CI's `javascript` job runs all three, in that order.
 
-`cargo run -- test std/core` currently reports **`23 tests: 23 passed, 0 failed, 0 errored`
+`cargo run -- test std/core` currently reports **`27 tests: 27 passed, 0 failed, 0 errored`
 and exits 0**. `std/core/tests/FloatTests.ignored` is excluded from that count by its extension:
 `Basics.add` sends a `Float` through the `addInt` facade and its boundary check aborts, so
 `FloatTests`' two tests fail to load and are disabled until [`BUG-44`](docs/tickets/bug-44.md)
@@ -216,10 +216,9 @@ unit type `()` (checked and emitted, as `undefined` on JavaScript), JS interop v
 companion `.mjs` files, `--` and `{- -}` comments.
 
 Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, type
-aliases, and running effects (`std/core` declares `Task`, `Failure`, `succeed` and `map`, but
-nothing runs a `Task`, and the `main` and test discovery built on it are absent — the
-manifest's `main` is checked to name a `src/` module exposing `main : Task ()`, but nothing
-runs it).
+aliases, and running a program (`std/core` declares `Task`, `Failure`, `succeed` and `map`,
+and `zelkova test` runs a `Test` that holds a `Task`, but the manifest's `main` is only checked
+to name a `src/` module exposing `main : Task ()` — nothing runs it).
 **Multi-clause function declarations** — a deliberate
 divergence from Elm — parse but are rejected by canonicalization
 (`Error::MultipleBindingsUnsupported`); `LANG-20` is the ticket. The standard library under

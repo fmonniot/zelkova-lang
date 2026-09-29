@@ -8,7 +8,7 @@ layout.
 **Part of:** [Active work: effects](README.md#active-work-effects), as its last step. It is the
 "what comes after" that the bootstrap section left unfiled because it needed `Task` first.
 
-**Depends on:** [`LANG-76`](lang-76.md), for a `Test` that holds a `Task`; [`GEN-16`](gen-16.md),
+**Depends on:** [`LANG-76`](README.md) (closed), for a `Test` that holds a `Task`; [`GEN-16`](gen-16.md),
 for the wrapper that turns a check that throws into `Err (Threw ..)`; [`LANG-72`](README.md) (closed)
 and [`GEN-20`](README.md) (closed), for the `()` in each check's type; [`LANG-68`](README.md)
 (closed), so that the new facades are held to the shape they declare.
@@ -35,8 +35,8 @@ second copy of a rule that `DEC-14` wanted to avoid.
    Keep the `PINS`/`GUARD` label as a comment on each one: it records how the check was
    verified, and a Zelkova name cannot carry it. Declare each export in a sibling facade,
    `module foreign Js.BasicsChecks` and so on. Then add a test module (`Js/BasicsTests.zel` or
-   similar) that exposes one `Test` per check through `Test.succeeds`, or whatever
-   [`LANG-76`](lang-76.md) named it. The two roots [share module
+   similar) that exposes one `Test` per check through `Test.succeeds`, which prints a
+   failing check's `Threw` description beside `FAIL`. The two roots [share module
    names](../spec/packages.md#source-roots), so none of these may be called `Js.Basics`.
 2. **Resolve the import each check file makes of the companion under test.** They import
    `../../src/Js/Basics.mjs`, a path relative to the *source* tree, as

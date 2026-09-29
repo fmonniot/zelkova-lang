@@ -464,9 +464,7 @@ A runner finds [a value of type `Test` a module under `tests/`
 exposes](packages.md#what-a-test-is), so `Core.PrimTest` imports the facade and exposes one per
 check.
 
-**Not implemented:** none of this runs. The spec harness compiles a block against a stand-in
-`Basics` only, so the `zel` block does not compile there. `zelkova test` runs a `Test` that is
-`Pass` or `Fail`; it cannot run a `Task` ([`LANG-76`](../tickets/lang-76.md)), so a `Test` whose
-checks are `Task`s cannot be written. Until it can, a
-companion test under `tests/` is a `.mjs` file that the target's own test runner is pointed at
-directly, and the facade half of the pair is not written yet.
+**Not implemented:** the spec harness compiles a block against a stand-in `Basics` only, so the
+`zel` block does not compile there. `std/core`'s own companion tests are not written this way
+yet ([`TEST-7`](../tickets/test-7.md)): each is a `.mjs` file under `tests/` that the target's
+own test runner is pointed at directly, and the facade half of the pair is not written.

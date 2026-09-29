@@ -208,12 +208,12 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed` and `map`             
   │     │  + LANG-68 + GEN-2 (both closed)
   │     ▼
   │   GEN-16   the wrapper an effectful facade's call gets: `Ok`, `Threw`, `Malformed`
-  │            (the wrapper is built; its Zelkova-level tests wait on LANG-76)
+  │            (the wrapper is built; its Zelkova-level tests are what is left)
   │
   ├── LANG-75  `main` is checked to be a `Task ()`                   ── closed
   │     └── GEN-22  `zelkova run [DIR]`                              ← + GEN-21 (closed)
   │
-  └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ← + GEN-21, GEN-20 (both closed)
+  └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ── closed
         │
         │  + GEN-16
         ▼
@@ -417,7 +417,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-73 | task | — | closed 2026-09-28 | `std/core` declares no `String`, so no annotation can name one |
 | LANG-74 | task | — | closed 2026-09-28 | `std/core` declares no `Task` and no `Failure` |
 | LANG-75 | task | — | closed 2026-09-29 | The manifest's `main` is read, and nothing checks what it names |
-| [LANG-76](lang-76.md) | task | — | open | A `Test` cannot hold a `Task`, so no effectful check can be a test |
+| LANG-76 | task | — | closed 2026-09-29 | A `Test` cannot hold a `Task`, so no effectful check can be a test |
 | [LANG-77](lang-77.md) | task | — | open | String literals are specified but not tokenized |
 | [LANG-78](lang-78.md) | task | — | open | `std/core`'s `Task` has no `andThen` |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |

@@ -1,0 +1,15 @@
+# The fixture `tests/js/TestRunnerChecks.mjs` runs `zelkova test` against: `tests/TaskTest.zel`
+# holds `Test`s built from a `Task` that pass, fail, fail with a reason and abort, so a run
+# reports each one and exits non-zero. `src/Effects.zel` is the facade they reach effects
+# through, and `src/Effects.mjs` its companion.
+# `cargo test` never runs it; `node --test 'tests/js/**/*.mjs'` does.
+name = "package-test-tasks"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies.zelkova-test]
+path = "../../../std/test"
+wrapped = false
