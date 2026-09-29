@@ -98,5 +98,5 @@ tests match the constructor and do not compare the `String`. The fixture's `Effe
 `Effects.mjs` are the five to move or copy. The rest of the original acceptance is done: that
 `Threw` carries the host's description and `Malformed` names the export is asserted on the emitted
 wrapper's behaviour beside the runtime, as are a continuation that throws after a companion
-returned, synchronously or through a promise, rejecting `$runTask`'s promise rather than becoming
-`Threw`, and a step handed to `resume` twice aborting.
+returned, synchronously or through a promise, rejecting `$runTask`'s promise and not becoming
+`Threw`, as does a predicate that throws, and a step handed to `resume` twice aborting.
