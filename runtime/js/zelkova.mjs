@@ -101,9 +101,11 @@ function yieldToHost(callback) {
 //     is a curried partial application, so `step()` would return the partial function and not
 //     a `Done`.
 //   - `Suspend`: the loop calls its function with a `resume` and stops. Calling `resume(step)`
-//     continues the loop from `step`, immediately if `Suspend`'s function is still running and
-//     from a later turn of the host's event loop otherwise, so a `Suspend` that resumes
-//     at once cannot nest one loop inside another.
+//     continues the loop from `step`. If that call happens while the loop is still inside
+//     this `Suspend`'s function, `step` is held and the loop takes it up when the function
+//     returns, so a `Suspend` that resumes at once cannot nest one loop inside another.
+//     Otherwise `resume` enters the loop at once, from whatever turn of the host's event loop
+//     called it.
 //   - `Halt`: nothing more to do on this stack.
 //
 // Every `YIELD_EVERY`th `Bounce` is followed from a macrotask instead of at once.
@@ -112,6 +114,12 @@ function yieldToHost(callback) {
 // entry is inside one `try` that rejects the promise: an abort belongs to the `$runTask` whose
 // continuation raised it, wherever it was raised. Once the promise has rejected, no entry
 // runs any further. A continuation that is never called leaves the promise pending.
+//
+// `resume` is not guarded beyond that. The held step is a single slot, so a second `resume`
+// inside the same `Suspend`'s function replaces the first. A `resume` called while the loop is
+// running for another reason, or after `Halt`, is not held and not ignored: it enters the loop.
+// Calling `resume` once is the `Suspend`'s function's job; the one-shot guard of DEC-22
+// decision 5 belongs to `$effect` (`GEN-16`), not to this loop.
 export function $runTask(task) {
   return new Promise((resolve, reject) => {
     const halt = { $: 'Halt' };

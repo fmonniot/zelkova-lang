@@ -7,7 +7,7 @@
 one rule a program can observe: a `Task` sequences any number of steps without exhausting the
 stack. Everything else here is representation a program cannot observe, so it lives in the code
 that implements it — `std/core/src/Task.zel` ([`LANG-74`](../tickets/README.md)),
-`runtime/js/zelkova.mjs` ([`GEN-21`](../tickets/README.md), closed) and the facade call site
+`runtime/js/zelkova.mjs` (`$runTask`) and the facade call site
 ([`GEN-16`](../tickets/README.md)) — and in no chapter.
 
 [DEC-11](dec-11.md) made a `Task` a value of an ordinary type, and sequencing ordinary functions
@@ -157,7 +157,8 @@ timers and I/O callbacks run instead of holding the event loop until it finishes
 constant, which the spec does not name; cats-effect's 1024 is where to start. The yield is a
 macrotask, not a microtask — the microtask queue drains before the host looks at timers or I/O,
 so a microtask hop would yield to nothing. Which primitive (`setImmediate`, `setTimeout`, a
-`MessageChannel`) is [`GEN-21`](../tickets/README.md)'s.
+`MessageChannel`) is the runtime's to choose; `$runTask` uses `setImmediate`, with `setTimeout`
+as the fallback.
 
 The cost is an allocation per handoff, two per `andThen` link, and a loop iteration each. A
 synchronous chain longer than N stops being synchronous.

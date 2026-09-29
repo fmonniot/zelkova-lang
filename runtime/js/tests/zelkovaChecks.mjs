@@ -14,11 +14,13 @@
 // check below is read as an ordinary specification of `$curry` and `$abort`'s behaviour.
 //
 // CLAUDE.md's "A green test proves nothing until you have seen it fail" was applied to each
-// check below by temporarily breaking the one behaviour it names — discarding the surplus in
-// `$curry`'s over-application branch, and only ever accumulating one argument per call, and for
-// `$runTask` the neutralisations each of its checks names — and confirming the relevant check went red before restoring the fix. The comments on the
-// over-application and several-arguments-at-once checks say what a broken implementation would
-// have to do to still pass them.
+// check below by temporarily breaking the one behaviour it names and confirming the check went
+// red before restoring the fix: discarding the surplus in `$curry`'s over-application branch,
+// and only ever accumulating one argument per call. The `$runTask` checks whose comments begin
+// "Mutation checked by" say which mutation turns them red; the two ordering checks, `andThen`
+// and `Suspend`-resume, carry no such note. The comments on the over-application and
+// several-arguments-at-once checks say what a broken implementation would have to do to still
+// pass them.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -215,8 +217,8 @@ test('a Suspend that resumes at once continues from the loop, not from inside it
 });
 
 test('a continuation that throws after a Suspend resumed still rejects the promise', async () => {
-  // Mutation checked by removing the `try` from `enter` while leaving the first entry
-  // covered: the throw is then an uncaught exception in a timer and the promise never settles.
+  // Mutation checked by making `resume` call `drive` instead of `enter`: `drive` has no `try`,
+  // so the throw is then an uncaught exception in a timer and the promise never settles.
   const boom = new Error('boom after resume');
   const chained = andThen(() => { throw boom; }, later(1));
   await assert.rejects($runTask(chained), (error) => error === boom);
@@ -229,4 +231,39 @@ test('a continuation that throws rejects the promise', async () => {
   const boom = new Error('boom');
   const chained = andThen(() => { throw boom; }, succeed(1));
   await assert.rejects($runTask(chained), (error) => error === boom);
+});
+
+test('a continuation that throws after the loop has yielded to the host still rejects the promise', async () => {
+  // The throw comes after more than `YIELD_EVERY` links, so it runs from the macrotask the
+  // loop yielded to. Mutation checked by making the yield call `drive` instead of `enter`: the
+  // throw is then an uncaught exception in the `setImmediate` callback.
+  const boom = new Error('boom after yield');
+  let chain = succeed(0);
+  for (let i = 0; i < 3000; i++) chain = andThen((a) => succeed(a + 1), chain);
+  await assert.rejects($runTask(andThen(() => { throw boom; }, chain)), (error) => error === boom);
+});
+
+test('nothing runs after the promise has rejected', async () => {
+  // Two `resume`s from one timer: the first continues into a throw, the second would run a
+  // step. Mutation checked by deleting `if (failed) return;` from `enter`: the second runs.
+  const boom = new Error('boom');
+  let ranAfter = false;
+  const suspended = task(() => ({
+    $: 'Suspend',
+    a: (resume) => {
+      setTimeout(() => {
+        resume(() => { throw boom; });
+        resume(() => { ranAfter = true; return halt; });
+      }, 0);
+    },
+  }));
+  await assert.rejects($runTask(suspended), (error) => error === boom);
+  assert.equal(ranAfter, false);
+});
+
+test('a Done the loop does not know rejects the promise', async () => {
+  // Mutation checked by disabling the `$abort` branch for an unknown tag: the loop then stops
+  // quietly and the promise never settles.
+  const odd = task(() => ({ $: 'Sideways' }));
+  await assert.rejects($runTask(odd), { message: /does not know: Sideways/ });
 });
