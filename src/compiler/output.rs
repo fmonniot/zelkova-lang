@@ -60,6 +60,17 @@ pub enum Contents {
     Text(String),
     /// A file copied as it is, from this path: a facade's companion.
     Copy(PathBuf),
+    /// A file copied from `from` with each import [`javascript::rewrite_imports`] finds
+    /// in `imports` replaced: the companion of a test facade, whose import of the
+    /// companion it checks is spelled for the source tree
+    /// ([`javascript::test_companion_import`]).
+    ///
+    /// [`javascript::rewrite_imports`]: super::javascript::rewrite_imports
+    /// [`javascript::test_companion_import`]: super::javascript::test_companion_import
+    Rewritten {
+        from: PathBuf,
+        imports: Vec<(String, String)>,
+    },
 }
 
 /// A file of the output that could not be written, or a stale one that could not be
@@ -68,7 +79,8 @@ pub enum Contents {
 pub struct Error {
     /// The file being written, or the stale file or directory being removed, in full.
     pub path: PathBuf,
-    /// The companion it was being copied from, for a [`Contents::Copy`].
+    /// The companion it was being copied from, for a [`Contents::Copy`] or a
+    /// [`Contents::Rewritten`].
     pub from: Option<PathBuf>,
     /// Set when the failure happened while removing a file or directory `js_root` no
     /// longer needs, not while writing one of `files`. Kept apart from `from` so the
@@ -136,7 +148,7 @@ pub fn write(js_root: &Path, files: &[File]) -> Vec<Error> {
 
 fn write_one(path: &Path, contents: &Contents) -> Result<(), Error> {
     let from = match contents {
-        Contents::Copy(from) => Some(from.clone()),
+        Contents::Copy(from) | Contents::Rewritten { from, .. } => Some(from.clone()),
         Contents::Text(_) => None,
     };
     let failed = |error| Error {
@@ -153,6 +165,10 @@ fn write_one(path: &Path, contents: &Contents) -> Result<(), Error> {
     match contents {
         Contents::Text(text) => std::fs::write(path, text).map_err(failed),
         Contents::Copy(source) => std::fs::copy(source, path).map(|_| ()).map_err(failed),
+        Contents::Rewritten { from, imports } => {
+            let text = std::fs::read_to_string(from).map_err(failed)?;
+            std::fs::write(path, super::javascript::rewrite_imports(&text, imports)).map_err(failed)
+        }
     }
 }
 
