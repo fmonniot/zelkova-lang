@@ -1,17 +1,31 @@
-module Test exposing (Test, equal, check)
+module Test exposing (Test, equal, check, task, succeeds)
+
+import Task exposing (Task, Failure(..))
 
 
-{-| A pass-or-fail verdict. A value of this type is a test when a module under
-`tests/` exposes it — see
+{-| A pass-or-fail verdict, or a `Task` that produces one. A value of this type is a
+test when a module under `tests/` exposes it — see
 [*What a test is*](../../../docs/spec/packages.md#what-a-test-is) — and it carries no
 name of its own: a runner reports the value that held it instead.
 
 Exposed without its constructors, so nothing outside this module can build a `Test`
-except by way of `equal` or `check`.
+except by way of `equal`, `check`, `task` or `succeeds`.
+
+The generated runner, `run.mjs` (`src/compiler/test_runner.rs`), reads these
+constructors by name, so the two change together:
+
+- `Pass` passes.
+- `Fail` fails. It carries the reason when there is one to give: the `String` a
+  `Failure` holds, which is printed beside the failure. A `Fail` from `equal` or
+  `check` carries `Nothing`, since there is no `String` to give it without string
+  literals.
+- `Awaiting` holds a `Task`. The runner runs it and judges the `Test` it produces
+  the same way, which may be another `Awaiting`.
 -}
 type Test
   = Pass
-  | Fail
+  | Fail (Maybe String)
+  | Awaiting (Task Test)
 
 
 {-| A test that passes when the two arguments are equal, and fails otherwise.
@@ -40,4 +54,49 @@ check condition =
       Pass
 
     False ->
-      Fail
+      Fail Nothing
+
+
+{-| A test that runs the `Task` and is judged by the `Test` it produces.
+
+    task (Task.succeed (check True))
+
+A `Task` whose run aborts is reported as an error, not as a failure, the way a test
+module that fails to load is.
+-}
+task : Task Test -> Test
+task work =
+  Awaiting work
+
+
+{-| A test that runs the `Task`, passing when it produces `Ok ()` and failing when it
+produces `Err`, with the `Failure`'s description as the reason.
+
+    succeeds Core.PrimChecks.idivTruncates
+
+This is the shape a test facade's constant has, so each check it declares is one
+`succeeds` in a test module.
+-}
+succeeds : Task (Result Failure ()) -> Test
+succeeds work =
+  Awaiting (Task.map verdict work)
+
+
+verdict : Result Failure () -> Test
+verdict result =
+  case result of
+    Ok () ->
+      Pass
+
+    Err failure ->
+      Fail (Just (describe failure))
+
+
+describe : Failure -> String
+describe failure =
+  case failure of
+    Threw description ->
+      description
+
+    Malformed description ->
+      description

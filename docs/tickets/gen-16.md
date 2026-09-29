@@ -14,7 +14,7 @@ unmarked facade to the result type this wrapper assumes; [`GEN-2`](README.md) (c
 predicate whose failure is `Err (Malformed ..)`. Sequenced after [`GEN-12`](README.md), which
 emits the `unsafe` half of the same call site. `GEN-2` emitted the predicates and the `unsafe`
 half's check only, since an effectful facade was still refused, so `Malformed` lands here.
-[`LANG-76`](lang-76.md), for the Zelkova tests the acceptance asks for.
+[`LANG-76`](README.md) (closed), for the Zelkova tests the acceptance asks for.
 
 **Location:** `src/compiler/javascript.rs`, at the facade call site
 [`GEN-12`](README.md) emits. `src/compiler/canonical/mod.rs` — `Value::TypedValue`'s
@@ -85,11 +85,11 @@ companion is called over the fixture `tests/fixtures/package_effectful_facade` i
 `tests/js/EffectChecks.mjs`; and `$effect` itself, the two properties of it no Zelkova test can
 see included, in `runtime/js/tests/zelkovaChecks.mjs`.
 
-**Remaining:** the Zelkova tests the acceptance asks for. Nothing can run them until
-[`LANG-76`](lang-76.md) lands.
+**Remaining:** the Zelkova tests the acceptance asks for. `zelkova test` runs a `Test` that holds
+a `Task` since [`LANG-76`](README.md), through `Test.task` and `Test.succeeds`.
 
 **Acceptance:** five companions, each behind an unmarked facade under `std/core/tests/`, asserted
-as Zelkova tests that `zelkova test` runs through [`LANG-76`](lang-76.md)'s `Test` over a `Task`:
+as Zelkova tests that `zelkova test` runs through [`LANG-76`](README.md)'s `Test` over a `Task`:
 one that throws synchronously yields `Err (Threw _)`; one whose promise rejects yields
 `Err (Threw _)`; one that returns a value of the wrong shape yields `Err (Malformed _)`; and one
 that returns correctly, after an `await`, yields `Ok` with the value. A fifth, behind a

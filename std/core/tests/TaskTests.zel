@@ -1,0 +1,30 @@
+-- `Test`s built from a `Task`, which `zelkova test` runs and judges by the `Test` the
+-- `Task` produces. The ones that fail, fail with a reason or abort are
+-- `tests/fixtures/package_test_tasks`', since a failing test here would fail this package.
+module TaskTests exposing
+  ( producedPassPasses, producedTestIsJudged, nestedTaskPasses, succeedsOnOk )
+
+import Basics exposing (..)
+import Result exposing (Result(..))
+import Task exposing (Task)
+import Test exposing (Test)
+
+
+producedPassPasses : Test
+producedPassPasses =
+  Test.task (Task.succeed (Test.check True))
+
+
+producedTestIsJudged : Test
+producedTestIsJudged =
+  Test.task (Task.map (Test.equal 3) (Task.succeed (1 + 2)))
+
+
+nestedTaskPasses : Test
+nestedTaskPasses =
+  Test.task (Task.succeed (Test.task (Task.succeed (Test.check True))))
+
+
+succeedsOnOk : Test
+succeedsOnOk =
+  Test.succeeds (Task.succeed (Ok ()))
