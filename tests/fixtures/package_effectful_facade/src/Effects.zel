@@ -1,0 +1,20 @@
+module foreign Effects exposing
+  ( throwsSynchronously, rejects, wrongShape, correctAfterAwait, correctNow
+  , discards, throwsWhenDiscarding, counted, clock
+  )
+
+import Task exposing (Task, Failure)
+
+
+throwsSynchronously : Int -> Task (Result Failure Int)
+rejects : Int -> Task (Result Failure Int)
+wrongShape : Int -> Task (Result Failure Int)
+correctAfterAwait : Int -> Task (Result Failure Int)
+correctNow : Int -> Task (Result Failure Int)
+
+discards : Int -> Task (Result Failure ())
+throwsWhenDiscarding : Int -> Task (Result Failure ())
+
+counted : Int -> Task (Result Failure Int)
+
+clock : Task (Result Failure Int)

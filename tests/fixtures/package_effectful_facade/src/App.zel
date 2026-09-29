@@ -1,0 +1,11 @@
+module App exposing (built)
+
+import Effects
+import Task exposing (Task, Failure)
+
+
+{-| Building a `Task` performs nothing: the companion behind it is called when it is run.
+-}
+built : Int -> Task (Result Failure Int)
+built n =
+  Effects.counted n

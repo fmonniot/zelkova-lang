@@ -24,7 +24,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { $curry, $abort, $runTask } from '../zelkova.mjs';
+import { $curry, $abort, $effect, $runTask } from '../zelkova.mjs';
 
 // Plain n-ary functions, the shape a declaration of that many parameters is emitted as
 // (docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper).
@@ -266,4 +266,152 @@ test('a Done the loop does not know rejects the promise', async () => {
   // quietly and the promise never settles.
   const odd = task(() => ({ $: 'Sideways' }));
   await assert.rejects($runTask(odd), { message: /does not know: Sideways/ });
+});
+
+// EFFECTS
+
+// `$effect` is what an effectful facade's `Task` calls when it is run. These checks hand it a
+// `call` and a `check` by hand and drive the `Done` it returns through `$runTask`, or, for the
+// two properties no emitted program can reach, by hand. The end-to-end behaviour over emitted
+// code — `Ok`, `Threw` and `Malformed` from a real companion — is tests/js/EffectChecks.mjs.
+const isBigInt = (v) => typeof v === 'bigint';
+const effect = (call, check = isBigInt) => task((k) => $effect(call, check, 'Mod.export', k));
+// Whatever the `Task` yields, unwrapped from its `Result`: an `Ok` payload, or the `Err`'s.
+const ranWith = (result) => $runTask(andThen((r) => succeed(r), result));
+
+test('$effect yields Ok with a synchronous value that passes the check', async () => {
+  assert.deepEqual(await ranWith(effect(() => 3n)), { $: 'Ok', a: 3n });
+});
+
+test('$effect yields Ok with a promise that resolves to a value that passes the check', async () => {
+  assert.deepEqual(await ranWith(effect(async () => 3n)), { $: 'Ok', a: 3n });
+});
+
+test('$effect yields Threw carrying the host\'s description for a synchronous throw', async () => {
+  const result = await ranWith(effect(() => { throw new TypeError('no'); }));
+  assert.deepEqual(result, { $: 'Err', a: { $: 'Threw', a: 'TypeError: no' } });
+});
+
+test('$effect yields Threw for a thrown value with no string conversion', async () => {
+  const result = await ranWith(effect(() => { throw Object.create(null); }));
+  assert.equal(result.a.$, 'Threw');
+  assert.equal(typeof result.a.a, 'string');
+});
+
+test('$effect yields Threw for a promise that rejects, with anything', async () => {
+  const result = await ranWith(effect(() => Promise.reject('plain string')));
+  assert.deepEqual(result, { $: 'Err', a: { $: 'Threw', a: 'plain string' } });
+});
+
+test('$effect yields Malformed naming the export for a value that fails the check, either way', async () => {
+  const malformed = {
+    $: 'Err',
+    a: { $: 'Malformed', a: '`Mod.export`\'s companion returned a value its declared type does not admit' },
+  };
+  assert.deepEqual(await ranWith(effect(() => 'three')), malformed);
+  assert.deepEqual(await ranWith(effect(async () => 'three')), malformed);
+});
+
+test('$effect treats a thenable that is not a Promise as a plain value, which fails the check', async () => {
+  const result = await ranWith(effect(() => ({ then() {} })));
+  assert.equal(result.a.$, 'Malformed');
+});
+
+test('$effect with no check discards the value, and still catches', async () => {
+  assert.deepEqual(await ranWith(effect(() => 4, null)), { $: 'Ok', a: undefined });
+  assert.deepEqual(await ranWith(effect(async () => 4, null)), { $: 'Ok', a: undefined });
+  const result = await ranWith(effect(async () => { throw new Error('x'); }, null));
+  assert.equal(result.a.$, 'Threw');
+});
+
+test('$effect does not call the companion until the Task is run', async () => {
+  let calls = 0;
+  const built = effect(() => { calls += 1; return 1n; });
+  assert.equal(calls, 0);
+  await ranWith(built);
+  await ranWith(built);
+  assert.equal(calls, 2);
+});
+
+test('$effect returns a Bounce for a synchronous result and a Suspend for a promise', () => {
+  const k = () => halt;
+  assert.equal($effect(() => 1n, isBigInt, 'Mod.export', k).$, 'Bounce');
+  assert.equal($effect(() => { throw new Error('x'); }, isBigInt, 'Mod.export', k).$, 'Bounce');
+  assert.equal($effect(async () => 1n, isBigInt, 'Mod.export', k).$, 'Suspend');
+});
+
+test('a continuation that throws after a synchronous companion returned rejects, and is not Threw', async () => {
+  // Mutation checked by running `k` inside `$effect`'s `try` (`try { return bounce(...).a(); }`):
+  // the throw is then caught as `Threw` and the continuation runs a second time with it.
+  const boom = new Error('boom after a value');
+  const chained = andThen(() => { throw boom; }, effect(() => 1n));
+  await assert.rejects($runTask(chained), (error) => error === boom);
+});
+
+test('a continuation that throws after a companion\'s promise resolved rejects, and is not Threw', async () => {
+  // `$runTask`'s `resume` catches what a continuation throws, so this holds under either
+  // spelling of the `then`, and stays green under a handler that catches. The check after the
+  // next one is what fails then. This one pins the outcome a program can see.
+  const boom = new Error('boom after a promise');
+  const chained = andThen(() => { throw boom; }, effect(async () => 1n));
+  await assert.rejects($runTask(chained), (error) => error === boom);
+});
+
+test('a predicate that throws rejects $runTask, for a synchronous companion', async () => {
+  // Mutation checked by wrapping the predicate call in a `try` that returns a `Threw`: the
+  // rejection becomes an `Err` and this goes red.
+  const boom = new Error('predicate blew up');
+  const throwing = () => { throw boom; };
+  await assert.rejects($runTask(effect(() => 1n, throwing)), (error) => error === boom);
+});
+
+test('a predicate that throws rejects $runTask, for a companion\'s promise', async () => {
+  // Mutation checked by computing `returned(settled)` in the `onValue` handler, outside the step
+  // (`resume(stepFor(returned(settled)))`): the handler's derived promise rejects unhandled and
+  // `$runTask` never settles, which the timeout below reports.
+  const boom = new Error('predicate blew up');
+  const throwing = () => { throw boom; };
+  const settled = await Promise.race([
+    $runTask(effect(async () => 1n, throwing)).then(() => 'resolved', (error) => error),
+    new Promise((resolve) => setTimeout(() => resolve('hung'), 200)),
+  ]);
+  assert.equal(settled, boom);
+});
+
+test('a step handed to resume twice aborts, naming the export', () => {
+  // Mutation checked by dropping the `used` test in `stepFor`: the second call then runs `k`
+  // again and does not throw.
+  const step = $effect(() => 1n, isBigInt, 'Mod.export', () => halt).a;
+  step();
+  assert.throws(step, { message: 'the continuation of `Mod.export`\'s effect was run twice' });
+});
+
+test('a step a promise\'s handler resumes with aborts when run twice', async () => {
+  let resumed;
+  const done = $effect(async () => 1n, isBigInt, 'Mod.export', () => halt);
+  done.a((step) => { resumed = step; });
+  await new Promise((resolve) => setImmediate(resolve));
+  resumed();
+  assert.throws(resumed, { message: 'the continuation of `Mod.export`\'s effect was run twice' });
+});
+
+test('a throw from resume after a companion\'s promise settled is not handed to resume again as Threw', async () => {
+  // `resume` never throws when it is `$runTask`'s own, since `enter` catches; a `resume` that
+  // does is what tells `then(onValue, onReject)` from `then(onValue).catch(onReject)`. Mutation
+  // checked by that replacement: the `catch` then calls `resume` a second time, with `Threw`.
+  // The promise is a `Promise` whose `then` swallows the rejection of the promise it returns,
+  // so the throw is not also reported as unhandled.
+  class Quiet extends Promise {
+    static get [Symbol.species]() { return Promise; }
+    then(onValue, onReject) {
+      const derived = super.then(onValue, onReject);
+      derived.catch(() => {});
+      return derived;
+    }
+  }
+  const resumed = [];
+  const done = $effect(() => new Quiet((resolve) => resolve(1n)), isBigInt, 'Mod.export', () => halt);
+  done.a((step) => { resumed.push(step); throw new Error('boom from resume'); });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(resumed.length, 1);
 });

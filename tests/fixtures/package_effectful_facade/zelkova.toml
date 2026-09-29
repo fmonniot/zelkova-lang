@@ -1,0 +1,13 @@
+# The fixture `tests/js/EffectChecks.mjs` compiles and loads. `src/Effects.zel` is an
+# effectful facade — no `unsafe` — whose companion, `src/Effects.mjs`, throws, rejects, returns
+# a value of the wrong shape and returns correctly, one export each; `src/App.zel` is ordinary
+# Zelkova building a `Task` from one of them.
+# `cargo test` never loads it; `node --test 'tests/js/**/*.mjs'` does.
+name = "package-effectful-facade"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]

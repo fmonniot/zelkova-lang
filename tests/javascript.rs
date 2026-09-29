@@ -12,10 +12,11 @@
 use std::collections::HashMap;
 
 use indoc::indoc;
+use zelkova_lang::compiler::canonical::Value;
 use zelkova_lang::compiler::javascript::{self, Error, Unions, Unpredicated};
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::position::NodeSpan;
-use zelkova_lang::compiler::{check_module, CheckedModule, Interface, PackageName};
+use zelkova_lang::compiler::{check_module, CheckedModule, Interface, PackageName, PhaseError};
 
 mod support;
 
@@ -1525,25 +1526,10 @@ fn a_union_holding_a_function_has_no_predicate() {
     assert_eq!(errors, vec![refusal("first"), refusal("second")]);
 }
 
-/// A facade signature not marked `unsafe` declares an effect, which this backend does
-/// not wrap yet, so it is refused rather than emitted as if it were `unsafe`. The
-/// result is `Task (Result Failure Int)` — the one shape canonicalization admits an
-/// unmarked signature with (`LANG-68`) — since this test is about the backend's own
-/// refusal and not about that check.
-///
-/// Mutation-checked by matching `marked_unsafe: _` in `Emitter::facade_declaration`:
-/// `add` is then taken for an `unsafe` facade and refused as `Error::NoPredicate`, the
-/// `Task` it names having no declaration in the build.
-#[test]
-fn an_effectful_facade_signature_is_refused() {
-    let source = indoc! {r#"
-        module foreign Test exposing (add)
-
-        import Task exposing (Task, Failure)
-
-        add : Int -> Int -> Task (Result Failure Int)
-    "#};
-    let module = checked_against(
+/// The text an effectful facade `source` emits as, with `Task`, `Failure` and `Result` in
+/// the build.
+fn emitted_effectful(source: &str) -> String {
+    emit(&checked_against(
         source,
         HashMap::from([
             basics_interface(),
@@ -1552,20 +1538,180 @@ fn an_effectful_facade_signature_is_refused() {
             task_interface(),
             result_interface(),
         ]),
-    );
+    ))
+}
 
-    let errors = match javascript::emit(&module, true, &unions_of(&module)) {
+/// A facade signature not marked `unsafe` declares an effect: its forwarding code builds a
+/// `Task` whose run function calls the runtime's `$effect` with a function calling the
+/// companion, the predicate of the payload, the export's name and the continuation. Nothing
+/// calls the companion when the `Task` is built, and the predicate is the payload's `Int`,
+/// not `Task (Result Failure Int)`'s.
+///
+/// Mutation-checked by matching `marked_unsafe: _` and skipping the payload lookup in
+/// `Emitter::facade_declaration`: `add` is then taken for an `unsafe` facade, which calls the
+/// companion directly and `Err`s on the `Task` no predicate decides.
+#[test]
+fn an_effectful_facade_builds_a_task_that_calls_effect() {
+    let text = emitted_effectful(indoc! {r#"
+        module foreign Test exposing (add)
+
+        import Task exposing (Task, Failure)
+
+        add : Int -> Int -> Task (Result Failure Int)
+    "#});
+
+    assert_eq!(
+        text,
+        indoc! {r#"
+            import { $effect } from "../zelkova.mjs";
+            import { add as $companion$add } from "./Test.companion.mjs";
+
+            function add(a, b) {
+              return {$: "Task", a: ($k) => $effect(() => $companion$add(a, b), ($returned) => typeof $returned === "bigint" && BigInt.asIntN(64, $returned) === $returned, "Test.add", $k)};
+            }
+
+            export { add };
+        "#}
+    );
+}
+
+/// A `()` payload has no predicate: `$effect` is handed `null`, and discards whatever the
+/// companion returns.
+///
+/// Mutation-checked by building the predicate for a `()` payload too: the check then
+/// reads `$returned === undefined` where `null` is expected.
+#[test]
+fn an_effectful_facade_with_a_unit_payload_passes_no_predicate() {
+    let text = emitted_effectful(indoc! {r#"
+        module foreign Test exposing (log)
+
+        import Task exposing (Task, Failure)
+
+        log : Int -> Task (Result Failure ())
+    "#});
+
+    assert!(
+        text.contains("$effect(() => $companion$log(a), null, \"Test.log\", $k)"),
+        "expected `null` in place of a predicate, got:\n{}",
+        text
+    );
+}
+
+/// A facade constant naming a `Task` is one module-level `Task`, and its companion export is
+/// called, with no arguments, inside the run function — each time the `Task` runs.
+///
+/// Mutation-checked by emitting an arity-zero effectful facade with the `unsafe` constant's
+/// shape (the companion export named, not called): the `$companion$now()` call goes missing.
+#[test]
+fn an_effectful_facade_constant_is_one_task_whose_companion_is_called_when_run() {
+    let text = emitted_effectful(indoc! {r#"
+        module foreign Test exposing (now)
+
+        import Task exposing (Task, Failure)
+
+        now : Task (Result Failure Int)
+    "#});
+
+    assert!(
+        text.contains("const now = {$: \"Task\", a: ($k) => $effect(() => $companion$now(), "),
+        "expected a module-level `Task` calling the companion with no arguments, got:\n{}",
+        text
+    );
+}
+
+/// An `unsafe` facade in the same module as an effectful one keeps its direct call: only the
+/// unmarked signature gets the `Task`.
+///
+/// Mutation-checked by wrapping every facade declaration in `$effect`: `safe` then returns a
+/// `Task`.
+#[test]
+fn an_unsafe_facade_beside_an_effectful_one_is_not_wrapped() {
+    let text = emitted_effectful(indoc! {r#"
+        module foreign Test exposing (safe, effectful)
+
+        import Task exposing (Task, Failure)
+
+        unsafe safe : Int -> Int
+        effectful : Int -> Task (Result Failure Int)
+    "#});
+
+    assert!(
+        text.contains("function safe(a) {\n  const $returned = $companion$safe(a);"),
+        "expected `safe` to call its companion directly, got:\n{}",
+        text
+    );
+    assert!(text.contains("function effectful(a) {\n  return {$: \"Task\""));
+}
+
+/// The errors a facade module fails to emit with once `edit` has changed its canonical module.
+/// Canonicalization refuses each shape these tests need before the backend sees it, so the
+/// module is checked as a valid `unsafe` facade and then edited by hand.
+fn refused_after(edit: impl FnOnce(&mut CheckedModule)) -> Vec<Error> {
+    let mut module = checked(indoc! {r#"
+        module foreign Test exposing (add)
+
+        unsafe add : Int -> Int -> Int
+    "#});
+    edit(&mut module);
+    match javascript::emit(&module, true, &unions_of(&module)) {
         Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
         Err(errors) => errors,
-    };
+    }
+}
+
+/// A facade signature not marked `unsafe` whose result is not `Task (Result Failure a)` has no
+/// payload to check, and is refused as `NotAnEffect`, naming the value and blaming the
+/// signature's mark. `Int -> Int -> Int` unmarked is what canonicalization refuses first, so the
+/// mark is cleared by hand.
+///
+/// Mutation-checked by dropping the `NotAnEffect` push from `effectful_result_payload`'s `None`
+/// arm: no error is reported and this goes red.
+#[test]
+fn an_unmarked_facade_signature_that_is_not_a_task_is_refused_as_not_an_effect() {
+    let errors = refused_after(|module| {
+        if let Some(Value::TypedValue { marked_unsafe, .. }) =
+            module.canonical.values.get_mut(&Name::new("add"))
+        {
+            *marked_unsafe = false;
+        }
+    });
 
     // `NodeSpan`'s equality ignores the span, so this compares the variant and the name.
     assert_eq!(
         errors,
-        vec![Error::Effectful {
+        vec![Error::NotAnEffect {
             name: Name::new("add"),
             span: NodeSpan::none(),
         }]
+    );
+    assert_eq!(
+        errors[0].message(),
+        "`add` is not marked `unsafe`, and its result is not `Task (Result Failure a)`, so no wrapper can be built for it"
+    );
+}
+
+/// A facade declaration the canonical module holds no signature for is refused as
+/// `NoSignature`, whose message claims nothing about an `unsafe` mark or a `Task`, since there
+/// is no signature to read either from.
+///
+/// Mutation-checked by pushing `NotAnEffect` at the `_` arm again: the variant assertion goes
+/// red.
+#[test]
+fn a_facade_declaration_with_no_signature_is_refused_as_no_signature() {
+    let errors = refused_after(|module| {
+        module.canonical.values.remove(&Name::new("add"));
+    });
+
+    assert_eq!(
+        errors,
+        vec![Error::NoSignature {
+            name: Name::new("add"),
+            span: NodeSpan::none(),
+        }]
+    );
+    assert_eq!(
+        errors[0].message(),
+        "the facade declaration `add` has no type signature, so its boundary cannot be built"
     );
 }
 

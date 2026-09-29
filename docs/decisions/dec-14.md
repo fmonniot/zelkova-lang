@@ -97,8 +97,8 @@ settles how a companion is found and emitted.
 
 ## 4 — The layout is adopted before anything can run it
 
-Nothing above runs: no wrapper is generated around an effectful call
-([`GEN-1`](../tickets/gen-1.md)), and no runner runs a
+Nothing above runs: an effectful facade's call is wrapped in a `Task` over the runtime's
+`$effect` ([`GEN-16`](../tickets/gen-16.md)), but no runner runs that `Task`, and none runs a
 companion's checks, since `zelkova test` runs `Test` values only.
 
 The alternative was to place the file where decision 1's runner-up put it and move it when the

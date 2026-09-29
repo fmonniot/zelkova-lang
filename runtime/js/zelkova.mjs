@@ -36,6 +36,11 @@ encoding (docs/spec/interop.md#a-union-crosses-as-a-tagged-value), so the constr
 and order in `std/core/src/Task.zel` have to match the ones it reads. An exception raised while
 a continuation runs is an abort: the promise rejects with it, after a `Suspend` as well as before.
 
+`$effect(call, check, exported, k)` is the wrapper an effectful facade's `Task` is built over
+(docs/decisions/dec-22.md#4--the-wrapper-is-one-runtime-helper-and-a-synchronous-companion-continues-synchronously).
+Only it and `$runTask` know what `Done` looks like: emitted code hands it the companion call, the
+payload's predicate and the continuation, and never builds a `Bounce` or a `Suspend`.
+
 Equality, comparison and arithmetic are deliberately absent from this file: those are ordinary
 functions behind the `Js/Basics` and `Js/Utils` facades (`std/core/src/Js/`), and a second copy
 here is how the two drift apart.
@@ -119,7 +124,7 @@ function yieldToHost(callback) {
 // inside the same `Suspend`'s function replaces the first. A `resume` called while the loop is
 // running for another reason, or after `Halt`, is not held and not ignored: it enters the loop.
 // Calling `resume` once is the `Suspend`'s function's job; the one-shot guard of DEC-22
-// decision 5 belongs to `$effect` (`GEN-16`), not to this loop.
+// decision 5 belongs to `$effect`, below, not to this loop.
 export function $runTask(task) {
   return new Promise((resolve, reject) => {
     const halt = { $: 'Halt' };
@@ -181,4 +186,88 @@ export function $runTask(task) {
 
     enter(() => task.a(finish));
   });
+}
+
+// EFFECTS
+
+// What a host says about a value a companion threw or rejected with: its `String`
+// conversion, which for an `Error` is its name and message. A value with no conversion
+// (`Object.create(null)`) still has to produce a description, since the wrapper's job is to
+// keep a broken companion from ending the program.
+function describeThrown(thrown) {
+  try {
+    return String(thrown);
+  } catch {
+    return 'a value that cannot be described';
+  }
+}
+
+// `$effect(call, check, exported, k)` is the wrapper an effectful facade's call site gets
+// (docs/spec/interop.md#an-effectful-facade, docs/decisions/dec-22.md decisions 4 and 5). The
+// emitted `Task`'s run function calls it with the continuation it was handed:
+//
+//   - `call` calls the companion with the facade's arguments and returns what it returns;
+//   - `check` is the predicate of the payload type, or `null` for a `()` payload, which is
+//     discarded, not checked, so the companion's return value is ignored and the result is
+//     `Ok` of `undefined`;
+//   - `exported` names the export, module and value, and is what `Malformed` carries;
+//   - `k` is the continuation, which is handed one `Result Failure a`.
+//
+// It returns a `Done`. `call` is called inside a `try` that covers that call and nothing else:
+// the continuation and the predicate run outside it, so an abort raised further down the chain
+// is never turned into `Threw`. A value that is not a `Promise` — recognised by `instanceof`,
+// which is what an `async function` returns, so a thenable of any other kind is a plain value
+// and fails the predicate — gives a `Bounce`; a throw gives a `Bounce` of `Threw`; a `Promise`
+// gives a `Suspend` whose function hands the two handlers to `promise.then(onValue, onReject)`,
+// never a `.catch` after a `.then`, for the same reason. Each handler resumes the loop with the
+// step the synchronous cases would have bounced. A promise's value is checked inside that step,
+// so a predicate that throws is an abort the loop's `try` turns into a rejection of
+// `$runTask`'s promise, as it is for a synchronous value.
+//
+// The step is one-shot: run a second time it aborts, naming the export. A promise settles once
+// and a companion returns once, so only a defect in this function or in the loop reaches that.
+export function $effect(call, check, exported, k) {
+  let used = false;
+
+  const stepFor = (result) => () => {
+    if (used) {
+      $abort(`the continuation of \`${exported}\`'s effect was run twice`);
+    }
+    used = true;
+    return k(result);
+  };
+  const bounce = (result) => ({ $: 'Bounce', a: stepFor(result) });
+
+  const returned = (value) => {
+    if (check === null) return { $: 'Ok', a: undefined };
+    if (check(value)) return { $: 'Ok', a: value };
+    return {
+      $: 'Err',
+      a: {
+        $: 'Malformed',
+        a: `\`${exported}\`'s companion returned a value its declared type does not admit`,
+      },
+    };
+  };
+  const threw = (thrown) => ({ $: 'Err', a: { $: 'Threw', a: describeThrown(thrown) } });
+
+  let value;
+  try {
+    value = call();
+  } catch (thrown) {
+    return bounce(threw(thrown));
+  }
+
+  if (value instanceof Promise) {
+    return {
+      $: 'Suspend',
+      a: (resume) => {
+        value.then(
+          (settled) => resume(() => stepFor(returned(settled))()),
+          (rejected) => resume(stepFor(threw(rejected))),
+        );
+      },
+    };
+  }
+  return bounce(returned(value));
 }
