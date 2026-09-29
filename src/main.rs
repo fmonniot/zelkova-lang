@@ -20,6 +20,12 @@ enum Command {
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
+    /// Compile a package and run its `main` under `node`.
+    Run {
+        /// The package root. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
     /// Compile a package and its tests, then run every test the package holds under `node`.
     Test {
         /// The package root. Defaults to the current directory.
@@ -35,11 +41,13 @@ fn main() {
 
     let result = match cli.command {
         Command::Compile { dir } => compiler::compile_package(&dir).map(|()| 0),
+        Command::Run { dir } => compiler::program_runner::run(&dir),
         Command::Test { dir } => compiler::test_runner::run(&dir),
     };
 
     // `run` answers the code `node` ended with, which is non-zero when a test did not
-    // pass. A failed test is not an error to report: the entry point printed it already.
+    // pass or a program aborted. Neither is an error to report: the entry point printed it
+    // already.
     match result {
         Ok(0) => {}
         Ok(code) => std::process::exit(code),

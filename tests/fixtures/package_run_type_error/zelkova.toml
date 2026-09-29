@@ -1,0 +1,13 @@
+# A program that does not compile: `main` names `App`, which is well formed, but `App` also
+# declares a value whose body does not have the type it is annotated with. `tests/cli.rs`
+# runs `zelkova run` on a copy of it with a stub `node`, to pin that a build that fails never
+# reaches `node`.
+name = "package-run-type-error"
+version = "0.1.0"
+main = "App"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies]

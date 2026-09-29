@@ -608,6 +608,5 @@ carries no payload, so a program reaching `main` has said what to do with each o
 A package can be both. `main` and `private-modules` are independent, so a program may also be
 depended on as a library, and the module holding `main` may be one of the private ones.
 
-**Not implemented:** nothing yet turns a package into something that runs
-([`GEN-22`](../tickets/gen-22.md)), and the block above does not compile under the spec
-harness, which has no `Task` among its interfaces.
+**Not implemented:** the block above does not compile under the spec harness, which has no
+`Task` among its interfaces.

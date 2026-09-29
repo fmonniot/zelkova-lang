@@ -99,6 +99,8 @@ pub mod source;
 // Public because `test_runner`, and `zelkova test` through it, is its caller, the way
 // `scalars` and `default_imports` are public for the phase that reads them.
 pub mod test_collection;
+// Public because `CompilationError::ProgramRun` carries its `Error`, and `zelkova run` calls `run`.
+pub mod program_runner;
 // Public because `CompilationError::TestRun` carries its `Error`, and `zelkova test` calls `run`.
 pub mod test_runner;
 pub mod tuple;
@@ -625,6 +627,10 @@ pub enum CompilationError {
     /// write its entry point or could not run `node`. A test that ran and did not pass is
     /// not this; it is the exit code of the run.
     TestRun(test_runner::Error),
+    /// A package's program could not be run: `zelkova run` was pointed at a package with no
+    /// `main`, or could not write its entry point or could not run `node`. A program that
+    /// ran and aborted is not this; it is the exit code of the run.
+    ProgramRun(program_runner::Error),
 
     /// An error together with the file the module it belongs to was read from.
     ///
@@ -736,6 +742,9 @@ impl CompilationError {
                 .with_notes(error.notes()),
             // Like `Output`, about the machine and not about any source.
             CompilationError::TestRun(error) => Diagnostic::error()
+                .with_message(error.message())
+                .with_notes(error.notes()),
+            CompilationError::ProgramRun(error) => Diagnostic::error()
                 .with_message(error.message())
                 .with_notes(error.notes()),
             // A dependency cycle belongs to the package, not to any one module, so it

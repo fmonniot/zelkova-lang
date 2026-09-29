@@ -1,0 +1,10 @@
+module App exposing (main)
+
+
+answer : Int
+answer = true
+
+
+main : Task ()
+main =
+  Task.succeed ()

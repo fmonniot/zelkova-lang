@@ -210,7 +210,7 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed` and `map`             
   │   GEN-16   the wrapper an effectful facade's call gets: `Ok`, `Threw`, `Malformed`  ── closed
   │
   ├── LANG-75  `main` is checked to be a `Task ()`                   ── closed
-  │     └── GEN-22  `zelkova run [DIR]`                              ← + GEN-21 (closed)
+  │     └── GEN-22  `zelkova run [DIR]`                              ── closed
   │
   └── LANG-76  a `Test` can hold a `Task`, and `run.mjs` waits on it  ── closed
         │
@@ -442,7 +442,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-19 | task | — | closed 2026-09-27 | Production and test output should be at the same folder level |
 | GEN-20 | task | — | closed 2026-09-28 | Emit `()` |
 | GEN-21 | task | — | closed 2026-09-29 | The JavaScript runtime cannot run a `Task` |
-| [GEN-22](gen-22.md) | task | — | open | There is no `zelkova run`: nothing runs a program's `main` |
+| GEN-22 | task | — | closed 2026-09-29 | There is no `zelkova run`: nothing runs a program's `main` |
 | [GEN-23](gen-23.md) | task | — | open | An `unsafe` facade's forwarding code does not catch what its companion throws |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
