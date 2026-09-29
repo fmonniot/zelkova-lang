@@ -125,8 +125,10 @@ a package's `src/` at all, and it is [`GEN-1`](../tickets/gen-1.md)'s.
 
 ## What nothing checks
 
-All of it. No compiler pass, no test and no harness observes any of the four decisions above, and
-the spec section they produced is held only to failing to parse on its modifier. A `.mjs`
-companion is not a module, so the compiler walking `tests/` does not observe it either, and
-`zelkova test` imports only the emitted modules that hold a `Test`, so it does not run one.
-Until a runner does, the rule is kept by whoever places the next file.
+The layout runs: `std/core`'s three test facades under `tests/Js/` declare every check as an
+effect, `zelkova test` runs each one through `Test.succeeds`, and each test companion imports
+the companion it checks by its path across the two roots, which the build rewrites to where it
+placed that companion. What no pass observes is the rules themselves. A `.mjs` file under
+`tests/` that no facade names is ignored, a test facade marked `unsafe` compiles, and a test
+companion that reaches its target by any path but the shortest one is copied as written and
+fails to load. Those are kept by whoever places the next file.

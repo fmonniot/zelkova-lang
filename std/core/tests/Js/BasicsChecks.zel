@@ -1,0 +1,70 @@
+-- The test facade over `src/Js/Basics.mjs`, the companion behind `Js.Basics`. Each
+-- check is declared as an effect whose `Ok ()` is a pass: its companion,
+-- `BasicsChecks.mjs`, says what each one asserts and throws when an assertion fails,
+-- which the wrapper around the call turns into `Err (Threw ..)`. `Js.BasicsTests`
+-- exposes one `Test` per check.
+module foreign Js.BasicsChecks exposing
+  ( addWrapsAt64Bits
+  , subWrapsAt64Bits
+  , mulWrapsAt64Bits
+  , addSubAndMulComputeOnFloats
+  , idivByZeroIsZero
+  , idivTruncatesTowardZero
+  , idivWrapsTheOneDivisionThatLeavesTheRange
+  , modByZeroIsZero
+  , modByCorrectsTheSign
+  , remainderByZeroIsZero
+  , remainderByKeepsTheSignOfTheDividend
+  , roundWrapsNanAndInfinitiesToZero
+  , floorWrapsNanAndInfinitiesToZero
+  , ceilingWrapsNanAndInfinitiesToZero
+  , truncateWrapsNanAndInfinitiesToZero
+  , roundWrapsAnOutOfRangeValue
+  , floorWrapsAnOutOfRangeValue
+  , ceilingWrapsAnOutOfRangeValue
+  , truncateWrapsAnOutOfRangeValue
+  , aValuePast2To53ConvertsExactly
+  , roundFloorAndCeilingKeepTheirDirection
+  , truncateRoundsTowardZero
+  , toFloatReturnsANumber
+  , toFloatConvertsALargeIntToTheNearestDouble
+  , toFloatLosesPrecisionAbove2To53
+  , powComputesOnTwoInts
+  , powWrapsAt64Bits
+  , powComputesOnFloats
+  , powThrowsOnANegativeIntExponent
+  )
+
+import Result exposing (Result)
+import Task exposing (Task, Failure)
+
+
+addWrapsAt64Bits : Task (Result Failure ())
+subWrapsAt64Bits : Task (Result Failure ())
+mulWrapsAt64Bits : Task (Result Failure ())
+addSubAndMulComputeOnFloats : Task (Result Failure ())
+idivByZeroIsZero : Task (Result Failure ())
+idivTruncatesTowardZero : Task (Result Failure ())
+idivWrapsTheOneDivisionThatLeavesTheRange : Task (Result Failure ())
+modByZeroIsZero : Task (Result Failure ())
+modByCorrectsTheSign : Task (Result Failure ())
+remainderByZeroIsZero : Task (Result Failure ())
+remainderByKeepsTheSignOfTheDividend : Task (Result Failure ())
+roundWrapsNanAndInfinitiesToZero : Task (Result Failure ())
+floorWrapsNanAndInfinitiesToZero : Task (Result Failure ())
+ceilingWrapsNanAndInfinitiesToZero : Task (Result Failure ())
+truncateWrapsNanAndInfinitiesToZero : Task (Result Failure ())
+roundWrapsAnOutOfRangeValue : Task (Result Failure ())
+floorWrapsAnOutOfRangeValue : Task (Result Failure ())
+ceilingWrapsAnOutOfRangeValue : Task (Result Failure ())
+truncateWrapsAnOutOfRangeValue : Task (Result Failure ())
+aValuePast2To53ConvertsExactly : Task (Result Failure ())
+roundFloorAndCeilingKeepTheirDirection : Task (Result Failure ())
+truncateRoundsTowardZero : Task (Result Failure ())
+toFloatReturnsANumber : Task (Result Failure ())
+toFloatConvertsALargeIntToTheNearestDouble : Task (Result Failure ())
+toFloatLosesPrecisionAbove2To53 : Task (Result Failure ())
+powComputesOnTwoInts : Task (Result Failure ())
+powWrapsAt64Bits : Task (Result Failure ())
+powComputesOnFloats : Task (Result Failure ())
+powThrowsOnANegativeIntExponent : Task (Result Failure ())

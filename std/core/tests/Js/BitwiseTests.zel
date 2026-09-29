@@ -1,0 +1,80 @@
+-- One `Test` per check `Js.BitwiseChecks` declares, each passing when its check's
+-- `Task` produces `Ok ()`. A failed check is reported with the description of what its
+-- companion threw.
+module Js.BitwiseTests exposing
+  ( andOrXorCombineAll64Bits
+  , complementFlipsAll64Bits
+  , shiftLeftByMultipliesByAPowerOfTwo
+  , shiftLeftByWrapsAt64Bits
+  , aShiftOf64OrMoreIsZero
+  , aNegativeCountReadsAsZero
+  , shiftRightByFillsWithTheTopmostBit
+  , shiftRightByAt64OrMoreFillsFromTheTopmostBit
+  , shiftRightZfByFillsWithZeros
+  , shiftRightZfByZeroIsTheIdentity
+  , everyShiftLandsInTheIntRange
+  , aLargeOffsetDoesNotThrowAndClamps
+  )
+
+import Js.BitwiseChecks as Checks
+import Test exposing (Test)
+
+
+andOrXorCombineAll64Bits : Test
+andOrXorCombineAll64Bits =
+  Test.succeeds Checks.andOrXorCombineAll64Bits
+
+
+complementFlipsAll64Bits : Test
+complementFlipsAll64Bits =
+  Test.succeeds Checks.complementFlipsAll64Bits
+
+
+shiftLeftByMultipliesByAPowerOfTwo : Test
+shiftLeftByMultipliesByAPowerOfTwo =
+  Test.succeeds Checks.shiftLeftByMultipliesByAPowerOfTwo
+
+
+shiftLeftByWrapsAt64Bits : Test
+shiftLeftByWrapsAt64Bits =
+  Test.succeeds Checks.shiftLeftByWrapsAt64Bits
+
+
+aShiftOf64OrMoreIsZero : Test
+aShiftOf64OrMoreIsZero =
+  Test.succeeds Checks.aShiftOf64OrMoreIsZero
+
+
+aNegativeCountReadsAsZero : Test
+aNegativeCountReadsAsZero =
+  Test.succeeds Checks.aNegativeCountReadsAsZero
+
+
+shiftRightByFillsWithTheTopmostBit : Test
+shiftRightByFillsWithTheTopmostBit =
+  Test.succeeds Checks.shiftRightByFillsWithTheTopmostBit
+
+
+shiftRightByAt64OrMoreFillsFromTheTopmostBit : Test
+shiftRightByAt64OrMoreFillsFromTheTopmostBit =
+  Test.succeeds Checks.shiftRightByAt64OrMoreFillsFromTheTopmostBit
+
+
+shiftRightZfByFillsWithZeros : Test
+shiftRightZfByFillsWithZeros =
+  Test.succeeds Checks.shiftRightZfByFillsWithZeros
+
+
+shiftRightZfByZeroIsTheIdentity : Test
+shiftRightZfByZeroIsTheIdentity =
+  Test.succeeds Checks.shiftRightZfByZeroIsTheIdentity
+
+
+everyShiftLandsInTheIntRange : Test
+everyShiftLandsInTheIntRange =
+  Test.succeeds Checks.everyShiftLandsInTheIntRange
+
+
+aLargeOffsetDoesNotThrowAndClamps : Test
+aLargeOffsetDoesNotThrowAndClamps =
+  Test.succeeds Checks.aLargeOffsetDoesNotThrowAndClamps

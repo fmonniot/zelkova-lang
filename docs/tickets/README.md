@@ -216,7 +216,7 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed` and `map`             
         │
         │  + GEN-16 (closed)
         ▼
-      TEST-7   `std/core`'s companion checks become Zelkova tests
+      TEST-7   `std/core`'s companion checks become Zelkova tests  ── closed
 ```
 
 **Deliberately off the path**, each one because the goal does not need it:
@@ -233,8 +233,6 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed` and `map`             
   6](../decisions/dec-22.md#6--webassembly-the-direction-with-two-open-questions) records the
   WebAssembly direction so that the JavaScript choice does not foreclose it. Nothing is built for
   it.
-- [`TEST-3`](test-3.md), CI. It is not a prerequisite, but [`TEST-7`](test-7.md) changes its
-  second step, so whichever of the two lands second updates the other.
 
 ## Tickets
 
@@ -468,5 +466,5 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TEST-4 | task | — | closed 2026-09-11 | A facade's `.mjs` companion test lives in the compiler repo, not in the package that ships the companion |
 | [TEST-5](test-5.md) | task | — | open | Two `manifest` unit tests can be handed the same temporary directory, so the suite fails intermittently |
 | [TEST-6](test-6.md) | task | — | open | The `tests/cli.rs` tests that run `zelkova` on a shared fixture write one `build/` between them |
-| [TEST-7](test-7.md) | task | — | open | `std/core`'s companion checks are run by `node --test` and not as Zelkova tests |
+| TEST-7 | task | — | closed 2026-09-29 | `std/core`'s companion checks are run by `node --test` and not as Zelkova tests |
 | [TEST-8](test-8.md) | task | — | open | CI never runs the runtime's own checks, `runtime/js/tests/zelkovaChecks.mjs` |

@@ -34,21 +34,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      # std/core's Zelkova tests, its companions' checks among them (tests/Js/).
       - name: Zelkova tests
         run: cargo run -- test std/core
-      # Runs even when the step above failed, so one red step does not hide the other.
-      - name: Companion checks
+      # The behavioural half of what the compiler emits: each file compiles its own fixture
+      # under tests/fixtures/ with this checkout's compiler, then loads the output. Runs even
+      # when the step above failed, so one red step does not hide the other.
+      - name: Compiler checks
         if: ${{ !cancelled() }}
         run: |
           # `node --test` passes on a glob that matches no file. This lists what it will run,
           # and `grep .` fails the step when that list is empty.
-          find std/core/tests -name '*.mjs' | grep .
-          node --test 'std/core/tests/**/*.mjs'
-      # The behavioural half of what the compiler emits: each file compiles its own fixture
-      # under tests/fixtures/ with this checkout's compiler, then loads the output.
-      - name: Compiler checks
-        if: ${{ !cancelled() }}
-        run: |
           find tests/js -name '*.mjs' | grep .
           node --test 'tests/js/**/*.mjs'
 

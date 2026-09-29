@@ -15,7 +15,7 @@ names `GEN-2` as where a list's encoding comes from.
 
 - `tests/js/Utils.test.mjs` does not exist. The checks moved to
   `std/core/tests/Js/UtilsChecks.mjs` with [`TEST-4`](README.md), and CI runs them with
-  `node --test 'std/core/tests/**/*.mjs'`. `tests/js/` exists again, holding `BoundaryChecks.mjs`,
+  `cargo run -- test std/core`. `tests/js/` exists again, holding `BoundaryChecks.mjs`,
   which makes the stale path look plausible.
 - The tuple encoding is chosen. Code generation builds a tuple as a JavaScript array —
   `javascript.rs`' `TypedTermKind::Tuple` arm writes `[a, b]`, and a pattern reads `base[index]` —
@@ -32,7 +32,7 @@ undecided. Change no behaviour.
 
 **Acceptance:** `git grep -n -e "tests/js/Utils.test.mjs" -e "(GEN-2)" -- docs/tickets/bug-20.md
 std/core/src/Js/Utils.mjs` prints nothing, and
-`node --test 'std/core/tests/**/*.mjs'` still passes.
+`cargo run -- test std/core` still passes.
 
 **Found:** while closing [`GEN-2`](README.md), grepping for the references to repoint. Left
 unfixed there because `Utils.mjs` is a companion whose behaviour that ticket did not touch, and

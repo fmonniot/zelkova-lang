@@ -1,0 +1,182 @@
+-- One `Test` per check `Js.BasicsChecks` declares, each passing when its check's
+-- `Task` produces `Ok ()`. A failed check is reported with the description of what its
+-- companion threw.
+module Js.BasicsTests exposing
+  ( addWrapsAt64Bits
+  , subWrapsAt64Bits
+  , mulWrapsAt64Bits
+  , addSubAndMulComputeOnFloats
+  , idivByZeroIsZero
+  , idivTruncatesTowardZero
+  , idivWrapsTheOneDivisionThatLeavesTheRange
+  , modByZeroIsZero
+  , modByCorrectsTheSign
+  , remainderByZeroIsZero
+  , remainderByKeepsTheSignOfTheDividend
+  , roundWrapsNanAndInfinitiesToZero
+  , floorWrapsNanAndInfinitiesToZero
+  , ceilingWrapsNanAndInfinitiesToZero
+  , truncateWrapsNanAndInfinitiesToZero
+  , roundWrapsAnOutOfRangeValue
+  , floorWrapsAnOutOfRangeValue
+  , ceilingWrapsAnOutOfRangeValue
+  , truncateWrapsAnOutOfRangeValue
+  , aValuePast2To53ConvertsExactly
+  , roundFloorAndCeilingKeepTheirDirection
+  , truncateRoundsTowardZero
+  , toFloatReturnsANumber
+  , toFloatConvertsALargeIntToTheNearestDouble
+  , toFloatLosesPrecisionAbove2To53
+  , powComputesOnTwoInts
+  , powWrapsAt64Bits
+  , powComputesOnFloats
+  , powThrowsOnANegativeIntExponent
+  )
+
+import Js.BasicsChecks as Checks
+import Test exposing (Test)
+
+
+addWrapsAt64Bits : Test
+addWrapsAt64Bits =
+  Test.succeeds Checks.addWrapsAt64Bits
+
+
+subWrapsAt64Bits : Test
+subWrapsAt64Bits =
+  Test.succeeds Checks.subWrapsAt64Bits
+
+
+mulWrapsAt64Bits : Test
+mulWrapsAt64Bits =
+  Test.succeeds Checks.mulWrapsAt64Bits
+
+
+addSubAndMulComputeOnFloats : Test
+addSubAndMulComputeOnFloats =
+  Test.succeeds Checks.addSubAndMulComputeOnFloats
+
+
+idivByZeroIsZero : Test
+idivByZeroIsZero =
+  Test.succeeds Checks.idivByZeroIsZero
+
+
+idivTruncatesTowardZero : Test
+idivTruncatesTowardZero =
+  Test.succeeds Checks.idivTruncatesTowardZero
+
+
+idivWrapsTheOneDivisionThatLeavesTheRange : Test
+idivWrapsTheOneDivisionThatLeavesTheRange =
+  Test.succeeds Checks.idivWrapsTheOneDivisionThatLeavesTheRange
+
+
+modByZeroIsZero : Test
+modByZeroIsZero =
+  Test.succeeds Checks.modByZeroIsZero
+
+
+modByCorrectsTheSign : Test
+modByCorrectsTheSign =
+  Test.succeeds Checks.modByCorrectsTheSign
+
+
+remainderByZeroIsZero : Test
+remainderByZeroIsZero =
+  Test.succeeds Checks.remainderByZeroIsZero
+
+
+remainderByKeepsTheSignOfTheDividend : Test
+remainderByKeepsTheSignOfTheDividend =
+  Test.succeeds Checks.remainderByKeepsTheSignOfTheDividend
+
+
+roundWrapsNanAndInfinitiesToZero : Test
+roundWrapsNanAndInfinitiesToZero =
+  Test.succeeds Checks.roundWrapsNanAndInfinitiesToZero
+
+
+floorWrapsNanAndInfinitiesToZero : Test
+floorWrapsNanAndInfinitiesToZero =
+  Test.succeeds Checks.floorWrapsNanAndInfinitiesToZero
+
+
+ceilingWrapsNanAndInfinitiesToZero : Test
+ceilingWrapsNanAndInfinitiesToZero =
+  Test.succeeds Checks.ceilingWrapsNanAndInfinitiesToZero
+
+
+truncateWrapsNanAndInfinitiesToZero : Test
+truncateWrapsNanAndInfinitiesToZero =
+  Test.succeeds Checks.truncateWrapsNanAndInfinitiesToZero
+
+
+roundWrapsAnOutOfRangeValue : Test
+roundWrapsAnOutOfRangeValue =
+  Test.succeeds Checks.roundWrapsAnOutOfRangeValue
+
+
+floorWrapsAnOutOfRangeValue : Test
+floorWrapsAnOutOfRangeValue =
+  Test.succeeds Checks.floorWrapsAnOutOfRangeValue
+
+
+ceilingWrapsAnOutOfRangeValue : Test
+ceilingWrapsAnOutOfRangeValue =
+  Test.succeeds Checks.ceilingWrapsAnOutOfRangeValue
+
+
+truncateWrapsAnOutOfRangeValue : Test
+truncateWrapsAnOutOfRangeValue =
+  Test.succeeds Checks.truncateWrapsAnOutOfRangeValue
+
+
+aValuePast2To53ConvertsExactly : Test
+aValuePast2To53ConvertsExactly =
+  Test.succeeds Checks.aValuePast2To53ConvertsExactly
+
+
+roundFloorAndCeilingKeepTheirDirection : Test
+roundFloorAndCeilingKeepTheirDirection =
+  Test.succeeds Checks.roundFloorAndCeilingKeepTheirDirection
+
+
+truncateRoundsTowardZero : Test
+truncateRoundsTowardZero =
+  Test.succeeds Checks.truncateRoundsTowardZero
+
+
+toFloatReturnsANumber : Test
+toFloatReturnsANumber =
+  Test.succeeds Checks.toFloatReturnsANumber
+
+
+toFloatConvertsALargeIntToTheNearestDouble : Test
+toFloatConvertsALargeIntToTheNearestDouble =
+  Test.succeeds Checks.toFloatConvertsALargeIntToTheNearestDouble
+
+
+toFloatLosesPrecisionAbove2To53 : Test
+toFloatLosesPrecisionAbove2To53 =
+  Test.succeeds Checks.toFloatLosesPrecisionAbove2To53
+
+
+powComputesOnTwoInts : Test
+powComputesOnTwoInts =
+  Test.succeeds Checks.powComputesOnTwoInts
+
+
+powWrapsAt64Bits : Test
+powWrapsAt64Bits =
+  Test.succeeds Checks.powWrapsAt64Bits
+
+
+powComputesOnFloats : Test
+powComputesOnFloats =
+  Test.succeeds Checks.powComputesOnFloats
+
+
+powThrowsOnANegativeIntExponent : Test
+powThrowsOnANegativeIntExponent =
+  Test.succeeds Checks.powThrowsOnANegativeIntExponent

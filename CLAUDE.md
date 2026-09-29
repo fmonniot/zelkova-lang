@@ -39,15 +39,15 @@ checked list, a parse failure or a panic is a regression you introduced.
 default for a missing required subcommand.
 
 `cargo test` never loads a `.mjs` companion. `std/core`'s Zelkova tests run with `cargo run --
-test std/core`. A companion's checks belong to the package that ships it, under that package's
-own `tests/` root — `std/core/tests/Js/` holds the ones that exist — and run with `node --test
-'std/core/tests/**/*.mjs'`. Where such a file goes and why is [*Testing a
+test std/core`. A companion's checks belong to the package that ships it, as a test facade
+under that package's own `tests/` root — `std/core/tests/Js/` holds the ones that exist — and
+run as that package's Zelkova tests. Where such a file goes and why is [*Testing a
 companion*](docs/spec/interop.md#testing-a-companion); each file's header says what it covers.
 What the *compiler* emits is checked by running it under `node --test 'tests/js/**/*.mjs'`: each
 file there compiles a fixture under `tests/fixtures/` itself, with `cargo run`, and loads the
-output or runs its tests. CI's `javascript` job runs all three, in that order.
+output or runs its tests. CI's `javascript` job runs both, in that order.
 
-`cargo run -- test std/core` currently reports **`32 tests: 32 passed, 0 failed, 0 errored`
+`cargo run -- test std/core` currently reports **`98 tests: 98 passed, 0 failed, 0 errored`
 and exits 0**. `std/core/tests/FloatTests.ignored` is excluded from that count by its extension:
 `Basics.add` sends a `Float` through the `addInt` facade and its boundary check aborts, so
 `FloatTests`' two tests fail to load and are disabled until [`BUG-44`](docs/tickets/bug-44.md)

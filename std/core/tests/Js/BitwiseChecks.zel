@@ -1,0 +1,36 @@
+-- The test facade over `src/Js/Bitwise.mjs`, the companion behind `Js.Bitwise`. Each
+-- check is declared as an effect whose `Ok ()` is a pass: its companion,
+-- `BitwiseChecks.mjs`, says what each one asserts and throws when an assertion fails,
+-- which the wrapper around the call turns into `Err (Threw ..)`. `Js.BitwiseTests`
+-- exposes one `Test` per check.
+module foreign Js.BitwiseChecks exposing
+  ( andOrXorCombineAll64Bits
+  , complementFlipsAll64Bits
+  , shiftLeftByMultipliesByAPowerOfTwo
+  , shiftLeftByWrapsAt64Bits
+  , aShiftOf64OrMoreIsZero
+  , aNegativeCountReadsAsZero
+  , shiftRightByFillsWithTheTopmostBit
+  , shiftRightByAt64OrMoreFillsFromTheTopmostBit
+  , shiftRightZfByFillsWithZeros
+  , shiftRightZfByZeroIsTheIdentity
+  , everyShiftLandsInTheIntRange
+  , aLargeOffsetDoesNotThrowAndClamps
+  )
+
+import Result exposing (Result)
+import Task exposing (Task, Failure)
+
+
+andOrXorCombineAll64Bits : Task (Result Failure ())
+complementFlipsAll64Bits : Task (Result Failure ())
+shiftLeftByMultipliesByAPowerOfTwo : Task (Result Failure ())
+shiftLeftByWrapsAt64Bits : Task (Result Failure ())
+aShiftOf64OrMoreIsZero : Task (Result Failure ())
+aNegativeCountReadsAsZero : Task (Result Failure ())
+shiftRightByFillsWithTheTopmostBit : Task (Result Failure ())
+shiftRightByAt64OrMoreFillsFromTheTopmostBit : Task (Result Failure ())
+shiftRightZfByFillsWithZeros : Task (Result Failure ())
+shiftRightZfByZeroIsTheIdentity : Task (Result Failure ())
+everyShiftLandsInTheIntRange : Task (Result Failure ())
+aLargeOffsetDoesNotThrowAndClamps : Task (Result Failure ())
