@@ -2378,10 +2378,10 @@ fn facade_signature_over_admitted_tuple_is_accepted() {
 // `Task` to that one position — never an argument, never nested inside
 // another type — whether or not the signature is `unsafe`.
 //
-// `zelkova-core` declares neither `Task` nor `Result` yet (`LANG-74`), so
-// every fixture below hands `canonicalize_with_interfaces` the synthetic
-// `task_interface`/`result_interface` built for exactly this, beside the
-// scalars `canonicalize_with_scalars` already supplies.
+// These fixtures are checked without `std/core`, so every fixture below hands
+// `canonicalize_with_interfaces` the synthetic `task_interface`/`result_interface`
+// built for exactly this, beside the scalars `canonicalize_with_scalars` already
+// supplies.
 
 /// The interface map every test below uses: [`scalar_interfaces`] plus
 /// `Task`, `Result` and `String` — the three `zelkova-core` modules an

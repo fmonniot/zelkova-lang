@@ -142,7 +142,8 @@ continueWith f k a =
     Task next -> Bounce (callWith next k)
 ```
 
-(Illustrative. The names are [`LANG-74`](../tickets/README.md)'s to choose.)
+(Illustrative. `LANG-74` chose the names for `succeed` and `map`; `andThen`'s are
+[`LANG-78`](../tickets/lang-78.md)'s.)
 
 Bouncing on the continuation alone is not enough. Running `andThen f (andThen g t)` calls the
 outer run function, which calls the inner one, which calls `t`'s — one frame per link, before

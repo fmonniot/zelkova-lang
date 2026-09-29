@@ -56,8 +56,10 @@ list. Or like a grocery list. Or like GitHub issues. So saying "the task is
 to tell me the current POSIX time" does not complete the task! You need
 [`perform`](#perform) tasks or [`attempt`](#attempt) tasks.
 -}
-type alias Task x a =
-  Platform.Task x a
+-- The declaration lives in `Task.zel` now (LANG-74), with `succeed` and `map` rewritten over
+-- it and `Failure` added. This file is a `.ignored` reference for porting the rest of the
+-- module, not a second declaration of the type; Elm's two-parameter `Task x a` does not
+-- carry over.
 
 
 

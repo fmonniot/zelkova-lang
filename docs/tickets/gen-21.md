@@ -9,7 +9,7 @@ is run. [`GEN-22`](gen-22.md) (`zelkova run`) and [`LANG-76`](lang-76.md) (a `Te
 `Task`) both call it, and nothing else may: [*Running a `Task`*](../spec/evaluation-semantics.md#running-a-task)
 says nothing else runs one.
 
-**Depends on:** [`LANG-74`](lang-74.md), for a `Task` to run. The checks below build their `Task`s
+**Depends on:** [`LANG-74`](README.md), for a `Task` to run. The checks below build their `Task`s
 by hand, so the runtime half can be written first.
 
 **Location:** `runtime/js/zelkova.mjs` — beside `$curry` and `$abort`, and its header comment, which
@@ -17,7 +17,7 @@ lists what the runtime holds; `runtime/js/tests/zelkovaChecks.mjs`, where the ru
 live; `src/compiler/javascript.rs` — `RUNTIME`, which embeds the file.
 
 **Problem:** building a `Task` [performs nothing](../spec/evaluation-semantics.md#effects). Once
-[`LANG-74`](lang-74.md) lands, a program can build any number of them and none can happen, because
+[`LANG-74`](README.md) landed, a program can build any number of them and none can happen, because
 nothing hands a `Task` its final continuation and waits for it.
 
 **Approach:** apply [`DEC-22`](../decisions/dec-22.md) decisions [2](../decisions/dec-22.md#2--done-is-a-union-core-declares-and-does-not-export-and-the-runtime-reads-it),
@@ -27,8 +27,10 @@ repeated here, so that the two do not drift. In short: one exported function, `$
 returns a JavaScript `Promise` of the `Task`'s final value. It hands the `Task` a final
 continuation that resolves the promise and returns `Halt`, and drives a loop over `Done` —
 `Bounce` calls its step, `Suspend` calls its function with a `resume` that re-enters the loop,
-`Halt` stops. Every N bounces the loop yields to the host with a macrotask; choosing N and the
-primitive is this ticket's. Every entry into the loop, the first and each resumption, is wrapped
+`Halt` stops. The emitted `Bounce` thunk is a curried partial application, so the loop calls
+it as `step(undefined)`; `step()` would return the partial function, not a `Done`. Every N
+bounces the loop yields to the host with a macrotask; choosing N and the primitive is this
+ticket's. Every entry into the loop, the first and each resumption, is wrapped
 in one `try` that rejects the promise. Its callers are generated entry points (`run.mjs` and the
 program entry `GEN-22` writes), never emitted module code.
 
@@ -52,7 +54,8 @@ representation:
 - a continuation that throws rejects the promise.
 
 Then, once the build can emit `std/core`'s `Task`, add the same checks as Zelkova tests. That is
-[`LANG-76`](lang-76.md)'s acceptance, not this ticket's.
+[`LANG-76`](lang-76.md)'s acceptance, not this ticket's. The `andThen` checks among them wait
+for [`LANG-78`](lang-78.md), since `Task.zel` does not export `andThen` yet.
 
 **Acceptance:** `node --test runtime/js/tests/` passes the six checks above, and each has been
 seen to fail with the behaviour it pins neutralised. `$runTask` is described in the runtime's

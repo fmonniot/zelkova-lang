@@ -1735,3 +1735,42 @@ fn a_binding_named_undefined_is_mangled() {
         text
     );
 }
+
+/// `std/core`'s `Task` module emits as it stands: `succeed` and `map` are exported and
+/// nothing else is (`Done`'s helpers and the `Task` constructor stay inside), and each
+/// helper that would hand off to a run function or a continuation returns a `Bounce`
+/// of that call instead of making it.
+///
+/// Whether the emitted chain *runs* is not checked here; that needs the runtime's loop
+/// (`GEN-21`).
+///
+/// Mutation-checked by making `Task.zel`'s `succeedRun` call `k a` directly instead of
+/// returning `Bounce (callWith k a)`: the `succeedRun` assertion goes red.
+#[test]
+fn std_cores_task_module_emits_with_every_handoff_a_bounce() {
+    let source = include_str!("../std/core/src/Task.zel");
+    let core = PackageName::new("zelkova-core").unwrap();
+    let module = check_module(&core, &HashMap::new(), &parse_source(source))
+        .unwrap_or_else(|error| panic!("expected Task.zel to check, got {:?}", error));
+
+    let text = emit(&module);
+
+    assert!(
+        text.contains("export { map, succeed };"),
+        "expected exactly `map` and `succeed` exported, got:\n{}",
+        text
+    );
+    for helper in ["succeedRun", "mapRun", "mapContinue"] {
+        let start = text
+            .find(&format!("function {}(", helper))
+            .unwrap_or_else(|| panic!("`{}` should be emitted, got:\n{}", helper, text));
+        let body = &text[start..];
+        let body = &body[..body.find("\n}").unwrap_or(body.len())];
+        assert!(
+            body.contains("return {$: \"Bounce\", a: "),
+            "`{}` should return a `Bounce`, got:\n{}",
+            helper,
+            body
+        );
+    }
+}

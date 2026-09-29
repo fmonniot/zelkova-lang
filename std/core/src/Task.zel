@@ -1,0 +1,93 @@
+module Task exposing (Task, Failure(..), succeed, map)
+
+{-| A `Task` describes work that produces a value when it is run. Building one
+performs nothing.
+
+This module holds the whole of `Task`'s representation, and that representation is
+`DEC-22`'s (`docs/decisions/dec-22.md`): a `Task` is continuation-passing, and every
+handoff between two steps returns a `Bounce` to the runtime's loop instead of calling
+on. The runtime reads `Done` by its constructors' order and names, so this file and
+`runtime/js/zelkova.mjs` change together.
+
+`Task` is exposed without its constructor, and `Done` is not exposed at all, so a
+program outside this package can build a `Task` only through the functions below and
+the facades that declare an effect.
+
+# Tasks
+@docs Task, Failure
+
+# Building and mapping
+@docs succeed, map
+-}
+
+
+{-| Work that produces an `a` when it is run. It holds a function that is handed a
+continuation and calls it with the result, now or later.
+-}
+type Task a
+  = Task ((a -> Done) -> Done)
+
+
+{-| What a step of a running `Task` hands back to the runtime's loop.
+
+- `Bounce step` asks the loop to call `step ()`.
+- `Suspend register` asks the loop to call `register resume`. `register` schedules
+  work and arranges for `resume` to be called with the next step once its result is
+  in, so calling it has an effect however pure its type reads.
+- `Halt` means there is nothing more to do.
+
+Only the runtime builds `Suspend` and `Halt`, and only the runtime calls the function
+`Suspend` holds. Nothing in this module does either.
+-}
+type Done
+  = Bounce (() -> Done)
+  | Suspend ((() -> Done) -> ())
+  | Halt
+
+
+{-| A failure any effect can produce, whatever else it produces: a companion that
+threw, or whose promise rejected, or one that returned a value its declared type does
+not admit.
+
+`Threw` carries the host's description of what happened. `Malformed` carries the name
+of the export that returned the bad value.
+-}
+type Failure
+  = Threw String
+  | Malformed String
+
+
+{-| A `Task` that produces the given value as soon as it is run. -}
+succeed : a -> Task a
+succeed a =
+  Task (succeedRun a)
+
+
+{-| Transform the value a `Task` produces. -}
+map : (a -> b) -> Task a -> Task b
+map f (Task run) =
+  Task (mapRun f run)
+
+
+-- Every helper below returns a `Bounce` of the call it would otherwise make: a
+-- run function and a continuation are both reached from the bottom of the loop.
+
+
+callWith : (a -> Done) -> a -> () -> Done
+callWith k a () =
+  k a
+
+
+succeedRun : a -> (a -> Done) -> Done
+succeedRun a k =
+  Bounce (callWith k a)
+
+
+mapRun : (a -> b) -> ((a -> Done) -> Done) -> (b -> Done) -> Done
+mapRun f run k =
+  Bounce (callWith run (mapContinue f k))
+
+
+mapContinue : (a -> b) -> (b -> Done) -> a -> Done
+mapContinue f k a =
+  Bounce (callWith k (f a))

@@ -320,9 +320,11 @@ inside another type.
 (Result IoError String))` — two `Result`s, collapsed into one by the module that
 [publishes `read`](packages.md#what-a-package-exposes) to other packages.
 
-**Not implemented:** neither block above compiles, because nothing declares the `Task` or the
-`Failure` they import. No wrapper is generated, so code generation refuses an effectful facade
-rather than checking what its companion returns ([`GEN-16`](../tickets/gen-16.md)).
+**Not implemented:** neither block above compiles under this harness, which compiles a block
+against a stand-in `Basics` and nothing else, so their `import Task` finds no module even though
+`zelkova-core` declares `Task` and `Failure`. No wrapper is generated, so code generation
+refuses an effectful facade rather than checking what its companion returns
+([`GEN-16`](../tickets/gen-16.md)).
 
 ## An `unsafe` facade
 
@@ -465,10 +467,10 @@ A runner finds [a value of type `Test` a module under `tests/`
 exposes](packages.md#what-a-test-is), so `Core.PrimTest` imports the facade and exposes one per
 check.
 
-**Not implemented:** none of this runs. Nothing declares `Task` or `Failure`, so the `zel` block
-does not compile. No wrapper is generated around an effectful call either
-([`GEN-16`](../tickets/gen-16.md)), so a `Test` whose checks are
-`Task`s cannot be written.
+**Not implemented:** none of this runs. The spec harness compiles a block against a stand-in
+`Basics` only, so the `zel` block does not compile there. No wrapper is generated around an
+effectful call either ([`GEN-16`](../tickets/gen-16.md)), so a `Test` whose checks are `Task`s
+cannot be written.
 `zelkova test` runs a `Test` that is `Pass` or `Fail`; it cannot run a `Task`. Until it can, a
 companion test under `tests/` is a `.mjs` file that the target's own test runner is pointed at
 directly, and the facade half of the pair is not written yet.

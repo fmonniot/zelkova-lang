@@ -171,7 +171,8 @@ The goal is **a `Task` that runs**: a facade can declare an effect, a program's 
 Zelkova tests. What a `Task` is was settled in [`DEC-11`](../decisions/dec-11.md), and what a
 broken companion does in [`DEC-12`](../decisions/dec-12.md). The chapters are
 [Effects](../spec/evaluation-semantics.md#effects) and
-[An effectful facade](../spec/interop.md#an-effectful-facade). Nothing in them is implemented.
+[An effectful facade](../spec/interop.md#an-effectful-facade). `Task`, `Failure`, `succeed` and `map` are declared in `std/core`;
+nothing else in them is implemented.
 
 The language owner settled the program's shape on 2026-09-27:
 
@@ -197,7 +198,10 @@ GEN-2    the boundary predicates                                               �
   │
   │  SPEC-37 + LANG-73 (both closed)
   ▼
-LANG-74  `std/core` declares `Task`, `Failure`, `succeed`, `map` and `andThen`
+LANG-74  `std/core` declares `Task`, `Failure`, `succeed` and `map`             ── closed
+  │        (`andThen` was split out: it waits on lambdas)
+  │
+  ├── LANG-78  `Task.andThen`                                        ← + LANG-34 (lambdas)
   │
   ├── GEN-21   the runtime runs a `Task`
   │     │
@@ -220,12 +224,11 @@ LANG-74  `std/core` declares `Task`, `Failure`, `succeed`, `map` and `andThen`
 - **String literals.** `Failure` carries a `String`, but the wrapper builds it from a JavaScript
   string, and no ticket above writes one in source. [`LANG-77`](lang-77.md) tracks implementing
   them; [Strings](../spec/lexical-structure.md#strings) is the chapter.
-- [`LANG-34`](lang-34.md) and [`LANG-33`](lang-33.md), lambdas and `let`. `andThen` and a chain
-  of effects are writable with named helpers and partial application. That is clumsy, and it is
-  enough.
+- [`LANG-33`](lang-33.md), `let`. `succeed` and `map` are written with named helpers and partial
+  application, and that is enough for what the goal needs.
 - The rest of Elm's `Task` API: `map2` and up, `sequence`, `onError`, `perform`. `Task (Result e a)`
   makes most of them different functions, and which ones Zelkova wants is a question for after
-  [`LANG-74`](lang-74.md).
+  [`LANG-74`](README.md).
 - [`GEN-15`](gen-15.md), the WebAssembly backend. [`DEC-22` decision
   6](../decisions/dec-22.md#6--webassembly-the-direction-with-two-open-questions) records the
   WebAssembly direction so that the JavaScript choice does not foreclose it. Nothing is built for
@@ -411,10 +414,11 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-71](lang-71.md) | task | — | open | A constraint context of four or more constraints does not parse |
 | LANG-72 | task | — | closed 2026-09-28 | `()` is not recognised as a type, an expression or a pattern |
 | LANG-73 | task | — | closed 2026-09-28 | `std/core` declares no `String`, so no annotation can name one |
-| [LANG-74](lang-74.md) | task | — | open | `std/core` declares no `Task` and no `Failure` |
+| LANG-74 | task | — | closed 2026-09-28 | `std/core` declares no `Task` and no `Failure` |
 | [LANG-75](lang-75.md) | task | — | open | The manifest's `main` is read, and nothing checks what it names |
 | [LANG-76](lang-76.md) | task | — | open | A `Test` cannot hold a `Task`, so no effectful check can be a test |
 | [LANG-77](lang-77.md) | task | — | open | String literals are specified but not tokenized |
+| [LANG-78](lang-78.md) | task | — | open | `std/core`'s `Task` has no `andThen` |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
