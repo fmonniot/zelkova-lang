@@ -8,8 +8,8 @@ three. The toolchain appendix gains a paragraph first.
 Zelkova program something that runs.
 
 **Depends on:** [`LANG-75`](README.md) (closed), so that what is run is known to be a `Task ()`;
-[`GEN-21`](README.md) (closed), for `$runTask`. Nothing here needs [`GEN-16`](README.md) (closed): a `main` of
-`Task.succeed ()` exercises all of it. A program that does anything observable does need an
+[`GEN-21`](README.md) (closed), for `$runTask`. Nothing here needs [`GEN-16`](README.md) (closed): a
+`main` of `Task.succeed ()` exercises all of it. A program that does anything observable does need an
 effectful facade, and so the end-to-end acceptance below needs `GEN-16`, which has closed.
 
 **Location:** `src/main.rs` — `Command`, beside `Compile` and `Test`;
@@ -52,4 +52,5 @@ under `node` by hand and, once [`TEST-3`](test-3.md) lands, in CI.
 
 **Acceptance:** `zelkova run` on a package whose `main` is `Task.succeed ()` exits `0`. The same
 package with a `main` that calls an effectful facade whose companion writes to stdout prints that
-output. That second check needed [`GEN-16`](README.md), which has closed. The toolchain appendix describes the subcommand.
+output. That second check needed [`GEN-16`](README.md), which has closed. The toolchain appendix
+describes the subcommand.
