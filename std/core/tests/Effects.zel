@@ -1,0 +1,18 @@
+-- The facade behind `EffectsTests`: five companions, in `Effects.mjs`, each declared as an
+-- effect, which is what a facade without `unsafe` is. Each returns the bare payload its
+-- signature names, or misbehaves on purpose, for the wrapper the compiler emits around it
+-- to catch.
+module foreign Effects exposing
+  ( throwsSynchronously, rejects, wrongShape, correctAfterAwait, discards )
+
+import Basics exposing (..)
+import Result exposing (Result(..))
+import Task exposing (Task, Failure)
+
+
+throwsSynchronously : Int -> Task (Result Failure Int)
+rejects : Int -> Task (Result Failure Int)
+wrongShape : Int -> Task (Result Failure Int)
+correctAfterAwait : Int -> Task (Result Failure Int)
+
+discards : Int -> Task (Result Failure ())

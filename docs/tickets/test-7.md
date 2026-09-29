@@ -8,7 +8,7 @@ layout.
 **Part of:** [Active work: effects](README.md#active-work-effects), as its last step. It is the
 "what comes after" that the bootstrap section left unfiled because it needed `Task` first.
 
-**Depends on:** [`LANG-76`](README.md) (closed), for a `Test` that holds a `Task`; [`GEN-16`](gen-16.md),
+**Depends on:** [`LANG-76`](README.md) (closed), for a `Test` that holds a `Task`; [`GEN-16`](README.md) (closed),
 for the wrapper that turns a check that throws into `Err (Threw ..)`; [`LANG-72`](README.md) (closed)
 and [`GEN-20`](README.md) (closed), for the `()` in each check's type; [`LANG-68`](README.md)
 (closed), so that the new facades are held to the shape they declare.
