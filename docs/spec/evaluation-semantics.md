@@ -665,7 +665,7 @@ length, and a `Task` that builds the next one by calling itself, run without exh
 stack, whether or not any step waits. The guarantee covers the sequencing only: a function a step
 calls uses stack as any other call does, under the [tail-call rule](#recursion-and-tail-calls).
 
-**Not implemented:** nothing runs a `Task` ([`GEN-21`](../tickets/gen-21.md)).
+**Not implemented:** no command runs a `Task` ([`GEN-22`](../tickets/gen-22.md)).
 
 ### An effect that can fail
 

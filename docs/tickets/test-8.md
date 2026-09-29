@@ -14,7 +14,7 @@ own checks are a `node --test` file whose header says to run it with
 `node --test 'runtime/js/tests/**/*.mjs'`. Neither glob in CI matches that path, and
 `CLAUDE.md`'s *Commands* section does not name it, so a change to `zelkova.mjs` that breaks
 `$curry` is caught only if the Zelkova tests happen to exercise the broken case.
-[`GEN-21`](gen-21.md) is about to add the `Task` loop's checks to the same file, and
+[`GEN-21`](README.md) added the `Task` loop's checks to the same file, and
 [`GEN-16`](gen-16.md) plans a check beside it, which makes the gap bigger rather than smaller.
 
 **Approach:** run `runtime/js/tests/**/*.mjs` in the `javascript` job — its own step, or one more

@@ -1742,7 +1742,7 @@ fn a_binding_named_undefined_is_mangled() {
 /// of that call instead of making it.
 ///
 /// Whether the emitted chain *runs* is not checked here; that needs the runtime's loop
-/// (`GEN-21`).
+/// (`$runTask`), which `runtime/js/tests/zelkovaChecks.mjs` checks.
 ///
 /// Mutation-checked by making `Task.zel`'s `succeedRun` call `k a` directly instead of
 /// returning `Bounce (callWith k a)`: the `succeedRun` assertion goes red.

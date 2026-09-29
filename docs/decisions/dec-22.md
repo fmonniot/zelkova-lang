@@ -7,7 +7,7 @@
 one rule a program can observe: a `Task` sequences any number of steps without exhausting the
 stack. Everything else here is representation a program cannot observe, so it lives in the code
 that implements it — `std/core/src/Task.zel` ([`LANG-74`](../tickets/README.md)),
-`runtime/js/zelkova.mjs` ([`GEN-21`](../tickets/README.md)) and the facade call site
+`runtime/js/zelkova.mjs` ([`GEN-21`](../tickets/README.md), closed) and the facade call site
 ([`GEN-16`](../tickets/README.md)) — and in no chapter.
 
 [DEC-11](dec-11.md) made a `Task` a value of an ordinary type, and sequencing ordinary functions

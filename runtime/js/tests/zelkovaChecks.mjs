@@ -15,14 +15,14 @@
 //
 // CLAUDE.md's "A green test proves nothing until you have seen it fail" was applied to each
 // check below by temporarily breaking the one behaviour it names — discarding the surplus in
-// `$curry`'s over-application branch, and only ever accumulating one argument per call — and
-// confirming the relevant check went red before restoring the fix. The comments on the
+// `$curry`'s over-application branch, and only ever accumulating one argument per call, and for
+// `$runTask` the neutralisations each of its checks names — and confirming the relevant check went red before restoring the fix. The comments on the
 // over-application and several-arguments-at-once checks say what a broken implementation would
 // have to do to still pass them.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { $curry, $abort } from '../zelkova.mjs';
+import { $curry, $abort, $runTask } from '../zelkova.mjs';
 
 // Plain n-ary functions, the shape a declaration of that many parameters is emitted as
 // (docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper).
@@ -117,4 +117,116 @@ test('$abort never returns a value', () => {
     // expected — $abort always throws
   }
   assert.equal(returned, 'not yet called');
+});
+
+// RUNNING A TASK
+
+// A `Task` built by hand in docs/decisions/dec-22.md's representation, the way `Task.zel`
+// writes it: a `Task` holds a run function, and every handoff returns a `Bounce` of the call
+// instead of making it. `callWith` is curried by `$curry` because the emitted code is: a step
+// is a partial application, which is why the loop has to call it as `step(undefined)`.
+const callWith = $curry((k, a, _unit) => k(a), 3);
+const bounce = (step) => ({ $: 'Bounce', a: step });
+const halt = { $: 'Halt' };
+const task = (run) => ({ $: 'Task', a: run });
+
+const succeed = (a) => task($curry((a, k) => bounce(callWith(k, a)), 2)(a));
+
+// `andThen f (Task run)`: `f` is applied once `run` produces a value.
+const andThen = (f, { a: run }) => task((k) => bounce(callWith(run, continueWith(f, k))));
+const continueWith = (f, k) => $curry((a) => bounce(callWith(f(a).a, k)), 1);
+
+test('$runTask of succeed resolves with its value', async () => {
+  // Mutation checked by calling `step()` in the loop: a curried step then returns the partial
+  // function, which is not a `Done`, and this rejects.
+  assert.equal(await $runTask(succeed(42)), 42);
+});
+
+test('andThen runs the second task only after the first has produced its value', async () => {
+  const events = [];
+  const first = task((k) => {
+    events.push('first run');
+    return bounce(callWith(k, 1));
+  });
+  const chained = andThen((a) => {
+    events.push(`f got ${a}`);
+    return succeed(a + 1);
+  }, first);
+  assert.deepEqual(events, [], 'building a Task performs nothing');
+  assert.equal(await $runTask(chained), 2);
+  assert.deepEqual(events, ['first run', 'f got 1']);
+});
+
+const LINKS = 100_000;
+
+test('a chain of andThen links over succeed completes without exhausting the stack', async () => {
+  // `andThen inc (andThen inc (… (succeed 0)))`: running the outer link calls the inner run
+  // function, so a loop that made that call directly would nest LINKS frames. Mutation
+  // checked by having the helpers call `run` directly instead of bouncing: a RangeError.
+  let chain = succeed(0);
+  for (let i = 0; i < LINKS; i++) chain = andThen((a) => succeed(a + 1), chain);
+  assert.equal(await $runTask(chain), LINKS);
+});
+
+test('a Task that builds the next link itself completes without exhausting the stack', async () => {
+  // The other nesting: each `f` returns `andThen f (succeed …)`, so the chain is built while
+  // it runs.
+  const count = (a) => (a < LINKS ? andThen(count, succeed(a + 1)) : succeed(a));
+  assert.equal(await $runTask(andThen(count, succeed(0))), LINKS);
+});
+
+test('a timer set before a chain longer than the yield interval fires before the chain finishes', async () => {
+  // Mutation checked by removing the yield (following every `Bounce` at once): the chain
+  // finishes in one synchronous run, before any timer.
+  let fired = false;
+  setTimeout(() => { fired = true; }, 0);
+  let chain = succeed(0);
+  for (let i = 0; i < LINKS; i++) chain = andThen((a) => succeed(a + 1), chain);
+  const firedWhenFinished = await $runTask(chain).then(() => fired);
+  assert.equal(firedWhenFinished, true);
+});
+
+// A `Task` that suspends: it hands the loop a `Suspend` whose function calls `resume` from a
+// timer with the step that carries `value` on.
+const later = (value) => task((k) => ({
+  $: 'Suspend',
+  a: (resume) => { setTimeout(() => resume(callWith(k, value)), 0); },
+}));
+
+test('a Suspend resumes the loop with the step it is handed', async () => {
+  assert.equal(await $runTask(andThen((a) => succeed(a * 2), later(21))), 42);
+});
+
+test('a Suspend that resumes at once continues from the loop, not from inside its own function', async () => {
+  // `register` calls `resume` before it returns. The loop picks the step up after `register`
+  // has returned, so it does not nest a second loop in `register`'s frame. Mutation checked by
+  // making `resume` always call `enter`: the continuation then runs inside `register`, and
+  // 'continued' comes before 'register returned'.
+  const events = [];
+  const at_once = task((k) => ({
+    $: 'Suspend',
+    a: (resume) => {
+      resume($curry((_unit) => { events.push('continued'); return k(7); }, 1));
+      events.push('register returned');
+    },
+  }));
+  assert.equal(await $runTask(at_once), 7);
+  assert.deepEqual(events, ['register returned', 'continued']);
+});
+
+test('a continuation that throws after a Suspend resumed still rejects the promise', async () => {
+  // Mutation checked by removing the `try` from `enter` while leaving the first entry
+  // covered: the throw is then an uncaught exception in a timer and the promise never settles.
+  const boom = new Error('boom after resume');
+  const chained = andThen(() => { throw boom; }, later(1));
+  await assert.rejects($runTask(chained), (error) => error === boom);
+});
+
+test('a continuation that throws rejects the promise', async () => {
+  // Mutation checked by dropping `reject(error)` from `enter`'s `catch`: the promise then
+  // never settles. (Removing the `try` outright is not a mutation this check can see: a throw
+  // on the first entry, before any yield, escapes into the Promise executor, which rejects.)
+  const boom = new Error('boom');
+  const chained = andThen(() => { throw boom; }, succeed(1));
+  await assert.rejects($runTask(chained), (error) => error === boom);
 });

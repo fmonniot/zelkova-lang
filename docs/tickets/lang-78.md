@@ -18,7 +18,7 @@ whose **Not implemented:** paragraph cites this ticket.
 
 **Problem:** [*Sequencing*](../spec/evaluation-semantics.md#sequencing) says core gives `Task` an
 `andThen : (a -> Task b) -> Task a -> Task b`. `Task.zel` exports `succeed` and `map` and no
-`andThen`, so a program cannot run one `Task` after another, and `GEN-21`'s sequencing
+`andThen`, so a program cannot run one `Task` after another, and the runtime's sequencing
 check has nothing of core's to call.
 
 **Approach:**
@@ -43,7 +43,7 @@ check has nothing of core's to call.
 signature and for the case that a function returning a `Task Bool` handed a `Task Int` is a type
 error. `tests/javascript.rs`, beside the `Task` emit test, asserting that both of `andThen`'s
 helpers return a `Bounce`. Whether the emitted chain actually *sequences* is checked once
-[`GEN-21`](gen-21.md) can run a `Task`, not here.
+`$runTask` can run a `Task`, not here.
 
 **Acceptance:** `Task.andThen` is exported from `zelkova-core`'s `Task` module with type
 `(a -> Task b) -> Task a -> Task b`, checked by a test that annotates it so. `cargo run --
