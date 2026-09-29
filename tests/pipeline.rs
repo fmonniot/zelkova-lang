@@ -5455,6 +5455,15 @@ fn a_main_naming_no_module_under_src_is_a_manifest_error() {
             error.as_diagnostic().labels.is_empty(),
             "`zelkova.toml` is not a file a label can point into"
         );
+        assert!(
+            error
+                .as_diagnostic()
+                .notes
+                .iter()
+                .any(|note| note.contains("has no location")),
+            "the notes say why there is no caret: {:?}",
+            error.as_diagnostic().notes
+        );
     }
 }
 
@@ -5592,5 +5601,52 @@ fn a_dependencys_main_is_checked_too() {
         ),
         "got {:?}",
         error
+    );
+}
+
+/// `main : Task ()` refers to an unannotated `helper`, so the typer leaves `main`
+/// unchecked and inference solves nothing for it. The annotation is what is judged, it is
+/// right, and the build fails with the emitter's own refusal instead of a claim that
+/// `main` is not a `Task ()`.
+///
+/// Mutation-checked by deleting the `.or_else(..)` fallback in `program::check`: the
+/// diagnostic becomes "the type of `main` could not be determined".
+#[test]
+fn an_unchecked_main_is_judged_by_its_annotation() {
+    let root = fixture_package("package_main_unchecked");
+
+    let error = only_error(
+        &root,
+        compile_package(&root).expect_err("the typer cannot check `main`, so it cannot be emitted"),
+    );
+
+    let message = error.as_diagnostic().message;
+    assert!(
+        message.contains("the type checker could not check it"),
+        "the emitter's refusal, got {}",
+        message
+    );
+    assert!(!message.contains("must have type"), "got {}", message);
+}
+
+/// The same shape with `main : Int`: the annotation is wrong, and that is what the
+/// diagnostic says even though inference never reached `main`.
+///
+/// Mutation-checked with the same deletion: the headline loses `Int`.
+#[test]
+fn an_unchecked_main_with_the_wrong_annotation_is_still_rejected() {
+    let root = fixture_package("package_main_unchecked_wrong");
+
+    let error = only_error(
+        &root,
+        compile_package(&root).expect_err("`main : Int` is not a `Task ()`"),
+    );
+
+    let message = error.as_diagnostic().message;
+    assert!(message.contains("`Int`"), "got {}", message);
+    assert!(
+        message.contains("must have type `Task ()`"),
+        "got {}",
+        message
     );
 }
