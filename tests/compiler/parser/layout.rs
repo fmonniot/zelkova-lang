@@ -127,14 +127,21 @@ fn an_empty_case_block_is_left_to_the_grammar() {
 }
 
 /// Assert that `source` is rejected as an indented top-level declaration,
-/// blaming the `f` on its last line, read as a continuation of the
-/// declaration on line 1.
-fn assert_indented_declaration(source: &str, description: &str) {
+/// blaming `blamed` — the first token of the indented line, found as the last
+/// occurrence of `blamed_text` in `source` — read as a continuation of the
+/// declaration that began on `declaration_line`.
+fn assert_indented_declaration(
+    source: &str,
+    blamed: Token,
+    blamed_text: &str,
+    declaration_line: usize,
+    description: &str,
+) {
     let (error, range) = layout_error(source);
 
     let LayoutError::IndentedDeclaration {
         token,
-        declaration_line,
+        declaration_line: line,
     } = error
     else {
         panic!(
@@ -143,20 +150,49 @@ fn assert_indented_declaration(source: &str, description: &str) {
         );
     };
     assert_eq!(
-        token.value,
-        Token::LowerIdentifier("f".to_string()),
+        token.value, blamed,
         "{}: the error must blame the indented line's first token",
         description
     );
-    assert_eq!(declaration_line, 1, "{}", description);
+    assert_eq!(line, declaration_line, "{}", description);
 
-    let expected_start = source.rfind("f =").expect("fixture must contain `f =`");
+    let expected_start = source
+        .rfind(blamed_text)
+        .expect("fixture must contain the blamed text");
+    let name_length = blamed_text.split(' ').next().map_or(0, |name| name.len());
     assert_eq!(
         range,
-        expected_start..expected_start + 1,
+        expected_start..expected_start + name_length,
         "{}: the caret must sit on the indented line's first token",
         description
     );
+}
+
+/// Assert that `source` is rejected by the grammar itself, with its
+/// `UnexpectedToken` on `rejected`, and hand back the tokens it expected.
+fn assert_left_to_the_grammar(source: &str, rejected: Token, description: &str) -> Vec<String> {
+    let file = SimpleFile::new("test".to_owned(), source.to_owned());
+
+    match parser::parse(&file) {
+        Err(Error::UnexpectedToken { token, expected }) => {
+            assert_eq!(token.value, rejected, "{}", description);
+            expected
+        }
+        other => panic!(
+            "{}: expected the grammar's error on {:?}, got {:?}",
+            description,
+            rejected,
+            other.map(|_| "Ok(_)")
+        ),
+    }
+}
+
+fn f() -> Token {
+    Token::LowerIdentifier("f".to_string())
+}
+
+fn g() -> Token {
+    Token::LowerIdentifier("g".to_string())
 }
 
 /// A top-level declaration whose first token is not in column 1 continues
@@ -177,6 +213,9 @@ fn a_declaration_not_in_column_1_after_a_complete_one_is_an_indentation_error() 
 
               f = 1
         "},
+        f(),
+        "f =",
+        1,
         "declaration indented by two spaces",
     );
 
@@ -186,6 +225,9 @@ fn a_declaration_not_in_column_1_after_a_complete_one_is_an_indentation_error() 
 
             {- a note -} f = 1
         "},
+        f(),
+        "f =",
+        1,
         "declaration after a block comment",
     );
 
@@ -196,7 +238,182 @@ fn a_declaration_not_in_column_1_after_a_complete_one_is_an_indentation_error() 
             {- a note -} f =
               1
         "},
+        f(),
+        "f =",
+        1,
         "declaration after a block comment, body on the next line",
+    );
+}
+
+/// After a declaration whose last expression or type takes arguments, the
+/// grammar reads an indented line's first name as one more argument, and
+/// stops only at the line's `=` or `:`. That is still an indented
+/// declaration, and is reported as one, blaming the line's first token.
+///
+/// Verified to fail by dropping the `rejects_sign_on_the_same_line` arm from
+/// `Layout::explain`: all four then come back as `Error::UnexpectedToken` on
+/// `=` or `:`, and `layout_error` panics.
+#[test]
+fn a_declaration_indented_after_one_that_takes_arguments_is_an_indentation_error() {
+    assert_indented_declaration(
+        indoc::indoc! {"
+            module Example exposing (..)
+
+            f = 1
+
+              g = 2
+        "},
+        g(),
+        "g =",
+        3,
+        "definition after a definition",
+    );
+
+    assert_indented_declaration(
+        indoc::indoc! {"
+            module Example exposing (..)
+
+            f : Int
+
+              f = 1
+        "},
+        f(),
+        "f =",
+        3,
+        "definition after an annotation",
+    );
+
+    assert_indented_declaration(
+        indoc::indoc! {"
+            module Example exposing (..)
+
+            type T = A
+
+              g = 1
+        "},
+        g(),
+        "g =",
+        3,
+        "definition after a type declaration",
+    );
+
+    assert_indented_declaration(
+        indoc::indoc! {"
+            module Example exposing (..)
+
+            f = 1
+
+              g : Int
+        "},
+        g(),
+        "g :",
+        3,
+        "annotation after a definition",
+    );
+}
+
+/// A line whose `=` is rejected is not an indented declaration when the
+/// declaration above was still waiting for its body: `f =` followed by
+/// `  g x = 1` is a definition missing its body or a stray `=`, and the
+/// grammar's error on `=` is the accurate one.
+///
+/// Verified to fail by making the `complete_before` closure `parser::parse`
+/// passes to `Layout::explain` return `true`: `g` is then reported as an
+/// `IndentedDeclaration`.
+#[test]
+fn an_indented_line_after_an_incomplete_declaration_keeps_the_grammar_error() {
+    assert_left_to_the_grammar(
+        indoc::indoc! {"
+            module Example exposing (..)
+
+            f =
+              g x = 1
+        "},
+        Token::Equal,
+        "a definition with no body before an indented one",
+    );
+}
+
+/// An indented line that no declaration could start with is a typo inside
+/// the declaration above, and keeps the grammar's error with its list of
+/// expected tokens. For `import Foo` followed by `  (bar)` that list names
+/// the missing `exposing`.
+///
+/// Verified to fail by dropping the `can_start_declaration` condition from
+/// `Layout::explain`: each source is then reported as an
+/// `IndentedDeclaration`.
+#[test]
+fn an_indented_line_no_declaration_starts_with_keeps_the_grammar_error() {
+    let expected = assert_left_to_the_grammar(
+        indoc::indoc! {"
+            module Example exposing (..)
+
+            import Foo
+              (bar)
+        "},
+        Token::LPar,
+        "an import missing `exposing`",
+    );
+    assert!(
+        expected.iter().any(|e| e == "exposing") && expected.iter().any(|e| e == "as"),
+        "the grammar's hint must survive, got {:?}",
+        expected
+    );
+
+    assert_left_to_the_grammar(
+        indoc::indoc! {"
+            module Example exposing (..)
+
+            f =
+              1
+              )
+        "},
+        Token::RPar,
+        "a stray parenthesis on its own line",
+    );
+
+    assert_left_to_the_grammar(
+        indoc::indoc! {"
+            module Example exposing (..)
+
+            f x =
+              if x then 1 else 2
+              then 3
+        "},
+        Token::Then,
+        "a stray `then` on its own line",
+    );
+}
+
+/// Only the first token on a line is recorded as the start of a continuation
+/// line. A name the grammar rejects in the middle of an indented line is an
+/// ordinary syntax error.
+///
+/// Verified to fail by replacing the `self.line_start … == Some(start.absolute)`
+/// condition in `Layout::handle_next_token` with `true`: `f` is then recorded
+/// as a line's first token and reported as an `IndentedDeclaration`.
+#[test]
+fn a_name_rejected_in_the_middle_of_an_indented_line_keeps_the_grammar_error() {
+    assert_left_to_the_grammar(
+        indoc::indoc! {"
+            module Example exposing (..)
+
+            import Foo
+              exposing (bar) f
+        "},
+        f(),
+        "a name after an import's exposing list",
+    );
+
+    assert_left_to_the_grammar(
+        indoc::indoc! {"
+            module Example exposing (..)
+
+            f =
+              1 )
+        "},
+        Token::RPar,
+        "a stray parenthesis at the end of a line",
     );
 }
 
@@ -274,47 +491,33 @@ fn an_indented_continuation_line_still_parses() {
 #[test]
 fn an_indented_file_is_not_reported_as_an_indented_declaration() {
     // Not `indoc!`: it would strip the leading indentation this is about.
-    let source = "  module Example exposing (f)\n\n  f x =\n    1\n";
-    let file = SimpleFile::new("test".to_owned(), source.to_owned());
-
-    match parser::parse(&file) {
-        Err(Error::UnexpectedToken { token, .. }) => {
-            assert_eq!(token.value, Token::LowerIdentifier("f".to_string()))
-        }
-        other => panic!(
-            "expected the grammar's error on `f`, got {:?}",
-            other.map(|_| "Ok(_)")
-        ),
-    }
+    assert_left_to_the_grammar(
+        "  module Example exposing (f)\n\n  f x =\n    1\n",
+        f(),
+        "a file indented as a whole",
+    );
 }
 
 /// An indented line the grammar rejects while the declaration above is still
 /// incomplete is an ordinary syntax error, and stays the grammar's: after
 /// `x +` the declaration cannot end, so the line is not a finished
-/// declaration's continuation.
+/// declaration's continuation, even though `type` could start one.
 ///
 /// Verified to fail by dropping the `expected.iter().any(|e| e == "close
-/// block")` guard from `Layout::explain`: `)` is then reported as an
+/// block")` guard from `Layout::explain`: `type` is then reported as an
 /// `IndentedDeclaration`.
 #[test]
 fn an_indented_line_inside_an_incomplete_declaration_is_left_to_the_grammar() {
-    let source = indoc::indoc! {"
-        module Example exposing (f)
+    let expected = assert_left_to_the_grammar(
+        indoc::indoc! {"
+            module Example exposing (f)
 
-        f x =
-          x +
-          )
-    "};
-    let file = SimpleFile::new("test".to_owned(), source.to_owned());
-
-    match parser::parse(&file) {
-        Err(Error::UnexpectedToken { token, expected }) => {
-            assert_eq!(token.value, Token::RPar);
-            assert!(!expected.iter().any(|e| e == "close block"));
-        }
-        other => panic!(
-            "expected the grammar's error on `)`, got {:?}",
-            other.map(|_| "Ok(_)")
-        ),
-    }
+            f x =
+              x +
+              type T = A
+        "},
+        Token::Type,
+        "a declaration keyword after a dangling operator",
+    );
+    assert!(!expected.iter().any(|e| e == "close block"));
 }
