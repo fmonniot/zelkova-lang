@@ -549,6 +549,7 @@ pub enum PatternKind {
     Int(i64),
     Float(f64),
     Char(char),
+    String(String),
     Bool(bool),
     /// A tuple pattern. Zelkova keeps Elm's restriction of two or three
     /// elements, which [`Tuple`] carries in its shape.
@@ -584,6 +585,9 @@ impl Pattern {
             parser::PatternKind::Literal(parser::Literal::Int(i)) => PatternKind::Int(*i),
             parser::PatternKind::Literal(parser::Literal::Float(f)) => PatternKind::Float(*f),
             parser::PatternKind::Literal(parser::Literal::Char(c)) => PatternKind::Char(*c),
+            parser::PatternKind::Literal(parser::Literal::String(s)) => {
+                PatternKind::String(s.clone())
+            }
             parser::PatternKind::Literal(parser::Literal::Bool(b)) => PatternKind::Bool(*b),
             parser::PatternKind::Tuple(tuple) => {
                 PatternKind::Tuple(tuple.try_map(|p| Pattern::from_parser(p, env))?)
@@ -679,6 +683,7 @@ pub enum ExpressionKind {
     /// package: `AcmeWidgets.Size.Small` and a local `Size.Small` are two constructors.
     VarConstructor(QualName, Type),
     Char(char),
+    String(String),
     Int(i64),
     Float(f64),
     Bool(bool),
@@ -723,6 +728,9 @@ impl Expression {
             parser::ExpressionKind::Lit(parser::Literal::Int(i)) => ExpressionKind::Int(*i),
             parser::ExpressionKind::Lit(parser::Literal::Float(f)) => ExpressionKind::Float(*f),
             parser::ExpressionKind::Lit(parser::Literal::Char(c)) => ExpressionKind::Char(*c),
+            parser::ExpressionKind::Lit(parser::Literal::String(s)) => {
+                ExpressionKind::String(s.clone())
+            }
             parser::ExpressionKind::Lit(parser::Literal::Bool(b)) => ExpressionKind::Bool(*b),
             parser::ExpressionKind::Variable(name) => {
                 match env.find_value(name).ok_or_else(|| {
@@ -2424,6 +2432,7 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
         | ExpressionKind::VarForeign(_, _, _)
         | ExpressionKind::VarConstructor(_, _)
         | ExpressionKind::Char(_)
+        | ExpressionKind::String(_)
         | ExpressionKind::Int(_)
         | ExpressionKind::Float(_)
         | ExpressionKind::Bool(_)

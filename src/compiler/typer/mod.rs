@@ -981,20 +981,16 @@ pub(crate) fn canonical_type_to_typer_type(
 /// The literal type the typer gives a [scalar](super::scalars), if `name` is the
 /// qualified name of one it has a literal type for.
 ///
-/// Three of the five appear here. The other two do not:
-///
-/// - [`scalars::BOOL`] is a scalar *and* an ordinary union, so `Bool` in an annotation
-///   takes the [`Type::Adt`] path every other declaration takes and meets `True` and
-///   `False` there. [`bool_type`] is the same type, built for the three `Bool`s no
-///   source spells.
-/// - [`scalars::STRING`] would gain a [`TypeLiteral`] variant the day there is a string
-///   literal to give a type to; a variant nothing constructs would be a type the
-///   unifier could name in an error and no source could produce.
+/// Four of the five appear here. [`scalars::BOOL`] does not: it is a scalar *and* an
+/// ordinary union, so `Bool` in an annotation takes the [`Type::Adt`] path every other
+/// declaration takes and meets `True` and `False` there. [`bool_type`] is the same type,
+/// built for the three `Bool`s no source spells.
 fn scalar_literal(name: &QualName) -> Option<TypeLiteral> {
     const LITERALS: &[(scalars::Scalar, TypeLiteral)] = &[
         (scalars::INT, TypeLiteral::Int),
         (scalars::FLOAT, TypeLiteral::Float),
         (scalars::CHAR, TypeLiteral::Char),
+        (scalars::STRING, TypeLiteral::String),
     ];
 
     LITERALS
@@ -1055,6 +1051,7 @@ fn canonical_expr_to_term(
         canonical::ExpressionKind::Int(i) => TermKind::Int(*i),
         canonical::ExpressionKind::Bool(b) => TermKind::Bool(*b),
         canonical::ExpressionKind::Char(c) => TermKind::Char(*c),
+        canonical::ExpressionKind::String(s) => TermKind::String(s.clone()),
         canonical::ExpressionKind::Float(f) => TermKind::Float(*f),
         canonical::ExpressionKind::VarLocal(name) => {
             TermKind::Identifier(Reference::local(name.as_str()))
@@ -1314,7 +1311,7 @@ fn translate_pattern(
 
             TermPatternKind::Tuple { elements }
         }
-        _ => return None, // Float patterns — not yet supported
+        _ => return None, // Float and String patterns — not yet supported
     };
 
     Some(TermPattern {
@@ -1507,14 +1504,14 @@ impl std::fmt::Debug for TypeVariable {
 /// The type of an [opaque scalar](../../../docs/spec/types.md#scalar-types): a type
 /// nothing in the language builds or inspects, whose values arrive as literals.
 ///
-/// Three of the four are here — `String` waits on a string literal to give a type to.
-/// `Bool` is not one of them at all: it is a scalar *and* an ordinary union, so its
+/// `Bool` is not one of them: it is a scalar *and* an ordinary union, so its
 /// type is a [`Type::Adt`] like any other union's, built by this module's `bool_type`.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum TypeLiteral {
     Int,
     Char,
     Float,
+    String,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -1742,6 +1739,7 @@ impl Type {
             Type::Literal(TypeLiteral::Int) => write!(f, "Int"),
             Type::Literal(TypeLiteral::Char) => write!(f, "Char"),
             Type::Literal(TypeLiteral::Float) => write!(f, "Float"),
+            Type::Literal(TypeLiteral::String) => write!(f, "String"),
             Type::Number => write!(f, "number"),
             Type::Variable(TypeVariable { id }) => write!(f, "t{}", id),
             // The parameter of a function type is parenthesised when it is itself a
@@ -1970,6 +1968,7 @@ impl Substitution {
             kind @ (TypedTermKind::Int(_)
             | TypedTermKind::Bool(_)
             | TypedTermKind::Char(_)
+            | TypedTermKind::String(_)
             | TypedTermKind::Float(_)
             | TypedTermKind::Unit
             | TypedTermKind::Identifier(_)) => kind,
@@ -2385,6 +2384,7 @@ mod tests {
                 Type::Literal(TypeLiteral::Int) => "Int".to_owned(),
                 Type::Literal(TypeLiteral::Char) => "Char".to_owned(),
                 Type::Literal(TypeLiteral::Float) => "Float".to_owned(),
+                Type::Literal(TypeLiteral::String) => "String".to_owned(),
                 Type::Number => "number".to_owned(),
                 Type::Unit => "()".to_owned(),
                 Type::Variable(TypeVariable { id }) => {

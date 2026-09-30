@@ -248,6 +248,53 @@ fn an_int_literal_ends_in_n_and_a_float_literal_does_not() {
     assert!(text.contains("const float = 2.5;"), "got:\n{}", text);
 }
 
+/// A string literal is a JavaScript string literal holding the same characters: each
+/// escape the source wrote was read by the tokenizer, and is written back out as the
+/// escape JavaScript needs.
+///
+/// Mutation-checked by emitting `TypedTermKind::String` as `format!("\"{}\"", s)`,
+/// unescaped: the quote and the line feed then land in the text raw.
+#[test]
+fn a_string_literal_is_an_escaped_javascript_string() {
+    let text = emitted(indoc! {r#"
+        module Test exposing ()
+
+        greeting =
+          "say \"hi\"\n\\ \u{E9}"
+    "#});
+
+    assert!(
+        text.contains(r#"const greeting = "say \"hi\"\n\\ é";"#),
+        "got:\n{}",
+        text
+    );
+}
+
+/// A declaration matching on a string literal is refused, not emitted: the typer does
+/// not translate a string pattern, so it has no IR.
+#[test]
+fn a_string_pattern_is_refused() {
+    let errors = refused(indoc! {r#"
+        module Test exposing ()
+
+        isHello s =
+          case s of
+            "hello" ->
+              1
+
+            _ ->
+              0
+    "#});
+
+    assert_eq!(
+        errors,
+        vec![Error::Unchecked {
+            name: Name::new("isHello"),
+            span: NodeSpan::none(),
+        }]
+    );
+}
+
 /// `True` and `False` are JavaScript's `true` and `false`, and `Bool` hoists no constant.
 ///
 /// The fixture is a `Basics` of its own, declaring `Bool` itself, so no interface has to

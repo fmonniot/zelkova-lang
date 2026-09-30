@@ -356,6 +356,8 @@ pub enum TermKind {
     /// — every literal is a `number` whatever it says — but code generation does.
     Int(i64),
     Char(char),
+    /// A string literal's value, its escape sequences already read.
+    String(String),
     Float(f64),
     Identifier(Reference), // VAR
     Fun {
@@ -566,6 +568,8 @@ pub enum TypedTermKind {
     Int(i64),
     Bool(bool),
     Char(char),
+    /// See [`TermKind::String`].
+    String(String),
     Float(f64),
     Identifier(Reference),
     Fun {

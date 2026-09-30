@@ -650,5 +650,8 @@ pub enum Literal {
     Int(i64),
     Float(f64),
     Char(char),
+    /// A string literal, its escape sequences already replaced by the characters
+    /// they name.
+    String(String),
     Bool(bool),
 }

@@ -20,6 +20,7 @@ extern {
         "integer"    => Token::Integer { value: <i64> },
         "float"      => Token::Float { value: <f64> },
         "char"       => Token::Char { value: <char> },
+        "string"     => Token::String { value: <String> },
         "true"       => Token::True,
         "false"      => Token::False,
         "op"         => Token::Operator(<String>),
@@ -159,6 +160,7 @@ Lit: Literal = {
     <"integer"> => Literal::Int(<>),
     <"float"> => Literal::Float(<>),
     <"char"> => Literal::Char(<>),
+    <"string"> => Literal::String(<>),
     "true" => Literal::Bool(true),
     "false" => Literal::Bool(false),
 };
