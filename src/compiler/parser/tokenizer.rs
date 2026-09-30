@@ -746,15 +746,32 @@ where
                             ));
                         }
 
+                        // Both error arms below build their span from character widths
+                        // while the cursor is still on the opening quote, then consume
+                        // that quote — and only that quote — before returning, so the
+                        // next poll resumes on the character after it instead of
+                        // re-entering this arm on the same quote forever (BUG-28).
+                        //
+                        // Only the quote is consumed because it is the one character
+                        // known to be wrong: what follows is tokenized as ordinary
+                        // source (`'ab` yields this error, then the identifier `ab`), and
+                        // no character this arm only peeked at — a `\n`, a quote that
+                        // opens a real literal — is swallowed along with it.
+                        // A quote that closes a malformed literal is not consumed either, so
+                        // it is re-read as an opener: `''` yields a second error. The parser
+                        // stops at the first, so a user does not see it.
+                        //
+                        // The span is not the consumed range. `error.rs`'s
+                        // `CharNotClosedError(Some(_))` arm reads `span.start` as the
+                        // opening quote and `span.end` as falling inside the character
+                        // where the closing quote should have been.
                         (Some(v), Some(closing)) => {
                             // error: opened quote with char but no closing quote
-                            // We haven't moved the cursor yet, but we know where
-                            // the error is, so we build the position manually
-                            let end = self.position.absolute
-                                + (v.len_utf8() as u32)
-                                + (closing.len_utf8() as u32);
+                            let start = self.position.absolute;
+                            let end = start + (v.len_utf8() as u32) + (closing.len_utf8() as u32);
+                            self.next_char(); // the opening quote
                             return Err(TokenizerError::new(
-                                self.position.absolute,
+                                start,
                                 end,
                                 TokenizerErrorType::CharNotClosedError(Some(closing)),
                             ));
@@ -762,11 +779,13 @@ where
 
                         (v, _) => {
                             // error: opened single quote without character following
-
+                            let start = self.position.absolute;
                             let char_width = v.map_or_else(|| 0, |v| v.len_utf8()) as u32;
+                            let end = start + char_width + 1; // +1 for the opening quote
+                            self.next_char(); // the opening quote
                             return Err(TokenizerError::new(
-                                self.position.absolute,
-                                self.position.absolute + char_width + 1, // +1 for the opening quote
+                                start,
+                                end,
                                 TokenizerErrorType::CharNotClosedError(None),
                             ));
                         }
@@ -1993,6 +2012,70 @@ mod tests {
                 &int_token(2),
             ]
         );
+    }
+
+    /// A consumer which keeps polling past a `CharNotClosedError` must not see that same
+    /// error again, and iteration has to terminate (`BUG-28`). Both of `consume_char`'s
+    /// unclosed-literal arms used to return without consuming the opening quote, so every
+    /// poll re-entered the `'\''` arm on the same character. `literal_char` covers the
+    /// same three sources and missed it, because it collects and so stops at the first
+    /// `Err`; [`drain_capped`] says why.
+    ///
+    /// After the error, the characters following the quote are tokenized as ordinary
+    /// source: only the quote itself is consumed.
+    ///
+    /// Verified to fail by removing the `next_char()` call from each of the two arms in
+    /// turn: `drain_capped` then hits its cap with the identical error repeated.
+    #[test]
+    fn unclosed_char_does_not_hang() {
+        let cases = [
+            (
+                "'",
+                TokenizerError::new(
+                    BytePos(0),
+                    BytePos(1),
+                    TokenizerErrorType::CharNotClosedError(None),
+                ),
+                vec![],
+            ),
+            (
+                "'a",
+                TokenizerError::new(
+                    BytePos(0),
+                    BytePos(2),
+                    TokenizerErrorType::CharNotClosedError(None),
+                ),
+                vec![ident_token("a")],
+            ),
+            (
+                "'ab",
+                TokenizerError::new(
+                    BytePos(0),
+                    BytePos(2),
+                    TokenizerErrorType::CharNotClosedError(Some('b')),
+                ),
+                vec![ident_token("ab")],
+            ),
+        ];
+
+        for (source, error, tokens) in cases {
+            let items = drain_capped(source, 10);
+
+            let errors = errors_of(&items);
+            assert_eq!(
+                errors,
+                vec![&error],
+                "expected exactly one error for {:?}, got {:?}",
+                source,
+                items
+            );
+            assert_eq!(
+                tokens_of(&items),
+                tokens.iter().collect::<Vec<_>>(),
+                "unexpected tokens for {:?}",
+                source
+            );
+        }
     }
 
     #[test]
