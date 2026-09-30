@@ -348,6 +348,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-77 | task | — | closed 2026-09-30 | String literals are specified but not tokenized |
 | [LANG-78](lang-78.md) | task | — | open | `std/core`'s `Task` has no `andThen` |
 | [LANG-79](lang-79.md) | task | — | open | Multi-line `"""` string literals are specified but not tokenized |
+| [LANG-80](lang-80.md) | task | — | open | The spec does not settle a string's unknown escape, surrogate escape or `\u{…}` digit count |
+| [LANG-81](lang-81.md) | task | — | open | A `Float` or `String` literal pattern is not checked by the typer and not emitted |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |

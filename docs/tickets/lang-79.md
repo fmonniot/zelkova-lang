@@ -60,8 +60,9 @@ This ticket does not pick. A decision entry (or the chapter itself) settles it f
    paragraph, and delete this ticket.
 
 **Tests:** in `tokenizer.rs`'s tests, a multi-line literal's value for the chapter's `poem`
-shape, one containing an unescaped `"`, one containing an escape, and an unclosed one at end
-of file. A `tests/typer.rs` case that a binding to one infers `String`. A test that the
+shape, one containing an unescaped `"`, one containing an escape, an unclosed one at end
+of file, and `"""hi"""` written on one line, which today tokenizes as the three strings `""`, `"hi"`
+and `""` and so reaches the typer as an application of a `String`. A `tests/typer.rs` case that a binding to one infers `String`. A test that the
 declaration after a multi-line literal still parses at the right indentation. Mutation-check
 each one.
 
