@@ -757,6 +757,9 @@ where
                         // source (`'ab` yields this error, then the identifier `ab`), and
                         // no character this arm only peeked at — a `\n`, a quote that
                         // opens a real literal — is swallowed along with it.
+                        // A quote that closes a malformed literal is not consumed either, so
+                        // it is re-read as an opener: `''` yields a second error. The parser
+                        // stops at the first, so a user does not see it.
                         //
                         // The span is not the consumed range. `error.rs`'s
                         // `CharNotClosedError(Some(_))` arm reads `span.start` as the
