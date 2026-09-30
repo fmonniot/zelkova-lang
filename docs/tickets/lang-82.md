@@ -1,9 +1,8 @@
 # LANG-82 · A character literal recognises no escape sequence
 
 **Sizing:** small. `consume_escape` already decodes the table for strings, so the tokenizer
-half is a reuse. What could make it bigger is the choice between fixing the two error arms
-here and leaving them to [`BUG-28`](bug-28.md), and [`LANG-80`](lang-80.md)'s open rules for
-what an unknown or surrogate escape means.
+half is a reuse. What could make it bigger is [`LANG-80`](lang-80.md)'s open rules for what an
+unknown or surrogate escape means.
 
 **Part of:** no active program. Noticed while reviewing [`LANG-77`](README.md), which added
 `consume_escape` for string literals and deliberately left character literals alone.
@@ -28,9 +27,9 @@ but only strings decode it. A character literal is read as three characters of l
 1. In the `'\''` arm, when the character after the opening quote is a backslash, decode it with
    `consume_escape` (or a shared helper; it currently takes the position of a string's opening
    quote to report an unclosed escape against) and then require the closing quote.
-2. Keep every error path consuming input, as [`BUG-28`](bug-28.md) asks of the two existing
-   `CharNotClosedError` returns. Either land after it, or make the new paths consume and leave
-   the old two to it. This ticket does not pick.
+2. Keep every error path consuming input, as the two existing `CharNotClosedError` returns do
+   (BUG-28, closed): each consumes the opening quote before returning, and the comment above
+   them says why and what their span means to `error.rs`.
 3. Follow whatever [`LANG-80`](lang-80.md) decides for an unknown escape, a surrogate and a
    `\u{…}` digit count. Until it does, a character literal inherits `consume_escape`'s current
    answers, which the strings already rely on.

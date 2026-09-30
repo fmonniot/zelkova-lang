@@ -198,7 +198,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-25 | bug | medium | closed 2026-09-13 | Three of the four `Float -> Int` conversions never wrap, so `round nan` and `round 1.0e20` are not `Int`s |
 | BUG-26 | bug | medium | closed 2026-09-16 | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
 | BUG-27 | bug | medium | closed 2026-09-21 | A canonicalized infix operator is qualified under its own symbol, not the function its `infix` declaration names |
-| [BUG-28](bug-28.md) | bug | low | open | The `Tokenizer` never terminates on an unterminated character literal |
+| BUG-28 | bug | — | closed 2026-09-30 | The `Tokenizer` never terminates on an unterminated character literal |
 | [BUG-29](bug-29.md) | bug | medium | open | A top-level declaration whose first token is not at column 1 fails to parse |
 | [BUG-30](bug-30.md) | bug | medium | open | An `Upper(..)` import entry does not check the type was exposed transparently |
 | [BUG-31](bug-31.md) | bug | medium | open | `do_exports` accepts a `Lower`/`Upper` name that resolves only through an import |
