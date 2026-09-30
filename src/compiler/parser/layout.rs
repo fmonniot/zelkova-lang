@@ -14,6 +14,40 @@ pub enum LayoutError {
         offside: Offside,
         token: Spanned<Position, Token>,
     },
+    /// A line indented past column 1 at the top level, which the grammar read
+    /// as a continuation of the declaration above it although that declaration
+    /// was already complete, and which starts the way a declaration does.
+    ///
+    /// A top-level declaration begins in column 1, and a line indented past it
+    /// continues the declaration above (`docs/spec/layout.md`, *Top-level
+    /// declarations*). The layout pass cannot tell such a line from an ordinary
+    /// continuation on its own — `module M exposing` followed by an indented
+    /// `(f)` is one — so it only records the first token of each top-level
+    /// continuation line, and `Layout::explain` raises this error once the
+    /// grammar has rejected that line. `token` is the line's first token, and
+    /// `declaration_line` is the line the declaration above began on.
+    IndentedDeclaration {
+        token: Spanned<Position, Token>,
+        declaration_line: usize,
+    },
+}
+
+/// Whether a declaration can begin with `token`: the tokens the grammar's
+/// `Decl` alternatives open on, soft keywords included, since each of those is
+/// also a name a function can have.
+fn can_start_declaration(token: &Token) -> bool {
+    matches!(
+        token,
+        Token::LowerIdentifier(_)
+            | Token::Left
+            | Token::Right
+            | Token::Non
+            | Token::Foreign
+            | Token::Unsafe
+            | Token::Type
+            | Token::Import
+            | Token::Infix
+    )
 }
 
 /// Apply the offside rule to a token stream, injecting `OpenBlock`/`CloseBlock`
@@ -182,7 +216,7 @@ impl Contexts {
 /// `Err`, or because the source ran out — every subsequent call returns `None`.
 /// Both cases go through the same `finished` latch, so `Layout` implements
 /// `FusedIterator`. See `Iterator::next` below for why an `Err` is terminal.
-struct Layout<I> {
+pub(crate) struct Layout<I> {
     /// The source iterator
     tokens: I,
     /// The current level of indentation
@@ -210,6 +244,23 @@ struct Layout<I> {
     /// (the synthetic `OpenBlock`), so a second `case … of` cannot have its
     /// `of` popped before the first one's floor has been read and cleared.
     case_of_column: Option<usize>,
+    /// The position of the last token read from `tokens`, and of the first
+    /// token read on that token's line. A real token is first on its line
+    /// exactly when its start is `line_start` — comments are not tokens, so
+    /// the `f` of `{- a note -} f = 1` is the first token on its line.
+    ///
+    /// A token taken back out of `reprocess_tokens` is always the one most
+    /// recently read from `tokens`, or a synthetic block token, so comparing
+    /// against the latest line is enough. For the same reason, a real token
+    /// the grammar rejects is the one at `last_read`: the grammar stops at the
+    /// first token it cannot shift, and this pass never reads past the token
+    /// it is about to emit.
+    last_read: Option<Position>,
+    line_start: Option<Position>,
+    /// The first token of the most recent top-level continuation line — see
+    /// `LayoutError::IndentedDeclaration` — and the line the declaration it
+    /// continues began on. Read only by `explain`.
+    top_level_continuation: Option<(Spanned<Position, Token>, usize)>,
 }
 
 impl<I> Layout<I>
@@ -224,6 +275,82 @@ where
             reprocess_tokens: vec![],
             finished: false,
             case_of_column: None,
+            last_read: None,
+            line_start: None,
+            top_level_continuation: None,
+        }
+    }
+
+    /// Turn the grammar's rejection of a top-level continuation line into
+    /// `LayoutError::IndentedDeclaration`, and hand every other error back as it
+    /// came. `parser::parse` calls this once the grammar has stopped pulling
+    /// tokens.
+    ///
+    /// Three things have to hold, and each rules out a misreading the others
+    /// leave open:
+    ///
+    /// - The line's first token is one a declaration can start with: a
+    ///   lowercase name, soft keywords included, `type`, `import` or `infix`
+    ///   (`can_start_declaration`). A line opening
+    ///   on `(`, `=`, `then` or an operator is a typo inside the declaration
+    ///   above, and the grammar's own list of expected tokens says more about
+    ///   it than an indentation error would.
+    /// - The grammar rejected either that first token, or a later `=` or `:`
+    ///   on the same line — the sign of a definition or an annotation, which
+    ///   no expression or type in the grammar contains. The second shape is what an indented
+    ///   declaration looks like after a declaration whose last expression or
+    ///   type takes arguments: `f = 1` then `  g = 2` reads as `f = 1 g`, and
+    ///   the grammar only stops at `=`.
+    /// - The declaration above was complete when the line began. When the
+    ///   first token is the one rejected, the grammar says so itself: it
+    ///   listed `close block` among the tokens it would have accepted there.
+    ///   When the grammar stopped later, it had already read the first token
+    ///   as part of the declaration, so `complete_before` is asked instead: it
+    ///   is given where the line's first token starts and answers whether the
+    ///   source before it parses on its own. `f =` then `  g x = 1` fails that
+    ///   test and keeps the grammar's error. `close block` has to be expected
+    ///   in this shape too, so that the part of the line before the `=` or `:`
+    ///   reads as a whole declaration head.
+    ///
+    /// The check that the rejected `=` or `:` sits on the recorded line is
+    /// belt-and-braces: every later top-level continuation line replaces the
+    /// record, so a stale one would take a line inside a nested block, and no
+    /// test reaches that.
+    pub(crate) fn explain(
+        &self,
+        error: Error,
+        complete_before: impl FnOnce(BytePos) -> bool,
+    ) -> Error {
+        let Error::UnexpectedToken { token, expected } = error else {
+            return error;
+        };
+        let explained = match &self.top_level_continuation {
+            Some((first, declaration_line))
+                if can_start_declaration(&first.value)
+                    && expected.iter().any(|e| e == "close block") =>
+            {
+                let rejects_first =
+                    token.span.start == first.span.start.absolute && token.value == first.value;
+                let rejects_sign_on_the_same_line =
+                    matches!(token.value, Token::Equal | Token::Colon)
+                        && self.last_read.is_some_and(|last| {
+                            last.absolute == token.span.start && last.line == first.span.start.line
+                        })
+                        && complete_before(first.span.start.absolute);
+
+                (rejects_first || rejects_sign_on_the_same_line).then(|| {
+                    LayoutError::IndentedDeclaration {
+                        token: first.clone(),
+                        declaration_line: *declaration_line,
+                    }
+                })
+            }
+            _ => None,
+        };
+
+        match explained {
+            Some(error) => error.into(),
+            None => Error::UnexpectedToken { token, expected },
         }
     }
 
@@ -232,15 +359,28 @@ where
     ///
     /// It also convert the end of the source iterator into `Token::EndOfFile`.
     fn next_token(&mut self) -> Result<Spanned<Position, Token>, Error> {
-        self.reprocess_tokens.pop().map(Ok).unwrap_or_else(|| {
-            self.tokens.next().unwrap_or_else(|| {
+        if let Some(token) = self.reprocess_tokens.pop() {
+            return Ok(token);
+        }
+
+        match self.tokens.next() {
+            Some(Ok(token)) => {
+                let start = token.span.start;
+                if self.last_read.map(|last| last.line) != Some(start.line) {
+                    self.line_start = Some(start);
+                }
+                self.last_read = Some(start);
+                Ok(token)
+            }
+            Some(Err(error)) => Err(error),
+            None => {
                 // The absolute part is unused (hence 0) but the column value is important
                 // (we want a value of 1 to match the first token of a line)
                 let position = Position::new(0, 1, 1);
 
                 Ok(spanned(position, position, Token::EndOfFile))
-            })
-        })
+            }
+        }
     }
 
     /// This is the entry point for our layout processor.
@@ -475,6 +615,25 @@ where
             // again for anyone who removes that fuse.
             return Err(LayoutError::LayoutError { offside, token }.into());
         };
+
+        // A token opening a line indented past column 1, with a top-level
+        // declaration open, continues that declaration. Record it, so that
+        // `explain` can name the indentation if the grammar finds the
+        // declaration was already complete. A `TopLevelDeclaration` is only
+        // ever pushed onto an empty stack, so being the innermost context
+        // makes it the only one. Only a declaration which itself began in
+        // column 1 counts: one that did not is a file whose top level is
+        // indented as a whole, and its first line is where that goes wrong.
+        let start = token.span.start;
+        if offside.context == Context::TopLevelDeclaration
+            && offside.indent == 1
+            && start.line > offside.line
+            && start.column > 1
+            && self.line_start.map(|first| first.absolute) == Some(start.absolute)
+            && !matches!(token.value, Token::OpenBlock | Token::CloseBlock)
+        {
+            self.top_level_continuation = Some((token.clone(), offside.line));
+        }
 
         // Third, we create new tokens, new contexts and emit block tokens as required
 

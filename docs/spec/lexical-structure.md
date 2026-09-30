@@ -60,20 +60,17 @@ module Example exposing ()
 f = {- a note -} 1
 ```
 
-```zel expect=parse-error:UnexpectedToken
+A comment written ahead of a top-level declaration on the same line moves the declaration's
+first token off column 1, just as spaces there would. The line then continues the declaration
+above it ([Layout](layout.md#top-level-declarations)), and here that declaration is a complete
+module header, so the source is rejected with an error about the line's indentation:
+
+```zel expect=parse-error:LayoutError
 module Example exposing (f)
 
 {- a note -} f =
   1
 ```
-
-**Known gap:** that block should be `expect=ok`. The comment itself is read correctly — it is
-recognised at the start of the line, ends at its own `-}`, and does not swallow the `f =` that
-follows — but the declaration is then rejected anyway, for a reason that has nothing to do with
-comments: a top-level declaration whose first token is not at column 1 fails to parse, and here
-that first token (`f`) sits after the comment rather than at column 1. The same rejection
-reproduces with no comment involved at all — a plain, correctly 2-space-indented `  f = 1` fails
-identically. [`docs/tickets/bug-29.md`](../tickets/bug-29.md) tracks it.
 
 ```zel expect=ok
 module Example exposing ()

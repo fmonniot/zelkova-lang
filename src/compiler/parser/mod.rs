@@ -39,15 +39,35 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
     let tokenizer = tokenizer::make_tokenizer(source).map(|r| r.map_err(|e| e.into()));
 
     // Manage the indentation aspect of our code
-    let indented = layout::layout(tokenizer);
+    let mut indented = layout::Layout::new(tokenizer);
 
-    // Parse the tokens into an AST
-    let module = grammar::ModuleParser::new().parse(indented)?;
+    // Parse the tokens into an AST. A grammar error can be a layout rule seen
+    // from the grammar's side, which only the layout pass can recognise, so it
+    // gets to explain the error first.
+    let module = grammar::ModuleParser::new()
+        .parse(&mut indented)
+        .map_err(|e| {
+            indented.explain(e.into(), |end| {
+                source
+                    .get(..end.0 as usize)
+                    .is_some_and(|prefix| parse_unexplained(prefix).is_ok())
+            })
+        })?;
 
     // And do some early nitpicking
     // TODO Check module name is valid. Need to take SourceFile instead of SimpleFile as parameter.
 
     Ok(module)
+}
+
+/// Run `source` through the tokenizer, the layout pass and the grammar, with no
+/// `Layout::explain` step. `parse` uses it to ask whether the source before a
+/// line is a complete module on its own.
+fn parse_unexplained(source: &str) -> Result<Module, Error> {
+    let tokenizer = tokenizer::make_tokenizer(source).map(|r| r.map_err(|e| e.into()));
+    grammar::ModuleParser::new()
+        .parse(layout::layout(tokenizer))
+        .map_err(|e| e.into())
 }
 
 /// A part of a declared type. This is also used in type annotations.

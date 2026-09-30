@@ -179,6 +179,27 @@ f x =
 1
 ```
 
+A line indented past column 1 continues the declaration above it, however it was meant.
+Written after a complete declaration, a line that begins a new one is rejected with an error
+naming its indentation, whether it follows a module header:
+
+```zel expect=parse-error:LayoutError
+module Example exposing (f)
+
+  f x =
+    1
+```
+
+or a declaration whose last expression could take one more argument:
+
+```zel expect=parse-error:LayoutError
+module Example exposing (f, g)
+
+f = 1
+
+  g = 2
+```
+
 There is no separator between declarations. Blank lines between them are conventional and
 carry no meaning.
 

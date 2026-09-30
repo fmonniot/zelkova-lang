@@ -34,8 +34,9 @@ module at every keystroke cannot offer hover, go-to-definition or completion for
   declaration parsed on its own, keeping the ones that parse and reporting one error per one
   that does not. It is cheap, needs no grammar change, and matches how offside-rule languages
   are usually made robust. Its granularity is a whole declaration: an error inside a function
-  body loses that function and nothing else. [`BUG-29`](bug-29.md), where a top-level
-  declaration not at column 1 fails to parse, is the edge this leans on.
+  body loses that function and nothing else. The cut leans on column 1 being where every
+  declaration starts: a declaration indented off it is read as part of the one above, so the
+  two are lost together.
 - **LALRPOP error recovery.** Add `!` productions at chosen points (a declaration, a `case`
   branch, an expression) that produce an error node and collect `ErrorRecovery` values. The
   granularity is finer, but it needs an error variant in the parser AST, and the grammar,

@@ -173,6 +173,25 @@ impl Error {
                     )])
             }
 
+            Error::Layout(LayoutError::IndentedDeclaration {
+                token,
+                declaration_line,
+            }) => {
+                let start = token.span.start.absolute.0 as usize;
+                let end = token.span.end.absolute.0 as usize;
+
+                Diagnostic::error()
+                    .with_message("this line is indented, so it continues the declaration above it")
+                    .with_labels(vec![Label::primary(name, non_empty(start..end))
+                        .with_message(format!(
+                            "this token starts at column {}, so it is read as part of the declaration on line {}, which was already complete",
+                            token.span.start.column, declaration_line
+                        ))])
+                    .with_notes(vec![
+                        "a top-level declaration begins in column 1; move this line there if it starts a new declaration".to_owned()
+                    ])
+            }
+
             Error::InvalidToken(position) => Diagnostic::error()
                 .with_message("the parser could not read this token")
                 .with_labels(vec![Label::primary(name, one_byte_at(*position))
