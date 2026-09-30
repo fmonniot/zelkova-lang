@@ -19,7 +19,7 @@
 //! # Why the list lives here and not in the typer
 //!
 //! The typer is the only reader today: `typer::canonical_type_to_typer_type` maps
-//! three of the five onto its own literal types, and `BOOL` names the union an `if`
+//! four of the five onto its own literal types, and `BOOL` names the union an `if`
 //! condition is checked against. The list is nonetheless a fact about
 //! the language rather than about type inference, and the same five names answer
 //! questions the typer never asks — which names a module underneath `Basics` receives

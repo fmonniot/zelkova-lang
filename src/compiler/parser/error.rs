@@ -76,23 +76,28 @@ impl Error {
                                     .with_message("for the opening quote here")
                             ])
                     }
-                    // String literals are not implemented in the language yet, so
-                    // nothing constructs these two today. They still have to render:
-                    // `diagnostic` is on the path every parse error takes to the
-                    // user, and a `todo!()` there is a compiler panic (`BUG-6`).
-                    TokenizerErrorType::StringError => diag
-                        .with_message("this string literal could not be read")
-                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
-                            .with_message("the string starts here")])
+                    TokenizerErrorType::StringNotClosedError => diag
+                        .with_message("string opened but never closed")
+                        .with_labels(vec![
+                            Label::primary(name, err.error.span.to_range())
+                                .with_message("this string reaches the end of its line without a closing `\"`")
+                        ])
                         .with_notes(vec![
-                            "Zelkova does not support string literals yet".to_owned()
+                            "a string may not contain a line ending; write `\\n` for one".to_owned()
+                        ]),
+                    TokenizerErrorType::InvalidEscape => diag
+                        .with_message("this is not an escape sequence")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message("unknown escape sequence")])
+                        .with_notes(vec![
+                            "the escape sequences are `\\n`, `\\r`, `\\t`, `\\\\`, `\\'`, `\\\"` and `\\u{…}`".to_owned()
                         ]),
                     TokenizerErrorType::UnicodeError => diag
                         .with_message("this unicode escape sequence could not be read")
                         .with_labels(vec![Label::primary(name, err.error.span.to_range())
-                            .with_message("the escape sequence starts here")])
+                            .with_message("this escape sequence")])
                         .with_notes(vec![
-                            "Zelkova does not support string literals, and so unicode escape sequences, yet".to_owned()
+                            "a unicode escape is `\\u{`, one to six hexadecimal digits naming a Unicode scalar value, and `}`".to_owned()
                         ]),
                     TokenizerErrorType::IndentationError => {
                         diag.with_message("Invalid indentation level")
@@ -480,20 +485,35 @@ mod tests {
         assert_eq!(diagnostic.labels[0].range, 7..11);
     }
 
-    /// String literals are not implemented, so this variant is unconstructed
-    /// today — it still has to render rather than panic. Verified to fail by
-    /// restoring `TokenizerErrorType::StringError => todo!()`.
+    /// The error comes from the tokenizer: `"ab` then a line ending spans the opening
+    /// quote at byte 0 up to the line feed at byte 3, where the string was cut off.
     #[test]
-    fn tokenizer_string_error_renders() {
-        let error = Error::Tokenizer(TokenizerError {
-            error: spanned(BytePos(3), BytePos(9), TokenizerErrorType::StringError),
-        });
+    fn string_not_closed_points_at_the_unclosed_string() {
+        let error: Error = crate::compiler::parser::tokenizer::make_tokenizer("\"ab\n")
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("expected the source to fail the tokenizer")
+            .into();
 
         let diagnostic = error.diagnostic(());
 
-        assert_prose_message(&diagnostic, "this string literal could not be read");
+        assert_prose_message(&diagnostic, "string opened but never closed");
         assert_points_at_source(&diagnostic);
-        assert_eq!(diagnostic.labels[0].range, 3..9);
+        assert_eq!(diagnostic.labels[0].range, 0..3);
+    }
+
+    /// `"\q"`: the label covers the backslash and the `q`, bytes 1 to 3.
+    #[test]
+    fn invalid_escape_points_at_the_escape() {
+        let error: Error = crate::compiler::parser::tokenizer::make_tokenizer("\"\\q\"")
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("expected the source to fail the tokenizer")
+            .into();
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "this is not an escape sequence");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels[0].range, 1..3);
     }
 
     /// The error comes from the tokenizer rather than being built here, so the
@@ -539,14 +559,14 @@ mod tests {
         );
     }
 
-    /// Same as `tokenizer_string_error_renders`, for the sibling variant.
-    /// Verified to fail by restoring
-    /// `TokenizerErrorType::UnicodeError => todo!()`.
+    /// `"\u{zz}"`: reading stops at the first `z`, so the label spans `\u{`, bytes
+    /// 1 to 4.
     #[test]
     fn tokenizer_unicode_error_renders() {
-        let error = Error::Tokenizer(TokenizerError {
-            error: spanned(BytePos(2), BytePos(8), TokenizerErrorType::UnicodeError),
-        });
+        let error: Error = crate::compiler::parser::tokenizer::make_tokenizer("\"\\u{zz}\"")
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("expected the source to fail the tokenizer")
+            .into();
 
         let diagnostic = error.diagnostic(());
 
@@ -555,14 +575,14 @@ mod tests {
             "this unicode escape sequence could not be read",
         );
         assert_points_at_source(&diagnostic);
-        assert_eq!(diagnostic.labels[0].range, 2..8);
+        assert_eq!(diagnostic.labels[0].range, 1..4);
     }
 
     /// `MalformedNumber` is the one diagnostic in `consume_number`'s three that no source
     /// can reach — it is there for a buffer the accumulation loop should never have built
-    /// — so this is the only thing keeping it renderable. Same shape as
-    /// `tokenizer_string_error_renders`, for the same reason. Verified to fail by
-    /// replacing its arm with `todo!()`.
+    /// — so this is the only thing keeping it renderable, and it builds the error by hand
+    /// rather than tokenizing a source. Verified to fail by replacing its arm with
+    /// `todo!()`.
     #[test]
     fn tokenizer_malformed_number_renders() {
         let error = Error::Tokenizer(TokenizerError {

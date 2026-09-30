@@ -57,7 +57,7 @@ as its expected diff. `degrees`'s `mul` call aborts first today, so that second 
 what a reader of the current error sees; fixing this ticket without also giving `180` a decimal
 point would just trade one abort for the other. `append` names `Js.Utils.appendInt`, whose
 companion concatenates two JavaScript strings and throws on anything else, so a `String` append
-would abort at the same check once a string can be written ([`LANG-77`](lang-77.md)).
+would abort at the same check; a string literal can be written since [`LANG-77`](README.md).
 Comparisons are unaffected: `ltInt` and `equalInt` return a `Bool` whatever they are handed,
 and only a result is checked.
 

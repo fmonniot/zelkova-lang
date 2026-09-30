@@ -32,8 +32,9 @@
 //!
 //! An `Int` literal is a `BigInt` (`1n`), since [`Int` is 64
 //! bits](../../../docs/spec/evaluation-semantics.md#numbers); a `Float` is a number, a
-//! `Char` a one-character string. `True` and `False` — the constructors of
-//! [`scalars::BOOL`], recognised by the union's qualified name — are `true` and `false`.
+//! `Char` a one-character string and a `String` a string. `True` and `False` — the
+//! constructors of [`scalars::BOOL`], recognised by the union's qualified name — are
+//! `true` and `false`.
 //! `()` is `undefined` ([The unit value crosses as
 //! `undefined`](../../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)) and a
 //! pattern that names it, at any depth, tests nothing and binds nothing — `undefined`
@@ -1493,6 +1494,7 @@ impl Emitter {
             TypedTermKind::Int(i) => format!("{}n", i),
             TypedTermKind::Float(f) => float_literal(*f),
             TypedTermKind::Char(c) => char_literal(*c),
+            TypedTermKind::String(s) => string_literal(s),
             TypedTermKind::Bool(b) => b.to_string(),
             TypedTermKind::Identifier(reference) => self.value(&reference.name, &reference.kind),
             TypedTermKind::Apply { .. } => self.application(term),

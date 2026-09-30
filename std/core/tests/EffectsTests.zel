@@ -1,6 +1,6 @@
 -- What the wrapper around an effectful facade's call yields, asserted as `Test`s over
--- the `Task`s the `Effects` facade builds. There are no string literals, so each test
--- matches a constructor and does not compare the `String` it carries. A wrong test here
+-- the `Task`s the `Effects` facade builds. Each test matches a constructor and does not
+-- compare the `String` it carries. A wrong test here
 -- would fail this package, which is the point: each verdict names the one result it
 -- accepts and fails on every other.
 module EffectsTests exposing

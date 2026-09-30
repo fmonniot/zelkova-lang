@@ -82,13 +82,14 @@ shadowed like any other name — see [Reserved words](lexical-structure.md#reser
 
 ### String literals
 
-```zel expect=unimplemented
-module Example exposing (greeting)
+A string literal is an expression of type `String`. What it may contain is
+[Lexical structure](lexical-structure.md#strings)' subject.
+
+```zel expect=ok
+module Example exposing ()
 
 greeting = "hello"
 ```
-
-**Not implemented:** `"` is not a token the tokenizer knows.
 
 ## Names
 

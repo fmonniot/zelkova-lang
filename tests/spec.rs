@@ -272,7 +272,8 @@ const PARSE_ERROR_PHASES: &[&str] = &["Tokenizer", "Layout"];
 /// [`spec_tag_vocabulary_is_documented`] carries it on to `conventions.md`'s table.
 const PARSE_ERROR_SPECIFICS: &[&str] = &[
     "CharNotClosedError",
-    "StringError",
+    "StringNotClosedError",
+    "InvalidEscape",
     "UnicodeError",
     "IndentationError",
     "TabError",
@@ -315,7 +316,8 @@ fn parse_error_reasons(error: &parser::Error) -> Vec<&'static str> {
         parser::Error::Tokenizer(e) => {
             let specific = match e.error.value {
                 TokenizerErrorType::CharNotClosedError(_) => "CharNotClosedError",
-                TokenizerErrorType::StringError => "StringError",
+                TokenizerErrorType::StringNotClosedError => "StringNotClosedError",
+                TokenizerErrorType::InvalidEscape => "InvalidEscape",
                 TokenizerErrorType::UnicodeError => "UnicodeError",
                 TokenizerErrorType::IndentationError => "IndentationError",
                 TokenizerErrorType::TabError => "TabError",

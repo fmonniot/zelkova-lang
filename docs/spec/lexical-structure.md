@@ -410,7 +410,7 @@ module Example exposing (newline)
 newline = '\n'
 ```
 
-**Not implemented:** no escape sequence is recognised. A character literal must currently hold
+**Not implemented:** a character literal recognises no escape sequence. It must currently hold
 exactly one character between the quotes, so `'\n'` is rejected as an unclosed literal.
 
 A character literal holds one Unicode code point. `'\u{1F600}'` is a single character.
@@ -418,12 +418,33 @@ A character literal holds one Unicode code point. `'\u{1F600}'` is a single char
 ### Strings
 
 A string literal is a run of characters between double quotes, using the same escapes as
-character literals. It may not contain an unescaped line ending.
+character literals.
 
-```zel expect=unimplemented
-module Example exposing (greeting)
+```zel expect=ok
+module Example exposing ()
 
 greeting = "hello"
+
+quoted = "she said \"hi\"\n\u{1F600}"
+```
+
+A backslash followed by anything but one of the escapes in the table above is an error, and so
+is a `\u{…}` whose digits name no Unicode scalar value.
+
+```zel expect=parse-error:InvalidEscape
+module Example exposing ()
+
+path = "C:\docs"
+```
+
+A string may not contain an unescaped line ending: one reached before the closing quote leaves
+the string unclosed.
+
+```zel expect=parse-error:StringNotClosedError
+module Example exposing ()
+
+broken = "one
+two"
 ```
 
 A **multi-line string** is delimited by `"""` and may contain line endings and unescaped
@@ -439,7 +460,8 @@ poem =
   """
 ```
 
-**Not implemented:** neither form is recognised; `"` is not a token the tokenizer knows.
+**Not implemented:** the multi-line form is not recognised, and the block above is rejected as
+an unclosed single-line string. [`docs/tickets/lang-79.md`](../tickets/lang-79.md) tracks it.
 
 ## Operators
 

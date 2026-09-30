@@ -645,6 +645,66 @@ fn char_type_mismatch() {
     );
 }
 
+// ── String literals ───────────────────────────────────────────────────────────
+
+/// An unannotated binding to a string literal infers `String`, and its body is the
+/// literal's value.
+///
+/// Verified by constraining `TypedTermKind::String` to `TypeLiteral::Char` in
+/// `constraint::collect`: the type assertion goes red, reading `Char`.
+#[test]
+fn string_literal_infers_string() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        greeting = "hello"
+    "#};
+
+    let solved = solved(source);
+    let term = typed_declaration(&solved, "greeting");
+
+    assert_eq!(format!("{}", term.tpe), "String");
+    assert!(
+        matches!(&term.kind, TypedTermKind::String(value) if value == "hello"),
+        "got {:?}",
+        term.kind
+    );
+}
+
+/// `String` in an annotation is the type a string literal has, so the two agree.
+///
+/// Verified by removing `STRING`'s entry from `scalar_literal`: the annotation then
+/// reads as the union `String.String` and the literal's `String` does not match it.
+#[test]
+fn string_literal_agrees_with_a_string_annotation() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        greeting : String
+        greeting = "hello"
+    "#};
+    let interfaces = HashMap::from([basics_interface(), char_interface(), string_interface()]);
+
+    let result = check_module(&test_package(), &interfaces, &parse_source(source));
+
+    assert!(result.is_ok(), "got {:?}", result.err());
+}
+
+/// A string literal where an `Int` is expected is a mismatch naming `String`.
+#[test]
+fn string_type_mismatch() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        bad : Int
+        bad = "x"
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(error.message(), "cannot match `Int` with `String`");
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_of(source, "\"x\""), range_of(source, "bad : Int")]
+    );
+}
+
 // ── Tuple types and expressions ───────────────────────────────────────────────
 
 /// A pair `(Int, Bool)` should type-check.

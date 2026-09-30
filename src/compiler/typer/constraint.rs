@@ -57,6 +57,14 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                 span,
             ));
         }
+        TypedTermKind::String(_) => {
+            constraints.push(Constraint::new(
+                tpe.clone(),
+                Type::Literal(TypeLiteral::String),
+                Reason::Literal,
+                span,
+            ));
+        }
         TypedTermKind::Float(_) => {
             constraints.push(Constraint::new(
                 tpe.clone(),

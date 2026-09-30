@@ -140,10 +140,9 @@ returning a list of a thousand tuples checks a thousand tuples on the way out, o
 crossing; the same facade on a WebAssembly target checks nothing at the call, because the
 interface was checked when the component loaded.
 
-**Not implemented:** `String` has no [literal syntax](lexical-structure.md#strings) yet,
-records have no brace token ([`LANG-47`](../tickets/lang-47.md)) and lists no literal production
-([`LANG-44`](../tickets/lang-44.md)) — so three of those rows are about types a program cannot
-write today. Both constructs are specified, in [Records](records.md) and [Lists](lists.md), and
+**Not implemented:** records have no brace token ([`LANG-47`](../tickets/lang-47.md)) and lists
+no literal production ([`LANG-44`](../tickets/lang-44.md)) — so two of those rows are about types
+a program cannot write today. Both constructs are specified, in [Records](records.md) and [Lists](lists.md), and
 neither chapter publishes an encoding: what a record and a list look like across either boundary
 belongs to code generation. Nothing reads a WIT interface either, since no WebAssembly is
 produced ([`GEN-15`](../tickets/gen-15.md)).

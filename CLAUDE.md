@@ -214,10 +214,11 @@ is only a status check on the compiler as it stands today.
 Implemented: modules with `exposing`/`import`/`as`, union types, pattern matching via `case
 … of`, `if/then/else`, function declarations with annotations, infix declarations, tuples, the
 unit type `()` (checked and emitted, as `undefined` on JavaScript), JS interop via facades with
-companion `.mjs` files, `--` and `{- -}` comments.
+companion `.mjs` files, single-line string literals, `--` and `{- -}` comments.
 
-Not implemented: string literals, `let … in`, lambdas, records, lists, negative literals, type
-aliases, and a `Task` that does more than `succeed` and `map` (`std/core` declares `Task`,
+Not implemented: multi-line `"""` string literals, `let … in`, lambdas, records, lists,
+negative literals, type aliases, and a `Task` that does more than `succeed` and `map`
+(`std/core` declares `Task`,
 `Failure`, `succeed` and `map`; `zelkova run` runs a package's `main`, and `zelkova test` runs
 a `Test` that holds a `Task`).
 **Multi-clause function declarations** — a deliberate

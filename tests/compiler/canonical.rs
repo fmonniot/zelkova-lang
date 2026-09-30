@@ -3715,3 +3715,64 @@ fn facade_signature_over_unit_is_accepted() {
 
     canonicalize_with_scalars(source).expect("`()` is admitted in a facade signature");
 }
+
+// ── String literals ──────────────────────────────────────────────────────────
+
+/// A string literal reaches the canonical AST holding its value, escape sequences
+/// already read — `\n` is one line feed, not a backslash and an `n`.
+///
+/// Verified by mapping `Literal::String` to `ExpressionKind::String(String::new())` in
+/// `Expression::from_parser`: the assertion goes red.
+#[test]
+fn string_literal_canonicalizes_to_its_value() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        greeting = "hi\nthere"
+    "#};
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    assert_eq!(
+        module.values.get(&"greeting".into()).unwrap(),
+        &canonical::Value::Value {
+            span: NodeSpan::none(),
+            name: "greeting".into(),
+            patterns: vec![],
+            body: canonical::Expression::bare(canonical::ExpressionKind::String(
+                "hi\nthere".to_owned()
+            )),
+        }
+    );
+}
+
+/// A string literal in a `case` branch is a literal pattern holding its value.
+///
+/// Verified by mapping `Literal::String` to `PatternKind::String(String::new())` in
+/// `Pattern::from_parser`: the assertion goes red.
+#[test]
+fn string_literal_pattern_canonicalizes_to_its_value() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+        isHello s =
+          case s of
+            "hello" ->
+              1
+
+            _ ->
+              0
+    "#};
+    let module = canonicalize_standalone(source).expect("should canonicalize");
+
+    let body = match module.values.get(&"isHello".into()).unwrap() {
+        canonical::Value::Value { body, .. } => body,
+        other => panic!("expected an unannotated value, got {:?}", other),
+    };
+    let branches = match &body.kind {
+        canonical::ExpressionKind::Case(_, branches) => branches,
+        other => panic!("expected a case, got {:?}", other),
+    };
+
+    assert_eq!(
+        branches[0].pattern.kind,
+        canonical::PatternKind::String("hello".to_owned())
+    );
+}

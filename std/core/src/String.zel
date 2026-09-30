@@ -4,10 +4,10 @@ module String exposing (String)
 
 The full `String` module — `isEmpty`, `append`, `split`, `toUpper` and the rest of Elm's
 functions over it — is not ported yet; `String.ignored` beside this file is the port's
-reference. Nothing in the language writes a `String` literal yet either (see
-`docs/spec/lexical-structure.md`'s *Strings* section), so today a `String` reaches a program
-only as a value a JavaScript facade wrapper hands back, the way `Failure`'s two constructors
-will each carry one (`docs/spec/evaluation-semantics.md`).
+reference. A `String` reaches a program as a string literal (see
+`docs/spec/lexical-structure.md`'s *Strings* section) or as a value a JavaScript facade
+wrapper hands back, the way `Failure`'s two constructors each carry one
+(`docs/spec/evaluation-semantics.md`).
 
 # Strings
 @docs String

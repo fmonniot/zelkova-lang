@@ -22,10 +22,14 @@ pub enum Token {
     Char {
         value: char,
     },
+    /// A single-line string literal, `"hello"`, holding its value with every escape
+    /// sequence already replaced by the character it names.
+    String {
+        value: String,
+    },
     True,
     False,
     Operator(String),
-    // TODO String literal
 
     // Control character
     EndOfFile,
@@ -161,8 +165,19 @@ pub enum TokenizerErrorType {
     // TODO If can be implemented, lookahead and try to find a closing single quote
     // This will require to implement backtracking in the tokenizer though
     //CharTooBigError,
-    StringError,  // TODO String literal
-    UnicodeError, // TODO String literal
+    /// A string literal (`consume_string`) reaches a line ending or the end of the file
+    /// before its closing `"`. A single-line string may not contain an unescaped line
+    /// ending, so the literal is unclosed whichever of the two it met. Spanned from the
+    /// opening quote to where the line ended.
+    StringNotClosedError,
+    /// A `\` inside a string literal (`consume_escape`) followed by a character that
+    /// begins none of the escape sequences. Spanned over the backslash and that
+    /// character.
+    InvalidEscape,
+    /// A `\u` escape (`consume_escape`) that is not `{`, one to six hexadecimal digits
+    /// and `}`, or whose digits name no Unicode scalar value — a surrogate, or a number
+    /// past `10FFFF`. Spanned from the backslash to where reading the escape stopped.
+    UnicodeError,
     IndentationError,
     TabError,
     UnrecognizedToken {
@@ -757,6 +772,10 @@ where
                         }
                     }
                 }
+                '"' => {
+                    let string = self.consume_string()?;
+                    self.processed_tokens.push(string);
+                }
                 ' ' | '\n' => {
                     self.next_char().unwrap(); // let's skip over whitespace and new lines
                 }
@@ -808,6 +827,159 @@ where
                 .push(spanned(self.position, self.position, Token::EndOfFile));
 
             Ok(())
+        }
+    }
+
+    /// Consume a single-line string literal, from its opening `"` to its closing one.
+    ///
+    /// Every character between the quotes is taken as written, except a `\`, which
+    /// begins an escape sequence ([`consume_escape`](#method.consume_escape)). A string
+    /// may not contain an unescaped line ending, so meeting one — or the end of the file
+    /// — before the closing quote is a `StringNotClosedError`; the line ending itself is
+    /// left unconsumed, and the next poll resumes from it. A horizontal tab and a
+    /// carriage return are rejected inside a string exactly as they are anywhere else
+    /// outside a comment, each consumed so that the next poll moves past it.
+    ///
+    /// Only the single-line form is read. A `"""` opens the empty string `""` followed
+    /// by a second literal, which the line ending then leaves unclosed.
+    fn consume_string(&mut self) -> Result<Spanned<Position, Token>> {
+        let start = self.position;
+        self.next_char(); // the opening quote
+
+        let mut value = String::new();
+
+        loop {
+            match self.lookahead.0 {
+                Some('"') => {
+                    self.next_char();
+                    break;
+                }
+                Some('\\') => value.push(self.consume_escape(start)?),
+                Some('\n') | None => {
+                    return Err(TokenizerError::new(
+                        start.absolute,
+                        self.position.absolute,
+                        TokenizerErrorType::StringNotClosedError,
+                    ));
+                }
+                Some('\t') => {
+                    let tab = self.position.absolute;
+                    self.next_char();
+                    return Err(TokenizerError::new(
+                        tab,
+                        self.position.absolute,
+                        TokenizerErrorType::TabError,
+                    ));
+                }
+                Some('\r') => {
+                    let at = self.position.absolute;
+                    self.next_char();
+                    return Err(TokenizerError::new(
+                        at,
+                        self.position.absolute,
+                        TokenizerErrorType::UnrecognizedToken { tok: '\r' },
+                    ));
+                }
+                Some(c) => {
+                    self.next_char();
+                    value.push(c);
+                }
+            }
+        }
+
+        Ok(spanned(start, self.position, Token::String { value }))
+    }
+
+    /// Consume one escape sequence inside a string literal, the `\` included, and return
+    /// the character it names.
+    ///
+    /// The sequences are `\n`, `\r`, `\t`, `\\`, `\'`, `\"` and `\u{H…}`, whose one to six
+    /// hexadecimal digits name a Unicode scalar value. A backslash at the end of the line
+    /// or of the file leaves the string unclosed, so that is reported against `string`,
+    /// the opening quote, as `consume_string` would report it. Every other error has
+    /// consumed at least the backslash, so the next poll never meets the same one.
+    fn consume_escape(&mut self, string: Position) -> Result<char> {
+        let start = self.position.absolute;
+        self.next_char(); // the backslash
+
+        let simple = match self.lookahead.0 {
+            Some('n') => Some('\n'),
+            Some('r') => Some('\r'),
+            Some('t') => Some('\t'),
+            Some('\\') => Some('\\'),
+            Some('\'') => Some('\''),
+            Some('"') => Some('"'),
+            _ => None,
+        };
+
+        match (simple, self.lookahead.0) {
+            (Some(c), _) => {
+                self.next_char();
+                Ok(c)
+            }
+            (None, Some('\n') | None) => Err(TokenizerError::new(
+                string.absolute,
+                self.position.absolute,
+                TokenizerErrorType::StringNotClosedError,
+            )),
+            (None, Some('u')) => {
+                self.next_char();
+                self.consume_unicode_escape(start)
+            }
+            (None, Some(_)) => {
+                self.next_char();
+                Err(TokenizerError::new(
+                    start,
+                    self.position.absolute,
+                    TokenizerErrorType::InvalidEscape,
+                ))
+            }
+        }
+    }
+
+    /// Consume the `{H…}` of a `\u{H…}` escape whose `\u` began at `start`, and return
+    /// the character its digits name.
+    ///
+    /// Reading stops at the first character that cannot continue the escape, which is
+    /// left unconsumed; a `UnicodeError` then spans from `start` to that character.
+    fn consume_unicode_escape(&mut self, start: BytePos) -> Result<char> {
+        let error = |end: BytePos| {
+            Err(TokenizerError::new(
+                start,
+                end,
+                TokenizerErrorType::UnicodeError,
+            ))
+        };
+
+        if self.lookahead.0 != Some('{') {
+            return error(self.position.absolute);
+        }
+        self.next_char();
+
+        let mut code: u32 = 0;
+        let mut digits = 0;
+
+        loop {
+            match self.lookahead.0 {
+                Some('}') => {
+                    self.next_char();
+                    break;
+                }
+                Some(c) if digits < 6 => match c.to_digit(16) {
+                    Some(digit) => {
+                        self.next_char();
+                        code = code * 16 + digit;
+                        digits += 1;
+                    }
+                    None => return error(self.position.absolute),
+                },
+                _ => return error(self.position.absolute),
+            }
+        }
+
+        match char::from_u32(code) {
+            Some(c) if digits > 0 => Ok(c),
+            _ => error(self.position.absolute),
         }
     }
 
@@ -1342,6 +1514,158 @@ mod tests {
 
         assert_eq!(tokenize("'a'"), vec![char_token('a')]);
         assert_eq!(tokenize("'🙂'"), vec![char_token('🙂')]);
+    }
+
+    fn string_token(value: &str) -> Token {
+        Token::String {
+            value: value.to_owned(),
+        }
+    }
+
+    /// The first error `source` fails to tokenize with.
+    fn first_error(source: &str) -> TokenizerError {
+        make_tokenizer(source)
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("expected the source to fail the tokenizer")
+    }
+
+    #[test]
+    fn literal_string() {
+        assert_eq!(tokenize(r#""hello""#), vec![string_token("hello")]);
+        assert_eq!(tokenize(r#""""#), vec![string_token("")]);
+        assert_eq!(tokenize(r#""a'b 🙂""#), vec![string_token("a'b 🙂")]);
+        assert_eq!(
+            tokenize(r#"f "a" "b""#),
+            vec![ident_token("f"), string_token("a"), string_token("b")]
+        );
+
+        let spans: Vec<_> = make_tokenizer(r#"x = "é""#)
+            .map(|t| t.unwrap())
+            .map(|t| (t.span.start.absolute, t.span.end.absolute))
+            .collect();
+        assert_eq!(spans[2], (BytePos(4), BytePos(8)));
+    }
+
+    #[test]
+    fn literal_string_escapes() {
+        assert_eq!(
+            tokenize(r#""\n\r\t\\\'\"""#),
+            vec![string_token("\n\r\t\\'\"")]
+        );
+        assert_eq!(
+            tokenize(r#""\u{41}\u{1F600}\u{0}""#),
+            vec![string_token("A\u{1F600}\u{0}")]
+        );
+        // An escaped quote does not close the string.
+        assert_eq!(tokenize(r#""a\"b""#), vec![string_token("a\"b")]);
+    }
+
+    /// Mirrors `literal_char`'s unclosed cases: the error spans from the opening quote
+    /// to where the string was cut off.
+    ///
+    /// Verified by removing `consume_char`'s `'"'` arm, which reddens every `literal_string*`
+    /// test (here a `"` is then an `UnrecognizedToken`), and by letting `consume_escape`
+    /// treat only the end of the file as unclosing, which reddens the backslash case.
+    #[test]
+    fn literal_string_not_closed() {
+        assert_eq!(
+            first_error(r#""hello"#),
+            TokenizerError::new(
+                BytePos(0),
+                BytePos(6),
+                TokenizerErrorType::StringNotClosedError
+            )
+        );
+        assert_eq!(
+            first_error("\"hel\nlo\""),
+            TokenizerError::new(
+                BytePos(0),
+                BytePos(4),
+                TokenizerErrorType::StringNotClosedError
+            )
+        );
+        assert_eq!(
+            first_error("\"a\r\nb\""),
+            TokenizerError::new(
+                BytePos(0),
+                BytePos(2),
+                TokenizerErrorType::StringNotClosedError
+            )
+        );
+        // A backslash cannot escape the line ending.
+        assert_eq!(
+            first_error("\"a\\\nb\""),
+            TokenizerError::new(
+                BytePos(0),
+                BytePos(3),
+                TokenizerErrorType::StringNotClosedError
+            )
+        );
+        // `"""` is the empty string, then a second string the line ending cuts off.
+        assert_eq!(
+            first_error("\"\"\"\nx\n\"\"\""),
+            TokenizerError::new(
+                BytePos(2),
+                BytePos(3),
+                TokenizerErrorType::StringNotClosedError
+            )
+        );
+    }
+
+    #[test]
+    fn literal_string_bad_escapes() {
+        assert_eq!(
+            first_error(r#""a\qb""#),
+            TokenizerError::new(BytePos(2), BytePos(4), TokenizerErrorType::InvalidEscape)
+        );
+        let unicode = |source: &str, end: u32| {
+            assert_eq!(
+                first_error(source),
+                TokenizerError::new(BytePos(1), BytePos(end), TokenizerErrorType::UnicodeError),
+                "{}",
+                source
+            )
+        };
+        unicode(r#""\u41""#, 3);
+        unicode(r#""\u{}""#, 5);
+        unicode(r#""\u{zz}""#, 4);
+        unicode(r#""\u{1234567}""#, 10);
+        unicode(r#""\u{D800}""#, 9);
+        unicode(r#""\u{110000}""#, 11);
+    }
+
+    /// A tab and a lone carriage return are rejected inside a string as they are
+    /// everywhere else outside a comment. Verified by removing either arm of
+    /// `consume_string`: the character then lands in the value and the test goes red.
+    #[test]
+    fn literal_string_rejects_tab_and_carriage_return() {
+        assert_eq!(
+            first_error("\"a\tb\""),
+            TokenizerError::new(BytePos(2), BytePos(3), TokenizerErrorType::TabError)
+        );
+        assert_eq!(
+            first_error("\"a\rb\""),
+            TokenizerError::new(
+                BytePos(2),
+                BytePos(3),
+                TokenizerErrorType::UnrecognizedToken { tok: '\r' }
+            )
+        );
+    }
+
+    /// Every string error consumes input, so draining past it terminates and never
+    /// repeats one error (`BUG-4`).
+    #[test]
+    fn string_errors_do_not_hang() {
+        for source in [
+            "\"ab\n\"cd\n",
+            "\"\\q\\q\"",
+            "\"\\u{zz}\"",
+            "\"a\tb\"",
+            "\"\\",
+        ] {
+            drain_capped(source, 64);
+        }
     }
 
     #[test]
