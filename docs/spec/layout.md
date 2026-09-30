@@ -179,6 +179,17 @@ f x =
 1
 ```
 
+The converse holds as well: a declaration whose first token is not in column 1 is a
+continuation of the declaration above it, however it was meant. When that declaration is
+already complete, the error names the indentation of the line that continues it:
+
+```zel expect=parse-error:LayoutError
+module Example exposing (f)
+
+  f x =
+    1
+```
+
 There is no separator between declarations. Blank lines between them are conventional and
 carry no meaning.
 

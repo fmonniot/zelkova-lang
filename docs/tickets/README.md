@@ -232,7 +232,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | BUG-26 | bug | medium | closed 2026-09-16 | A module that declares `Bool`, `Int`, `Char` or `Float` cannot annotate anything with it |
 | BUG-27 | bug | medium | closed 2026-09-21 | A canonicalized infix operator is qualified under its own symbol, not the function its `infix` declaration names |
 | BUG-28 | bug | low | closed 2026-09-30 | The `Tokenizer` never terminates on an unterminated character literal |
-| [BUG-29](bug-29.md) | bug | medium | open | A top-level declaration whose first token is not at column 1 fails to parse |
+| BUG-29 | bug | medium | closed 2026-09-30 | A top-level declaration whose first token is not at column 1 fails to parse |
 | [BUG-30](bug-30.md) | bug | medium | open | An `Upper(..)` import entry does not check the type was exposed transparently |
 | [BUG-31](bug-31.md) | bug | medium | open | `do_exports` accepts a `Lower`/`Upper` name that resolves only through an import |
 | [BUG-32](bug-32.md) | bug | medium | open | An exposed infix's unannotated backing function is silently dropped from the interface |
