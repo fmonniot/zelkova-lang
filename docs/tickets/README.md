@@ -28,6 +28,7 @@ any of these is a question for the language owner, not a call a session makes on
 | `LANG-` | Bringing the compiler into line with a rule `docs/spec/` has since settled |
 | `SITE-` | The public GitHub Pages site built from this repo — rustdoc, the rendered spec, the landing page |
 | `GEN-` | Code generation — turning a checked module into runnable JavaScript, a phase that does not exist yet |
+| `TOOL-` | Developer tooling outside the compile pipeline — editor support, the language server, and the crate layout that serves them |
 
 Two distinctions worth keeping straight when filing a new ticket:
 
@@ -163,6 +164,38 @@ settles that a constrained function is specialised per instantiation and no dict
 at runtime — a constraint on code generation, which has not started. It is recorded in
 `docs/spec/type-classes.md` and `docs/spec/interop.md`, and [`GEN-1`](gen-1.md) inherits it
 from there rather than it being filed twice.
+
+## Active work: editor support
+
+`TOOL-1` through `TOOL-6` are one effort: **a `.zel` file gets the editor support any
+mainstream language has.** That means highlighting first, then errors shown as you type, then
+hover types and go-to-definition. They get a section because, apart from `TOOL-1`, none of them
+is visible to a user on its own. Three are compiler changes a language server needs, and the
+server itself is the last to land.
+
+```
+TOOL-1  TextMate grammar + VS Code extension      ← independent; ships value alone
+          (the next one to start)
+
+TOOL-2  sources through an overlay, not only disk  ─┐
+TOOL-3  a check that returns diagnostics as data,   ├─ both required by TOOL-6
+          prints nothing, writes nothing           ─┘
+TOOL-4  a syntax error no longer discards the       ← not required by TOOL-6, but without
+          module                                       it every capability past diagnostics
+  │                                                   goes dark on a file mid-edit
+  │
+TOOL-6  zelkova-lsp: diagnostics, then hover, then go-to-definition, then semantic tokens
+          ← to be split into one ticket per capability before work starts
+
+TOOL-5  workspace split: syntax / compiler / js / cli   ← depends on nothing and blocks
+          nothing; scheduled after TOOL-2..4 so the move does not invalidate the
+          Location of tickets still in flight
+```
+
+**What is not a ticket yet: incremental checking.** `TOOL-6` starts by re-checking the whole
+package on each change. Whether the compiler moves to a query-based architecture (e.g. `salsa`)
+is a much larger decision, deferred until a whole-package check is measurably too slow in an
+editor.
 
 ## Tickets
 
@@ -403,3 +436,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TEST-7 | task | — | closed 2026-09-29 | `std/core`'s companion checks are run by `node --test` and not as Zelkova tests |
 | [TEST-8](test-8.md) | task | — | open | CI never runs the runtime's own checks, `runtime/js/tests/zelkovaChecks.mjs` |
 | [TEST-9](test-9.md) | task | — | open | A test companion's import of a companion under test that the build does not rewrite fails at run time, with a build path in the message |
+| [TOOL-1](tool-1.md) | task | — | open | No editor highlights a `.zel` file |
+| [TOOL-2](tool-2.md) | task | — | open | A source file can only be read from disk, so nothing can check an unsaved buffer |
+| [TOOL-3](tool-3.md) | task | — | open | Checking a package always prints to stderr and writes JavaScript |
+| [TOOL-4](tool-4.md) | task | — | open | One syntax error discards the whole module |
+| [TOOL-5](tool-5.md) | task | — | open | The compiler, its JavaScript backend and its command line are one crate |
+| [TOOL-6](tool-6.md) | task | — | open | There is no language server |
