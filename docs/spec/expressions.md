@@ -82,8 +82,8 @@ shadowed like any other name — see [Reserved words](lexical-structure.md#reser
 
 ### String literals
 
-A string literal is an expression of type `String`. What it may contain is
-[Lexical structure](lexical-structure.md#strings)' subject.
+A string literal is an expression of type `String`; see
+[Lexical structure](lexical-structure.md#strings) for what it may contain.
 
 ```zel expect=ok
 module Example exposing ()

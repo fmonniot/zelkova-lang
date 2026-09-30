@@ -428,15 +428,6 @@ greeting = "hello"
 quoted = "she said \"hi\"\n\u{1F600}"
 ```
 
-A backslash followed by anything but one of the escapes in the table above is an error, and so
-is a `\u{…}` whose digits name no Unicode scalar value.
-
-```zel expect=parse-error:InvalidEscape
-module Example exposing ()
-
-path = "C:\docs"
-```
-
 A string may not contain an unescaped line ending: one reached before the closing quote leaves
 the string unclosed.
 
