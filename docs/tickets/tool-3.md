@@ -5,7 +5,7 @@ with `errors.is_empty()` gates. The work is lifting the checking half into an en
 its own without leaving two copies of the pipeline.
 
 **Part of:** the *Active work: editor support* section of [the index](README.md).
-[`TOOL-6`](tool-6.md) depends on it.
+[`TOOL-2`](tool-2.md), [`TOOL-6`](tool-6.md) and [`TOOL-7`](tool-7.md) depend on it.
 
 **Location:** `src/compiler/mod.rs` — `compile`: its `print_status` closure and
 `StandardStream::stderr` writer, the `output::write` calls under `debug!("phase: write the

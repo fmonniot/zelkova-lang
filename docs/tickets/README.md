@@ -177,9 +177,11 @@ server itself is the last to land.
 TOOL-1  TextMate grammar + VS Code extension      ← independent; ships value alone
           (the next one to start)
 
-TOOL-2  sources through an overlay, not only disk  ─┐
-TOOL-3  a check that returns diagnostics as data,   ├─ both required by TOOL-6
-          prints nothing, writes nothing           ─┘
+TOOL-3  a check that returns diagnostics as data,  ─┐
+  │       prints nothing, writes nothing            │
+  │                                                 ├─ both required by TOOL-6
+TOOL-2  that check reads open buffers through an    │
+          overlay, not only the disk               ─┘
 TOOL-4  a syntax error no longer discards the       ← not required by TOOL-6, but without
           module                                       it every capability past diagnostics
   │                                                   goes dark on a file mid-edit
