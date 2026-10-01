@@ -2621,6 +2621,12 @@ pub fn canonicalize_recovering(
 /// keeps the member that is not a restatement. With `incomplete` false, `errors` comes
 /// back untouched.
 ///
+/// `InfixReferenceInvalidValue` is on that list although it is raised in one place only,
+/// for an `infix` declaration naming a function this module does not declare, and so
+/// restates nothing today: in an incomplete scope it is deferred, and the failure that
+/// made the scope incomplete stands in the build. It would restate one if a function that
+/// failed were ever left out of that function list.
+///
 /// Dropping an error does not make its declaration sound. The caller has already left the
 /// declaration out of the module, and keeps it left out.
 fn without_restated(errors: Vec<Error>, incomplete: bool) -> Vec<Error> {

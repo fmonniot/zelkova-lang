@@ -6438,9 +6438,10 @@ fn checked_modules_status(check: &zelkova_compiler::PackageCheck) -> &str {
 ///
 /// Mutation-checked twice. Leaving `Interface::incomplete` false in
 /// `canonical::Module::to_interface` reports `B`'s import entry as `UnionNotFound`, so
-/// the error count goes red. Dropping the two extra conditions in `check_root`'s
-/// partition (`broken` empty and `incomplete` false) puts `B`, whose error list is
-/// empty, in the status line's list.
+/// the error count goes red. Dropping the `incomplete` condition from `check_root`'s
+/// partition puts `B`, whose error list is empty, in the status line's list. (The
+/// partition has no `broken` condition: a broken declaration implies an error or an
+/// incomplete scope.)
 #[test]
 fn a_module_importing_a_broken_type_reports_nothing_about_it() {
     let root = fixture_package("package_import_broken_type");

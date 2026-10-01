@@ -1810,11 +1810,21 @@ struct RootCheck {
 /// back, apart into the ones that checked and the ones that came back with errors; every
 /// error goes onto `errors`, tagged with the file its module was read from.
 ///
-/// A module is among the ones that checked when its error list is empty, when
-/// [`canonical::Module::broken`] is empty and when [`canonical::Module::incomplete`] is
-/// false. The error list alone is not enough: a module whose every error was a not-found
-/// restating a failure of another module has declarations with no IR, and belongs with
-/// the modules that came back with errors.
+/// A module is among the ones that checked when its error list is empty and
+/// [`canonical::Module::incomplete`] is false. The error list alone is not enough, for
+/// two reasons that both end in a module with an empty list:
+///
+/// - a module whose every error was a not-found restating a failure of another module
+///   has declarations with no IR;
+/// - a module that imports an [incomplete](Interface::incomplete) interface was checked
+///   in a scope where an error of its own could have been dropped, so it cannot be
+///   claimed as checked even when its tree is whole and none of its declarations is
+///   broken.
+///
+/// A module with a declaration in [`canonical::Module::broken`] is never among the
+/// ones that checked either, and needs no condition of its own: a declaration is only
+/// recorded there beside an error that is in the list or was dropped, and a dropped
+/// error is one raised in an incomplete scope.
 fn check_root(
     package: &resolve::ResolvedPackage,
     root: source::SourceRoot,
@@ -1847,9 +1857,13 @@ fn check_root(
     // Step 5: Follow graph and call check_module_recovering on each
     //
     // `check_in_order` checks every module regardless of earlier failures and hands back
-    // one outcome per module: a module that checked, a module with the errors found in
-    // it, or only the errors (see `docs/tickets/README.md`, `BUG-2`). The errors flow
-    // into `errors` below so a failing module keeps making the build return `Err`.
+    // one outcome per module (see `docs/tickets/README.md`, `BUG-2`).
+    // `check_module_recovering` always answers `Outcome::Module`: the module with the
+    // errors found in it, which is empty for a module that checked and for one whose errors
+    // were all dropped in an incomplete scope. `Outcome::Failed` is the walker's answer
+    // for a checker with nothing to publish, and only `dependencies.rs`'s own tests have
+    // one; the arm below keeps the walker generic. The errors flow into `errors` below so
+    // a failing module keeps making the build return `Err`.
     //
     // `module_files` is also how each module's `Interface` learns which file it came
     // from (`Interface::file`, `ERR-5`): this is the one place that knows both the
@@ -1867,9 +1881,7 @@ fn check_root(
     for outcome in outcomes {
         match outcome {
             dependencies::Outcome::Module(module, module_errors)
-                if module_errors.is_empty()
-                    && module.canonical.broken.is_empty()
-                    && !module.canonical.incomplete =>
+                if module_errors.is_empty() && !module.canonical.incomplete =>
             {
                 root_check.checked.push(module)
             }
