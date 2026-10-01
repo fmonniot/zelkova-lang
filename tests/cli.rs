@@ -95,8 +95,8 @@ fn compile_defaults_to_current_directory() {
 /// hardcoded path left over from before GEN-17 gave the compiler a CLI.
 ///
 /// Neutralised by changing the match arm in `src/main.rs` from
-/// `Command::Compile { dir } => compiler::compile_package(&dir)` to
-/// `Command::Compile { .. } => compiler::compile_package(Path::new("tests/fixtures/package_type_error"))`
+/// `Command::Compile { dir } => driver::compile_package(&dir)` to
+/// `Command::Compile { .. } => driver::compile_package(Path::new("tests/fixtures/package_type_error"))`
 /// — ignoring the parsed `dir` — while running from the repository root with
 /// `compile tests/fixtures/package_checks` as the argument. This test went red
 /// (exit code 1, an `Int`/`Bool` mismatch on stderr instead of "parsed 1 modules")
@@ -173,7 +173,7 @@ fn run_without_node(cwd: &Path, args: &[&str]) -> Output {
 /// no `node` reachable — an attempt to start one would have shown up as an error naming it.
 ///
 /// Neutralised by replacing the `?` after `compile_package_with_tests(package_dir)` in
-/// `test_runner::run` with `.unwrap_or_default()`, so a failed build carries on with nothing
+/// `driver::test` with `.unwrap_or_default()`, so a failed build carries on with nothing
 /// collected. This test went red (exit code 0 and "no tests found") under that change.
 #[test]
 fn test_on_a_package_that_does_not_compile_exits_1_without_running_node() {

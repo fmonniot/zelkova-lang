@@ -7,11 +7,12 @@ building the severity channel before there is a single caller risks guessing wro
 that first caller (unused imports), filed to be resolved before this one starts.
 
 **Location:** `PhaseError` and `CompilationError` in `src/compiler/mod.rs`,
-`phase_diagnostic`, and the accumulate-then-decide logic at the end of `compile_package`.
+`phase_diagnostic`, and the accumulate-then-decide logic at the end of `compile` in
+`src/driver.rs`.
 
 **Problem:** every diagnostic the compiler emits is a `Diagnostic::error()`, and the return
 value is decided by whether *any* error was accumulated: an empty vector is `Ok(())`, a
-non-empty one is `Err(CompilationError::Many(..))` and `main` exits non-zero. There is no way
+non-empty one is `Err(BuildError::Many(..))` and `main` exits non-zero. There is no way
 to tell the user something is wrong without failing the build.
 
 Everything a compiler normally warns about is therefore unrepresentable: an unused import, a

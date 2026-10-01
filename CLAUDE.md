@@ -96,9 +96,10 @@ them.
 
 ## Architecture
 
-The pipeline is documented at the top of `src/compiler/mod.rs`. `compile_package` is pointed
-at a package directory and compiles that package and everything it depends on;
-`compile_in_build` is one package of that build, and `check_module` runs the per-module
+The pipeline is documented at the top of `src/compiler/mod.rs`. `check_package` is pointed
+at a package directory and checks that package and everything it depends on, printing and
+writing nothing; `src/driver.rs`'s `compile_package` is what emits, writes and reports what
+it found. `compile_in_build` is one package of that build, and `check_module` runs the per-module
 phases and hands back a `CheckedModule` — the `canonical::Module` an `Interface` is built
 from, beside the `ir::Module` a backend will read.
 
@@ -115,7 +116,7 @@ from, beside the `ir::Module` a backend will read.
 | Type checking | `src/compiler/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`. **Wired into `check_module`** |
 | Exhaustiveness | `src/compiler/exhaustiveness.rs` | **stub** — `check` inspects nothing and accepts every module. `Error::NonExhaustiveMatch` exists and renders, but nothing constructs it yet |
 | Backend IR | `src/compiler/ir/` | the shape a backend reads: a type on every node, the four kinds of name apart, arity, saturation and a constructor's place in its declaration. `ir::build` turns the canonical module and what the typer solved into one `ir::Module`. Its module doc comment is where the WebAssembly constraints are written, and is what to read before changing the shape |
-| Code generation | `src/compiler/javascript.rs`, `src/compiler/output.rs` | `javascript::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `javascript.rs`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included, and an `unsafe` facade's forwarding code runs its companion's result through the predicate of the declared type (*The boundary check*); an effectful facade's call site builds a `Task` over the runtime's `$effect` (`Ok`, `Threw`, `Malformed`); it refuses a facade with no companion, a facade result no predicate decides, and a module holding a declaration the typer could not check. Its module doc comment has the shape, the representations and the call rule |
+| Code generation | `src/compiler/javascript.rs`, `src/compiler/output.rs` | `javascript::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `driver::compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `javascript.rs`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included, and an `unsafe` facade's forwarding code runs its companion's result through the predicate of the declared type (*The boundary check*); an effectful facade's call site builds a `Task` over the runtime's `$effect` (`Ok`, `Threw`, `Malformed`); it refuses a facade with no companion, a facade result no predicate decides, and a module holding a declaration the typer could not check. Its module doc comment has the shape, the representations and the call rule |
 
 `Name` (`src/compiler/name.rs`) is an unqualified identifier; `QualName` is one that carries
 its module. Everything after parsing should be reaching for `QualName`.
@@ -129,10 +130,11 @@ it describes.
 - **No `panic!`, `unwrap()`, `expect()` or `todo!()` on a non-test path.** Return a phase
   `Error` and let the caller accumulate diagnostics. This was the whole subject of `ERR-1`;
   do not reintroduce it. `unwrap()` inside `#[cfg(test)]` is fine.
-- **A pass that emitted an error must not report success.** `compile_package` accumulates
-  `CompilationError`s rather than stopping at the first one, and that accumulation *is* the
-  return value: empty is `Ok(())`, non-empty is `Err(CompilationError::Many(..))`, and
-  `src/main.rs` exits non-zero on `Err`. A new failure path pushes onto that vector; nothing
+- **A pass that emitted an error must not report success.** `check_package` accumulates
+  `CompilationError`s rather than stopping at the first one, `driver::compile_package` adds
+  each to its own accumulator of `BuildError`s, and that accumulation *is* the return value:
+  empty is `Ok(())`, non-empty is `Err(BuildError::Many(..))`, and `src/main.rs` exits
+  non-zero on `Err`. A new failure path pushes onto that vector; nothing
   is rendered and then dropped. Rendering diagnostics and returning `Ok` regardless was
   `BUG-1`. The per-module phases have the same *shape* one level down — `canonicalize`,
   `type_check` and `exhaustiveness::check` each return `Result<_, Vec<Error>>`, so one broken
@@ -142,9 +144,10 @@ it describes.
   module.
 - **An error has to describe itself, and say where.** Every phase error implements `PhaseError`
   (`src/compiler/mod.rs`): a `message()` written in the vocabulary of the user's source, plus
-  optional `notes()` and `labels()`. `CompilationError::as_diagnostic` is the only place a
-  `codespan_reporting::Diagnostic` is ever built, which is exactly why `format!("{:?}", e)` in
-  a note is not an option — a `Debug` dump names Rust types, not source constructs. Read
+  optional `notes()` and `labels()`. `CompilationError::as_diagnostic`, and the two functions
+  it shares with `driver::BuildError::as_diagnostic` (`phase_diagnostic` and
+  `plain_diagnostic`), are the only places a `codespan_reporting::Diagnostic` is ever built,
+  which is exactly why `format!("{:?}", e)` in a note is not an option — a `Debug` dump names Rust types, not source constructs. Read
   `PhaseError`'s doc comment before adding a variant, and `Origin`, `Constraint` and the head
   of `typer/constraint.rs` before touching how a type error is blamed. One rule spans both and
   is stated in neither: a group error (`Error::Many`, `EnvironmentErrors`) must flatten its

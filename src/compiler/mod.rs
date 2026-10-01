@@ -34,31 +34,19 @@
 //!     1. check each module (type check, exhaustiveness, etc…), and build the `ir::Module`
 //!        a backend reads out of the canonical module and what the typer solved
 //!     1. Bonus point to parallelize the tree branches which are not dependent on each others
-//! 6. Once every module of every package has checked, emit each one as JavaScript
-//!    (`javascript::emit`) and, if that failed nowhere either, write the build to
-//!    `build/out/js/` (`output::write`). A build with any error writes nothing. A build that
-//!    also compiled the tests (step 1's exception) writes a second, complete tree at
-//!    `build/test/js/` — the runtime, then one directory per package, holding every
-//!    package of the build (a test-only one included) and the root's `tests/` modules
-//!    beside its `src/` ones — so that tree alone is what a test runner ever reads from.
-//! 7. Report. Each phase returns every error it found, `check_module` tags those with
+//! 6. Report. Each phase returns every error it found, `check_module` tags those with
 //!    the module they came from, and `check_package` accumulates them across modules and
 //!    hands them back with the file database and every status line, printing nothing.
-//!    `compile_package` prints the status lines and renders every error through
-//!    `CompilationError::as_diagnostic` — the one place a `Diagnostic` is built. See the
-//!    `PhaseError` trait for what a phase error owes it.
+//!    See the `PhaseError` trait for what a phase error owes the `Diagnostic` it renders
+//!    as.
 //!
-//! Steps 1 to 5 are `check_package`'s, which writes nothing anywhere. Step 6 and the
-//! printing of step 7 are `compile_package`'s, and its three siblings', alone.
+//! Every step is `check_package`'s, which writes nothing anywhere. Emitting a build that
+//! checked, writing it and printing what the check found are the `driver` module's.
 //!
 
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use codespan_reporting::term::termcolor::WriteColor;
-use codespan_reporting::term::termcolor::{Color, ColorChoice, ColorSpec, StandardStream};
-use codespan_reporting::term::{self};
 use log::debug;
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub mod canonical;
@@ -86,8 +74,8 @@ pub mod javascript;
 // reachable from the public `CompilationError::Manifest`.
 pub mod manifest;
 pub mod name;
-// Public for the same reason as `manifest`: `output::Error` is reachable from the public
-// `CompilationError::Output`.
+// Public because `output::Error` is reachable from the public `driver::BuildError::Output`,
+// and the driver writes a build through `write`.
 pub mod output;
 pub mod parser;
 pub mod position;
@@ -104,9 +92,11 @@ pub mod source;
 // Public because `test_runner`, and `zelkova test` through it, is its caller, the way
 // `scalars` and `default_imports` are public for the phase that reads them.
 pub mod test_collection;
-// Public because `CompilationError::ProgramRun` carries its `Error`, and `zelkova run` calls `run`.
+// Public because `driver::BuildError::ProgramRun` carries its `Error`, and `zelkova run` calls
+// `run`.
 pub mod program_runner;
-// Public because `CompilationError::TestRun` carries its `Error`, and `zelkova test` calls `run`.
+// Public because `driver::BuildError::TestRun` carries its `Error`, and `zelkova test` calls
+// `run` through the driver.
 pub mod test_runner;
 pub mod tuple;
 pub mod typer;
@@ -156,17 +146,6 @@ impl PackageName {
     /// needs no `unwrap`; that the constant passes the check is a unit test.
     pub fn core() -> PackageName {
         PackageName(resolve::CORE_PACKAGE.to_string())
-    }
-
-    /// `zelkova-test`, [`test_collection::TEST_PACKAGE`]: the package that declares
-    /// `Test`, the type [*what a test
-    /// is*](../../docs/spec/packages.md#what-a-test-is) finds a value's test-ness by.
-    ///
-    /// Built the same way [`PackageName::core`] is, without going through
-    /// [`PackageName::new`]'s check, so that naming it needs no `unwrap`; that the
-    /// constant passes the check is a unit test.
-    pub fn test_package() -> PackageName {
-        PackageName(test_collection::TEST_PACKAGE.to_string())
     }
 
     /// Whether this is `zelkova-core`, the one package the default imports and the
@@ -269,7 +248,7 @@ impl ModuleName {
 /// A byte span paired with the file it was written in.
 ///
 /// [`NodeSpan`] is enough for an error about the module a phase is currently
-/// checking, because [`compile_package`] supplies that one file id for the whole
+/// checking, because [`check_package`] supplies that one file id for the whole
 /// diagnostic at render time (see [`PhaseError`] and [`SpanLabel`]). A span pulled
 /// out of an [`Interface`] cannot rely on that: it was written in the *exporting*
 /// module's file, which is not necessarily the file being rendered, so the id has
@@ -352,7 +331,7 @@ pub struct Interface {
     /// learns its [`SourceFileId`] (see [`PhaseError`]). Driver code does, so
     /// [`canonical::Module::to_interface`] takes it as an argument, and its one
     /// caller — [`dependencies::ModuleWalker::check_in_order`], which like
-    /// [`compile_package`] is a driver loop and already holds the file each module
+    /// [`check_package`] is a driver loop and already holds the file each module
     /// came from — passes it there. A hand-built interface, as every test below
     /// `check_module` constructs, passes `None`; [`Interface::source_span`] then has
     /// no file to pair a span with and returns `None`, so the diagnostic degrades to
@@ -383,7 +362,7 @@ impl Interface {
 ///
 /// A [`codespan_reporting::diagnostic::Label`] needs a file id as well as a byte range. Most
 /// labels don't carry one themselves: a phase only ever sees one module, so its
-/// spans belong to the file that module was read from, and [`compile_package`] —
+/// spans belong to the file that module was read from, and [`check_package`] —
 /// the only place that knows which file that is — supplies it for the whole
 /// diagnostic at render time. `file: None` is that case, and it covers everything
 /// built before `ERR-5`.
@@ -541,15 +520,19 @@ fn spans_to_labels(
 /// `phase` names the phase in that summary line ("canonical", "type", …).
 ///
 /// `file` is the module's source file when the caller knows it, and it is handed
-/// straight to [`spans_to_labels`] as the fallback that document describes: a label
+/// straight to `spans_to_labels` as the fallback that function describes: a label
 /// of its own — the cross-module ones `ERR-5` added — renders regardless, so a
 /// `CompilationError` built by hand, as the tests in this module do, loses only the
-/// labels about the module under check. `compile_package` always wraps in
+/// labels about the module under check. [`check_package`] always wraps in
 /// [`CompilationError::InFile`] and so loses none.
 ///
 /// Both branches attach labels: only the headline demotion differs between one error
 /// and a group, and an error that got swallowed into a note still knows where it was.
-fn phase_diagnostic<E: PhaseError>(
+///
+/// Public because [`CompilationError::as_diagnostic`] shares it with
+/// [`crate::driver::BuildError::as_diagnostic`], which renders the driver's own per-module
+/// errors through it.
+pub fn phase_diagnostic<E: PhaseError>(
     module: &Name,
     phase: &str,
     errors: &[E],
@@ -576,7 +559,21 @@ fn phase_diagnostic<E: PhaseError>(
     }
 }
 
-/// Every way compiling a package can fail, tagged with the phase that failed.
+/// Render an error that is about no place in any source — a path on disk, a program that
+/// could not be started — as its message and its notes, with no label.
+///
+/// [`crate::driver::BuildError::as_diagnostic`] is its caller, for the errors of writing
+/// and running a build.
+pub fn plain_diagnostic<E: PhaseError>(error: &E) -> Diagnostic<SourceFileId> {
+    Diagnostic::error()
+        .with_message(error.message())
+        .with_notes(error.notes())
+}
+
+/// Every way checking a package can fail, tagged with the phase that failed.
+///
+/// What can go wrong once a package has checked — emitting it, writing it, running it —
+/// is [`crate::driver::BuildError`]'s, which wraps this.
 ///
 /// Each phase-carrying variant holds *all* the errors that phase produced for one
 /// module rather than only the first, plus the module's [`Name`], which is what
@@ -607,7 +604,7 @@ pub enum CompilationError {
     /// [`SourceFileId`]: what each of these errors is about is a `zelkova.toml`, which
     /// is not a file the database holds, so each names its manifest in its own message.
     /// The graph half is raised before any source is loaded and goes back to the caller
-    /// unrendered; the name-collision half is pushed onto `compile_package`'s
+    /// unrendered; the name-collision half is pushed onto [`check_package`]'s
     /// accumulator once the packages' modules are known, and stops that package being
     /// compiled.
     Resolution(Vec<resolve::Error>),
@@ -623,43 +620,30 @@ pub enum CompilationError {
     /// program's entry point ([`program`]).
     Program(Vec<program::Error>, Name),
     DependenciesError(dependencies::Error),
-    /// The named module checked and could not be emitted as JavaScript.
-    Emit(Vec<javascript::Error>, Name),
-    /// A file of the build's output could not be written. Raised only once every module
-    /// of the build has checked and emitted, since nothing is written before that.
-    Output(output::Error),
-    /// A package's tests were compiled and could not be run: `zelkova test` could not
-    /// write its entry point or could not run `node`. A test that ran and did not pass is
-    /// not this; it is the exit code of the run.
-    TestRun(test_runner::Error),
-    /// A package's program could not be run: `zelkova run` was pointed at a package with no
-    /// `main`, or could not write its entry point or could not run `node`. A program that
-    /// ran and aborted is not this; it is the exit code of the run.
-    ProgramRun(program_runner::Error),
 
     /// An error together with the file the module it belongs to was read from.
     ///
     /// A phase never knows its [`SourceFileId`], so the labels its errors produce are
     /// byte ranges with no file attached. This is where the two halves are put
-    /// together, and it has exactly one constructor: [`compile_package`], which is
+    /// together, and it has exactly one constructor: [`check_package`], which is
     /// the only place that knows which file a module was parsed from. Nothing else
     /// should build it — an id guessed anywhere else would underline the wrong file.
     InFile(Box<CompilationError>, SourceFileId),
 
-    /// Every error accumulated over one compilation pass.
+    /// Several errors, rendered as one summary.
     ///
-    /// `compile_package` does not stop on the first failure: it keeps going so that
-    /// one broken module cannot hide the diagnostics of the others. This variant is
-    /// how that accumulation becomes a failure again at the end of the pass, with the
-    /// typed errors still intact for the caller to inspect.
+    /// Nothing in the compiler builds it: [`check_package`] hands its accumulated errors
+    /// back as [`PackageCheck::errors`], and the driver's own accumulation is
+    /// [`crate::driver::BuildError::Many`], which holds each of them on its own.
     Many(Vec<CompilationError>),
 }
 
 impl CompilationError {
     /// Turn this error into the diagnostic the user reads.
     ///
-    /// This is the compiler's single rendering point — `compile_package` calls it
-    /// and nothing else builds a `Diagnostic` from a phase error. It is public so
+    /// This is the compiler's single rendering point — nothing else builds a `Diagnostic`
+    /// from a phase error, and [`crate::driver::BuildError::as_diagnostic`] calls it for
+    /// every error of the check. It is public so
     /// that a test can assert on what the user is actually shown, rather than on
     /// `is_err()`: what a failure *says* is the behaviour this method exists for.
     pub fn as_diagnostic(&self) -> Diagnostic<SourceFileId> {
@@ -668,15 +652,14 @@ impl CompilationError {
 
     /// The name of the module this error belongs to, when it has one.
     ///
-    /// `compile_package` uses it to look up the file the module was read from, which
+    /// [`check_package`] uses it to look up the file the module was read from, which
     /// is how an [`InFile`](CompilationError::InFile) wrapper gets its id.
     pub fn module(&self) -> Option<&Name> {
         match self {
             CompilationError::Canonical(_, module)
             | CompilationError::Type(_, module)
             | CompilationError::Exhaustiveness(_, module)
-            | CompilationError::Program(_, module)
-            | CompilationError::Emit(_, module) => Some(module),
+            | CompilationError::Program(_, module) => Some(module),
             CompilationError::InFile(inner, _) => inner.module(),
             _ => None,
         }
@@ -685,7 +668,7 @@ impl CompilationError {
     /// `as_diagnostic`, carrying the file the error's module was read from.
     ///
     /// `file` is `None` until an [`InFile`](CompilationError::InFile) wrapper supplies
-    /// one, which only `compile_package` builds. Everything downstream of that
+    /// one, which only [`check_package`] builds. Everything downstream of that
     /// distinction is in `phase_diagnostic`, where it serves as the fallback file for
     /// labels that do not name one themselves.
     fn as_diagnostic_in(&self, file: Option<SourceFileId>) -> Diagnostic<SourceFileId> {
@@ -738,20 +721,6 @@ impl CompilationError {
             CompilationError::Program(errors, module) => {
                 phase_diagnostic(module, "program", errors, file)
             }
-            CompilationError::Emit(errors, module) => {
-                phase_diagnostic(module, "code generation", errors, file)
-            }
-            // A path on disk, not a place in any source, so there is nothing to label.
-            CompilationError::Output(error) => Diagnostic::error()
-                .with_message(error.message())
-                .with_notes(error.notes()),
-            // Like `Output`, about the machine and not about any source.
-            CompilationError::TestRun(error) => Diagnostic::error()
-                .with_message(error.message())
-                .with_notes(error.notes()),
-            CompilationError::ProgramRun(error) => Diagnostic::error()
-                .with_message(error.message())
-                .with_notes(error.notes()),
             // A dependency cycle belongs to the package, not to any one module, so it
             // does not go through `phase_diagnostic` — there is no module to supply
             // the fallback file that helper takes. Its labels don't need one: each
@@ -763,18 +732,10 @@ impl CompilationError {
                 .with_message(err.message())
                 .with_labels(spans_to_labels(err.labels(), None))
                 .with_notes(err.notes()),
-            // `compile_package` renders each accumulated error individually rather than
-            // wrapping first, so this arm only fires when a `Many` is rendered as a
-            // whole. It summarises rather than repeating what those diagnostics said.
-            //
-            // This is the one group that deliberately does not flatten its members'
-            // labels. The phase-error groups that do — `canonical::Error::Many`,
-            // `EnvironmentErrors` — hold errors from a single module, so their labels
-            // all belong to one file and the group is the *only* thing rendered. This
-            // one spans the whole package: its members are `InFile` wrappers naming
-            // different files, and each has already been rendered with its own carets
-            // by the time this summary is built. Flattening here would draw every
-            // caret in the package a second time under one headline.
+            // Nothing in the compiler builds a `Many` (see the variant), so this arm only
+            // fires when one built elsewhere is rendered as a whole. It summarises rather
+            // than flattening its members' labels, for the reason given at
+            // `driver::BuildError::Many`, the group a build actually renders.
             CompilationError::Many(errors) => Diagnostic::error()
                 .with_message(format!(
                     "compilation failed with {} error{}",
@@ -844,99 +805,6 @@ enum TestRoot {
     Compiled,
 }
 
-/// Compile the package rooted at `package_dir` — a directory holding a `zelkova.toml`
-/// manifest beside a `src/` source root, per
-/// [`docs/spec/packages.md`](../../docs/spec/packages.md#what-a-package-is) — and every
-/// package it depends on.
-///
-/// Its `tests/` root is not compiled; [`compile_package_with_tests`] is that build. A
-/// package is compiled from source the same way whether it is the one asked for or a
-/// dependency of it, and the whole build shares one file database and one error
-/// accumulator: an error in any package of it makes this return `Err`.
-///
-/// A build that checks writes its JavaScript to `build/out/js/` beside `package_dir`'s
-/// manifest — see [`compile_package_into`] for what that tree holds. One that emitted
-/// any error writes nothing.
-///
-/// The check itself is [`check_package`]'s. This prints its status lines to stderr, emits
-/// and writes the build, and renders every error to stderr before returning it inside
-/// [`CompilationError::Many`]. An error raised before any source is read — the manifest,
-/// the resolution — is returned bare and unrendered.
-pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
-    compile(
-        package_dir,
-        TestRoot::Skipped,
-        &package_dir.join(BUILD_DIRECTORY),
-        &Overlay::new(),
-    )
-    .map(|_| ())
-}
-
-/// The directory a build's output goes to, beside the root package's manifest and never
-/// beside a source it read ([*The compiler's
-/// interface*](../../docs/spec/toolchain.md#the-compilers-interface)).
-pub const BUILD_DIRECTORY: &str = "build";
-
-/// The tree a build that compiled the tests writes below `build_dir`: `build_dir/test/js/`,
-/// laid out like `build_dir/out/js/`. Both the write of that tree and the entry point
-/// [`test_runner::run`] puts in it name it through here.
-pub(crate) fn test_tree(build_dir: &Path) -> PathBuf {
-    build_dir.join("test").join("js")
-}
-
-/// [`compile_package`], writing its output below `build_dir` rather than below the
-/// package's own `build/`.
-///
-/// The output is one tree, `<build_dir>/out/js/`: the runtime at its root, then one
-/// directory per package of the build holding one `.mjs` file per module of that
-/// package, named after the module within its own package, and each facade's companion
-/// beside the facade ([`javascript`]'s *Paths* section has the names, [`DEC-18` decision
-/// 5](../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)
-/// the reasons). Nothing is written until every module of every package has checked and
-/// emitted.
-pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), CompilationError> {
-    compile(package_dir, TestRoot::Skipped, build_dir, &Overlay::new()).map(|_| ())
-}
-
-/// [`compile_package`], compiling the package's `tests/` root as well as its `src/`.
-///
-/// This is what running a package's own tests needs, and the only thing that ever reads
-/// a `tests/` root: the tests of the build's other packages are not compiled, because
-/// nothing outside a package reads its tests
-/// ([*Running a package's tests*](../../docs/spec/toolchain.md#running-a-packages-tests)).
-/// A package holding no `tests/` at all compiles exactly as it does through
-/// [`compile_package`].
-///
-/// It compiles the tests and does not run them: what makes a declaration a test is
-/// [its type](../../docs/spec/packages.md#what-a-test-is), and running one is
-/// [`test_runner::run`]'s. What it hands back on success is the `Interface` of each of
-/// the root's own `tests/` modules that checked — never a test-only package's, and never
-/// `src/`'s — so a caller can find which of their exposed values are tests without a phase
-/// dropping the checked modules once they are emitted. `test_collection::collect` is that
-/// pass, and `test_runner::run` is its caller. Empty when the package holds no `tests/` at
-/// all.
-///
-/// A test module and every `test-dependency`'s modules are checked and, unlike a plain
-/// build, written — to a tree of their own, `build/test/js/`, laid out exactly like
-/// `build/out/js/` and holding every package of the build (a test-only one included) plus the
-/// root's `tests/` modules beside its `src/` ones. `build/out/js/` itself is left exactly as
-/// [`compile_package`] would have written it: a test module never turns up there, so a
-/// plain build run afterwards never finds one left behind by a run that also compiled the
-/// tests ([`GEN-18`](../../docs/tickets/README.md)).
-pub fn compile_package_with_tests(package_dir: &Path) -> Result<Vec<Interface>, CompilationError> {
-    compile_package_with_tests_into(package_dir, &package_dir.join(BUILD_DIRECTORY))
-}
-
-/// [`compile_package_with_tests`], writing below `build_dir` rather than below the
-/// package's own `build/` — the same relationship [`compile_package_into`] has to
-/// [`compile_package`].
-pub fn compile_package_with_tests_into(
-    package_dir: &Path,
-    build_dir: &Path,
-) -> Result<Vec<Interface>, CompilationError> {
-    compile(package_dir, TestRoot::Compiled, build_dir, &Overlay::new())
-}
-
 /// One module of a build that checked, with the file it was read from and the source root
 /// it was read under.
 pub struct CheckedSource {
@@ -956,9 +824,9 @@ pub struct CheckedSource {
 /// One status line of a check, in the order the check reached it: `parsed 8 modules`,
 /// `checked modules: [..]`, or what failed in either.
 ///
-/// [`check_package`] records these rather than printing them. [`compile_package`] prints
-/// each one to stderr, after `success` or `failure` in bold green or red, before anything
-/// else it prints.
+/// [`check_package`] records these rather than printing them.
+/// [`crate::driver::compile_package`] prints each one to stderr, after `success` or
+/// `failure` in bold green or red, before anything else it prints.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
     /// Whether the phase it reports got through without an error.
@@ -996,8 +864,8 @@ pub struct PackageCheck {
 }
 
 /// Check the package rooted at `package_dir` and every package it depends on, as
-/// [`compile_package`] does, and hand back what was found without printing or writing
-/// anything.
+/// [`crate::driver::compile_package`] does, and hand back what was found without printing
+/// or writing anything.
 ///
 /// This is the checking half of every `compile_package` variant: they call it, then print
 /// its [`status`](PackageCheck::status) lines, emit and write a build that checked, and
@@ -1021,7 +889,7 @@ pub fn check_package(
 }
 
 /// [`check_package`], checking the root package's `tests/` as well as its `src/`, as
-/// [`compile_package_with_tests`] does.
+/// [`crate::driver::compile_package_with_tests`] does.
 pub fn check_package_with_tests(
     package_dir: &Path,
     overlay: &Overlay,
@@ -1029,186 +897,9 @@ pub fn check_package_with_tests(
     check(package_dir, TestRoot::Compiled, overlay)
 }
 
-/// Print one [`Status`] line to `writer`. Failing to write a status line is not itself a
-/// compilation failure, so the write results are deliberately discarded rather than
-/// unwrapped.
-fn print_status(writer: &mut StandardStream, status: &Status) {
-    let (color, label) = if status.success {
-        (Color::Green, "success")
-    } else {
-        (Color::Red, "failure")
-    };
-    let _ = writer.set_color(ColorSpec::new().set_bold(true).set_fg(Some(color)));
-    let _ = write!(writer, "{}", label);
-    let _ = writer.reset();
-    let _ = writeln!(writer, " {}", status.text);
-}
-
-/// The CLI half of every `compile_package` variant: [`check`] the package, print its status
-/// lines, emit and write a build that checked, and render every error to stderr.
-///
-/// The status lines are printed once the check has finished rather than as each phase
-/// ends. For a check that returns, the bytes `compile_package` itself writes to stderr are
-/// the same as before, in the same order: every status line, then every diagnostic. Log
-/// output (`RUST_LOG`) and a panic's message no longer interleave with them, and a panic
-/// during checking loses the status lines already recorded.
-fn compile(
-    package_dir: &Path,
-    tests: TestRoot,
-    build_dir: &Path,
-    overlay: &Overlay,
-) -> Result<Vec<Interface>, CompilationError> {
-    let PackageCheck {
-        package: root_package,
-        mut errors,
-        sources,
-        modules,
-        test_dependency_modules,
-        test_modules,
-        status,
-    } = check(package_dir, tests, overlay)?;
-
-    // Error reporter
-    let mut writer = StandardStream::stderr(ColorChoice::Auto);
-    let config = codespan_reporting::term::Config {
-        tab_width: 2,
-        ..codespan_reporting::term::Config::default()
-    };
-
-    for line in &status {
-        print_status(&mut writer, line);
-    }
-
-    // What `compile_package_with_tests` hands back: the `Interface` of each of the
-    // root's own `tests/` modules that checked — never a test-only package's, and
-    // never `src/`'s. This is what lets a caller find a package's tests
-    // (`test_collection::collect` is that pass) without a phase dropping the checked
-    // modules on the floor once they have been emitted. Stays empty for a build that
-    // did not ask for the tests, or whose root `tests/` did not check.
-    let mut root_test_interfaces: Vec<Interface> = Vec::new();
-
-    // Step 6: generate code, only for a build in which nothing failed. Every module of
-    // both trees is emitted before anything is written, so a module that cannot be
-    // emitted — in `src/` or in `tests/` — also leaves the build with no output at all.
-    if errors.is_empty() {
-        let checked: Vec<ModuleToEmit> = modules.into_iter().map(to_module_to_emit).collect();
-        let mut root_tests_checked: Vec<ModuleToEmit> =
-            test_modules.into_iter().map(to_module_to_emit).collect();
-
-        // A test companion imports the companion it checks by its path in the source
-        // tree, across the two roots, which reaches nothing in the build
-        // ([*Testing a companion*](../../docs/spec/interop.md#testing-a-companion)). Each
-        // companion of the root's `src/` is one it may check, and `checked` holds every
-        // one of them.
-        let targets: Vec<&Name> = checked
-            .iter()
-            .filter(|to_emit| {
-                to_emit.companion.is_some()
-                    && to_emit.module.canonical.name.package() == &root_package
-            })
-            .map(|to_emit| to_emit.module.canonical.name.name())
-            .collect();
-        for to_emit in root_tests_checked
-            .iter_mut()
-            .filter(|to_emit| to_emit.companion.is_some())
-        {
-            let checks = to_emit.module.canonical.name.name();
-            to_emit.companion_imports = targets
-                .iter()
-                .map(|target| javascript::test_companion_import(checks, target))
-                .collect();
-        }
-        // Built from the same `ModuleToEmit`s `test_tree_modules` is about to take,
-        // before that move: an `Interface` is cheap to clone off a `CheckedModule`
-        // that is otherwise about to be consumed by emission.
-        root_test_interfaces = root_tests_checked
-            .iter()
-            .map(|to_emit| to_emit.module.to_interface(to_emit.file))
-            .collect();
-
-        // Every module the *test* tree (`build/test/js/`) needs beyond what `checked`
-        // already holds: each test-only package's modules, and the root's `tests/` modules.
-        // Empty for a build that did not ask for the tests.
-        let mut test_tree_modules: Vec<ModuleToEmit> = test_dependency_modules
-            .into_iter()
-            .map(to_module_to_emit)
-            .collect();
-        test_tree_modules.extend(root_tests_checked);
-
-        debug!("phase: codegen");
-        // Every union of the build, read by a facade's boundary checks: a facade may name
-        // a union any module of the build declares, and a test-only package's or the
-        // root's `tests/` modules are part of the build their facades see.
-        let unions = javascript::Unions::of(
-            checked
-                .iter()
-                .chain(test_tree_modules.iter())
-                .map(|to_emit| &to_emit.module),
-        );
-        let files = emit_build(checked, &unions, &mut errors);
-
-        // A build that also compiled the tests writes a second, complete tree at
-        // `<build_dir>/test/js/`, laid out exactly like `<build_dir>/out/js/` — the runtime,
-        // then one directory per package — but holding every package of the build (a
-        // test-only one included) and the root's `tests/` modules beside its `src/` ones
-        // (`docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest`).
-        // `files` already holds everything a plain build would have written — the
-        // runtime, the root's `src/` and every plain dependency's modules — so the test
-        // tree reuses it rather than emitting those modules a second time, and only
-        // `test_tree_modules` (the test-only packages' and the root's `tests/`) is new
-        // work. That work happens here, before `out/js/` is written, so a module of the test
-        // tree that cannot be emitted blocks both writes.
-        let test_files = (tests == TestRoot::Compiled).then(|| {
-            debug!("phase: codegen (tests)");
-            let mut test_files = files.clone();
-            test_files.extend(emit_modules(test_tree_modules, &unions, &mut errors));
-            test_files
-        });
-
-        if errors.is_empty() {
-            debug!("phase: write the build");
-            errors.extend(
-                output::write(&build_dir.join("out").join("js"), &files)
-                    .into_iter()
-                    .map(CompilationError::Output),
-            );
-        }
-
-        // Gated on `errors.is_empty()` a second time so a plain build's own failure to
-        // write `out/js/` — an unlikely I/O error, not a checking one — does not also
-        // attempt the test tree.
-        if let Some(test_files) = test_files.filter(|_| errors.is_empty()) {
-            debug!("phase: write the test build");
-            errors.extend(
-                output::write(&test_tree(build_dir), &test_files)
-                    .into_iter()
-                    .map(CompilationError::Output),
-            );
-        }
-    }
-
-    // Step 7: report everything we accumulated, then let that accumulation decide the
-    // return value. Rendering the errors and returning `Ok` regardless was `BUG-1`.
-    for error in &errors {
-        // A rendering failure must not mask the compilation failure we are about to
-        // return, and there is nowhere left to report it to, so it is dropped.
-        let _ = term::emit_to_write_style(
-            &mut writer.lock(),
-            &config,
-            &sources,
-            &error.as_diagnostic(),
-        );
-    }
-
-    if errors.is_empty() {
-        Ok(root_test_interfaces)
-    } else {
-        Err(CompilationError::Many(errors))
-    }
-}
-
-/// The checking half of a build, behind [`check_package`] and [`compile`]: steps 1 to 5 of
-/// this module's documentation, for every package of the build, recording what it finds.
+/// The checking half of a build, behind [`check_package`] and [`check_package_with_tests`]:
+/// every step of this module's documentation, for every package of the build, recording
+/// what it finds.
 fn check(
     package_dir: &Path,
     tests: TestRoot,
@@ -1221,7 +912,7 @@ fn check(
     // that cannot be deferred to the usual accumulate-and-render path, because it
     // happens before that path exists: the source root itself is derived from the
     // manifest, so there is no build to walk, no accumulator and no file database yet.
-    // It goes back to the caller as `Err`, and `compile` returns it unrendered. Every
+    // It goes back to the caller as `Err`, and the driver returns it unrendered. Every
     // failure after the accumulator below is created goes onto it instead, this package's
     // source loading included.
     debug!("phase: read package manifest");
@@ -1260,7 +951,7 @@ fn check(
     // They are kept as typed `CompilationError`s and not as already-rendered
     // `Diagnostic`s for two reasons: `as_diagnostic` stays the single rendering point,
     // and the accumulation is still meaningful as a return value — an empty vector is
-    // what makes `compile` return `Ok`.
+    // what makes the driver return `Ok`.
     let mut errors: Vec<CompilationError> = vec![];
 
     // One file database for the whole build, so that a diagnostic about any module of
@@ -1277,7 +968,7 @@ fn check(
     let mut published: HashMap<PackageName, HashMap<Name, Interface>> = HashMap::new();
 
     // Every module that checked, from every package that belongs in the build's output,
-    // which `compile` holds back from emission until the whole build is known to have
+    // which the driver holds back from emission until the whole build is known to have
     // checked: a module cannot be written while another may still fail. A
     // `test-dependency`-only package is compiled when
     // the tests ask for it, but its modules never land here — only the first loop below
@@ -1387,26 +1078,6 @@ fn check(
     })
 }
 
-/// A module that checked, with what emitting and writing it needs beyond the module
-/// itself.
-struct ModuleToEmit {
-    module: CheckedModule,
-    /// The file it was read from, which an emission error's labels point into.
-    file: Option<SourceFileId>,
-    /// For a facade, its JavaScript companion when one sits beside its `.zel` source —
-    /// a file of the same base name in the same directory
-    /// ([*A facade names a boundary, not a
-    /// backend*](../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
-    /// `None` for every other module, and for a facade with no companion, which
-    /// [`javascript::emit`] refuses.
-    companion: Option<std::path::PathBuf>,
-    /// The imports its companion spells for the source tree, each beside the specifier
-    /// that replaces it in the build ([`javascript::test_companion_import`]). Empty for
-    /// every module but a facade of the root package's `tests/` with a companion, which
-    /// [`compile`] fills in once it knows the companions of `src/` that one may import.
-    companion_imports: Vec<(String, String)>,
-}
-
 /// Pair each checked module of one source root with the file it was read from and
 /// `root_dir`, the source root's own directory, `src/` or `tests/`.
 ///
@@ -1425,104 +1096,6 @@ fn to_checked_sources(
             module,
         })
         .collect()
-}
-
-/// What emitting and writing one checked module needs: its companion when it is a facade
-/// with one sitting beside its source under its `root_dir`, so a facade under `tests/`
-/// finds its companion there rather than under `src/`
-/// ([*Testing a companion*](../../docs/spec/interop.md#testing-a-companion)).
-fn to_module_to_emit(checked: CheckedSource) -> ModuleToEmit {
-    let CheckedSource {
-        module,
-        file,
-        root_dir,
-    } = checked;
-    let companion = Some(root_dir.join(javascript::module_file(module.canonical.name.name())))
-        .filter(|path| module.ir.foreign && path.is_file());
-    ModuleToEmit {
-        file,
-        companion,
-        companion_imports: Vec::new(),
-        module,
-    }
-}
-
-/// Every file a build writes: the runtime, and each module of `checked` as the text
-/// [`javascript::emit`] gives it, with its facade's companion beside it.
-///
-/// A module that cannot be emitted pushes its errors onto `errors`, tagged with the
-/// file it came from, and every other module is still emitted so that one refusal
-/// cannot hide the next. The caller writes the files only when `errors` stays empty.
-fn emit_build(
-    checked: Vec<ModuleToEmit>,
-    unions: &javascript::Unions,
-    errors: &mut Vec<CompilationError>,
-) -> Vec<output::File> {
-    let mut files = vec![output::File {
-        path: javascript::RUNTIME_FILE.into(),
-        contents: output::Contents::Text(javascript::RUNTIME.to_string()),
-    }];
-    files.extend(emit_modules(checked, unions, errors));
-    files
-}
-
-/// [`emit_build`], without the runtime file at the front.
-///
-/// [`emit_build`] calls it for the plain build's own modules. A test build calls it a
-/// second time for the modules a plain build never emits — each test-only package's,
-/// and the root's `tests/` — which is why it is factored out: the test tree already has
-/// the runtime, since it starts from a clone of the plain build's own files, and those
-/// extra modules must not emit a second runtime file to sit unused beside the first.
-fn emit_modules(
-    checked: Vec<ModuleToEmit>,
-    unions: &javascript::Unions,
-    errors: &mut Vec<CompilationError>,
-) -> Vec<output::File> {
-    let mut files = Vec::new();
-
-    for ModuleToEmit {
-        module,
-        file,
-        companion,
-        companion_imports,
-    } in checked
-    {
-        let name = module.canonical.name.clone();
-        let package_dir = std::path::PathBuf::from(name.package().as_str());
-
-        match javascript::emit(&module, companion.is_some(), unions) {
-            Ok(text) => {
-                files.push(output::File {
-                    path: package_dir.join(javascript::module_file(name.name())),
-                    contents: output::Contents::Text(text),
-                });
-
-                if let Some(companion) = companion {
-                    let contents = if companion_imports.is_empty() {
-                        output::Contents::Copy(companion)
-                    } else {
-                        output::Contents::Rewritten {
-                            from: companion,
-                            imports: companion_imports,
-                        }
-                    };
-                    files.push(output::File {
-                        path: package_dir.join(javascript::companion_file(name.name())),
-                        contents,
-                    });
-                }
-            }
-            Err(emit_errors) => {
-                let error = CompilationError::Emit(emit_errors, name.name().clone());
-                errors.push(match file {
-                    Some(id) => CompilationError::InFile(Box::new(error), id),
-                    None => error,
-                });
-            }
-        }
-    }
-
-    files
 }
 
 /// What [`compile_in_build`] hands back for a package whose every module checked.
@@ -1560,7 +1133,7 @@ struct TestsEnvironment {
 /// offers its dependents and the modules it compiled.
 ///
 /// `published` holds what every package compiled before this one offers — this
-/// package's dependencies among them, since `compile` calls this for a package only
+/// package's dependencies among them, since `check` calls this for a package only
 /// once everything it depends on has had its turn. `sources` and `errors` are the
 /// build's, not this package's: every module of every package renders against one file
 /// database, and every error from any package makes the build fail.
@@ -1588,8 +1161,8 @@ struct TestsEnvironment {
 /// There is deliberately no error return. Every way this can fail is a diagnostic about
 /// one package of a build whose other packages may already have accumulated diagnostics
 /// of their own, and a `Result` here is an invitation to `?` those out of
-/// [`compile_package`] past its reporting loop — which is the "nothing is rendered and
-/// then dropped" the accumulator exists to prevent.
+/// [`crate::driver::compile_package`] past its reporting loop — which is the "nothing is
+/// rendered and then dropped" the accumulator exists to prevent.
 // Eight parameters, one over clippy's limit, since `TOOL-2` added `overlay`. They are the
 // build, what it published, and the three accumulators a package's check appends to; none
 // of them groups with another without a type that exists only to pass them along.
@@ -1902,7 +1475,7 @@ fn check_main(
 /// [`compile_in_build`] already parsed into `environment`, against what its `src/` left
 /// there and the public modules of both its dependency maps.
 ///
-/// `compile` calls this after the package's `src/` and after every test-only package,
+/// `check` calls this after the package's `src/` and after every test-only package,
 /// because a test-only package may depend on this one
 /// ([*`test-dependencies`*](../../docs/spec/packages.md#test-dependencies)): `published`
 /// then holds every package `tests/` can name. Only for a package whose `src/` checked —
@@ -1910,9 +1483,9 @@ fn check_main(
 /// since every one of them would be blamed for a type the package never managed to
 /// declare.
 ///
-/// Every `tests/` module that checked, paired with what emitting and writing it needs —
-/// [`ModuleToEmit`], the same shape [`compile_in_build`] hands back for `src/` — so the
-/// test tree ([`compile_package_with_tests`]) can write them beside it. Empty, with
+/// Every `tests/` module that checked, as a [`CheckedSource`] — the same shape
+/// [`compile_in_build`] hands back for `src/` — so the test tree
+/// ([`crate::driver::compile_package_with_tests`]) can write them beside it. Empty, with
 /// nothing published or emitted, for a package whose collision check or dependency
 /// resolution failed before any module was checked. A test module is checked like any
 /// other and a failure in one fails the build, but nothing outside the package's own
@@ -2390,16 +1963,6 @@ mod tests {
         assert_eq!(
             PackageName::new(resolve::CORE_PACKAGE),
             Ok(PackageName::core())
-        );
-    }
-
-    /// `PackageName::test_package` skips the check the same way `core` does, so it is
-    /// run here too.
-    #[test]
-    fn the_test_package_name_is_a_legal_one() {
-        assert_eq!(
-            PackageName::new(test_collection::TEST_PACKAGE),
-            Ok(PackageName::test_package())
         );
     }
 

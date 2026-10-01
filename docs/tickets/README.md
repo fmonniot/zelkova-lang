@@ -196,8 +196,8 @@ TOOL-6  zelkova-lsp: diagnostics, then hover, then go-to-definition, then semant
 
 TOOL-3
   │
-TOOL-7  the checking modules stop naming the backend,  ← the one part of the split that
-          the runners and the test package                changes code; one crate still
+TOOL-7  the checking modules stop naming the backend,  ← closed: `driver`, `BuildError`
+          the runners and the test package
   │
 TOOL-5  workspace split: syntax / compiler / js /      ← moves files, no behaviour; blocks
           test-runner / cli, under crates/                nothing but TIDY-12 (edition 2024);
@@ -442,6 +442,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TIDY-10](tidy-10.md) | task | — | open | `Interface::arities` is a parallel map, and a miss silently reads as arity 0 |
 | [TIDY-11](tidy-11.md) | task | — | open | `BUG-20` and `Js/Utils.mjs` describe a tuple encoding and a test file that no longer match the tree |
 | [TIDY-12](tidy-12.md) | task | — | open | The compiler's crates are on edition 2018 |
+| [TIDY-13](tidy-13.md) | task | — | open | `CompilationError::Many` is never constructed |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |
@@ -458,5 +459,5 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TOOL-4](tool-4.md) | task | — | open | A module's first syntax error is the only one reported |
 | [TOOL-5](tool-5.md) | task | — | open | The compiler, its JavaScript backend and its command line are one crate |
 | [TOOL-6](tool-6.md) | task | — | open | There is no language server |
-| [TOOL-7](tool-7.md) | task | — | open | The checking pipeline names its backend, its runners and the test package |
+| TOOL-7 | task | — | closed 2026-10-01 | The checking pipeline names its backend, its runners and the test package |
 | [TOOL-8](tool-8.md) | task | — | open | One failing declaration hides its whole module from its importers and from the editor |

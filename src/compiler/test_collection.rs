@@ -2,10 +2,9 @@
 //!
 //! **A test is a value a module under `tests/` exposes whose type is `zelkova-test`'s
 //! `Test`** — [*What a test is*](../../../docs/spec/packages.md#what-a-test-is). This
-//! module is the pass that finds them: given the [`Interface`]s
-//! [`compile_package_with_tests`](super::compile_package_with_tests) hands back for a
-//! package's `tests/` root, [`collect`] returns, per module, the sorted names of the
-//! values that have that type.
+//! module is the pass that finds them: given the [`Interface`]s of the modules of a
+//! package's `tests/` root that checked, [`collect`] returns, per module, the sorted names
+//! of the values that have that type.
 //!
 //! It does not run anything, and does not decide how a runner reports what it finds —
 //! that is [`test_runner`](super::test_runner)'s, the only caller this one is written for.
@@ -23,29 +22,35 @@
 
 use super::canonical::Type;
 use super::name::{Name, QualName};
-use super::{Interface, ModuleName, PackageName};
+use super::{Interface, ModuleName};
 
-/// The package that declares `Test`. [`PackageName::test_package`] is the checked,
-/// legal-by-construction form of this string; this constant is what that method (and
-/// `test_type`) is built from.
+/// The package that declares `Test`. Nothing outside the test modules names it: the
+/// checking modules do not know `zelkova-test` exists.
 pub const TEST_PACKAGE: &str = "zelkova-test";
 
-/// `zelkova-test`'s `Test`: the module and the name its one declaration writes.
-fn test_type() -> QualName {
-    QualName::in_module(PackageName::test_package(), "Test", "Test")
-}
+/// The module of [`TEST_PACKAGE`] that declares `Test`, and the name of the type it
+/// declares: both are spelled `Test`.
+const TEST: &str = "Test";
 
 /// Whether `tpe` is exactly `Test`, applied to no arguments.
 ///
 /// A type variable, an arrow, a tuple, `Test` applied to an argument, and a type of
 /// any of those shapes declared under a different name all fail this — only
-/// [`Type::Type`] naming the exact declaration [`test_type`] returns, with an empty
+/// [`Type::Type`] naming the exact declaration [`is_test_type`] accepts, with an empty
 /// argument list, is a test. `Test` has none of its own since it is not generic, so a
 /// value could otherwise only reach this by naming a different, unrelated type that
 /// happens to unify with none of the above; canonicalization already rules that out
 /// for anything that isn't `Type::Type`.
-fn is_test(tpe: &Type, test_type: &QualName) -> bool {
-    matches!(tpe, Type::Type(name, args) if name == test_type && args.is_empty())
+fn is_test(tpe: &Type) -> bool {
+    matches!(tpe, Type::Type(name, args) if is_test_type(name) && args.is_empty())
+}
+
+/// Whether `name` is the declaration of `Test` in `zelkova-test`'s `Test` module, compared
+/// field by field: the package, the module and the name, all three.
+fn is_test_type(name: &QualName) -> bool {
+    name.package().as_str() == TEST_PACKAGE
+        && name.module_name().as_str() == TEST
+        && name.unqualified_name().as_str() == TEST
 }
 
 /// One test module's collected tests: its own name, and the sorted names of the
@@ -60,8 +65,8 @@ pub struct ModuleTests {
 
 /// The tests each of `modules` exposes.
 ///
-/// `modules` is what [`compile_package_with_tests`](super::compile_package_with_tests)
-/// hands back for a package's `tests/` root: one checked [`Interface`] per module. One
+/// `modules` is one checked [`Interface`] per module of a package's `tests/` root, which
+/// is what a build that compiled the tests hands back. One
 /// [`ModuleTests`] comes back per module, in the same order, even when its `tests` is
 /// empty — a module that exposes no `Test` is still a module the build held, and
 /// dropping it here would leave a caller unable to tell "no tests" from "not
@@ -73,15 +78,13 @@ pub struct ModuleTests {
 /// raise — a package is free to hold no tests at all
 /// ([*What a test is*](../../../docs/spec/packages.md#what-a-test-is)).
 pub fn collect(modules: &[Interface]) -> Vec<ModuleTests> {
-    let test_type = test_type();
-
     modules
         .iter()
         .map(|interface| {
             let mut tests: Vec<Name> = interface
                 .values
                 .iter()
-                .filter(|(_, (_, tpe))| is_test(tpe, &test_type))
+                .filter(|(_, (_, tpe))| is_test(tpe))
                 .map(|(name, _)| name.clone())
                 .collect();
             tests.sort_by(|a, b| a.as_str().cmp(b.as_str()));
@@ -98,6 +101,7 @@ pub fn collect(modules: &[Interface]) -> Vec<ModuleTests> {
 mod tests {
     use super::*;
     use crate::compiler::position::NodeSpan;
+    use crate::compiler::PackageName;
     use std::collections::HashMap;
 
     fn interface(package: &str, module: &str, values: Vec<(&str, Type)>) -> Interface {
@@ -116,7 +120,10 @@ mod tests {
     }
 
     fn real_test() -> Type {
-        Type::Type(test_type(), vec![])
+        Type::Type(
+            QualName::in_module(PackageName::new(TEST_PACKAGE).unwrap(), "Test", "Test"),
+            vec![],
+        )
     }
 
     fn int() -> Type {
@@ -132,13 +139,28 @@ mod tests {
     /// package's own type spelled `Test` too — only the first is collected, and the
     /// unrelated one never enters the sort.
     ///
-    /// Mutation-checked by comparing `name.unqualified_name()` to `test_type`'s
-    /// instead of the whole `QualName` in `is_test`: the decoy then joins the real
-    /// test and this goes red.
+    /// Each comparison of `is_test_type` has a decoy that differs from the real type in
+    /// that field alone: `acme:Test.Test` (package), `zelkova-test:Other.Test` (module) and
+    /// `zelkova-test:Test.Other` (name); `acme:AppTest.Test` differs in two.
+    ///
+    /// Mutation-checked one comparison at a time, replacing each with `true`: every one
+    /// lets its own decoy in and goes red.
     #[test]
     fn only_the_real_test_type_is_collected() {
         let decoy_type = Type::Type(
             QualName::in_module(PackageName::new("acme").unwrap(), "AppTest", "Test"),
+            vec![],
+        );
+        let wrong_package = Type::Type(
+            QualName::in_module(PackageName::new("acme").unwrap(), "Test", "Test"),
+            vec![],
+        );
+        let wrong_module = Type::Type(
+            QualName::in_module(PackageName::new(TEST_PACKAGE).unwrap(), "Other", "Test"),
+            vec![],
+        );
+        let wrong_name = Type::Type(
+            QualName::in_module(PackageName::new(TEST_PACKAGE).unwrap(), "Test", "Other"),
             vec![],
         );
         let modules = vec![interface(
@@ -148,6 +170,9 @@ mod tests {
                 ("addsUp", real_test()),
                 ("helper", int()),
                 ("decoyTest", decoy_type),
+                ("wrongPackage", wrong_package),
+                ("wrongModule", wrong_module),
+                ("wrongName", wrong_name),
             ],
         )];
 
@@ -209,5 +234,17 @@ mod tests {
 
         assert_eq!(collected.len(), 1);
         assert!(collected[0].tests.is_empty());
+    }
+
+    /// [`TEST_PACKAGE`] is compared against a package name's spelling rather than built
+    /// into a `PackageName`, so nothing on the way checks it; this does. A constant that
+    /// broke the package-name rule would name a package no manifest can declare, and no
+    /// value would ever be a test.
+    ///
+    /// Mutation-checked by spelling the constant `zelkova_test`: `new` rejects the
+    /// underscore and this goes red.
+    #[test]
+    fn the_test_package_name_is_a_legal_one() {
+        assert!(PackageName::new(TEST_PACKAGE).is_ok());
     }
 }
