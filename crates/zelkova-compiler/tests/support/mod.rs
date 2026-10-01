@@ -176,7 +176,9 @@ pub fn maybe_interface() -> (Name, Interface) {
 /// its own.
 ///
 /// `Int` and `Float` are opaque in `std/core`'s `Basics`, so they carry no
-/// constructors here; `Bool` carries `True` and `False`.
+/// constructors here and are listed in `opaque_unions`, which is what makes
+/// `import Basics exposing (Int(..))` an error as it is against the real module;
+/// `Bool` carries `True` and `False`.
 pub fn basics_interface() -> (Name, Interface) {
     let union = |name: &str, variants: &[&str]| canonical::UnionType {
         // Hand-built, not canonicalized from source: no position behind it.
@@ -201,7 +203,7 @@ pub fn basics_interface() -> (Name, Interface) {
         module_name: ModuleName::new(PackageName::core(), "Basics".into()),
         values: HashMap::new(),
         unions,
-        opaque_unions: Default::default(),
+        opaque_unions: std::collections::HashSet::from(["Int".into(), "Float".into()]),
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
@@ -230,7 +232,7 @@ pub fn char_interface() -> (Name, Interface) {
         module_name: ModuleName::new(PackageName::core(), "Char".into()),
         values: HashMap::new(),
         unions,
-        opaque_unions: Default::default(),
+        opaque_unions: std::collections::HashSet::from(["Char".into()]),
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
@@ -258,7 +260,7 @@ pub fn string_interface() -> (Name, Interface) {
         module_name: ModuleName::new(PackageName::core(), "String".into()),
         values: HashMap::new(),
         unions,
-        opaque_unions: Default::default(),
+        opaque_unions: std::collections::HashSet::from(["String".into()]),
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
@@ -361,7 +363,7 @@ pub fn task_interface() -> (Name, Interface) {
         module_name: ModuleName::new(PackageName::core(), "Task".into()),
         values: HashMap::new(),
         unions,
-        opaque_unions: Default::default(),
+        opaque_unions: std::collections::HashSet::from(["Task".into()]),
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),

@@ -3867,3 +3867,55 @@ fn string_literal_pattern_canonicalizes_to_its_value() {
         canonical::PatternKind::String("hello".to_owned())
     );
 }
+
+/// The shared stand-ins for `std/core`'s opaquely exposed types reject a `(..)`
+/// entry the way the real modules do, so a test or a spec block cannot import
+/// `Int(..)`, `Char(..)`, `String(..)` or `Task(..)` and pass here only to fail in
+/// a real build.
+///
+/// Mutation-checked by emptying `opaque_unions` in `basics_interface`: the `Int(..)`
+/// case then resolves and `expect_err` panics.
+#[test]
+fn the_stand_in_interfaces_for_opaque_core_types_reject_a_constructor_entry() {
+    use zelkova_compiler::PhaseError;
+
+    let interfaces: HashMap<_, _> = vec![
+        basics_interface(),
+        char_interface(),
+        string_interface(),
+        task_interface(),
+    ]
+    .into_iter()
+    .collect();
+
+    for (module, entry) in [
+        ("Basics", "Int(..)"),
+        ("Basics", "Float(..)"),
+        ("Char", "Char(..)"),
+        ("String", "String(..)"),
+        ("Task", "Task(..)"),
+    ] {
+        let source = format!(
+            "module Main exposing ()\nimport {} exposing ({})\n",
+            module, entry
+        );
+        let errors = canonicalize_with_interfaces(&source, &interfaces)
+            .expect_err(&format!("`{}` should not resolve", entry));
+        assert_eq!(errors.len(), 1, "{}: got {:?}", entry, errors);
+        assert_eq!(
+            errors[0].message(),
+            format!(
+                "`{}` exposes the type `{}` but not its constructors",
+                module,
+                entry.trim_end_matches("(..)")
+            ),
+            "{}",
+            entry
+        );
+    }
+
+    // `Task` exposes `Failure` with its constructors, so that entry still resolves.
+    let source = "module Main exposing ()\nimport Task exposing (Failure(..))\n";
+    canonicalize_with_interfaces(source, &interfaces)
+        .expect("`Failure(..)` is exposed with its constructors");
+}
