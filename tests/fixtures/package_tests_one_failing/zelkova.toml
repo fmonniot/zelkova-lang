@@ -1,0 +1,10 @@
+# `src/` checks. `tests/` holds one module that checks, `Good`, and one with a type error in
+# one declaration, `Bad`. `crates/zelkova/tests/pipeline.rs` checks that the check hands back
+# `Good` as a test module and `Bad` as a failing one.
+name = "package-tests-one-failing"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

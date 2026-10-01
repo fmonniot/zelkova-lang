@@ -1,0 +1,6 @@
+module Good exposing (good)
+
+import App
+
+good : App.T
+good = App.start

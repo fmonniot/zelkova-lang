@@ -6285,6 +6285,37 @@ fn a_module_that_fails_canonicalization_publishes_nothing() {
     assert_eq!(sorted_module_names(&check.failing), Vec::<String>::new());
 }
 
+/// The `tests/` half of `check_root`'s partition: with `src/` clean and one module of
+/// `tests/` holding a type error, `test_modules` holds only the module that checked,
+/// `failing` holds only the one that did not, and `errors` is that module's one `Type`.
+/// `modules` still holds `src/`'s, since the failure is in `tests/`.
+///
+/// Mutation-checked twice, each going red. Changing `root_check.failing.push(module)` in
+/// `check_root` to `root_check.checked.push(module)` puts `Bad` in `test_modules` and
+/// leaves `failing` empty. Deleting the `failing.extend(..)` in `compile_tests` leaves
+/// `failing` empty while `test_modules` and `errors` stay right.
+#[test]
+fn a_test_module_with_a_type_error_is_failing_and_not_a_test_module() {
+    let root = fixture_package("package_tests_one_failing");
+
+    let check = check_package_with_tests(&root, &Overlay::new())
+        .expect("the manifest and the build resolve");
+
+    assert_eq!(sorted_module_names(&check.modules), vec!["App"]);
+    assert_eq!(sorted_module_names(&check.test_modules), vec!["Good"]);
+    assert_eq!(sorted_module_names(&check.failing), vec!["Bad"]);
+    assert!(check.failing[0].root_dir.ends_with("tests"));
+    assert_eq!(check.errors.len(), 1, "got {:?}", check.errors);
+    assert!(
+        matches!(
+            unwrap_in_file(&check.errors[0]),
+            CompilationError::Type(_, module) if module == &Name::from("Bad")
+        ),
+        "expected `Bad`'s type error, got {:?}",
+        check.errors[0]
+    );
+}
+
 /// A build holding a module with a type error writes nothing, though that module has a
 /// typed tree: the driver reads only the modules that checked, and only once nothing
 /// failed.

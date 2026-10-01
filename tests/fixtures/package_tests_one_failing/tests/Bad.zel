@@ -1,0 +1,8 @@
+module Bad exposing (bad)
+
+import App
+
+type U = U
+
+bad : App.T
+bad = U
