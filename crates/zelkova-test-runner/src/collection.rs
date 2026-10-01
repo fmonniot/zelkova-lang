@@ -112,6 +112,7 @@ mod tests {
                 .map(|(name, tpe)| (Name::new(name), (NodeSpan::none(), tpe)))
                 .collect(),
             unions: HashMap::new(),
+            opaque_unions: Default::default(),
             infixes: HashMap::new(),
             infix_functions: HashMap::new(),
             arities: HashMap::new(),

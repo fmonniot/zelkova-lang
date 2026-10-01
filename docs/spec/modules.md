@@ -551,6 +551,29 @@ import Widget exposing (Missing)
 x = 1
 ```
 
+A `Size(..)` entry names the constructors as well as the type, so it is an error against a
+module that exposes `Size` without them. An import can take no more of a type than its
+module exposes:
+
+```zel expect=ok package=opaque-entry
+module Widget exposing (Size, small)
+
+type Size
+  = Small
+
+small : Size
+small = Small
+```
+
+```zel expect=canonical-error:EnvironmentErrors package=opaque-entry
+module Main exposing (x)
+
+import Widget exposing (Size(..))
+
+x : Size
+x = Widget.small
+```
+
 ### Operators
 
 An operator has no qualified spelling: `Widget.(+)` is a syntax error, and `Widget.+` is

@@ -47,7 +47,7 @@
 
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use log::debug;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 pub mod canonical;
@@ -255,7 +255,6 @@ pub struct SourceSpan {
 ///
 /// All `Interface` indices are using non-qualified names. To get the qualified
 /// version, simply use `I.module_name.qualify_name(&name)`.
-// TODO Union types will need a way to reflect that some type constructor are private
 //
 // `Clone` because one interface reaches more than one place: a public module of a
 // dependency is inserted into the environment of every package that imports it, under
@@ -269,7 +268,23 @@ pub struct Interface {
     /// together) was written — [`canonical::Value::span`] — so a diagnostic about a
     /// name found here can point at the declaration, not just name it.
     pub values: HashMap<Name, (NodeSpan, canonical::Type)>,
+    /// Every union type the module exposes, opaquely or not. An opaque one — see
+    /// [`opaque_unions`](Self::opaque_unions) — is here with its `variants` emptied.
     pub unions: HashMap<Name, canonical::UnionType>,
+    /// The names in [`unions`](Self::unions) that the module exposes *opaquely*: a
+    /// bare `Size` in its `exposing` header rather than `Size(..)`.
+    ///
+    /// An opaque entry's `variants` is empty, and so is that of a type declared with
+    /// no constructors at all (`type Empty =`, which the grammar accepts), so
+    /// `variants` alone cannot say whether the constructors were withheld. This set
+    /// is what says it. `canonical::environment::process_import` reads it to reject a
+    /// `Size(..)` import entry for such a type, and
+    /// [`default_imports`] to leave out a default import
+    /// asking for constructors the module does not expose.
+    ///
+    /// [`canonical::Module::to_interface`] fills it. A hand-built interface that leaves
+    /// it empty exposes every union it holds with whatever `variants` it carries.
+    pub opaque_unions: HashSet<Name>,
     // TODO type aliases
     //aliases: HashMap<Name, >
     /// infixes is a map from the operator symbol to its information

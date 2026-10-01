@@ -25,7 +25,7 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use zelkova_syntax::parser;
 
 mod environment;
@@ -101,7 +101,8 @@ impl Module {
     /// - an infix reaches it when the header exposes the operator;
     /// - a union type reaches it when the header names it either way, but a
     ///   `Size` entry ([`ExportType::UnionPrivate`]) hands over the declaration
-    ///   with its `variants` emptied. That is the opaque type: importers still
+    ///   with its `variants` emptied, and records its name in
+    ///   [`Interface::opaque_unions`]. That is the opaque type: importers still
     ///   get the name and its type variables — [`Interface::unions`] is where
     ///   `process_import`'s `Privacy::Private` arm reads the arity from — and no
     ///   constructor to build or match one with.
@@ -134,20 +135,24 @@ impl Module {
             })
             .collect();
 
+        let mut opaque_unions = HashSet::new();
         let unions = self
             .types
             .iter()
             .filter_map(|(name, union)| match self.exports.union_visibility(name) {
                 UnionVisibility::Hidden => None,
                 UnionVisibility::Transparent => Some((name.clone(), union.clone())),
-                UnionVisibility::Opaque => Some((
-                    name.clone(),
-                    UnionType {
-                        variables: union.variables.clone(),
-                        variants: Vec::new(),
-                        span: union.span,
-                    },
-                )),
+                UnionVisibility::Opaque => {
+                    opaque_unions.insert(name.clone());
+                    Some((
+                        name.clone(),
+                        UnionType {
+                            variables: union.variables.clone(),
+                            variants: Vec::new(),
+                            span: union.span,
+                        },
+                    ))
+                }
             })
             .collect();
 
@@ -188,6 +193,7 @@ impl Module {
             module_name: self.name.clone(),
             values,
             unions,
+            opaque_unions,
             infixes,
             infix_functions,
             arities,

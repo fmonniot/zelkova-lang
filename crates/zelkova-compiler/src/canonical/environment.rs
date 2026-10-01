@@ -530,11 +530,10 @@ fn process_import(
                         // `Size` and `Size(..)` are one entry differing only in
                         // whether the constructors come along, so the name itself is
                         // checked the same way in both and reports the same
-                        // `UnionNotFound`. What the `Public` arm below cannot yet
-                        // tell apart is a type exposed *opaquely* by its own module
-                        // from one that genuinely has no constructors (`BUG-30`);
-                        // that distinction does not arise here, since this arm never
-                        // reads `variants`.
+                        // `UnionNotFound`. Only the `Public` arm below also asks
+                        // whether the module exposed the constructors: this one
+                        // never reads `variants`, so a type exposed opaquely is
+                        // exactly what it asks for.
                         let union = interface.unions.get(type_name).ok_or_else(|| {
                             let suggestion =
                                 suggest_name(type_name, interface.unions.keys().cloned());
@@ -560,6 +559,18 @@ fn process_import(
                                 suggest_name(type_name, interface.unions.keys().cloned());
                             EnvError::UnionNotFound(type_name.clone(), exposed.span, suggestion)
                         })?;
+
+                        // An opaque export's `variants` is empty, as is that of a
+                        // type declared with none; `opaque_unions` is what tells
+                        // the two apart. Inserting the first would hand over a
+                        // constructor-less type in place of what `(..)` asked for.
+                        if interface.opaque_unions.contains(type_name) {
+                            return Err(EnvError::ConstructorsNotExposed(
+                                type_name.clone(),
+                                imported_module_name.clone(),
+                                exposed.span,
+                            ));
+                        }
 
                         insert_foreign_union_type(
                             env,
@@ -713,6 +724,11 @@ pub enum EnvError {
     /// does not declare, where that name was written (`ERR-9`), and an optional
     /// "did you mean …?" suggestion (`ERR-7`).
     UnionNotFound(Name, NodeSpan, Option<Name>),
+    /// A `TypeIdent(..)` in an `exposing` list naming a type the imported module
+    /// exposes only opaquely — a bare `TypeIdent` in its own header — so the
+    /// constructors it asks for are not there to import. Carries the type's name,
+    /// the module name as the `import` wrote it, and where the entry was written.
+    ConstructorsNotExposed(Name, Name, NodeSpan),
     /// An `(op)` in an `exposing` list naming an infix the imported module does not
     /// declare, where that name was written (`ERR-9`), and an optional "did you
     /// mean …?" suggestion (`ERR-7`).
@@ -748,6 +764,10 @@ impl PhaseError for EnvError {
                     name
                 )
             }
+            EnvError::ConstructorsNotExposed(name, module, _) => format!(
+                "`{}` exposes the type `{}` but not its constructors",
+                module, name
+            ),
             EnvError::InfixNotFound(name, _, _) => format!(
                 "the imported module does not expose an infix operator named `{}`",
                 name
@@ -790,6 +810,13 @@ impl PhaseError for EnvError {
                     suggestion_suffix(suggestion)
                 ),
             ),
+            EnvError::ConstructorsNotExposed(name, module, span) => primary(
+                span,
+                format!(
+                    "`{}(..)` asks for constructors `{}` does not expose",
+                    name, module
+                ),
+            ),
             EnvError::InfixNotFound(name, span, suggestion) => primary(
                 span,
                 format!(
@@ -816,6 +843,10 @@ impl PhaseError for EnvError {
                 [only] => only.notes(),
                 many => many.iter().flat_map(|e| e.message_and_notes()).collect(),
             },
+            EnvError::ConstructorsNotExposed(name, _, _) => vec![format!(
+                "write `{}` without `(..)` to import the type alone",
+                name
+            )],
             _ => Vec::new(),
         }
     }
@@ -1155,6 +1186,7 @@ mod tests {
             module_name: ModuleName::new(PackageName::new("zelkova-core").unwrap(), "Maybe".into()),
             values,
             unions,
+            opaque_unions: Default::default(),
             infixes: HashMap::new(),
             infix_functions: HashMap::new(),
             arities: HashMap::new(),
@@ -1271,6 +1303,7 @@ mod tests {
                     ),
                     values,
                     unions,
+                    opaque_unions: Default::default(),
                     infixes: HashMap::new(),
                     infix_functions: HashMap::new(),
                     arities: HashMap::new(),
@@ -1767,6 +1800,7 @@ mod tests {
             module_name: ModuleName::new(PackageName::new("test-project").unwrap(), "Ops".into()),
             values: HashMap::new(),
             unions: HashMap::new(),
+            opaque_unions: Default::default(),
             infixes,
             infix_functions: HashMap::new(),
             arities: HashMap::new(),
@@ -1943,6 +1977,55 @@ mod tests {
                 assert_eq!(suggestion, &Some(Name::from("Maybe")));
             }
             other => panic!("expected UnionNotFound, got {:?}", other),
+        }
+    }
+
+    /// A `Maybe(..)` entry against an interface that lists `Maybe` in
+    /// `opaque_unions` is `ConstructorsNotExposed`, nested in `Multiple` like the
+    /// other entry errors, and carries the module name as the `import` wrote it.
+    ///
+    /// Mutation-checked by deleting the `opaque_unions.contains` early return in
+    /// the `Upper(.., Public)` arm of `process_import`: the import then succeeds
+    /// and `expect_err` panics.
+    #[test]
+    fn constructor_entry_for_an_opaque_type_is_rejected() {
+        use zelkova_syntax::position::BytePos;
+        let entry_span = NodeSpan::new(BytePos(20), BytePos(30));
+        let imports = vec![import(
+            "Maybe".into(),
+            None,
+            exposing_explicit(vec![parser::Exposed::new(
+                entry_span,
+                parser::ExposedKind::Upper("Maybe".into(), parser::Privacy::Public),
+            )]),
+        )];
+        let mut interfaces = HashMap::new();
+        {
+            let (name, mut iface) = maybe_interface();
+            if let Some(union) = iface.unions.get_mut(&name) {
+                union.variants.clear();
+            }
+            iface.opaque_unions.insert(name.clone());
+            interfaces.insert(name, iface);
+        }
+
+        let errors = new_environment(&module_name(), &interfaces, &imports)
+            .expect_err("constructors the module does not expose should not resolve");
+        assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+        let inner = match &errors[0] {
+            EnvError::Multiple(inner) => inner,
+            other => panic!("expected Multiple, got {:?}", other),
+        };
+        assert_eq!(inner.len(), 1, "got {:?}", inner);
+
+        match &inner[0] {
+            EnvError::ConstructorsNotExposed(name, module, span) => {
+                assert_eq!(name, &Name::from("Maybe"));
+                assert_eq!(module, &Name::from("Maybe"));
+                assert_eq!(span.span(), entry_span.span());
+            }
+            other => panic!("expected ConstructorsNotExposed, got {:?}", other),
         }
     }
 

@@ -59,7 +59,8 @@
 //! message about an `import` line the user never wrote. [`implicit_imports`]
 //! therefore applies an entry only when the package genuinely provides what that
 //! entry asks for: the module has to have been checked already, and a `Maybe(..)`
-//! or `List` entry additionally has to find that type declared in the interface.
+//! or `List` entry additionally has to find that type declared in the interface,
+//! and a `Maybe(..)` entry has to find its constructors exposed.
 //! Anything missing is left out, and the names it would have brought fail at the
 //! place they are *used*, with a caret under them.
 //!
@@ -197,11 +198,19 @@ impl DefaultImport {
     /// not oblige `Task` to be a union: if it were declared as anything else — a type
     /// alias, or a type the compiler knows without a declaration — this entry would be
     /// silently dropped and nothing here would go red.
+    ///
+    /// A [`Unqualified::TypeAndVariants`] entry also needs the module to expose that
+    /// union's constructors — `Maybe(..)` in its header, not a bare `Maybe` — since
+    /// asking for constructors a module withholds raises
+    /// [`EnvError::ConstructorsNotExposed`](crate::canonical::environment::EnvError::ConstructorsNotExposed),
+    /// which would be another diagnostic about an `import` nobody wrote.
     fn satisfied_by(&self, interface: &Interface) -> bool {
+        let name = self.name();
         match self.unqualified {
             Unqualified::Everything | Unqualified::Nothing => true,
-            Unqualified::Type | Unqualified::TypeAndVariants => {
-                interface.unions.contains_key(&self.name())
+            Unqualified::Type => interface.unions.contains_key(&name),
+            Unqualified::TypeAndVariants => {
+                interface.unions.contains_key(&name) && !interface.opaque_unions.contains(&name)
             }
         }
     }
@@ -293,6 +302,7 @@ mod tests {
                 ),
                 values: HashMap::new(),
                 unions,
+                opaque_unions: Default::default(),
                 infixes: HashMap::new(),
                 infix_functions: HashMap::new(),
                 arities: HashMap::new(),
@@ -382,6 +392,28 @@ mod tests {
             vec!["Maybe".to_string()]
         );
         assert!(implicit_imports(&[], &without_type, false).is_empty());
+    }
+
+    /// A `Maybe(..)`-shaped entry against a module exposing `Maybe` opaquely is
+    /// dropped too, since `process_import` would reject the constructors it asks
+    /// for. A bare-type entry asks for none, so the same opacity leaves `List`'s
+    /// applied.
+    ///
+    /// Mutation-checked by dropping the `opaque_unions` test from the
+    /// `TypeAndVariants` arm of `satisfied_by`: `Maybe` comes back alongside `List`.
+    #[test]
+    fn a_constructor_entry_against_an_opaque_type_is_dropped() {
+        let opaque = |module: &str| {
+            let (name, mut interface) = interface(module, true);
+            interface.opaque_unions.insert(name.clone());
+            (name, interface)
+        };
+        let available = interfaces(vec![opaque("Maybe"), opaque("List")]);
+
+        assert_eq!(
+            names(&implicit_imports(&[], &available, false)),
+            vec!["List".to_string()]
+        );
     }
 
     /// The shape each entry is turned into: `Basics` open, `Maybe` with its
