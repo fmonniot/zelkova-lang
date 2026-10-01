@@ -609,17 +609,32 @@ Decl: Declaration = {
     "open block" <Union> "close block" => Declaration::Union(<>),
 };
 
-// Module
+// Entry points
+//
+// `parser::parse_recovering` cuts a module into one chunk per top-level declaration
+// before the layout pass (`parser/chunk.rs`), and parses the first chunk with `Header`
+// and every other with `Decls`, so a syntax error ends only the chunk it is in.
+//
+// Each entry point reads `Decl` repeated rather than a single one, and that repetition
+// never yields a second declaration: in a chunk, a second "open block" at the top level
+// comes from a column-1 token, and a column-1 token a declaration can start with would
+// have started a chunk of its own. What the repetition does is keep the grammar's report
+// on a column-1 token no declaration starts with — `)` or `|` under a complete
+// declaration — the one a whole module gave before the cut: that token rejected, with
+// the tokens a declaration can start with listed as expected. A single `Decl` would
+// instead reject the "open block" the layout pass puts before it, expecting nothing.
 
-// entry point for our parser, a source file always start by
-// declaring the module
+// Every declaration of a chunk after the first.
+pub Decls: Vec<Declaration> = <Decl+>;
+
+// A module's first chunk: a source file always starts by declaring the module.
+// `parser::parse_recovering` hands the header's parts to `Module::from_declarations`
+// along with the declarations that parsed.
 //
 // `el`/`er` bracket the header's `exposing (...)`, keyword and list together: it is what a
 // diagnostic about what the module exposes as a whole points at.
-pub Module: Module = 
+pub Header: ((Option<Token>, Name, Exposing, NodeSpan), Vec<Declaration>) =
     "open block"
         "module" <modifier: "foreign"?> <name: QualTypeIdent> <el:@L> "exposing" <exposing:Exposing> <er:@R>
     "close block" <declarations:Decl*> =>
-        Module::from_declarations(modifier, name, exposing, NodeSpan::new(el, er), declarations);
-
-// TODO Maybe something for the REPL. Might just be Decl.
+        ((modifier, name, exposing, NodeSpan::new(el, er)), declarations);

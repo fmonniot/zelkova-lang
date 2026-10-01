@@ -181,9 +181,9 @@ TOOL-3  a check that returns diagnostics as data,  ─┐
   │                                                 ├─ both required by TOOL-6
 TOOL-2  that check reads open buffers through an    │
           overlay, not only the disk               ─┘  ← closed: `Overlay`
-TOOL-4  every syntax error of a module is          ← parser only: the module is still
-  │       reported, and the declarations that         dropped from the build
-  │       parsed are handed back
+TOOL-4  every syntax error of a module is          ← closed: `parse_recovering`; parser
+  │       reported, and the declarations that         only, the module is still dropped
+  │       parsed are handed back                      from the build
   │
 TOOL-8  one failing declaration no longer hides     ← not required by TOOL-6, but without
   │       its module from importers and from the      it every capability past diagnostics
@@ -456,7 +456,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TOOL-1 | task | — | closed 2026-10-01 | No editor highlights a `.zel` file |
 | TOOL-2 | task | — | closed 2026-10-01 | A source file can only be read from disk, so nothing can check an unsaved buffer |
 | TOOL-3 | task | — | closed 2026-10-01 | Checking a package always prints to stderr and writes JavaScript |
-| [TOOL-4](tool-4.md) | task | — | open | A module's first syntax error is the only one reported |
+| TOOL-4 | task | — | closed 2026-10-01 | A module's first syntax error is the only one reported |
 | [TOOL-5](tool-5.md) | task | — | open | The compiler, its JavaScript backend and its command line are one crate |
 | [TOOL-6](tool-6.md) | task | — | open | There is no language server |
 | TOOL-7 | task | — | closed 2026-10-01 | The checking pipeline names its backend, its runners and the test package |

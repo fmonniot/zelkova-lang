@@ -24,7 +24,8 @@
 //! 2. Collect all `*.zelkova` files with their path name relatives to the root.
 //! 3. Create a `SourceFiles` mapping from `ModuleName` to `parser::Module`.
 //!     1. module names are deduced from file name
-//!     2. parsing is done through `parser::parse`
+//!     2. parsing is done through `parser::parse_recovering`, which reports every
+//!        declaration that fails rather than only the first
 //!     3. Verify that `parser::Module.name` match the one from the file system
 //! 4. Build a dependency graphs from the modules import
 //!     1. build it
@@ -1657,7 +1658,13 @@ struct ParsedRoot {
     failures: usize,
 }
 
-/// Parse every file of `ids`, pushing a parse error onto `errors` for each that fails.
+/// Parse every file of `ids`, pushing every syntax error of each file that has any onto
+/// `errors`.
+///
+/// A file is parsed past its first error (`parser::parse_recovering`), so each of its
+/// failing declarations is reported. It still counts once in `failures` however many it
+/// has, and still contributes no module: what the phases after parsing do with a module
+/// that is only partly there is `TOOL-8`'s, in `docs/tickets/`.
 fn parse_root(
     ids: &[SourceFileId],
     sources: &SourceFiles,
@@ -1671,8 +1678,10 @@ fn parse_root(
     };
 
     for (id, file) in sources.iter().filter(|(id, _)| ids.contains(id)) {
-        match parser::parse(file.file()) {
-            Ok(module) => {
+        let parser::Parsed { module, failures } = parser::parse_recovering(file.file());
+
+        match module {
+            Some(module) if failures.is_empty() => {
                 parsed.module_files.insert(module.name.clone(), id);
                 parsed.local_modules.push(resolve::LocalModule {
                     name: module.name.clone(),
@@ -1680,9 +1689,13 @@ fn parse_root(
                 });
                 parsed.modules.push(module);
             }
-            Err(err) => {
+            _ => {
                 parsed.failures += 1;
-                errors.push(CompilationError::from(err, id));
+                errors.extend(
+                    failures
+                        .into_iter()
+                        .map(|failure| CompilationError::from(failure.error, id)),
+                );
             }
         }
     }

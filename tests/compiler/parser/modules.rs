@@ -22,7 +22,7 @@ test_parse_ok!(
 );
 
 /// `foreign` is the only modifier a module header takes, so an unrecognised word in
-/// that slot is a plain identifier the `Module` production has no place for.
+/// that slot is a plain identifier the `Header` production has no place for.
 ///
 /// Verified to fail by pointing the tokenizer's soft-keyword entry for `Token::Foreign`
 /// back at `"javascript"`, which reds this test and `module_foreign` together.

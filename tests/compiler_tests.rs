@@ -6,6 +6,7 @@ mod compiler {
         mod expressions;
         mod layout;
         mod modules;
+        mod recovery;
         mod types;
     }
 
