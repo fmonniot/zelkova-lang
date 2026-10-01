@@ -42,10 +42,10 @@ fn main() {
     let result = match cli.command {
         Command::Compile { dir } => driver::compile_package(&dir).map(|()| 0),
         Command::Run { dir } => compiler::program_runner::run(&dir),
-        Command::Test { dir } => compiler::test_runner::run(&dir),
+        Command::Test { dir } => driver::test(&dir),
     };
 
-    // `run` answers the code `node` ended with, which is non-zero when a test did not
+    // `run` and `test` answer the code `node` ended with, which is non-zero when a test did not
     // pass or a program aborted. Neither is an error to report: the entry point printed it
     // already.
     match result {

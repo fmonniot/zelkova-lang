@@ -173,7 +173,7 @@ fn run_without_node(cwd: &Path, args: &[&str]) -> Output {
 /// no `node` reachable — an attempt to start one would have shown up as an error naming it.
 ///
 /// Neutralised by replacing the `?` after `compile_package_with_tests(package_dir)` in
-/// `test_runner::run` with `.unwrap_or_default()`, so a failed build carries on with nothing
+/// `driver::test` with `.unwrap_or_default()`, so a failed build carries on with nothing
 /// collected. This test went red (exit code 0 and "no tests found") under that change.
 #[test]
 fn test_on_a_package_that_does_not_compile_exits_1_without_running_node() {

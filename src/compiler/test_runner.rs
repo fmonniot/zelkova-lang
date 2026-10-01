@@ -1,9 +1,10 @@
 //! Running a package's tests.
 //!
-//! [`run`] is what `zelkova test` calls: it compiles both of a package's roots
-//! ([`compile_package_with_tests`]), asks [`test_collection::collect`] which values of the
-//! `tests/` modules are tests, writes [`entry_point`]'s text to `build/test/js/run.mjs` and
-//! hands that file to `node`. The tests are found and reported on the Zelkova side; the
+//! [`run`] is what `zelkova test` calls once a package and its tests are built: handed the
+//! tree the build wrote for the tests and the [`Interface`]s of the package's `tests/`
+//! modules, it asks [`test_collection::collect`] which of their values are tests, writes
+//! [`entry_point`]'s text to `run.mjs` at the root of that tree and hands that file to
+//! `node`. It compiles nothing. The tests are found and reported on the Zelkova side; the
 //! only thing decided in JavaScript is which verdict the value a test evaluated to comes to
 //! ([*What a test is*](../../../docs/spec/packages.md#what-a-test-is)).
 //!
@@ -61,8 +62,7 @@ use std::process::Command;
 
 use super::name::Name;
 use super::test_collection::{self, ModuleTests};
-use super::{javascript, PhaseError};
-use crate::driver::{compile_package_with_tests, test_tree, BuildError, BUILD_DIRECTORY};
+use super::{javascript, Interface, PhaseError};
 
 /// The entry point's file name, at the root of `build/test/js/`, beside the runtime.
 pub const RUN_FILE: &str = "run.mjs";
@@ -112,40 +112,42 @@ impl PhaseError for Error {
     }
 }
 
-/// Compile the package rooted at `package_dir` with its tests, run every test it holds
-/// under `node`, and answer the exit code the process should end with.
+/// Run every test `interfaces` holds under `node`, from the tree at `test_tree`, and answer
+/// the exit code the process should end with.
 ///
-/// The answer is `Ok(0)` when every test passed and when the package holds none. It is
-/// `node`'s own exit code otherwise, which is non-zero exactly when the entry point saw a
-/// test not pass or `node` itself failed. Anything that stops the tests being run — a
-/// build that did not compile, `node` missing — is an `Err`.
+/// `test_tree` is the directory a build that compiled the tests wrote — `build/test/js/`,
+/// with the runtime at its root and one directory per package — and `interfaces` is the
+/// [`Interface`] of each module of the package's `tests/` root that checked. Both have to
+/// come from that one build: the entry point imports each test module by the path the
+/// build wrote it at.
+///
+/// The answer is `Ok(0)` when every test passed and when `interfaces` holds none, in which
+/// case `no tests found` is printed and nothing is written. It is `node`'s own exit code
+/// otherwise, which is non-zero exactly when the entry point saw a test not pass or `node`
+/// itself failed. Anything that stops the tests being run — the entry point not written,
+/// `node` missing — is an `Err`.
 ///
 /// `node`'s output goes straight to this process's own stdout and stderr.
-pub fn run(package_dir: &Path) -> Result<i32, BuildError> {
-    let interfaces = compile_package_with_tests(package_dir)?;
-    let modules = test_collection::collect(&interfaces);
+pub fn run(test_tree: &Path, interfaces: &[Interface]) -> Result<i32, Error> {
+    let modules = test_collection::collect(interfaces);
 
     if modules.iter().all(|module| module.tests.is_empty()) {
         println!("no tests found");
         return Ok(0);
     }
 
-    let entry = test_tree(&package_dir.join(BUILD_DIRECTORY)).join(RUN_FILE);
-    std::fs::write(&entry, entry_point(&modules)).map_err(|error| {
-        BuildError::TestRun(Error::WriteEntryPoint {
-            path: entry.clone(),
-            error,
-        })
+    let entry = test_tree.join(RUN_FILE);
+    std::fs::write(&entry, entry_point(&modules)).map_err(|error| Error::WriteEntryPoint {
+        path: entry.clone(),
+        error,
     })?;
 
     let status = Command::new(NODE)
         .arg(&entry)
         .status()
-        .map_err(|error| BuildError::TestRun(Error::NodeNotStarted { error }))?;
+        .map_err(|error| Error::NodeNotStarted { error })?;
 
-    status
-        .code()
-        .ok_or(BuildError::TestRun(Error::NodeTerminated))
+    status.code().ok_or(Error::NodeTerminated)
 }
 
 /// The text of `run.mjs` for `modules`, which sits at the root of `build/test/js/`: see

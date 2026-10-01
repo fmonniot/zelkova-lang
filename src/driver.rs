@@ -200,8 +200,8 @@ pub fn compile_package(package_dir: &Path) -> Result<(), BuildError> {
 pub const BUILD_DIRECTORY: &str = "build";
 
 /// The tree a build that compiled the tests writes below `build_dir`: `build_dir/test/js/`,
-/// laid out like `build_dir/out/js/`. Both the write of that tree and the entry point
-/// [`compiler::test_runner::run`] puts in it name it through here.
+/// laid out like `build_dir/out/js/`. Both the write of that tree and [`test()`], which hands
+/// it to [`test_runner::run`], name it through here.
 pub fn test_tree(build_dir: &Path) -> PathBuf {
     build_dir.join("test").join("js")
 }
@@ -231,7 +231,7 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 ///
 /// It compiles the tests and does not run them: what makes a declaration a test is
 /// [its type](../../docs/spec/packages.md#what-a-test-is), and running one is
-/// [`compiler::test_runner::run`]'s. What it hands back on success is the `Interface` of each of
+/// [`test()`]'s. What it hands back on success is the `Interface` of each of
 /// the root's own `tests/` modules that checked — never a test-only package's, and never
 /// `src/`'s — so a caller can find which of their exposed values are tests without a phase
 /// dropping the checked modules once they are emitted. `test_collection::collect` is that
@@ -257,6 +257,22 @@ pub fn compile_package_with_tests_into(
     build_dir: &Path,
 ) -> Result<Vec<Interface>, BuildError> {
     compile(package_dir, TestRoot::Compiled, build_dir, &Overlay::new())
+}
+
+/// Compile the package rooted at `package_dir` with its tests
+/// ([`compile_package_with_tests`]), run every test it holds under `node`
+/// ([`test_runner::run`], from the tree [`test_tree`] names), and answer the exit code the
+/// process should end with.
+///
+/// The answer is `Ok(0)` when every test passed and when the package holds none. It is
+/// `node`'s own exit code otherwise, which is non-zero exactly when a test did not pass or
+/// `node` itself failed. Anything that stops the tests being run — a build that did not
+/// compile, `node` missing — is an `Err`, and a build that did not compile never reaches
+/// `node`.
+pub fn test(package_dir: &Path) -> Result<i32, BuildError> {
+    let interfaces = compile_package_with_tests(package_dir)?;
+    test_runner::run(&test_tree(&package_dir.join(BUILD_DIRECTORY)), &interfaces)
+        .map_err(BuildError::TestRun)
 }
 
 /// Print one [`Status`] line to `writer`. Failing to write a status line is not itself a
