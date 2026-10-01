@@ -317,7 +317,7 @@ fn a_declaration_indented_after_one_that_takes_arguments_is_an_indentation_error
 /// `  g x = 1` is a definition missing its body or a stray `=`, and the
 /// grammar's error on `=` is the accurate one.
 ///
-/// Verified to fail by making the `complete_before` closure `parser::parse`
+/// Verified to fail by making the `complete_before` closure `parse_chunk`
 /// passes to `Layout::explain` return `true`: `g` is then reported as an
 /// `IndentedDeclaration`.
 #[test]

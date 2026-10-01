@@ -110,8 +110,9 @@ pub(crate) fn end_of(source: &str) -> Position {
 /// stream at the second of two consecutive equal errors, keeping the first in its chunk.
 /// A tokenizer that repeats one error truncates the parse there, where it would
 /// otherwise never end (`CLAUDE.md` — *A `Result`-yielding iterator must advance or
-/// stop*). Two consecutive errors that differ are both kept: each is evidence that the
-/// tokenizer moved.
+/// stop*). Two consecutive errors that differ are both kept. The check catches only an
+/// error repeated back to back, which is the `BUG-4`/`BUG-5` shape: a cycle of different
+/// errors, or of an error and a token that consumed nothing, is not caught.
 ///
 /// Once `next` has returned `None` it keeps returning `None`, whatever the source does,
 /// so `Chunks` is a `FusedIterator`.
@@ -349,5 +350,60 @@ mod tests {
             "read {} items from the source",
             polls.get()
         );
+    }
+
+    /// `can_start_declaration` and the grammar's `Decl` alternatives agree on what a
+    /// declaration opens with. `Decls` reads `Decl+`, so a start the grammar accepts and
+    /// this function does not would not fail: that declaration would silently join the
+    /// previous chunk. The grammar's own first set is the `expected` list of the error a
+    /// stray `)` in column 1 raises, and each name in it is mapped to its token here.
+    ///
+    /// Verified to fail by removing `Token::Infix` from `can_start_declaration` (the
+    /// assertion on `infix` goes red).
+    #[test]
+    fn can_start_declaration_matches_the_grammars_declaration_starts() {
+        use crate::compiler::parser::{parse_recovering, Error};
+        use codespan_reporting::files::SimpleFile;
+
+        let source = "module Main exposing (..)\n\nf = 1\n)\n";
+        let file = SimpleFile::new("test".to_owned(), source.to_owned());
+        let parsed = parse_recovering(&file);
+        let expected = match parsed.failures.first().map(|f| &f.error) {
+            Some(Error::UnexpectedToken { expected, .. }) => expected.clone(),
+            other => panic!("expected an unexpected-token error, got {:?}", other),
+        };
+
+        // Every token kind a declaration could plausibly start with, by the name the
+        // grammar gives it, so a new one has to be added here to be compared.
+        let candidates: Vec<(&str, Token)> = vec![
+            ("lo_ident", Token::LowerIdentifier("f".to_string())),
+            ("left", Token::Left),
+            ("right", Token::Right),
+            ("non", Token::Non),
+            ("foreign", Token::Foreign),
+            ("unsafe", Token::Unsafe),
+            ("type", Token::Type),
+            ("import", Token::Import),
+            ("infix", Token::Infix),
+        ];
+
+        for (name, token) in &candidates {
+            let in_grammar = expected.iter().any(|e| e.trim_matches('"') == *name);
+            assert_eq!(
+                can_start_declaration(token),
+                in_grammar,
+                "`{}`: can_start_declaration disagrees with the grammar's expected {:?}",
+                name,
+                expected
+            );
+        }
+        for e in &expected {
+            let e = e.trim_matches('"');
+            assert!(
+                candidates.iter().any(|(name, _)| *name == e),
+                "the grammar accepts `{}` to start a declaration and this test does not list it",
+                e
+            );
+        }
     }
 }
