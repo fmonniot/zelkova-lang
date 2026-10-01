@@ -556,7 +556,6 @@ pub enum PatternKind {
     Float(f64),
     Char(char),
     String(String),
-    Bool(bool),
     /// A tuple pattern. Zelkova keeps Elm's restriction of two or three
     /// elements, which [`Tuple`] carries in its shape.
     Tuple(Tuple<Pattern>),
@@ -594,7 +593,6 @@ impl Pattern {
             parser::PatternKind::Literal(parser::Literal::String(s)) => {
                 PatternKind::String(s.clone())
             }
-            parser::PatternKind::Literal(parser::Literal::Bool(b)) => PatternKind::Bool(*b),
             parser::PatternKind::Tuple(tuple) => {
                 PatternKind::Tuple(tuple.try_map(|p| Pattern::from_parser(p, env))?)
             }
@@ -692,7 +690,6 @@ pub enum ExpressionKind {
     String(String),
     Int(i64),
     Float(f64),
-    Bool(bool),
     // List
     // Lambda
     Apply(Box<Expression>, Box<Expression>),
@@ -737,7 +734,6 @@ impl Expression {
             parser::ExpressionKind::Lit(parser::Literal::String(s)) => {
                 ExpressionKind::String(s.clone())
             }
-            parser::ExpressionKind::Lit(parser::Literal::Bool(b)) => ExpressionKind::Bool(*b),
             parser::ExpressionKind::Variable(name) => {
                 match env.find_value(name).ok_or_else(|| {
                     let suggestion = suggest_name(name, env.value_names().into_iter());
@@ -2318,7 +2314,7 @@ pub fn canonicalize(
                 patterns: vec![],
                 // A `module foreign` facade has no body in the source, so this
                 // stand-in has nothing to point at (see the TODO above).
-                body: Expression::bare(ExpressionKind::Bool(true)),
+                body: Expression::bare(ExpressionKind::Unit),
                 tpe,
                 marked_unsafe: function.marked_unsafe,
                 span: function.span,
@@ -2441,7 +2437,6 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
         | ExpressionKind::String(_)
         | ExpressionKind::Int(_)
         | ExpressionKind::Float(_)
-        | ExpressionKind::Bool(_)
         | ExpressionKind::Unit => {}
         ExpressionKind::Apply(a, b) => {
             collect_top_level_refs(a, out);

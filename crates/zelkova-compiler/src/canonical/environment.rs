@@ -1055,7 +1055,6 @@ impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
             PatternKind::Float(_) => (),
             PatternKind::Char(_) => (),
             PatternKind::String(_) => (),
-            PatternKind::Bool(_) => (),
             PatternKind::Unit => (),
 
             PatternKind::Variable(n) => {

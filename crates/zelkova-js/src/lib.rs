@@ -1499,7 +1499,6 @@ impl Emitter {
             TypedTermKind::Float(f) => float_literal(*f),
             TypedTermKind::Char(c) => char_literal(*c),
             TypedTermKind::String(s) => string_literal(s),
-            TypedTermKind::Bool(b) => b.to_string(),
             TypedTermKind::Identifier(reference) => self.value(&reference.name, &reference.kind),
             TypedTermKind::Apply { .. } => self.application(term),
             TypedTermKind::If {
@@ -1788,10 +1787,10 @@ impl Emitter {
 
 /// The condition a [`Decision::Test`] compiles to: an equality check against the value
 /// [`occurrence_expr`] reads off `root`. A constructor is tested by its `$` field — a
-/// `Bool`'s constructors never reach here, since `typer::translate_pattern` normalises
-/// `True`/`False` to the same [`Outcome::Literal`] a `true`/`false` pattern is — and a
-/// literal by the value itself, which is also how a `case` on a `Bool` tests it (see
-/// this module's doc comment, "Representations").
+/// `Bool`'s constructors never reach here, since `typer::translate_pattern` turns
+/// `True`/`False` into an [`Outcome::Literal`] — and a literal by the value itself,
+/// which is also how a `case` on a `Bool` tests it (see this module's doc comment,
+/// "Representations").
 fn test_condition(root: &str, occurrence: &Occurrence, outcome: &Outcome) -> String {
     let value = occurrence_expr(root, occurrence);
 

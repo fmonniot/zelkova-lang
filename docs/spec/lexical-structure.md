@@ -298,18 +298,15 @@ not b =
 
 So `true` is available as a variable name:
 
-```zel expect=parse-error:UnexpectedToken
+```zel expect=ok
 module Example exposing (f)
 
+true : Int
 true = 1
 
+f : Int
 f = true
 ```
-
-**Known gap:** that block should be `expect=ok`. `true` and `false` are currently reserved
-words that produce boolean literals, so `Bool` exists twice over — once as the keywords and
-once as `Basics`' union type. [`docs/tickets/lang-1.md`](../tickets/lang-1.md) removes the
-keywords.
 
 ## Literals
 

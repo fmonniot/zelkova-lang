@@ -14,7 +14,6 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
     // here — an arm that forgot to carry it would silently cost a caret.
     let (tpe, kind) = match term.kind {
         TermKind::Int(value) => (types.fresh_var(), TypedTermKind::Int(value)),
-        TermKind::Bool(value) => (types.fresh_var(), TypedTermKind::Bool(value)),
         TermKind::Char(value) => (types.fresh_var(), TypedTermKind::Char(value)),
         TermKind::String(value) => (types.fresh_var(), TypedTermKind::String(value)),
         TermKind::Float(value) => (types.fresh_var(), TypedTermKind::Float(value)),

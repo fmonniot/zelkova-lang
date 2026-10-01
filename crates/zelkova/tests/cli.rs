@@ -102,7 +102,7 @@ fn compile_defaults_to_current_directory() {
 /// `Command::Compile { .. } => zelkova::compile_package(Path::new("tests/fixtures/package_type_error"))`
 /// — ignoring the parsed `dir` — while running from the repository root with
 /// `compile tests/fixtures/package_checks` as the argument. This test went red
-/// (exit code 1, an `Int`/`Bool` mismatch on stderr instead of "parsed 1 modules")
+/// (exit code 1, an `Int`/`Char` mismatch on stderr instead of "parsed 1 modules")
 /// under that change, confirming it is the parsed `dir` — not a fixed path — that
 /// reaches `compile_package`.
 #[test]

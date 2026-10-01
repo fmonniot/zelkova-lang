@@ -780,5 +780,4 @@ pub enum Literal {
     /// A string literal, its escape sequences already replaced by the characters
     /// they name.
     String(String),
-    Bool(bool),
 }

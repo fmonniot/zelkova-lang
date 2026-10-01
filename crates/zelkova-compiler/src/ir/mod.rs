@@ -350,7 +350,6 @@ impl Term {
 #[derive(Debug, Clone)] // TODO Remove clone when not needed anymore
 pub enum TermKind {
     // literals
-    Bool(bool),
     /// An integer literal, at the width [`Int` *is*](../../docs/spec/evaluation-semantics.md#numbers)
     /// ([`DEC-16`](../../docs/decisions/dec-16.md)). Inference never reads the value
     /// — every literal is a `number` whatever it says — but code generation does.
@@ -444,10 +443,10 @@ pub enum TermPatternKind {
     /// and, unlike the type alone, says which value of it.
     ///
     /// `tpe` is a [`Type::Literal`] for an `Int` or a `Char` pattern, and the
-    /// [`Type::Adt`] `typer::bool_type` builds for a `true`/`false` or a `True`/`False`
-    /// one — `Bool` is the union `Basics` declares, not a literal type. Two patterns of that same kind — two
-    /// `Int`s, say — share that one type, so `value` is what tells `1` from `2`, or
-    /// `true` from `false`; [`decision_tree`] reads it to build the [`Outcome`] a
+    /// [`Type::Adt`] `typer::bool_type` builds for a `Basics.True`/`Basics.False` one —
+    /// `Bool` is the union `Basics` declares, not a literal type. Two patterns of that
+    /// same kind — two `Int`s, say — share that one type, so `value` is what tells `1`
+    /// from `2`, or `True` from `False`; [`decision_tree`] reads it to build the [`Outcome`] a
     /// [`Decision::Test`] checks for.
     Literal { tpe: Type, value: LiteralValue },
     /// Matches an ADT constructor; carries the fresh ADT args and one sub-pattern per
@@ -524,9 +523,9 @@ impl TermPattern {
 ///
 /// The pattern's own `tpe` cannot tell `1` from `2`, or `'a'` from `'b'`: both share one
 /// type, and only this says which value the scrutinee has to equal. A `Bool` is tested
-/// by its value whichever spelling the pattern used: `true`/`false` and `Basics`' own
-/// `True`/`False` constructors both arrive here as a `Bool(..)`, never as a
-/// [`TermPatternKind::Constructor`] (`typer::translate_pattern` does the normalising).
+/// by its value too: `Basics`' own `True`/`False` constructors arrive here as a
+/// `Bool(..)`, never as a [`TermPatternKind::Constructor`] (`typer::translate_pattern`
+/// does the normalising).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LiteralValue {
     Bool(bool),
@@ -566,7 +565,6 @@ pub struct TypedTerm {
 pub enum TypedTermKind {
     /// See [`TermKind::Int`] for the width.
     Int(i64),
-    Bool(bool),
     Char(char),
     /// See [`TermKind::String`].
     String(String),

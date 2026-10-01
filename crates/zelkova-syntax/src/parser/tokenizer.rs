@@ -27,8 +27,6 @@ pub enum Token {
     String {
         value: String,
     },
-    True,
-    False,
     Operator(String),
 
     // Control character
@@ -105,8 +103,6 @@ fn keyword(s: &str) -> Option<Token> {
         "else" => Some(Token::Else),
         "let" => Some(Token::Let),
         "in" => Some(Token::In),
-        "true" => Some(Token::True),
-        "false" => Some(Token::False),
 
         // soft keywords
         "left" => Some(Token::Left),
@@ -1495,9 +1491,15 @@ mod tests {
     }
 
     #[test]
-    fn literal_boolean() {
-        assert_eq!(tokenize("true"), vec![Token::True]);
-        assert_eq!(tokenize("false"), vec![Token::False]);
+    fn true_and_false_are_identifiers() {
+        assert_eq!(
+            tokenize("true"),
+            vec![Token::LowerIdentifier("true".to_string())]
+        );
+        assert_eq!(
+            tokenize("false"),
+            vec![Token::LowerIdentifier("false".to_string())]
+        );
     }
 
     #[test]

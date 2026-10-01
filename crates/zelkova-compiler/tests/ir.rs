@@ -973,45 +973,6 @@ fn a_char_pattern_becomes_a_test_on_its_value() {
     );
 }
 
-/// A `Bool` pattern — `true` or `false` — is a literal like `Int` and `Char` are, not a
-/// constructor. Two literal branches cover `Bool`, but coverage is not checked
-/// (`LANG-19`), so the `false` branch's `Test` still has a `default`: the `Fail` leaf.
-///
-/// Mutation-checked by having `translate_pattern`'s `Bool` arm read `true` regardless
-/// of the pattern it was given: the assertion goes red.
-#[test]
-fn a_bool_pattern_becomes_a_test_on_its_value() {
-    let module = ir_of(indoc! {r#"
-        module Test exposing (choose)
-
-        choose : Bool -> Int
-        choose flag =
-          case flag of
-            true ->
-              1
-
-            false ->
-              0
-    "#});
-
-    let (tree, bodies) = case_tree(declaration(&module, "choose"), "choose");
-
-    assert!(matches!(bodies[0].kind, TypedTermKind::Int(1)));
-    assert!(matches!(bodies[1].kind, TypedTermKind::Int(0)));
-    assert_eq!(
-        tree,
-        test_root(
-            Outcome::Literal(LiteralValue::Bool(true)),
-            leaf(vec![], bodies[0]),
-            test_root(
-                Outcome::Literal(LiteralValue::Bool(false)),
-                leaf(vec![], bodies[1]),
-                fail("choose"),
-            ),
-        )
-    );
-}
-
 /// A tuple pattern tests nothing — a value of a tuple type is always a tuple, and every
 /// element here is a name or `_` — so it lowers straight to a leaf, with one binding per
 /// named element, each at the occurrence its position in the tuple gives it and at that
@@ -1199,15 +1160,16 @@ fn a_case_missing_a_branch_has_a_fall_through_leaf() {
     );
 }
 
-/// `Basics`' `True` and `False` constructors are tested by value exactly as `true` and
-/// `false` are, so a `case` mixing the two spellings lowers to `Test`s in one
-/// vocabulary: a backend never has to recognise `Basics.Bool` among constructors.
+/// `Basics`' `True` and `False` constructors are tested by value, as an `Int` or a
+/// `Char` literal is, so a backend never has to recognise `Basics.Bool` among
+/// constructors. Two branches cover `Bool`, but coverage is not checked (`LANG-19`),
+/// so the `False` branch's `Test` still has a `default`: the `Fail` leaf.
 ///
 /// Mutation-checked by deleting `translate_pattern`'s `True`/`False` arm, so `True`
 /// goes through the general constructor path: the first `Test`'s outcome comes out as
 /// `Outcome::Constructor(Basics.Bool.True)`, and the assertion goes red.
 #[test]
-fn a_bool_constructor_is_tested_by_value_like_a_bool_literal() {
+fn a_bool_constructor_is_tested_by_its_value() {
     let module = ir_of(indoc! {r#"
         module Test exposing (choose)
 
@@ -1217,12 +1179,14 @@ fn a_bool_constructor_is_tested_by_value_like_a_bool_literal() {
             True ->
               1
 
-            false ->
+            False ->
               0
     "#});
 
     let (tree, bodies) = case_tree(declaration(&module, "choose"), "choose");
 
+    assert!(matches!(bodies[0].kind, TypedTermKind::Int(1)));
+    assert!(matches!(bodies[1].kind, TypedTermKind::Int(0)));
     assert_eq!(
         tree,
         test_root(

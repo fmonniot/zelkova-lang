@@ -103,7 +103,7 @@ impl Reason {
     /// neither side is reliably "the type of the text under this caret" any more.
     /// The headline already prints both types; a label that named the wrong one
     /// would be worse than a label that names none. The example that forced this:
-    /// `answer : Int` with body `true` fails on the literal's own constraint *after*
+    /// `answer : Int` with body `'a'` fails on the literal's own constraint *after*
     /// `Int` was substituted into it, and reading the type off that side produced
     /// "this literal has type `Int`".
     fn describes(&self) -> &'static str {
@@ -1007,11 +1007,12 @@ fn scalar_literal(name: &QualName) -> Option<TypeLiteral> {
 /// `canonical_type_to_typer_type` produces for an annotation naming `Basics.Bool`, and
 /// the type `Basics` registers `True` and `False` at.
 ///
-/// Three constructs need a `Bool` the source did not spell: an [`if`
-/// condition](../../docs/spec/expressions.md#if--then--else), the `true`/`false`
-/// keywords, and a `true`/`false` pattern. They name `Basics.Bool` and nothing else, so
-/// a module declaring its own `type Bool` does not satisfy them
-/// ([`DEC-15`](../../docs/decisions/dec-15.md) decisions 1 and 5).
+/// An [`if` condition](../../docs/spec/expressions.md#if--then--else) needs a `Bool`
+/// the source did not spell, and `translate_pattern` gives a `Basics.True` or
+/// `Basics.False` pattern this type when it turns it into a test on its value. It
+/// names `Basics.Bool` and nothing else, so a module declaring its own `type Bool`
+/// does not satisfy an `if` ([`DEC-15`](../../docs/decisions/dec-15.md) decisions 1
+/// and 5).
 pub(super) fn bool_type() -> Type {
     Type::Adt(scalars::BOOL.qual_name(), vec![])
 }
@@ -1049,7 +1050,6 @@ fn canonical_expr_to_term(
         // code is generated from, so narrowing here would emit a different number than
         // the one that was written.
         canonical::ExpressionKind::Int(i) => TermKind::Int(*i),
-        canonical::ExpressionKind::Bool(b) => TermKind::Bool(*b),
         canonical::ExpressionKind::Char(c) => TermKind::Char(*c),
         canonical::ExpressionKind::String(s) => TermKind::String(s.clone()),
         canonical::ExpressionKind::Float(f) => TermKind::Float(*f),
@@ -1203,10 +1203,6 @@ fn translate_pattern(
             // The binding's actual type will be unified with the scrutinee type in annotate.
             TermPatternKind::Bind(name.as_str().to_string())
         }
-        canonical::PatternKind::Bool(value) => TermPatternKind::Literal {
-            tpe: bool_type(),
-            value: LiteralValue::Bool(*value),
-        },
         canonical::PatternKind::Int(value) => TermPatternKind::Literal {
             tpe: Type::Literal(TypeLiteral::Int),
             value: LiteralValue::Int(*value),
@@ -1216,11 +1212,11 @@ fn translate_pattern(
             value: LiteralValue::Char(*value),
         },
         canonical::PatternKind::Unit => TermPatternKind::Unit,
-        // `Basics`' own `True` and `False` are tested by value, exactly as `true` and
-        // `false` are, so a backend meets one vocabulary for a `Bool` whichever
-        // spelling the source used — a `case` mixing them included. The type is the
-        // same one the constructor would have constrained the scrutinee to. A module's
-        // own `type Bool = True | False` is not `Basics.Bool` and is left alone.
+        // `Basics`' own `True` and `False` are tested by value, as an `Int` or a
+        // `Char` literal is, so a backend tests a `Bool` scrutinee by equality. The
+        // type is the same one the constructor would have constrained the scrutinee
+        // to. A module's own `type Bool = True | False` is not `Basics.Bool` and is
+        // left alone.
         canonical::PatternKind::Constructor { ctor, args }
             if args.is_empty() && ctor.tpe == scalars::BOOL.qual_name() =>
         {
@@ -1966,7 +1962,6 @@ impl Substitution {
     fn apply_term(&self, term: TypedTerm) -> TypedTerm {
         let kind = match term.kind {
             kind @ (TypedTermKind::Int(_)
-            | TypedTermKind::Bool(_)
             | TypedTermKind::Char(_)
             | TypedTermKind::String(_)
             | TypedTermKind::Float(_)
@@ -2329,9 +2324,6 @@ mod tests {
     // have no position — `Term::bare`. What they pin is inference, which does not
     // read spans; the tests that pin what a *diagnostic* points at go through real
     // source, in `crates/zelkova-compiler/tests/typer.rs`.
-    fn bool(b: bool) -> Term {
-        Term::bare(TermKind::Bool(b))
-    }
     fn int(i: i64) -> Term {
         Term::bare(TermKind::Int(i))
     }
@@ -2569,7 +2561,8 @@ mod tests {
                 }),
             },
         );
-        let term = apply(apply(var("+"), bool(true)), int(1));
+        global.insert("True".to_owned(), bool_type());
+        let term = apply(apply(var("+"), var("True")), int(1));
         assert!(infer(term, global).is_err());
     }
 

@@ -74,10 +74,6 @@ fn c_char(c: char) -> canonical::Expression {
     canonical::Expression::bare(canonical::ExpressionKind::Char(c))
 }
 
-fn c_bool(b: bool) -> canonical::Expression {
-    canonical::Expression::bare(canonical::ExpressionKind::Bool(b))
-}
-
 fn c_var_local(name: &str) -> canonical::Expression {
     canonical::Expression::bare(canonical::ExpressionKind::VarLocal(name.into()))
 }
@@ -343,7 +339,7 @@ fn if_then_else_expression() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         max : Int -> Int -> Int
-        max a b = if true then a else b
+        max a b = if True then a else b
     "#};
     let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
@@ -355,7 +351,11 @@ fn if_then_else_expression() {
             annotation_span: NodeSpan::none(),
             name: "max".into(),
             patterns: vec![(p_var("a"), int_t()), (p_var("b"), int_t()),],
-            body: c_if(c_bool(true), c_var_local("a"), c_var_local("b")),
+            body: c_if(
+                c_var_ctor(core_qual("Basics.True"), bool_t()),
+                c_var_local("a"),
+                c_var_local("b"),
+            ),
             tpe: canonical::Type::Arrow(
                 Box::new(int_t()),
                 Box::new(canonical::Type::Arrow(Box::new(int_t()), Box::new(int_t()))),
@@ -581,7 +581,7 @@ fn foreign_facade_module() {
     "#};
     let module = canonicalize_with_scalars(source).expect("should canonicalize");
 
-    // A facade's values get a placeholder body of Bool(true) (see TODO in
+    // A facade's values get a placeholder body of `Unit` (see TODO in
     // canonical/mod.rs — the compiler doesn't yet have a dedicated binding
     // expression variant).
     assert_eq!(
@@ -592,7 +592,7 @@ fn foreign_facade_module() {
             annotation_span: NodeSpan::none(),
             name: "add".into(),
             patterns: vec![],
-            body: c_bool(true),
+            body: canonical::Expression::bare(canonical::ExpressionKind::Unit),
             tpe: canonical::Type::Arrow(
                 Box::new(int_t()),
                 Box::new(canonical::Type::Arrow(Box::new(int_t()), Box::new(int_t()))),

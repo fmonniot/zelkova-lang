@@ -93,7 +93,7 @@
       ]
     },
     "reserved-words": {
-      "comment": "Exactly the spec's Reserved words block; crates/zelkova-syntax/tests/editor_grammar.rs fails if the two drift. `true` and `false` are deliberately absent: the spec does not reserve them (LANG-1 tracks the tokenizer, which still does).",
+      "comment": "Exactly the spec's Reserved words block; crates/zelkova-syntax/tests/editor_grammar.rs fails if the two drift. `true` and `false` are deliberately absent: the spec does not reserve them.",
       "name": "keyword.control.zelkova",
       "match": "(?<![\\p{L}\\p{N}_])(as|case|else|exposing|if|import|in|infix|let|module|of|then|type)(?![\\p{L}\\p{N}_])"
     },
