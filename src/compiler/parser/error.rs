@@ -339,7 +339,8 @@ mod tests {
         let tokens = crate::compiler::parser::tokenizer::make_tokenizer(source)
             .map(|r| r.map_err(|e| e.into()));
 
-        let mut errors: Vec<Error> = crate::compiler::parser::layout::layout(tokens)
+        let end = crate::compiler::parser::chunk::end_of(source);
+        let mut errors: Vec<Error> = crate::compiler::parser::layout::layout(tokens, end)
             .filter_map(|item| item.err())
             .collect();
 

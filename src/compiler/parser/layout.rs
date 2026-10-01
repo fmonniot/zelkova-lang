@@ -1,6 +1,7 @@
 //! Simplify the indentation manager for the parser
 //! by doing it in before the token iterator is passed to the parser.
 
+use super::chunk::can_start_declaration;
 use super::error::Error;
 use super::tokenizer::Token;
 use crate::compiler::position::{spanned, BytePos, Position, Span, Spanned};
@@ -32,24 +33,6 @@ pub enum LayoutError {
     },
 }
 
-/// Whether a declaration can begin with `token`: the tokens the grammar's
-/// `Decl` alternatives open on, soft keywords included, since each of those is
-/// also a name a function can have.
-fn can_start_declaration(token: &Token) -> bool {
-    matches!(
-        token,
-        Token::LowerIdentifier(_)
-            | Token::Left
-            | Token::Right
-            | Token::Non
-            | Token::Foreign
-            | Token::Unsafe
-            | Token::Type
-            | Token::Import
-            | Token::Infix
-    )
-}
-
 /// Apply the offside rule to a token stream, injecting `OpenBlock`/`CloseBlock`
 /// so the parser does not have to track indentation itself.
 ///
@@ -59,10 +42,14 @@ fn can_start_declaration(token: &Token) -> bool {
 /// would repeat that error without bound (`BUG-4`). It is a `FusedIterator`,
 /// so `.fuse()` is a no-op. See `Layout` and its `Iterator::next` for the
 /// reasoning.
+///
+/// `end` is where the input ends: the blocks still open when `iter` runs out are
+/// closed there.
 pub fn layout<I: Iterator<Item = Result<Spanned<Position, Token>, Error>>>(
     iter: I,
+    end: Position,
 ) -> impl FusedIterator<Item = Result<(BytePos, Token, BytePos), Error>> {
-    Layout::new(iter)
+    Layout::new(iter, end)
 }
 
 /// Context represent the kind of expression we are looking at.
@@ -261,14 +248,19 @@ pub(crate) struct Layout<I> {
     /// `LayoutError::IndentedDeclaration` — and the line the declaration it
     /// continues began on. Read only by `explain`.
     top_level_continuation: Option<(Spanned<Position, Token>, usize)>,
+    /// Where the input ends. The blocks still open when `tokens` runs out are
+    /// closed here, so a declaration left unfinished is reported where its text
+    /// stops rather than at the start of the file.
+    end: Position,
 }
 
 impl<I> Layout<I>
 where
     I: Iterator<Item = Result<Spanned<Position, Token>, Error>>,
 {
-    /// Create and initialize a new `Layout` iterator
-    pub(crate) fn new(iter: I) -> Layout<I> {
+    /// Create and initialize a new `Layout` iterator over `iter`, whose input
+    /// ends at `end`.
+    pub(crate) fn new(iter: I, end: Position) -> Layout<I> {
         Layout {
             tokens: iter,
             contexts: Contexts::new(),
@@ -278,13 +270,14 @@ where
             last_read: None,
             line_start: None,
             top_level_continuation: None,
+            end,
         }
     }
 
     /// Turn the grammar's rejection of a top-level continuation line into
     /// `LayoutError::IndentedDeclaration`, and hand every other error back as it
-    /// came. `parser::parse` calls this once the grammar has stopped pulling
-    /// tokens.
+    /// came. `parser::parse_recovering` calls this on a chunk's `Layout` once the
+    /// grammar has stopped pulling that chunk's tokens.
     ///
     /// Three things have to hold, and each rules out a misreading the others
     /// leave open:
@@ -307,7 +300,8 @@ where
     ///   When the grammar stopped later, it had already read the first token
     ///   as part of the declaration, so `complete_before` is asked instead: it
     ///   is given where the line's first token starts and answers whether the
-    ///   source before it parses on its own. `f =` then `  g x = 1` fails that
+    ///   chunk's tokens before it parse on their own, with the chunk's grammar
+    ///   entry point. `f =` then `  g x = 1` fails that
     ///   test and keeps the grammar's error. `close block` has to be expected
     ///   in this shape too, so that the part of the line before the `=` or `:`
     ///   reads as a whole declaration head.
@@ -319,7 +313,7 @@ where
     pub(crate) fn explain(
         &self,
         error: Error,
-        complete_before: impl FnOnce(BytePos) -> bool,
+        complete_before: impl FnOnce(Position) -> bool,
     ) -> Error {
         let Error::UnexpectedToken { token, expected } = error else {
             return error;
@@ -336,7 +330,7 @@ where
                         && self.last_read.is_some_and(|last| {
                             last.absolute == token.span.start && last.line == first.span.start.line
                         })
-                        && complete_before(first.span.start.absolute);
+                        && complete_before(first.span.start);
 
                 (rejects_first || rejects_sign_on_the_same_line).then(|| {
                     LayoutError::IndentedDeclaration {
@@ -374,9 +368,9 @@ where
             }
             Some(Err(error)) => Err(error),
             None => {
-                // The absolute part is unused (hence 0) but the column value is important
-                // (we want a value of 1 to match the first token of a line)
-                let position = Position::new(0, 1, 1);
+                // The blocks still open are closed where the input ends, which is
+                // where `handle_next_token` puts the `CloseBlock` it emits for each.
+                let position = self.end;
 
                 Ok(spanned(position, position, Token::EndOfFile))
             }
@@ -848,7 +842,7 @@ mod tests {
     }
 
     fn test_layout_without_error(source: Vec<Token>, expectation: Vec<Token>) {
-        let v: Vec<_> = layout(tokens_to_spanned(&source).into_iter())
+        let v: Vec<_> = layout(tokens_to_spanned(&source).into_iter(), Position::default())
             .map(|x| x.expect("no error in layout").1)
             .collect();
 
@@ -1375,7 +1369,7 @@ mod tests {
             newline(),
         ];
 
-        let mut iter = layout(tokens_to_spanned(&source).into_iter());
+        let mut iter = layout(tokens_to_spanned(&source).into_iter(), Position::default());
         let items = drain_bounded(&mut iter, CAP);
 
         assert!(
@@ -1419,7 +1413,10 @@ mod tests {
         // and only ever propagates what it is given.
         let upstream_error = || Err(Error::InvalidToken(BytePos(0)));
 
-        let mut iter = layout(vec![upstream_error(), upstream_error()].into_iter());
+        let mut iter = layout(
+            vec![upstream_error(), upstream_error()].into_iter(),
+            Position::default(),
+        );
         let items = drain_bounded(&mut iter, 4);
 
         assert_eq!(
@@ -1460,7 +1457,7 @@ mod tests {
             Some(Ok(spanned(start, pos, token)))
         });
 
-        let mut iter = layout(source);
+        let mut iter = layout(source, Position::default());
         let items = drain_bounded(&mut iter, 8);
 
         // `OpenBlock`, the single identifier, and the `CloseBlock` emitted for

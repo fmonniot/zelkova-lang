@@ -15,14 +15,16 @@
 //! TODO hierarchy and modules.
 use codespan_reporting::files::SimpleFile;
 
+pub(crate) mod chunk;
 pub mod error;
 pub mod layout;
 pub mod tokenizer;
 
 use crate::compiler::name::Name;
-use crate::compiler::position::NodeSpan;
+use crate::compiler::position::{BytePos, NodeSpan, Span};
 use crate::compiler::tuple::Tuple;
 pub use error::Error;
+use lalrpop_util::ParseError;
 
 use std::collections::HashMap;
 
@@ -32,42 +34,147 @@ lalrpop_mod!(
     "/compiler/parser/grammar.rs"
 );
 
+/// Parse `source_file` into a `Module`, or report the first syntax error in it.
+///
+/// This is [`parse_recovering`] reduced to its first failure: a source with none is
+/// `Ok` of its module, and any other is `Err` of the first failure's error, in source
+/// order. Every caller that only wants to know whether a file parses, and why not, keeps
+/// that meaning.
 pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> {
-    let source = source_file.source();
+    let (header, declarations, failures) = parse_chunks(source_file.source());
 
-    // Tokenize the source code into a serie of tokens
-    let tokenizer = tokenizer::make_tokenizer(source).map(|r| r.map_err(|e| e.into()));
-
-    // Manage the indentation aspect of our code
-    let mut indented = layout::Layout::new(tokenizer);
-
-    // Parse the tokens into an AST. A grammar error can be a layout rule seen
-    // from the grammar's side, which only the layout pass can recognise, so it
-    // gets to explain the error first.
-    let module = grammar::ModuleParser::new()
-        .parse(&mut indented)
-        .map_err(|e| {
-            indented.explain(e.into(), |end| {
-                source
-                    .get(..end.0 as usize)
-                    .is_some_and(|prefix| parse_unexplained(prefix).is_ok())
-            })
-        })?;
-
-    // And do some early nitpicking
-    // TODO Check module name is valid. Need to take SourceFile instead of SimpleFile as parameter.
-
-    Ok(module)
+    match (header, failures.into_iter().next()) {
+        (Err(failure), _) | (Ok(_), Some(failure)) => Err(failure.error),
+        (Ok((modifier, name, exposing, exposing_span)), None) => Ok(Module::from_declarations(
+            modifier,
+            name,
+            exposing,
+            exposing_span,
+            declarations,
+        )),
+    }
 }
 
-/// Run `source` through the tokenizer, the layout pass and the grammar, with no
-/// `Layout::explain` step. `parse` uses it to ask whether the source before a
-/// line is a complete module on its own.
-fn parse_unexplained(source: &str) -> Result<Module, Error> {
-    let tokenizer = tokenizer::make_tokenizer(source).map(|r| r.map_err(|e| e.into()));
-    grammar::ModuleParser::new()
-        .parse(layout::layout(tokenizer))
-        .map_err(|e| e.into())
+/// What [`parse_recovering`] makes of a source: every declaration that parsed, and every
+/// chunk that did not.
+#[derive(Debug)]
+pub struct Parsed {
+    /// The module, holding every declaration that parsed. `None` exactly when the module
+    /// header is among the `failures`. What a failed declaration would have been called
+    /// is not recovered, so the module has no trace of it.
+    pub module: Option<Module>,
+    /// Every chunk that failed to parse, in source order: the header first if it failed,
+    /// then each declaration.
+    pub failures: Vec<Failure>,
+}
+
+/// One top-level declaration, or the module header, that failed to parse.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Failure {
+    /// The source text of the chunk: from its first token to the first token of the
+    /// next chunk, or to the end of the source. The header's chunk starts at byte 0.
+    pub span: Span<BytePos>,
+    /// The first error the chunk's tokenizer, layout pass or grammar raised. Nothing
+    /// after it in the same chunk is reported.
+    pub error: Error,
+}
+
+/// Parse `source_file`, carrying on past a syntax error to the next top-level
+/// declaration.
+///
+/// The token stream is cut into one chunk per top-level declaration before the layout
+/// pass sees it (`chunk.rs` has where it cuts and why there), and each chunk gets its own
+/// `Layout` and its own grammar entry point: `Header` for the first, `Decls` for every
+/// other. A chunk reports the first error raised in it and nothing after, which is the
+/// rule a whole module followed before the cut. The other chunks are parsed regardless,
+/// for their declarations or their errors.
+pub fn parse_recovering(source_file: &SimpleFile<String, String>) -> Parsed {
+    let (header, declarations, failures) = parse_chunks(source_file.source());
+
+    match header {
+        Ok((modifier, name, exposing, exposing_span)) => Parsed {
+            module: Some(Module::from_declarations(
+                modifier,
+                name,
+                exposing,
+                exposing_span,
+                declarations,
+            )),
+            failures,
+        },
+        Err(failure) => Parsed {
+            module: None,
+            failures: std::iter::once(failure).chain(failures).collect(),
+        },
+    }
+}
+
+/// The parts of a module header the `Header` entry point parses: the arguments
+/// `Module::from_declarations` takes before the declarations.
+type Header = (Option<tokenizer::Token>, Name, Exposing, NodeSpan);
+
+/// Cut `source` into chunks and parse each: the header, the declarations that parsed in
+/// source order, and the failures among the chunks after the header, in source order.
+fn parse_chunks(source: &str) -> (Result<Header, Failure>, Vec<Declaration>, Vec<Failure>) {
+    let end = chunk::end_of(source);
+    let tokens = tokenizer::make_tokenizer(source).map(|r| r.map_err(Error::from));
+    let mut chunks = chunk::Chunks::new(tokens, end);
+    let mut declarations = vec![];
+    let mut failures = vec![];
+
+    // A source with no tokens at all still has a header to fail, at its end.
+    let header_chunk = chunks.next().unwrap_or_else(|| chunk::Chunk::empty(end));
+    let header = match parse_chunk(&header_chunk, |tokens| {
+        grammar::HeaderParser::new().parse(tokens)
+    }) {
+        Ok((header, header_declarations)) => {
+            declarations.extend(header_declarations);
+            Ok(header)
+        }
+        Err(error) => Err(Failure {
+            span: header_chunk.span(),
+            error,
+        }),
+    };
+
+    for chunk in chunks {
+        match parse_chunk(&chunk, |tokens| grammar::DeclsParser::new().parse(tokens)) {
+            Ok(chunk_declarations) => declarations.extend(chunk_declarations),
+            Err(error) => failures.push(Failure {
+                span: chunk.span(),
+                error,
+            }),
+        }
+    }
+
+    (header, declarations, failures)
+}
+
+/// The tokens a grammar entry point reads: the layout pass's output.
+type LayoutItem = Result<(BytePos, tokenizer::Token, BytePos), Error>;
+
+/// Run one chunk through its own `Layout` and the grammar entry point `entry`.
+///
+/// A grammar error can be a layout rule seen from the grammar's side, which only the
+/// layout pass can recognise, so it gets to explain the error first. What it asks back —
+/// whether the chunk's tokens before a line parse on their own — is answered with the
+/// same entry point, on a `Layout` that ends where that line starts.
+fn parse_chunk<T>(
+    chunk: &chunk::Chunk,
+    entry: impl Fn(
+        &mut dyn Iterator<Item = LayoutItem>,
+    ) -> Result<T, ParseError<BytePos, tokenizer::Token, Error>>,
+) -> Result<T, Error> {
+    let mut indented = layout::Layout::new(chunk.tokens.iter().cloned(), chunk.end);
+
+    entry(&mut indented).map_err(|e| {
+        indented.explain(e.into(), |line_start| {
+            let before = chunk.tokens.iter().take_while(|item| {
+                matches!(item, Ok(token) if token.span.start.absolute.0 < line_start.absolute.0)
+            });
+            entry(&mut layout::Layout::new(before.cloned(), line_start)).is_ok()
+        })
+    })
 }
 
 /// A part of a declared type. This is also used in type annotations.
