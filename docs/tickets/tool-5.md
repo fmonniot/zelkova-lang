@@ -101,7 +101,9 @@ Nothing but the following.
   takes `../../docs/`, `zelkova_compiler` itself and `zelkova_js` itself take `../docs/`,
   `zelkova_compiler::source::files` takes `../../../docs/`. Nothing checks these links, and
   they resolve on the published site neither before nor after: the site mounts no
-  `api/docs/`. This ticket keeps the convention and fixes nothing about it.
+  `api/docs/`. This ticket keeps the convention and fixes nothing about it;
+  [`SITE-3`](site-3.md) is the ticket that does. If that one landed first and the links are
+  absolute, there is nothing here to rewrite.
 - **`RUNTIME`'s `include_str!`** in `zelkova-js`'s `src/lib.rs` reads
   `"../../../runtime/js/zelkova.mjs"`.
 

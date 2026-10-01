@@ -393,6 +393,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-82](lang-82.md) | task | — | open | A character literal recognises no escape sequence |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
+| [SITE-3](site-3.md) | task | — | open | A doc comment's link into `docs/` resolves nowhere, and nothing checks it |
 | [GEN-1](gen-1.md) | task | — | open | Emit runnable JavaScript for a checked module |
 | GEN-2 | task | — | closed 2026-09-28 | Emit the boundary predicate a facade signature promises |
 | GEN-3 | task | — | closed 2026-09-21 | The typer hands back the types it solved |
