@@ -217,6 +217,32 @@ fn type_mismatch_annotation_vs_body() {
     );
 }
 
+/// A body that is a bare constructor gets no caret of its own: only the annotation is
+/// labelled.
+///
+/// This pins what the checker does today, not what it should do. `constraint::collect`'s
+/// `Identifier` arm adds no constraint, so nothing is blamed on `True` and the mismatch
+/// surfaces only through the annotation's constraint. `ERR-17` is the ticket that would
+/// give the body a label; when it lands this test is meant to go red and be rewritten.
+///
+/// Mutation-checked by giving the body of `answer` a literal (`'a'`) instead: the primary
+/// label moves onto it and the single-label assertion fails.
+#[test]
+fn a_mistyped_bare_constructor_body_is_blamed_only_through_the_annotation() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        answer : Int
+        answer = True
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_of(source, "answer : Int")],
+        "expected only the annotation to be labelled"
+    );
+}
+
 // ── Where a type error points ─────────────────────────────────────────────────
 
 /// `ERR-4`'s worked example: the caret goes under `'a'`, and `Int` is explained by

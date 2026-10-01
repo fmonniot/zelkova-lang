@@ -1082,7 +1082,7 @@ fn a_char_pattern_is_tested_by_equality() {
 }
 
 /// A `True`/`False` pattern is tested by the value itself, never by a `$` tag: `Bool`
-/// is a JavaScript boolean, not a tagged object. `ir::translate_pattern` turns both
+/// is a JavaScript boolean, not a tagged object. `typer::translate_pattern` turns both
 /// constructors into an [`ir::Outcome::Literal`] before this backend sees the pattern
 /// (`a_bool_constructor_is_tested_by_its_value` in `crates/zelkova-compiler/tests/ir.rs`
 /// pins that).
