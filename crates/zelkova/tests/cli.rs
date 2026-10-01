@@ -98,8 +98,8 @@ fn compile_defaults_to_current_directory() {
 /// hardcoded path left over from before GEN-17 gave the compiler a CLI.
 ///
 /// Neutralised by changing the match arm in `crates/zelkova/src/main.rs` from
-/// `Command::Compile { dir } => driver::compile_package(&dir)` to
-/// `Command::Compile { .. } => driver::compile_package(Path::new("tests/fixtures/package_type_error"))`
+/// `Command::Compile { dir } => zelkova::compile_package(&dir)` to
+/// `Command::Compile { .. } => zelkova::compile_package(Path::new("tests/fixtures/package_type_error"))`
 /// — ignoring the parsed `dir` — while running from the repository root with
 /// `compile tests/fixtures/package_checks` as the argument. This test went red
 /// (exit code 1, an `Int`/`Bool` mismatch on stderr instead of "parsed 1 modules")
@@ -176,7 +176,7 @@ fn run_without_node(cwd: &Path, args: &[&str]) -> Output {
 /// no `node` reachable — an attempt to start one would have shown up as an error naming it.
 ///
 /// Neutralised by replacing the `?` after `compile_package_with_tests(package_dir)` in
-/// `driver::test` with `.unwrap_or_default()`, so a failed build carries on with nothing
+/// `zelkova::test` with `.unwrap_or_default()`, so a failed build carries on with nothing
 /// collected. This test went red (exit code 0 and "no tests found") under that change.
 #[test]
 fn test_on_a_package_that_does_not_compile_exits_1_without_running_node() {
@@ -202,7 +202,7 @@ fn test_on_a_package_that_does_not_compile_exits_1_without_running_node() {
 /// `node`: with none reachable, the run still succeeds.
 ///
 /// Neutralised by deleting the `if modules.iter().all(..)` early return in
-/// `test_runner::run`. This test went red (the run wrote an entry point and failed to find
+/// `zelkova_test_runner::run`. This test went red (the run wrote an entry point and failed to find
 /// `node`) under that change.
 #[test]
 fn test_on_a_package_with_no_tests_exits_0_without_running_node() {
@@ -228,7 +228,7 @@ fn test_on_a_package_with_no_tests_exits_0_without_running_node() {
 /// `Test { dir }` defaults to `.`. The fixture holds two tests, so the run does reach the
 /// `node` step.
 ///
-/// Neutralised by replacing the `map_err(..)?` on `Command::status` in `test_runner::run`
+/// Neutralised by replacing the `map_err(..)?` on `Command::status` in `zelkova_test_runner::run`
 /// with an `unwrap_or_else` that falls back to the status of `true`. This test went red
 /// (exit code 0) under that change.
 #[test]
@@ -328,7 +328,7 @@ fn run_with_path(cwd: &Path, path: &Path, args: &[&str]) -> Output {
 ///
 /// Neutralised two ways, each going red (exit code 0 instead of 3): replacing
 /// `Ok(code) => std::process::exit(code)` in `main` with `Ok(_) => {}`, and replacing
-/// `status.code().ok_or(..)` in `test_runner::run` with `Ok(0)`.
+/// `status.code().ok_or(..)` in `zelkova_test_runner::run` with `Ok(0)`.
 #[cfg(unix)]
 #[test]
 fn test_exits_with_the_code_node_exits_with() {
@@ -346,7 +346,7 @@ fn test_exits_with_the_code_node_exits_with() {
 /// finish: `zelkova test` reports that and exits non-zero rather than reading the missing
 /// code as a pass.
 ///
-/// Neutralised by replacing `status.code().ok_or(..)` in `test_runner::run` with
+/// Neutralised by replacing `status.code().ok_or(..)` in `zelkova_test_runner::run` with
 /// `Ok(status.code().unwrap_or(0))`. This test went red (exit code 0) under that change.
 #[cfg(unix)]
 #[test]

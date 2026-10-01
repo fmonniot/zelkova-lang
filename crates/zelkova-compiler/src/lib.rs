@@ -721,7 +721,7 @@ impl CompilationError {
             // Nothing in the compiler builds a `Many` (see the variant), so this arm only
             // fires when one built elsewhere is rendered as a whole. It summarises rather
             // than flattening its members' labels, for the reason given at
-            // `driver::BuildError::Many`, the group a build actually renders.
+            // `zelkova::BuildError::Many`, the group a build actually renders.
             CompilationError::Many(errors) => Diagnostic::error()
                 .with_message(format!(
                     "compilation failed with {} error{}",
