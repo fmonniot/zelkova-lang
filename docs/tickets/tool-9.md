@@ -8,7 +8,7 @@ restructured. It closes [`BUG-34`](bug-34.md) on the way.
 **Part of:** the *Active work: editor support* section of [the index](README.md), second of
 the five tickets `TOOL-8` through [`TOOL-12`](tool-12.md).
 
-**Depends on:** [`TOOL-8`](tool-8.md), for `Outcome`, `check_module_recovering`,
+**Depends on:** [`TOOL-8`](README.md), for `Outcome`, `check_module_recovering`,
 `type_check_recovering`, `ir::Unchecked::reported` and `PackageCheck::failing`.
 
 **Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `canonicalize`, which returns
@@ -22,7 +22,7 @@ the five tickets `TOOL-8` through [`TOOL-12`](tool-12.md).
 
 **Problem:** `canonicalize` answers with a module or with errors, never both. One declaration
 that names something misspelt costs the module its interface and its typed tree. With the
-package from [`TOOL-8`](tool-8.md)'s Problem and `bad`'s body changed to `nope`:
+package from [`TOOL-8`](README.md)'s Problem and `bad`'s body changed to `nope`:
 
 ```
 error: [A] cannot find a value named `A.nope`
@@ -145,7 +145,7 @@ constructor named Example.Small`: `do_types` failed on `Pair`, `types` became em
 9. **`check_module_recovering` carries on past canonicalization errors.**
    `canonicalize_recovering`'s `Err` is `Outcome::Failed`; its `Ok` pushes a
    `CompilationError::Canonical` when `errors` is not empty and continues into the typer and
-   `ir::build` as [`TOOL-8`](tool-8.md) wrote them.
+   `ir::build` as [`TOOL-8`](README.md) wrote them.
 
 `canonical::initialisation_order`'s doc comment says `ir::build` is reached only after
 `canonicalize` returned `Ok`. That stops being true; the comment already says what the
@@ -175,7 +175,7 @@ calls `canonicalize`:
 
 Tests in `crates/zelkova/tests/pipeline.rs`:
 
-- [`TOOL-8`](tool-8.md)'s companion test over `package_import_canonical_error` is inverted:
+- [`TOOL-8`](README.md)'s companion test over `package_import_canonical_error` is inverted:
   the errors are exactly one `Canonical` for `A`, and none names `B`. `failing` holds `A`
   with `ok` in `ir.declarations` and `bad` in `ir.unchecked` with `reported: true`.
 - The `f`/`g` module through `check_module_recovering`: `g` is in `ir.declarations` with a

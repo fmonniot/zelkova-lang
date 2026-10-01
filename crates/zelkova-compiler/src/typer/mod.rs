@@ -522,18 +522,49 @@ impl PhaseError for Error {
     }
 }
 
+/// What [`type_check_recovering`] found in one module: an answer for every declaration,
+/// and every error inference reported, side by side.
+#[derive(Debug)]
+pub struct TypeCheck {
+    /// One [`Solved`] per declaration, keyed the way `module.values` is. A declaration
+    /// inference reported an error for is here as [`Solved::Rejected`], and its error is
+    /// in [`errors`](Self::errors).
+    pub solved: HashMap<Name, Solved>,
+    /// Every error inference reported, one per rejected declaration. Empty means the
+    /// module type checked.
+    pub errors: Vec<Error>,
+}
+
+/// [`type_check_recovering`], reduced to a module that either type checked or did not:
+/// the solved map when no declaration failed, every error otherwise.
+pub fn type_check(
+    module: &Module,
+    interfaces: &HashMap<Name, Interface>,
+) -> Result<HashMap<Name, Solved>, Vec<Error>> {
+    let TypeCheck { solved, errors } = type_check_recovering(module, interfaces);
+
+    if errors.is_empty() {
+        Ok(solved)
+    } else {
+        Err(errors)
+    }
+}
+
 /// Type check one canonical module and hand back what it solved, reporting every value
 /// whose inference produced a reportable error rather than stopping at the first — the
 /// shape `compile_package` is built to accumulate.
 ///
 /// # What comes back
 ///
-/// One [`Solved`] per declaration, keyed the way `module.values` is. A declaration the
-/// typer could not type is present and says so; none is ever merely absent, because
-/// absent is indistinguishable from checked-and-fine to whatever reads this next
-/// ([`DEC-18` decision 1](../../docs/decisions/dec-18.md)). The map is only returned
-/// at all when no declaration failed: a module with type errors answers with them, so
-/// there is no half-checked module to interpret.
+/// One [`Solved`] per declaration, keyed the way `module.values` is, whether or not
+/// any declaration failed. A declaration the typer could not type is present and says
+/// so; none is ever merely absent, because absent is indistinguishable from
+/// checked-and-fine to whatever reads this next
+/// ([`DEC-18` decision 1](../../docs/decisions/dec-18.md)). One that inference
+/// reported an error for is [`Solved::Rejected`], with the error in
+/// [`TypeCheck::errors`], so a module with a type error still has a typed term for
+/// each of its other declarations
+/// ([`DEC-23` decision 5](../../docs/decisions/dec-23.md)).
 ///
 /// The term inside [`Solved::Typed`] is the one `annotate` built, with `unify`'s final
 /// substitution applied to every node rather than to the declaration's own type alone.
@@ -555,19 +586,19 @@ impl PhaseError for Error {
 /// matches on one is checked like any other. Each use of one of those names gets a
 /// fresh instance of its declared type, so one declaration can use `Just` or
 /// `Maybe.withDefault` at two types — see `Types`.
-pub fn type_check(
-    module: &Module,
-    interfaces: &HashMap<Name, Interface>,
-) -> Result<HashMap<Name, Solved>, Vec<Error>> {
+pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interface>) -> TypeCheck {
     // A `module foreign` facade uses synthetic placeholder bodies, so there is nothing
     // to infer — but every declaration still has to be accounted for, so each is
     // returned saying why it has no term.
     if module.binding_foreign {
-        return Ok(module
-            .values
-            .keys()
-            .map(|name| (name.clone(), Solved::NoBody))
-            .collect());
+        return TypeCheck {
+            solved: module
+                .values
+                .keys()
+                .map(|name| (name.clone(), Solved::NoBody))
+                .collect(),
+            errors: Vec::new(),
+        };
     }
 
     // Start at a high offset to avoid collisions with the counter inside
@@ -703,23 +734,24 @@ pub fn type_check(
                     },
                 );
             }
-            Err(kind) => errors.push(Error {
-                kind,
-                span: value.span(),
-                declaration: name.clone(),
-                spellings: spellings.clone(),
-            }),
+            // The declaration is answered for as well as reported, so the rest of the
+            // module keeps the terms it solved.
+            Err(kind) => {
+                errors.push(Error {
+                    kind,
+                    span: value.span(),
+                    declaration: name.clone(),
+                    spellings: spellings.clone(),
+                });
+                solved.insert(name.clone(), Solved::Rejected);
+            }
             Ok(term) => {
                 solved.insert(name.clone(), Solved::Typed(Box::new(term)));
             }
         }
     }
 
-    if errors.is_empty() {
-        Ok(solved)
-    } else {
-        Err(errors)
-    }
+    TypeCheck { solved, errors }
 }
 
 // ── Translation helpers ───────────────────────────────────────────────────────

@@ -1150,6 +1150,43 @@ fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
     );
 }
 
+/// A module with one ill-typed declaration still answers for every declaration:
+/// `type_check_recovering` hands back the well-typed one's term beside the error, and
+/// marks the ill-typed one rejected rather than leaving it out.
+///
+/// Mutation-checked by making `type_check_recovering` return an empty `solved` when it
+/// has errors: `ok` is then missing and its assertion goes red. Dropping the
+/// `Solved::Rejected` insert instead turns the `bad` assertion red.
+#[test]
+fn a_module_with_a_type_error_still_answers_for_every_declaration() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        ok : Int
+        ok = 1
+        bad : Int
+        bad = 'a'
+    "#};
+
+    let interfaces = HashMap::from([basics_interface(), char_interface()]);
+    let canonical = canonicalize_with_interfaces(source, &interfaces)
+        .unwrap_or_else(|errors| panic!("expected the module to canonicalize, got {:?}", errors));
+
+    let typer::TypeCheck { solved, errors } = typer::type_check_recovering(&canonical, &interfaces);
+
+    match solved.get(&Name::new("ok")) {
+        Some(Solved::Typed(term)) => assert_eq!(format!("{}", term.tpe), "Int"),
+        other => panic!("expected `ok` to be typed, got {:?}", other),
+    }
+    assert!(
+        matches!(solved.get(&Name::new("bad")), Some(Solved::Rejected)),
+        "expected `bad` to be marked rejected, got {:?}",
+        solved.get(&Name::new("bad"))
+    );
+
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+    assert_eq!(errors[0].declaration, Name::new("bad"));
+}
+
 // ── Patterns in parameters ────────────────────────────────────────────────────
 
 /// A parameter written as a tuple pattern is typed, and its type is read off the

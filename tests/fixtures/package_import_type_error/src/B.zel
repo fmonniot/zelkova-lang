@@ -1,0 +1,6 @@
+module B exposing (..)
+
+import A exposing (ok)
+
+b : A.T
+b = ok

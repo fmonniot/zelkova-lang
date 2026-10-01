@@ -128,7 +128,7 @@ use std::collections::HashMap;
 use codespan_reporting::files::SimpleFile;
 use spec_doc::{extract_zel_blocks, header_anchors, prose_lines, slugify, Block, Expect};
 use zelkova_compiler::canonical;
-use zelkova_compiler::dependencies::ModuleWalker;
+use zelkova_compiler::dependencies::{ModuleWalker, Outcome};
 use zelkova_compiler::name::Name;
 use zelkova_compiler::typer;
 use zelkova_compiler::{Interface, PackageName};
@@ -579,18 +579,19 @@ fn evaluate(block: &Block) -> Verdict {
 
 /// Canonicalize one module, tagging any errors with the module they came from.
 ///
-/// [`ModuleWalker::check_in_order`] hands back one flat error list for the whole
-/// package, so without the tag there is no way to say *which* block of a group failed
-/// — which is the entire point of letting each block carry its own `expect=`. Written
-/// as a free function rather than a closure because `check_in_order` takes a `fn`
-/// pointer.
+/// [`ModuleWalker::check_in_order`]'s `Outcome::Failed` carries no module, so without
+/// the tag there is no way to say *which* block of a group failed — which is the entire
+/// point of letting each block carry its own `expect=`. Written as a free function
+/// rather than a closure because `check_in_order` takes a `fn` pointer.
 fn canonicalize_tagged(
     package: &zelkova_compiler::PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
-) -> Result<canonical::Module, (Name, Vec<canonical::Error>)> {
-    canonical::canonicalize(package, interfaces, source)
-        .map_err(|errors| (source.name.clone(), errors))
+) -> Outcome<canonical::Module, (Name, Vec<canonical::Error>)> {
+    match canonical::canonicalize(package, interfaces, source) {
+        Ok(module) => Outcome::Module(module, vec![]),
+        Err(errors) => Outcome::Failed((source.name.clone(), errors)),
+    }
 }
 
 /// Run one `package=` group: every block of it is a module of the same package, and
@@ -711,13 +712,23 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
     };
 
     let mut interfaces = stdlib_interfaces(&declared);
-    let (checked, failures) = walker.check_in_order(
+    let outcomes = walker.check_in_order(
         &package,
         &mut interfaces,
         &module_files,
         canonicalize_tagged,
     );
-    let failures: HashMap<Name, Vec<canonical::Error>> = failures.into_iter().collect();
+    let mut checked = Vec::new();
+    let mut failures: HashMap<Name, Vec<canonical::Error>> = HashMap::new();
+    for outcome in outcomes {
+        match outcome {
+            // `canonicalize_tagged` never hands back a module with errors beside it.
+            Outcome::Module(module, _) => checked.push(module),
+            Outcome::Failed((name, errors)) => {
+                failures.insert(name, errors);
+            }
+        }
+    }
 
     // The typer runs per module, over the modules that canonicalized, in the order
     // `check_in_order` produced them — the same dependency order canonicalization used.
@@ -1721,7 +1732,7 @@ fn ok_block_that_fails_the_typer_is_a_failure() {
 /// Pins: `tests/fixtures/spec/package_group_type_error.md`, whose `Widget` fails the
 /// typer and whose `Main` imports `Widget.Size` and `Widget.small`. Neutralised by
 /// making the group's type check gate the interface — folding the typer into
-/// `canonicalize_tagged`, so a type failure returns `Err` and `check_in_order` never
+/// `canonicalize_tagged`, so a type failure returns `Outcome::Failed` and `check_in_order` never
 /// inserts the interface: with that change `Main` no longer resolves `Widget` and the
 /// importer's assertion below goes red. `Widget`'s own verdict goes red with it, since
 /// under that design its type error is reported as a canonicalization failure and stops

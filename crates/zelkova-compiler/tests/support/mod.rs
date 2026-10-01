@@ -11,6 +11,7 @@
 use codespan_reporting::files::SimpleFile;
 use std::collections::HashMap;
 use zelkova_compiler::canonical;
+use zelkova_compiler::dependencies::Outcome;
 use zelkova_compiler::name::{Name, QualName};
 use zelkova_compiler::{Interface, ModuleName, PackageName};
 use zelkova_syntax::parser;
@@ -44,6 +45,24 @@ pub fn core_qual(name: &str) -> QualName {
 pub fn parse_source(source: &str) -> parser::Module {
     let file = SimpleFile::new("Test.zel".to_string(), source.to_string());
     parser::parse(&file).expect("parse should succeed")
+}
+
+/// What `ModuleWalker::check_in_order` handed back, reduced the way `check_module` reduces
+/// one module: the modules that checked, and every error. A module that came back with
+/// errors contributes its errors and not the module.
+pub fn checked_and_errors<M, E>(outcomes: Vec<Outcome<M, E>>) -> (Vec<M>, Vec<E>) {
+    let mut checked = Vec::new();
+    let mut errors = Vec::new();
+    for outcome in outcomes {
+        match outcome {
+            Outcome::Module(module, module_errors) if module_errors.is_empty() => {
+                checked.push(module)
+            }
+            Outcome::Module(_, module_errors) => errors.extend(module_errors),
+            Outcome::Failed(error) => errors.push(error),
+        }
+    }
+    (checked, errors)
 }
 
 pub fn canonicalize_standalone(source: &str) -> Result<canonical::Module, Vec<canonical::Error>> {

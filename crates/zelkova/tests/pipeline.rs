@@ -25,8 +25,8 @@ use zelkova_compiler::source::{
 };
 use zelkova_compiler::typer;
 use zelkova_compiler::{
-    check_module, check_package, check_package_with_tests, CheckedModule, CompilationError,
-    Interface, PackageName, PhaseError,
+    check_module, check_module_recovering, check_package, check_package_with_tests, CheckedModule,
+    CompilationError, Interface, PackageName, PhaseError,
 };
 use zelkova_syntax::parser;
 use zelkova_test_runner::collection;
@@ -473,8 +473,12 @@ fn check_in_order_keeps_passing_siblings_with_the_real_checker() {
     let walker = ModuleWalker::new(&modules, &module_files, &std_package())
         .expect("no dependency cycle in the fixture");
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
-    let (checked, errors) =
-        walker.check_in_order(&std_package(), &mut interfaces, &module_files, check_module);
+    let (checked, errors) = checked_and_errors(walker.check_in_order(
+        &std_package(),
+        &mut interfaces,
+        &module_files,
+        check_module_recovering,
+    ));
 
     let checked_names: Vec<String> = checked
         .iter()
@@ -647,8 +651,12 @@ fn check_std_core() -> Vec<CheckedModule> {
     let walker = ModuleWalker::new(&modules, &module_files, &std_package())
         .expect("no dependency cycle in std/core");
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
-    let (checked, errors) =
-        walker.check_in_order(&std_package(), &mut interfaces, &module_files, check_module);
+    let (checked, errors) = checked_and_errors(walker.check_in_order(
+        &std_package(),
+        &mut interfaces,
+        &module_files,
+        check_module_recovering,
+    ));
     assert!(
         errors.is_empty(),
         "std/core must check clean, got {:?}",
@@ -2889,8 +2897,12 @@ fn check_fixture(name: &str, package: &PackageName) -> Vec<CheckedModule> {
     let walker = ModuleWalker::new(&modules, &module_files, package)
         .expect("no dependency cycle in the fixture");
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
-    let (checked, _errors) =
-        walker.check_in_order(package, &mut interfaces, &module_files, check_module);
+    let (checked, _errors) = checked_and_errors(walker.check_in_order(
+        package,
+        &mut interfaces,
+        &module_files,
+        check_module_recovering,
+    ));
 
     checked
 }
@@ -6144,4 +6156,159 @@ fn check_package_with_tests_loads_an_overlay_buffer_under_a_missing_tests_direct
         .map(|checked| checked.module.canonical.name.name())
         .collect();
     assert_eq!(names, vec![&Name::from("Foo")]);
+}
+
+// ── A module with errors still has a shape ──────────────────────────────────
+
+/// The names of the modules in `modules`, sorted.
+fn sorted_module_names(modules: &[zelkova_compiler::CheckedSource]) -> Vec<String> {
+    let mut names: Vec<String> = modules
+        .iter()
+        .map(|checked| checked.module.canonical.name.name().as_str().to_string())
+        .collect();
+    names.sort();
+    names
+}
+
+/// A module with a type error in one declaration publishes its interface to the
+/// modules that import it: `B` imports `A`'s well-typed `ok`, and the only error of
+/// the check is `A`'s own, about `bad`.
+///
+/// Mutation-checked by making `check_in_order` insert the interface only for an
+/// `Outcome::Module` whose error list is empty: `B` then reports `A` as a module that
+/// does not exist, and the error count goes red.
+#[test]
+fn a_module_with_a_type_error_publishes_its_interface() {
+    let root = fixture_package("package_import_type_error");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    assert_eq!(check.errors.len(), 1, "got {:?}", check.errors);
+    assert!(
+        matches!(&check.errors[0], CompilationError::InFile(..)),
+        "expected the error to carry its file, got {:?}",
+        check.errors[0]
+    );
+    assert!(
+        matches!(
+            unwrap_in_file(&check.errors[0]),
+            CompilationError::Type(_, module) if module == &Name::from("A")
+        ),
+        "expected `A`'s type error, got {:?}",
+        check.errors[0]
+    );
+}
+
+/// A package that did not check hands back every module it built a tree for in
+/// `failing`, and none in `modules`. `A`'s tree holds a typed `ok`, and lists the
+/// rejected `bad` as unchecked with an error behind it.
+///
+/// Mutation-checked by making `type_check_recovering` return an empty `solved` when it
+/// has errors: `ok` then has no declaration, and the `ok` assertion goes red.
+#[test]
+fn a_module_with_a_type_error_keeps_a_typed_tree() {
+    let root = fixture_package("package_import_type_error");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    assert!(
+        check.modules.is_empty(),
+        "a package that did not check contributes no module, got {:?}",
+        sorted_module_names(&check.modules)
+    );
+    assert_eq!(sorted_module_names(&check.failing), vec!["A", "B"]);
+
+    let a = &check
+        .failing
+        .iter()
+        .find(|checked| checked.module.canonical.name.name() == &Name::from("A"))
+        .expect("`A` is among the failing modules")
+        .module
+        .ir;
+
+    let ok = a
+        .declarations
+        .iter()
+        .find(|declaration| declaration.name == Name::from("ok"))
+        .unwrap_or_else(|| {
+            panic!(
+                "`ok` type checked and should have a declaration, got {:?}",
+                a.declarations
+                    .iter()
+                    .map(|declaration| &declaration.name)
+                    .collect::<Vec<_>>()
+            )
+        });
+    assert_eq!(ok.tpe.to_string(), "T");
+
+    let unchecked: Vec<(&Name, bool)> = a
+        .unchecked
+        .iter()
+        .map(|unchecked| (&unchecked.name, unchecked.reported))
+        .collect();
+    assert_eq!(unchecked, vec![(&Name::from("bad"), true)]);
+}
+
+/// A module that fails canonicalization publishes nothing, so a module importing it
+/// still reports it as missing. This is where publishing a module with errors stops
+/// today: only a module whose declarations all canonicalized has an interface.
+///
+/// It pins behaviour this crate has always had, so there is no change to neutralise.
+/// That it can tell the two cases apart was checked by pointing it at
+/// `package_import_type_error`, the same package with a type error in place of the
+/// canonicalization error: the error count goes red.
+#[test]
+fn a_module_that_fails_canonicalization_publishes_nothing() {
+    let root = fixture_package("package_import_canonical_error");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    assert_eq!(check.errors.len(), 2, "got {:?}", check.errors);
+    let b = check
+        .errors
+        .iter()
+        .find(|error| unwrap_in_file(error).module() == Some(&Name::from("B")))
+        .unwrap_or_else(|| panic!("expected an error from `B`, got {:?}", check.errors));
+    assert!(
+        matches!(unwrap_in_file(b), CompilationError::Canonical(..)),
+        "expected `B` to fail canonicalization, got {:?}",
+        b
+    );
+    let message = b.as_diagnostic().message;
+    assert!(
+        message.contains("cannot find a module named `A`"),
+        "expected `B` to report `A` as missing, got {:?}",
+        message
+    );
+
+    // `A` has no canonical module, so there is no tree to hand back for it.
+    assert_eq!(sorted_module_names(&check.failing), Vec::<String>::new());
+}
+
+/// A build holding a module with a type error writes nothing, though that module has a
+/// typed tree: the driver reads only the modules that checked, and only once nothing
+/// failed.
+///
+/// Mutation-checked by replacing the driver's two `if errors.is_empty()` guards around
+/// emitting and writing in `compile` with `if true`: the runtime is written and the
+/// build directory assertion goes red.
+#[test]
+fn a_build_with_a_module_that_has_a_typed_tree_and_an_error_writes_nothing() {
+    let build_dir =
+        fresh_build_dir("a_build_with_a_module_that_has_a_typed_tree_and_an_error_writes_nothing");
+
+    let error =
+        zelkova::compile_package_into(&fixture_package("package_import_type_error"), &build_dir)
+            .expect_err("`A` does not type check");
+
+    let errors = many(&error);
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [CompilationError::InFile(inner, _)] if matches!(**inner, CompilationError::Type(..))
+        ),
+        "got {:?}",
+        errors
+    );
+    assert!(!build_dir.exists());
 }

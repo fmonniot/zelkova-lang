@@ -8,7 +8,7 @@ capability before starting, not land it as one PR.
 **Part of:** the *Active work: editor support* section of [the index](README.md).
 **Depends on:** [`TOOL-2`](README.md) (checking an unsaved buffer) and [`TOOL-3`](README.md)
 (diagnostics as data, nothing printed or written). [`TOOL-4`](README.md) and
-[`TOOL-8`](tool-8.md) through [`TOOL-12`](tool-12.md) are not prerequisites, but without them
+[`TOOL-8`](README.md) through [`TOOL-12`](tool-12.md) are not prerequisites, but without them
 every capability except diagnostics goes dark for a file with an error in it, which is most
 files mid-edit. Once they land, a module of a package that did not check is read from
 `PackageCheck::failing`.
