@@ -1,19 +1,19 @@
 //! Collecting a package's tests.
 //!
 //! **A test is a value a module under `tests/` exposes whose type is `zelkova-test`'s
-//! `Test`** — [*What a test is*](../../../docs/spec/packages.md#what-a-test-is). This
+//! `Test`** — [*What a test is*](../../docs/spec/packages.md#what-a-test-is). This
 //! module is the pass that finds them: given the [`Interface`]s of the modules of a
 //! package's `tests/` root that checked, [`collect`] returns, per module, the sorted names
 //! of the values that have that type.
 //!
 //! It does not run anything, and does not decide how a runner reports what it finds —
-//! that is [`test_runner`](super::test_runner)'s, the only caller this one is written for.
+//! that is [`zelkova_test_runner`](crate)'s, the only caller this one is written for.
 //!
 //! # Identified by type, never by spelling
 //!
 //! `Test` is found by its full [`QualName`] — package, module and name — the same way
 //! a [`Scalar`](zelkova_compiler::scalars::Scalar) is
-//! ([`DEC-15`](../../../docs/decisions/dec-15.md) decision 1 is that precedent). A
+//! ([`DEC-15`](../../docs/decisions/dec-15.md) decision 1 is that precedent). A
 //! package that declares its own `Test` type does not get its values run:
 //! `MyPackage.Test` and `zelkova-test:Test.Test` are two different declarations that
 //! happen to share a spelling, and only a whole-`QualName` comparison tells them apart.
@@ -76,7 +76,7 @@ pub struct ModuleTests {
 /// packages this build reached: nothing can have declared a value of a type nothing
 /// in the build can name, so nothing is found. That is not this pass's error to
 /// raise — a package is free to hold no tests at all
-/// ([*What a test is*](../../../docs/spec/packages.md#what-a-test-is)).
+/// ([*What a test is*](../../docs/spec/packages.md#what-a-test-is)).
 pub fn collect(modules: &[Interface]) -> Vec<ModuleTests> {
     modules
         .iter()

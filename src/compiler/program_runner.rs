@@ -33,13 +33,12 @@
 //! whether it does, and how it words it, is `node`'s and varies by version. A `Task`
 //! that keeps the event loop alive for ever, such as a live timer, is not detected.
 //!
-//! This phase and [`test_runner`](super::test_runner) are the only places the compiler
+//! This phase and [`zelkova_test_runner`] are the only places the compiler
 //! starts `node`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::javascript;
 use crate::driver::{compile_package, BuildError, BUILD_DIRECTORY};
 use zelkova_compiler::name::Name;
 use zelkova_compiler::{manifest, CompilationError, PackageName, PhaseError};
@@ -150,14 +149,14 @@ pub fn run(package_dir: &Path) -> Result<i32, BuildError> {
 /// what it does.
 ///
 /// Both specifiers it imports are relative to that root: the runtime's is
-/// [`javascript::RUNTIME_FILE`], and the module's is built by [`javascript::module_file`]
+/// [`zelkova_js::RUNTIME_FILE`], and the module's is built by [`zelkova_js::module_file`]
 /// below the package's own directory, so that each names the file the build wrote.
 pub fn entry_point(package: &PackageName, main: &Name) -> String {
-    let file = Path::new(package.as_str()).join(javascript::module_file(main));
+    let file = Path::new(package.as_str()).join(zelkova_js::module_file(main));
     format!(
         "{}import {{ $runTask }} from {};\n\nconst file = {};\n{}",
         HEAD,
-        string_literal(&format!("./{}", javascript::RUNTIME_FILE)),
+        string_literal(&format!("./{}", zelkova_js::RUNTIME_FILE)),
         string_literal(&format!("./{}", slashed(&file))),
         TAIL
     )
@@ -227,7 +226,7 @@ mod tests {
     }
 
     /// The text names the runtime and the emitted file of the `main` module, in the layout
-    /// `javascript::module_file` writes: below the package's directory, one directory per
+    /// `zelkova_js::module_file` writes: below the package's directory, one directory per
     /// segment of a nested module's name but the last.
     ///
     /// Mutation-checked by dropping the package directory from the path in `entry_point`:

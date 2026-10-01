@@ -1,0 +1,10 @@
+[package]
+name = "zelkova-test-runner"
+version.workspace = true
+authors.workspace = true
+edition = "2018"
+
+[dependencies]
+zelkova-compiler = { path = "../zelkova-compiler" }
+zelkova-js = { path = "../zelkova-js" }
+zelkova-syntax = { path = "../zelkova-syntax" }

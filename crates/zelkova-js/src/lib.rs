@@ -16,12 +16,12 @@
 //! 2. **Hoisted constructors** — one `const` per constructor of no arguments this module
 //!    declares, then one per such constructor of another module's that it mentions, which
 //!    every mention of it refers to ([`DEC-18` decision
-//!    4](../../../docs/decisions/dec-18.md#4--a-constructor-of-no-arguments-is-hoisted-to-one-module-level-constant)).
+//!    4](../docs/decisions/dec-18.md#4--a-constructor-of-no-arguments-is-hoisted-to-one-module-level-constant)).
 //! 3. **Functions** — in a facade, first the union predicates its boundary checks call
 //!    ([*The boundary check*](#the-boundary-check)), in name order; then one `function`
 //!    per declaration that takes parameters, with exactly as many JavaScript parameters
 //!    as it was written with ([`DEC-18` decision
-//!    3](../../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
+//!    3](../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
 //! 4. **Parameterless bindings** — one `const` each, in
 //!    [`ir::Module::initialisation_order`], so each is initialised after every other one
 //!    it depends on — the ones it mentions, and the ones a function it mentions reaches —
@@ -31,23 +31,23 @@
 //! # Representations
 //!
 //! An `Int` literal is a `BigInt` (`1n`), since [`Int` is 64
-//! bits](../../../docs/spec/evaluation-semantics.md#numbers); a `Float` is a number, a
+//! bits](../docs/spec/evaluation-semantics.md#numbers); a `Float` is a number, a
 //! `Char` a one-character string and a `String` a string. `True` and `False` — the
 //! constructors of [`scalars::BOOL`], recognised by the union's qualified name — are
 //! `true` and `false`.
 //! `()` is `undefined` ([The unit value crosses as
-//! `undefined`](../../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)) and a
+//! `undefined`](../docs/spec/interop.md#the-unit-value-crosses-as-undefined)) and a
 //! pattern that names it, at any depth, tests nothing and binds nothing — `undefined`
 //! among `RESERVED` is what keeps a Zelkova binding of that name from changing what a `()`
 //! in its scope reads as. Every other union value is `{$: "Ctor", a: …, b: …}`, arguments
 //! in declaration order ([A union crosses as a tagged
-//! value](../../../docs/spec/interop.md#a-union-crosses-as-a-tagged-value)); a
+//! value](../docs/spec/interop.md#a-union-crosses-as-a-tagged-value)); a
 //! constructor's arguments past the 26th continue `aa`, `ab`, … — see `field`. A tuple
 //! is an array.
 //!
 //! A constructor is not exported. An importer that builds one builds its own object of
 //! the same shape, and hoists its own constant for one of no arguments. [Equality is
-//! structural](../../../docs/spec/evaluation-semantics.md#what-structural-equality-computes),
+//! structural](../docs/spec/evaluation-semantics.md#what-structural-equality-computes),
 //! so nothing observes which module allocated it.
 //!
 //! # Calls
@@ -74,10 +74,10 @@
 //! `$curry`'d.
 //!
 //! One argument per call is also what keeps the [order of
-//! evaluation](../../../docs/spec/evaluation-semantics.md#order-of-evaluation): `g a b`
+//! evaluation](../docs/spec/evaluation-semantics.md#order-of-evaluation): `g a b`
 //! applies `g a` before it evaluates `b`, and `g(a)(b)` does too where `g(a, b)` would
 //! not. Nothing here reorders a subexpression, and [nothing
-//! short-circuits](../../../docs/spec/evaluation-semantics.md#nothing-short-circuits):
+//! short-circuits](../docs/spec/evaluation-semantics.md#nothing-short-circuits):
 //! `&&` and `||` reach this module as ordinary applications of the functions their
 //! `infix` declarations name, so they are emitted as calls, never as JavaScript's own
 //! operators.
@@ -85,19 +85,19 @@
 //! # A facade
 //!
 //! [`emit`] answers a module for a `module foreign` facade too, so that an importer
-//! needs no special case. Every [`unsafe`](../../../docs/spec/interop.md#an-unsafe-facade)
+//! needs no special case. Every [`unsafe`](../docs/spec/interop.md#an-unsafe-facade)
 //! declaration becomes forwarding code that imports the companion's export under an
 //! alias and calls it with exactly the parameters the signature's arrow count gives —
 //! a plain function at arity one or more, a `const` at arity zero — the same
-//! [plain-parameter-list promise](../../../docs/spec/interop.md#the-javascript-companion)
+//! [plain-parameter-list promise](../docs/spec/interop.md#the-javascript-companion)
 //! an ordinary declaration's call already keeps. [`Error::MissingCompanion`] is
 //! answered instead when the caller says no companion sits beside this module for the
 //! target being built ([*A facade names a boundary, not a
-//! backend*](../../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)) —
+//! backend*](../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)) —
 //! [`emit`] has no path of its own to check that with, so the caller decides.
 //!
 //! A signature not marked `unsafe` declares an effect
-//! ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)), and its
+//! ([An effectful facade](../docs/spec/interop.md#an-effectful-facade)), and its
 //! forwarding code builds a `Task` instead of calling the companion: the `Task`'s run
 //! function calls the runtime's `$effect` with a function that calls the companion, the
 //! predicate of the payload type `a` of the signature's `Task (Result Failure a)` (`null`
@@ -105,12 +105,12 @@
 //! handed. The companion is therefore called when the `Task` is run, never when it is built,
 //! and `$effect` is what catches a throw or a rejection as `Err (Threw ..)` and turns a
 //! value that fails the predicate into `Err (Malformed ..)`
-//! ([DEC-22 decision 4](../../../docs/decisions/dec-22.md#4--the-wrapper-is-one-runtime-helper-and-a-synchronous-companion-continues-synchronously)).
+//! ([DEC-22 decision 4](../docs/decisions/dec-22.md#4--the-wrapper-is-one-runtime-helper-and-a-synchronous-companion-continues-synchronously)).
 //! The emitted text builds the `Task` as `{$: "Task", a: ($k) => $effect(..)}` and knows
 //! nothing of `Done`. A facade constant naming a `Task` gets the same `Task`, as one
 //! module-level `const`, and its companion export is called with no arguments each time the
 //! `Task` is run ([DEC-22 decision
-//! 7](../../../docs/decisions/dec-22.md#7--a-facade-constant-naming-a-task-gets-the-same-wrapper-with-no-arguments)).
+//! 7](../docs/decisions/dec-22.md#7--a-facade-constant-naming-a-task-gets-the-same-wrapper-with-no-arguments)).
 //!
 //! The companion is imported from [`companion_file`], beside the facade's own emitted
 //! file and renamed so that the two do not share one path.
@@ -119,11 +119,11 @@
 //!
 //! A value a companion hands back is run through the predicate of the type its signature
 //! declares ([Which types may cross the
-//! boundary](../../../docs/spec/interop.md#which-types-may-cross-the-boundary)): the
+//! boundary](../docs/spec/interop.md#which-types-may-cross-the-boundary)): the
 //! forwarding code binds the companion's result to `$returned` and returns it unchanged
 //! when the predicate holds, and calls the runtime's `$abort` otherwise, naming the
 //! export — module and value — whose companion returned it ([When a program
-//! aborts](../../../docs/spec/evaluation-semantics.md#when-a-program-aborts)). An
+//! aborts](../docs/spec/evaluation-semantics.md#when-a-program-aborts)). An
 //! effectful facade's `$effect` runs the same predicate over the payload and routes a
 //! failure to `Err (Malformed ..)` where this check aborts.
 //!
@@ -133,7 +133,7 @@
 //!
 //! **A result of `()` is discarded, not checked**: the companion is called, and the
 //! forwarding code returns `undefined` whatever it answered ([The unit value crosses as
-//! `undefined`](../../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)). A
+//! `undefined`](../docs/spec/interop.md#the-unit-value-crosses-as-undefined)). A
 //! facade constant of type `()` is `undefined`, its export still imported so that a
 //! companion missing it fails to link.
 //!
@@ -165,18 +165,18 @@
 //! test distinguishes which branch. `Emitter::case_expression` binds the scrutinee to
 //! `$scrutinee` once, since the tree tests it more than once and re-evaluating it per
 //! test would evaluate it once per test — observable through non-termination ([Order of
-//! evaluation](../../../docs/spec/evaluation-semantics.md#order-of-evaluation)) — and
+//! evaluation](../docs/spec/evaluation-semantics.md#order-of-evaluation)) — and
 //! walks the tree into an `if`/`else` chain inside an immediately invoked function,
 //! since a `case` is an expression and JavaScript's `if` is a statement. A
 //! [`Decision::Test`] becomes an `if` on the value `occurrence_expr` reads off
 //! `$scrutinee`: `.$ === "Ctor"` for a constructor, an equality check for a literal. A
 //! [`Decision::Leaf`] declares its bindings as `const`s ahead of a `return`, all of it
 //! inside its own block — a binding may repeat a name the scrutinee expression reads
-//! ([Variable patterns](../../../docs/spec/patterns.md#variable-patterns)), and without
+//! ([Variable patterns](../docs/spec/patterns.md#variable-patterns)), and without
 //! that block the two would share a scope, putting the earlier read in the later
 //! binding's temporal dead zone. A [`Decision::Fail`] — the fall-through a `case`
 //! missing a branch reaches, because [coverage is not checked
-//! yet](../../../docs/spec/evaluation-semantics.md#two-outcomes) — calls the runtime's
+//! yet](../docs/spec/evaluation-semantics.md#two-outcomes) — calls the runtime's
 //! `$abort`, naming the declaration the `case` was written in and, for a parameter
 //! written as a pattern, saying so rather than naming a `case` the source never wrote.
 //!
@@ -201,6 +201,10 @@ use zelkova_compiler::typer::Type;
 use zelkova_compiler::{scalars, CheckedModule, ModuleName, PackageName, PhaseError, SpanLabel};
 use zelkova_syntax::position::NodeSpan;
 
+// Public because `output::Error` is reachable from the public `zelkova::BuildError::Output`,
+// and the driver writes a build through `write`.
+pub mod output;
+
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 /// Why a module could not be emitted.
@@ -208,14 +212,14 @@ use zelkova_syntax::position::NodeSpan;
 pub enum Error {
     /// A `module foreign` facade with no companion for the target being built
     /// ([*A facade names a boundary, not a
-    /// backend*](../../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
+    /// backend*](../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
     ///
     /// [`emit`] has no path of its own to check a companion's presence on disk with —
     /// its caller does, and says so through [`emit`]'s `has_companion` parameter.
     MissingCompanion { module: Name, target: &'static str },
     /// A facade signature not marked `unsafe` whose result type is not `Task (Result
     /// Failure a)`, so there is no payload for the wrapper to check
-    /// ([An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)).
+    /// ([An effectful facade](../docs/spec/interop.md#an-effectful-facade)).
     /// Canonicalization refuses such a signature first
     /// (`canonical::Error::FacadeResultNotEffect`); this is what is left if one reaches
     /// the backend anyway.
@@ -230,7 +234,7 @@ pub enum Error {
     Unchecked { name: Name, span: NodeSpan },
     /// A facade signature whose result type has no predicate, so the value its
     /// companion hands back cannot be checked ([Which types may cross the
-    /// boundary](../../../docs/spec/interop.md#which-types-may-cross-the-boundary)).
+    /// boundary](../docs/spec/interop.md#which-types-may-cross-the-boundary)).
     ///
     /// The signature's own type expression is held to the admitted forms before this
     /// phase (`canonical::Error::FacadeTypeNotAdmitted`), but a union it names is
@@ -400,7 +404,7 @@ impl PhaseError for Error {
 /// local binding can shadow, and `undefined` is a legal Zelkova name. Every `()` this
 /// module emits is the identifier `undefined`
 /// ([*The unit value crosses as
-/// `undefined`*](../../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)), so
+/// `undefined`*](../docs/spec/interop.md#the-unit-value-crosses-as-undefined)), so
 /// a Zelkova binding called `undefined` left unmangled would shadow the global and change
 /// what every `()` in its scope reads as.
 const RESERVED: &[&str] = &[
@@ -596,7 +600,7 @@ fn field(index: usize) -> String {
 // ── Paths ─────────────────────────────────────────────────────────────────────
 //
 // The output of a build is one tree, `build/out/js/` beside the root package's manifest
-// ([`DEC-18` decision 5](../../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)):
+// ([`DEC-18` decision 5](../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)):
 //
 // ```text
 // build/out/js/
@@ -624,7 +628,7 @@ pub const RUNTIME_FILE: &str = "zelkova.mjs";
 /// and every one of those is wrong for a binary run from anywhere else. Embedding it
 /// leaves nothing to look up and no way to fail but writing, and a compiler always
 /// writes the runtime it was built with.
-pub const RUNTIME: &str = include_str!("../../runtime/js/zelkova.mjs");
+pub const RUNTIME: &str = include_str!("../../../runtime/js/zelkova.mjs");
 
 /// How many directories below its package's output directory the emitted file for
 /// `module` sits: one per segment of its name but the last.
@@ -716,7 +720,7 @@ fn companion_specifier(module: &Name) -> String {
 ///
 /// A test companion imports the companion it checks by the relative path between the two
 /// files as they sit in the package's source
-/// ([*Testing a companion*](../../../docs/spec/interop.md#testing-a-companion)): climb
+/// ([*Testing a companion*](../docs/spec/interop.md#testing-a-companion)): climb
 /// out of `tests/` to the package's root, then down into `src/` — from
 /// `tests/Js/BasicsChecks.mjs`, `Js.Basics`'s is `../../src/Js/Basics.mjs`. The build
 /// holds both roots' modules in one package directory and renames each companion
@@ -1347,7 +1351,7 @@ impl Emitter {
     ///
     /// A signature marked `unsafe` calls the companion directly. One that is not declares
     /// an effect ([An effectful
-    /// facade](../../../docs/spec/interop.md#an-effectful-facade)), and its forwarding
+    /// facade](../docs/spec/interop.md#an-effectful-facade)), and its forwarding
     /// code is the `Task` this module's *A facade* section describes. A result type no predicate decides
     /// pushes [`Error::NoPredicate`] and appends nothing.
     fn facade_declaration<'a>(
@@ -1683,7 +1687,7 @@ impl Emitter {
     /// `scrutinee` is evaluated exactly once — bound to `$scrutinee` before the tree is
     /// walked — never once per test, which is what a decision tree built by
     /// [`decision_tree`] wants: [Order of
-    /// evaluation](../../../docs/spec/evaluation-semantics.md#order-of-evaluation).
+    /// evaluation](../docs/spec/evaluation-semantics.md#order-of-evaluation).
     ///
     /// `form` says whether the source wrote a `case … of` or a parameter pattern
     /// ([`ir::CaseForm`]) and reaches [`abort_description`] unchanged, so a
@@ -1720,13 +1724,13 @@ impl Emitter {
     /// [`Decision`] emitted one level deeper, so a chain of tests on the scrutinee comes
     /// out as `if`s nested in one another's `else`, never merged or reordered — the
     /// order [Conditional
-    /// evaluation](../../../docs/spec/evaluation-semantics.md#conditional-evaluation)
+    /// evaluation](../docs/spec/evaluation-semantics.md#conditional-evaluation)
     /// tries branches in. A [`Decision::Leaf`] declares its bindings as `const`s, each
     /// read off `root` by [`occurrence_expr`], ahead of a `return` of its body — all of
     /// it inside its own block, so a binding never shares a scope with the
     /// `$scrutinee` line above it. Sharing that scope is observable: a binding may name
     /// anything the pattern it comes from could ([Variable
-    /// patterns](../../../docs/spec/patterns.md#variable-patterns) lets one repeat a
+    /// patterns](../docs/spec/patterns.md#variable-patterns) lets one repeat a
     /// name already in scope), and a `const` anywhere in a block puts every reference to
     /// that name earlier in the *same* block in its temporal dead zone — so without the
     /// leaf's own block, a scrutinee expression that happens to read a name a leaf also
@@ -1803,7 +1807,7 @@ fn test_condition(root: &str, occurrence: &Occurrence, outcome: &Outcome) -> Str
 /// scrutinee is bound to: a constructor argument is a field ([`field`], the same one
 /// [`tagged`] builds an object under), a tuple element an index — the representations
 /// [A union crosses as a tagged
-/// value](../../../docs/spec/interop.md#a-union-crosses-as-a-tagged-value) gives them.
+/// value](../docs/spec/interop.md#a-union-crosses-as-a-tagged-value) gives them.
 fn occurrence_expr(root: &str, occurrence: &Occurrence) -> String {
     match occurrence {
         Occurrence::Root => root.to_string(),
@@ -1820,7 +1824,7 @@ fn occurrence_expr(root: &str, occurrence: &Occurrence) -> String {
 /// The description a [`Decision::Fail`]'s `$abort` call carries: which declaration's
 /// `case` — or, for [`CaseForm::Parameter`], parameter pattern — matched no branch. That
 /// leaf exists only because [coverage is not checked
-/// yet](../../../docs/spec/evaluation-semantics.md#two-outcomes) (`LANG-19`) — reaching
+/// yet](../docs/spec/evaluation-semantics.md#two-outcomes) (`LANG-19`) — reaching
 /// it aborts rather than falling through to `undefined`. `form` keeps the message in the
 /// vocabulary the source actually used: a parameter written as a pattern has no `case`
 /// for the message to name.

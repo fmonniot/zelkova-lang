@@ -1,7 +1,7 @@
 //! Layer 5: the JavaScript text one checked module emits as.
 //!
 //! Each test compiles a small module through the whole pipeline — parse → canonicalize →
-//! type_check → the IR — and asserts on the text [`javascript::emit`] produces for it.
+//! type_check → the IR — and asserts on the text [`zelkova_js::emit`] produces for it.
 //! Nothing here runs that text: whether it computes the right value is checked under
 //! `node`, not by `cargo test`
 //! ([`DEC-18` decision 6](../docs/decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node)).
@@ -15,10 +15,10 @@ use indoc::indoc;
 use zelkova_compiler::canonical::Value;
 use zelkova_compiler::name::Name;
 use zelkova_compiler::{check_module, CheckedModule, Interface, PackageName, PhaseError};
-use zelkova_lang::compiler::javascript::{self, Error, Unions, Unpredicated};
+use zelkova_js::{Error, Unions, Unpredicated};
 use zelkova_syntax::position::NodeSpan;
 
-#[path = "../crates/zelkova-compiler/tests/support/mod.rs"]
+#[path = "../../zelkova-compiler/tests/support/mod.rs"]
 mod support;
 
 use support::*;
@@ -43,7 +43,7 @@ fn unions_of(module: &CheckedModule) -> Unions {
 }
 
 fn emit(module: &CheckedModule) -> String {
-    javascript::emit(module, true, &unions_of(module))
+    zelkova_js::emit(module, true, &unions_of(module))
         .unwrap_or_else(|errors| panic!("expected the module to emit, got {:?}", errors))
 }
 
@@ -55,7 +55,7 @@ fn emitted(source: &str) -> String {
 /// The errors `source` fails to emit with, insisting that it fails.
 fn refused(source: &str) -> Vec<Error> {
     let module = checked(source);
-    match javascript::emit(&module, true, &unions_of(&module)) {
+    match zelkova_js::emit(&module, true, &unions_of(&module)) {
         Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
         Err(errors) => errors,
     }
@@ -65,7 +65,7 @@ fn refused(source: &str) -> Vec<Error> {
 /// target being built, insisting that it fails.
 fn refused_without_companion(source: &str) -> Vec<Error> {
     let module = checked(source);
-    match javascript::emit(&module, false, &unions_of(&module)) {
+    match zelkova_js::emit(&module, false, &unions_of(&module)) {
         Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
         Err(errors) => errors,
     }
@@ -1426,7 +1426,7 @@ fn facade_across(lib: &str, facade: &str) -> Result<String, Vec<Error>> {
     interfaces.insert(lib.canonical.name.name().clone(), lib.to_interface(None));
     let facade = checked_against(facade, interfaces);
 
-    javascript::emit(&facade, true, &Unions::of([&lib, &facade]))
+    zelkova_js::emit(&facade, true, &Unions::of([&lib, &facade]))
 }
 
 /// A union result is decided by a function of the union's own, emitted into the facade:
@@ -1701,7 +1701,7 @@ fn refused_after(edit: impl FnOnce(&mut CheckedModule)) -> Vec<Error> {
         unsafe add : Int -> Int -> Int
     "#});
     edit(&mut module);
-    match javascript::emit(&module, true, &unions_of(&module)) {
+    match zelkova_js::emit(&module, true, &unions_of(&module)) {
         Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
         Err(errors) => errors,
     }
@@ -1942,7 +1942,7 @@ fn a_binding_named_undefined_is_mangled() {
 /// returning `Bounce (callWith k a)`: the `succeedRun` assertion goes red.
 #[test]
 fn std_cores_task_module_emits_with_every_handoff_a_bounce() {
-    let source = include_str!("../std/core/src/Task.zel");
+    let source = include_str!("../../../std/core/src/Task.zel");
     let core = PackageName::new("zelkova-core").unwrap();
     let module = check_module(&core, &HashMap::new(), &parse_source(source))
         .unwrap_or_else(|error| panic!("expected Task.zel to check, got {:?}", error));

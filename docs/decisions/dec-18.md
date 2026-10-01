@@ -201,7 +201,7 @@ base name beside the `.zel` source — `Basics.zel`'s companion is `Basics.mjs`,
 before both can sit in `build/out/js/` together. Renaming the facade was rejected: its path is the
 one every importer builds from a module name (the rest of this decision), so renaming it would
 mean every specifier into a facade disagreeing with the plain [`module_file`
-naming](../../src/compiler/javascript.rs) every other module gets. The companion is renamed
+naming](../../crates/zelkova-js/src/lib.rs) every other module gets. The companion is renamed
 instead, to `<facade>.companion.mjs`, which cannot collide with a `module_file` path because a
 module name's segments are upper identifiers holding no `.`, so no emitted module's file name
 ever has two dots in it — including on a case-insensitive filesystem.

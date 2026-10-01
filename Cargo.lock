@@ -997,6 +997,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "zelkova-js"
+version = "0.3.0"
+dependencies = [
+ "codespan-reporting",
+ "indoc",
+ "zelkova-compiler",
+ "zelkova-syntax",
+]
+
+[[package]]
 name = "zelkova-lang"
 version = "0.3.0"
 dependencies = [
@@ -1006,7 +1016,9 @@ dependencies = [
  "indoc",
  "log",
  "zelkova-compiler",
+ "zelkova-js",
  "zelkova-syntax",
+ "zelkova-test-runner",
 ]
 
 [[package]]
@@ -1021,6 +1033,15 @@ dependencies = [
  "log",
  "serde_json",
  "unic-ucd-category",
+]
+
+[[package]]
+name = "zelkova-test-runner"
+version = "0.3.0"
+dependencies = [
+ "zelkova-compiler",
+ "zelkova-js",
+ "zelkova-syntax",
 ]
 
 [[package]]

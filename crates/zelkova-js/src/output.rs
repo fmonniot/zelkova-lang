@@ -1,6 +1,6 @@
 //! Writing a build's output to disk.
 //!
-//! What goes where is [`javascript`](super::javascript)'s — its *Paths* section is the
+//! What goes where is [`zelkova_js`](crate)'s — its *Paths* section is the
 //! only place a path into the output tree is built. This module takes the files a
 //! build produced, each with its path under `build/out/js/`, and writes them: writing each
 //! in turn, stopping at the first one that fails, and — only once every one of them has
@@ -65,8 +65,8 @@ pub enum Contents {
     /// companion it checks is spelled for the source tree
     /// ([`javascript::test_companion_import`]).
     ///
-    /// [`javascript::rewrite_imports`]: super::javascript::rewrite_imports
-    /// [`javascript::test_companion_import`]: super::javascript::test_companion_import
+    /// [`javascript::rewrite_imports`]: crate::rewrite_imports
+    /// [`javascript::test_companion_import`]: crate::test_companion_import
     Rewritten {
         from: PathBuf,
         imports: Vec<(String, String)>,
@@ -167,7 +167,7 @@ fn write_one(path: &Path, contents: &Contents) -> Result<(), Error> {
         Contents::Copy(source) => std::fs::copy(source, path).map(|_| ()).map_err(failed),
         Contents::Rewritten { from, imports } => {
             let text = std::fs::read_to_string(from).map_err(failed)?;
-            std::fs::write(path, super::javascript::rewrite_imports(&text, imports)).map_err(failed)
+            std::fs::write(path, crate::rewrite_imports(&text, imports)).map_err(failed)
         }
     }
 }

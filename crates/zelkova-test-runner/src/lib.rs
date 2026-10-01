@@ -2,11 +2,11 @@
 //!
 //! [`run`] is what `zelkova test` calls once a package and its tests are built: handed the
 //! tree the build wrote for the tests and the [`Interface`]s of the package's `tests/`
-//! modules, it asks [`test_collection::collect`] which of their values are tests, writes
+//! modules, it asks [`collection::collect`] which of their values are tests, writes
 //! [`entry_point`]'s text to `run.mjs` at the root of that tree and hands that file to
 //! `node`. It compiles nothing. The tests are found and reported on the Zelkova side; the
 //! only thing decided in JavaScript is which verdict the value a test evaluated to comes to
-//! ([*What a test is*](../../../docs/spec/packages.md#what-a-test-is)).
+//! ([*What a test is*](../docs/spec/packages.md#what-a-test-is)).
 //!
 //! # The entry point
 //!
@@ -33,7 +33,7 @@
 //! The modules are loaded one at a time with a dynamic `import()` and not as static
 //! imports, because every parameterless binding is evaluated when its module loads
 //! ([*A binding with no parameters is evaluated
-//! once*](../../../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once))
+//! once*](../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once))
 //! and a test is such a binding, so a module whose test aborts fails to load. A static
 //! import would take the whole run down with it. An `import()` that rejects instead marks
 //! every test collected from that module as errored, saying the module failed to load and
@@ -60,10 +60,11 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::javascript;
-use super::test_collection::{self, ModuleTests};
+use crate::collection::ModuleTests;
 use zelkova_compiler::name::Name;
 use zelkova_compiler::{Interface, PhaseError};
+
+pub mod collection;
 
 /// The entry point's file name, at the root of `build/test/js/`, beside the runtime.
 pub const RUN_FILE: &str = "run.mjs";
@@ -130,7 +131,7 @@ impl PhaseError for Error {
 ///
 /// `node`'s output goes straight to this process's own stdout and stderr.
 pub fn run(test_tree: &Path, interfaces: &[Interface]) -> Result<i32, Error> {
-    let modules = test_collection::collect(interfaces);
+    let modules = collection::collect(interfaces);
 
     if modules.iter().all(|module| module.tests.is_empty()) {
         println!("no tests found");
@@ -155,15 +156,15 @@ pub fn run(test_tree: &Path, interfaces: &[Interface]) -> Result<i32, Error> {
 /// this module's documentation for what it does.
 ///
 /// Every specifier it imports is relative to that root: the runtime's is
-/// [`javascript::RUNTIME_FILE`], and each test module's is built by
-/// [`javascript::module_file`], so that each names the file the build wrote.
+/// [`zelkova_js::RUNTIME_FILE`], and each test module's is built by
+/// [`zelkova_js::module_file`], so that each names the file the build wrote.
 pub fn entry_point(modules: &[ModuleTests]) -> String {
     let entries: Vec<String> = modules
         .iter()
         .filter(|module| !module.tests.is_empty())
         .map(|module| {
             let file = Path::new(module.module.package().as_str())
-                .join(javascript::module_file(module.module.name()));
+                .join(zelkova_js::module_file(module.module.name()));
             let names: Vec<String> = module
                 .tests
                 .iter()
@@ -181,7 +182,7 @@ pub fn entry_point(modules: &[ModuleTests]) -> String {
     format!(
         "{}import {{ $runTask }} from {};\n\n{}{}{}",
         HEAD,
-        string_literal(&format!("./{}", javascript::RUNTIME_FILE)),
+        string_literal(&format!("./{}", zelkova_js::RUNTIME_FILE)),
         MODULES,
         entries.concat(),
         TAIL
@@ -315,7 +316,7 @@ mod tests {
 
     /// Two test modules holding three tests between them, one of them nested, and a third
     /// module holding none: the text names each module's emitted file, in the layout
-    /// `javascript::module_file` writes, and each collected export — and the empty module
+    /// `zelkova_js::module_file` writes, and each collected export — and the empty module
     /// does not appear at all.
     ///
     /// Mutation-checked by changing `entry_point`'s filter to keep every module: the empty

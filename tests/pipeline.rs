@@ -27,12 +27,11 @@ use zelkova_compiler::{
     check_module, check_package, check_package_with_tests, CheckedModule, CompilationError,
     Interface, PackageName, PhaseError,
 };
-use zelkova_lang::compiler::javascript;
-use zelkova_lang::compiler::test_collection;
 use zelkova_lang::driver::{
     compile_package, compile_package_with_tests, BuildError, BUILD_DIRECTORY,
 };
 use zelkova_syntax::parser;
+use zelkova_test_runner::collection;
 
 #[path = "../crates/zelkova-compiler/tests/support/mod.rs"]
 mod support;
@@ -629,7 +628,7 @@ fn zelkova_test_package_compiles() {
 
 /// Every checked module of `std/core`, the way [`check_fixture`] reads a smaller
 /// fixture package — needed here rather than [`compile_package`] because
-/// `javascript::emit` reads a module's [`CheckedModule`], which `compile_package` does
+/// `zelkova_js::emit` reads a module's [`CheckedModule`], which `compile_package` does
 /// not hand back.
 fn check_std_core() -> Vec<CheckedModule> {
     let root = std_package_root();
@@ -659,7 +658,7 @@ fn check_std_core() -> Vec<CheckedModule> {
 }
 
 /// The three `Js/*` facades under `std/core` are each marked `unsafe` throughout
-/// (`GEN-12`'s own `std/core` survey), so `javascript::emit` answers a module for
+/// (`GEN-12`'s own `std/core` survey), so `zelkova_js::emit` answers a module for
 /// every one of them now, rather than refusing the whole tree the way a blanket
 /// `module foreign` check used to.
 ///
@@ -680,12 +679,12 @@ fn the_stdlib_facades_emit() {
             .find(|m| m.canonical.name.name().as_str() == name)
             .unwrap_or_else(|| panic!("{} did not check", name));
 
-        javascript::emit(module, true, &javascript::Unions::of(&checked))
+        zelkova_js::emit(module, true, &zelkova_js::Unions::of(&checked))
             .unwrap_or_else(|errors| panic!("{} failed to emit: {:?}", name, errors));
     }
 }
 
-/// `CLAUDE.md`'s architecture table claims `javascript::emit` "emits every module of
+/// `CLAUDE.md`'s architecture table claims `zelkova_js::emit` "emits every module of
 /// `std/core`, `case` included" — true (`Basics`, `Maybe`, `Result` and `Tuple` all lean
 /// on `case`), but until this test nothing pinned it: `the_stdlib_facades_emit` above
 /// only loops over the three `Js/*` facades, and `the_stdlib_bitwise_forwards_to_its_
@@ -695,7 +694,7 @@ fn the_stdlib_facades_emit() {
 /// only hand-verified again the way it was for this PR.
 ///
 /// Mutation-checked by reverting one of `Basics`, `Maybe`, `Result` or `Tuple`'s
-/// `case`-using declarations to something `javascript::emit` refuses (an easy probe:
+/// `case`-using declarations to something `zelkova_js::emit` refuses (an easy probe:
 /// temporarily making `case_expression` always push `Error::Unsupported`) — this test
 /// panics on the first module that stops emitting; the loop below over the *complete*
 /// set is what makes that regression visible here instead of staying silent because a
@@ -706,7 +705,7 @@ fn every_stdlib_module_emits() {
 
     for module in &checked {
         let name = module.canonical.name.name().as_str();
-        javascript::emit(module, true, &javascript::Unions::of(&checked))
+        zelkova_js::emit(module, true, &zelkova_js::Unions::of(&checked))
             .unwrap_or_else(|errors| panic!("{} failed to emit: {:?}", name, errors));
     }
 }
@@ -734,7 +733,7 @@ fn the_stdlib_bitwise_forwards_to_its_facade() {
         .find(|m| m.canonical.name.name().as_str() == "Bitwise")
         .expect("Bitwise did not check");
 
-    let text = javascript::emit(bitwise, false, &javascript::Unions::of(&checked))
+    let text = zelkova_js::emit(bitwise, false, &zelkova_js::Unions::of(&checked))
         .unwrap_or_else(|errors| panic!("Bitwise failed to emit: {:?}", errors));
 
     assert!(
@@ -795,7 +794,7 @@ fn files_under(dir: &Path) -> Vec<String> {
 /// Mutation-checked three ways: dropping the push of the companion in `emit_build` loses
 /// `Native.companion.mjs`; writing each module to its package-less `module_file` puts
 /// every file at the root of `out/js/`; and dropping the package comparison in
-/// `javascript::module_specifier` has `App.mjs` import `./Size.mjs`. Each turns this red.
+/// `zelkova_js::module_specifier` has `App.mjs` import `./Size.mjs`. Each turns this red.
 #[test]
 fn a_build_writes_one_directory_per_package() {
     let build_dir = fresh_build_dir("a_build_writes_one_directory_per_package");
@@ -821,7 +820,7 @@ fn a_build_writes_one_directory_per_package() {
     let js = build_dir.join("out").join("js");
     assert_eq!(
         std::fs::read_to_string(js.join("zelkova.mjs")).unwrap(),
-        javascript::RUNTIME
+        zelkova_js::RUNTIME
     );
     assert_eq!(
         std::fs::read_to_string(js.join("acme-widgets/Native.companion.mjs")).unwrap(),
@@ -953,7 +952,7 @@ fn a_build_whose_check_failed_returns_the_check_error_in_many() {
 
 /// `GEN-13`: a module that checks and cannot be emitted fails the build like any other
 /// error, and nothing is written. The facade here has no companion beside it, which
-/// [`javascript::emit`] refuses.
+/// [`zelkova_js::emit`] refuses.
 ///
 /// Mutation-checked by dropping the second `if errors.is_empty()` in `compile`, so
 /// files are written whether or not emission failed: the runtime is written and this
@@ -1006,7 +1005,7 @@ fn a_build_that_cannot_be_emitted_writes_nothing() {
                 if matches!(
                     &**inner,
                     BuildError::Emit(emit_errors, _)
-                        if matches!(emit_errors.as_slice(), [javascript::Error::MissingCompanion { .. }])
+                        if matches!(emit_errors.as_slice(), [zelkova_js::Error::MissingCompanion { .. }])
                 )
         ),
         "got {:?}",
@@ -1025,7 +1024,7 @@ fn a_build_that_cannot_be_emitted_writes_nothing() {
 /// `GEN-18`: a test build whose `tests/` root holds a module that checks but cannot be
 /// emitted writes neither tree — not `test/js/`, and not `out/js/` either, though every
 /// module of `src/` emitted cleanly. The facade here sits under `tests/` with no
-/// companion beside it, which [`javascript::emit`] refuses.
+/// companion beside it, which [`zelkova_js::emit`] refuses.
 ///
 /// Mutation-checked by moving the test tree's `emit_modules` call in `compile` back
 /// after the write of `out/js/`: `out/js/` is written in full and this turns red.
@@ -1079,7 +1078,7 @@ fn a_test_build_whose_tests_cannot_be_emitted_writes_nothing() {
                 if matches!(
                     &**inner,
                     BuildError::Emit(emit_errors, _)
-                        if matches!(emit_errors.as_slice(), [javascript::Error::MissingCompanion { .. }])
+                        if matches!(emit_errors.as_slice(), [zelkova_js::Error::MissingCompanion { .. }])
                 )
         ),
         "got {:?}",
@@ -4309,7 +4308,7 @@ fn a_dependencys_names_resolve_beside_a_local_module_of_the_same_name() {
 /// Asserted on the emitted text, since the collision this pins compiled `Ok` and wrote
 /// two `import` lines binding one name, which only fails when the module loads.
 ///
-/// Mutation-checked by leaving the package out of `javascript::imported`: both imports
+/// Mutation-checked by leaving the package out of `zelkova_js::imported`: both imports
 /// then bind `Size$small`, and the test goes red.
 #[test]
 fn two_packages_same_named_modules_import_under_distinct_names() {
@@ -4371,7 +4370,7 @@ fn two_packages_same_named_modules_import_under_distinct_names() {
 /// Mutation-checked two ways: by comparing only the module's name, not its package,
 /// when `Emitter::value` decides whether a constructor is this module's own — `Small`
 /// is then taken for `Size`'s own, nothing hoists it and the `const` assertion goes
-/// red; and by leaving the package out of `javascript::hoisted`, which names it
+/// red; and by leaving the package out of `zelkova_js::hoisted`, which names it
 /// `$Size$Small`.
 #[test]
 fn a_dependencys_constructor_is_hoisted_under_its_own_package() {
@@ -5094,7 +5093,7 @@ fn cross_module_arity_fixture_compiles_and_calls_directly() {
 }
 
 /// `LANG-63`: `compile_package_with_tests` hands back the root's checked `tests/`
-/// `Interface`s, and `test_collection::collect` finds a test among them by the
+/// `Interface`s, and `collection::collect` finds a test among them by the
 /// exposed value's full `QualName` — package included — never by the spelling
 /// `Test` alone. The fixture's `tests/AppTest.zel` exposes three values: `addsUp`,
 /// a real `zelkova-test:Test.Test`; `helper`, an unrelated `Int`; and `decoyTest`,
@@ -5103,7 +5102,7 @@ fn cross_module_arity_fixture_compiles_and_calls_directly() {
 ///
 /// Neutralise-checked twice. As the ticket's acceptance asks: comparing types through
 /// `name.unqualified_name()` instead of the whole `QualName` in
-/// `test_collection::is_test` makes `decoyTest` join `addsUp` in the collected set,
+/// `collection::is_test` makes `decoyTest` join `addsUp` in the collected set,
 /// and this assertion goes red. Separately: dropping the `root_test_interfaces =
 /// ..` assignment in `compile`'s test-tree branch leaves `AppTest` out of what
 /// `compile_package_with_tests` hands back at all, and the `.expect` above panics —
@@ -5116,7 +5115,7 @@ fn a_test_is_found_by_its_qualname_not_its_spelling() {
 
     let interfaces = compile_package_with_tests(&root).expect("expected the fixture to compile");
 
-    let collected = test_collection::collect(&interfaces);
+    let collected = collection::collect(&interfaces);
     let app_test = collected
         .iter()
         .find(|module| module.module.name().as_str() == "AppTest")

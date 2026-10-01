@@ -9,7 +9,7 @@
 //! # Emitting and writing
 //!
 //! Once every module of every package has checked, each one is emitted as JavaScript
-//! (`javascript::emit`) and, if that failed nowhere either, the build is written to
+//! (`zelkova_js::emit`) and, if that failed nowhere either, the build is written to
 //! `build/out/js/` (`output::write`). A build with any error writes nothing. A build that
 //! also compiled the tests writes a second, complete tree at `build/test/js/` — the
 //! runtime, then one directory per package, holding every package of the build (a
@@ -18,7 +18,7 @@
 //!
 //! Which file is a facade's companion is this module's to find, not the check's: a
 //! checked module comes back as a [`CheckedSource`] naming the source root it was read
-//! under, and [`javascript::module_file`] names the companion below it ([*A facade names
+//! under, and [`zelkova_js::module_file`] names the companion below it ([*A facade names
 //! a boundary, not a
 //! backend*](../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
 //!
@@ -38,11 +38,12 @@ use zelkova_compiler::name::Name;
 use zelkova_compiler::source::files::SourceFileId;
 use zelkova_compiler::source::Overlay;
 
-use crate::compiler::{javascript, output, program_runner, test_runner};
+use crate::compiler::program_runner;
 use zelkova_compiler::{
     phase_diagnostic, plain_diagnostic, CheckedModule, CheckedSource, CompilationError, Interface,
     PackageCheck, PhaseError, Status,
 };
+use zelkova_js::output;
 
 /// Which of the root package's source roots a build compiles: [`zelkova_compiler::check_package`]'s
 /// `src/` alone, or [`zelkova_compiler::check_package_with_tests`]'s `src/` and `tests/`.
@@ -66,14 +67,14 @@ pub enum BuildError {
     /// its dependencies, and is unrendered.
     Check(CompilationError),
     /// The named module checked and could not be emitted as JavaScript.
-    Emit(Vec<javascript::Error>, Name),
+    Emit(Vec<zelkova_js::Error>, Name),
     /// A file of the build's output could not be written. Raised only once every module
     /// of the build has checked and emitted, since nothing is written before that.
     Output(output::Error),
     /// A package's tests were compiled and could not be run: `zelkova test` could not
     /// write its entry point or could not run `node`. A test that ran and did not pass is
     /// not this; it is the exit code of the run.
-    TestRun(test_runner::Error),
+    TestRun(zelkova_test_runner::Error),
     /// A package's program could not be run: `zelkova run` was pointed at a package with no
     /// `main`, or could not write its entry point or could not run `node`. A program that
     /// ran and aborted is not this; it is the exit code of the run.
@@ -202,7 +203,7 @@ pub const BUILD_DIRECTORY: &str = "build";
 
 /// The tree a build that compiled the tests writes below `build_dir`: `build_dir/test/js/`,
 /// laid out like `build_dir/out/js/`. Both the write of that tree and [`test()`], which hands
-/// it to [`test_runner::run`], name it through here.
+/// it to [`zelkova_test_runner::run`], name it through here.
 pub fn test_tree(build_dir: &Path) -> PathBuf {
     build_dir.join("test").join("js")
 }
@@ -213,7 +214,7 @@ pub fn test_tree(build_dir: &Path) -> PathBuf {
 /// The output is one tree, `<build_dir>/out/js/`: the runtime at its root, then one
 /// directory per package of the build holding one `.mjs` file per module of that
 /// package, named after the module within its own package, and each facade's companion
-/// beside the facade ([`javascript`]'s *Paths* section has the names, [`DEC-18` decision
+/// beside the facade ([`zelkova_js`]'s *Paths* section has the names, [`DEC-18` decision
 /// 5](../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)
 /// the reasons). Nothing is written until every module of every package has checked and
 /// emitted.
@@ -236,7 +237,7 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 /// the root's own `tests/` modules that checked — never a test-only package's, and never
 /// `src/`'s — so a caller can find which of their exposed values are tests without a phase
 /// dropping the checked modules once they are emitted. `test_collection::collect` is that
-/// pass, and `test_runner::run` is its caller. Empty when the package holds no `tests/` at
+/// pass, and `zelkova_test_runner::run` is its caller. Empty when the package holds no `tests/` at
 /// all.
 ///
 /// A test module and every `test-dependency`'s modules are checked and, unlike a plain
@@ -262,7 +263,7 @@ pub fn compile_package_with_tests_into(
 
 /// Compile the package rooted at `package_dir` with its tests
 /// ([`compile_package_with_tests`]), run every test it holds under `node`
-/// ([`test_runner::run`], from the tree [`test_tree`] names), and answer the exit code the
+/// ([`zelkova_test_runner::run`], from the tree [`test_tree`] names), and answer the exit code the
 /// process should end with.
 ///
 /// The answer is `Ok(0)` when every test passed and when the package holds none. It is
@@ -272,7 +273,7 @@ pub fn compile_package_with_tests_into(
 /// `node`.
 pub fn test(package_dir: &Path) -> Result<i32, BuildError> {
     let interfaces = compile_package_with_tests(package_dir)?;
-    test_runner::run(&test_tree(&package_dir.join(BUILD_DIRECTORY)), &interfaces)
+    zelkova_test_runner::run(&test_tree(&package_dir.join(BUILD_DIRECTORY)), &interfaces)
         .map_err(BuildError::TestRun)
 }
 
@@ -383,7 +384,7 @@ fn compile(
             let checks = to_emit.module.canonical.name.name();
             to_emit.companion_imports = targets
                 .iter()
-                .map(|target| javascript::test_companion_import(checks, target))
+                .map(|target| zelkova_js::test_companion_import(checks, target))
                 .collect();
         }
         // Built from the same `ModuleToEmit`s `test_tree_modules` is about to take,
@@ -407,7 +408,7 @@ fn compile(
         // Every union of the build, read by a facade's boundary checks: a facade may name
         // a union any module of the build declares, and a test-only package's or the
         // root's `tests/` modules are part of the build their facades see.
-        let unions = javascript::Unions::of(
+        let unions = zelkova_js::Unions::of(
             checked
                 .iter()
                 .chain(test_tree_modules.iter())
@@ -486,10 +487,10 @@ struct ModuleToEmit {
     /// ([*A facade names a boundary, not a
     /// backend*](../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
     /// `None` for every other module, and for a facade with no companion, which
-    /// [`javascript::emit`] refuses.
+    /// [`zelkova_js::emit`] refuses.
     companion: Option<std::path::PathBuf>,
     /// The imports its companion spells for the source tree, each beside the specifier
-    /// that replaces it in the build ([`javascript::test_companion_import`]). Empty for
+    /// that replaces it in the build ([`zelkova_js::test_companion_import`]). Empty for
     /// every module but a facade of the root package's `tests/` with a companion, which
     /// [`compile`] fills in once it knows the companions of `src/` that one may import.
     companion_imports: Vec<(String, String)>,
@@ -505,7 +506,7 @@ fn to_module_to_emit(checked: CheckedSource) -> ModuleToEmit {
         file,
         root_dir,
     } = checked;
-    let companion = Some(root_dir.join(javascript::module_file(module.canonical.name.name())))
+    let companion = Some(root_dir.join(zelkova_js::module_file(module.canonical.name.name())))
         .filter(|path| module.ir.foreign && path.is_file());
     ModuleToEmit {
         file,
@@ -516,19 +517,19 @@ fn to_module_to_emit(checked: CheckedSource) -> ModuleToEmit {
 }
 
 /// Every file a build writes: the runtime, and each module of `checked` as the text
-/// [`javascript::emit`] gives it, with its facade's companion beside it.
+/// [`zelkova_js::emit`] gives it, with its facade's companion beside it.
 ///
 /// A module that cannot be emitted pushes its errors onto `errors`, tagged with the
 /// file it came from, and every other module is still emitted so that one refusal
 /// cannot hide the next. The caller writes the files only when `errors` stays empty.
 fn emit_build(
     checked: Vec<ModuleToEmit>,
-    unions: &javascript::Unions,
+    unions: &zelkova_js::Unions,
     errors: &mut Vec<BuildError>,
 ) -> Vec<output::File> {
     let mut files = vec![output::File {
-        path: javascript::RUNTIME_FILE.into(),
-        contents: output::Contents::Text(javascript::RUNTIME.to_string()),
+        path: zelkova_js::RUNTIME_FILE.into(),
+        contents: output::Contents::Text(zelkova_js::RUNTIME.to_string()),
     }];
     files.extend(emit_modules(checked, unions, errors));
     files
@@ -543,7 +544,7 @@ fn emit_build(
 /// extra modules must not emit a second runtime file to sit unused beside the first.
 fn emit_modules(
     checked: Vec<ModuleToEmit>,
-    unions: &javascript::Unions,
+    unions: &zelkova_js::Unions,
     errors: &mut Vec<BuildError>,
 ) -> Vec<output::File> {
     let mut files = Vec::new();
@@ -558,10 +559,10 @@ fn emit_modules(
         let name = module.canonical.name.clone();
         let package_dir = std::path::PathBuf::from(name.package().as_str());
 
-        match javascript::emit(&module, companion.is_some(), unions) {
+        match zelkova_js::emit(&module, companion.is_some(), unions) {
             Ok(text) => {
                 files.push(output::File {
-                    path: package_dir.join(javascript::module_file(name.name())),
+                    path: package_dir.join(zelkova_js::module_file(name.name())),
                     contents: output::Contents::Text(text),
                 });
 
@@ -575,7 +576,7 @@ fn emit_modules(
                         }
                     };
                     files.push(output::File {
-                        path: package_dir.join(javascript::companion_file(name.name())),
+                        path: package_dir.join(zelkova_js::companion_file(name.name())),
                         contents,
                     });
                 }
