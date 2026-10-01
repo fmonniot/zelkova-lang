@@ -1,0 +1,34 @@
+{
+  "name": "zelkova",
+  "displayName": "Zelkova",
+  "description": "Syntax highlighting for the Zelkova language (.zel)",
+  "version": "0.0.1",
+  "publisher": "zelkova-lang",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "scripts": {
+    "test": "vscode-tmgrammar-test -g syntaxes/zelkova.tmLanguage.json 'tests/**/*.zel'"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "zelkova",
+        "aliases": ["Zelkova", "zelkova"],
+        "extensions": [".zel"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "zelkova",
+        "scopeName": "source.zelkova",
+        "path": "./syntaxes/zelkova.tmLanguage.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "vscode-tmgrammar-test": "0.1.3"
+  }
+}

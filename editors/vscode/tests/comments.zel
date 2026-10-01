@@ -1,0 +1,23 @@
+-- SYNTAX TEST "source.zelkova" "comments"
+
+-- a line comment
+-- <- comment.line.double-dash.zelkova
+-- ^^^^^^^^^^^^^^^ comment.line.double-dash.zelkova
+
+f = 1 -- trailing
+--    ^^^^^^^^^^^ comment.line.double-dash.zelkova
+
+{- block -}
+-- <- comment.block.zelkova
+-- ^^^^^^^ comment.block.zelkova
+
+{- outer
+   {- inner -}
+-- ^^^^^^^^^^^ comment.block.zelkova
+   still outer
+-- ^^^^^^^^^^^ comment.block.zelkova
+-}
+-- <- comment.block.zelkova
+
+g = 2
+-- <- variable.other.zelkova

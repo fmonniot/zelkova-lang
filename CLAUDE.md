@@ -54,6 +54,10 @@ and exits 0**. `std/core/tests/FloatTests.ignored` is excluded from that count b
 closes, tracked there rather than left red in CI. Any error, failure, or a different count from
 what's left is a regression you introduced.
 
+The editor grammar under `editors/vscode/` is checked by `npm ci && npm test` in that folder (CI's
+`javascript` job); its keyword list's agreement with the spec is `tests/editor_grammar.rs`, part of
+`cargo test --workspace`. Its README is the account of what the grammar approximates.
+
 `.github/workflows/rust.yml` gates a PR on `fmt`, on `clippy` with `-D warnings`, and on a
 `rustdoc` job that builds the crate's docs with the flags `rustdoc.yml` deploys them with. To
 reproduce that last one locally:

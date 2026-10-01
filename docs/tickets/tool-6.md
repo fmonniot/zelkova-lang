@@ -18,7 +18,7 @@ What it reads: `src/compiler/mod.rs` — `CompilationError::as_diagnostic`, `Sou
 `src/compiler/position.rs` — `NodeSpan`, `BytePos`.
 
 **Problem:** nothing speaks the Language Server Protocol, so editor feedback on a `.zel` file
-is limited to what [`TOOL-1`](tool-1.md)'s grammar can do lexically. Errors are seen only by
+is limited to what [`TOOL-1`](README.md)'s grammar can do lexically. Errors are seen only by
 running `zelkova compile`, types only by reading annotations, and definitions only by
 searching.
 
@@ -35,9 +35,9 @@ searching.
    `QualName` names its module, and an `Interface` carries the declaration's span and
    `SourceFileId`.
 4. **Semantic tokens**, which let highlighting tell a constructor from a type from a value
-   where [`TOOL-1`](tool-1.md)'s grammar can only go by case.
+   where [`TOOL-1`](README.md)'s grammar can only go by case.
 
-The editor side is [`TOOL-1`](tool-1.md)'s VS Code extension gaining a client that launches
+The editor side is [`TOOL-1`](README.md)'s VS Code extension gaining a client that launches
 the server binary.
 
 Choices this ticket does not make:
