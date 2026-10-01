@@ -114,7 +114,7 @@ pub mod typer;
 use name::{Name, QualName};
 use position::{BytePos, NodeSpan, Span};
 use source::files::{SourceFileError, SourceFileId};
-use source::SourceFiles;
+use source::{Overlay, SourceFiles};
 
 // TODO Move PackageName and ModuleName into the name module
 /// A package name: one flat identifier, ASCII lowercase letters, digits and hyphens,
@@ -867,6 +867,7 @@ pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
         package_dir,
         TestRoot::Skipped,
         &package_dir.join(BUILD_DIRECTORY),
+        &Overlay::new(),
     )
     .map(|_| ())
 }
@@ -894,7 +895,7 @@ pub(crate) fn test_tree(build_dir: &Path) -> PathBuf {
 /// the reasons). Nothing is written until every module of every package has checked and
 /// emitted.
 pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), CompilationError> {
-    compile(package_dir, TestRoot::Skipped, build_dir).map(|_| ())
+    compile(package_dir, TestRoot::Skipped, build_dir, &Overlay::new()).map(|_| ())
 }
 
 /// [`compile_package`], compiling the package's `tests/` root as well as its `src/`.
@@ -933,7 +934,7 @@ pub fn compile_package_with_tests_into(
     package_dir: &Path,
     build_dir: &Path,
 ) -> Result<Vec<Interface>, CompilationError> {
-    compile(package_dir, TestRoot::Compiled, build_dir)
+    compile(package_dir, TestRoot::Compiled, build_dir, &Overlay::new())
 }
 
 /// One module of a build that checked, with the file it was read from and the source root
@@ -1000,9 +1001,10 @@ pub struct PackageCheck {
 ///
 /// This is the checking half of every `compile_package` variant: they call it, then print
 /// its [`status`](PackageCheck::status) lines, emit and write a build that checked, and
-/// render every error. It reads every manifest and every `.zel` source of the build from
-/// disk, and nothing else: it does not look for a facade's companion, which only a build
-/// that emits needs. It never writes to stderr, to stdout or to disk, and never builds a
+/// render every error. It reads every manifest from disk and every `.zel` source of the build
+/// from `overlay` where it holds the file and from disk otherwise ([`Overlay`] has the
+/// rules, and the CLI half passes an empty one), and nothing else: it does not look for a
+/// facade's companion, which only a build that emits needs. It never writes to stderr, to stdout or to disk, and never builds a
 /// `Diagnostic` — a caller that wants one asks each error for it.
 ///
 /// `Err` is an error raised before there is a build to check — the root's manifest, or
@@ -1011,14 +1013,20 @@ pub struct PackageCheck {
 /// is not empty is a package that did not check.
 ///
 /// The root's `tests/` is not checked; [`check_package_with_tests`] is that check.
-pub fn check_package(package_dir: &Path) -> Result<PackageCheck, CompilationError> {
-    check(package_dir, TestRoot::Skipped)
+pub fn check_package(
+    package_dir: &Path,
+    overlay: &Overlay,
+) -> Result<PackageCheck, CompilationError> {
+    check(package_dir, TestRoot::Skipped, overlay)
 }
 
 /// [`check_package`], checking the root package's `tests/` as well as its `src/`, as
 /// [`compile_package_with_tests`] does.
-pub fn check_package_with_tests(package_dir: &Path) -> Result<PackageCheck, CompilationError> {
-    check(package_dir, TestRoot::Compiled)
+pub fn check_package_with_tests(
+    package_dir: &Path,
+    overlay: &Overlay,
+) -> Result<PackageCheck, CompilationError> {
+    check(package_dir, TestRoot::Compiled, overlay)
 }
 
 /// Print one [`Status`] line to `writer`. Failing to write a status line is not itself a
@@ -1048,6 +1056,7 @@ fn compile(
     package_dir: &Path,
     tests: TestRoot,
     build_dir: &Path,
+    overlay: &Overlay,
 ) -> Result<Vec<Interface>, CompilationError> {
     let PackageCheck {
         package: root_package,
@@ -1057,7 +1066,7 @@ fn compile(
         test_dependency_modules,
         test_modules,
         status,
-    } = check(package_dir, tests)?;
+    } = check(package_dir, tests, overlay)?;
 
     // Error reporter
     let mut writer = StandardStream::stderr(ColorChoice::Auto);
@@ -1200,7 +1209,11 @@ fn compile(
 
 /// The checking half of a build, behind [`check_package`] and [`compile`]: steps 1 to 5 of
 /// this module's documentation, for every package of the build, recording what it finds.
-fn check(package_dir: &Path, tests: TestRoot) -> Result<PackageCheck, CompilationError> {
+fn check(
+    package_dir: &Path,
+    tests: TestRoot,
+    overlay: &Overlay,
+) -> Result<PackageCheck, CompilationError> {
     // The status line of every phase, in order, for the caller to print or not.
     let mut status: Vec<Status> = Vec::new();
 
@@ -1311,6 +1324,7 @@ fn check(package_dir: &Path, tests: TestRoot) -> Result<PackageCheck, Compilatio
             &build,
             &published,
             tests,
+            overlay,
             &mut sources,
             &mut errors,
             &mut status,
@@ -1341,6 +1355,7 @@ fn check(package_dir: &Path, tests: TestRoot) -> Result<PackageCheck, Compilatio
                 &build,
                 &published,
                 TestRoot::Skipped,
+                overlay,
                 &mut sources,
                 &mut errors,
                 &mut status,
@@ -1575,11 +1590,16 @@ struct TestsEnvironment {
 /// of their own, and a `Result` here is an invitation to `?` those out of
 /// [`compile_package`] past its reporting loop — which is the "nothing is rendered and
 /// then dropped" the accumulator exists to prevent.
+// Eight parameters, one over clippy's limit, since `TOOL-2` added `overlay`. They are the
+// build, what it published, and the three accumulators a package's check appends to; none
+// of them groups with another without a type that exists only to pass them along.
+#[allow(clippy::too_many_arguments)]
 fn compile_in_build(
     package: &resolve::ResolvedPackage,
     build: &[resolve::ResolvedPackage],
     published: &HashMap<PackageName, HashMap<Name, Interface>>,
     tests: TestRoot,
+    overlay: &Overlay,
     sources: &mut SourceFiles,
     errors: &mut Vec<CompilationError>,
     status: &mut Vec<Status>,
@@ -1616,6 +1636,7 @@ fn compile_in_build(
         &package.root,
         source::SourceRoot::Src,
         Some(&package.name),
+        overlay,
         sources,
     ) {
         Ok(file_ids) => file_ids,
@@ -1644,6 +1665,7 @@ fn compile_in_build(
                 &package.root,
                 source::SourceRoot::Tests,
                 Some(&package.name),
+                overlay,
                 sources,
             ) {
                 Ok(file_ids) => file_ids,

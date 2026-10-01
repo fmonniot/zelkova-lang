@@ -1,3 +1,4 @@
+use super::overlay::Overlay;
 use crate::compiler::{PackageName, PhaseError};
 use codespan_reporting::files::{Error as FilesError, Files, SimpleFile};
 use std::ops::Range;
@@ -66,13 +67,16 @@ impl SourceFile {
     /// package's own `src/` is not unique across a build — two packages may each hold a
     /// `Size.zel` — so without it a diagnostic cannot say which package it is about.
     /// `None` is for a database of exactly one package, where the prefix would be noise.
+    ///
+    /// The text is `overlay`'s when it holds `abs_path`, and the file's otherwise.
     pub fn load(
         abs_path: PathBuf,
         root_dir: &Path,
         root: SourceRoot,
         package: Option<&PackageName>,
+        overlay: &Overlay,
     ) -> Result<SourceFile, SourceFileError> {
-        SourceFile::load_private(&abs_path, root_dir, root, package)
+        SourceFile::load_private(&abs_path, root_dir, root, package, overlay)
             .map_err(|error| SourceFileError { error, abs_path })
     }
 
@@ -81,6 +85,7 @@ impl SourceFile {
         root_dir: &Path,
         root: SourceRoot,
         package: Option<&PackageName>,
+        overlay: &Overlay,
     ) -> Result<SourceFile, SourceFileErrorType> {
         let relative_path = abs_path.strip_prefix(root_dir)?.to_path_buf();
 
@@ -103,7 +108,10 @@ impl SourceFile {
             None => package_path,
         };
 
-        let source = std::fs::read_to_string(abs_path)?;
+        let source = match overlay.get(abs_path) {
+            Some(text) => text.to_owned(),
+            None => std::fs::read_to_string(abs_path)?,
+        };
 
         Ok(SourceFile {
             module_name,
@@ -322,7 +330,13 @@ mod tests {
         );
         let abs_path = Path::new("/Users/francoismonniot/Projects/github.com/fmonniot/zelkova-lang/std/core/src/Platform/Cmd.zel");
 
-        let res = SourceFile::load(abs_path.to_path_buf(), root_path, SourceRoot::Src, None);
+        let res = SourceFile::load(
+            abs_path.to_path_buf(),
+            root_path,
+            SourceRoot::Src,
+            None,
+            &Overlay::new(),
+        );
         println!("{:?}", res);
     }
 }

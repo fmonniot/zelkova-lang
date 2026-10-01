@@ -21,7 +21,7 @@ use zelkova_lang::compiler::manifest;
 use zelkova_lang::compiler::name::Name;
 use zelkova_lang::compiler::resolve;
 use zelkova_lang::compiler::source::{
-    load_package_sources, load_package_sources_into, SourceFiles, SourceRoot,
+    load_package_sources, load_package_sources_into, Overlay, SourceFiles, SourceRoot,
 };
 use zelkova_lang::compiler::test_collection;
 use zelkova_lang::compiler::typer;
@@ -4720,6 +4720,7 @@ fn a_file_in_a_shared_database_is_named_by_its_package() {
         &fixture_package("dep_widgets"),
         SourceRoot::Src,
         Some(&widgets),
+        &Overlay::new(),
         &mut sources,
     )
     .expect("the fixture loads");
@@ -4727,6 +4728,7 @@ fn a_file_in_a_shared_database_is_named_by_its_package() {
         &fixture_package("package_module_name_collision"),
         SourceRoot::Src,
         Some(&collision),
+        &Overlay::new(),
         &mut sources,
     )
     .expect("the fixture loads");
@@ -5752,7 +5754,7 @@ fn check_package_hands_back_a_type_error_without_building() {
         .rfind(body)
         .expect("fixture's body is the literal `true`");
 
-    let check = check_package(&root).expect("the manifest and the build resolve");
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
 
     assert!(
         !build.exists(),
@@ -5817,7 +5819,7 @@ fn check_package_writes_nothing_for_a_package_that_checks() {
     .unwrap();
     let build = root.join(BUILD_DIRECTORY);
 
-    let check = check_package(&root).expect("the manifest and the build resolve");
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
 
     assert!(check.errors.is_empty(), "got {:?}", check.errors);
     let names: Vec<&Name> = check
@@ -5866,7 +5868,8 @@ fn check_package_with_tests_checks_the_tests_root_and_writes_nothing() {
     std::fs::write(root.join("zelkova.toml"), manifest).unwrap();
     let build = root.join(BUILD_DIRECTORY);
 
-    let check = check_package_with_tests(&root).expect("the manifest and the build resolve");
+    let check = check_package_with_tests(&root, &Overlay::new())
+        .expect("the manifest and the build resolve");
 
     assert!(check.errors.is_empty(), "got {:?}", check.errors);
     let test_names: Vec<&Name> = check
@@ -5882,9 +5885,176 @@ fn check_package_with_tests_checks_the_tests_root_and_writes_nothing() {
     );
     assert!(!build.exists(), "checking must not create {:?}", build);
 
-    let src_only = check_package(&root).expect("the manifest and the build resolve");
+    let src_only =
+        check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
     assert!(src_only.errors.is_empty(), "got {:?}", src_only.errors);
     assert!(src_only.test_modules.is_empty());
     assert!(src_only.test_dependency_modules.is_empty());
     assert_eq!(src_only.modules.len(), check.modules.len());
+}
+
+/// A copy of the `package_checks` fixture under Cargo's per-target scratch space, which
+/// has no dependency and so can live anywhere. The `TOOL-2` tests overlay its `Answer`
+/// module and must not touch `tests/fixtures/` in place, which other tests build
+/// concurrently.
+fn overlay_fixture(test: &str) -> std::path::PathBuf {
+    let fixture = fixture_package("package_checks");
+    let root = fresh_build_dir(test);
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::copy(fixture.join("zelkova.toml"), root.join("zelkova.toml")).unwrap();
+    std::fs::copy(
+        fixture.join("src").join("Answer.zel"),
+        root.join("src").join("Answer.zel"),
+    )
+    .unwrap();
+    root
+}
+
+/// What `Answer` holds in the `TOOL-2` overlay tests: the same module as on disk, with
+/// a type error in it.
+const OVERLAID_ANSWER: &str = "module Answer exposing (..)\n\n\ntype Label = Label\n\n\ntype Other = Other\n\n\nanswer : Label\nanswer = Other\n";
+
+/// Asserts that `check` holds exactly the type error of `OVERLAID_ANSWER`, and that the
+/// source its primary label's file resolves to is that text — the overlay's, not the
+/// disk's.
+fn assert_overlaid_answer_was_checked(check: &zelkova_lang::compiler::PackageCheck) {
+    assert_eq!(check.errors.len(), 1, "got {:?}", check.errors);
+    assert!(
+        matches!(
+            unwrap_in_file(&check.errors[0]),
+            CompilationError::Type(_, module) if module == &Name::from("Answer")
+        ),
+        "expected `Answer`'s type error, got {:?}",
+        check.errors[0]
+    );
+    let diagnostic = check.errors[0].as_diagnostic();
+    let primary = diagnostic
+        .labels
+        .iter()
+        .find(|label| label.style == LabelStyle::Primary)
+        .unwrap_or_else(|| panic!("expected a primary label, got {:?}", diagnostic.labels));
+    let file = check
+        .sources
+        .get(primary.file_id)
+        .expect("the label's file is in the returned database");
+    assert_eq!(file.name(), "package-checks:src/Answer.zel");
+    assert_eq!(file.source(), OVERLAID_ANSWER);
+}
+
+/// `TOOL-2`: a module held in the overlay is checked in place of the file on disk, which
+/// checks clean. The error comes back, and the source its label points into is the
+/// overlay's text.
+///
+/// Mutation-checked by making `Overlay::get` always return `None`: the package checks
+/// clean and the error-count assertion goes red.
+#[test]
+fn check_package_reads_a_module_from_the_overlay_instead_of_the_disk() {
+    let root = overlay_fixture("overlay_replaces_disk");
+    let clean = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+    assert!(clean.errors.is_empty(), "got {:?}", clean.errors);
+
+    let mut overlay = Overlay::new();
+    overlay.insert(root.join("src").join("Answer.zel"), OVERLAID_ANSWER.into());
+    // A buffer that is not a `.zel` source is ignored rather than loaded.
+    overlay.insert(root.join("notes.txt"), "not a module".into());
+
+    let check = check_package(&root, &overlay).expect("the manifest and the build resolve");
+
+    assert_overlaid_answer_was_checked(&check);
+}
+
+/// `TOOL-2`: a module that only the overlay holds is walked in, so a module on disk that
+/// imports it checks. Without the overlay the same package fails, which is what makes the
+/// overlay the reason it checks.
+///
+/// Mutation-checked by removing the loop over `Overlay::zel_files_under` that follows the
+/// walk in `load_package_sources_into`: the package no longer checks and the
+/// `errors.is_empty()` assertion goes red.
+#[test]
+fn check_package_loads_a_module_that_only_the_overlay_holds() {
+    let root = overlay_fixture("overlay_adds_module");
+    std::fs::write(
+        root.join("src").join("Answer.zel"),
+        "module Answer exposing (..)\n\nimport Extra\n\n\nanswer : Extra.Token\nanswer = Extra.token\n",
+    )
+    .unwrap();
+
+    let without =
+        check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+    assert!(
+        !without.errors.is_empty(),
+        "`Answer` imports a module that is on neither the disk nor the overlay"
+    );
+
+    let mut overlay = Overlay::new();
+    overlay.insert(
+        root.join("src").join("Extra.zel"),
+        "module Extra exposing (..)\n\n\ntype Token = Token\n\n\ntoken : Token\ntoken = Token\n"
+            .into(),
+    );
+    let check = check_package(&root, &overlay).expect("the manifest and the build resolve");
+
+    assert!(check.errors.is_empty(), "got {:?}", check.errors);
+    let mut names: Vec<String> = check
+        .modules
+        .iter()
+        .map(|checked| checked.module.canonical.name.name().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["Answer", "Extra"]);
+}
+
+/// `TOOL-2`: the overlay finds a module by where its path points, not by how it is
+/// spelled. The key goes through a sibling directory with a `..` segment, and the result
+/// is `check_package_reads_a_module_from_the_overlay_instead_of_the_disk`'s.
+///
+/// Mutation-checked by making `overlay::normalise` return its argument: the key keeps its
+/// `..` segment, the walked `Answer.zel` misses it, and the error-count assertion goes
+/// red.
+#[test]
+fn check_package_matches_an_overlay_path_spelled_with_a_dot_dot_segment() {
+    let root = overlay_fixture("overlay_normalises_paths");
+    std::fs::create_dir_all(root.join("src").join("Sibling")).unwrap();
+
+    let mut overlay = Overlay::new();
+    overlay.insert(
+        root.join("src")
+            .join("Sibling")
+            .join("..")
+            .join("Answer.zel"),
+        OVERLAID_ANSWER.into(),
+    );
+
+    let check = check_package(&root, &overlay).expect("the manifest and the build resolve");
+
+    assert_overlaid_answer_was_checked(&check);
+}
+
+/// `TOOL-2`: a buffer under a `tests/` directory that is not on disk is still loaded. The
+/// package has no `tests/`, which the walk skips, and the overlay's `tests/Foo.zel` comes
+/// back in `test_modules` all the same.
+///
+/// Mutation-checked by restoring the early return `if !walk { return Ok(loaded); }` right
+/// after the `walk` binding in `load_package_sources_into`: `test_modules` comes back
+/// empty and the final assertion goes red.
+#[test]
+fn check_package_with_tests_loads_an_overlay_buffer_under_a_missing_tests_directory() {
+    let root = overlay_fixture("overlay_adds_test_module");
+    assert!(!root.join("tests").exists(), "the fixture has no `tests/`");
+
+    let mut overlay = Overlay::new();
+    overlay.insert(
+        root.join("tests").join("Foo.zel"),
+        "module Foo exposing (..)\n\n\ntype Token = Token\n".into(),
+    );
+    let check =
+        check_package_with_tests(&root, &overlay).expect("the manifest and the build resolve");
+
+    assert!(check.errors.is_empty(), "got {:?}", check.errors);
+    let names: Vec<&Name> = check
+        .test_modules
+        .iter()
+        .map(|checked| checked.module.canonical.name.name())
+        .collect();
+    assert_eq!(names, vec![&Name::from("Foo")]);
 }

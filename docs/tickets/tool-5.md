@@ -3,7 +3,7 @@
 **Sizing:** medium to large, all of it by count: every file under `src/` and `tests/` moves,
 and every path the repository writes down moves with them. No behaviour changes and no
 decision is left to make. It grows with every open ticket whose **Location** it invalidates,
-which is why it goes after [`TOOL-2`](tool-2.md) through [`TOOL-4`](tool-4.md) and not before.
+which is why it goes after [`TOOL-2`](README.md) through [`TOOL-4`](tool-4.md) and not before.
 
 **Part of:** the *Active work: editor support* section of [the index](README.md). Nothing
 depends on it except [`TIDY-12`](tidy-12.md): [`TOOL-6`](tool-6.md) can start as a workspace
