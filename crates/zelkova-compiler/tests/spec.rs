@@ -29,6 +29,10 @@
 //!   `expect=ok` block may still hold an annotation its body contradicts —
 //!   `docs/spec/conventions.md`'s row carries the same caveat for chapter authors.
 //!   Exhaustiveness is not run at all — it is a stub that accepts every module.
+//!   In a `package=` group a block that imports from a failing block of the group does
+//!   not pass either, even with no error of its own: the errors it would raise against
+//!   the failing block's names are dropped as restatements, which leaves it unchecked
+//!   (`canonical::Module::incomplete`).
 //! - `zel expect=parse-error` — fails in the parser (tokenizer, layout or grammar).
 //!   Which error is not pinned.
 //! - `zel expect=parse-error:Reason` — the same, but the reason must match one of the
@@ -123,7 +127,7 @@
 
 use std::path::Path;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use codespan_reporting::files::SimpleFile;
 use spec_doc::{extract_zel_blocks, header_anchors, prose_lines, slugify, Block, Expect};
@@ -579,10 +583,10 @@ fn evaluate(block: &Block) -> Verdict {
 
 /// Canonicalize one module, tagging any errors with the module they came from.
 ///
-/// [`ModuleWalker::check_in_order`]'s `Outcome::Failed` carries no module, so without
-/// the tag there is no way to say *which* block of a group failed — which is the entire
-/// point of letting each block carry its own `expect=`. Written as a free function
-/// rather than a closure because `check_in_order` takes a `fn` pointer.
+/// The errors come back tagged with the module's name, because a canonicalization error
+/// does not carry one and `evaluate_group` has to say *which* block of a group failed —
+/// the entire point of letting each block carry its own `expect=`. Written as a free
+/// function rather than a closure because `check_in_order` takes a `fn` pointer.
 ///
 /// A module canonicalization reported errors for comes back beside them, as
 /// `check_module_recovering` hands it back, so that `check_in_order` publishes its
@@ -728,9 +732,20 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
     );
     let mut checked = Vec::new();
     let mut failures: HashMap<Name, Vec<canonical::Error>> = HashMap::new();
+    // Blocks that came back with no error and still did not check whole: a not-found
+    // error they would have raised was dropped as a restatement of another block's
+    // failure (`canonical::Module::incomplete`), or a declaration is in
+    // `canonical::Module::broken`. `check_root` keeps such a module out of the ones that
+    // checked, for the same reason.
+    let mut incomplete: HashSet<Name> = HashSet::new();
     for outcome in outcomes {
         match outcome {
-            Outcome::Module(module, errors) if errors.is_empty() => checked.push(module),
+            Outcome::Module(module, errors) if errors.is_empty() => {
+                if module.incomplete || !module.broken.is_empty() {
+                    incomplete.insert(module.name.name().clone());
+                }
+                checked.push(module)
+            }
             // A block canonicalization reported errors for is judged by them alone, the
             // way `canonicalize` reduces it; its interface is already published.
             Outcome::Module(_, errors) => failures.extend(errors),
@@ -772,7 +787,17 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
                 .map(Vec::as_slice)
                 .unwrap_or_default();
             match (expect, errors) {
-                (Expect::Ok, None) if type_errors.is_empty() => Verdict::Pass,
+                (Expect::Ok, None)
+                    if type_errors.is_empty() && !incomplete.contains(&module.name) =>
+                {
+                    Verdict::Pass
+                }
+                (Expect::Ok, None) if type_errors.is_empty() => Verdict::Fail(
+                    "expected `ok`, but the block did not check whole: it imports from a \
+                     block that failed, and the errors it would have raised against that \
+                     block's names were dropped as restatements of the failure"
+                        .to_string(),
+                ),
                 (Expect::Ok, None) => Verdict::Fail(format!(
                     "expected `ok`, but type checking failed: {:?}",
                     type_errors
@@ -1981,6 +2006,39 @@ fn package_group_cycle_is_a_dependency_error() {
             .all(|v| matches!(v, Verdict::Pass)),
         "both blocks of a cyclic package must pass their `dependency-error` tag"
     );
+}
+
+/// `expect=ok` on a block that imports from a failing block of its group is a failure,
+/// though canonicalization raised no error for the importer.
+///
+/// Pins: `tests/fixtures/spec/package_group_ok_importer_of_failed.md`, whose `Failing`
+/// declares `type T = MkT | (T, T)` and whose `Importer` writes `b = MkT` under
+/// `expect=ok`. `Importer`'s own errors are dropped as restatements of `Failing`'s, so
+/// its error list is empty while `b` is in `canonical::Module::broken`. Neutralised by
+/// deleting the `incomplete` guard arm from `evaluate_group`'s `Expect::Ok` verdicts (or
+/// the `incomplete.insert` above it): with that change `Importer` reports `Pass` and this
+/// goes red. Restored afterwards.
+#[test]
+fn an_ok_block_importing_a_failed_block_is_a_failure() {
+    let content = read_fixture("package_group_ok_importer_of_failed.md");
+    let blocks = extract_zel_blocks(&content, "package_group_ok_importer_of_failed.md");
+    assert_eq!(blocks.len(), 2, "fixture should hold two zel blocks");
+
+    let group: Vec<&Block> = blocks.iter().collect();
+    let verdicts = evaluate_group(&group);
+
+    assert!(
+        matches!(verdicts[0], Verdict::Pass),
+        "the failing module passes its `canonical-error` tag"
+    );
+    match &verdicts[1] {
+        Verdict::Fail(reason) => assert!(
+            reason.contains("did not check whole"),
+            "the failure should say the block was not checked whole, got {:?}",
+            reason
+        ),
+        _ => panic!("an `expect=ok` importer of a failed block must not pass"),
+    }
 }
 
 /// `expect=dependency-error` on a group that *does* have a valid order is a failure —

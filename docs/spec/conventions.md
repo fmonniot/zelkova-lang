@@ -17,7 +17,7 @@ skip. When you add an example, tag it.
 
 | Tag | Meaning |
 |---|---|
-| `expect=ok` | Parses, canonicalizes and type checks with no errors. The typer checks the declarations it can translate and leaves the rest unchecked, raising no error for them: a pattern nested inside another pattern, an expression form the term language does not model, a reference to a declaration of the same module written without an annotation, and a `module foreign` block whole. So the tag promises that every declaration the typer *reached* honours its annotation, not that it reached every declaration — roughly one in nine of the declarations with a body across today's chapters is skipped, all of them for reaching an unannotated declaration. Exhaustiveness is not run at all: it is a stub that accepts every module. |
+| `expect=ok` | Parses, canonicalizes and type checks with no errors. The typer checks the declarations it can translate and leaves the rest unchecked, raising no error for them: a pattern nested inside another pattern, an expression form the term language does not model, a reference to a declaration of the same module written without an annotation, and a `module foreign` block whole. So the tag promises that every declaration the typer *reached* honours its annotation, not that it reached every declaration — roughly one in nine of the declarations with a body across today's chapters is skipped, all of them for reaching an unannotated declaration. Exhaustiveness is not run at all: it is a stub that accepts every module. In a `package=` group, a block that imports from a failing block of the group does not pass either. |
 | `expect=parse-error` | Fails somewhere in the parser (tokenizer, layout or grammar). Which specific error is not pinned. Use when the chapter claims only that the source is rejected. |
 | `expect=parse-error:Reason` | The same, and the reason must match. `Reason` is either the phase (`Tokenizer`, `Layout`) or one of the eighteen specific errors — `CharNotClosedError`, `StringNotClosedError`, `InvalidEscape`, `UnicodeError`, `IndentationError`, `TabError`, `UnrecognizedToken`, `IntegerOverflow`, `MultipleDecimalPoints`, `NonAsciiDigit`, `MalformedNumber` and `UnclosedBlockComment` from the tokenizer; `LayoutError` from layout; `InvalidToken`, `UnexpectedEOF`, `UnexpectedToken`, `ExtraToken` and `InfixPrecedenceOutOfRange` from the grammar — matched against the real enums in `crates/zelkova-syntax/src/parser/`. Use whenever the chapter's prose describes the error the reader will see. One of the eighteen is unusable: `MalformedNumber` exists for a tokenizer defect, and no source reaches it. |
 | `expect=canonical-error:VariantName` | Parses, then canonicalization returns a `Vec<canonical::Error>` containing at least one error of variant `VariantName` — matched against the real variant names in `crates/zelkova-compiler/src/canonical/mod.rs`'s `Error` enum. |
@@ -63,9 +63,10 @@ rather than on the group.
 A module with an error still publishes its interface to the rest of the group, so an
 importer of it goes on resolving every name it imports. An interface carries the declared
 signatures canonicalization validated, and a declaration whose own canonicalization failed
-is in it by its annotation when that annotation is sound. Only a module whose imports leave
-it nothing to canonicalize against publishes nothing. Withholding the interface would turn
-an error in one block into a wave of unresolved names in the next.
+is in it by its annotation when that annotation is sound. A block that imports from a
+failing one is not reported for a name the failure explains, and so it does not pass
+`expect=ok`: its declarations were left out, not checked. Withholding the interface would
+turn an error in one block into a wave of unresolved names in the next.
 
 `SPEC-3` settled this, for the *Modules, exposing and imports* chapter, which cannot be
 written one module at a time. Three alternatives were considered and rejected: adjacent
