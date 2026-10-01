@@ -2,7 +2,7 @@
 
 **Sizing:** small. One file, two token variants, and the test module beside them.
 
-**Location:** `src/compiler/parser/tokenizer.rs` — the `Token` enum, which has `LBracket` and
+**Location:** `crates/zelkova-syntax/src/parser/tokenizer.rs` — the `Token` enum, which has `LBracket` and
 `RBracket` and no brace beside them, and the character dispatch that emits them.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decision 1):**

@@ -2,7 +2,7 @@
 
 **Sizing:** medium.
 
-**Location:** `src/compiler/canonical/environment.rs` — `insert_foreign_union_type` (both
+**Location:** `crates/zelkova-compiler/src/canonical/environment.rs` — `insert_foreign_union_type` (both
 `env.types.insert` and `env.constructors.insert`), and `process_import`'s `Exposing::Open` and
 `ExposedKind::Operator` arms (`env.infixes.insert`). `insert_foreign_value` is the one that
 gets this right, and is the model.
@@ -62,6 +62,6 @@ each use.
 **Acceptance:** the `module Other` and `module Third` blocks of the `package=ambiguous` group in
 [`docs/spec/name-resolution.md`](../spec/name-resolution.md) go **red** — retag each
 `expect=canonical-error:` with the variant it now raises and delete the **Known gap:** paragraph
-above them. `tests/compiler/canonical.rs` cases for an ambiguous type, an ambiguous constructor
+above them. `crates/zelkova-compiler/tests/canonical.rs` cases for an ambiguous type, an ambiguous constructor
 and an ambiguous operator, each seen to fail before the fix, plus one asserting that a qualified
 spelling still resolves when the unqualified one is ambiguous.

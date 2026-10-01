@@ -24,7 +24,7 @@ jobs:
         components: rust-src
 
     - name: Build Documentation
-      run: cargo doc -p zelkova-lang --no-deps
+      run: cargo doc --no-deps -p zelkova-syntax -p zelkova-compiler -p zelkova-js -p zelkova-test-runner -p zelkova
 
     - name: Render the site
       run: cargo run -p spec-site -- --out site

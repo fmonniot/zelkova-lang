@@ -412,7 +412,7 @@ f a b =
 ```
 
 That block pins the syntax only — both groupings type the same, and nothing here evaluates
-anything. `tests/compiler/canonical.rs` is where the grouping itself is pinned.
+anything. `crates/zelkova-compiler/tests/canonical.rs` is where the grouping itself is pinned.
 
 There is likewise no negative literal: `-1` is negation applied to the literal `1`. A
 [pattern](patterns.md#literal-patterns) carries its sign on the literal instead, because

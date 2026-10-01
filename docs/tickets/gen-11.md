@@ -3,11 +3,11 @@
 **Sizing:** small. One alternative shape for a declaration's body, plus the argument-assignment
 care the **Approach** names.
 
-**Depends on:** [`GEN-6`](gen-6.md) (the mark) and `GEN-9`, closed (the emitter, `src/compiler/javascript.rs`).
+**Depends on:** [`GEN-6`](gen-6.md) (the mark) and `GEN-9`, closed (the emitter, `crates/zelkova-js/src/lib.rs`).
 
 **Part of:** [`GEN-1`](gen-1.md).
 
-**Location:** `src/compiler/javascript.rs`, where a declaration's body is
+**Location:** `crates/zelkova-js/src/lib.rs`, where a declaration's body is
 emitted.
 
 **Decided ([`docs/spec/evaluation-semantics.md`](../spec/evaluation-semantics.md#recursion-and-tail-calls)):**
@@ -27,7 +27,7 @@ parameters, `continue`. Every other path out of the body `return`s.
 
 **A marked call inside a `case` needs care this description does not give.** `GEN-10` emits
 every `case` — including one that is the whole of a declaration's tail position — as an
-immediately invoked arrow function (`Emitter::case_expression`, `src/compiler/javascript.rs`),
+immediately invoked arrow function (`Emitter::case_expression`, `crates/zelkova-js/src/lib.rs`),
 so a marked call sitting in one of its branches is lexically inside that arrow function's body.
 `continue` cannot cross an arrow-function boundary, and in practice a self tail call almost
 always sits inside a `case` branch, so this ticket's `while (true) { … continue; … }` cannot
@@ -43,7 +43,7 @@ new argument into a temporary first, left to right, and only then assign. That o
 what [Order of evaluation](../spec/evaluation-semantics.md#order-of-evaluation) requires of the
 arguments themselves.
 
-A declaration with no marked call emits exactly what `src/compiler/javascript.rs` emits today: no loop,
+A declaration with no marked call emits exactly what `crates/zelkova-js/src/lib.rs` emits today: no loop,
 no temporaries. The rewrite is not free to read, and a declaration that does not need it should
 not carry it.
 

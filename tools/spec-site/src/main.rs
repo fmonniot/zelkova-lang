@@ -14,13 +14,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// `site/api/index.html`: `cargo doc --no-deps` writes no root index for the crate it
+/// `site/api/index.html`: `cargo doc --no-deps` writes no root index for the crates it
 /// documents, so a reader who trims the URL down to `/api/` needs somewhere to land.
 const API_REDIRECT: &str = "<!DOCTYPE html>\n\
 <meta charset=\"utf-8\">\n\
-<meta http-equiv=\"refresh\" content=\"0; url=zelkova_lang/index.html\">\n\
+<meta http-equiv=\"refresh\" content=\"0; url=zelkova_compiler/index.html\">\n\
 <title>Redirecting…</title>\n\
-<a href=\"zelkova_lang/index.html\">The rustdoc has moved here.</a>\n";
+<a href=\"zelkova_compiler/index.html\">The rustdoc has moved here.</a>\n";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);

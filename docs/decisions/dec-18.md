@@ -76,7 +76,7 @@ What it costs is honest and was accepted: the first ticket of the program is ins
 unbound variable — had to stop being silent, because a backend cannot tell a declaration the
 typer verified from one it walked past.
 
-Lands at: `src/compiler/ir/`, whose doc comment is where the shape's obligations are written.
+Lands at: `crates/zelkova-compiler/src/ir/`, whose doc comment is where the shape's obligations are written.
 
 ## 2 — One IR serves both targets, and JavaScript is written first
 
@@ -92,7 +92,7 @@ whole-program — and stating what the IR already owes it. Filing it now is the 
 this: the expensive half is discovering those obligations after the IR is written.
 
 Lands at: [`GEN-15`](../tickets/gen-15.md) until a WebAssembly backend exists, and
-`src/compiler/ir/`'s doc comment meanwhile.
+`crates/zelkova-compiler/src/ir/`'s doc comment meanwhile.
 
 ## 3 — A function emits as a plain n-ary function, and currying is a runtime helper
 
@@ -150,7 +150,7 @@ should write such declarations with parameters instead, or whether a binding lik
 take the arity of what it names, which is eta-expansion and a language rule: `PERF-2` holds
 both.
 
-Lands at: `runtime/js/zelkova.mjs` for the helper, `src/compiler/javascript.rs` for the
+Lands at: `runtime/js/zelkova.mjs` for the helper, `crates/zelkova-js/src/lib.rs` for the
 call-site rule, and `canonical::Module::emitted_arity` for the arity an interface records.
 
 ## 4 — A constructor of no arguments is hoisted to one module-level constant
@@ -173,7 +173,7 @@ whether the backend is allowed to do this should find that it is, not have to re
 The same reasoning does not extend to a constructor *with* arguments, which is a different value
 per application and is not hoisted.
 
-Lands at: `src/compiler/javascript.rs`.
+Lands at: `crates/zelkova-js/src/lib.rs`.
 
 ## 5 — Output is written per package, beside the root manifest
 
@@ -201,13 +201,13 @@ base name beside the `.zel` source — `Basics.zel`'s companion is `Basics.mjs`,
 before both can sit in `build/out/js/` together. Renaming the facade was rejected: its path is the
 one every importer builds from a module name (the rest of this decision), so renaming it would
 mean every specifier into a facade disagreeing with the plain [`module_file`
-naming](../../src/compiler/javascript.rs) every other module gets. The companion is renamed
+naming](../../crates/zelkova-js/src/lib.rs) every other module gets. The companion is renamed
 instead, to `<facade>.companion.mjs`, which cannot collide with a `module_file` path because a
 module name's segments are upper identifiers holding no `.`, so no emitted module's file name
 ever has two dots in it — including on a case-insensitive filesystem.
 
 Lands at: `compile_package`'s emission step, and the *Paths* section of
-`src/compiler/javascript.rs`, which is the only place a path into the output is built.
+`crates/zelkova-js/src/lib.rs`, which is the only place a path into the output is built.
 
 ## 6 — The generated code is checked in two halves, and `cargo test` does not run `node`
 

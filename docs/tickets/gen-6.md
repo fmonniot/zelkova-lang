@@ -3,11 +3,11 @@
 **Sizing:** small. One walk over a declaration's body with a notion of tail position, setting a
 flag. No emission and no rewriting.
 
-**Depends on:** `GEN-4`, closed — the IR is `src/compiler/ir/`.
+**Depends on:** `GEN-4`, closed — the IR is `crates/zelkova-compiler/src/ir/`.
 
 **Part of:** [`GEN-1`](gen-1.md).
 
-**Location:** the declaration and `Apply` nodes of the IR in `src/compiler/ir/`, and a new
+**Location:** the declaration and `Apply` nodes of the IR in `crates/zelkova-compiler/src/ir/`, and a new
 pass beside the one [`GEN-5`](gen-5.md) adds.
 
 **Decided ([`docs/spec/evaluation-semantics.md`](../spec/evaluation-semantics.md#recursion-and-tail-calls)):**

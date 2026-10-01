@@ -4,7 +4,7 @@
 change is never a one-file change* applies. The parser AST already represents what is missing,
 so the change is confined to `grammar.lalrpop` plus tests.
 
-**Location:** `src/compiler/parser/grammar.lalrpop` — the three pattern productions,
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — the three pattern productions,
 `Pattern`, `CasePattern` and `DeclPattern`.
 
 **Decided ([`docs/spec/patterns.md`](../spec/patterns.md), *Patterns nest*):** every pattern

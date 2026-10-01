@@ -3,9 +3,9 @@
 **Sizing:** medium. A grammar change with a whitespace-sensitive rule in it, which is the part
 worth being careful about.
 
-**Location:** `src/compiler/parser/grammar.lalrpop` — `AtomicExpr`, which carries a commented-out
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `AtomicExpr`, which carries a commented-out
 `<expr: AtomicExpr> "." <id: Ident> => Expression::Projection(…)` from before any of this was
-specified; `src/compiler/parser/mod.rs`'s `ExpressionKind`;
+specified; `crates/zelkova-syntax/src/parser/mod.rs`'s `ExpressionKind`;
 `canonical::Expression::from_parser_expression`.
 
 **Depends on:** [`LANG-52`](lang-52.md), hard. A `.` with whitespace before it is an accessor, so

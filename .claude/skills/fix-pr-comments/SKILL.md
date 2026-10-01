@@ -101,7 +101,7 @@ wrong with it. That is `standard` work. Go `deep` only when one of these holds:
   "this belongs in the unifier, not the annotator", "this error should not exist as its own
   variant". Implementing that is making the decision, not applying one.
 - **The fix lands in the cross-cutting paths** named in the policy: the `grammar.lalrpop` triad,
-  `src/compiler/typer/`, or `compile_package`'s error accumulation.
+  `crates/zelkova-compiler/src/typer/`, or `compile_package`'s error accumulation.
 - **A finding reverses an earlier round's decision** (`[blocking] Reversing round N-1's decision
   on …`). Two rounds disagreeing about the same code is the case where the tier is worth it.
 

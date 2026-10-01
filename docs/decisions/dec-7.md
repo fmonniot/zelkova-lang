@@ -39,7 +39,7 @@ primitive would need list coverage written as a special case beside it.
 
 The cost is a real one and worth stating: the bracket forms are read against three names —
 `List`, `Nil`, `Cons` — that the compiler holds. That is one step past holding `Int`, which it
-already does ([`typer/mod.rs`](../../src/compiler/typer/mod.rs) matches the name literally to
+already does ([`typer/mod.rs`](../../crates/zelkova-compiler/src/typer/mod.rs) matches the name literally to
 type an integer literal), and it is the price of a literal meaning anything at all.
 
 ## 3 — `::` is an ordinary operator in an expression, and a pattern production in a pattern

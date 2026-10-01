@@ -2,7 +2,7 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/canonical/mod.rs`, `do_types` — the `(tpe_name, union)` pairs go to
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs`, `do_types` — the `(tpe_name, union)` pairs go to
 `collect_accumulate`, which builds a `HashMap<Name, UnionType>` keyed by the type's name.
 
 **Decided by:** [`docs/spec/name-resolution.md`](../spec/name-resolution.md)'s *A name is
@@ -37,5 +37,5 @@ module duplicating several types reports all of them.
 **Acceptance:** the `expect=ok` block under *A name is declared at most once* in
 [`docs/spec/name-resolution.md`](../spec/name-resolution.md) goes **red** — retag it
 `expect=canonical-error:` with the new variant and delete the **Known gap:** paragraph above it.
-A `tests/compiler/canonical.rs` case asserting the variant and both spans, seen to fail before
+A `crates/zelkova-compiler/tests/canonical.rs` case asserting the variant and both spans, seen to fail before
 the fix.

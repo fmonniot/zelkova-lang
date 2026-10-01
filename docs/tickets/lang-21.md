@@ -4,9 +4,9 @@
 fails because the branch block is still open when the `)` arrives, not because a production is
 missing.
 
-**Location:** `src/compiler/parser/grammar.lalrpop` — `AtomicExpr`, which has a
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `AtomicExpr`, which has a
 `"(" <e: Expr> ")"` alternative, and the `case` alternative of `Expr`, which ends by consuming
-a `"close block"`. `src/compiler/parser/layout.rs` — the `CaseBlock` context and what closes
+a `"close block"`. `crates/zelkova-syntax/src/parser/layout.rs` — the `CaseBlock` context and what closes
 it.
 
 **Decided ([`docs/spec/expressions.md`](../spec/expressions.md), *`case … of`*):** a `case` is

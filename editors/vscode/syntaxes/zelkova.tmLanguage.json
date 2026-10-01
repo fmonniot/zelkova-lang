@@ -93,12 +93,12 @@
       ]
     },
     "reserved-words": {
-      "comment": "Exactly the spec's Reserved words block; tests/editor_grammar.rs fails if the two drift. `true` and `false` are deliberately absent: the spec does not reserve them (LANG-1 tracks the tokenizer, which still does).",
+      "comment": "Exactly the spec's Reserved words block; crates/zelkova-syntax/tests/editor_grammar.rs fails if the two drift. `true` and `false` are deliberately absent: the spec does not reserve them (LANG-1 tracks the tokenizer, which still does).",
       "name": "keyword.control.zelkova",
       "match": "(?<![\\p{L}\\p{N}_])(as|case|else|exposing|if|import|in|infix|let|module|of|then|type)(?![\\p{L}\\p{N}_])"
     },
     "not-yet-reserved-words": {
-      "comment": "docs/spec/type-classes.md reserves these when LANG-38 lands; they are highlighted ahead of the compiler. `where` is reserved only as a type variable and stays an ordinary identifier where a value is named, so a plain keyword scope over-highlights it there. tests/editor_grammar.rs names this list, and the allowance goes when LANG-38 adds the words to the spec's reserved list.",
+      "comment": "docs/spec/type-classes.md reserves these when LANG-38 lands; they are highlighted ahead of the compiler. `where` is reserved only as a type variable and stays an ordinary identifier where a value is named, so a plain keyword scope over-highlights it there. crates/zelkova-syntax/tests/editor_grammar.rs names this list, and the allowance goes when LANG-38 adds the words to the spec's reserved list.",
       "name": "keyword.control.zelkova",
       "match": "(?<![\\p{L}\\p{N}_])(class|instance|where)(?![\\p{L}\\p{N}_])"
     },

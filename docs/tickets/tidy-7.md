@@ -2,7 +2,7 @@
 
 **Sizing:** small (four string literals, no behaviour change).
 
-**Location:** `src/compiler/parser/error.rs` — the `Error::Tokenizer(err) => { ... }` arm of
+**Location:** `crates/zelkova-syntax/src/parser/error.rs` — the `Error::Tokenizer(err) => { ... }` arm of
 `Error::diagnostic`, specifically the `CharNotClosedError(None)`, `IndentationError`,
 `TabError` and `UnrecognizedToken` sub-arms.
 
@@ -45,7 +45,7 @@ free alongside the wording fix. This ticket is about the casing, not about that 
 go looking for other cleanup in the same match beyond what's listed here.
 
 **Acceptance:** the five string literals above read lowercase-first in
-`src/compiler/parser/error.rs`, `cargo build` and `cargo test --workspace` stay green (no test
+`crates/zelkova-syntax/src/parser/error.rs`, `cargo build` and `cargo test --workspace` stay green (no test
 currently asserts on this arm's exact text — a `grep -n` for the old capitalized strings in the
 file returns nothing after the change), and `cargo fmt --all --check` / `cargo clippy
 --workspace --all-features` stay clean.

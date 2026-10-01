@@ -44,7 +44,7 @@ until its functions can compile; this one adds only what the language's own synt
 `cargo run -- compile std/core` prints `parsed 9 modules` and lists all nine as checked, and
 `CLAUDE.md`'s baseline is updated in the
 same commit — the count is the smoke test and a stale one is worse than none.
-`tests/pipeline.rs::stdlib_package_compiles` covers it.
+`crates/zelkova/tests/pipeline.rs::stdlib_package_compiles` covers it.
 
 **No spec block goes red when this lands**, and that is not an oversight: a block in
 `docs/spec/` canonicalizes against no interfaces at all, so no example can name `std/core`'s

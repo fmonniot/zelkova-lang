@@ -2,7 +2,7 @@
 
 **Sizing:** small — two comments, no code change.
 
-**Location:** `src/compiler/parser/tokenizer.rs` — the doc comment on
+**Location:** `crates/zelkova-syntax/src/parser/tokenizer.rs` — the doc comment on
 `TokenizerErrorType::IntegerOverflow` (around `:161`), and the inline comment in
 `consume_number`'s `i64::from_str` arm (around `:986`).
 

@@ -29,7 +29,7 @@ place in its declaration.
 
 **2 — One IR, both targets, JavaScript first**
 ([decision 2](../decisions/dec-18.md#2--one-ir-serves-both-targets-and-javascript-is-written-first)).
-[`GEN-15`](gen-15.md) holds the WebAssembly questions, unscheduled; `src/compiler/ir/`'s module
+[`GEN-15`](gen-15.md) holds the WebAssembly questions, unscheduled; `crates/zelkova-compiler/src/ir/`'s module
 doc comment states what the IR owes it.
 
 **3 — A declaration emits as a plain n-ary JavaScript function**
@@ -67,7 +67,7 @@ growing a code-generation half.
 every emitter ticket needs them in one place: an `Int` is a `BigInt` and a literal emits `1n`
 ([`DEC-16` decision 5](../decisions/dec-16.md#5--on-javascript-an-int-is-a-bigint)); a `Float`
 is a number, a `Bool` a boolean, a `Char` a one-character string, all four recognised by
-qualified name through `src/compiler/scalars.rs`; a union value is
+qualified name through `crates/zelkova-compiler/src/scalars.rs`; a union value is
 `{$: "Ctor", a: …, b: …}` and a tuple an array
 ([the chapter](../spec/interop.md#a-union-crosses-as-a-tagged-value),
 [`DEC-6` decision 3](../decisions/dec-6.md#3--unions-cross-and-their-encoding-is-published-interop-interface)).

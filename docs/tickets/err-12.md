@@ -2,7 +2,7 @@
 
 **Sizing:** small. One check at a known point, plus the constant cleanup in *Approach*.
 
-**Location:** `src/compiler/parser/layout.rs` — `Layout::handle_next_token`, both the
+**Location:** `crates/zelkova-syntax/src/parser/layout.rs` — `Layout::handle_next_token`, both the
 context-stack bootstrap (`Offside { context: Context::TopLevelDeclaration, indent: start.column, .. }`,
 which appears twice) and the step-3 `_ =>` arm testing `token.span.start.column == 1`.
 

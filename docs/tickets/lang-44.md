@@ -4,8 +4,8 @@
 change* applies — `grammar.lalrpop`, the `parser` AST and the `canonical` conversion land
 together.
 
-**Location:** `src/compiler/parser/grammar.lalrpop`, which has no production consuming
-`Token::LBracket`; `src/compiler/parser/mod.rs`'s `ExpressionKind`; and
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop`, which has no production consuming
+`Token::LBracket`; `crates/zelkova-syntax/src/parser/mod.rs`'s `ExpressionKind`; and
 `canonical::Expression::from_parser_expression`.
 
 **Depends on:** [`LANG-46`](lang-46.md), hard. A literal is read against `List`, `Nil` and

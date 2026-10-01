@@ -7,8 +7,8 @@ Which one is a choice between a library change and a language rule.
 **Location:** `std/core/src/Basics.zel` — `add = Js.Basics.addInt` and every declaration shaped
 like it (`sub`, `mul`, `fdiv`, `idiv`, `pow`, `eq`, `neq`, `lt`, `gt`, `le`, `ge`, `and`, `or`,
 `xor`, `append`, `modBy`, `remainderBy`, `atan2`); `std/core/src/Bitwise.zel`, which is written
-the same way; `canonical::Module::emitted_arity` (`src/compiler/canonical/mod.rs`), which gives
-each of them arity 0; the *Calls* section of `src/compiler/javascript.rs`'s module doc.
+the same way; `canonical::Module::emitted_arity` (`crates/zelkova-compiler/src/canonical/mod.rs`), which gives
+each of them arity 0; the *Calls* section of `crates/zelkova-js/src/lib.rs`'s module doc.
 
 **Problem:** a call supplying every argument of a declaration whose arity is known is a direct
 call ([`DEC-18` decision
@@ -51,7 +51,7 @@ the two ways to remove it is a language rule.
 **Acceptance:**
 
 - A Rust test pins that `n + n`, compiled against `std/core`'s real `Basics`, is a direct call
-  (`tests/pipeline.rs`'s `check_std_core` supplies the real interfaces), and the pin goes red
+  (`crates/zelkova/tests/pipeline.rs`'s `check_std_core` supplies the real interfaces), and the pin goes red
   when the fix is reverted.
 - `cargo run -- test tests/fixtures/package_test_cross_module_calls` still reports all three
   tests passing.

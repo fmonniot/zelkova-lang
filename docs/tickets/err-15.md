@@ -2,9 +2,9 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/canonical/mod.rs` — the `Error::TypeNotFound(Name, NodeSpan)`
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — the `Error::TypeNotFound(Name, NodeSpan)`
 variant and the `None` arm of `Type::from_parser_type`'s `TypeKind::Unqualified` match that
-raises it (`env.find_type(name)` returning nothing); `src/compiler/canonical/environment.rs` —
+raises it (`env.find_type(name)` returning nothing); `crates/zelkova-compiler/src/canonical/environment.rs` —
 the `Environment` trait, `suggest_name`, and `RootEnvironment`/`ScopedEnvironment`'s
 `value_names`/`type_constructor_names`, which are the pattern to mirror.
 
@@ -29,11 +29,11 @@ delegating to `self.parent.type_names()` (a scope never binds a type, so there i
 add at that layer — `find_type` already delegates the same way). At the `None` arm of
 `Type::from_parser_type`, compute `suggest_name(name, env.type_names().into_iter())` and add it
 as a fourth field on `TypeNotFound`, matching the `Option<Name>` shape of the other two
-variants. `TypeNotFound`'s `labels()` arm (`src/compiler/canonical/mod.rs`, currently
+variants. `TypeNotFound`'s `labels()` arm (`crates/zelkova-compiler/src/canonical/mod.rs`, currently
 `primary(span, "no type of this name is in scope")`) appends `suggestion_suffix(&suggestion)`
 the same way `VariableNotFound`'s and `VariantNotFound`'s arms do.
 
-**Acceptance:** a `tests/compiler/canonical.rs` case with a module declaring `Widget` (or
+**Acceptance:** a `crates/zelkova-compiler/tests/canonical.rs` case with a module declaring `Widget` (or
 importing it) and a second module naming `Widgt` in a type annotation, asserting the returned
 `TypeNotFound`'s suggestion is `Some("Widget")`. A second case with no near-miss in scope
 asserts the suggestion is `None`, so the field cannot be filled in unconditionally. Mutation-check

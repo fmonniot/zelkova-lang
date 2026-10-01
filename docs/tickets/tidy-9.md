@@ -2,7 +2,7 @@
 
 **Sizing:** small. One function, no behaviour change.
 
-**Location:** `src/compiler/parser/mod.rs` — `Module::from_declarations`, the
+**Location:** `crates/zelkova-syntax/src/parser/mod.rs` — `Module::from_declarations`, the
 `_ => panic!("Invalid kind of declaration used in functions, report this error …")` arm in the
 `.map(|(name, decls)| …)` that assembles each `Function`.
 
@@ -34,7 +34,7 @@ Do not touch the `// TODO Error if more than function type is defined` above the
 `LANG-11` owns a repeated annotation, and folding it in here widens a cleanup into a language
 change.
 
-**Acceptance:** `grep -n 'panic!' src/compiler/parser/mod.rs` finds nothing outside
+**Acceptance:** `grep -n 'panic!' crates/zelkova-syntax/src/parser/mod.rs` finds nothing outside
 `#[cfg(test)]`. `cargo test --workspace` is unchanged and green, and
 `cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
 No new test is required, since no behaviour changes; if one is added, mutation-check it per

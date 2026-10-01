@@ -11,7 +11,7 @@ name of its own: a runner reports the value that held it instead.
 Exposed without its constructors, so nothing outside this module can build a `Test`
 except by way of `equal`, `check`, `task` or `succeeds`.
 
-The generated runner, `run.mjs` (`src/compiler/test_runner.rs`), reads these
+The generated runner, `run.mjs` (`crates/zelkova-test-runner/src/lib.rs`), reads these
 constructors by name, so the two change together:
 
 - `Pass` passes.

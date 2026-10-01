@@ -4,7 +4,7 @@
 purpose.
 **Status:** live. Extended by [DEC-4](dec-4.md#3--the-track-is-checked-for-links-and-not-for-examples),
 which brings `docs/decisions/` under the same link check.
-**Where the rule lives:** `tests/spec.rs` — `spec_cross_references_resolve` and
+**Where the rule lives:** `crates/zelkova-compiler/tests/spec.rs` — `spec_cross_references_resolve` and
 `spec_tag_vocabulary_is_documented` — and [`docs/tickets/README.md`](../tickets/README.md)'s
 closing convention, which says what bill this lands and who pays it.
 
@@ -59,7 +59,7 @@ in use at two blocks in `docs/spec/lexical-structure.md`.
 ## What is deliberately not checked
 
 **The `canonical::Error` variant names.** `conventions.md` documents them by rule — "matched
-against the real variant names in `src/compiler/canonical/mod.rs`'s `Error` enum" — and not by
+against the real variant names in `crates/zelkova-compiler/src/canonical/mod.rs`'s `Error` enum" — and not by
 list, so there is no prose enumeration to drift. A check would have to invent the list it then
 verified.
 

@@ -2,9 +2,9 @@
 
 **Sizing:** medium. The algorithm is the work; the wiring already exists.
 
-**Location:** `src/compiler/exhaustiveness.rs` — `check`, which inspects nothing and returns
+**Location:** `crates/zelkova-compiler/src/exhaustiveness.rs` — `check`, which inspects nothing and returns
 `Ok(())` for every module. `Error::NonExhaustiveMatch` is defined and renders, and nothing
-constructs it. `check_module` (`src/compiler/mod.rs`) already calls the phase and already
+constructs it. `check_module` (`crates/zelkova-compiler/src/lib.rs`) already calls the phase and already
 threads its `Vec<Error>` into the accumulated diagnostics.
 
 **Decided ([`docs/spec/patterns.md`](../spec/patterns.md), *A pattern that can fail, and one
@@ -46,13 +46,13 @@ support. And `CLAUDE.md`'s *A pass that emitted an error must not report success
 `exhaustiveness::check` returns `Result<_, Vec<Error>>` so that one uncovered `case` does not
 hide the next.
 
-**Note — this gap has no red test behind it.** `tests/spec.rs` stops at the type checker and
+**Note — this gap has no red test behind it.** `crates/zelkova-compiler/tests/spec.rs` stops at the type checker and
 never runs `exhaustiveness::check`, so the chapter's block stays `expect=ok` and green when
 this lands. Its `**Known gap:**` paragraph has to be deleted by
 hand as part of this ticket; nothing will fail to remind you.
 
 **Acceptance:** the example above is rejected with `Error::NonExhaustiveMatch`, pointing at
-the `case`, with tests in `tests/typer.rs` (which reaches `check_module`, and so the phase)
+the `case`, with tests in `crates/zelkova-compiler/tests/typer.rs` (which reaches `check_module`, and so the phase)
 covering a missing variant, a `case` made exhaustive by a wildcard, and a `case` over a
 literal with no catch-all. `cargo run -- compile std/core` still prints `parsed 8 modules` and
 lists all eight as checked — `std/core/src/` is the real test of whether the algorithm is

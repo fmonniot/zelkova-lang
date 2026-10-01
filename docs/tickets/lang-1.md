@@ -2,14 +2,14 @@
 
 **Sizing:** medium. Small in the parser, and it reaches through both ASTs into the typer.
 
-**Location:** `src/compiler/parser/tokenizer.rs` (`keyword`, `Token::True`/`Token::False`),
-`src/compiler/parser/grammar.lalrpop` (the `extern` token list and `Lit`), the
-`Literal::Bool` variant in `src/compiler/parser/mod.rs` and its canonical counterparts
+**Location:** `crates/zelkova-syntax/src/parser/tokenizer.rs` (`keyword`, `Token::True`/`Token::False`),
+`crates/zelkova-syntax/src/parser/grammar.lalrpop` (the `extern` token list and `Lit`), the
+`Literal::Bool` variant in `crates/zelkova-syntax/src/parser/mod.rs` and its canonical counterparts
 (`canonical::ExpressionKind::Bool`, `canonical::PatternKind::Bool`), and in
-`src/compiler/typer/mod.rs` the `TermKind::Bool` and `TypedTermKind::Bool` variants with
+`crates/zelkova-compiler/src/typer/mod.rs` the `TermKind::Bool` and `TypedTermKind::Bool` variants with
 the two arms that build them (`canonical_expr_to_term`'s `ExpressionKind::Bool`,
 `translate_pattern`'s `PatternKind::Bool`) plus the `TypedTermKind::Bool` arm in
-`src/compiler/typer/constraint.rs`. `typer::bool_type` is not one of them: an `if`
+`crates/zelkova-compiler/src/typer/constraint.rs`. `typer::bool_type` is not one of them: an `if`
 condition still needs a `Bool` no source spelled.
 
 **Decided (SPEC-2, by the language owner):** Zelkova has no boolean literal syntax. `Bool` is

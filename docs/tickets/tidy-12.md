@@ -3,13 +3,13 @@
 **Sizing:** small. `cargo fix --edition` does the source changes. It grows only if the 2024
 style edition's reformatting is large enough to want reviewing by crate.
 
-**Depends on:** [`TOOL-5`](tool-5.md), which creates the manifests this ticket edits. Doing it
+**Depends on:** [`TOOL-5`](README.md), which creates the manifests this ticket edits. Doing it
 first would put a repository-wide reformat underneath a repository-wide file move.
 
 **Location:** `Cargo.toml` — `[workspace.package]`; the `Cargo.toml` of each of the five
 crates under `crates/`, and of `tools/spec-doc` and `tools/spec-site`.
 
-**Found while** settling [`TOOL-5`](tool-5.md)'s open decisions, which left the edition alone
+**Found while** settling [`TOOL-5`](README.md)'s open decisions, which left the edition alone
 so that its diff stays a move.
 
 **Problem:** the compiler is on `edition = "2018"`, and the two crates under `tools/` are on

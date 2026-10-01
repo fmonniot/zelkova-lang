@@ -4,7 +4,7 @@
 step-3 match; what makes it medium is that the obvious arm rests on an assumption that expires
 — see *Approach*.
 
-**Location:** `src/compiler/parser/layout.rs` — `Layout::handle_next_token`, the step-3
+**Location:** `crates/zelkova-syntax/src/parser/layout.rs` — `Layout::handle_next_token`, the step-3
 `match (&token.value, &offside.context)` and its `_ =>` fallthrough; `Context::CaseBlock`,
 `Context::CaseBranch`, `Offside::min_indent`.
 
@@ -72,7 +72,7 @@ grammar, so "new branch" and "continuation of the previous expression" look alik
    looks like a branch indented too far", which is knowledge the grammar does not have and
    arguably should not grow.
 
-**Acceptance:** a test — `tests/compiler/parser/` is where the layout-level ones live — that
+**Acceptance:** a test — `crates/zelkova-syntax/tests/parser/` is where the layout-level ones live — that
 feeds the four-line example above through `parser::parse` and asserts on the resulting error:
 its message names the misindentation, and its primary label sits on the `B` (or on the line's
 leading whitespace), not on the `->` two tokens later. Assert on the variant and on

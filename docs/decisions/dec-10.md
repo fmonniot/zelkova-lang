@@ -24,7 +24,7 @@ where it could in principle inspect the thing it is trusting.
 
 Three facts about the tree bound every candidate below, and none of them is a matter of effort:
 
-- **There is no evaluator.** `src/compiler/` ends at the typer, `exhaustiveness.rs` is a stub,
+- **There is no evaluator.** `crates/zelkova-compiler/src/` ends at the typer, `exhaustiveness.rs` is a stub,
   and code generation has not started ([`GEN-1`](../tickets/gen-1.md)). Nothing runs a Zelkova
   expression, at compile time or at any other time.
 - **A package's tests run under `node`, not in the compiler.** A module under `tests/` is

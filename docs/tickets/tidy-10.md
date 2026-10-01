@@ -3,11 +3,11 @@
 **Sizing:** small-to-medium — a shape change that touches several call sites but adds no new
 logic; mostly moving an existing `usize` into a tuple in place of a second map.
 
-**Location:** `src/compiler/mod.rs` — `Interface`'s `values`, `infix_functions` and `arities`
-fields; `src/compiler/canonical/mod.rs` — `Module::to_interface`, which builds all three;
-`src/compiler/typer/mod.rs` — the two `.unwrap_or(0)` sites that read `arities` (building
+**Location:** `crates/zelkova-compiler/src/lib.rs` — `Interface`'s `values`, `infix_functions` and `arities`
+fields; `crates/zelkova-compiler/src/canonical/mod.rs` — `Module::to_interface`, which builds all three;
+`crates/zelkova-compiler/src/typer/mod.rs` — the two `.unwrap_or(0)` sites that read `arities` (building
 `foreign_arities` from `interface.arities.get(name)`, and `foreign_arity`'s own
-`self.foreign_arities.get(qname)`); every hand-built `Interface` in `tests/support/mod.rs` and
+`self.foreign_arities.get(qname)`); every hand-built `Interface` in `crates/zelkova-compiler/tests/support/mod.rs` and
 inline in test files.
 
 **Problem:** `arities: HashMap<Name, usize>` is kept beside `values: HashMap<Name, (NodeSpan,
@@ -41,14 +41,14 @@ rather than asking for it as part of that fix.
 an arity by construction and the omission becomes unrepresentable. This is the same move
 `CLAUDE.md`'s `Tuple<T>` invariant already made for tuple arity: put the rule in the *shape* of
 the type rather than in a check kept in step by hand across two collections. Once done, both
-`unwrap_or(0)` fallbacks in `src/compiler/typer/mod.rs` go away, `Interface::arities` is
-deleted, and every hand-built interface in `tests/support/mod.rs` and elsewhere is updated to
+`unwrap_or(0)` fallbacks in `crates/zelkova-compiler/src/typer/mod.rs` go away, `Interface::arities` is
+deleted, and every hand-built interface in `crates/zelkova-compiler/tests/support/mod.rs` and elsewhere is updated to
 the new tuple shape (a parameterless binding still writes arity `0` there, just in the same
 tuple as its type).
 
 **Acceptance:**
 
 - `Interface` has no `arities` field; `values` and `infix_functions` carry arity in their tuple.
-- `grep -n "unwrap_or(0)" src/compiler/typer/mod.rs` is empty.
+- `grep -n "unwrap_or(0)" crates/zelkova-compiler/src/typer/mod.rs` is empty.
 - `cargo test --workspace` is green.
 - `cargo run -- compile std/core` still prints `parsed 8 modules`, lists all eight, and exits 0.

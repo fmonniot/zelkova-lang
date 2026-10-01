@@ -1,0 +1,13 @@
+[package]
+name = "zelkova-js"
+version.workspace = true
+authors.workspace = true
+edition = "2018"
+
+[dependencies]
+zelkova-compiler = { path = "../zelkova-compiler" }
+zelkova-syntax = { path = "../zelkova-syntax" }
+
+[dev-dependencies]
+codespan-reporting = "0.13"
+indoc = "2.0"

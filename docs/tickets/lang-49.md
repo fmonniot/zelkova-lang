@@ -3,8 +3,8 @@
 **Sizing:** medium. A grammar change, so `grammar.lalrpop`, the `parser` AST's `PatternKind` and
 the canonical conversion land together.
 
-**Location:** `src/compiler/parser/grammar.lalrpop`'s pattern productions;
-`src/compiler/parser/mod.rs`'s `PatternKind`; `canonical::Pattern::from_parser_pattern`.
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop`'s pattern productions;
+`crates/zelkova-syntax/src/parser/mod.rs`'s `PatternKind`; `canonical::Pattern::from_parser_pattern`.
 
 **Depends on:** [`LANG-47`](lang-47.md), hard — there is no brace token.
 

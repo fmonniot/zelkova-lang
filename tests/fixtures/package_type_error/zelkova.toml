@@ -2,7 +2,7 @@
 # names are reserved for `zelkova-core` alone, so this package cannot declare its own
 # `Basics` the way it once stood in for one. `acme-widgets` is not imported by anything
 # below — it exists so that `a_build_with_a_failing_module_writes_nothing`
-# (`tests/pipeline.rs`) has a dependency that checks cleanly while this package's own
+# (`crates/zelkova/tests/pipeline.rs`) has a dependency that checks cleanly while this package's own
 # `Mismatch` does not, which is what makes the guards in `compile` (rather than
 # `compile_in_build`'s `None` for a failing package) the only thing keeping
 # `acme-widgets`'s and `zelkova-core`'s modules off disk.

@@ -2,9 +2,9 @@
 
 **Sizing:** medium.
 
-**Location:** `src/compiler/canonical/environment.rs` — `RootEnvironment::insert_top_level_value`
+**Location:** `crates/zelkova-compiler/src/canonical/environment.rs` — `RootEnvironment::insert_top_level_value`
 and `insert_union_type`, both of which `HashMap::insert` over whatever `process_import` already
-put there; `src/compiler/canonical/mod.rs` — `do_values` (which calls the first, for every
+put there; `crates/zelkova-compiler/src/canonical/mod.rs` — `do_values` (which calls the first, for every
 top-level binding, before resolving any body) and the `for (n, t) in types.iter()` loop in
 `canonicalize` (which calls the second).
 
@@ -69,7 +69,7 @@ there or carrying the import span forward; whichever way, the message names the 
 **Acceptance:** the two `expect=ok` blocks under *A top-level name comes from exactly one place*
 in [`docs/spec/name-resolution.md`](../spec/name-resolution.md) (`module Main` and `module
 Other` of the `package=clash` group) go **red** — retag both `expect=canonical-error:` with the
-new variant and delete the **Known gap:** paragraph above them. A `tests/compiler/canonical.rs`
+new variant and delete the **Known gap:** paragraph above them. A `crates/zelkova-compiler/tests/canonical.rs`
 case for each of the three shapes — a value entry, a type entry, and `exposing (..)` — seen to
 fail before the fix. `cargo run -- compile std/core` still prints `parsed 8 modules` and lists
 all eight: `std/core` imports `Basics` openly in every module, so this check is the first thing

@@ -4,7 +4,7 @@
 exposed, and would be caught by `BUG-14`'s check if exposed by name, disappears from the
 interface instead, with no diagnostic anywhere).
 
-**Location:** `src/compiler/canonical/mod.rs` — `Module::to_interface`'s `infix_functions`
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `Module::to_interface`'s `infix_functions`
 construction, and `do_exports`'s `ExposedKind::Operator` arm.
 
 **Problem:** [`BUG-14`](../tickets/README.md) made `do_exports` reject an exposed `Lower`
@@ -51,7 +51,7 @@ with a secondary label on the unannotated function declaration, mirroring `BUG-1
 
 **Acceptance:** a module declaring `infix left 6 (+) = add` with `add` unannotated and
 `exposing ((+))` raises the same "exposed value not annotated" error `BUG-14` introduced,
-naming `add` — a canonicalization test. A `tests/pipeline.rs` test with two modules, the
+naming `add` — a canonicalization test. A `crates/zelkova/tests/pipeline.rs` test with two modules, the
 second using the operator, asserts the error lands on the *exporting* module rather than the
 importer failing to resolve `(+)`. A module keeping the infix and its function private still
 compiles. `cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight

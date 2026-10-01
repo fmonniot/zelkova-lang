@@ -1,34 +1,22 @@
 [workspace]
-members = ["tools/spec-doc", "tools/spec-site"]
+resolver = "2"
+members = [
+    "crates/zelkova-syntax",
+    "crates/zelkova-compiler",
+    "crates/zelkova-js",
+    "crates/zelkova-test-runner",
+    "crates/zelkova",
+    "tools/spec-doc",
+    "tools/spec-site",
+]
+default-members = [
+    "crates/zelkova-syntax",
+    "crates/zelkova-compiler",
+    "crates/zelkova-js",
+    "crates/zelkova-test-runner",
+    "crates/zelkova",
+]
 
-[package]
-name = "zelkova-lang"
+[workspace.package]
 version = "0.3.0"
-authors = ["François Monniot <francoismonniot@gmail.com>"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[[bin]]
-name = "zelkova"
-path = "src/main.rs"
-
-[build-dependencies]
-lalrpop = "0.23.1"
-
-[dependencies]
-log = "0.4"
-codespan-reporting = "0.13"
-env_logger = "0.11"
-unic-ucd-category = "0.9"
-lalrpop-util = "0.23.1"
-walkdir = "2.5"
-petgraph = "0.8"
-toml = "1.1.6"
-serde = { version = "1.0.229", features = ["derive"] }
-clap = { version = "4", features = ["derive"] }
-
-[dev-dependencies]
-indoc = "2.0"
-serde_json = "1.0.151"
-spec-doc = { path = "tools/spec-doc" }
+authors = ["François Monniot <francoismonniot@gmail.com>"]

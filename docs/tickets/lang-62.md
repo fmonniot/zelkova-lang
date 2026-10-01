@@ -5,10 +5,10 @@ before the root's own entries are walked. What could make it bigger is deciding 
 compiler's copy of core sits, which is a toolchain question this ticket has to answer before it
 can do anything.
 
-**Location:** `src/compiler/resolve.rs` — `resolve`, which seeds the build from the root
+**Location:** `crates/zelkova-compiler/src/resolve.rs` — `resolve`, which seeds the build from the root
 manifest's `dependencies` and nothing else; `CORE_PACKAGE`; and
 `ResolvedPackage::seen_unwrapped`, which is the half of the rule that already holds.
-`src/main.rs`, which points the compiler at `std/core` — the copy in question, in this repo.
+`crates/zelkova/src/main.rs`, which points the compiler at `std/core` — the copy in question, in this repo.
 
 **Decided ([*`zelkova-core` is a dependency of every
 package*](../spec/packages.md#zelkova-core-is-a-dependency-of-every-package)):** `zelkova-core`
@@ -27,7 +27,7 @@ other half is missing entirely: nothing supplies core. A package that needs it w
 only in a package that asked for them, and a package that forgot cannot name `Int`.
 
 The reason it is missing is that a compiler shipping its own core has to know where that copy
-sits, and nothing in the tree says where. `std/core` is found today only because `src/main.rs`
+sits, and nothing in the tree says where. `std/core` is found today only because `crates/zelkova/src/main.rs`
 passes it as the package to compile.
 
 **Approach:**
@@ -51,7 +51,7 @@ closing it without a successor would have left the rule as spec text with nothin
 The **Not implemented:** paragraph in that chapter section names this ticket and is deleted
 when it lands.
 
-**Acceptance:** a `tests/pipeline.rs` test over a fixture package whose manifest has an **empty**
+**Acceptance:** a `crates/zelkova/tests/pipeline.rs` test over a fixture package whose manifest has an **empty**
 `dependencies` and whose module names `Int` — which fails today as a type that resolves to
 nothing — compiling green. `tests/fixtures/package_core_basics_collision` and
 `a_dependencys_bitwise_collides_with_cores` must stay green: a package of its own declaring

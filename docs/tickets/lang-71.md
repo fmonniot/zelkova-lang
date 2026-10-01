@@ -3,11 +3,11 @@
 **Sizing:** small-to-medium. Every option below is a small edit to the grammar, but the choice
 between them is a language decision, and one of them changes what a context is on the parser AST.
 
-**Location:** `src/compiler/parser/grammar.lalrpop` — `ConstrainedType` and `AtomicType`, whose
-tuple productions stop at three elements; `src/compiler/tuple.rs` — `Tuple<T>`;
-`src/compiler/canonical/mod.rs` — `validate_context`, whose doc comment already says a list of
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `ConstrainedType` and `AtomicType`, whose
+tuple productions stop at three elements; `crates/zelkova-syntax/src/tuple.rs` — `Tuple<T>`;
+`crates/zelkova-compiler/src/canonical/mod.rs` — `validate_context`, whose doc comment already says a list of
 two or three is the largest shape that reaches it; `parser::FunType::context`
-(`src/compiler/parser/mod.rs`).
+(`crates/zelkova-syntax/src/parser/mod.rs`).
 
 **Depends on:** none.
 
@@ -55,8 +55,8 @@ is inherited here by a construct that is not a type.
 **Acceptance:** whichever is chosen, `cargo test --test spec` is green with the four-constraint
 block in [`docs/spec/type-classes.md`](../spec/type-classes.md) retagged for the result (`expect=ok`
 for 1 and 2, `expect=parse-error` under a stated rule for 3) and its `**Known gap:**` paragraph
-deleted or turned into the rule. For 1 and 2, a test in `tests/compiler/parser/types.rs` asserts
+deleted or turned into the rule. For 1 and 2, a test in `crates/zelkova-syntax/tests/parser/types.rs` asserts
 the four constraints reach `FunType::context`, each with a span, and a test in
-`tests/compiler/canonical.rs` puts an `InvalidConstraint` caret under the fourth of four when it is
+`crates/zelkova-compiler/tests/canonical.rs` puts an `InvalidConstraint` caret under the fourth of four when it is
 malformed. Each is seen red with the new production removed. `cargo run -- compile std/core` still
 prints `parsed 8 modules` and lists all eight as checked.

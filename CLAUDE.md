@@ -29,12 +29,12 @@ cargo clippy --workspace --all-features
 
 Bare `cargo test` runs only the compiler's own tests and silently skips `tools/spec-site`'s —
 use `--workspace`. `tools/spec-doc` carries no tests of its own; its logic is exercised through
-`tests/spec.rs`, which depends on it.
+`crates/zelkova-compiler/tests/spec.rs`, which depends on it.
 
 `cargo run -- compile std/core` prints `parsed 10 modules`, then lists all ten as checked, and
 **exits 0**. It is a genuine pass/fail smoke test: any error, any module missing from the
 checked list, a parse failure or a panic is a regression you introduced.
-`tests/pipeline.rs::stdlib_package_compiles` pins the same thing as a test. A bare `zelkova` or
+`crates/zelkova/tests/pipeline.rs::stdlib_package_compiles` pins the same thing as a test. A bare `zelkova` or
 `cargo run` with no subcommand compiles nothing — it prints usage and exits non-zero, clap's
 default for a missing required subcommand.
 
@@ -55,11 +55,11 @@ closes, tracked there rather than left red in CI. Any error, failure, or a diffe
 what's left is a regression you introduced.
 
 `.github/workflows/rust.yml` gates a PR on `fmt`, on `clippy` with `-D warnings`, and on a
-`rustdoc` job that builds the crate's docs with the flags `rustdoc.yml` deploys them with. To
+`rustdoc` job that builds the crates' docs with the flags `rustdoc.yml` deploys them with. To
 reproduce that last one locally:
 
 ```sh
-RUSTFLAGS="-D warnings -W unreachable-pub" RUSTDOCFLAGS="-D warnings" cargo doc -p zelkova-lang --no-deps
+RUSTFLAGS="-D warnings -W unreachable-pub" RUSTDOCFLAGS="-D warnings" cargo doc --no-deps -p zelkova-syntax -p zelkova-compiler -p zelkova-js -p zelkova-test-runner -p zelkova
 ```
 
 ## Where work is tracked
@@ -79,7 +79,7 @@ Three directories, each with an index to read before touching it:
 
 The published site — the landing page, the rendered spec, and the rustdoc, deployed from
 `.github/workflows/rustdoc.yml` — is built by [`tools/spec-site/`](tools/spec-site/src/main.rs),
-which shares its `expect=` scanner with `tests/spec.rs` via `tools/spec-doc/`.
+which shares its `expect=` scanner with `crates/zelkova-compiler/tests/spec.rs` via `tools/spec-doc/`.
 
 Do not leave a `TODO` comment in code for anything worth a ticket. A comment in a file nobody
 opens is not a record. (The codebase still has plenty of pre-existing ones; don't add more.)
@@ -96,29 +96,35 @@ them.
 
 ## Architecture
 
-The pipeline is documented at the top of `src/compiler/mod.rs`. `check_package` is pointed
-at a package directory and checks that package and everything it depends on, printing and
-writing nothing; `src/driver.rs`'s `compile_package` is what emits, writes and reports what
+The compiler is five crates under `crates/`, each depending only on those before it:
+`zelkova-syntax`, `zelkova-compiler`, `zelkova-js`, `zelkova-test-runner`, and `zelkova` (the
+driver and the binary). The root `Cargo.toml` is a virtual manifest.
+
+The pipeline is documented at the top of `crates/zelkova-compiler/src/lib.rs`. `check_package`
+is pointed at a package directory and checks that package and everything it depends on,
+printing and writing nothing; `crates/zelkova/src/lib.rs`'s `compile_package` is what emits,
+writes and reports what
 it found. `compile_in_build` is one package of that build, and `check_module` runs the per-module
 phases and hands back a `CheckedModule` — the `canonical::Module` an `Interface` is built
 from, beside the `ir::Module` a backend will read.
 
 | Phase | Where | State |
 |---|---|---|
-| Manifest | `src/compiler/manifest.rs` | reads and validates `zelkova.toml` before anything else; the package's name and its two source roots come from it. Errors are `CompilationError::Manifest` and go back unrendered |
-| Package resolution | `src/compiler/resolve.rs` | follows `dependencies`, plus the root package's `test-dependencies`, to the other packages (`path` sources only — a `git` one is reported, not fetched) and orders them dependencies-first; then, per package, builds the one map of module names it can import and reports a name two modules both answer to. Steps below run once per package |
-| Source loading | `src/compiler/source/` | walks a package's two source roots for `.zel`, maps each path to a module name under its own root. `tests/` is walked for the package whose tests were asked for and for no other |
-| Tokenizing | `src/compiler/parser/tokenizer.rs` | hand-written, Unicode-aware lexer producing `Spanned<Position, Token>` |
-| Layout | `src/compiler/parser/layout.rs` | offside rule; injects `OpenBlock`/`CloseBlock`. 2-space indent, no tabs |
-| Parsing | `src/compiler/parser/grammar.lalrpop` | LALRPOP grammar → `parser::Module`. Compiled by `build.rs` |
-| Dependency resolution | `src/compiler/dependencies.rs` | petgraph; Tarjan SCC for cycles; yields a topological order |
-| Canonicalization | `src/compiler/canonical/` | resolves imports against `Interface`s, qualifies names, validates exports → `canonical::Module` |
-| Type checking | `src/compiler/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`. **Wired into `check_module`** |
-| Exhaustiveness | `src/compiler/exhaustiveness.rs` | **stub** — `check` inspects nothing and accepts every module. `Error::NonExhaustiveMatch` exists and renders, but nothing constructs it yet |
-| Backend IR | `src/compiler/ir/` | the shape a backend reads: a type on every node, the four kinds of name apart, arity, saturation and a constructor's place in its declaration. `ir::build` turns the canonical module and what the typer solved into one `ir::Module`. Its module doc comment is where the WebAssembly constraints are written, and is what to read before changing the shape |
-| Code generation | `src/compiler/javascript.rs`, `src/compiler/output.rs` | `javascript::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `driver::compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `javascript.rs`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included, and an `unsafe` facade's forwarding code runs its companion's result through the predicate of the declared type (*The boundary check*); an effectful facade's call site builds a `Task` over the runtime's `$effect` (`Ok`, `Threw`, `Malformed`); it refuses a facade with no companion, a facade result no predicate decides, and a module holding a declaration the typer could not check. Its module doc comment has the shape, the representations and the call rule |
+| Manifest | `crates/zelkova-compiler/src/manifest.rs` | reads and validates `zelkova.toml` before anything else; the package's name and its two source roots come from it. Errors are `CompilationError::Manifest` and go back unrendered |
+| Package resolution | `crates/zelkova-compiler/src/resolve.rs` | follows `dependencies`, plus the root package's `test-dependencies`, to the other packages (`path` sources only — a `git` one is reported, not fetched) and orders them dependencies-first; then, per package, builds the one map of module names it can import and reports a name two modules both answer to. Steps below run once per package |
+| Source loading | `crates/zelkova-compiler/src/source/` | walks a package's two source roots for `.zel`, maps each path to a module name under its own root. `tests/` is walked for the package whose tests were asked for and for no other |
+| Tokenizing | `crates/zelkova-syntax/src/parser/tokenizer.rs` | hand-written, Unicode-aware lexer producing `Spanned<Position, Token>` |
+| Layout | `crates/zelkova-syntax/src/parser/layout.rs` | offside rule; injects `OpenBlock`/`CloseBlock`. 2-space indent, no tabs |
+| Parsing | `crates/zelkova-syntax/src/parser/grammar.lalrpop` | LALRPOP grammar → `parser::Module`. Compiled by `crates/zelkova-syntax/build.rs` |
+| Dependency resolution | `crates/zelkova-compiler/src/dependencies.rs` | petgraph; Tarjan SCC for cycles; yields a topological order |
+| Canonicalization | `crates/zelkova-compiler/src/canonical/` | resolves imports against `Interface`s, qualifies names, validates exports → `canonical::Module` |
+| Type checking | `crates/zelkova-compiler/src/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`. **Wired into `check_module`** |
+| Exhaustiveness | `crates/zelkova-compiler/src/exhaustiveness.rs` | **stub** — `check` inspects nothing and accepts every module. `Error::NonExhaustiveMatch` exists and renders, but nothing constructs it yet |
+| Backend IR | `crates/zelkova-compiler/src/ir/` | the shape a backend reads: a type on every node, the four kinds of name apart, arity, saturation and a constructor's place in its declaration. `ir::build` turns the canonical module and what the typer solved into one `ir::Module`. Its module doc comment is where the WebAssembly constraints are written, and is what to read before changing the shape |
+| Code generation | `crates/zelkova-js/src/lib.rs`, `crates/zelkova-js/src/output.rs` | `zelkova_js::emit` turns one `CheckedModule` into the text of an ES module. Once the whole build has checked, `zelkova::compile_package` emits every module and writes them, the runtime and each facade's companion to `build/out/js/` beside the root manifest — or nothing, if anything failed; `zelkova-js`'s *Paths* section is the layout. It emits every module of `std/core`, `case` included, and an `unsafe` facade's forwarding code runs its companion's result through the predicate of the declared type (*The boundary check*); an effectful facade's call site builds a `Task` over the runtime's `$effect` (`Ok`, `Threw`, `Malformed`); it refuses a facade with no companion, a facade result no predicate decides, and a module holding a declaration the typer could not check. Its module doc comment has the shape, the representations and the call rule |
 
-`Name` (`src/compiler/name.rs`) is an unqualified identifier; `QualName` is one that carries
+`Name` (`crates/zelkova-syntax/src/name.rs`, re-exported by `zelkova_compiler::name`) is an
+unqualified identifier; `QualName` (`crates/zelkova-compiler/src/name.rs`) is one that carries
 its module. Everything after parsing should be reaching for `QualName`.
 
 ## Standing invariants
@@ -133,7 +139,7 @@ it describes.
 - **A pass that emitted an error must not report success.** `check_package` accumulates
   `CompilationError`s rather than stopping at the first one, `driver::compile_package` adds
   each to its own accumulator of `BuildError`s, and that accumulation *is* the return value:
-  empty is `Ok(())`, non-empty is `Err(BuildError::Many(..))`, and `src/main.rs` exits
+  empty is `Ok(())`, non-empty is `Err(BuildError::Many(..))`, and `crates/zelkova/src/main.rs` exits
   non-zero on `Err`. A new failure path pushes onto that vector; nothing
   is rendered and then dropped. Rendering diagnostics and returning `Ok` regardless was
   `BUG-1`. The per-module phases have the same *shape* one level down — `canonicalize`,
@@ -143,7 +149,7 @@ it describes.
   `check_module` tags each vector with the module's `Name`, because a phase only ever sees one
   module.
 - **An error has to describe itself, and say where.** Every phase error implements `PhaseError`
-  (`src/compiler/mod.rs`): a `message()` written in the vocabulary of the user's source, plus
+  (`crates/zelkova-compiler/src/lib.rs`): a `message()` written in the vocabulary of the user's source, plus
   optional `notes()` and `labels()`. `CompilationError::as_diagnostic`, and the two functions
   it shares with `driver::BuildError::as_diagnostic` (`phase_diagnostic` and
   `plain_diagnostic`), are the only places a `codespan_reporting::Diagnostic` is ever built,
@@ -157,7 +163,7 @@ it describes.
   `parser/mod.rs`, and the `from_parser*` conversions in `canonical/mod.rs` move together, in
   the same commit. Splitting them leaves the tree uncompilable or, worse, silently dropping a
   construct during canonicalization.
-- **Tuples are size 2 or 3 only**, matching Elm, and `Tuple<T>` (`src/compiler/tuple.rs`) is
+- **Tuples are size 2 or 3 only**, matching Elm, and `Tuple<T>` (`crates/zelkova-syntax/src/tuple.rs`) is
   where that rule is written down — in the *shape* of the type rather than in a check, so no
   other arity is representable. Don't reintroduce a `Vec` or an `Option`-shaped third element
   on either AST: three separate arity checks that disagreed was `AST-2`. The module's doc
@@ -183,22 +189,27 @@ it describes.
 
 ## Testing notes
 
-- `tests/compiler_tests.rs` is the integration entry point; it declares the `tests/compiler/`
-  submodules. A new file under `tests/compiler/` has to be registered there or it never runs.
-- `tests/support/mod.rs` holds the shared helpers — `test_package()`, `parse_source()`,
+- Each crate's integration tests are under its own `tests/`, one binary per top-level file.
+  The parser tests are the exception: `crates/zelkova-syntax/tests/parser_tests.rs` declares
+  the `tests/parser/` submodules, and a new file there has to be registered in it or it never
+  runs.
+- `crates/zelkova-compiler/tests/support/mod.rs` holds the shared helpers — `test_package()`, `parse_source()`,
   `canonicalize_standalone()`, `canonicalize_with_interfaces()`, `maybe_interface()`,
   `basics_interface()`, `char_interface()`. Reach for these before writing a new harness. A
   type name that resolves to nothing is a canonicalization error, so a standalone module
   checked against an empty interface map cannot name `Int`, `Char` or `Bool` at all — put
   `basics_interface()` and `char_interface()` in the map, which is also what makes a bare
-  `Int` the scalar `Basics.Int` rather than some other declaration of the same spelling. Top-level test binaries (`tests/typer.rs`,
-  `tests/pipeline.rs`, `tests/ir.rs`, `tests/javascript.rs`) get them with a plain `mod support;`; files nested under
-  `tests/compiler/` need `#[path = "../support/mod.rs"]`.
-- Five layers exist: `tests/compiler/canonical.rs` (source string → `canonical::Module`
-  assertions), `tests/typer.rs` (source string → expected type or expected error),
-  `tests/pipeline.rs` (`check_module` end-to-end, including on real `std/core/src/` modules),
-  `tests/ir.rs` (source string → the `ir::Module` a backend reads), and
-  `tests/javascript.rs` (source string → the JavaScript text it emits as).
+  `Int` the scalar `Basics.Int` rather than some other declaration of the same spelling. The
+  test binaries of `crates/zelkova-compiler/tests/` get them with a plain `mod support;`;
+  `crates/zelkova-js/tests/javascript.rs` and `crates/zelkova/tests/pipeline.rs` need
+  `#[path = "../../zelkova-compiler/tests/support/mod.rs"]`. A test that builds a path to
+  `std/`, `tests/fixtures/` or `docs/` from `CARGO_MANIFEST_DIR` joins `../..` first.
+- Five layers exist: `crates/zelkova-compiler/tests/canonical.rs` (source string →
+  `canonical::Module` assertions), `crates/zelkova-compiler/tests/typer.rs` (source string →
+  expected type or expected error), `crates/zelkova/tests/pipeline.rs` (`check_module`
+  end-to-end, including on real `std/core/src/` modules), `crates/zelkova-compiler/tests/ir.rs`
+  (source string → the `ir::Module` a backend reads), and `crates/zelkova-js/tests/javascript.rs`
+  (source string → the JavaScript text it emits as).
 - Use `indoc!` for `.zel` source literals — the layout pass is indentation-sensitive and a
   stray leading space changes the parse.
 - `NodeSpan`'s `PartialEq` always returns `true`, so a whole-value `assert_eq!` proves nothing

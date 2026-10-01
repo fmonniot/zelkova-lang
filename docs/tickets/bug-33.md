@@ -3,7 +3,7 @@
 **Severity:** low (the diagnostic still names the right file and the right kind of failure;
 only the note's own detail line is unreadable).
 
-**Location:** `src/compiler/source/files.rs` — `SourceFileError`'s `impl PhaseError` `notes()`,
+**Location:** `crates/zelkova-compiler/src/source/files.rs` — `SourceFileError`'s `impl PhaseError` `notes()`,
 the `SourceFileErrorType::Io` arm, and (once [PR #200](https://github.com/fmonniot/zelkova-lang/pull/200)
 lands) the `SourceFileErrorType::Walk` arm's `io_error()` branch.
 
@@ -30,7 +30,7 @@ if let Some(io_err) = err.io_error() {
 ```
 
 This was flagged as a should-fix review comment on that PR (inline comment on
-`src/compiler/source/files.rs`, id 3999967290) but left for a follow-up ticket rather than
+`crates/zelkova-compiler/src/source/files.rs`, id 3999967290) but left for a follow-up ticket rather than
 blocking the PR, since it mirrors a pre-existing defect rather than inventing a new one. The
 review comment also notes both sites spell "detailed" as "detailled" — a typo worth fixing in
 the same edit since it's the same string literal, but not the point of this ticket; don't go
@@ -43,7 +43,7 @@ If PR #200 has already merged by the time this is picked up, apply the same chan
 form the `Walk` arm's `notes()` took at merge — check it wasn't already fixed there before
 editing.
 
-**Acceptance:** `grep -n '{:?}' src/compiler/source/files.rs` no longer matches either
+**Acceptance:** `grep -n '{:?}' crates/zelkova-compiler/src/source/files.rs` no longer matches either
 `notes()` arm (the `#[derive(Debug)]` on `SourceFileErrorType` itself is unaffected and should
 stay). `cargo build && cargo test --workspace` stay green. No existing test currently asserts
 on this note's exact text, so this is a formatting fix confirmed by inspection rather than by

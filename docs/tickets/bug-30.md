@@ -4,7 +4,7 @@
 constructors gets a silent, constructor-less type instead of a diagnostic, and the mistake
 resurfaces later as an unrelated-looking unresolved-constructor error).
 
-**Location:** `src/compiler/canonical/environment.rs` — `process_import`'s
+**Location:** `crates/zelkova-compiler/src/canonical/environment.rs` — `process_import`'s
 `parser::ExposedKind::Upper(type_name, parser::Privacy::Public)` arm (the `Foo(..)` entry in
 an import's `exposing` list).
 
@@ -28,7 +28,7 @@ parser::ExposedKind::Upper(type_name, parser::Privacy::Public) => {
 }
 ```
 
-Since `BUG-9`, `Module::to_interface` (`src/compiler/canonical/mod.rs`) can put an entry into
+Since `BUG-9`, `Module::to_interface` (`crates/zelkova-compiler/src/canonical/mod.rs`) can put an entry into
 `interface.unions` whose `variants` is deliberately empty — that is what an opaque export
 (`UnionVisibility::Opaque`, a bare `Size` in the exporting module's own `exposing` header)
 looks like on the interface. The `Public`/`(..)` arm above cannot tell that case apart from a

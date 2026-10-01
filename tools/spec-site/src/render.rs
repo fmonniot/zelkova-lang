@@ -2,7 +2,7 @@
 //!
 //! Reuses `spec-doc`'s scanner rather than `pulldown-cmark`'s own fence and header
 //! detection for anything the `expect=` badge or an anchor link depends on: the point
-//! of sharing that crate with `tests/spec.rs` is that a chapter's badges and its
+//! of sharing that crate with `crates/zelkova-compiler/tests/spec.rs` is that a chapter's badges and its
 //! checked examples come from the exact same read of the file, so the two can never
 //! quietly disagree about what a block or a header is.
 
@@ -36,7 +36,7 @@ pub(crate) fn render_chapter(label: &str, content: &str) -> Result<String, Rende
     let zel_blocks = extract_zel_blocks(content, label);
 
     // A block this harness cannot read is a hard failure here exactly as it is in
-    // `tests/spec.rs` — checked up front, before any HTML is produced, so the file and
+    // `crates/zelkova-compiler/tests/spec.rs` — checked up front, before any HTML is produced, so the file and
     // line named in the error are the only output this run produces.
     for block in &zel_blocks {
         if let Err(reason) = &block.expect {
@@ -88,7 +88,7 @@ pub(crate) fn render_chapter(label: &str, content: &str) -> Result<String, Rende
             }
             Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref info))) if is_zel_fence(info) => {
                 // The block's text was already extracted by `extract_zel_blocks`, the
-                // same scan `tests/spec.rs` runs the compiler against, so the events
+                // same scan `crates/zelkova-compiler/tests/spec.rs` runs the compiler against, so the events
                 // between here and the matching `End` are dropped rather than
                 // re-rendered from `pulldown-cmark`'s own `Text` events.
                 for ev in source.by_ref() {
@@ -139,7 +139,7 @@ fn is_zel_fence(info: &str) -> bool {
 /// sees, of the four this feature exists to distinguish.
 ///
 /// An exhaustive match over [`Expect`], deliberately: a new variant fails this file to
-/// compile rather than rendering unstyled, the same guarantee `tests/spec.rs` gets from
+/// compile rather than rendering unstyled, the same guarantee `crates/zelkova-compiler/tests/spec.rs` gets from
 /// its own explicit matches over `canonical::Error` and `typer::ErrorKind`.
 fn expect_family(expect: &Expect) -> &'static str {
     match expect {
@@ -437,7 +437,7 @@ mod tests {
     }
 
     /// A `zel` fence with an unrecognised tag is a hard failure that names the file
-    /// and line, exactly as it is in `tests/spec.rs`.
+    /// and line, exactly as it is in `crates/zelkova-compiler/tests/spec.rs`.
     ///
     /// Pins: the fence below carries `expect=bogus`. Neutralised by making
     /// `is_zel_fence` return `false` unconditionally (so the block never reaches the

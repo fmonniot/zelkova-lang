@@ -2,8 +2,8 @@
 
 **Sizing:** small. One variant and one match arm, no behaviour change.
 
-**Location:** `src/compiler/mod.rs` — the `CompilationError::Many` variant and its arm in
-`CompilationError::as_diagnostic_in`; `src/driver.rs` — `check_errors`, which unwraps one.
+**Location:** `crates/zelkova-compiler/src/lib.rs` — the `CompilationError::Many` variant and its arm in
+`CompilationError::as_diagnostic_in`; `crates/zelkova/src/lib.rs` — `check_errors`, which unwraps one.
 
 **Found while:** addressing review of [`TOOL-7`](README.md)'s PR. That ticket moved the
 accumulation of a build's errors into `driver::BuildError::Many` and said nothing else about

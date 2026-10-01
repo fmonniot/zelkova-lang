@@ -10,7 +10,7 @@ forwarding, a separate call site — an `unsafe` facade gets no wrapper by desig
 wrapper — its companion is called directly, and one that throws aborts the program. That half is
 GEN-12's.").
 
-**Location:** `src/compiler/javascript.rs` — `Emitter::facade_declaration`, the forwarding code
+**Location:** `crates/zelkova-js/src/lib.rs` — `Emitter::facade_declaration`, the forwarding code
 it builds for a non-unit-result `unsafe` facade:
 
 ```

@@ -39,9 +39,9 @@ check has nothing of core's to call.
 5. `std/core/src/Task.ignored` still holds Elm's `andThen` as a reference. Leave it as it is,
    or trim it, as [`LANG-74`](README.md) left the rest of the file.
 
-**Tests:** `tests/typer.rs`, beside the `succeed` and `map` signature test, for `andThen`'s
+**Tests:** `crates/zelkova-compiler/tests/typer.rs`, beside the `succeed` and `map` signature test, for `andThen`'s
 signature and for the case that a function returning a `Task Bool` handed a `Task Int` is a type
-error. `tests/javascript.rs`, beside the `Task` emit test, asserting that both of `andThen`'s
+error. `crates/zelkova-js/tests/javascript.rs`, beside the `Task` emit test, asserting that both of `andThen`'s
 helpers return a `Bounce`. Whether the emitted chain actually *sequences* is checked once
 `$runTask` can run a `Task`, not here.
 

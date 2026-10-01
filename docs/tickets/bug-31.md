@@ -3,8 +3,8 @@
 **Severity:** medium (wrong behaviour under normal use — a module can re-export a name it
 never declared, which `docs/spec/modules.md` states outright is not allowed).
 
-**Location:** `src/compiler/canonical/mod.rs` — `do_exports`'s `Lower` and `Upper` arms
-(`ExposedKind::Lower`/`ExposedKind::Upper`); `src/compiler/canonical/environment.rs` —
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `do_exports`'s `Lower` and `Upper` arms
+(`ExposedKind::Lower`/`ExposedKind::Upper`); `crates/zelkova-compiler/src/canonical/environment.rs` —
 `Environment::find_value`/`find_type`, and the `TypeArity` struct.
 
 **Problem:** [`BUG-8`](../tickets/README.md) made `do_exports` check that a `Lower`/`Upper`

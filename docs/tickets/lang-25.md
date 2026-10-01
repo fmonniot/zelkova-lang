@@ -2,7 +2,7 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/canonical/mod.rs`, `do_values` — the
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs`, `do_values` — the
 `if !patterns.is_empty() && (linear.len() - 1 != patterns.len())` check that raises
 `Error::BindingPatternsInvalidLen`.
 
@@ -38,5 +38,5 @@ More parameters than arrows stays an error, and keeps `BindingPatternsInvalidLen
 `expect=ok` and delete the **Known gap:** paragraph beneath it. The
 `expect=canonical-error:BindingPatternsInvalidLen` block in
 [`docs/spec/types.md`](../spec/types.md)'s *The annotation and the declaration's parameters*,
-which supplies two parameters against one arrow, must stay green. A `tests/compiler/canonical.rs`
+which supplies two parameters against one arrow, must stay green. A `crates/zelkova-compiler/tests/canonical.rs`
 case for each of the three counts (all, some, none), seen to fail before the fix.

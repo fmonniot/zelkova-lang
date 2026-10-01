@@ -3,7 +3,7 @@
 **Sizing:** small. One pass over `imports` before `process_import` runs, plus the error
 variants and their messages.
 
-**Location:** `src/compiler/canonical/environment.rs` — `new_environment`, which loops over
+**Location:** `crates/zelkova-compiler/src/canonical/environment.rs` — `new_environment`, which loops over
 `imports` calling `process_import` and accumulates whatever each one reports, with no view of
 the list as a whole; `insert_foreign_value`, whose `Foreign` → `Foreigns` promotion is what
 turns a duplicate import into an ambiguity.
@@ -73,7 +73,7 @@ module, one import* section carries the blocks.
 Report all four and keep going rather than returning on the first, so a file with two
 problems shows both — `new_environment` already accumulates.
 
-**Acceptance:** four tests in `tests/compiler/canonical.rs`, one per case, each asserting the
+**Acceptance:** four tests in `crates/zelkova-compiler/tests/canonical.rs`, one per case, each asserting the
 specific new error and that its labels point at the `import` lines involved (assert on
 `.span` or on `diagnostic.labels[..].range`, never on a whole `NodeSpan` — its `PartialEq` is
 always `true`). In [`docs/spec/modules.md`](../spec/modules.md), the `package=duplicates`

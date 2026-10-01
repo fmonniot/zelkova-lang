@@ -3,7 +3,7 @@
 **Sizing:** small if the check reads the annotation, medium if it waits on inference — see
 *Approach*, which does not pick between the two.
 
-**Location:** `src/compiler/canonical/mod.rs` — `do_infixes`, whose only condition on the
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `do_infixes`, whose only condition on the
 function is `functions.iter().find(|f| f.name == infix.function_name).is_some()`. The
 `parser::Function` it finds already carries `tpe: Option<Type>`, the annotation as written.
 
@@ -31,7 +31,7 @@ The use site is not a fallback. `On + On` in the same module also passes `check_
 because canonicalization leaves the operator as `VarTopLevel(Example.+)` rather than
 rewriting it to `zero`, the typer's environment holds no `+`, and a declaration whose
 inference hits `UnboundVariable` is skipped rather than reported — the gap
-`src/compiler/typer/mod.rs`'s `type_check` doc comment describes, and the reason five
+`crates/zelkova-compiler/src/typer/mod.rs`'s `type_check` doc comment describes, and the reason five
 declarations in `std/core/src` go unchecked today. So an operator of the wrong shape is
 caught nowhere, and the first thing that would notice is code generation.
 
@@ -60,6 +60,6 @@ usable as a value needs its type on the same terms — and worth looking at toge
 function takes fewer than two arguments, and that block is **red** before the fix — tagged
 `expect=canonical-error:` with the new variant if the check lands in canonicalization, or
 `expect=type-error:` if it lands in the typer. The
-**Not implemented:** paragraph beneath it is deleted. A `tests/compiler/canonical.rs` case —
-or `tests/typer.rs`, following the placement — asserting the error on the nullary example
+**Not implemented:** paragraph beneath it is deleted. A `crates/zelkova-compiler/tests/canonical.rs` case —
+or `crates/zelkova-compiler/tests/typer.rs`, following the placement — asserting the error on the nullary example
 above, seen to fail before the fix.

@@ -3,10 +3,10 @@
 **Sizing:** large. Three things that look separate and are not: what a class puts in the value
 namespace, how an instance reaches another module, and which module is allowed to declare one.
 
-**Location:** `src/compiler/canonical/environment.rs` — `RootEnvironment`,
-`insert_union_type`, `process_import`; `src/compiler/canonical/mod.rs` — `Error`,
-`canonicalize`, `Module::to_interface`; `src/compiler/mod.rs` — `Interface`;
-`src/compiler/dependencies.rs` — `ModuleWalker::check_in_order`, which is the driver that
+**Location:** `crates/zelkova-compiler/src/canonical/environment.rs` — `RootEnvironment`,
+`insert_union_type`, `process_import`; `crates/zelkova-compiler/src/canonical/mod.rs` — `Error`,
+`canonicalize`, `Module::to_interface`; `crates/zelkova-compiler/src/lib.rs` — `Interface`;
+`crates/zelkova-compiler/src/dependencies.rs` — `ModuleWalker::check_in_order`, which is the driver that
 builds each interface and hands it to the next module.
 
 **Depends on:** [LANG-38](lang-38.md) for the declarations to exist at all.
@@ -89,8 +89,8 @@ Nothing in the typer changes in this ticket. A constrained annotation still vali
 discarded here: resolving the class a constraint names, and keeping the context on the canonical
 module, is [LANG-70](lang-70.md), and [LANG-40](lang-40.md) is what starts consuming it.
 
-**Acceptance:** tests in `tests/compiler/canonical.rs`, using the `package=`-style multi-module
-helpers in `tests/support/mod.rs`:
+**Acceptance:** tests in `crates/zelkova-compiler/tests/canonical.rs`, using the `package=`-style multi-module
+helpers in `crates/zelkova-compiler/tests/support/mod.rs`:
 
 - An instance declared in the class's module resolves, and so does one declared in the type's
   module; one declared in a third module is the orphan error, asserted by variant and with a

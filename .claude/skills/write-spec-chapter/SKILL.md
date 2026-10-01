@@ -50,8 +50,8 @@ documentation. Where a rule is inherited, write it out in full.
 - `docs/spec/README.md` — the index a reader of the language sees: what the spec is, the three
   lead-ins (**Known gap:**, **Not implemented:**, **Provisional:**), and the chapter table your
   new row goes into.
-- `tests/spec.rs` — what the harness actually enforces, as opposed to what the index says it
-  does. The two are kept in step deliberately; if they have drifted, that is the first finding.
+- `crates/zelkova-compiler/tests/spec.rs` — what the harness actually enforces, as opposed to
+  what the index says it does. The two are kept in step deliberately; if they have drifted, that is the first finding.
 - `docs/spec/layout.md` and `docs/spec/lexical-structure.md` — the two worked examples, for
   voice and structure. Chapters explain *why* a rule is what it is, not only what it is — where
   the reason is a property of the language rather than a fact about this project's past.
@@ -66,12 +66,13 @@ under `std/core/src/` to know what the construct looks like in practice.
 compiler is frequently behind it, occasionally ahead of it, and sometimes somewhere sideways.
 Grounding is for getting the `expect=` tags right, not for settling design.
 
-Then **probe rather than reason**. Write a throwaway `tests/scratch_probe.rs`:
+Then **probe rather than reason**. Write a throwaway
+`crates/zelkova-syntax/tests/scratch_probe.rs`:
 
 ```rust
 //! TEMPORARY probe — delete before finishing.
 use codespan_reporting::files::SimpleFile;
-use zelkova_lang::compiler::parser;
+use zelkova_syntax::parser;
 
 fn probe(label: &str, source: &str) {
     let file = SimpleFile::new("Probe.zel".to_string(), source.to_string());

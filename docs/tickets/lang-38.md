@@ -4,11 +4,11 @@
 tokenizer, `layout.rs`, the grammar and both ASTs at once, and the layout half is the part
 nobody has built yet.
 
-**Location:** `src/compiler/parser/tokenizer.rs` — the keyword table (`"javascript" =>
+**Location:** `crates/zelkova-syntax/src/parser/tokenizer.rs` — the keyword table (`"javascript" =>
 Some(Token::Javascript)` and its siblings) and the `Token` enum;
-`src/compiler/parser/layout.rs` — `Context`, `Contexts`, and `Layout::handle_next_token`'s
-explicit-pop match; `src/compiler/parser/grammar.lalrpop` — `VarIdent`, `AtomicType`, `Union`,
-`Decl`; `src/compiler/parser/mod.rs` — `Declaration`; `src/compiler/canonical/mod.rs` —
+`crates/zelkova-syntax/src/parser/layout.rs` — `Context`, `Contexts`, and `Layout::handle_next_token`'s
+explicit-pop match; `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `VarIdent`, `AtomicType`, `Union`,
+`Decl`; `crates/zelkova-syntax/src/parser/mod.rs` — `Declaration`; `crates/zelkova-compiler/src/canonical/mod.rs` —
 `Module`, `canonicalize`.
 
 **Depends on:** [LANG-37](README.md), closed, for the `=>` token — a superclass context is written in

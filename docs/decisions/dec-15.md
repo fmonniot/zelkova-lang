@@ -59,12 +59,12 @@ declaring its own `Int` declares an ordinary union that shares four letters with
 every phase treats it as one: no shadowing order, no precedence between a built-in and a
 declaration, nothing for a chapter to explain. `BUG-26` was that
 distinction missing — the typer read four names as its own literal types wherever they appeared
-(`src/compiler/typer/mod.rs:625-642`, matching on `name.as_str()`), so a module declaring
+(`crates/zelkova-compiler/src/typer/mod.rs:625-642`, matching on `name.as_str()`), so a module declaring
 `Bool = True | False` failed to unify with itself. This decision picks the second of the two
 fixes that ticket weighs and rules the first out.
 
 What it costs is the qualified name reaching the typer at all. `canonical::Type::Type` carries
-a `Name` (`src/compiler/canonical/mod.rs:302`), so a scalar is indistinguishable from any other
+a `Name` (`crates/zelkova-compiler/src/canonical/mod.rs:302`), so a scalar is indistinguishable from any other
 nullary type by the time the typer sees it. Moving it to a `QualName` is the prerequisite for
 everything here, and it is the direction `CLAUDE.md` already gives for everything after
 parsing.

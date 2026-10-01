@@ -6,9 +6,9 @@ Sequence it after `LANG-14`, which has landed and is what resolves a build at al
 make it bigger: version-constraint solving across several packages asking for one package is
 listed here as a decided rule and is a solver, not a lookup.
 
-**Location:** `src/compiler/resolve.rs` — `Resolver::obtain`, which matches on
+**Location:** `crates/zelkova-compiler/src/resolve.rs` — `Resolver::obtain`, which matches on
 `manifest::Source` and returns `Error::UnsupportedSource` for `Source::Git`; `Resolver::visit`,
-which walks manifests and has no lock file to consult. `src/compiler/manifest.rs` —
+which walks manifests and has no lock file to consult. `crates/zelkova-compiler/src/manifest.rs` —
 `Source`, `Version`, and the entry shape `dependencies` takes.
 
 **Decided ([`docs/spec/packages.md`](../spec/packages.md),
@@ -61,7 +61,7 @@ interface*](../spec/toolchain.md#the-compilers-interface) name this ticket and a
 it lands.
 
 **Acceptance:** `tests/fixtures/package_git_dependency` compiles instead of being refused, and
-`a_git_dependency_is_reported_as_one_this_compiler_cannot_obtain` in `tests/pipeline.rs` —
+`a_git_dependency_is_reported_as_one_this_compiler_cannot_obtain` in `crates/zelkova/tests/pipeline.rs` —
 which pins today's refusal — is replaced by a test that pins the fetch. A `zelkova.lock` is
 written beside the fixture's manifest naming what the `git` entry resolved to, and a second
 build reads it rather than resolving again. `Error::UnsupportedSource` has no constructor left

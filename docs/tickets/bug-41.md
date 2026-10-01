@@ -3,7 +3,7 @@
 **Severity:** low (message-only ambiguity — the underlying type identity is correct and the
 build still fails where it should; only the sentence explaining why is unwritable).
 
-**Location:** `src/compiler/typer/mod.rs` — `Spellings::spell`'s `None` arm (currently ~line
+**Location:** `crates/zelkova-compiler/src/typer/mod.rs` — `Spellings::spell`'s `None` arm (currently ~line
 1571) and the `Spellings::of`/`Spellings` doc comment above it (currently ~line 1525-1534),
 which is where [`BUG-37`](README.md)'s rule — "a message names a type as the package being
 compiled spells it" — is written down.
@@ -71,7 +71,7 @@ rendered word — the property this ticket exists to restore.
 
 **Acceptance:**
 
-- A `tests/pipeline.rs` test built on the three-package chain above (extending the existing
+- A `crates/zelkova/tests/pipeline.rs` test built on the three-package chain above (extending the existing
   `tests/fixtures/dep_widgets` → `tests/fixtures/dep_mid` pair with a third fixture package
   that wraps only `dep_mid`) asserts that the error message names the local `Size.Size` and the
   transitively-reached `acme-widgets` `Size.Size` with two different substrings — neither one

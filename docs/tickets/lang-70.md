@@ -4,9 +4,9 @@
 it stops being discarded, because [LANG-40](lang-40.md) reads it from there. Could grow if that
 shape turns out to need the canonical `Type` to change.
 
-**Location:** `src/compiler/canonical/mod.rs` — `validate_context`, `InvalidConstraintKind`, and
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `validate_context`, `InvalidConstraintKind`, and
 the loop over `source.functions` in `canonicalize` that validates a context and then
-drops it; `src/compiler/canonical/environment.rs` — `RootEnvironment`, once
+drops it; `crates/zelkova-compiler/src/canonical/environment.rs` — `RootEnvironment`, once
 [LANG-39](lang-39.md) has given it a class table.
 
 **Depends on:** [LANG-39](lang-39.md), for a class table to resolve against. Nothing here can be
@@ -75,7 +75,7 @@ are the form) rather than retagging them; they should stay `expect=ok`. Delete t
 its `LANG-70` reference if this ticket is what closes it. `cargo test --test spec` will not tell
 you the blocks need this until it is red, so run it before assuming the change is clean.
 
-**Acceptance:** tests in `tests/compiler/canonical.rs`, each asserting the variant and a
+**Acceptance:** tests in `crates/zelkova-compiler/tests/canonical.rs`, each asserting the variant and a
 `diagnostic.labels[..]` caret (`NodeSpan`'s `PartialEq` is blind — `CLAUDE.md`, *An error has to
 describe itself*), each seen red with its check neutralised:
 

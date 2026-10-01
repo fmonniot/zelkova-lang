@@ -1,0 +1,618 @@
+use super::layout::LayoutError;
+use super::tokenizer::{Token, TokenizerError, TokenizerErrorType};
+use crate::position::{BytePos, Spanned};
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use lalrpop_util::ParseError;
+use std::ops::Range;
+
+// TODO Make integration tests for errors. Can be inspired from insta with generate-tests crate
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Error {
+    Tokenizer(TokenizerError),
+    Layout(LayoutError),
+    // Errors coming from the parser
+    InvalidToken(BytePos),
+    UnexpectedEOF {
+        position: BytePos,
+        expected: Vec<String>, // The kind of token the parser was expecting
+    },
+    UnexpectedToken {
+        token: Spanned<BytePos, Token>,
+        expected: Vec<String>, // The kind of token the parser was expecting
+    },
+    ExtraToken {
+        token: Spanned<BytePos, Token>,
+    },
+    /// An `infix` declaration's precedence does not fit in a `u8` — `infix left 300
+    /// (op) = f`. The grammar's `Infix` production parses the precedence as the
+    /// tokenizer's `"integer"` (an `i64`) and narrows it, so this is a distinct
+    /// variant from every `TokenizerErrorType`: the literal itself tokenized fine,
+    /// and the grammar is what rejects it (`BUG-12`).
+    InfixPrecedenceOutOfRange {
+        precedence: Spanned<BytePos, i64>,
+    },
+}
+
+impl Error {
+    pub fn diagnostic<Id: Copy>(&self, name: Id) -> Diagnostic<Id> {
+        match self {
+            Error::UnexpectedToken { token, expected } => {
+                Diagnostic::error()
+                    .with_message(format!("unexpected token: `{:?}`", token.value)) // TODO display instead of debug
+                    .with_labels(vec![Label::primary(name, token.span.to_range())
+                        .with_message("unexpected token")])
+                    .with_notes(vec![format!(
+                        "we were expecting one of the following tokens: {:?}",
+                        expected
+                    )
+                    .to_owned()])
+            }
+            Error::Tokenizer(err) => {
+                let diag = Diagnostic::error();
+                match err.error.value {
+                    TokenizerErrorType::CharNotClosedError(None) => {
+                        diag.with_message("char sequence opened but never closed")
+                            .with_labels(vec![
+                                Label::primary(name, err.error.span.to_range())
+                                    .with_message("The char is declared here but not closed")
+                            ])
+                    }
+                    TokenizerErrorType::CharNotClosedError(Some(_)) => {
+                        // `span.start` is the opening quote and `span.end` falls
+                        // inside the character sitting where the closing quote
+                        // should have been (tokenizer.rs, the
+                        // `CharNotClosedError(Some(_))` arm). Both are single
+                        // `BytePos`es, so `one_byte_at` widens each into a
+                        // visible one-byte range the same way `InvalidToken` and
+                        // `UnexpectedEOF` do (`BUG-7`).
+                        let open = err.error.span.start;
+                        let close = err.error.span.end;
+                        diag.with_message("char sequence opened but never closed")
+                            .with_labels(vec![
+                                Label::primary(name, one_byte_at(close))
+                                    .with_message("we were expecting a single quote here"),
+                                Label::secondary(name, one_byte_at(open))
+                                    .with_message("for the opening quote here")
+                            ])
+                    }
+                    TokenizerErrorType::StringNotClosedError => diag
+                        .with_message("string opened but never closed")
+                        .with_labels(vec![
+                            Label::primary(name, err.error.span.to_range())
+                                .with_message("this string reaches the end of its line without a closing `\"`")
+                        ])
+                        .with_notes(vec![
+                            "a string may not contain a line ending; write `\\n` for one".to_owned()
+                        ]),
+                    TokenizerErrorType::InvalidEscape => diag
+                        .with_message("this is not an escape sequence")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message("unknown escape sequence")])
+                        .with_notes(vec![
+                            "the escape sequences are `\\n`, `\\r`, `\\t`, `\\\\`, `\\'`, `\\\"` and `\\u{…}`".to_owned()
+                        ]),
+                    TokenizerErrorType::UnicodeError => diag
+                        .with_message("this unicode escape sequence could not be read")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message("this escape sequence")])
+                        .with_notes(vec![
+                            "a unicode escape is `\\u{`, one to six hexadecimal digits naming a Unicode scalar value, and `}`".to_owned()
+                        ]),
+                    TokenizerErrorType::IndentationError => {
+                        diag.with_message("Invalid indentation level")
+                            .with_labels(vec![
+                                Label::primary(name, err.error.span.to_range())
+                            ])
+                            .with_notes(vec![
+                                "Zelkova use exclusively two spaces to denote indentation but an odd number of spaces was found".to_owned()
+                            ])
+                    }
+                    TokenizerErrorType::TabError => {
+                        diag.with_message("Tab found")
+                        .with_labels(vec![
+                            Label::primary(name, err.error.span.to_range())
+                        ])
+                        .with_notes(vec!["Zelkova use exclusively two spaces to denote indentation and forbid the usage of tabs".to_owned()])
+                    }
+                    TokenizerErrorType::UnrecognizedToken { tok } => {
+                        Diagnostic::error()
+                        .with_message("Unexpected token found")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message(format!("Unrecognized token {} found", tok))])
+                    }
+                    TokenizerErrorType::IntegerOverflow => diag
+                        .with_message("this integer is too large")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message("this literal does not fit in a 64-bit signed integer")])
+                        .with_notes(vec![
+                            "an integer literal must fit in a 64-bit signed integer; Zelkova guarantees every integer in -2^31 .. 2^31 - 1 is representable on every target".to_owned()
+                        ]),
+                    TokenizerErrorType::MultipleDecimalPoints => diag
+                        .with_message("a number has one decimal point")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message("this literal has more than one `.`")]),
+                    TokenizerErrorType::NonAsciiDigit { digit } => diag
+                        .with_message("a numeric literal is written with the digits 0-9")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message(format!("`{}` is not one of the digits 0-9", digit))]),
+                    TokenizerErrorType::MalformedNumber => diag
+                        .with_message("this is not a number")
+                        .with_labels(vec![Label::primary(name, err.error.span.to_range())
+                            .with_message("this literal cannot be read as an integer or a float")]),
+                    TokenizerErrorType::UnclosedBlockComment => diag
+                        .with_message("this block comment is never closed")
+                        .with_labels(vec![Label::primary(name, non_empty(err.error.span.to_range()))
+                            .with_message("this comment opens here, but no matching `-}` was found before the end of the file")])
+                        .with_notes(vec![
+                            "block comments nest, so every `{-` needs its own `-}`".to_owned()
+                        ]),
+                }
+            }
+
+            Error::Layout(LayoutError::LayoutError { offside, token }) => {
+                // A layout token carries `Position`s rather than `BytePos`, so the
+                // range is built from their byte offsets. The layout pass injects
+                // `OpenBlock`/`CloseBlock` tokens whose start and end are equal and
+                // an indentation error can land on one of those, hence `non_empty`.
+                let start = token.span.start.absolute.0 as usize;
+                let end = token.span.end.absolute.0 as usize;
+
+                Diagnostic::error()
+                    .with_message("this line is not indented far enough")
+                    .with_labels(vec![Label::primary(name, non_empty(start..end))
+                        .with_message(format!(
+                        "this token starts at column {}, but its block requires column {} or more",
+                        token.span.start.column,
+                        offside.min_indent()
+                    ))])
+                    .with_notes(vec![format!(
+                        "the block it belongs to ({}) starts on line {}",
+                        offside.context().description(),
+                        offside.line()
+                    )])
+            }
+
+            Error::Layout(LayoutError::IndentedDeclaration {
+                token,
+                declaration_line,
+            }) => {
+                let start = token.span.start.absolute.0 as usize;
+                let end = token.span.end.absolute.0 as usize;
+
+                Diagnostic::error()
+                    .with_message("this line is indented, so it continues the declaration above it")
+                    .with_labels(vec![Label::primary(name, non_empty(start..end))
+                        .with_message(format!(
+                            "this token starts at column {}, so it is read as part of the declaration on line {}, which was already complete",
+                            token.span.start.column, declaration_line
+                        ))])
+                    .with_notes(vec![
+                        "a top-level declaration begins in column 1; move this line there if it starts a new declaration".to_owned()
+                    ])
+            }
+
+            Error::InvalidToken(position) => Diagnostic::error()
+                .with_message("the parser could not read this token")
+                .with_labels(vec![Label::primary(name, one_byte_at(*position))
+                    .with_message("the parser stopped here")]),
+
+            Error::UnexpectedEOF { position, expected } => Diagnostic::error()
+                .with_message("the file ended before the declaration did")
+                .with_labels(vec![
+                    Label::primary(name, one_byte_at(*position)).with_message("the file ends here")
+                ])
+                .with_notes(vec![format!(
+                    "we were expecting one of the following tokens here: {}",
+                    expected.join(", ")
+                )]),
+
+            Error::ExtraToken { token } => Diagnostic::error()
+                .with_message("the module continues past its end")
+                .with_labels(vec![Label::primary(name, non_empty(token.span.to_range()))
+                    .with_message("this token comes after the module was complete")]),
+
+            Error::InfixPrecedenceOutOfRange { precedence } => Diagnostic::error()
+                .with_message("this infix declaration's precedence is out of range")
+                .with_labels(vec![Label::primary(name, non_empty(precedence.span.to_range()))
+                    .with_message(format!(
+                        "{} does not fit between 0 and 255",
+                        precedence.value
+                    ))])
+                .with_notes(vec![
+                    "Zelkova represents an operator's precedence as one byte, so it must be between 0 and 255".to_owned()
+                ]),
+        }
+    }
+}
+
+/// Widen a single position into a one byte range.
+///
+/// `BytePos::to_range` is zero width by construction (`u..u`), which
+/// codespan-reporting renders as a caret with no character above it. The errors
+/// which only know one position (`InvalidToken`, `UnexpectedEOF`) therefore
+/// underline the single byte starting there: that is the character the parser
+/// stopped on, and the range stays valid even at the end of the file.
+fn one_byte_at(position: BytePos) -> Range<usize> {
+    let start = position.0 as usize;
+
+    start..start + 1
+}
+
+/// Keep a span-derived range visible, for the same reason as `one_byte_at`: a
+/// range whose start equals its end underlines nothing.
+fn non_empty(range: Range<usize>) -> Range<usize> {
+    if range.start < range.end {
+        range
+    } else {
+        range.start..range.start + 1
+    }
+}
+
+/// lalrpop expected tokens in error are wrapped in double quote, which we don't really want
+fn unquote_tokens(mut tokens: Vec<String>) -> Vec<String> {
+    for token in &mut tokens {
+        if token.starts_with('"') {
+            token.remove(0);
+        }
+
+        if token.ends_with('"') {
+            token.pop();
+        }
+    }
+
+    tokens.to_vec()
+}
+
+impl From<ParseError<BytePos, Token, Error>> for Error {
+    fn from(e: ParseError<BytePos, Token, Error>) -> Self {
+        match e {
+            ParseError::InvalidToken { location } => Error::InvalidToken(location),
+            ParseError::UnrecognizedEof { location, expected } => Error::UnexpectedEOF {
+                position: location,
+                expected: unquote_tokens(expected),
+            },
+            ParseError::UnrecognizedToken { token, expected } => Error::UnexpectedToken {
+                token: token.into(),
+                expected: unquote_tokens(expected),
+            },
+            ParseError::ExtraToken { token } => Error::ExtraToken {
+                token: token.into(),
+            },
+            ParseError::User { error } => error,
+        }
+    }
+}
+
+impl From<TokenizerError> for Error {
+    fn from(e: TokenizerError) -> Self {
+        Error::Tokenizer(e)
+    }
+}
+impl From<LayoutError> for Error {
+    fn from(e: LayoutError) -> Self {
+        Error::Layout(e)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::position::spanned;
+    use indoc::indoc;
+
+    /// A rendered diagnostic has to point somewhere visible: a zero-width range
+    /// renders as a caret with no character under it.
+    fn assert_points_at_source(diagnostic: &Diagnostic<()>) {
+        assert!(
+            !diagnostic.labels.is_empty(),
+            "diagnostic has no label: {:?}",
+            diagnostic
+        );
+
+        let range = &diagnostic.labels[0].range;
+        assert!(
+            range.start < range.end,
+            "the primary label is zero-width ({:?}) and would render as an invisible caret",
+            range
+        );
+    }
+
+    /// The headline is what the user reads first, so it has to be a sentence
+    /// about their source rather than the name of a Rust type.
+    fn assert_prose_message(diagnostic: &Diagnostic<()>, expected: &str) {
+        assert_eq!(diagnostic.message, expected);
+        assert!(
+            diagnostic.message.split(' ').count() >= 3,
+            "the message is not prose: {:?}",
+            diagnostic.message
+        );
+    }
+
+    /// Run a real source through the tokenizer and the layout pass — the two
+    /// phases which raise these errors — and return the error it produced.
+    ///
+    /// This stops short of the grammar on purpose: the parser reads the token
+    /// stream lazily and reports its own `UnexpectedToken` before the offending
+    /// indentation is ever reached.
+    fn layout_error(source: &str) -> Error {
+        let tokens =
+            crate::parser::tokenizer::make_tokenizer(source).map(|r| r.map_err(|e| e.into()));
+
+        let end = crate::parser::chunk::end_of(source);
+        let mut errors: Vec<Error> = crate::parser::layout::layout(tokens, end)
+            .filter_map(|item| item.err())
+            .collect();
+
+        match errors.pop() {
+            Some(e) => e,
+            None => panic!("expected the source to fail the layout pass"),
+        }
+    }
+
+    /// A mis-indented source reaches the user through `diagnostic`, so it must
+    /// not panic on the way. Verified to fail by restoring the `e => todo!()`
+    /// catch-all: this test then panics inside `diagnostic` instead of
+    /// asserting.
+    ///
+    /// The source opens its top level declaration at column 3, which sets that
+    /// context's minimum indentation, and then puts `|` at column 1.
+    #[test]
+    fn layout_error_of_a_mis_indented_top_level_declaration() {
+        let error = layout_error(indoc! {"
+              type Maybe
+            | Nothing
+        "});
+
+        assert!(
+            matches!(error, Error::Layout(_)),
+            "expected a layout error, got {:?}",
+            error
+        );
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "this line is not indented far enough");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(
+            diagnostic.labels[0].message,
+            "this token starts at column 1, but its block requires column 3 or more"
+        );
+        assert_eq!(
+            diagnostic.notes,
+            vec!["the block it belongs to (a top level declaration) starts on line 1".to_string()]
+        );
+    }
+
+    /// The column a `case … of` block requires is the one of its first branch,
+    /// not the block context's own indentation, so the message has to report
+    /// `Offside::min_indent` rather than `Offside::indent` (2 here, which the
+    /// offending token does satisfy). Verified to fail by making
+    /// `Offside::min_indent` return `self.indent` unconditionally — the layout
+    /// pass enforces the rule through that same method, so the source below then
+    /// stops being an error at all and the helper panics.
+    #[test]
+    fn layout_error_reports_the_case_block_minimum_indentation() {
+        let error = layout_error(indoc! {"
+            module Main exposing (..)
+
+            f x =
+              case x of
+                Just y ->
+              y
+        "});
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "this line is not indented far enough");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(
+            diagnostic.labels[0].message,
+            "this token starts at column 3, but its block requires column 5 or more"
+        );
+        assert_eq!(
+            diagnostic.notes,
+            vec![
+                "the block it belongs to (the branches of a `case … of`) starts on line 4"
+                    .to_string()
+            ]
+        );
+    }
+
+    /// A branch level with `case` is rejected against `case`'s own column plus
+    /// one (`BUG-10`), not against the branch block's `Offside::indent`, which
+    /// is the enclosing-derived threshold step 2's implicit close keys on (2
+    /// here). Only the rendered message distinguishes the two, so it is pinned
+    /// verbatim. Verified to fail by building the error's `Offside` with
+    /// `indent: offside.indent` instead of `case_col + 1` in
+    /// `layout.rs`'s `(_, Context::CaseBlock(c @ None))` arm: the label then
+    /// reads "requires column 2 or more", which the token at column 3 already
+    /// satisfies.
+    #[test]
+    fn layout_error_reports_the_case_keyword_column_as_the_branch_floor() {
+        let error = layout_error(indoc! {"
+            f x =
+              case x of
+              A -> 1
+        "});
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "this line is not indented far enough");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(
+            diagnostic.labels[0].message,
+            "this token starts at column 3, but its block requires column 4 or more"
+        );
+        assert_eq!(
+            diagnostic.notes,
+            vec![
+                "the block it belongs to (the branches of a `case … of`) starts on line 2"
+                    .to_string()
+            ]
+        );
+    }
+
+    /// `UnexpectedEOF` only knows a single byte position, and
+    /// `BytePos::to_range` is zero-width. Verified to fail by restoring the
+    /// `e => todo!()` catch-all (panic), and again — once handled — by having
+    /// the arm use `position.to_range()`, which turns the label into an
+    /// invisible caret and reddens `assert_points_at_source`.
+    #[test]
+    fn unexpected_eof_points_at_the_end_of_the_file() {
+        let error = Error::UnexpectedEOF {
+            position: BytePos(12),
+            expected: vec!["of".to_string(), "->".to_string()],
+        };
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "the file ended before the declaration did");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels[0].range, 12..13);
+        assert_eq!(
+            diagnostic.notes,
+            vec!["we were expecting one of the following tokens here: of, ->".to_string()]
+        );
+    }
+
+    /// Same zero-width problem as `UnexpectedEOF`. Verified to fail by
+    /// restoring the `e => todo!()` catch-all, and by swapping the widened
+    /// range back to `position.to_range()`.
+    #[test]
+    fn invalid_token_points_at_a_character() {
+        let error = Error::InvalidToken(BytePos(4));
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "the parser could not read this token");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels[0].range, 4..5);
+    }
+
+    /// `ExtraToken` carries a real span, so the label uses it directly.
+    /// Verified to fail by restoring the `e => todo!()` catch-all.
+    #[test]
+    fn extra_token_points_at_the_leftover_token() {
+        let error = Error::ExtraToken {
+            token: spanned(BytePos(7), BytePos(11), Token::Type),
+        };
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "the module continues past its end");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels[0].range, 7..11);
+    }
+
+    /// The error comes from the tokenizer: `"ab` then a line ending spans the opening
+    /// quote at byte 0 up to the line feed at byte 3, where the string was cut off.
+    #[test]
+    fn string_not_closed_points_at_the_unclosed_string() {
+        let error: Error = crate::parser::tokenizer::make_tokenizer("\"ab\n")
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("expected the source to fail the tokenizer")
+            .into();
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "string opened but never closed");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels[0].range, 0..3);
+    }
+
+    /// `"\q"`: the label covers the backslash and the `q`, bytes 1 to 3.
+    #[test]
+    fn invalid_escape_points_at_the_escape() {
+        let error: Error = crate::parser::tokenizer::make_tokenizer("\"\\q\"")
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("expected the source to fail the tokenizer")
+            .into();
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "this is not an escape sequence");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels[0].range, 1..3);
+    }
+
+    /// The error comes from the tokenizer rather than being built here, so the
+    /// byte offsets below are the ones `tokenizer.rs` actually emits: for `'ab`
+    /// its `(Some(v), Some(closing))` arm spans the opening quote at byte 0 to
+    /// byte 2, where the `b` sits in the closing quote's place. Both labels
+    /// must render as visible one-byte ranges, and the label at the opening
+    /// position has to be the one that talks about the opening quote.
+    ///
+    /// Verified to fail two ways (`BUG-7`): reverting `one_byte_at` back to
+    /// `.to_range()` turns both ranges zero-width and reddens
+    /// `assert_points_at_source`; swapping the two `.with_message` calls back
+    /// puts "we were expecting a single quote here" on the opening-quote
+    /// label, which reddens the `opening_label` assertion below.
+    #[test]
+    fn char_not_closed_with_extra_char_labels_open_and_expected_close() {
+        let error: Error = crate::parser::tokenizer::make_tokenizer("'ab")
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("expected the source to fail the tokenizer")
+            .into();
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "char sequence opened but never closed");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels.len(), 2);
+
+        let opening_label = diagnostic
+            .labels
+            .iter()
+            .find(|label| label.range == (0..1))
+            .expect("no label at the opening quote (byte 0)");
+        assert_eq!(opening_label.message, "for the opening quote here");
+
+        let expected_close_label = diagnostic
+            .labels
+            .iter()
+            .find(|label| label.range == (2..3))
+            .expect("no label at the expected closing quote (byte 2)");
+        assert_eq!(
+            expected_close_label.message,
+            "we were expecting a single quote here"
+        );
+    }
+
+    /// `"\u{zz}"`: reading stops at the first `z`, so the label spans `\u{`, bytes
+    /// 1 to 4.
+    #[test]
+    fn tokenizer_unicode_error_renders() {
+        let error: Error = crate::parser::tokenizer::make_tokenizer("\"\\u{zz}\"")
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("expected the source to fail the tokenizer")
+            .into();
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(
+            &diagnostic,
+            "this unicode escape sequence could not be read",
+        );
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels[0].range, 1..4);
+    }
+
+    /// `MalformedNumber` is the one diagnostic in `consume_number`'s three that no source
+    /// can reach — it is there for a buffer the accumulation loop should never have built
+    /// — so this is the only thing keeping it renderable, and it builds the error by hand
+    /// rather than tokenizing a source. Verified to fail by replacing its arm with
+    /// `todo!()`.
+    #[test]
+    fn tokenizer_malformed_number_renders() {
+        let error = Error::Tokenizer(TokenizerError {
+            error: spanned(BytePos(4), BytePos(9), TokenizerErrorType::MalformedNumber),
+        });
+
+        let diagnostic = error.diagnostic(());
+
+        assert_prose_message(&diagnostic, "this is not a number");
+        assert_points_at_source(&diagnostic);
+        assert_eq!(diagnostic.labels[0].range, 4..9);
+    }
+}

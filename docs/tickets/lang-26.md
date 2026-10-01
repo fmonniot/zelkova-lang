@@ -2,7 +2,7 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/parser/mod.rs`, `Module::from_declarations` — the
+**Location:** `crates/zelkova-syntax/src/parser/mod.rs`, `Module::from_declarations` — the
 `HashMap<Name, Vec<Declaration>>` that gathers `Declaration::Function` and
 `Declaration::FunctionType` by name, throwing their positions away.
 

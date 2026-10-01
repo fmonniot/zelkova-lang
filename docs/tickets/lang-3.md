@@ -2,7 +2,7 @@
 
 **Sizing:** small. Two predicates, two tests each.
 
-**Location:** `src/compiler/parser/tokenizer.rs` — `is_identifier_start` (and the
+**Location:** `crates/zelkova-syntax/src/parser/tokenizer.rs` — `is_identifier_start` (and the
 `first.is_uppercase()` classification at the end of `consume_identifier`), and
 `consume_number`'s accumulation loop.
 
