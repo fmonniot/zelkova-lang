@@ -13,7 +13,6 @@
 //! want to have cheap access to the different components of a `Module`.
 //!
 //! TODO Rename this to core ? I feel it's going to be te main internal representation of the language.
-use super::parser;
 use super::resolve::CORE_PACKAGE;
 use super::scalars;
 use super::Interface;
@@ -27,6 +26,7 @@ use petgraph::Direction;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
+use zelkova_syntax::parser;
 
 mod environment;
 /// Part of [`Error::AmbiguousVariables`] and [`Error::AmbiguousVariants`]'s public
@@ -42,10 +42,10 @@ use environment::{
 
 // Some elements which are common to both AST
 use crate::compiler::name::{Name, QualName};
-use crate::compiler::position::NodeSpan;
 use crate::compiler::source::files::SourceFileId;
-use crate::compiler::tuple::Tuple;
 pub use parser::Associativity;
+use zelkova_syntax::position::NodeSpan;
+use zelkova_syntax::tuple::Tuple;
 
 // begin AST
 

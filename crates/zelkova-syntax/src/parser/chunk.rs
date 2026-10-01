@@ -23,7 +23,7 @@
 
 use super::error::Error;
 use super::tokenizer::Token;
-use crate::compiler::position::{BytePos, Position, Span, Spanned};
+use crate::position::{BytePos, Position, Span, Spanned};
 use std::iter::FusedIterator;
 
 /// One item of the tokenizer's output, its error already converted to the parser's.
@@ -220,8 +220,8 @@ impl<I> FusedIterator for Chunks<I> where I: Iterator<Item = RawToken> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::parser::tokenizer::{make_tokenizer, TokenizerError};
-    use crate::compiler::position::spanned;
+    use crate::parser::tokenizer::{make_tokenizer, TokenizerError};
+    use crate::position::spanned;
     use indoc::indoc;
     use std::cell::Cell;
     use std::rc::Rc;
@@ -323,7 +323,7 @@ mod tests {
             error: spanned(
                 BytePos(1),
                 BytePos(2),
-                crate::compiler::parser::tokenizer::TokenizerErrorType::TabError,
+                crate::parser::tokenizer::TokenizerErrorType::TabError,
             ),
         });
         let mut first = Some(Ok(spanned(position, position, Token::Module)));
@@ -362,7 +362,7 @@ mod tests {
     /// assertion on `infix` goes red).
     #[test]
     fn can_start_declaration_matches_the_grammars_declaration_starts() {
-        use crate::compiler::parser::{parse_recovering, Error};
+        use crate::parser::{parse_recovering, Error};
         use codespan_reporting::files::SimpleFile;
 
         let source = "module Main exposing (..)\n\nf = 1\n)\n";

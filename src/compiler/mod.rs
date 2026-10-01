@@ -78,8 +78,6 @@ pub mod name;
 // Public because `output::Error` is reachable from the public `driver::BuildError::Output`,
 // and the driver writes a build through `write`.
 pub mod output;
-pub mod parser;
-pub mod position;
 // Public for the same reason as `manifest`: `program::Error` is reachable from the public
 // `CompilationError::Program`.
 pub mod program;
@@ -99,13 +97,13 @@ pub mod program_runner;
 // Public because `driver::BuildError::TestRun` carries its `Error`, and `zelkova test` calls
 // `run` through the driver.
 pub mod test_runner;
-pub mod tuple;
 pub mod typer;
 
 use name::{Name, QualName};
-use position::{BytePos, NodeSpan, Span};
 use source::files::{SourceFileError, SourceFileId};
 use source::{Overlay, SourceFiles};
+use zelkova_syntax::parser;
+use zelkova_syntax::position::{BytePos, NodeSpan, Span};
 
 // TODO Move PackageName and ModuleName into the name module
 /// A package name: one flat identifier, ASCII lowercase letters, digits and hyphens,
@@ -1987,7 +1985,9 @@ mod tests {
     #[test]
     fn canonical_errors_render_as_errors() {
         let error = CompilationError::Canonical(
-            vec![canonical::Error::NoBindings(position::NodeSpan::none())],
+            vec![canonical::Error::NoBindings(
+                zelkova_syntax::position::NodeSpan::none(),
+            )],
             "Test".into(),
         );
 
@@ -2076,8 +2076,11 @@ mod tests {
     fn several_phase_errors_all_reach_the_notes() {
         let error = CompilationError::Canonical(
             vec![
-                canonical::Error::NoBindings(position::NodeSpan::none()),
-                canonical::Error::TypeDeclared("Shape".into(), position::NodeSpan::none()),
+                canonical::Error::NoBindings(zelkova_syntax::position::NodeSpan::none()),
+                canonical::Error::TypeDeclared(
+                    "Shape".into(),
+                    zelkova_syntax::position::NodeSpan::none(),
+                ),
             ],
             "Test".into(),
         );

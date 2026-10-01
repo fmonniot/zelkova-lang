@@ -69,10 +69,10 @@
 //! `Task`'s already do, since `LANG-73` and `LANG-74`.
 
 use super::name::Name;
-use super::parser;
-use super::position::NodeSpan;
 use super::Interface;
 use std::collections::HashMap;
+use zelkova_syntax::parser;
+use zelkova_syntax::position::NodeSpan;
 
 /// What a default import makes available **unqualified**, beyond the qualified
 /// spelling that every import provides.

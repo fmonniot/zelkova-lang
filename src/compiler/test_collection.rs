@@ -100,9 +100,9 @@ pub fn collect(modules: &[Interface]) -> Vec<ModuleTests> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::position::NodeSpan;
     use crate::compiler::PackageName;
     use std::collections::HashMap;
+    use zelkova_syntax::position::NodeSpan;
 
     fn interface(package: &str, module: &str, values: Vec<(&str, Type)>) -> Interface {
         Interface {

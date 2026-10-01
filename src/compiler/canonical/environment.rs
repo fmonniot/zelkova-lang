@@ -3,12 +3,12 @@
 use super::{parser, Pattern, PatternKind};
 use super::{Infix, Interface, ModuleName, Name, QualName, Type, TypeConstructor, UnionType};
 use crate::compiler::default_imports;
-use crate::compiler::position::NodeSpan;
 use crate::compiler::scalars;
 use crate::compiler::{PhaseError, SourceSpan, SpanLabel};
 use crate::utils::{collect_accumulate, suggest};
 use log::trace;
 use std::collections::HashMap;
+use zelkova_syntax::position::NodeSpan;
 
 #[derive(Debug)]
 pub(crate) enum ValueType {

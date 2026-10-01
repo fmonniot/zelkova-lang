@@ -130,10 +130,10 @@ use spec_doc::{extract_zel_blocks, header_anchors, prose_lines, slugify, Block, 
 use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::dependencies::ModuleWalker;
 use zelkova_lang::compiler::name::Name;
-use zelkova_lang::compiler::parser;
-use zelkova_lang::compiler::parser::tokenizer::TokenizerErrorType;
 use zelkova_lang::compiler::typer;
 use zelkova_lang::compiler::{Interface, PackageName};
+use zelkova_syntax::parser;
+use zelkova_syntax::parser::tokenizer::TokenizerErrorType;
 
 mod support;
 

@@ -1,10 +1,10 @@
 //! Helpers functions and macros to support testing the frontend
 //! part of the compiler.
 //!
-use zelkova_lang::compiler::name::Name;
-use zelkova_lang::compiler::parser::*;
-use zelkova_lang::compiler::position::NodeSpan;
-use zelkova_lang::compiler::tuple::Tuple;
+use zelkova_syntax::name::Name;
+use zelkova_syntax::parser::*;
+use zelkova_syntax::position::NodeSpan;
+use zelkova_syntax::tuple::Tuple;
 
 // macros to simplify tests
 
@@ -16,7 +16,7 @@ macro_rules! test_parse_ok {
             use codespan_reporting::files::SimpleFile;
             use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
             use codespan_reporting::term::{self};
-            use zelkova_lang::compiler::parser;
+            use zelkova_syntax::parser;
 
             let test_name = stringify!($test_name);
 

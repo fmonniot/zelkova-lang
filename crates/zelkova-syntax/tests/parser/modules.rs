@@ -1,6 +1,6 @@
 use super::support::*;
-use zelkova_lang::compiler::parser;
-use zelkova_lang::compiler::parser::*;
+use zelkova_syntax::parser;
+use zelkova_syntax::parser::*;
 
 // module
 
@@ -340,7 +340,7 @@ fn infix_precedence_over_255_is_an_error() {
 #[test]
 fn fat_arrow_cannot_be_declared_as_an_infix_operator() {
     use codespan_reporting::files::SimpleFile;
-    use zelkova_lang::compiler::parser::tokenizer::Token;
+    use zelkova_syntax::parser::tokenizer::Token;
 
     let source = indoc::indoc! {r#"
     module Main exposing (..)
@@ -378,7 +378,7 @@ fn fat_arrow_cannot_be_declared_as_an_infix_operator() {
 #[test]
 fn constraint_context_nested_in_a_type_is_a_parse_error() {
     use codespan_reporting::files::SimpleFile;
-    use zelkova_lang::compiler::parser::tokenizer::Token;
+    use zelkova_syntax::parser::tokenizer::Token;
 
     let source = indoc::indoc! {r#"
     module Main exposing (..)
@@ -422,7 +422,7 @@ fn constraint_context_nested_in_a_type_is_a_parse_error() {
 #[test]
 fn function_span_covers_annotation_and_body() {
     use codespan_reporting::files::SimpleFile;
-    use zelkova_lang::compiler::position::{BytePos, Span};
+    use zelkova_syntax::position::{BytePos, Span};
 
     let source = indoc::indoc! {r#"
         module Main exposing (..)
@@ -471,7 +471,7 @@ fn function_span_covers_annotation_and_body() {
 #[test]
 fn expression_spans_cover_each_sub_expression() {
     use codespan_reporting::files::SimpleFile;
-    use zelkova_lang::compiler::position::{BytePos, Span};
+    use zelkova_syntax::position::{BytePos, Span};
 
     let source = indoc::indoc! {r#"
         module Main exposing (..)
@@ -523,7 +523,7 @@ fn expression_spans_cover_each_sub_expression() {
 #[test]
 fn case_expression_span_stops_at_its_last_branch() {
     use codespan_reporting::files::SimpleFile;
-    use zelkova_lang::compiler::position::{BytePos, Span};
+    use zelkova_syntax::position::{BytePos, Span};
 
     let source = indoc::indoc! {r#"
         module Main exposing (..)
@@ -614,8 +614,8 @@ fn case_expression_span_stops_at_its_last_branch() {
 #[test]
 fn type_annotation_spans_cover_each_component() {
     use codespan_reporting::files::SimpleFile;
-    use zelkova_lang::compiler::position::{BytePos, Span};
-    use zelkova_lang::compiler::tuple::Tuple;
+    use zelkova_syntax::position::{BytePos, Span};
+    use zelkova_syntax::tuple::Tuple;
 
     let source = indoc::indoc! {r#"
         module Main exposing (..)
@@ -686,8 +686,8 @@ fn type_annotation_spans_cover_each_component() {
 #[test]
 fn tuple_pattern_span_covers_the_parentheses() {
     use codespan_reporting::files::SimpleFile;
-    use zelkova_lang::compiler::position::{BytePos, Span};
-    use zelkova_lang::compiler::tuple::Tuple;
+    use zelkova_syntax::position::{BytePos, Span};
+    use zelkova_syntax::tuple::Tuple;
 
     let source = indoc::indoc! {r#"
         module Main exposing (..)

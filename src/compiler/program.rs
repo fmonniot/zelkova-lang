@@ -27,9 +27,9 @@ use std::collections::HashMap;
 
 use super::canonical::ExportType;
 use super::name::{Name, QualName};
-use super::position::NodeSpan;
 use super::typer::{canonical_type_to_typer_type, Type};
 use super::{CheckedModule, PhaseError, SpanLabel};
+use zelkova_syntax::position::NodeSpan;
 
 /// The name a program's entry point has in the module the manifest names.
 const MAIN: &str = "main";

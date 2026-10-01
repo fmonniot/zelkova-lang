@@ -44,11 +44,11 @@ use crate::compiler::ir::{
     TypedTermKind,
 };
 use crate::compiler::name::{Name, QualName};
-use crate::compiler::position::NodeSpan;
-use crate::compiler::tuple::Tuple;
 use crate::compiler::{Interface, ModuleName, PhaseError, SpanLabel};
 use log::debug;
 use std::collections::HashMap;
+use zelkova_syntax::position::NodeSpan;
+use zelkova_syntax::tuple::Tuple;
 
 // ── Provenance ────────────────────────────────────────────────────────────────
 

@@ -20,9 +20,9 @@ pub mod error;
 pub mod layout;
 pub mod tokenizer;
 
-use crate::compiler::name::Name;
-use crate::compiler::position::{BytePos, NodeSpan, Span};
-use crate::compiler::tuple::Tuple;
+use crate::name::Name;
+use crate::position::{BytePos, NodeSpan, Span};
+use crate::tuple::Tuple;
 pub use error::Error;
 use lalrpop_util::ParseError;
 
@@ -31,7 +31,7 @@ use std::collections::HashMap;
 lalrpop_mod!(
     #[allow(clippy::all, non_fmt_panics, unreachable_pub)]
     grammar,
-    "/compiler/parser/grammar.rs"
+    "/parser/grammar.rs"
 );
 
 /// Parse `source_file` into a `Module`, or report the first syntax error in it.
@@ -517,7 +517,7 @@ pub struct FunType {
     pub context: Option<Type>,
     /// True when the annotation was written `unsafe name : Type`.
     ///
-    /// The word only means something on a [facade](../../../docs/spec/interop.md)
+    /// The word only means something on a [facade](../../docs/spec/interop.md)
     /// signature, where it declares a plain function instead of the effect a
     /// facade declares by default. The grammar accepts it on any annotation, and
     /// canonicalization is what rejects one outside a `module foreign` header.
@@ -634,8 +634,8 @@ impl FunBinding {
     /// reason `FunBinding`'s productions in `grammar.lalrpop` set out.
     fn assemble(
         name: Name,
-        l: crate::compiler::position::BytePos,
-        ml: crate::compiler::position::BytePos,
+        l: crate::position::BytePos,
+        ml: crate::position::BytePos,
         patterns: Vec<Pattern>,
         expr: Expression,
     ) -> FunBinding {

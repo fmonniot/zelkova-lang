@@ -12,9 +12,9 @@ use codespan_reporting::files::SimpleFile;
 use std::collections::HashMap;
 use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::name::{Name, QualName};
-use zelkova_lang::compiler::parser;
-use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::{Interface, ModuleName, PackageName};
+use zelkova_syntax::parser;
+use zelkova_syntax::position::NodeSpan;
 
 /// The package every module the helpers below parse or canonicalize belongs to.
 pub fn test_package() -> PackageName {

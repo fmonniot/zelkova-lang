@@ -20,7 +20,9 @@ use std::path::Path;
 const NOT_YET_RESERVED: [&str; 3] = ["class", "instance", "where"];
 
 fn read(path: &str) -> String {
-    let full = Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
+    let full = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(path);
     fs::read_to_string(&full).unwrap_or_else(|e| panic!("cannot read {}: {}", full.display(), e))
 }
 

@@ -296,10 +296,10 @@ mod tests {
     use super::*;
     use crate::compiler::ir::{SubPattern, TypedTermKind};
     use crate::compiler::name::QualName;
-    use crate::compiler::position::NodeSpan;
-    use crate::compiler::tuple::Tuple;
     use crate::compiler::typer::TypeLiteral;
     use crate::compiler::PackageName;
+    use zelkova_syntax::position::NodeSpan;
+    use zelkova_syntax::tuple::Tuple;
 
     fn int() -> Type {
         Type::Literal(TypeLiteral::Int)

@@ -3,7 +3,7 @@
 //! Directly inspired by the great work on the RustPython team
 //! <https://github.com/RustPython/RustPython/blob/master/parser/src/lexer.rs>
 
-use crate::compiler::position::{spanned, BytePos, Position, Spanned};
+use crate::position::{spanned, BytePos, Position, Spanned};
 use log::trace; // Location in RustPython
 use std::str::FromStr;
 use unic_ucd_category::GeneralCategory;
@@ -1227,7 +1227,7 @@ mod tests {
         make_tokenizer, spanned, NewlineCollapser, Position, Result as TokenizerResult, Spanned,
         Token, TokenizerError, TokenizerErrorType,
     };
-    use crate::compiler::position::BytePos;
+    use crate::position::BytePos;
     use indoc::indoc;
 
     // utilities

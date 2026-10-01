@@ -146,7 +146,7 @@ fn wrapped_by_default() -> bool {
 /// Every way reading a manifest can fail.
 ///
 /// Like [`SourceFileError`](super::source::files::SourceFileError), a manifest error has no
-/// [`Span`](super::position::Span) to render: the location it would want is a byte range in
+/// [`Span`](zelkova_syntax::position::Span) to render: the location it would want is a byte range in
 /// `zelkova.toml`, which is not a file the [`SourceFiles`](super::source::SourceFiles) database
 /// holds. Every variant therefore carries the `manifest_path` it was found in, so that its
 /// [`message`](PhaseError::message) can name the file on its own — which is the whole of the

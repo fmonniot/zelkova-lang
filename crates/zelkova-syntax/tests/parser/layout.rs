@@ -18,10 +18,10 @@
 //! and when that one was already complete the error names the indentation.
 use super::support::*;
 use codespan_reporting::files::SimpleFile;
-use zelkova_lang::compiler::parser;
-use zelkova_lang::compiler::parser::layout::LayoutError;
-use zelkova_lang::compiler::parser::tokenizer::Token;
-use zelkova_lang::compiler::parser::Error;
+use zelkova_syntax::parser;
+use zelkova_syntax::parser::layout::LayoutError;
+use zelkova_syntax::parser::tokenizer::Token;
+use zelkova_syntax::parser::Error;
 
 /// Assert that `source` is rejected by the layout pass, and that the caret
 /// lands on the *last* `On ->` in it — the offending branch pattern. (The
@@ -57,7 +57,7 @@ fn assert_branch_rejected(source: &str, description: &str) {
 /// *left* of `case` is the worse variant of the same mistake.
 ///
 /// Verified to fail by reverting the fix — restoring the unchecked-first-token
-/// behaviour in `src/compiler/parser/layout.rs` — which turns both sources
+/// behaviour in `crates/zelkova-syntax/src/parser/layout.rs` — which turns both sources
 /// into `Ok(_)` and panics inside `layout_error`.
 #[test]
 fn a_branch_not_strictly_right_of_case_is_rejected() {
@@ -101,7 +101,7 @@ fn a_branch_not_strictly_right_of_case_is_rejected() {
 /// already going to close the branch block.
 ///
 /// Verified to fail by dropping the `column > offside.indent` guard from that
-/// check in `src/compiler/parser/layout.rs`: this then reports
+/// check in `crates/zelkova-syntax/src/parser/layout.rs`: this then reports
 /// `Error::Layout` against `other` instead.
 #[test]
 fn an_empty_case_block_is_left_to_the_grammar() {

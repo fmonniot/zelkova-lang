@@ -8,9 +8,9 @@ use std::collections::HashMap;
 
 use zelkova_lang::compiler::canonical;
 use zelkova_lang::compiler::name::QualName;
-use zelkova_lang::compiler::position::NodeSpan;
-use zelkova_lang::compiler::tuple::Tuple;
 use zelkova_lang::compiler::{Interface, PackageName};
+use zelkova_syntax::position::NodeSpan;
+use zelkova_syntax::tuple::Tuple;
 
 #[path = "../support/mod.rs"]
 mod support;
@@ -780,9 +780,9 @@ fn tuple_pattern_of_three_canonicalizes() {
 ///
 /// These cases go through `parser::parse` directly because
 /// `canonicalize_standalone` expects the parse to succeed.
-fn expect_parse_error(source: &str, why: &str) -> zelkova_lang::compiler::parser::Error {
+fn expect_parse_error(source: &str, why: &str) -> zelkova_syntax::parser::Error {
     use codespan_reporting::files::SimpleFile;
-    use zelkova_lang::compiler::parser;
+    use zelkova_syntax::parser;
 
     let file = SimpleFile::new("Test.zel".to_string(), source.to_string());
 
@@ -791,11 +791,11 @@ fn expect_parse_error(source: &str, why: &str) -> zelkova_lang::compiler::parser
 
 /// Asserts `error` is an `UnexpectedToken` on `expected_token`.
 fn assert_rejected_token(
-    error: zelkova_lang::compiler::parser::Error,
-    expected_token: zelkova_lang::compiler::parser::tokenizer::Token,
+    error: zelkova_syntax::parser::Error,
+    expected_token: zelkova_syntax::parser::tokenizer::Token,
     why: &str,
 ) {
-    use zelkova_lang::compiler::parser;
+    use zelkova_syntax::parser;
 
     match error {
         parser::Error::UnexpectedToken { token, .. } => {
@@ -813,7 +813,7 @@ fn assert_rejected_token(
 /// `grammar.lalrpop`, which makes the parse succeed and the test go red.
 #[test]
 fn tuple_of_four_is_a_parse_error() {
-    use zelkova_lang::compiler::parser::tokenizer::Token;
+    use zelkova_syntax::parser::tokenizer::Token;
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -835,7 +835,7 @@ fn tuple_of_four_is_a_parse_error() {
 /// `grammar.lalrpop`, which makes the parse succeed and the test go red.
 #[test]
 fn tuple_pattern_of_four_is_a_parse_error() {
-    use zelkova_lang::compiler::parser::tokenizer::Token;
+    use zelkova_syntax::parser::tokenizer::Token;
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -857,7 +857,7 @@ fn tuple_pattern_of_four_is_a_parse_error() {
 /// `grammar.lalrpop`, which makes the parse succeed and the test go red.
 #[test]
 fn tuple_type_of_four_is_a_parse_error() {
-    use zelkova_lang::compiler::parser::tokenizer::Token;
+    use zelkova_syntax::parser::tokenizer::Token;
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -883,7 +883,7 @@ fn tuple_type_of_four_is_a_parse_error() {
 /// test go red.
 #[test]
 fn tuple_with_a_trailing_comma_is_a_parse_error() {
-    use zelkova_lang::compiler::parser::tokenizer::Token;
+    use zelkova_syntax::parser::tokenizer::Token;
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)

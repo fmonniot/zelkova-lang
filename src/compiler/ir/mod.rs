@@ -77,10 +77,10 @@ use std::collections::HashMap;
 
 use super::canonical;
 use super::name::{Name, QualName};
-use super::position::NodeSpan;
-use super::tuple::Tuple;
 use super::typer::Type;
 use super::{ModuleName, PackageName};
+use zelkova_syntax::position::NodeSpan;
+use zelkova_syntax::tuple::Tuple;
 
 mod decision;
 pub use decision::{build as decision_tree, Binding, Decision, Occurrence, Outcome, Step};

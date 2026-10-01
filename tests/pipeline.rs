@@ -26,12 +26,13 @@ use zelkova_lang::compiler::source::{
 use zelkova_lang::compiler::test_collection;
 use zelkova_lang::compiler::typer;
 use zelkova_lang::compiler::{
-    check_module, check_package, check_package_with_tests, parser, CheckedModule, CompilationError,
+    check_module, check_package, check_package_with_tests, CheckedModule, CompilationError,
     Interface, PackageName, PhaseError,
 };
 use zelkova_lang::driver::{
     compile_package, compile_package_with_tests, BuildError, BUILD_DIRECTORY,
 };
+use zelkova_syntax::parser;
 
 mod support;
 
@@ -1751,7 +1752,7 @@ fn ambiguous_import_labels_point_into_each_defining_module() {
 /// A stand-in `Helper` interface exposing a polymorphic `add`, so it collides
 /// with `Basics.add` on name alone and not on type.
 fn helper_interface() -> (Name, Interface) {
-    use zelkova_lang::compiler::position::NodeSpan;
+    use zelkova_syntax::position::NodeSpan;
 
     let mut values = HashMap::new();
     values.insert(
@@ -2965,7 +2966,7 @@ fn foreign_names(value: &canonical::Value) -> Vec<String> {
 /// this one adds `+`/`add` on purpose, and a plain `use support::*` item-level
 /// shadowing would otherwise hand every other call in this file the wrong one.
 fn basics_interface_with_plus() -> (Name, Interface) {
-    use zelkova_lang::compiler::position::NodeSpan;
+    use zelkova_syntax::position::NodeSpan;
 
     let int_type = canonical::Type::Type(core_qual("Basics.Int"), vec![]);
     let add_type = canonical::Type::Arrow(

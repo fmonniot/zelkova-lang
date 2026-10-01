@@ -6,7 +6,7 @@
 //! below this point ever has to go looking for a position again.
 
 use super::{ErrorKind, Term, TermKind, TypeBinder, TypedTerm, TypedTermKind, Types};
-use crate::compiler::tuple::Tuple;
+use zelkova_syntax::tuple::Tuple;
 
 pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, ErrorKind> {
     let span = term.span;

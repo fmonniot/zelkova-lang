@@ -1,6 +1,6 @@
 use super::support::*;
-use zelkova_lang::compiler::parser::*;
-use zelkova_lang::compiler::tuple::Tuple;
+use zelkova_syntax::parser::*;
+use zelkova_syntax::tuple::Tuple;
 
 fn module(body: Expression) -> Module {
     Module {

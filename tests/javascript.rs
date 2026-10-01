@@ -15,8 +15,8 @@ use indoc::indoc;
 use zelkova_lang::compiler::canonical::Value;
 use zelkova_lang::compiler::javascript::{self, Error, Unions, Unpredicated};
 use zelkova_lang::compiler::name::Name;
-use zelkova_lang::compiler::position::NodeSpan;
 use zelkova_lang::compiler::{check_module, CheckedModule, Interface, PackageName, PhaseError};
+use zelkova_syntax::position::NodeSpan;
 
 mod support;
 

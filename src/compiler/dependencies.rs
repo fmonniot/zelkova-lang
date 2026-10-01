@@ -17,12 +17,12 @@
 //!
 
 use super::name::Name;
-use super::parser::Module;
-use super::position::NodeSpan;
 use super::source::files::SourceFileId;
 use super::SpanLabel;
 use log::debug;
 use std::collections::{HashMap, HashSet, VecDeque};
+use zelkova_syntax::parser::Module;
+use zelkova_syntax::position::NodeSpan;
 
 use petgraph::graph::{DiGraph, NodeIndex};
 
@@ -506,7 +506,7 @@ impl<'a> ModuleWalker<'a> {
         check: fn(
             package: &crate::compiler::PackageName,
             interfaces: &HashMap<Name, crate::compiler::Interface>,
-            source: &crate::compiler::parser::Module,
+            source: &zelkova_syntax::parser::Module,
         ) -> Result<M, E>,
     ) -> (Vec<M>, Vec<E>) {
         let mut modules = Vec::new();
@@ -538,11 +538,11 @@ impl<'a> ModuleWalker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::parser::{Exposing, Import};
-    use crate::compiler::position::NodeSpan;
     use crate::compiler::{
         canonical, parser, CheckedModule, Interface, ModuleName, Name, PackageName,
     };
+    use zelkova_syntax::parser::{Exposing, Import};
+    use zelkova_syntax::position::NodeSpan;
 
     fn module<S: Into<String>>(name: S, deps: Vec<S>) -> Module {
         let imports = deps

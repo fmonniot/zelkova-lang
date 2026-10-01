@@ -13,7 +13,7 @@
 use log::debug;
 
 use super::{occurs, Constraint, ErrorKind, Side, Substitution, Type, TypeLiteral, TypeVariable};
-use crate::compiler::tuple::Tuple;
+use zelkova_syntax::tuple::Tuple;
 
 /// Returns true if `tpe` is a numeric type (Int, Float, or Number).
 fn is_numeric(tpe: &Type) -> bool {
@@ -163,8 +163,8 @@ fn unify_variable(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::position::NodeSpan;
     use crate::compiler::typer::*;
+    use zelkova_syntax::position::NodeSpan;
 
     /// These tests are about unification, not about provenance: every constraint gets
     /// the same reason and no position, so the assertions turn on the types alone.

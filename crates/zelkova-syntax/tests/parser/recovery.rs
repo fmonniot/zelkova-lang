@@ -6,9 +6,9 @@
 //! survived. `NodeSpan`'s `PartialEq` is blind, so positions are asserted on the rendered
 //! diagnostic's primary label and on `Failure::span`, both of which are real byte offsets.
 use codespan_reporting::files::SimpleFile;
-use zelkova_lang::compiler::name::Name;
-use zelkova_lang::compiler::parser::tokenizer::Token;
-use zelkova_lang::compiler::parser::{self, Error, Failure, Module, Parsed};
+use zelkova_syntax::name::Name;
+use zelkova_syntax::parser::tokenizer::Token;
+use zelkova_syntax::parser::{self, Error, Failure, Module, Parsed};
 
 fn parse_recovering(source: &str) -> Parsed {
     let file = SimpleFile::new("test".to_owned(), source.to_owned());
@@ -63,7 +63,7 @@ fn assert_inside(
 /// and one after: both errors come back, in source order and each inside its own
 /// declaration, and the module holds the two that parsed.
 ///
-/// Verified to fail by making `Chunks::cuts` in `src/compiler/parser/chunk.rs` return
+/// Verified to fail by making `Chunks::cuts` in `crates/zelkova-syntax/src/parser/chunk.rs` return
 /// `false`, so the cut never fires: the whole module is then one chunk, whose first error
 /// is the only failure and which leaves no module.
 #[test]

@@ -989,16 +989,27 @@ dependencies = [
  "codespan-reporting",
  "env_logger",
  "indoc",
- "lalrpop",
- "lalrpop-util",
  "log",
  "petgraph",
  "serde",
- "serde_json",
  "spec-doc",
  "toml",
- "unic-ucd-category",
  "walkdir",
+ "zelkova-syntax",
+]
+
+[[package]]
+name = "zelkova-syntax"
+version = "0.3.0"
+dependencies = [
+ "codespan-reporting",
+ "env_logger",
+ "indoc",
+ "lalrpop",
+ "lalrpop-util",
+ "log",
+ "serde_json",
+ "unic-ucd-category",
 ]
 
 [[package]]

@@ -1,5 +1,9 @@
 [workspace]
-members = ["tools/spec-doc", "tools/spec-site"]
+members = ["crates/zelkova-syntax", "tools/spec-doc", "tools/spec-site"]
+
+[workspace.package]
+version = "0.3.0"
+authors = ["François Monniot <francoismonniot@gmail.com>"]
 
 [package]
 name = "zelkova-lang"
@@ -13,22 +17,17 @@ edition = "2018"
 name = "zelkova"
 path = "src/main.rs"
 
-[build-dependencies]
-lalrpop = "0.23.1"
-
 [dependencies]
 log = "0.4"
 codespan-reporting = "0.13"
 env_logger = "0.11"
-unic-ucd-category = "0.9"
-lalrpop-util = "0.23.1"
 walkdir = "2.5"
 petgraph = "0.8"
 toml = "1.1.6"
 serde = { version = "1.0.229", features = ["derive"] }
 clap = { version = "4", features = ["derive"] }
+zelkova-syntax = { path = "crates/zelkova-syntax" }
 
 [dev-dependencies]
 indoc = "2.0"
-serde_json = "1.0.151"
 spec-doc = { path = "tools/spec-doc" }

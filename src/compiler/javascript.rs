@@ -197,9 +197,9 @@ use super::ir::{
     Saturation, Step, TypedTerm, TypedTermKind,
 };
 use super::name::{Name, QualName};
-use super::position::NodeSpan;
 use super::typer::Type;
 use super::{scalars, CheckedModule, ModuleName, PackageName, PhaseError, SpanLabel};
+use zelkova_syntax::position::NodeSpan;
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 

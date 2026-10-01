@@ -1,9 +1,9 @@
-use crate::compiler::position::{spanned, BytePos, NodeSpan};
-use crate::compiler::parser::tokenizer::Token;
-use crate::compiler::parser::error::Error;
-use crate::compiler::parser::*;
-use crate::compiler::name::Name;
-use crate::compiler::tuple::Tuple;
+use crate::position::{spanned, BytePos, NodeSpan};
+use crate::parser::tokenizer::Token;
+use crate::parser::error::Error;
+use crate::parser::*;
+use crate::name::Name;
+use crate::tuple::Tuple;
 use std::convert::TryFrom;
 use lalrpop_util::ParseError;
 

@@ -20,7 +20,8 @@ use zelkova_lang::compiler::ir::{
 use zelkova_lang::compiler::name::{Name, QualName};
 use zelkova_lang::compiler::source::{load_package_sources, SourceRoot};
 use zelkova_lang::compiler::typer::{Type, TypeLiteral};
-use zelkova_lang::compiler::{check_module, parser, Interface, PackageName};
+use zelkova_lang::compiler::{check_module, Interface, PackageName};
+use zelkova_syntax::parser;
 
 mod support;
 

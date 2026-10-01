@@ -1,6 +1,6 @@
 use super::layout::LayoutError;
 use super::tokenizer::{Token, TokenizerError, TokenizerErrorType};
-use crate::compiler::position::{BytePos, Spanned};
+use crate::position::{BytePos, Spanned};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use lalrpop_util::ParseError;
 use std::ops::Range;
@@ -298,7 +298,7 @@ impl From<LayoutError> for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::position::spanned;
+    use crate::position::spanned;
     use indoc::indoc;
 
     /// A rendered diagnostic has to point somewhere visible: a zero-width range
@@ -336,11 +336,11 @@ mod tests {
     /// stream lazily and reports its own `UnexpectedToken` before the offending
     /// indentation is ever reached.
     fn layout_error(source: &str) -> Error {
-        let tokens = crate::compiler::parser::tokenizer::make_tokenizer(source)
-            .map(|r| r.map_err(|e| e.into()));
+        let tokens =
+            crate::parser::tokenizer::make_tokenizer(source).map(|r| r.map_err(|e| e.into()));
 
-        let end = crate::compiler::parser::chunk::end_of(source);
-        let mut errors: Vec<Error> = crate::compiler::parser::layout::layout(tokens, end)
+        let end = crate::parser::chunk::end_of(source);
+        let mut errors: Vec<Error> = crate::parser::layout::layout(tokens, end)
             .filter_map(|item| item.err())
             .collect();
 
@@ -509,7 +509,7 @@ mod tests {
     /// quote at byte 0 up to the line feed at byte 3, where the string was cut off.
     #[test]
     fn string_not_closed_points_at_the_unclosed_string() {
-        let error: Error = crate::compiler::parser::tokenizer::make_tokenizer("\"ab\n")
+        let error: Error = crate::parser::tokenizer::make_tokenizer("\"ab\n")
             .collect::<Result<Vec<_>, _>>()
             .expect_err("expected the source to fail the tokenizer")
             .into();
@@ -524,7 +524,7 @@ mod tests {
     /// `"\q"`: the label covers the backslash and the `q`, bytes 1 to 3.
     #[test]
     fn invalid_escape_points_at_the_escape() {
-        let error: Error = crate::compiler::parser::tokenizer::make_tokenizer("\"\\q\"")
+        let error: Error = crate::parser::tokenizer::make_tokenizer("\"\\q\"")
             .collect::<Result<Vec<_>, _>>()
             .expect_err("expected the source to fail the tokenizer")
             .into();
@@ -550,7 +550,7 @@ mod tests {
     /// label, which reddens the `opening_label` assertion below.
     #[test]
     fn char_not_closed_with_extra_char_labels_open_and_expected_close() {
-        let error: Error = crate::compiler::parser::tokenizer::make_tokenizer("'ab")
+        let error: Error = crate::parser::tokenizer::make_tokenizer("'ab")
             .collect::<Result<Vec<_>, _>>()
             .expect_err("expected the source to fail the tokenizer")
             .into();
@@ -583,7 +583,7 @@ mod tests {
     /// 1 to 4.
     #[test]
     fn tokenizer_unicode_error_renders() {
-        let error: Error = crate::compiler::parser::tokenizer::make_tokenizer("\"\\u{zz}\"")
+        let error: Error = crate::parser::tokenizer::make_tokenizer("\"\\u{zz}\"")
             .collect::<Result<Vec<_>, _>>()
             .expect_err("expected the source to fail the tokenizer")
             .into();

@@ -23,7 +23,7 @@ use super::{
     bool_type, CaseForm, Constraint, Reason, SubPattern, TermPattern, TermPatternKind, Type,
     TypeLiteral, TypedTerm, TypedTermKind,
 };
-use crate::compiler::tuple::Tuple;
+use zelkova_syntax::tuple::Tuple;
 
 pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
     let mut constraints = Vec::new();
@@ -273,8 +273,8 @@ fn pattern_constraints(
 mod tests {
     use super::*;
     use crate::compiler::ir::{Reference, Saturation};
-    use crate::compiler::position::NodeSpan;
     use crate::compiler::typer::*;
+    use zelkova_syntax::position::NodeSpan;
 
     /// Build a typed term with no position — these tests are about which constraints
     /// come out and why, not about where. `NodeSpan`'s `PartialEq` is blind, so the

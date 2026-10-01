@@ -4,7 +4,7 @@
 use super::chunk::can_start_declaration;
 use super::error::Error;
 use super::tokenizer::Token;
-use crate::compiler::position::{spanned, BytePos, Position, Span, Spanned};
+use crate::position::{spanned, BytePos, Position, Span, Spanned};
 use log::trace;
 use std::cmp::Ordering;
 use std::iter::FusedIterator;
@@ -781,8 +781,8 @@ impl<I> FusedIterator for Layout<I> where I: Iterator<Item = Result<Spanned<Posi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::parser::*;
-    use crate::compiler::position::Position;
+    use crate::parser::*;
+    use crate::position::Position;
     use tokenizer::Token;
 
     // Create an approximation for the token position in the stream.

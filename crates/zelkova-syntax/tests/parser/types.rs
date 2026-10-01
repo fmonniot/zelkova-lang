@@ -1,5 +1,5 @@
 use super::support::*;
-use zelkova_lang::compiler::parser::*;
+use zelkova_syntax::parser::*;
 
 // Let's simplify how we build module for our type tests
 fn module_custom_type(tpe: UnionType) -> Module {
