@@ -1665,6 +1665,100 @@ fn unresolved_opaque_import_exposed_type_suggests_a_near_miss() {
     assert_eq!(labels[0].span.to_range(), start..(start + "Mayeb".len()));
 }
 
+/// `Lib`, canonicalized for real so its interface comes out of `to_interface`: it
+/// exposes `Opaque` bare and `Clear` with its constructors.
+fn opaque_and_clear_lib() -> HashMap<zelkova_compiler::name::Name, Interface> {
+    let lib = canonicalize_standalone(indoc::indoc! {r#"
+        module Lib exposing (Opaque, Clear(..), wrap)
+        type Opaque a = Wrapped a
+        type Clear = Shown
+        wrap : a -> Opaque a
+        wrap x = Wrapped x
+    "#})
+    .expect("Lib should canonicalize");
+
+    let mut interfaces = HashMap::new();
+    interfaces.insert(lib.name.name().clone(), lib.to_interface(None));
+    interfaces
+}
+
+/// A `Opaque(..)` import entry for a type its module exposes only as a bare
+/// `Opaque` is an error at that entry, not a constructor-less type that surfaces
+/// later as an unresolved constructor.
+///
+/// Mutation-checked by deleting the `opaque_unions.contains` early return in
+/// `process_import`'s `Privacy::Public` arm: the import then succeeds and
+/// `expect_err` panics. Deleting only the `opaque_unions.insert` in
+/// `Module::to_interface` does the same.
+#[test]
+fn a_constructor_entry_for_an_opaquely_exposed_type_is_rejected() {
+    use zelkova_compiler::PhaseError;
+
+    let interfaces = opaque_and_clear_lib();
+    let source = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (Opaque(..))
+        answer = 1
+    "#};
+
+    let errors = canonicalize_with_interfaces(source, &interfaces)
+        .expect_err("asking for constructors `Lib` does not expose should not resolve");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+    assert!(
+        matches!(errors[0], canonical::Error::EnvironmentErrors(..)),
+        "got {:?}",
+        errors[0]
+    );
+
+    assert_eq!(
+        errors[0].message(),
+        "`Lib` exposes the type `Opaque` but not its constructors"
+    );
+    assert_eq!(
+        errors[0].notes(),
+        vec!["write `Opaque` without `(..)` to import the type alone".to_string()]
+    );
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert!(labels[0].primary);
+    assert_eq!(
+        labels[0].message,
+        "`Opaque(..)` asks for constructors `Lib` does not expose"
+    );
+
+    // The caret covers the whole `Opaque(..)` entry, not the `import` line.
+    let start = source.find("Opaque(..)").unwrap();
+    assert_eq!(
+        labels[0].span.to_range(),
+        start..(start + "Opaque(..)".len())
+    );
+}
+
+/// The legitimate cases beside the one above stay accepted: `Clear(..)` for a
+/// type `Lib` exposes with its constructors brings `Shown` into scope, and a bare
+/// `Opaque` asks for no constructors, so the same opacity does not reject it.
+///
+/// Mutation-checked by making that early return unconditional, rejecting every
+/// `(..)` entry: `Clear(..)` is then refused and `expect` panics.
+#[test]
+fn a_constructor_entry_for_a_transparently_exposed_type_still_resolves() {
+    let interfaces = opaque_and_clear_lib();
+    let source = indoc::indoc! {r#"
+        module Main exposing (..)
+        import Lib exposing (Clear(..), Opaque)
+        shown : Clear
+        shown = Shown
+        wrapped : Opaque Clear
+        wrapped = Lib.wrap Shown
+    "#};
+
+    let module = canonicalize_with_interfaces(source, &interfaces)
+        .expect("`Clear(..)` and a bare `Opaque` should both resolve");
+
+    assert!(module.values.contains_key(&"shown".into()));
+}
+
 // ── Scenario 12: Infix re-association (BUG-22) ───────────────────────────────
 //
 // `InfixExpr` parses a flat run of operator applications (`a * b + c` is one
@@ -2418,6 +2512,7 @@ fn widgets_task_interface() -> (zelkova_compiler::name::Name, Interface) {
         module_name: zelkova_compiler::ModuleName::new(test_package(), "Widgets".into()),
         values: HashMap::new(),
         unions,
+        opaque_unions: Default::default(),
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
@@ -3771,4 +3866,56 @@ fn string_literal_pattern_canonicalizes_to_its_value() {
         branches[0].pattern.kind,
         canonical::PatternKind::String("hello".to_owned())
     );
+}
+
+/// The shared stand-ins for `std/core`'s opaquely exposed types reject a `(..)`
+/// entry the way the real modules do, so a test or a spec block cannot import
+/// `Int(..)`, `Char(..)`, `String(..)` or `Task(..)` and pass here only to fail in
+/// a real build.
+///
+/// Mutation-checked by emptying `opaque_unions` in `basics_interface`: the `Int(..)`
+/// case then resolves and `expect_err` panics.
+#[test]
+fn the_stand_in_interfaces_for_opaque_core_types_reject_a_constructor_entry() {
+    use zelkova_compiler::PhaseError;
+
+    let interfaces: HashMap<_, _> = vec![
+        basics_interface(),
+        char_interface(),
+        string_interface(),
+        task_interface(),
+    ]
+    .into_iter()
+    .collect();
+
+    for (module, entry) in [
+        ("Basics", "Int(..)"),
+        ("Basics", "Float(..)"),
+        ("Char", "Char(..)"),
+        ("String", "String(..)"),
+        ("Task", "Task(..)"),
+    ] {
+        let source = format!(
+            "module Main exposing ()\nimport {} exposing ({})\n",
+            module, entry
+        );
+        let errors = canonicalize_with_interfaces(&source, &interfaces)
+            .expect_err(&format!("`{}` should not resolve", entry));
+        assert_eq!(errors.len(), 1, "{}: got {:?}", entry, errors);
+        assert_eq!(
+            errors[0].message(),
+            format!(
+                "`{}` exposes the type `{}` but not its constructors",
+                module,
+                entry.trim_end_matches("(..)")
+            ),
+            "{}",
+            entry
+        );
+    }
+
+    // `Task` exposes `Failure` with its constructors, so that entry still resolves.
+    let source = "module Main exposing ()\nimport Task exposing (Failure(..))\n";
+    canonicalize_with_interfaces(source, &interfaces)
+        .expect("`Failure(..)` is exposed with its constructors");
 }
