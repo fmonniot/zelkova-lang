@@ -9,8 +9,8 @@ which is why it goes after [`TOOL-2`](README.md) through [`TOOL-4`](tool-4.md) a
 depends on it except [`TIDY-12`](tidy-12.md): [`TOOL-6`](tool-6.md) can start as a workspace
 member depending on today's `zelkova-lang` library.
 
-**Depends on:** [`TOOL-7`](tool-7.md), which makes the dependency order below true inside the
-one crate. Without it `zelkova-compiler` cannot be built apart from `zelkova-js`.
+**Depends on:** [`TOOL-7`](README.md), which made the dependency order below true inside the
+one crate. Without it `zelkova-compiler` could not be built apart from `zelkova-js`.
 
 **Location:** `Cargo.toml`; `build.rs`; everything under `src/` and `tests/`;
 `.github/workflows/rust.yml` and `rustdoc.yml`; `tools/spec-site/assets/index.html` and
