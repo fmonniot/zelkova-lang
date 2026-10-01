@@ -190,14 +190,14 @@ round trip on its first turn.
 > 5. Rename the branch: `git branch -m <branch-prefix>/<id-lower>-<slug>`.
 > 6. Run the checks before committing:
 >    ```sh
->    cargo build && cargo test
+>    cargo build && cargo test --workspace
 >    cargo fmt --all
->    cargo clippy --all-features
->    cargo run -- compile std/core  # must still parse 7 modules; see CLAUDE.md for the baseline
+>    cargo clippy --workspace --all-features -- -D warnings
+>    cargo run -- compile std/core  # must match the baseline in CLAUDE.md
 >    ```
->    Fix every clippy warning. Note that `.github/workflows/rust.yml` marks the fmt and clippy
->    jobs `continue-on-error: true`, so **CI will not catch these for you** — a green CI run on
->    a PR with clippy warnings is not evidence of anything.
+>    Fix every clippy warning. `.github/workflows/rust.yml` fails a PR on a formatting diff
+>    and on a clippy *error*, but its clippy job passes no `-D warnings`, so **CI will not
+>    catch a clippy warning for you** — it annotates the PR and the job stays green.
 >
 >    **Then mutation-check every test you added.** A green test proves nothing until you have
 >    seen it fail. For each new test: neutralise the behavioural change it is meant to pin —

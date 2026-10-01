@@ -54,9 +54,11 @@ and exits 0**. `std/core/tests/FloatTests.ignored` is excluded from that count b
 closes, tracked there rather than left red in CI. Any error, failure, or a different count from
 what's left is a regression you introduced.
 
-`.github/workflows/rust.yml` gates a PR on `fmt`, on `clippy` with `-D warnings`, and on a
-`rustdoc` job that builds the crates' docs with the flags `rustdoc.yml` deploys them with. To
-reproduce that last one locally:
+`.github/workflows/rust.yml` gates a PR on `fmt`, on `clippy`, and on a `rustdoc` job that
+builds the crates' docs with the flags `rustdoc.yml` deploys them with. The clippy job passes
+no `-D warnings`, so it fails on a clippy error and only annotates a warning: run
+`cargo clippy --workspace --all-features -- -D warnings` locally to catch those. To reproduce
+the `rustdoc` job locally:
 
 ```sh
 RUSTFLAGS="-D warnings -W unreachable-pub" RUSTDOCFLAGS="-D warnings" cargo doc --no-deps -p zelkova-syntax -p zelkova-compiler -p zelkova-js -p zelkova-test-runner -p zelkova

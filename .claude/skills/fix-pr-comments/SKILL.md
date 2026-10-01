@@ -214,14 +214,14 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 >    can't conflict — they're one file each.
 > 4. Run and fix, committing separately if anything changes:
 >    ```bash
->    cargo build && cargo test
+>    cargo build && cargo test --workspace
 >    cargo fmt --all
->    cargo clippy --all-features
+>    cargo clippy --workspace --all-features -- -D warnings
 >    cargo run -- compile std/core   # must match the baseline in CLAUDE.md
 >    ```
->    `.github/workflows/rust.yml` marks the fmt and clippy jobs `continue-on-error: true`, so
->    **CI will not fail on either** — a green CI run proves nothing about them. Leave no warnings
->    regardless.
+>    `.github/workflows/rust.yml` fails a PR on a formatting diff and on a clippy *error*, but
+>    its clippy job passes no `-D warnings`, so **CI will not fail on a clippy warning** — a
+>    green run proves nothing about those. Leave no warnings regardless.
 > 5. Push: `git push origin <branch>`.
 > 6. Reply to **every** comment, implemented or not:
 >    - **Implemented** — the short commit SHA that addressed it and a one-line description; if
@@ -298,9 +298,9 @@ If the agent reported `NEEDS-ESCALATION`, its other commits still stand — re-s
 agent into the same worktree, scoped to that one finding, with the first agent's account pasted
 in as prior findings rather than instructions. Do not re-run the whole pass.
 
-Because CI does not gate fmt or clippy, a passing `gh pr checks` is not evidence they are clean.
-Confirm in the worktree: `git -C "$WT" ...` then `cargo fmt --all --check` and
-`cargo clippy --all-features`.
+CI gates formatting and clippy errors, and lets a clippy warning through, so a passing
+`gh pr checks` is not evidence clippy is clean. Confirm in the worktree:
+`cargo clippy --workspace --all-features -- -D warnings`.
 
 ## Step 5 — Report
 
