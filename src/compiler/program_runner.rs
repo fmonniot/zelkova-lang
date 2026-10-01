@@ -40,10 +40,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::name::Name;
-use super::{
-    compile_package, javascript, manifest, CompilationError, PackageName, PhaseError,
-    BUILD_DIRECTORY,
-};
+use super::{javascript, manifest, CompilationError, PackageName, PhaseError};
+use crate::driver::{compile_package, BUILD_DIRECTORY};
 
 /// The entry point's file name, at the root of `build/out/js/`, beside the runtime.
 pub const MAIN_FILE: &str = "main.mjs";

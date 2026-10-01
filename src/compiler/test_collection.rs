@@ -2,10 +2,9 @@
 //!
 //! **A test is a value a module under `tests/` exposes whose type is `zelkova-test`'s
 //! `Test`** — [*What a test is*](../../../docs/spec/packages.md#what-a-test-is). This
-//! module is the pass that finds them: given the [`Interface`]s
-//! [`compile_package_with_tests`](super::compile_package_with_tests) hands back for a
-//! package's `tests/` root, [`collect`] returns, per module, the sorted names of the
-//! values that have that type.
+//! module is the pass that finds them: given the [`Interface`]s of the modules of a
+//! package's `tests/` root that checked, [`collect`] returns, per module, the sorted names
+//! of the values that have that type.
 //!
 //! It does not run anything, and does not decide how a runner reports what it finds —
 //! that is [`test_runner`](super::test_runner)'s, the only caller this one is written for.
@@ -60,8 +59,8 @@ pub struct ModuleTests {
 
 /// The tests each of `modules` exposes.
 ///
-/// `modules` is what [`compile_package_with_tests`](super::compile_package_with_tests)
-/// hands back for a package's `tests/` root: one checked [`Interface`] per module. One
+/// `modules` is one checked [`Interface`] per module of a package's `tests/` root, which
+/// is what a build that compiled the tests hands back. One
 /// [`ModuleTests`] comes back per module, in the same order, even when its `tests` is
 /// empty — a module that exposes no `Test` is still a module the build held, and
 /// dropping it here would leave a caller unable to tell "no tests" from "not

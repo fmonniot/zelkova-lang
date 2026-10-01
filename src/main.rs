@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-use zelkova_lang::compiler;
+use zelkova_lang::{compiler, driver};
 
 /// `zelkova` — the compiler's command line.
 #[derive(Parser)]
@@ -40,7 +40,7 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Command::Compile { dir } => compiler::compile_package(&dir).map(|()| 0),
+        Command::Compile { dir } => driver::compile_package(&dir).map(|()| 0),
         Command::Run { dir } => compiler::program_runner::run(&dir),
         Command::Test { dir } => compiler::test_runner::run(&dir),
     };

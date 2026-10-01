@@ -95,8 +95,8 @@ fn compile_defaults_to_current_directory() {
 /// hardcoded path left over from before GEN-17 gave the compiler a CLI.
 ///
 /// Neutralised by changing the match arm in `src/main.rs` from
-/// `Command::Compile { dir } => compiler::compile_package(&dir)` to
-/// `Command::Compile { .. } => compiler::compile_package(Path::new("tests/fixtures/package_type_error"))`
+/// `Command::Compile { dir } => driver::compile_package(&dir)` to
+/// `Command::Compile { .. } => driver::compile_package(Path::new("tests/fixtures/package_type_error"))`
 /// — ignoring the parsed `dir` — while running from the repository root with
 /// `compile tests/fixtures/package_checks` as the argument. This test went red
 /// (exit code 1, an `Int`/`Bool` mismatch on stderr instead of "parsed 1 modules")

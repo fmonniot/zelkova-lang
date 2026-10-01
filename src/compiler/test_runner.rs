@@ -61,10 +61,8 @@ use std::process::Command;
 
 use super::name::Name;
 use super::test_collection::{self, ModuleTests};
-use super::{
-    compile_package_with_tests, javascript, test_tree, CompilationError, PhaseError,
-    BUILD_DIRECTORY,
-};
+use super::{javascript, CompilationError, PhaseError};
+use crate::driver::{compile_package_with_tests, test_tree, BUILD_DIRECTORY};
 
 /// The entry point's file name, at the root of `build/test/js/`, beside the runtime.
 pub const RUN_FILE: &str = "run.mjs";

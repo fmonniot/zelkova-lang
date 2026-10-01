@@ -26,10 +26,10 @@ use zelkova_lang::compiler::source::{
 use zelkova_lang::compiler::test_collection;
 use zelkova_lang::compiler::typer;
 use zelkova_lang::compiler::{
-    check_module, check_package, check_package_with_tests, compile_package,
-    compile_package_with_tests, parser, CheckedModule, CompilationError, Interface, PackageName,
-    PhaseError, BUILD_DIRECTORY,
+    check_module, check_package, check_package_with_tests, parser, CheckedModule, CompilationError,
+    Interface, PackageName, PhaseError,
 };
+use zelkova_lang::driver::{compile_package, compile_package_with_tests, BUILD_DIRECTORY};
 
 mod support;
 
@@ -776,7 +776,7 @@ fn files_under(dir: &Path) -> Vec<String> {
 fn a_build_writes_one_directory_per_package() {
     let build_dir = fresh_build_dir("a_build_writes_one_directory_per_package");
 
-    let result = zelkova_lang::compiler::compile_package_into(
+    let result = zelkova_lang::driver::compile_package_into(
         &fixture_package("package_namespaced_dependency"),
         &build_dir,
     );
@@ -822,7 +822,7 @@ fn a_build_writes_one_directory_per_package() {
 fn the_stdlib_build_writes_every_module_and_companion() {
     let build_dir = fresh_build_dir("the_stdlib_build_writes_every_module_and_companion");
 
-    let result = zelkova_lang::compiler::compile_package_into(&std_package_root(), &build_dir);
+    let result = zelkova_lang::driver::compile_package_into(&std_package_root(), &build_dir);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
     assert_eq!(
@@ -873,7 +873,7 @@ fn the_stdlib_build_writes_every_module_and_companion() {
 fn a_build_with_a_failing_module_writes_nothing() {
     let build_dir = fresh_build_dir("a_build_with_a_failing_module_writes_nothing");
 
-    let error = zelkova_lang::compiler::compile_package_into(
+    let error = zelkova_lang::driver::compile_package_into(
         &fixture_package("package_type_error"),
         &build_dir,
     )
@@ -934,7 +934,7 @@ fn a_build_that_cannot_be_emitted_writes_nothing() {
     .unwrap();
     let build_dir = package.join("build");
 
-    let error = zelkova_lang::compiler::compile_package_into(&package, &build_dir)
+    let error = zelkova_lang::driver::compile_package_into(&package, &build_dir)
         .expect_err("a facade with no companion cannot be emitted");
 
     let CompilationError::Many(errors) = &error else {
@@ -1003,7 +1003,7 @@ fn a_test_build_whose_tests_cannot_be_emitted_writes_nothing() {
     .unwrap();
     let build_dir = package.join("build");
 
-    let error = zelkova_lang::compiler::compile_package_with_tests_into(&package, &build_dir)
+    let error = zelkova_lang::driver::compile_package_with_tests_into(&package, &build_dir)
         .expect_err("a facade under `tests/` with no companion cannot be emitted");
 
     let CompilationError::Many(errors) = &error else {
@@ -1077,7 +1077,7 @@ fn a_test_companion_imports_the_companion_it_checks_by_its_build_path() {
     .unwrap();
     let build_dir = package.join("build");
 
-    zelkova_lang::compiler::compile_package_with_tests_into(&package, &build_dir).unwrap();
+    zelkova_lang::driver::compile_package_with_tests_into(&package, &build_dir).unwrap();
 
     let written = |path: &str| std::fs::read_to_string(build_dir.join(path)).unwrap();
     assert_eq!(
@@ -4261,7 +4261,7 @@ fn a_dependencys_names_resolve_beside_a_local_module_of_the_same_name() {
     let build_dir =
         fresh_build_dir("a_dependencys_names_resolve_beside_a_local_module_of_the_same_name");
 
-    let result = zelkova_lang::compiler::compile_package_into(
+    let result = zelkova_lang::driver::compile_package_into(
         &fixture_package("package_local_size_beside_dependency"),
         &build_dir,
     );
@@ -4283,7 +4283,7 @@ fn a_dependencys_names_resolve_beside_a_local_module_of_the_same_name() {
 fn two_packages_same_named_modules_import_under_distinct_names() {
     let build_dir = fresh_build_dir("two_packages_same_named_modules_import_under_distinct_names");
 
-    let result = zelkova_lang::compiler::compile_package_into(
+    let result = zelkova_lang::driver::compile_package_into(
         &fixture_package("package_local_size_beside_dependency"),
         &build_dir,
     );
@@ -4345,7 +4345,7 @@ fn two_packages_same_named_modules_import_under_distinct_names() {
 fn a_dependencys_constructor_is_hoisted_under_its_own_package() {
     let build_dir = fresh_build_dir("a_dependencys_constructor_is_hoisted_under_its_own_package");
 
-    let result = zelkova_lang::compiler::compile_package_into(
+    let result = zelkova_lang::driver::compile_package_into(
         &fixture_package("package_local_size_beside_dependency"),
         &build_dir,
     );
@@ -4960,7 +4960,7 @@ fn a_test_dependency_reaches_the_tests_root() {
 fn a_test_build_writes_a_second_tree_beside_the_plain_one() {
     let build_dir = fresh_build_dir("a_test_build_writes_a_second_tree_beside_the_plain_one");
 
-    let result = zelkova_lang::compiler::compile_package_with_tests_into(
+    let result = zelkova_lang::driver::compile_package_with_tests_into(
         &fixture_package("package_test_dependency"),
         &build_dir,
     );
@@ -4990,7 +4990,7 @@ fn a_test_build_writes_a_second_tree_beside_the_plain_one() {
 fn a_plain_build_writes_no_test_tree() {
     let build_dir = fresh_build_dir("a_plain_build_writes_no_test_tree");
 
-    let result = zelkova_lang::compiler::compile_package_into(
+    let result = zelkova_lang::driver::compile_package_into(
         &fixture_package("package_test_dependency"),
         &build_dir,
     );
@@ -5044,7 +5044,7 @@ fn a_test_dependency_does_not_reach_the_src_root() {
 fn cross_module_arity_fixture_compiles_and_calls_directly() {
     let build_dir = fresh_build_dir("cross_module_arity_fixture_compiles_and_calls_directly");
 
-    let result = zelkova_lang::compiler::compile_package_with_tests_into(
+    let result = zelkova_lang::driver::compile_package_with_tests_into(
         &fixture_package("package_test_cross_module_calls"),
         &build_dir,
     );
@@ -5409,7 +5409,7 @@ fn a_plain_build_leaves_a_test_dependency_on_its_dependent_uncompiled() {
 
     let build_dir =
         fresh_build_dir("a_plain_build_leaves_a_test_dependency_on_its_dependent_uncompiled");
-    let result = zelkova_lang::compiler::compile_package_into(&root, &build_dir);
+    let result = zelkova_lang::driver::compile_package_into(&root, &build_dir);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     assert_eq!(
         files_under(&build_dir),

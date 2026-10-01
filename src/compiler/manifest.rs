@@ -5,7 +5,7 @@
 //! with `serde`/`toml`, and validates each field on its own terms — a legal package
 //! [`name`](Manifest::name), a three-integer [`version`](Manifest::version), and each
 //! `dependencies`/`test-dependencies` entry naming exactly one source. `private_modules` is
-//! checked against the modules the package actually holds by [`compile_package`](super::compile_package)'s caller,
+//! checked against the modules the package actually holds by [`check_package`](super::check_package),
 //! once source loading has produced that list — this module only knows the manifest, never
 //! the package's files, so [`load`] returns the names as written.
 //!
