@@ -64,7 +64,10 @@ pub struct Module {
     /// The value declarations that were written and have no canonical form, sorted by name.
     ///
     /// A declaration is here when its annotation or its body did not canonicalize, or, in
-    /// a facade, when its signature was rejected; an error beside the module says which.
+    /// a facade, when its signature was rejected by the per-declaration checks; an error
+    /// beside the module says which. The checks that run on the whole signature list
+    /// before those (`FacadeConstrained`, a malformed context, `UnsafeOutsideFacade`)
+    /// report an error and leave the declaration where the per-declaration checks put it.
     /// Every other value declaration is in [`values`](Self::values), and no name is in
     /// both. What survives of one is its annotation, when that canonicalized:
     /// [`to_interface`](Self::to_interface) exposes it and the typer declares it, so a
@@ -2402,13 +2405,23 @@ pub fn canonicalize_recovering(
 
             // Make sure there is no binding
             if !function.bindings.is_empty() {
-                let tpe = tpe.and_then(Result::ok);
+                // The signature's own error is reported too, as `do_values` does for a
+                // body beside a failed annotation: the annotation's first, then the
+                // binding's. A missing signature is that error as well.
                 // TODO More specific error
-                return Err(Rejected::new(
-                    function,
-                    tpe,
-                    vec![Error::BindingPatternsInvalidLen(function.span)],
-                ));
+                let binding = Error::BindingPatternsInvalidLen(function.span);
+                return Err(match tpe {
+                    Some(Ok(tpe)) => Rejected::new(function, Some(tpe), vec![binding]),
+                    Some(Err(error)) => Rejected::new(function, None, vec![error, binding]),
+                    None => Rejected::new(
+                        function,
+                        None,
+                        vec![
+                            Error::NoTypeInBinding(function.name.clone(), function.span),
+                            binding,
+                        ],
+                    ),
+                });
             }
 
             // Make sure there is a type
@@ -2506,7 +2519,19 @@ pub fn canonicalize_recovering(
 
     // We do exports at the end, and verify that all exported value do
     // have a reference within the current module
-    let (exports, export_errors) = do_exports(&source.exposing, &env, &values);
+    // A declaration that is broken and was written with no annotation is in neither
+    // `values` nor `Broken::tpe`, so `do_exports` is told of it here: it is as exposed
+    // and as unannotated as a sound `Value::Value`. A facade is left out: its unannotated
+    // signature already is `NoTypeInBinding`.
+    let unannotated_broken: HashMap<Name, NodeSpan> = source
+        .functions
+        .iter()
+        .filter(|f| {
+            !source.binding_foreign && f.tpe.is_none() && broken.iter().any(|b| b.name == f.name)
+        })
+        .map(|f| (f.name.clone(), f.span))
+        .collect();
+    let (exports, export_errors) = do_exports(&source.exposing, &env, &values, &unannotated_broken);
     errors.extend(export_errors);
 
     Ok(Canonicalized {
@@ -3152,6 +3177,11 @@ fn do_infixes(
 // name this module declares itself, and leaves a name it does not declare to
 // the existence check above.
 //
+// `unannotated_broken` is the declarations of this module that were written with no
+// annotation and are in `Module::broken` — absent from `values`, so without it an exposed
+// one would be accepted here and then be missing from the interface with nothing in this
+// module to say why. Each is reported exactly as an unannotated `Value::Value` is.
+//
 // What comes back is the exports that resolved beside the errors of those that did not:
 // for an explicit list, every entry that did not error, so a bad entry costs the module
 // that entry alone; for `exposing (..)`, everything, beside an error per unannotated
@@ -3160,6 +3190,7 @@ fn do_exports(
     source_exposing: &parser::Exposing,
     env: &dyn Environment,
     values: &HashMap<Name, Value>,
+    unannotated_broken: &HashMap<Name, NodeSpan>,
 ) -> (Exports, Vec<Error>) {
     match source_exposing {
         // `exposing (..)` exposes every top-level declaration this module
@@ -3178,7 +3209,10 @@ fn do_exports(
                 )),
             });
 
-            let ((), errors) = collect_partial(checked);
+            let ((), mut errors) = collect_partial(checked);
+            errors.extend(unannotated_broken.iter().map(|(name, span)| {
+                Error::ExportedValueNotAnnotated(name.clone(), NodeSpan::none(), *span)
+            }));
 
             (Exports::Everything, errors)
         }
@@ -3191,6 +3225,14 @@ fn do_exports(
                                 name.clone(),
                                 ExportType::Value,
                                 exposed.span,
+                            ));
+                        }
+
+                        if let Some(span) = unannotated_broken.get(name) {
+                            return Err(Error::ExportedValueNotAnnotated(
+                                name.clone(),
+                                exposed.span,
+                                *span,
                             ));
                         }
 
