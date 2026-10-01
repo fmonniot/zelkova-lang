@@ -551,9 +551,8 @@ import Widget exposing (Missing)
 x = 1
 ```
 
-A `Size(..)` entry names the constructors as well as the type, so it is an error against a
-module that exposes `Size` without them. An import can take no more of a type than its
-module exposes:
+The constructors are the only difference between the two entries, so a `Size(..)` entry is an
+error against a module that exposes `Size` without them:
 
 ```zel expect=ok package=opaque-entry
 module Widget exposing (Size, small)

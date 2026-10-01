@@ -275,7 +275,8 @@ pub struct Interface {
     /// bare `Size` in its `exposing` header rather than `Size(..)`.
     ///
     /// An opaque entry's `variants` is empty, and so is that of a type declared with
-    /// no constructors at all (`type Empty =`, which the grammar accepts), so
+    /// no constructors at all (`type Empty =`, which the grammar accepts today and
+    /// [`LANG-10`](../../docs/tickets/lang-10.md) is to reject), so
     /// `variants` alone cannot say whether the constructors were withheld. This set
     /// is what says it. `canonical::environment::process_import` reads it to reject a
     /// `Size(..)` import entry for such a type, and

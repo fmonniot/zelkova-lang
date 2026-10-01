@@ -561,8 +561,8 @@ fn process_import(
                         })?;
 
                         // An opaque export's `variants` is empty, as is that of a
-                        // type declared with none; `opaque_unions` is what tells
-                        // the two apart. Inserting the first would hand over a
+                        // type declared with none (which LANG-10 is to reject);
+                        // `opaque_unions` is what tells the two apart. Inserting the first would hand over a
                         // constructor-less type in place of what `(..)` asked for.
                         if interface.opaque_unions.contains(type_name) {
                             return Err(EnvError::ConstructorsNotExposed(
