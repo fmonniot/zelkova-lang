@@ -58,7 +58,7 @@ which makes diagnostics lag behind the text they describe.
 5. **The overlay only replaces and adds.** It has no way to say a file on disk is gone. An
    editor that deletes a module deletes the file, and the next walk does not find it.
 
-6. **The checking entry point `TOOL-3` adds gains an `&Overlay` parameter**, passed down
+6. **The checking entry points `TOOL-3` adds, `check_package` and `check_package_with_tests`, both gain an `&Overlay` parameter**, passed down
    through the checking half of `compile` and `compile_in_build` to the two
    `load_package_sources_into` calls. The CLI half passes an empty one. `compile_package`,
    `compile_package_with_tests` and their `_into` variants keep their signatures, so
@@ -77,7 +77,7 @@ Two reads stay on disk, deliberately:
   manifest. An overlay key that does not end in `.zel` is ignored, so a caller may hand over
   every open buffer without filtering.
 - **A facade's companion `.mjs`.** Its text is read only by a build that writes, and no such
-  build takes an overlay. `to_modules_to_emit` asks the disk whether one exists, and keeps
+  build takes an overlay. `to_module_to_emit` asks the disk whether one exists, and keeps
   asking the disk.
 
 A package therefore has to exist on disk, with its `zelkova.toml` and its `src/`, for the

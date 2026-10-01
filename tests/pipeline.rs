@@ -26,8 +26,9 @@ use zelkova_lang::compiler::source::{
 use zelkova_lang::compiler::test_collection;
 use zelkova_lang::compiler::typer;
 use zelkova_lang::compiler::{
-    check_module, check_package, compile_package, compile_package_with_tests, parser,
-    CheckedModule, CompilationError, Interface, PackageName, PhaseError, BUILD_DIRECTORY,
+    check_module, check_package, check_package_with_tests, compile_package,
+    compile_package_with_tests, parser, CheckedModule, CompilationError, Interface, PackageName,
+    PhaseError, BUILD_DIRECTORY,
 };
 
 mod support;
@@ -5836,4 +5837,54 @@ fn check_package_writes_nothing_for_a_package_that_checks() {
     // looking in the right place.
     compile_package(&root).expect("the package checks");
     assert!(build.join("out").join("js").is_dir());
+}
+
+/// `TOOL-3`: `check_package_with_tests` checks the root's `tests/` root as well and hands
+/// the modules back in `test_modules` and `test_dependency_modules`, where `check_package`
+/// on the same directory leaves both empty. Neither writes a `build/`.
+///
+/// The package is a copy of `package_test_run` with its two dependency paths made
+/// absolute, under Cargo's per-target scratch space for the reason
+/// `check_package_writes_nothing_for_a_package_that_checks` gives.
+///
+/// Mutation-checked by making `check_package_with_tests` pass `TestRoot::Skipped`: the
+/// `test_modules` assertion goes red.
+#[test]
+fn check_package_with_tests_checks_the_tests_root_and_writes_nothing() {
+    let fixture = fixture_package("package_test_run");
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = fresh_build_dir("check_package_with_tests");
+    for dir in ["src", "tests"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    for file in ["src/App.zel", "tests/AppTest.zel"] {
+        std::fs::copy(fixture.join(file), root.join(file)).unwrap();
+    }
+    let manifest = std::fs::read_to_string(fixture.join("zelkova.toml"))
+        .unwrap()
+        .replace("../../../std", &repo.join("std").display().to_string());
+    std::fs::write(root.join("zelkova.toml"), manifest).unwrap();
+    let build = root.join(BUILD_DIRECTORY);
+
+    let check = check_package_with_tests(&root).expect("the manifest and the build resolve");
+
+    assert!(check.errors.is_empty(), "got {:?}", check.errors);
+    let test_names: Vec<&Name> = check
+        .test_modules
+        .iter()
+        .map(|checked| checked.module.canonical.name.name())
+        .collect();
+    assert_eq!(test_names, vec![&Name::from("AppTest")]);
+    assert_eq!(check.test_modules[0].root_dir, root.join("tests"));
+    assert!(
+        !check.test_dependency_modules.is_empty(),
+        "`zelkova-test`'s modules are what `tests/` imports"
+    );
+    assert!(!build.exists(), "checking must not create {:?}", build);
+
+    let src_only = check_package(&root).expect("the manifest and the build resolve");
+    assert!(src_only.errors.is_empty(), "got {:?}", src_only.errors);
+    assert!(src_only.test_modules.is_empty());
+    assert!(src_only.test_dependency_modules.is_empty());
+    assert_eq!(src_only.modules.len(), check.modules.len());
 }

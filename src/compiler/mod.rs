@@ -1040,8 +1040,10 @@ fn print_status(writer: &mut StandardStream, status: &Status) {
 /// lines, emit and write a build that checked, and render every error to stderr.
 ///
 /// The status lines are printed once the check has finished rather than as each phase
-/// ends. Nothing else is printed in between, so what reaches stderr is the same bytes in
-/// the same order: every status line, then every diagnostic.
+/// ends. For a check that returns, the bytes `compile_package` itself writes to stderr are
+/// the same as before, in the same order: every status line, then every diagnostic. Log
+/// output (`RUST_LOG`) and a panic's message no longer interleave with them, and a panic
+/// during checking loses the status lines already recorded.
 fn compile(
     package_dir: &Path,
     tests: TestRoot,
@@ -1206,8 +1208,9 @@ fn check(package_dir: &Path, tests: TestRoot) -> Result<PackageCheck, Compilatio
     // that cannot be deferred to the usual accumulate-and-render path, because it
     // happens before that path exists: the source root itself is derived from the
     // manifest, so there is no build to walk, no accumulator and no file database yet.
-    // It goes back to the caller as `Err`, and `compile` returns it unrendered. Every failure after the accumulator below
-    // is created goes onto it instead, this package's source loading included.
+    // It goes back to the caller as `Err`, and `compile` returns it unrendered. Every
+    // failure after the accumulator below is created goes onto it instead, this package's
+    // source loading included.
     debug!("phase: read package manifest");
     let manifest = manifest::load(package_dir)?;
     // The package the compiler was pointed at, which is the one whose `tests/` root
