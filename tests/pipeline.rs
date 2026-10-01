@@ -5980,6 +5980,56 @@ fn assert_overlaid_answer_was_checked(check: &zelkova_lang::compiler::PackageChe
     assert_eq!(file.source(), OVERLAID_ANSWER);
 }
 
+/// `TOOL-4`: a module with a syntax error in each of two declarations reports both, each
+/// with a label in that file, and the file still counts once among those that failed to
+/// parse.
+///
+/// Mutation-checked by making `parse_root` push only the first failure's error: the
+/// error-count assertion goes red.
+#[test]
+fn check_package_reports_every_syntax_error_of_a_module() {
+    const TWO_ERRORS: &str = "module Answer exposing (..)\n\nfirst = = 1\n\nok = 2\n\nsecond = )\n";
+    let root = overlay_fixture("every_syntax_error_of_a_module");
+    let mut overlay = Overlay::new();
+    overlay.insert(root.join("src").join("Answer.zel"), TWO_ERRORS.into());
+
+    let check = check_package(&root, &overlay).expect("the manifest and the build resolve");
+
+    assert_eq!(check.errors.len(), 2, "got {:?}", check.errors);
+    let expected_starts = [
+        TWO_ERRORS.find("= 1").unwrap(),
+        TWO_ERRORS.rfind(")").unwrap(),
+    ];
+    for (error, expected_start) in check.errors.iter().zip(expected_starts) {
+        assert!(
+            matches!(unwrap_in_file(error), CompilationError::Source(..)),
+            "expected a syntax error, got {:?}",
+            error
+        );
+        let diagnostic = error.as_diagnostic();
+        let primary = diagnostic
+            .labels
+            .iter()
+            .find(|label| label.style == LabelStyle::Primary)
+            .unwrap_or_else(|| panic!("expected a primary label, got {:?}", diagnostic.labels));
+        let file = check
+            .sources
+            .get(primary.file_id)
+            .expect("the label's file is in the returned database");
+        assert_eq!(file.source(), TWO_ERRORS);
+        assert_eq!(primary.range.start, expected_start);
+    }
+
+    assert!(
+        check
+            .status
+            .iter()
+            .any(|status| status.text == "parsed 0 modules, 1 failed to parse"),
+        "the file counts once among those that failed, got {:?}",
+        check.status
+    );
+}
+
 /// `TOOL-2`: a module held in the overlay is checked in place of the file on disk, which
 /// checks clean. The error comes back, and the source its label points into is the
 /// overlay's text.
