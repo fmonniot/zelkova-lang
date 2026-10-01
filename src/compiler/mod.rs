@@ -148,17 +148,6 @@ impl PackageName {
         PackageName(resolve::CORE_PACKAGE.to_string())
     }
 
-    /// `zelkova-test`, [`test_collection::TEST_PACKAGE`]: the package that declares
-    /// `Test`, the type [*what a test
-    /// is*](../../docs/spec/packages.md#what-a-test-is) finds a value's test-ness by.
-    ///
-    /// Built the same way [`PackageName::core`] is, without going through
-    /// [`PackageName::new`]'s check, so that naming it needs no `unwrap`; that the
-    /// constant passes the check is a unit test.
-    pub fn test_package() -> PackageName {
-        PackageName(test_collection::TEST_PACKAGE.to_string())
-    }
-
     /// Whether this is `zelkova-core`, the one package the default imports and the
     /// scalar seeding they are replaced by both key themselves on
     /// ([`DEC-17`](../../docs/decisions/dec-17.md) decision 4) — and, since
@@ -1982,16 +1971,6 @@ mod tests {
         assert_eq!(
             PackageName::new(resolve::CORE_PACKAGE),
             Ok(PackageName::core())
-        );
-    }
-
-    /// `PackageName::test_package` skips the check the same way `core` does, so it is
-    /// run here too.
-    #[test]
-    fn the_test_package_name_is_a_legal_one() {
-        assert_eq!(
-            PackageName::new(test_collection::TEST_PACKAGE),
-            Ok(PackageName::test_package())
         );
     }
 
