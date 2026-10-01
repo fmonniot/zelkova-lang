@@ -6249,17 +6249,133 @@ fn a_module_with_a_type_error_keeps_a_typed_tree() {
     assert_eq!(unchecked, vec![(&Name::from("bad"), true)]);
 }
 
-/// A module that fails canonicalization publishes nothing, so a module importing it
-/// still reports it as missing. This is where publishing a module with errors stops
-/// today: only a module whose declarations all canonicalized has an interface.
+/// A module with a canonicalization error in one declaration publishes its interface to
+/// the modules that import it: `B` imports `A`'s sound `ok`, and the only error of the
+/// check is `A`'s own, about `bad`. `A`'s tree holds a typed `ok`, and lists the broken
+/// `bad` as unchecked with an error behind it.
 ///
-/// It pins behaviour this crate has always had, so there is no change to neutralise.
-/// That it can tell the two cases apart was checked by pointing it at
-/// `package_import_type_error`, the same package with a type error in place of the
-/// canonicalization error: the error count goes red.
+/// Mutation-checked by making `check_module_recovering` answer `Outcome::Failed` when
+/// canonicalization reported anything: `A` publishes nothing, `B` reports it as missing,
+/// and the error count goes red.
 #[test]
-fn a_module_that_fails_canonicalization_publishes_nothing() {
+fn a_module_with_a_canonicalization_error_publishes_its_interface() {
     let root = fixture_package("package_import_canonical_error");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    assert!(
+        matches!(
+            check.errors.as_slice(),
+            [error] if matches!(
+                unwrap_in_file(error),
+                CompilationError::Canonical(_, module) if module == &Name::from("A")
+            )
+        ),
+        "expected `A`'s canonicalization error alone, got {:?}",
+        check.errors
+    );
+    assert!(
+        check
+            .errors
+            .iter()
+            .all(|error| unwrap_in_file(error).module() != Some(&Name::from("B"))),
+        "got {:?}",
+        check.errors
+    );
+
+    assert_eq!(sorted_module_names(&check.failing), vec!["A", "B"]);
+    let a = &check
+        .failing
+        .iter()
+        .find(|checked| checked.module.canonical.name.name() == &Name::from("A"))
+        .expect("`A` is among the failing modules")
+        .module
+        .ir;
+
+    let declarations: Vec<&Name> = a
+        .declarations
+        .iter()
+        .map(|declaration| &declaration.name)
+        .collect();
+    assert_eq!(declarations, vec![&Name::from("ok")]);
+
+    let unchecked: Vec<(&Name, bool)> = a
+        .unchecked
+        .iter()
+        .map(|unchecked| (&unchecked.name, unchecked.reported))
+        .collect();
+    assert_eq!(unchecked, vec![(&Name::from("bad"), true)]);
+}
+
+/// A caller of a broken declaration is checked against the declaration's annotation:
+/// `f`'s body uses an operator nothing declares, and `g = f 1` still has a typed tree,
+/// of type `Int`. `f` itself is unchecked, with its canonicalization error behind it.
+///
+/// Mutation-checked twice, each going red. Leaving `module.broken` out of the typer's
+/// `global` in `type_check_recovering` makes `f` a name the typer does not hold, and `g`
+/// becomes an unchecked declaration. Leaving `module.broken` out of what `ir::build`
+/// appends to `unchecked` empties the list.
+#[test]
+fn a_caller_of_a_broken_declaration_is_checked_against_its_annotation() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (f, g)
+
+        f : Int -> Int
+        f x = x <+> 1
+
+        g : Int
+        g = f 1
+    "#};
+    let parsed = parse_source(source);
+    let interfaces = HashMap::from([basics_interface()]);
+
+    let (module, errors) = match check_module_recovering(&test_package(), &interfaces, &parsed) {
+        dependencies::Outcome::Module(module, errors) => (module, errors),
+        dependencies::Outcome::Failed(error) => {
+            panic!("expected a module beside its errors, got {:?}", error)
+        }
+    };
+
+    assert!(
+        matches!(errors.as_slice(), [CompilationError::Canonical(..)]),
+        "got {:?}",
+        errors
+    );
+
+    let g = module
+        .ir
+        .declarations
+        .iter()
+        .find(|declaration| declaration.name == Name::from("g"))
+        .unwrap_or_else(|| {
+            panic!(
+                "`g` should have a typed tree, got unchecked {:?}",
+                module.ir.unchecked
+            )
+        });
+    assert_eq!(g.tpe.to_string(), "Int");
+
+    let unchecked: Vec<(&Name, bool)> = module
+        .ir
+        .unchecked
+        .iter()
+        .map(|unchecked| (&unchecked.name, unchecked.reported))
+        .collect();
+    assert_eq!(unchecked, vec![(&Name::from("f"), true)]);
+}
+
+/// A module with an import that does not resolve publishes nothing, so a module
+/// importing it still reports it as missing. This is where publishing a module with
+/// errors stops today: an unresolved import leaves the module no environment to
+/// canonicalize anything in.
+///
+/// It pins behaviour this crate already has, so there is no change to neutralise. That
+/// it can tell the two cases apart was checked by pointing it at
+/// `package_import_canonical_error`, where `A` publishes its interface: the error count
+/// goes red.
+#[test]
+fn a_module_with_an_unresolved_import_publishes_nothing() {
+    let root = fixture_package("package_import_unresolved_import");
 
     let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
 

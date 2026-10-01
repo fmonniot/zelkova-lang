@@ -583,13 +583,22 @@ fn evaluate(block: &Block) -> Verdict {
 /// the tag there is no way to say *which* block of a group failed — which is the entire
 /// point of letting each block carry its own `expect=`. Written as a free function
 /// rather than a closure because `check_in_order` takes a `fn` pointer.
+///
+/// A module canonicalization reported errors for comes back beside them, as
+/// `check_module_recovering` hands it back, so that `check_in_order` publishes its
+/// interface to the blocks after it the way a real build does.
 fn canonicalize_tagged(
     package: &zelkova_compiler::PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
 ) -> Outcome<canonical::Module, (Name, Vec<canonical::Error>)> {
-    match canonical::canonicalize(package, interfaces, source) {
-        Ok(module) => Outcome::Module(module, vec![]),
+    match canonical::canonicalize_recovering(package, interfaces, source) {
+        Ok(canonical::Canonicalized { module, errors }) if errors.is_empty() => {
+            Outcome::Module(module, vec![])
+        }
+        Ok(canonical::Canonicalized { module, errors }) => {
+            Outcome::Module(module, vec![(source.name.clone(), errors)])
+        }
         Err(errors) => Outcome::Failed((source.name.clone(), errors)),
     }
 }
@@ -722,8 +731,10 @@ fn evaluate_group(blocks: &[&Block]) -> Vec<Verdict> {
     let mut failures: HashMap<Name, Vec<canonical::Error>> = HashMap::new();
     for outcome in outcomes {
         match outcome {
-            // `canonicalize_tagged` never hands back a module with errors beside it.
-            Outcome::Module(module, _) => checked.push(module),
+            Outcome::Module(module, errors) if errors.is_empty() => checked.push(module),
+            // A block canonicalization reported errors for is judged by them alone, the
+            // way `canonicalize` reduces it; its interface is already published.
+            Outcome::Module(_, errors) => failures.extend(errors),
             Outcome::Failed((name, errors)) => {
                 failures.insert(name, errors);
             }

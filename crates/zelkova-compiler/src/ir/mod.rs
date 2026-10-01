@@ -116,7 +116,10 @@ pub struct Module {
     /// it may emit whole from one that quietly lost a declaration on the way here, which
     /// is the mistake [`DEC-18` decision
     /// 1](../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)
-    /// is about. Every value of the canonical module is in one list or the other.
+    /// is about. Every value of the canonical module, in `values` or in `broken`, is in
+    /// exactly one of the two lists.
+    ///
+    /// Sorted by name, the same as [`declarations`](Self::declarations).
     pub unchecked: Vec<Unchecked>,
     /// The names of [`declarations`](Self::declarations) that take no parameter, in the
     /// order they must be initialised: each only after every parameterless declaration it
@@ -134,8 +137,8 @@ pub struct Module {
     ///
     /// `canonical::initialisation_order` computes it, from the same dependency graph
     /// `canonical::canonicalize` reads to reject a cycle (`LANG-35`) rather than a second
-    /// one built from the same rule; see that function's doc comment for the assumption
-    /// this relies on and which phase discharges it.
+    /// one built from the same rule; see that function's doc comment for what it does with
+    /// a module whose cycle was rejected.
     /// `zelkova_js::emit` is what emits declarations
     /// in this order — this only computes it.
     pub initialisation_order: Vec<Name>,
@@ -211,9 +214,10 @@ pub struct Body {
 
 /// A declaration the typer did not type, and which therefore has no IR.
 ///
-/// Why is decided in [`build`], from the [`Solved`] entry. Inference reported an error
-/// for it ([`Solved::Rejected`]), and that error is the user's to fix; or the typer
-/// walked past it: a construct the translation cannot represent
+/// Why is decided in [`build`]. Canonicalization recorded it as broken
+/// ([`canonical::Module::broken`]), or inference reported an error for it
+/// ([`Solved::Rejected`]), and that error is the user's to fix; or the typer walked past
+/// it: a construct the translation cannot represent
 /// ([`Solved::Untranslatable`]), a name the typer's environment does not hold
 /// ([`Solved::UnboundName`]), or a facade declaration with no signature to read. The
 /// second kind is not a mistake in the user's source and not an error, but a gap in
@@ -225,8 +229,9 @@ pub struct Unchecked {
     pub name: Name,
     /// Where the declaration was written.
     pub span: NodeSpan,
-    /// Whether an error stands behind this entry: `true` for a declaration inference
-    /// rejected, `false` for one the typer walked past.
+    /// Whether an error stands behind this entry: `true` for a declaration
+    /// canonicalization recorded as broken or inference rejected, `false` for one the
+    /// typer walked past.
     pub reported: bool,
 }
 
@@ -702,8 +707,11 @@ impl Solved {
 /// `solved` is consumed rather than borrowed: a [`Declaration`] owns its body, and the
 /// only other holder of these terms is the caller that just received them.
 ///
-/// Every value of `module` ends up in exactly one of [`Module::declarations`] and
-/// [`Module::unchecked`] — see the second field for why nothing may merely go missing.
+/// Every value of `module`, in [`values`](canonical::Module::values) or in
+/// [`broken`](canonical::Module::broken), ends up in exactly one of
+/// [`Module::declarations`] and [`Module::unchecked`] — see the second field for why
+/// nothing may merely go missing. A broken one is always unchecked, with the error
+/// canonicalization reported behind it.
 pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Module {
     let mut unions: Vec<Union> = module
         .types
@@ -786,6 +794,15 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
             }
         }
     }
+
+    // A broken declaration has no canonical form for the typer to have read, and the
+    // error canonicalization reported for it is the caller's to report.
+    unchecked.extend(module.broken.iter().map(|broken| Unchecked {
+        name: broken.name.clone(),
+        span: broken.span,
+        reported: true,
+    }));
+    unchecked.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
 
     let initialisation_order = canonical::initialisation_order(module);
 

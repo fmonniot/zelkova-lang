@@ -282,11 +282,10 @@ module Widget exposing (label)
 label = 1
 ```
 
-`Widget` never canonicalizes, so it never publishes an interface for `Main` to resolve
-against — the import itself fails, rather than the one name inside it that was the actual
-problem.
+`Widget` still publishes an interface for `Main` to resolve against, and `label` is not in
+it: the import resolves, and the one name inside it is what fails.
 
-```zel expect=canonical-error:EnvironmentErrors package=unannotated
+```zel expect=canonical-error:VariableNotFound package=unannotated
 module Main exposing (x)
 
 import Widget

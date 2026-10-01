@@ -31,13 +31,14 @@
 //!     1. build it
 //!     2. Verify there is no cyclic relation between modules
 //! 5. Following the deps graph,
-//!     1. canonicalize each modules. A module that canonicalized publishes its
-//!        `Interface` to the modules checked after it, whatever the later checks find
-//!        in it; one that did not publishes nothing
+//!     1. canonicalize each modules. A declaration that does not canonicalize costs the
+//!        module that declaration and nothing else, and the module publishes its
+//!        `Interface` to the modules checked after it, whatever the checks find in it;
+//!        one whose imports leave it no environment to canonicalize in publishes nothing
 //!     1. check each module (type check, exhaustiveness, etc…), and build the `ir::Module`
 //!        a backend reads out of the canonical module and what the typer solved. The IR
-//!        is built whether or not the typer rejected a declaration, and lists each
-//!        rejected one as unchecked
+//!        is built whether or not a declaration was broken or rejected, and lists each
+//!        such one as unchecked
 //!     1. Bonus point to parallelize the tree branches which are not dependent on each others
 //! 6. Report. Each phase returns every error it found, `check_module_recovering` tags those with
 //!    the module they came from, and `check_package` accumulates them across modules and
@@ -325,9 +326,11 @@ pub struct Interface {
     /// 3](../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
     /// The typer's translation is where it is read, into [`ir::ReferenceKind::Foreign`].
     ///
-    /// [`canonical::Module::to_interface`] records one for every value either map holds.
-    /// A value missing from it — which only a hand-built interface in a test can leave
-    /// out — is read as arity 0, the arity of a parameterless binding.
+    /// [`canonical::Module::to_interface`] records one for every value either map holds,
+    /// except a value its module recorded in [`canonical::Module::broken`], whose
+    /// parameters are unknown. A value missing from it — a broken one, or one a hand-built
+    /// interface in a test leaves out — is read as arity 0, the arity of a parameterless
+    /// binding.
     pub arities: HashMap<Name, usize>,
     /// The file this interface's module was read from, when the caller knows it.
     ///
@@ -877,14 +880,14 @@ pub struct PackageCheck {
     /// [`test_modules`](PackageCheck::test_modules): each module of a package whose own
     /// `src/` was checked and reported an error, whether or not the module has an error
     /// of its own, and each module of the root's `tests/` that came back with errors. A
-    /// module whose declarations did not all canonicalize is in none of them, and neither
-    /// is any module of a package that was not checked at all, for the reasons
-    /// [`modules`](PackageCheck::modules) lists.
+    /// module whose imports left it no environment to canonicalize in is in none of
+    /// them, and neither is any module of a package that was not checked at all, for the
+    /// reasons [`modules`](PackageCheck::modules) lists.
     ///
     /// They are for a reader that wants the typed tree of a file with errors in it, such
     /// as an editor, and never for a backend: an emitting build reads the three lists
-    /// above, and an IR built here lists every declaration the typer rejected in
-    /// [`ir::Module::unchecked`], which no backend emits
+    /// above, and an IR built here lists every declaration canonicalization recorded as
+    /// broken or the typer rejected in [`ir::Module::unchecked`], which no backend emits
     /// ([`DEC-23` decision 5](../docs/decisions/dec-23.md)).
     pub failing: Vec<CheckedSource>,
     /// The status lines of the check, in order.
@@ -1791,8 +1794,9 @@ struct RootCheck {
 ///
 /// Every module the check built a tree for is inserted into `interfaces` and handed
 /// back, apart into the ones that checked and the ones that came back with errors; every
-/// error goes onto `errors`, tagged with the file its module was read from. A module that
-/// failed canonicalization is in neither list and has no interface.
+/// error goes onto `errors`, tagged with the file its module was read from. A module
+/// whose imports left it no environment to canonicalize in is in neither list and has no
+/// interface.
 fn check_root(
     package: &resolve::ResolvedPackage,
     root: source::SourceRoot,
@@ -1919,12 +1923,15 @@ pub fn check_module(
 /// Apply every check to one parsed module, and hand back the module the checks built
 /// beside everything they found wrong with it.
 ///
-/// A module that fails canonicalization is [`Outcome::Failed`](dependencies::Outcome::Failed):
-/// it has no canonical form to build an [`Interface`] or an IR from. Past that, the
-/// module comes back whatever the typer and the exhaustiveness check say, with a
+/// A module whose imports canonicalization could not build an environment from is
+/// [`Outcome::Failed`](dependencies::Outcome::Failed): it has no canonical form to build
+/// an [`Interface`] or an IR from. Past that, the module comes back with every
+/// declaration that canonicalized, whatever canonicalization, the typer and the
+/// exhaustiveness check say, with a [`CompilationError::Canonical`], a
 /// [`CompilationError::Type`] and a [`CompilationError::Exhaustiveness`] for whichever
 /// of them reported anything. Its IR holds a typed declaration for every value the typer
-/// did not reject, and lists each rejected one in [`ir::Module::unchecked`] with
+/// did not reject, and lists each rejected one, and each declaration canonicalization
+/// recorded in [`canonical::Module::broken`], in [`ir::Module::unchecked`] with
 /// [`reported`](ir::Unchecked::reported) set, which no backend emits.
 ///
 /// TODO canonicalization must happens before checkings, because type check (at least)
@@ -1932,7 +1939,7 @@ pub fn check_module(
 /// That probably mean moving the `canonical::canonicalize` call out of this function
 ///
 /// Whether `source`'s package is exempt from the default imports is not decided
-/// here: `canonical::canonicalize` derives it from `package` itself
+/// here: `canonical::canonicalize_recovering` derives it from `package` itself
 /// ([`PackageName::is_core`]), so this function needs nothing beyond the package it
 /// already receives — which is why `check` in
 /// [`ModuleWalker::check_in_order`](dependencies::ModuleWalker::check_in_order) can
@@ -1952,8 +1959,11 @@ pub fn check_module_recovering(
     // Each phase accumulates its own errors and hands back all of them; this is where
     // they are tagged with the module they came from, because a phase only ever sees
     // one module and has no reason to carry its name around.
-    let canonical = match canonical::canonicalize(package, interfaces, source) {
-        Ok(canonical) => canonical,
+    let canonical::Canonicalized {
+        module: canonical,
+        errors: canonical_errors,
+    } = match canonical::canonicalize_recovering(package, interfaces, source) {
+        Ok(canonicalized) => canonicalized,
         Err(errors) => {
             return dependencies::Outcome::Failed(CompilationError::Canonical(
                 errors,
@@ -1963,6 +1973,12 @@ pub fn check_module_recovering(
     };
 
     let mut errors = Vec::new();
+    if !canonical_errors.is_empty() {
+        errors.push(CompilationError::Canonical(
+            canonical_errors,
+            source.name.clone(),
+        ));
+    }
 
     // - type checking and inference
     //

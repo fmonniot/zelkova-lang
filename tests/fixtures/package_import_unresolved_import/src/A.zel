@@ -1,0 +1,8 @@
+module A exposing (T(..), ok)
+
+import Nope
+
+type T = T
+
+ok : T
+ok = T

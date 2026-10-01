@@ -7,7 +7,7 @@ decision 3. It adds one flag in three places and one filter. What could make it 
 **Part of:** the *Active work: editor support* section of [the index](README.md), third of the
 five tickets `TOOL-8` through [`TOOL-12`](tool-12.md).
 
-**Depends on:** [`TOOL-9`](tool-9.md), for `canonicalize_recovering`, `Module::broken` and the
+**Depends on:** [`TOOL-9`](README.md), for `canonicalize_recovering`, `Module::broken` and the
 sub-passes' partial results.
 
 **Location:** `crates/zelkova-compiler/src/canonical/environment.rs` — `new_environment`,
@@ -15,7 +15,7 @@ which returns `Err` when any import fails, `process_import` and `RootEnvironment
 `crates/zelkova-compiler/src/canonical/mod.rs` — `canonicalize_recovering`, `Module` and
 `Module::to_interface`; `crates/zelkova-compiler/src/lib.rs` — `Interface` and `check_root`.
 
-**Problem:** after [`TOOL-9`](tool-9.md) a failed *value* costs nothing but its own error,
+**Problem:** after [`TOOL-9`](README.md) a failed *value* costs nothing but its own error,
 because every value's name is in scope before any body is resolved. Three other failures still
 make names go missing, and each missing name is then reported by everything that uses it.
 
@@ -118,7 +118,7 @@ Tests in `crates/zelkova-compiler/tests/canonical.rs`, on `canonicalize_recoveri
 
 Tests in `crates/zelkova/tests/pipeline.rs`:
 
-- [`TOOL-9`](tool-9.md)'s test over `package_import_unresolved_import` is inverted: the
+- [`TOOL-9`](README.md)'s test over `package_import_unresolved_import` is inverted: the
   errors are exactly one `Canonical` for `A`, and none names `B`.
 - A new fixture, `tests/fixtures/package_import_broken_type/`: `A` exposes `T(..)` and
   declares it `type T = MkT | (T, T)`; `B` writes `import A exposing (T(..))`,

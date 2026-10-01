@@ -1394,8 +1394,8 @@ fn a_type_declaration_may_name_a_type_declared_below_it() {
 ///
 /// "This declaration has a type annotation but no body" is precisely the message
 /// where the reader needs to know *which* annotation, and the construction site in
-/// `do_values` has `function.span` in hand — it is the same span the sibling
-/// `BindingPatternsInvalidLen` uses three lines above. The range is asserted rather
+/// `value_body` has `function.span` in hand — it is the same span the sibling
+/// `BindingPatternsInvalidLen` uses just above it. The range is asserted rather
 /// than mere non-emptiness, for the usual reason: a span taken around the layout
 /// pass's zero-width block tokens would satisfy `!labels.is_empty()` while pointing
 /// at nothing.
@@ -1411,8 +1411,9 @@ fn annotation_without_a_body_labels_the_annotation() {
         answer : Int
     "#};
 
-    let errors =
-        canonicalize_standalone(source).expect_err("an annotation with no body is an error");
+    // `Int` has to resolve, or the annotation's own `TypeNotFound` is reported too.
+    let errors = canonicalize_with_interfaces(source, &HashMap::from([basics_interface()]))
+        .expect_err("an annotation with no body is an error");
     assert_eq!(errors.len(), 1, "got {:?}", errors);
 
     let annotation = "answer : Int";
@@ -1488,8 +1489,10 @@ fn unresolved_variable_suggests_a_near_miss() {
 /// `None`.
 #[test]
 fn unresolved_variable_with_no_near_miss_has_no_suggestion() {
+    // Nothing is exposed, so that the unannotated declarations are not also reported
+    // as exposed without an annotation.
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
         answer = 42
         mystery = zzzzzzzzzzzz
     "#};
@@ -1943,7 +1946,7 @@ fn infix_non_chained_with_itself_is_an_ambiguous_precedence_error() {
     // "just fold left" treatment) turned this green when it should stay red —
     // confirming the catch-all, not a missing case, is what rejects this.
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
 
         infix non 4 (==) = eq
 
@@ -1958,6 +1961,9 @@ fn infix_non_chained_with_itself_is_an_ambiguous_precedence_error() {
 
 /// Canonicalizes `source`, and asserts it was rejected with exactly one
 /// `AmbiguousOperatorPrecedence` naming `left` and `right` in that order.
+///
+/// Each `source` exposes nothing, so that its unannotated declarations are not also
+/// reported as exposed without an annotation.
 fn assert_ambiguous_pair(source: &str, left: &str, right: &str) {
     let errors = canonicalize_standalone(source).expect_err("should reject");
     assert_eq!(errors.len(), 1, "got {:?}", errors);
@@ -1985,7 +1991,7 @@ fn infix_left_against_infix_right_at_equal_precedence_is_rejected() {
     // leaving the `infix non` test green, which is exactly the mutation the
     // `non` test alone cannot see.
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
 
         infix left 9 (<<) = composeL
 
@@ -2013,7 +2019,7 @@ fn two_different_infix_non_operators_are_rejected_and_say_why() {
     // branch ("have the same precedence but disagree on which side groups
     // first") turned the message assertion red.
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
 
         infix non 4 (<) = lt
 
@@ -3918,4 +3924,360 @@ fn the_stand_in_interfaces_for_opaque_core_types_reject_a_constructor_entry() {
     let source = "module Main exposing ()\nimport Task exposing (Failure(..))\n";
     canonicalize_with_interfaces(source, &interfaces)
         .expect("`Failure(..)` is exposed with its constructors");
+}
+
+// ── A declaration that fails canonicalization costs only itself ─────────────
+
+/// The names `values` holds, sorted.
+fn sorted_value_names(module: &canonical::Module) -> Vec<&str> {
+    let mut names: Vec<&str> = module.values.keys().map(|name| name.as_str()).collect();
+    names.sort();
+    names
+}
+
+/// `TOOL-9`'s reproduction of `BUG-34`: `Pair`'s tuple variant is the one error, and
+/// `Size`, declared beside it, keeps its constructor, so `small` still canonicalizes.
+///
+/// Mutation-checked by putting `HashMap::new()` back for what `do_types` returns in
+/// `canonicalize`: `types` comes back empty, `Small` is not found, and the error count
+/// goes red.
+#[test]
+fn a_type_that_fails_does_not_cost_its_sibling_its_constructors() {
+    let source = indoc::indoc! {r#"
+        module Example exposing (Size, Pair, small)
+
+        type Size
+          = Small
+
+        type Pair
+          = (Size, Size)
+
+        small : Size
+        small = Small
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::new())
+            .expect("the imports resolve");
+
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [canonical::Error::InvalidVariant(
+                canonical::InvalidVariantKind::Tuple,
+                _
+            )]
+        ),
+        "got {:?}",
+        errors
+    );
+    assert!(module.types.contains_key(&"Size".into()));
+    assert!(!module.types.contains_key(&"Pair".into()));
+    assert_eq!(sorted_value_names(&module), vec!["small"]);
+    assert!(module.broken.is_empty(), "got {:?}", module.broken);
+}
+
+/// `BUG-34`'s first case: a mistyped variant beside a sound sibling `type`, both
+/// exposed, reports the variant and nothing about either export.
+///
+/// Mutation-checked by deleting the loop that registers every type name with
+/// `insert_declared_type` before `do_types` runs: `do_exports` then finds no `Pair`,
+/// and an `ExportNotFound` turns the error count red.
+#[test]
+fn a_mistyped_variant_reports_only_itself() {
+    let source = indoc::indoc! {r#"
+        module Example exposing (Size, Pair)
+
+        type Size
+          = Small
+
+        type Pair
+          = (Size, Size)
+    "#};
+
+    let errors = canonicalize_standalone(source).expect_err("a tuple is not a variant");
+
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [canonical::Error::InvalidVariant(
+                canonical::InvalidVariantKind::Tuple,
+                _
+            )]
+        ),
+        "got {:?}",
+        errors
+    );
+}
+
+/// `BUG-34`'s second case: an imported type applied at the wrong arity inside a
+/// variant reports the arity and nothing about the export of the type it is in.
+///
+/// Mutation-checked the same way as [`a_mistyped_variant_reports_only_itself`]: with
+/// the `insert_declared_type` loop deleted, `B` is not found as an export and the error
+/// count goes red.
+#[test]
+fn a_variant_at_the_wrong_arity_reports_only_the_arity() {
+    let source = indoc::indoc! {r#"
+        module Example exposing (B)
+
+        import Maybe exposing (Maybe)
+
+        type B
+          = MkB Maybe
+    "#};
+
+    let errors = canonicalize_with_interfaces(source, &HashMap::from([maybe_interface()]))
+        .expect_err("`Maybe` takes one argument");
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::TypeArityMismatch(..)]),
+        "got {:?}",
+        errors
+    );
+}
+
+/// A function whose body uses an operator nothing declares is broken, with the
+/// annotation it was written with, and its caller still canonicalizes.
+///
+/// Mutation-checked by recording a broken declaration whose annotation canonicalized
+/// with `tpe: None` (the `(Annotation::Canonical(tpe), Err(body_error))` arm of
+/// `do_values`): the `tpe` assertion goes red.
+#[test]
+fn a_body_that_fails_is_broken_and_keeps_its_annotation() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (f, g)
+
+        f : Int -> Int
+        f x = x <+> 1
+
+        g : Int
+        g = f 1
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]))
+            .expect("the imports resolve");
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::VariableNotFound(..)]),
+        "got {:?}",
+        errors
+    );
+    assert_eq!(sorted_value_names(&module), vec!["g"]);
+
+    match module.broken.as_slice() {
+        [broken] => {
+            assert_eq!(broken.name.as_str(), "f");
+            assert_eq!(
+                broken.tpe,
+                Some(canonical::Type::Arrow(Box::new(int_t()), Box::new(int_t())))
+            );
+
+            let annotation = "f : Int -> Int";
+            let start = source.find(annotation).expect("source annotates `f`");
+            assert_eq!(
+                broken.annotation_span.to_range(),
+                Some(start..start + annotation.len())
+            );
+        }
+        other => panic!("expected `f` alone to be broken, got {:?}", other),
+    }
+}
+
+/// An annotation that fails costs the declaration its type, and its error is the only
+/// one when the body is sound.
+///
+/// Pins the `(Annotation::Failed(..), Ok(..))` arm of `do_values`. Mutation-checked by
+/// making that arm record the declaration as a `Value::Value`: `broken` comes back
+/// empty and the assertion on it goes red.
+#[test]
+fn an_annotation_that_fails_is_broken_with_no_type() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        f : Nope -> Int
+        f x = x
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]))
+            .expect("the imports resolve");
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::TypeNotFound(..)]),
+        "got {:?}",
+        errors
+    );
+    assert!(module.values.is_empty(), "got {:?}", module.values);
+    match module.broken.as_slice() {
+        [broken] => {
+            assert_eq!(broken.name.as_str(), "f");
+            assert_eq!(broken.tpe, None);
+            assert!(broken.annotation_span.to_range().is_none());
+        }
+        other => panic!("expected `f` alone to be broken, got {:?}", other),
+    }
+}
+
+/// An annotation that fails does not hide a body that fails: both are reported, the
+/// annotation's first.
+///
+/// Mutation-checked by dropping the body's error from the
+/// `(Annotation::Failed(..), body)` arm of `do_values`: the `VariableNotFound` goes
+/// missing and the assertion goes red.
+#[test]
+fn an_annotation_and_a_body_that_fail_are_both_reported() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        f : Nope -> Int
+        f x = x <+> 1
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]))
+            .expect("the imports resolve");
+
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [
+                canonical::Error::TypeNotFound(..),
+                canonical::Error::VariableNotFound(..)
+            ]
+        ),
+        "got {:?}",
+        errors
+    );
+    assert_eq!(
+        module
+            .broken
+            .iter()
+            .map(|broken| (broken.name.as_str(), broken.tpe.is_some()))
+            .collect::<Vec<_>>(),
+        vec![("f", false)]
+    );
+}
+
+/// An `exposing` entry that names nothing costs the module that entry and nothing
+/// else: the interface exposes `ok`, and still does not expose the unexposed `hidden`.
+///
+/// Mutation-checked by answering `Exports::Everything` from `do_exports` whenever it
+/// has errors, as it did while a module with errors was thrown away: `hidden` reaches
+/// the interface and the assertion goes red.
+#[test]
+fn an_export_that_fails_exposes_only_the_entries_that_resolved() {
+    let source = indoc::indoc! {r#"
+        module A exposing (ok, missing)
+
+        ok : Int
+        ok = 1
+
+        hidden : Int
+        hidden = 2
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]))
+            .expect("the imports resolve");
+
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [canonical::Error::ExportNotFound(name, canonical::ExportType::Value, _)]
+                if name.as_str() == "missing"
+        ),
+        "got {:?}",
+        errors
+    );
+
+    let interface = module.to_interface(None);
+    let mut exposed: Vec<&str> = interface.values.keys().map(|name| name.as_str()).collect();
+    exposed.sort();
+    assert_eq!(exposed, vec!["ok"]);
+}
+
+/// A broken declaration whose annotation canonicalized reaches the interface by that
+/// annotation: as a value when the header exposes it by name, and as an exposed
+/// operator's backing function otherwise. Neither has an arity, since a broken
+/// declaration's parameters are unknown.
+///
+/// Mutation-checked twice, each going red: leaving `self.broken` out of `values` in
+/// `to_interface` drops `f`, and reading only `self.values` in `declared_type` drops
+/// `add` from `infix_functions`.
+#[test]
+fn a_broken_declaration_reaches_the_interface_by_its_annotation() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (f, (|+|))
+
+        infix left 6 (|+|) = add
+
+        f : Int -> Int
+        f x = x <+> 1
+
+        add : Int -> Int -> Int
+        add a b = a <+> b
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]))
+            .expect("the imports resolve");
+    assert_eq!(errors.len(), 2, "got {:?}", errors);
+
+    let interface = module.to_interface(None);
+    let int_to_int = canonical::Type::Arrow(Box::new(int_t()), Box::new(int_t()));
+
+    assert_eq!(
+        interface.values.get(&"f".into()).map(|(_, tpe)| tpe),
+        Some(&int_to_int)
+    );
+    assert_eq!(
+        interface
+            .infix_functions
+            .get(&"add".into())
+            .map(|(_, tpe)| tpe),
+        Some(&canonical::Type::Arrow(
+            Box::new(int_t()),
+            Box::new(int_to_int.clone())
+        ))
+    );
+    assert!(interface.arities.is_empty(), "got {:?}", interface.arities);
+}
+
+/// A facade signature whose type canonicalized and which a later check rejects is
+/// broken with that type, and the facade's sound signatures still canonicalize.
+///
+/// Mutation-checked by recording a signature `check_facade_signature` rejected with
+/// `tpe: None`: the `tpe` assertion goes red.
+#[test]
+fn a_rejected_facade_signature_is_broken_and_keeps_its_type() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (now, inc)
+
+        now : Int
+
+        unsafe inc : Int -> Int
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &effect_interfaces())
+            .expect("the imports resolve");
+
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [canonical::Error::FacadeResultNotEffect(name, _)] if name.as_str() == "now"
+        ),
+        "got {:?}",
+        errors
+    );
+    assert_eq!(sorted_value_names(&module), vec!["inc"]);
+    match module.broken.as_slice() {
+        [broken] => {
+            assert_eq!(broken.name.as_str(), "now");
+            assert_eq!(broken.tpe, Some(int_t()));
+        }
+        other => panic!("expected `now` alone to be broken, got {:?}", other),
+    }
 }
