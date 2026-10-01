@@ -856,9 +856,13 @@ pub struct PackageCheck {
     /// modules below indexes into.
     pub sources: SourceFiles,
     /// Every module that checked of every package the plain build holds — the root's
-    /// `src/` and its `dependencies`, direct or not — dependencies first. A package with
-    /// any error contributes none of its modules here: they are in
-    /// [`failing`](PackageCheck::failing).
+    /// `src/` and its `dependencies`, direct or not — dependencies first. A package whose
+    /// own `src/` was checked and reported an error in it contributes none of its
+    /// modules here: the ones it built a tree for are in
+    /// [`failing`](PackageCheck::failing). A package that was never checked, because a
+    /// dependency did not compile, its sources could not be read or two of its modules
+    /// claim one name, has its modules in no list at all. An error from the package's
+    /// `main` alone ([`program`] has the check) leaves its modules here.
     pub modules: Vec<CheckedSource>,
     /// Every module that checked of every package the build reaches through the root's
     /// `test-dependencies` alone. Empty unless the tests were checked
@@ -870,9 +874,12 @@ pub struct PackageCheck {
     /// Every module the check built a tree for and put in none of
     /// [`modules`](PackageCheck::modules),
     /// [`test_dependency_modules`](PackageCheck::test_dependency_modules) and
-    /// [`test_modules`](PackageCheck::test_modules): each module of a package that did
-    /// not check whose declarations all canonicalized, whether or not it has an error of
-    /// its own, and each module of the root's `tests/` that came back with errors.
+    /// [`test_modules`](PackageCheck::test_modules): each module of a package whose own
+    /// `src/` was checked and reported an error, whether or not the module has an error
+    /// of its own, and each module of the root's `tests/` that came back with errors. A
+    /// module whose declarations did not all canonicalize is in none of them, and neither
+    /// is any module of a package that was not checked at all, for the reasons
+    /// [`modules`](PackageCheck::modules) lists.
     ///
     /// They are for a reader that wants the typed tree of a file with errors in it, such
     /// as an editor, and never for a backend: an emitting build reads the three lists

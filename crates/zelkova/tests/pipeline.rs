@@ -444,10 +444,10 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
 /// `compile_package` had no list of checked modules to report — the user-visible half
 /// of the ticket's Acceptance.
 ///
-/// This drives the *real* `check_module`, which is what the `dummy_check` unit test in
-/// `crates/zelkova-compiler/src/dependencies.rs` cannot do. Mutation-checked by clearing `modules` at
-/// the end of `check_in_order` whenever `errors` is non-empty: that turns the `Fine`
-/// assertion below red.
+/// This drives the *real* `check_module_recovering`, which is what the `dummy_check` unit
+/// test in `crates/zelkova-compiler/src/dependencies.rs` cannot do. Mutation-checked by
+/// keeping only the `Failed` outcomes whenever one is present (`outcomes.retain(..)`
+/// before `check_in_order` returns): that turns the `Fine` assertion below red.
 #[test]
 fn check_in_order_keeps_passing_siblings_with_the_real_checker() {
     let root = fixture_package("package_canonicalize_fails");
@@ -2875,7 +2875,7 @@ fn a_parse_failure_does_not_also_report_its_module_as_unheld() {
 ///
 /// `compile_package` reports its modules to stderr and hands back only `Ok(())`,
 /// so a test that has to look *inside* a checked module drives the walker with the
-/// real `check_module` instead — the same seam
+/// real `check_module_recovering` instead — the same seam
 /// `check_in_order_keeps_passing_siblings_with_the_real_checker` uses.
 ///
 /// `package` is the package the fixture's modules are checked as, whatever its manifest
