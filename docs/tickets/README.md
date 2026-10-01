@@ -167,11 +167,16 @@ from there rather than it being filed twice.
 
 ## Active work: editor support
 
-`TOOL-1` through `TOOL-8` are one effort: **a `.zel` file gets the editor support any
+`TOOL-1` through `TOOL-12` are one effort: **a `.zel` file gets the editor support any
 mainstream language has.** That means highlighting first, then errors shown as you type, then
 hover types and go-to-definition. They get a section because, apart from `TOOL-1`, none of them
-is visible to a user on its own. Four are compiler changes a language server needs or is much
+is visible to a user on its own. Most are compiler changes a language server needs or is much
 poorer without, and the server itself is the last to land.
+
+`TOOL-8` through `TOOL-12` are one design, cut by the phase a failure is found in.
+[DEC-23](../decisions/dec-23.md) holds its seven decisions and what each was chosen over, and
+is what to read before picking any of them up: no ticket re-argues a decision, and each leaves
+nothing open.
 
 ```
 TOOL-1  TextMate grammar + VS Code extension      ← closed; the one piece that shipped value alone
@@ -185,14 +190,25 @@ TOOL-4  every syntax error of a module is          ← closed: `parse_recovering
   │       reported, and the declarations that         only, the module is still dropped
   │       parsed are handed back                      from the build
   │
-TOOL-8  one failing declaration no longer hides     ← not required by TOOL-6, but without
-  │       its module from importers and from the      it every capability past diagnostics
-  │       editor                                      goes dark on a file mid-edit; its
-  │                                                   first step needs no TOOL-4, and the
-  │                                                   rest has decisions still open
+TOOL-8  a module with a type error still publishes  ← the next one to start; builds the
+  │       its interface and has a typed tree           shape the four below extend
   │
+TOOL-9  a declaration that fails canonicalization   ← closes BUG-34: each sub-pass of
+  │       is recorded, and the rest of its module      `canonicalize` hands back what it
+  │       survives                                     resolved
+  │
+TOOL-10 a failed type, operator or import marks     ← the rule that drops an error which
+  │       its scope incomplete                         only restates one already reported
+  │
+  ├── TOOL-11  a module with a syntax error stays in the build   ← completes the floor
+  │
+  └── TOOL-12  an unresolved name in a sound body is a typed hole
+                 ← a layer on the floor: the declaration being typed keeps its tree
+
 TOOL-6  zelkova-lsp: diagnostics, then hover, then go-to-definition, then semantic tokens
           ← to be split into one ticket per capability before work starts
+          ← needs none of TOOL-8 to TOOL-12, but without them every capability past
+            diagnostics goes dark on a file mid-edit
 
 TOOL-3
   │
@@ -458,4 +474,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TOOL-5 | task | — | closed 2026-10-01 | The compiler, its JavaScript backend and its command line are one crate |
 | [TOOL-6](tool-6.md) | task | — | open | There is no language server |
 | TOOL-7 | task | — | closed 2026-10-01 | The checking pipeline names its backend, its runners and the test package |
-| [TOOL-8](tool-8.md) | task | — | open | One failing declaration hides its whole module from its importers and from the editor |
+| [TOOL-8](tool-8.md) | task | — | open | A module that fails type checking hides itself from its importers and from the editor |
+| [TOOL-9](tool-9.md) | task | — | open | A declaration that fails canonicalization takes its whole module with it |
+| [TOOL-10](tool-10.md) | task | — | open | A failed type, operator or import is reported again by everything that names it |
+| [TOOL-11](tool-11.md) | task | — | open | A module with a syntax error is dropped from the build |
+| [TOOL-12](tool-12.md) | task | — | open | One unresolved name costs a declaration its whole typed tree |

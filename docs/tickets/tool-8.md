@@ -1,30 +1,25 @@
-# TOOL-8 · One failing declaration hides its whole module from its importers and from the editor
+# TOOL-8 · A module that fails type checking hides itself from its importers and from the editor
 
-**Sizing:** large, and its decisions are open. It changes what `check_module` hands back and
-what canonicalization and the typer do after their first failing declaration. The first step of
-*Approach* is small and ships alone. Settle the rest before starting it.
+**Sizing:** medium. Nothing is left to decide: every shape below is settled in
+[`DEC-23`](../decisions/dec-23.md), decisions 1 and 5. It changes what three functions return
+and adds no behaviour to inference. What could make it bigger is the number of call sites of
+`check_in_order`, which is eight, each a mechanical rewrite.
 
-**Part of:** the *Active work: editor support* section of [the index](README.md).
-[`TOOL-6`](tool-6.md) works without it, but every capability past diagnostics goes dark for a
-file with any error in it, and each file importing that one shows an error that is about
-neither of them.
+**Part of:** the *Active work: editor support* section of [the index](README.md). It is the
+first of five tickets, `TOOL-8` through [`TOOL-12`](tool-12.md), that stop one failing
+declaration from hiding its module. This one handles a **type error** and builds the shape the
+other four extend. [`TOOL-6`](tool-6.md) works without them, but every capability past
+diagnostics goes dark for a file with any error in it.
 
-**Depends on:** [`TOOL-4`](README.md) for the syntax-error case: it is what hands back the
-declarations of a module that parsed beside the ones that did not. The type-error and
-canonicalization-error cases depend on nothing.
+**Depends on:** nothing.
 
-**Found while** settling [`TOOL-4`](README.md)'s open decisions. That ticket asked that an
-importer of a module with a syntax error report no missing-module error. The importer's error
-turned out to follow any failure in the module, so it was split out here and `TOOL-4` stops at
-the parser.
-
-**Location:** `crates/zelkova-compiler/src/lib.rs` — `check_module`, whose three phases each end it with `?`,
-`parse_root`, which drops a module that has a syntax error, and `Checked`;
-`crates/zelkova-compiler/src/dependencies.rs` — `ModuleWalker::check_in_order`, which inserts an `Interface`
-on `Ok` only, and whose doc comment already names "partial progress *within* one failing
-module" as open; `crates/zelkova-compiler/src/canonical/mod.rs` — `canonicalize`, which returns `Err` when
-its `errors` vector holds anything, and `Module::to_interface`;
-`crates/zelkova-compiler/src/typer/mod.rs` — `type_check`.
+**Location:** `crates/zelkova-compiler/src/lib.rs` — `check_module`, whose three phases each
+end it with `?`, `check_root`, `compile_in_build`, `compile_tests` and `PackageCheck`;
+`crates/zelkova-compiler/src/dependencies.rs` — `ModuleWalker::check_in_order`, which inserts
+an `Interface` on `Ok` only; `crates/zelkova-compiler/src/typer/mod.rs` — `type_check`, which
+discards every declaration it solved when one fails; `crates/zelkova-compiler/src/ir/mod.rs` —
+`Solved`, `Unchecked` and `build`; `crates/zelkova-compiler/tests/spec.rs` —
+`canonicalize_tagged` and `evaluate_group`, the walker's other checker.
 
 **Problem:** a module either passes every phase or contributes nothing. When it fails, the
 modules that import it are checked against an environment it is absent from, and each reports
@@ -58,79 +53,119 @@ b = ok
 
 ```
 error: [A] cannot match `T` with `U`
-   ┌─ acme-imp-type:src/A.zel:10:1
+   ┌─ acme-imp:src/A.zel:10:1
    …
 error: [B] cannot find a module named `A` to import
-  ┌─ acme-imp-type:src/B.zel:3:1
+  ┌─ acme-imp:src/B.zel:3:1
   │
 3 │ import A exposing (ok)
   │ ^^^^^^^^^^^^^^^^^^^^^^ no module of this name was found
 ```
 
 The second error is false: `A` exists, and `ok` has the type its annotation gives it whatever
-`bad` does. Replacing `bad`'s body with a syntax error (`bad = = T`) gives the same second
-error, and so does a canonicalization error in `bad`.
+`bad` does. `A` also comes back with no `CheckedModule`, so an editor has no typed tree for
+`ok` either.
 
-On the command line that is one line of noise per importer. In an editor it is the steady
-state, since a file being typed in has an error in it most of the time:
+Replacing `bad`'s body with a canonicalization error (`bad = nope`) or a syntax error
+(`bad = = T`) gives the same second error. Those are [`TOOL-9`](tool-9.md) and
+[`TOOL-11`](tool-11.md); this ticket leaves both as they are and pins that it does.
 
-- every open file importing it is underlined at its `import` line until the error is fixed;
-- the file itself has no `CheckedModule`, so hover, go-to-definition and semantic tokens have
-  nothing to read, for the declaration being typed and for every other one in the file.
+`crates/zelkova-compiler/tests/spec.rs` already has the behaviour this ticket wants: its
+checker only canonicalizes, so a module that fails the typer has published its interface by
+then. `evaluate_group`'s comment on it is the precedent.
 
-**Approach:** one step is decided. The rest is a set of choices this ticket does not make.
+**Approach:** five steps, in one PR. Each new function has a reduced twin that keeps today's
+signature, the way `parser::parse` is `parser::parse_recovering` reduced to its first failure,
+so no existing test changes.
 
-1. **A module that canonicalized publishes its interface whether or not it type checks.**
-   An exposed value must be annotated (`Error::ExportedValueNotAnnotated`), so
-   `canonical::Module::to_interface` reads nothing the typer produces. `check_in_order` needs
-   the `canonical::Module` back from a `check` that failed after canonicalization, which
-   `check_module`'s `Result<CheckedModule, CompilationError>` cannot carry today. The module's
-   own type errors are reported as they are now and the build still fails. This removes `B`'s
-   error in the example above and can land before anything below is settled.
+1. **The typer answers for every declaration and reports its errors beside them.** Add
+   `typer::type_check_recovering(module, interfaces) -> TypeCheck`, with
+   `pub struct TypeCheck { pub solved: HashMap<Name, Solved>, pub errors: Vec<Error> }`. It is
+   today's `type_check` body with one change: where the loop pushes an `Error`, it also
+   inserts `Solved::Rejected` for that declaration. `type_check` becomes the reduction:
+   `Ok(solved)` when `errors` is empty, `Err(errors)` otherwise. Add the unit variant
+   `ir::Solved::Rejected`, documented as "inference reported an error for this declaration".
 
-What is not decided:
+2. **`ir::Unchecked` says whether an error stands behind it.** Add `pub reported: bool`. In
+   `ir::build`, `Solved::Rejected` becomes an `Unchecked` with `reported: true`; the existing
+   arms (`Untranslatable`, `UnboundName`, the facade with no signature, and no entry at all)
+   set `false`. Both literals of the struct are in `ir::build`; `zelkova_js::emit` only reads
+   the list, and keeps refusing a module that has anything in it.
 
-- **How a declaration that failed is represented downstream.** Either it is left out of the
-  `canonical::Module` and its name is recorded as known-but-broken, so that a reference to it
-  is not reported as a missing name; or the canonical AST gains a declaration-level hole that
-  the typer gives a fresh type variable. The first is smaller. The second is what lets a
-  declaration that calls a broken one still be checked and hovered.
-- **Whether a broken declaration with an intact annotation counts as broken to its callers.**
-  `f : Int -> Int` followed by a body that does not parse is the commonest state mid-edit.
-  [`TOOL-4`](README.md) hands back such a function with its annotation and no binding, which
-  canonicalization reports as `Error::NoBindings`. Its callers could be checked against the
-  annotation.
-- **Which errors about a broken declaration are suppressed.** An `exposing` entry naming it is
-  `Error::ExportNotFound` today, and a call to it is a missing name. Both restate an error
-  already reported. The same question applies to an importer naming it.
-- **What [`TOOL-4`](README.md)'s `Failure` has to carry.** It holds a span and an error. Every
-  option above needs the name the declaration would have had, which can only be read off the
-  chunk's leading tokens (`f`, `type T`, `unsafe f`), and not always.
-- **Whether a module with errors gets an `ir::Module`.** Publishing an interface needs only
-  canonicalization. Hover needs the typer to run on the declarations that survived and
-  `CheckedModule` to exist for a module that did not fully check, which nothing downstream of
-  `check_module` expects. Emission must keep refusing such a module.
-- **How this sits with [`BUG-34`](bug-34.md).** That ticket is the same all-or-nothing shape
-  one level down: a sub-pass of `canonicalize` that fails substitutes an empty map. A partial
-  result per sub-pass is a prerequisite for any option above that keeps the declarations of a
-  module that failed canonicalization.
+3. **The walker keeps a module that came back with errors.** In `dependencies.rs` add
+
+   ```rust
+   pub enum Outcome<M, E> {
+       /// Nothing to publish.
+       Failed(E),
+       /// A module, and everything wrong with it. Empty means it checked.
+       Module(M, Vec<E>),
+   }
+   ```
+
+   `check_in_order`'s `check` returns `Outcome<M, E>`, and `check_in_order` returns
+   `Vec<Outcome<M, E>>`, one per module in the order it checked them. It inserts the
+   `Interface` for every `Outcome::Module`, errors or not. That insert is the whole of
+   decision 1.
+
+4. **`check_module` has a recovering form.** Add
+   `check_module_recovering(package, interfaces, source) -> Outcome<CheckedModule, CompilationError>`:
+   - canonicalization fails: `Outcome::Failed(CompilationError::Canonical(errors, name))`,
+     as today;
+   - otherwise call `type_check_recovering` and `exhaustiveness::check`, push a
+     `CompilationError::Type` and a `CompilationError::Exhaustiveness` for whichever reported
+     anything, build the `ir::Module` from `solved` either way, and return
+     `Outcome::Module(CheckedModule { canonical, ir }, errors)`.
+
+   `check_module` becomes the reduction: `Failed(e)` and `Module(_, [e, ..])` are `Err(e)`,
+   `Module(m, [])` is `Ok(m)`. `check_root` passes `check_module_recovering` to the walker.
+
+5. **`check_package` hands back the modules of a package that did not check.** Add
+   `PackageCheck::failing: Vec<CheckedSource>`: every module the check built a tree for and
+   put in none of `modules`, `test_dependency_modules` and `test_modules`. Those three keep
+   their meaning, so the driver is untouched.
+   - `check_root` partitions the walker's outcomes into the modules that checked
+     (`Module(m, [])`), the modules that came back with errors, and the errors, which it tags
+     with `InFile` as it does today. Its status line counts every outcome that is not
+     `Module(_, [])` as failed.
+   - `compile_in_build` takes one more accumulator, `failing: &mut Vec<CheckedSource>`. On the
+     `errors.len() != errors_before` return after `check_root`, it pushes every module
+     `check_root` handed back, checked or not, onto it.
+   - `compile_tests` returns the test modules that checked, as today, and pushes the ones that
+     came back with errors onto `failing`.
+
+Update the walker's other checker to match: in `tests/spec.rs`, `canonicalize_tagged` returns
+`Outcome::Module(module, vec![])` or `Outcome::Failed((name, errors))`, and `evaluate_group`
+reads the outcomes.
+
+Doc comments that describe the old shape and have to change with it: `check_in_order`'s
+("partial progress *within* one failing module" is this ticket and the four after it),
+`type_check`'s *What comes back*, `compile_in_build`'s paragraph on why a failing package
+publishes nothing (still true of the package; no longer true of a module within it),
+`PackageCheck::modules`, `ir::Unchecked`, and step 5.1 of the pipeline at the head of `lib.rs`.
 
 **Acceptance:**
 
-For step 1, which is its own PR:
-
-- A test in `crates/zelkova/tests/pipeline.rs` compiles the two-module package above. `A`'s type error comes
-  back and no error names `B`. It is mutation-checked by restoring the `Ok`-only insert in
-  `check_in_order`.
-- A companion test gives `A` a canonicalization error instead and asserts `B` still reports the
-  missing module, which pins where step 1 stops.
-
-For the rest, once its decisions are made:
-
-- The same package with `bad`'s body replaced by a syntax error, and again by a
-  canonicalization error, reports no error naming `B`.
-- A module with a syntax error in one declaration yields a typed tree for another declaration
-  of the same module, read the way [`TOOL-6`](tool-6.md)'s hover reads it.
-- A failing build still writes nothing under `build/`.
-- `cargo test --workspace` is green, and `cargo run -- compile std/core` still prints
-  `parsed 10 modules`, lists all ten as checked, and exits 0.
+- A test in `crates/zelkova/tests/pipeline.rs` runs `check_package` on a new fixture,
+  `tests/fixtures/package_import_type_error/`, holding the two modules above. `errors` is
+  exactly one `InFile` around a `CompilationError::Type` for `A`. It is mutation-checked by
+  making `check_in_order` insert the interface only for a `Module` whose error list is empty,
+  which brings `B`'s `InterfaceNotFound` back.
+- The same check's `failing` holds `A` and `B`, and `modules` is empty. `A`'s
+  `ir.declarations` holds `ok` with a `tpe` that displays as `T`, and its `ir.unchecked` is
+  exactly `bad` with `reported: true`. It is mutation-checked by making
+  `type_check_recovering` return an empty `solved` when it has errors.
+- A companion test runs a second fixture, `tests/fixtures/package_import_canonical_error/`,
+  the same package with `bad = T <+> T`, an operator nothing declares, and asserts `B` still
+  reports the missing module. That pins where this ticket stops; [`TOOL-9`](tool-9.md)
+  inverts it. The fixture uses an operator and not a misspelt name so that it stays a broken
+  declaration once [`TOOL-12`](tool-12.md) has turned a misspelt name into a hole.
+- A test in `crates/zelkova-compiler/tests/typer.rs` calls `type_check_recovering` on a
+  module with one well-typed declaration and one ill-typed: `solved` holds `Solved::Typed`
+  for the first and `Solved::Rejected` for the second, and `errors` has one entry.
+- `zelkova::compile_package_into` on the first fixture returns `Err` and leaves its build
+  directory absent, as `a_build_with_a_failing_module_writes_nothing` asserts for
+  `package_type_error`.
+- `cargo test --workspace` is green, `cargo run -- compile std/core` still prints
+  `parsed 10 modules`, lists all ten as checked and exits 0, and `cargo run -- test std/core`
+  still reports `98 tests: 98 passed, 0 failed, 0 errored`.

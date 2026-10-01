@@ -3,6 +3,16 @@
 **Severity:** low (the real, root-cause error is always still present and correctly reported;
 the defect is noise stacked beside it, not a miscompile or a dropped diagnostic).
 
+**Closes with:** [`TOOL-9`](tool-9.md), which makes each of the five sites below hand back
+what it resolved. Do not work this ticket on its own.
+
+**State on 2026-10-01:** the two reproductions under *Problem* no longer cascade. Each reports
+its one real error, because `canonicalize` now registers every type name with
+`insert_declared_type` before `do_types` runs, so `do_exports` finds `Size` and `Pair` whatever
+`do_types` returned. The defect is still live through constructors: with `small : Size` and
+`small = Small` added to case 1, `Small` is reported as not found, since `insert_union_type`
+never runs for `Size`. `TOOL-9`'s Problem carries that reproduction.
+
 **Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — the five `<pass>(...).unwrap_or_else(|err| {
 errors.extend(err); HashMap::new() })` sites inside `canonicalize`'s module body (line numbers
 drift; found via `grep -n "unwrap_or_else(|err| {" crates/zelkova-compiler/src/canonical/mod.rs`, currently):

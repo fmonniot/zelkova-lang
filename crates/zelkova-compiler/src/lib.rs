@@ -1665,7 +1665,7 @@ struct ParsedRoot {
 /// A file is parsed past its first error (`parser::parse_recovering`), so each of its
 /// failing declarations is reported. It still counts once in `failures` however many it
 /// has, and still contributes no module: what the phases after parsing do with a module
-/// that is only partly there is `TOOL-8`'s, in `docs/tickets/`.
+/// that is only partly there is `TOOL-11`'s, in `docs/tickets/`.
 fn parse_root(
     ids: &[SourceFileId],
     sources: &SourceFiles,

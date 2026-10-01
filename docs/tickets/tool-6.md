@@ -8,8 +8,10 @@ capability before starting, not land it as one PR.
 **Part of:** the *Active work: editor support* section of [the index](README.md).
 **Depends on:** [`TOOL-2`](README.md) (checking an unsaved buffer) and [`TOOL-3`](README.md)
 (diagnostics as data, nothing printed or written). [`TOOL-4`](README.md) and
-[`TOOL-8`](tool-8.md) are not prerequisites, but without them every capability except
-diagnostics goes dark for a file with an error in it, which is most files mid-edit.
+[`TOOL-8`](tool-8.md) through [`TOOL-12`](tool-12.md) are not prerequisites, but without them
+every capability except diagnostics goes dark for a file with an error in it, which is most
+files mid-edit. Once they land, a module of a package that did not check is read from
+`PackageCheck::failing`.
 [`TOOL-5`](README.md) is not a prerequisite either.
 
 **Location:** new, as a workspace member (`zelkova-lsp`) depending on the compiler library.
