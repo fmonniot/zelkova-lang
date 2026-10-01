@@ -1,4 +1,4 @@
-module Ctor exposing (..)
+module Ctor exposing ()
 
 
 isRed Purple = 1

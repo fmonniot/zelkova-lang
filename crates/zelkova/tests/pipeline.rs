@@ -16,6 +16,7 @@ use codespan_reporting::diagnostic::{LabelStyle, Severity};
 use codespan_reporting::files::SimpleFile;
 use zelkova::{compile_package, compile_package_with_tests, BuildError, BUILD_DIRECTORY};
 use zelkova_compiler::canonical;
+use zelkova_compiler::dependencies::Outcome;
 use zelkova_compiler::dependencies::{self, ModuleWalker};
 use zelkova_compiler::manifest;
 use zelkova_compiler::name::Name;
@@ -2214,23 +2215,23 @@ fn export_not_found_labels_the_exposed_name_alone() {
 //
 // `Module::to_interface` keeps a value only when it carries a type
 // (`Value::TypedValue`), so an unannotated declaration named in `exposing`
-// used to vanish from the interface silently — the importer then failed with
-// `VariableNotFound` for a name `Widget` plainly declares, blaming the wrong
-// module for the wrong reason. `SPEC-5` closes this at the source: `Widget`
-// itself is now rejected, before it ever publishes an interface.
+// used to vanish from the interface silently, and the importer's error was the
+// only one a user saw. `SPEC-5` closes this at the source: `Widget` itself is
+// rejected for the exposed, unannotated `label`. It still publishes the
+// interface it has, so `Main` is checked against it and its own `Widget.label`
+// is a missing name: two errors, the first of which says why.
 
-/// `Widget` fails to canonicalize on its own — `label` is exposed with no
-/// annotation — and `Main`, which imports it, gets an error too, but not
-/// `VariableNotFound`: `Widget` never published an `Interface` for it to
-/// resolve against, so the import itself is what fails.
+/// `Widget` exposes `label` with no annotation, so it reports
+/// `ExportedValueNotAnnotated` and publishes an `Interface` without `label`.
+/// `Main` is checked against that interface, as `check_in_order` does, and
+/// reports `VariableNotFound` for `Widget.label`.
 ///
 /// Mutation-checked: reverting `do_exports`'s `Lower` arm to accept `label`
-/// once `env.find_value` succeeds (the pre-fix behaviour, before the
-/// `values.get(name)` annotation check was added) turns `Widget`'s check
-/// green again, and with it this test — `Main` would then fail with
-/// `VariableNotFound` instead, the exact symptom `BUG-14` was filed over.
+/// once `env.find_value` succeeds (the behaviour before the `values.get(name)`
+/// annotation check was added) turns `Widget`'s check green, and this test
+/// goes red on its first assertion.
 #[test]
-fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
+fn unannotated_export_is_rejected_at_the_declaration_and_the_importer_is_told_too() {
     let widget = indoc::indoc! {r#"
         module Widget exposing (label)
         label = 1
@@ -2238,43 +2239,51 @@ fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
     let main = indoc::indoc! {r#"
         module Main exposing (x)
         import Widget
+        x : Int
         x = Widget.label
     "#};
 
     let pkg = test_package();
+    let mut interfaces: HashMap<Name, Interface> = HashMap::from([basics_interface()]);
 
-    let widget_error = check_module(&pkg, &HashMap::new(), &parse_source(widget))
-        .expect_err("an exposed, unannotated value must not compile");
-
-    match &widget_error {
-        CompilationError::Canonical(errors, module) => {
-            assert_eq!(module, &Name::from("Widget"));
-            assert_eq!(errors.len(), 1, "got {:?}", errors);
-            match &errors[0] {
-                canonical::Error::ExportedValueNotAnnotated(name, _, _) => {
-                    assert_eq!(name.as_str(), "label");
+    // `Widget` is checked and its interface published whatever the check found,
+    // which is what `check_in_order` does with an `Outcome::Module`.
+    match check_module_recovering(&pkg, &interfaces, &parse_source(widget)) {
+        Outcome::Module(widget_module, widget_errors) => {
+            assert_eq!(widget_errors.len(), 1, "got {:?}", widget_errors);
+            match &widget_errors[0] {
+                CompilationError::Canonical(errors, module) => {
+                    assert_eq!(module, &Name::from("Widget"));
+                    assert_eq!(errors.len(), 1, "got {:?}", errors);
+                    match &errors[0] {
+                        canonical::Error::ExportedValueNotAnnotated(name, _, _) => {
+                            assert_eq!(name.as_str(), "label");
+                        }
+                        other => panic!("expected ExportedValueNotAnnotated, got {:?}", other),
+                    }
                 }
-                other => panic!("expected ExportedValueNotAnnotated, got {:?}", other),
+                other => panic!("expected a Canonical error naming Widget, got {:?}", other),
             }
+
+            interfaces.insert(
+                widget_module.canonical.name.name().clone(),
+                widget_module.to_interface(None),
+            );
         }
-        other => panic!("expected a Canonical error naming Widget, got {:?}", other),
+        Outcome::Failed(error) => panic!("`Widget` should still publish: {:?}", error),
     }
 
-    // `Widget` never checked, so there is no `Interface` for it in scope —
-    // exactly what the real pipeline would have, since `check_in_order` only
-    // inserts an `Interface` for a module that canonicalized.
-    let main_error = check_module(&pkg, &HashMap::new(), &parse_source(main))
-        .expect_err("Main imports a module that never checked");
+    let main_error = check_module(&pkg, &interfaces, &parse_source(main))
+        .expect_err("`Widget` publishes no `label` for Main to import");
 
     match &main_error {
         CompilationError::Canonical(errors, module) => {
             assert_eq!(module, &Name::from("Main"));
             assert!(
-                !errors
+                errors
                     .iter()
                     .any(|e| matches!(e, canonical::Error::VariableNotFound(..))),
-                "the importer must not blame a missing variable for a name \
-                 `Widget` plainly declares: {:?}",
+                "`Widget.label` is not in the interface `Widget` published: {:?}",
                 errors
             );
         }
@@ -3236,6 +3245,7 @@ fn an_untyped_backing_function_is_reported_under_its_own_name() {
     let main = indoc::indoc! {r#"
         module Main exposing (x)
         import Lib exposing ((+))
+        x : Int
         x = 1 + 2
     "#};
 

@@ -1,4 +1,4 @@
-module Unknown exposing (..)
+module Unknown exposing ()
 
 
 answer = mystery

@@ -1455,7 +1455,7 @@ fn unresolved_variable_suggests_a_near_miss() {
     interfaces.insert(iface_name, iface);
 
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
         import Maybe exposing (withDefault)
         answer = widthDefault
     "#};
@@ -1520,7 +1520,7 @@ fn unresolved_variable_with_no_near_miss_has_no_suggestion() {
 #[test]
 fn unresolved_constructor_suggests_a_near_miss() {
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
         type Color = Red | Green | Blue
         isRed Reed = true
     "#};
@@ -1543,7 +1543,7 @@ fn unresolved_constructor_suggests_a_near_miss() {
 #[test]
 fn unresolved_constructor_with_no_near_miss_has_no_suggestion() {
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
         type Color = Red | Green | Blue
         isRed Zzzzzzzzzzzz = true
     "#};
@@ -4280,4 +4280,124 @@ fn a_rejected_facade_signature_is_broken_and_keeps_its_type() {
         }
         other => panic!("expected `now` alone to be broken, got {:?}", other),
     }
+}
+
+/// A facade signature that has a binding is rejected for the binding, and the
+/// signature's own error is reported beside it: a type that does not resolve, or no
+/// signature at all.
+///
+/// Mutation-checked by restoring `tpe.and_then(Result::ok)` in the facade's binding
+/// check, which reports `BindingPatternsInvalidLen` alone, or by dropping the
+/// `NoTypeInBinding` of a missing signature: the error list goes red either way.
+#[test]
+fn a_facade_signature_with_a_binding_still_reports_its_own_error() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (one, two, three)
+
+        one : Nope
+        one x = x
+
+        two x = x
+
+        unsafe three : Int -> Int
+        three x = x
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &effect_interfaces())
+            .expect("the imports resolve");
+
+    // The declarations are not canonicalized in a fixed order, so the errors are counted
+    // by kind.
+    let count = |is: fn(&canonical::Error) -> bool| errors.iter().filter(|e| is(e)).count();
+    assert_eq!(errors.len(), 5, "got {:?}", errors);
+    assert_eq!(
+        count(|e| matches!(e, canonical::Error::TypeNotFound(..))),
+        1,
+        "got {:?}",
+        errors
+    );
+    assert_eq!(
+        count(|e| matches!(e, canonical::Error::NoTypeInBinding(two, _) if two.as_str() == "two")),
+        1,
+        "got {:?}",
+        errors
+    );
+    assert_eq!(
+        count(|e| matches!(e, canonical::Error::BindingPatternsInvalidLen(..))),
+        3,
+        "got {:?}",
+        errors
+    );
+    assert!(module.values.is_empty(), "got {:?}", module.values);
+
+    let broken: Vec<(&str, bool)> = module
+        .broken
+        .iter()
+        .map(|b| (b.name.as_str(), b.tpe.is_some()))
+        .collect();
+    assert_eq!(
+        broken,
+        vec![("one", false), ("three", true), ("two", false)]
+    );
+}
+
+/// An exposed declaration that is broken and was written with no annotation is
+/// reported as `ExportedValueNotAnnotated`, as an unannotated declaration that
+/// canonicalized is, for an explicit entry and under `exposing (..)` alike. One that was
+/// written with an annotation, sound or not, is not: its annotation's own error stands.
+///
+/// Mutation-checked by emptying `unannotated_broken` where `canonicalize` builds it, by
+/// dropping its use in `do_exports`'s `Lower` arm, and by dropping it from the `Open` arm:
+/// each turns an assertion on the unannotated names red.
+#[test]
+fn an_exposed_broken_declaration_with_no_annotation_is_not_annotated() {
+    let explicit = indoc::indoc! {r#"
+        module Test exposing (f, g, h, k)
+
+        f x = x <+> 1
+
+        g : Int -> Int
+        g x = x <+> 1
+
+        h : Nope
+        h = 1
+
+        k : Int
+        k = 1
+    "#};
+
+    let unannotated = |errors: &[canonical::Error]| -> Vec<String> {
+        errors
+            .iter()
+            .filter_map(|e| match e {
+                canonical::Error::ExportedValueNotAnnotated(name, _, _) => {
+                    Some(name.as_str().to_string())
+                }
+                _ => None,
+            })
+            .collect()
+    };
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(explicit, &HashMap::from([basics_interface()]))
+            .expect("the imports resolve");
+
+    assert_eq!(
+        module
+            .broken
+            .iter()
+            .map(|b| b.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["f", "g", "h"]
+    );
+    assert_eq!(unannotated(&errors), vec!["f"], "got {:?}", errors);
+    // `f` and `g`'s operator, `h`'s type, and `f`'s annotation.
+    assert_eq!(errors.len(), 4, "got {:?}", errors);
+
+    let open = explicit.replace("exposing (f, g, h, k)", "exposing (..)");
+    let canonical::Canonicalized { errors, .. } =
+        canonicalize_recovering_with_interfaces(&open, &HashMap::from([basics_interface()]))
+            .expect("the imports resolve");
+    assert_eq!(unannotated(&errors), vec!["f"], "got {:?}", errors);
 }
