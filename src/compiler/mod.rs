@@ -1003,8 +1003,8 @@ pub struct PackageCheck {
 /// its [`status`](PackageCheck::status) lines, emit and write a build that checked, and
 /// render every error. It reads every manifest from disk and every `.zel` source of the build
 /// from `overlay` where it holds the file and from disk otherwise ([`Overlay`] has the
-/// rules, and the CLI half passes an empty one), and nothing else: it does not look for a facade's companion, which only a build
-/// that emits needs. It never writes to stderr, to stdout or to disk, and never builds a
+/// rules, and the CLI half passes an empty one), and nothing else: it does not look for a
+/// facade's companion, which only a build that emits needs. It never writes to stderr, to stdout or to disk, and never builds a
 /// `Diagnostic` — a caller that wants one asks each error for it.
 ///
 /// `Err` is an error raised before there is a build to check — the root's manifest, or

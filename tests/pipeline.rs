@@ -6029,3 +6029,32 @@ fn check_package_matches_an_overlay_path_spelled_with_a_dot_dot_segment() {
 
     assert_overlaid_answer_was_checked(&check);
 }
+
+/// `TOOL-2`: a buffer under a `tests/` directory that is not on disk is still loaded. The
+/// package has no `tests/`, which the walk skips, and the overlay's `tests/Foo.zel` comes
+/// back in `test_modules` all the same.
+///
+/// Mutation-checked by restoring the early return `if !walk { return Ok(loaded); }` right
+/// after the `walk` binding in `load_package_sources_into`: `test_modules` comes back
+/// empty and the final assertion goes red.
+#[test]
+fn check_package_with_tests_loads_an_overlay_buffer_under_a_missing_tests_directory() {
+    let root = overlay_fixture("overlay_adds_test_module");
+    assert!(!root.join("tests").exists(), "the fixture has no `tests/`");
+
+    let mut overlay = Overlay::new();
+    overlay.insert(
+        root.join("tests").join("Foo.zel"),
+        "module Foo exposing (..)\n\n\ntype Token = Token\n".into(),
+    );
+    let check =
+        check_package_with_tests(&root, &overlay).expect("the manifest and the build resolve");
+
+    assert!(check.errors.is_empty(), "got {:?}", check.errors);
+    let names: Vec<&Name> = check
+        .test_modules
+        .iter()
+        .map(|checked| checked.module.canonical.name.name())
+        .collect();
+    assert_eq!(names, vec![&Name::from("Foo")]);
+}
