@@ -29,7 +29,9 @@ use zelkova_lang::compiler::{
     check_module, check_package, check_package_with_tests, parser, CheckedModule, CompilationError,
     Interface, PackageName, PhaseError,
 };
-use zelkova_lang::driver::{compile_package, compile_package_with_tests, BUILD_DIRECTORY};
+use zelkova_lang::driver::{
+    compile_package, compile_package_with_tests, BuildError, BUILD_DIRECTORY,
+};
 
 mod support;
 
@@ -113,7 +115,7 @@ fn module_names(package_dir: &Path, root: SourceRoot) -> Vec<String> {
 /// The phase error inside a `compile_package` result, past the file it was tagged with.
 ///
 /// Errors that come back from `check_in_order` are wrapped in
-/// `CompilationError::InFile` by `compile_package`, which is what pairs the spans a
+/// `CompilationError::InFile` by `check_package`, which is what pairs the spans a
 /// phase produced with the file to underline. A test that asserts on the phase
 /// variant looks through that wrapper rather than at it.
 fn unwrap_in_file(error: &CompilationError) -> &CompilationError {
@@ -121,6 +123,25 @@ fn unwrap_in_file(error: &CompilationError) -> &CompilationError {
         CompilationError::InFile(inner, _) => unwrap_in_file(inner),
         other => other,
     }
+}
+
+/// The errors of the check a failed build accumulated, each past the
+/// [`BuildError::Check`] it is wrapped in.
+///
+/// `error` must be [`BuildError::Many`] — the accumulator, already rendered — and each of
+/// its members a `Check`: a test that calls this expects the check, and not emitting or
+/// writing the build, to have failed, so anything else panics with what it got.
+fn many(error: &BuildError) -> Vec<&CompilationError> {
+    let BuildError::Many(errors) = error else {
+        panic!("expected Err(BuildError::Many(..)), got {:?}", error);
+    };
+    errors
+        .iter()
+        .map(|member| match member {
+            BuildError::Check(error) => error,
+            other => panic!("expected every member to be a Check, got {:?}", other),
+        })
+        .collect()
 }
 
 // ── Test 1: Minimal passing module ───────────────────────────────────────────
@@ -342,7 +363,7 @@ fn stdlib_basics_chain_compiles() {
 /// This is the half of `BUG-1` that keeps the fix from over-reaching: it is easy
 /// to make a compiler fail, and this pins that `compile_package` still returns
 /// `Ok(())` when nothing went wrong. Mutation-checked by making the tail of
-/// `compile_package` return `Err(CompilationError::Many(errors))`
+/// `compile_package` return `Err(BuildError::Many(errors))`
 /// unconditionally, which turns this test red.
 #[test]
 fn compile_package_succeeds_when_every_module_checks() {
@@ -387,14 +408,15 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
     let result = compile_package(&root);
 
     match result {
-        Err(CompilationError::Many(errors)) => {
+        Err(error @ BuildError::Many(_)) => {
+            let errors = many(&error);
             assert_eq!(
                 errors.len(),
                 1,
                 "expected exactly one error for the one broken module, got {:?}",
                 errors
             );
-            match unwrap_in_file(&errors[0]) {
+            match unwrap_in_file(errors[0]) {
                 CompilationError::Canonical(canonical_errors, module) => {
                     assert_eq!(module, &Name::from("Broken"));
                     assert!(
@@ -405,7 +427,7 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
                 other => panic!("expected a Canonical error, got {:?}", other),
             }
         }
-        other => panic!("expected Err(CompilationError::Many(..)), got {:?}", other),
+        other => panic!("expected Err(BuildError::Many(..)), got {:?}", other),
     }
 }
 
@@ -880,9 +902,7 @@ fn a_build_with_a_failing_module_writes_nothing() {
     .expect_err("`Mismatch` does not type check");
 
     // The failure is the type error, not something the build step raised.
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Many, got {:?}", error);
-    };
+    let errors = many(&error);
     assert!(
         matches!(
             errors.as_slice(),
@@ -896,6 +916,39 @@ fn a_build_with_a_failing_module_writes_nothing() {
     assert!(!build_dir.exists());
 }
 
+/// `BUG-1`, one level up: a build whose check found an error fails, and the error the driver
+/// hands back is the accumulator — `BuildError::Many` — holding the check's error as one
+/// `Check` member, still wrapped in the `InFile` the check paired it with its file by.
+///
+/// `TOOL-7` moved the accumulator that decides the return value from the compiler into
+/// the driver, so this pins the driver's half: `package_type_error`'s one type error must
+/// come back as exactly that shape, not as a success and not as anything flatter.
+///
+/// Mutation-checked by making the driver's `compile` return `Ok(root_test_interfaces)`
+/// whatever its accumulator holds: the build then comes back `Ok` and this turns red.
+#[test]
+fn a_build_whose_check_failed_returns_the_check_error_in_many() {
+    let build_dir = fresh_build_dir("a_build_whose_check_failed_returns_the_check_error_in_many");
+
+    let result = zelkova_lang::driver::compile_package_into(
+        &fixture_package("package_type_error"),
+        &build_dir,
+    );
+
+    match &result {
+        Err(BuildError::Many(errors)) => assert!(
+            matches!(
+                errors.as_slice(),
+                [BuildError::Check(CompilationError::InFile(inner, _))]
+                    if matches!(**inner, CompilationError::Type(..))
+            ),
+            "expected one Check around an InFile, got {:?}",
+            errors
+        ),
+        other => panic!("expected Err(BuildError::Many(..)), got {:?}", other),
+    }
+}
+
 /// `GEN-13`: a module that checks and cannot be emitted fails the build like any other
 /// error, and nothing is written. The facade here has no companion beside it, which
 /// [`javascript::emit`] refuses.
@@ -903,6 +956,10 @@ fn a_build_with_a_failing_module_writes_nothing() {
 /// Mutation-checked by dropping the second `if errors.is_empty()` in `compile`, so
 /// files are written whether or not emission failed: the runtime is written and this
 /// turns red.
+///
+/// The error is matched as `BuildError::InFile` around `BuildError::Emit`, the driver's
+/// own variants since `TOOL-7`. Mutation-checked by making `emit_modules` drop the error
+/// it pushes instead of pushing it: the build then comes back `Ok` and this turns red.
 #[test]
 fn a_build_that_cannot_be_emitted_writes_nothing() {
     let package = fresh_build_dir("a_build_that_cannot_be_emitted_writes_nothing_package");
@@ -937,16 +994,16 @@ fn a_build_that_cannot_be_emitted_writes_nothing() {
     let error = zelkova_lang::driver::compile_package_into(&package, &build_dir)
         .expect_err("a facade with no companion cannot be emitted");
 
-    let CompilationError::Many(errors) = &error else {
+    let BuildError::Many(errors) = &error else {
         panic!("expected Many, got {:?}", error);
     };
     assert!(
         matches!(
             errors.as_slice(),
-            [CompilationError::InFile(inner, _)]
+            [BuildError::InFile(inner, _)]
                 if matches!(
                     &**inner,
-                    CompilationError::Emit(emit_errors, _)
+                    BuildError::Emit(emit_errors, _)
                         if matches!(emit_errors.as_slice(), [javascript::Error::MissingCompanion { .. }])
                 )
         ),
@@ -970,6 +1027,10 @@ fn a_build_that_cannot_be_emitted_writes_nothing() {
 ///
 /// Mutation-checked by moving the test tree's `emit_modules` call in `compile` back
 /// after the write of `out/js/`: `out/js/` is written in full and this turns red.
+///
+/// The error is matched as `BuildError::InFile` around `BuildError::Emit`, the driver's
+/// own variants since `TOOL-7`. Mutation-checked by making `emit_modules` drop the error
+/// it pushes instead of pushing it: the build then comes back `Ok` and this turns red.
 #[test]
 fn a_test_build_whose_tests_cannot_be_emitted_writes_nothing() {
     let package =
@@ -1006,16 +1067,16 @@ fn a_test_build_whose_tests_cannot_be_emitted_writes_nothing() {
     let error = zelkova_lang::driver::compile_package_with_tests_into(&package, &build_dir)
         .expect_err("a facade under `tests/` with no companion cannot be emitted");
 
-    let CompilationError::Many(errors) = &error else {
+    let BuildError::Many(errors) = &error else {
         panic!("expected Many, got {:?}", error);
     };
     assert!(
         matches!(
             errors.as_slice(),
-            [CompilationError::InFile(inner, _)]
+            [BuildError::InFile(inner, _)]
                 if matches!(
                     &**inner,
-                    CompilationError::Emit(emit_errors, _)
+                    BuildError::Emit(emit_errors, _)
                         if matches!(emit_errors.as_slice(), [javascript::Error::MissingCompanion { .. }])
                 )
         ),
@@ -1174,9 +1235,7 @@ fn canonical_error_renders_as_prose_naming_the_missing_module() {
 
     let error = compile_package(&root).expect_err("the fixture must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     let message = &errors[0].as_diagnostic().message;
@@ -1238,9 +1297,7 @@ fn type_error_labels_the_expression_that_disagrees() {
     let error =
         compile_package(&root).expect_err("`answer : Int` with a `Bool` body must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     // The phase is part of the contract: this must be the type error, not a
@@ -1301,9 +1358,7 @@ fn missing_import_labels_the_import_line() {
 
     let error = compile_package(&root).expect_err("the fixture must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     let diagnostic = errors[0].as_diagnostic();
@@ -1349,9 +1404,7 @@ fn unknown_variable_labels_the_identifier() {
 
     let error = compile_package(&root).expect_err("an undefined name must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     match unwrap_in_file(&errors[0]) {
@@ -1407,9 +1460,7 @@ fn unknown_constructor_labels_the_pattern() {
 
     let error = compile_package(&root).expect_err("an undeclared constructor must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     let diagnostic = errors[0].as_diagnostic();
@@ -1464,9 +1515,7 @@ fn grouped_canonical_error_keeps_every_label() {
 
     let error = compile_package(&root).expect_err("two undeclared constructors must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     // One phase error — the group — carrying two members.
@@ -1540,9 +1589,7 @@ fn case_bodied_declaration_label_stops_at_the_case() {
     let error = compile_package(&root)
         .expect_err("`classify : Color -> Color` returning an `Int` must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     match unwrap_in_file(&errors[0]) {
@@ -1629,9 +1676,7 @@ fn ambiguous_import_labels_point_into_each_defining_module() {
 
     let error = compile_package(&root).expect_err("an ambiguous import must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     match unwrap_in_file(&errors[0]) {
@@ -1828,9 +1873,7 @@ fn ambiguous_imported_operators_are_labeled_in_their_own_module() {
 
     let error = compile_package(&root).expect_err("an ambiguous operator pair must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     match unwrap_in_file(&errors[0]) {
@@ -1907,9 +1950,7 @@ fn cross_module_labels_render_without_the_checked_module_file() {
     let root = fixture_package("package_ambiguous_import");
 
     let error = compile_package(&root).expect_err("an ambiguous import must not compile");
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
 
     // The bare phase error, with no `InFile` wrapper: nothing tells it which file
     // `Main` was read from.
@@ -1990,9 +2031,7 @@ fn dependency_cycle_labels_each_import() {
 
     let error = compile_package(&root).expect_err("a dependency cycle must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     // Asserted down to the variant, and that there is exactly one cycle, so this
@@ -2080,9 +2119,7 @@ fn missing_exposed_import_name_labels_the_name_alone() {
 
     let error = compile_package(&root).expect_err("importing an unexported name must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     match unwrap_in_file(&errors[0]) {
@@ -2141,9 +2178,7 @@ fn export_not_found_labels_the_exposed_name_alone() {
 
     let error = compile_package(&root).expect_err("exposing an undeclared infix must not compile");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     match unwrap_in_file(&errors[0]) {
@@ -2609,7 +2644,7 @@ fn backing_function_of_an_exposed_operator_stays_unimportable_by_name() {
 /// `zelkova.toml` and no `src/` directory at all, which is what still reaches
 /// `load_package_sources` on a path that does not exist.
 ///
-/// The loading failure now arrives inside `CompilationError::Many`, because
+/// The loading failure now arrives inside `BuildError::Many`, because
 /// loading a package's sources happens once per package *inside* the build's error
 /// accumulator: a package that cannot be read pushes its failure onto that vector
 /// and publishes nothing, rather than returning out of `compile_package` past the
@@ -2632,9 +2667,7 @@ fn compile_package_reports_a_missing_source_root() {
     let error =
         compile_package(&root).expect_err("a package with no `src/` must not compile as success");
 
-    let CompilationError::Many(accumulated) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let accumulated = many(&error);
     assert_eq!(
         accumulated.len(),
         1,
@@ -2684,9 +2717,9 @@ fn compile_package_reports_a_missing_manifest() {
     let error =
         compile_package(&root).expect_err("a package with no manifest must not compile as success");
 
-    let CompilationError::Manifest(errors) = &error else {
+    let BuildError::Check(CompilationError::Manifest(errors)) = &error else {
         panic!(
-            "expected Err(CompilationError::Manifest(..)), got {:?}",
+            "expected Err(BuildError::Check(CompilationError::Manifest(..))), got {:?}",
             error
         );
     };
@@ -2718,7 +2751,7 @@ fn compile_package_reports_a_missing_manifest() {
 /// Mutation-checked by asserting on the variant and the offending string rather
 /// than `is_err()` alone: with `is_legal_package_name` accepting everything, the
 /// fixture — which has no `src/` at all — fails one step later instead, as
-/// `LoadingFiles`, and it is the `let CompilationError::Manifest(..) = … else`
+/// `LoadingFiles`, and it is the `let BuildError::Check(CompilationError::Manifest(..)) = … else`
 /// below that catches it rather than `expect_err`.
 #[test]
 fn compile_package_reports_an_invalid_package_name() {
@@ -2727,9 +2760,9 @@ fn compile_package_reports_an_invalid_package_name() {
     let error = compile_package(&root)
         .expect_err("a manifest with an illegal package name must not compile as success");
 
-    let CompilationError::Manifest(errors) = &error else {
+    let BuildError::Check(CompilationError::Manifest(errors)) = &error else {
         panic!(
-            "expected Err(CompilationError::Manifest(..)), got {:?}",
+            "expected Err(BuildError::Check(CompilationError::Manifest(..))), got {:?}",
             error
         );
     };
@@ -2758,7 +2791,7 @@ fn compile_package_reports_an_invalid_package_name() {
 /// Unlike a missing or malformed manifest, this check needs the package's real
 /// module list, which is only known once sources are parsed — so it cannot be
 /// raised by `manifest::load` itself, and reaches `compile_package`'s ordinary
-/// error accumulation (`CompilationError::Many`) rather than the unrendered path
+/// error accumulation (`BuildError::Many`) rather than the unrendered path
 /// the other manifest failures take. `package_private_module_not_found` declares
 /// `private-modules = ["Ghost"]` and holds one real module, `Answer`.
 ///
@@ -2773,9 +2806,7 @@ fn compile_package_reports_a_private_module_that_does_not_exist() {
     let error = compile_package(&root)
         .expect_err("a `private-modules` entry naming no real module must not compile as success");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     let CompilationError::Manifest(manifest_errors) = &errors[0] else {
@@ -2817,9 +2848,7 @@ fn a_parse_failure_does_not_also_report_its_module_as_unheld() {
 
     let error = compile_package(&root).expect_err("`Broken.zel` does not parse");
 
-    let CompilationError::Many(errors) = &error else {
-        panic!("expected Err(CompilationError::Many(..)), got {:?}", error);
-    };
+    let errors = many(&error);
     assert_eq!(
         errors.len(),
         1,
@@ -3875,20 +3904,21 @@ fn one_use_of_an_imported_polymorphic_name_keeps_its_variables_linked() {
 // another fixture package through a `path` entry, which is the only source the
 // compiler obtains today.
 
-/// Every error a failed `compile_package` accumulated, past the `Many` that groups
-/// them.
+/// Every error of the check a failed `compile_package` accumulated, past the `Many` that
+/// groups them and the `Check` each is wrapped in.
 ///
 /// A resolution failure raised before the file database exists comes back on its own,
 /// so both shapes have to be handled for a test to assert on what was reported.
-fn accumulated(error: &CompilationError) -> Vec<&CompilationError> {
+fn accumulated(error: &BuildError) -> Vec<&CompilationError> {
     match error {
-        CompilationError::Many(errors) => errors.iter().collect(),
-        other => vec![other],
+        BuildError::Many(_) => many(error),
+        BuildError::Check(other) => vec![other],
+        other => panic!("expected an error of the check, got {:?}", other),
     }
 }
 
 /// The resolution errors in a failed `compile_package`.
-fn resolution_errors(error: &CompilationError) -> Vec<&resolve::Error> {
+fn resolution_errors(error: &BuildError) -> Vec<&resolve::Error> {
     accumulated(error)
         .into_iter()
         .filter_map(|error| match unwrap_in_file(error) {
@@ -4130,7 +4160,7 @@ fn a_dependencys_bitwise_collides_with_cores() {
 // rename*](../docs/spec/packages.md#what-a-package-boundary-cannot-rename)).
 
 /// Every type error in a failed build, each with the module it was found in.
-fn type_errors(error: &CompilationError) -> Vec<(&Name, &typer::Error)> {
+fn type_errors(error: &BuildError) -> Vec<(&Name, &typer::Error)> {
     accumulated(error)
         .into_iter()
         .filter_map(|error| match unwrap_in_file(error) {
@@ -4761,7 +4791,7 @@ fn a_file_in_a_shared_database_is_named_by_its_package() {
 
 /// Every diagnostic message a failed `compile_package` produced, phase errors
 /// included.
-fn diagnostic_messages(error: &CompilationError) -> Vec<String> {
+fn diagnostic_messages(error: &BuildError) -> Vec<String> {
     accumulated(error)
         .into_iter()
         .map(|error| unwrap_in_file(error).as_diagnostic().message)
@@ -4908,9 +4938,9 @@ fn a_package_named_in_both_dependency_maps_is_rejected() {
     let error = compile_package(&root)
         .expect_err("`acme-widgets` is written in both `dependencies` and `test-dependencies`");
 
-    let CompilationError::Manifest(errors) = &error else {
+    let BuildError::Check(CompilationError::Manifest(errors)) = &error else {
         panic!(
-            "expected Err(CompilationError::Manifest(..)), got {:?}",
+            "expected Err(BuildError::Check(CompilationError::Manifest(..))), got {:?}",
             error
         );
     };
@@ -5451,15 +5481,24 @@ fn a_dependency_cycle_through_the_root_is_reported_whichever_map_reaches_it_firs
 // ── A program's `main` ───────────────────────────────────────────────────────
 
 /// The one error a build of `root` fails with, whatever it is wrapped in.
-fn only_error(root: &Path, error: CompilationError) -> CompilationError {
-    let CompilationError::Many(mut errors) = error else {
+fn only_error(root: &Path, error: BuildError) -> BuildError {
+    let BuildError::Many(mut errors) = error else {
         panic!(
-            "expected Err(CompilationError::Many(..)) from {:?}, got {:?}",
+            "expected Err(BuildError::Many(..)) from {:?}, got {:?}",
             root, error
         );
     };
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
     errors.remove(0)
+}
+
+/// The error of the check `error` wraps, for a test that expects the check to have failed
+/// rather than emitting the build.
+fn as_check(error: &BuildError) -> &CompilationError {
+    match error {
+        BuildError::Check(error) => error,
+        other => panic!("expected an error of the check, got {:?}", other),
+    }
 }
 
 /// The byte range `needle` occupies in `root`'s `src/App.zel`, found from the left.
@@ -5509,7 +5548,7 @@ fn a_main_naming_no_module_under_src_is_a_manifest_error() {
             &root,
             result.expect_err("`main` names no module under `src/`"),
         );
-        let CompilationError::Manifest(manifest_errors) = &error else {
+        let CompilationError::Manifest(manifest_errors) = as_check(&error) else {
             panic!("expected a CompilationError::Manifest, got {:?}", error);
         };
         match manifest_errors.as_slice() {
@@ -5550,7 +5589,7 @@ fn a_main_module_exposing_no_main_is_an_error_at_its_exposing_list() {
         &root,
         compile_package(&root).expect_err("`App` does not expose `main`"),
     );
-    match unwrap_in_file(&error) {
+    match unwrap_in_file(as_check(&error)) {
         CompilationError::Program(program_errors, module) => {
             assert_eq!(module, &Name::from("App"));
             assert!(
@@ -5591,7 +5630,7 @@ fn a_main_of_another_type_is_an_error_at_its_annotation() {
         &root,
         compile_package(&root).expect_err("`main : Int` is not a `Task ()`"),
     );
-    match unwrap_in_file(&error) {
+    match unwrap_in_file(as_check(&error)) {
         CompilationError::Program(program_errors, module) => {
             assert_eq!(module, &Name::from("App"));
             match program_errors.as_slice() {
@@ -5632,7 +5671,7 @@ fn a_main_of_a_task_some_other_module_declares_is_an_error() {
         &root,
         compile_package(&root).expect_err("`Effect.Task` is not `Task.Task`"),
     );
-    match unwrap_in_file(&error) {
+    match unwrap_in_file(as_check(&error)) {
         CompilationError::Program(program_errors, _) => assert!(
             matches!(
                 program_errors.as_slice(),
@@ -5663,7 +5702,7 @@ fn a_dependencys_main_is_checked_too() {
     );
     assert!(
         matches!(
-            unwrap_in_file(&error),
+            unwrap_in_file(as_check(&error)),
             CompilationError::Program(_, module) if module == &Name::from("App")
         ),
         "got {:?}",

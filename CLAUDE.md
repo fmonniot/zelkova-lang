@@ -142,9 +142,10 @@ it describes.
   module.
 - **An error has to describe itself, and say where.** Every phase error implements `PhaseError`
   (`src/compiler/mod.rs`): a `message()` written in the vocabulary of the user's source, plus
-  optional `notes()` and `labels()`. `CompilationError::as_diagnostic` is the only place a
-  `codespan_reporting::Diagnostic` is ever built, which is exactly why `format!("{:?}", e)` in
-  a note is not an option — a `Debug` dump names Rust types, not source constructs. Read
+  optional `notes()` and `labels()`. `CompilationError::as_diagnostic`, and the two functions
+  it shares with `driver::BuildError::as_diagnostic` (`phase_diagnostic` and
+  `plain_diagnostic`), are the only places a `codespan_reporting::Diagnostic` is ever built,
+  which is exactly why `format!("{:?}", e)` in a note is not an option — a `Debug` dump names Rust types, not source constructs. Read
   `PhaseError`'s doc comment before adding a variant, and `Origin`, `Constraint` and the head
   of `typer/constraint.rs` before touching how a type error is blamed. One rule spans both and
   is stated in neither: a group error (`Error::Many`, `EnvironmentErrors`) must flatten its

@@ -74,8 +74,8 @@ pub mod javascript;
 // reachable from the public `CompilationError::Manifest`.
 pub mod manifest;
 pub mod name;
-// Public for the same reason as `manifest`: `output::Error` is reachable from the public
-// `CompilationError::Output`.
+// Public because `output::Error` is reachable from the public `driver::BuildError::Output`,
+// and the driver writes a build through `write`.
 pub mod output;
 pub mod parser;
 pub mod position;
@@ -92,9 +92,11 @@ pub mod source;
 // Public because `test_runner`, and `zelkova test` through it, is its caller, the way
 // `scalars` and `default_imports` are public for the phase that reads them.
 pub mod test_collection;
-// Public because `CompilationError::ProgramRun` carries its `Error`, and `zelkova run` calls `run`.
+// Public because `driver::BuildError::ProgramRun` carries its `Error`, and `zelkova run` calls
+// `run`.
 pub mod program_runner;
-// Public because `CompilationError::TestRun` carries its `Error`, and `zelkova test` calls `run`.
+// Public because `driver::BuildError::TestRun` carries its `Error`, and `zelkova test` calls
+// `run` through the driver.
 pub mod test_runner;
 pub mod tuple;
 pub mod typer;
@@ -529,15 +531,19 @@ fn spans_to_labels(
 /// `phase` names the phase in that summary line ("canonical", "type", …).
 ///
 /// `file` is the module's source file when the caller knows it, and it is handed
-/// straight to [`spans_to_labels`] as the fallback that document describes: a label
+/// straight to `spans_to_labels` as the fallback that function describes: a label
 /// of its own — the cross-module ones `ERR-5` added — renders regardless, so a
 /// `CompilationError` built by hand, as the tests in this module do, loses only the
-/// labels about the module under check. `compile_package` always wraps in
+/// labels about the module under check. [`check_package`] always wraps in
 /// [`CompilationError::InFile`] and so loses none.
 ///
 /// Both branches attach labels: only the headline demotion differs between one error
 /// and a group, and an error that got swallowed into a note still knows where it was.
-fn phase_diagnostic<E: PhaseError>(
+///
+/// Public because [`CompilationError::as_diagnostic`] shares it with
+/// [`crate::driver::BuildError::as_diagnostic`], which renders the driver's own per-module
+/// errors through it.
+pub fn phase_diagnostic<E: PhaseError>(
     module: &Name,
     phase: &str,
     errors: &[E],
@@ -564,7 +570,21 @@ fn phase_diagnostic<E: PhaseError>(
     }
 }
 
-/// Every way compiling a package can fail, tagged with the phase that failed.
+/// Render an error that is about no place in any source — a path on disk, a program that
+/// could not be started — as its message and its notes, with no label.
+///
+/// [`crate::driver::BuildError::as_diagnostic`] is its caller, for the errors of writing
+/// and running a build.
+pub fn plain_diagnostic<E: PhaseError>(error: &E) -> Diagnostic<SourceFileId> {
+    Diagnostic::error()
+        .with_message(error.message())
+        .with_notes(error.notes())
+}
+
+/// Every way checking a package can fail, tagged with the phase that failed.
+///
+/// What can go wrong once a package has checked — emitting it, writing it, running it —
+/// is [`crate::driver::BuildError`]'s, which wraps this.
 ///
 /// Each phase-carrying variant holds *all* the errors that phase produced for one
 /// module rather than only the first, plus the module's [`Name`], which is what
@@ -595,7 +615,7 @@ pub enum CompilationError {
     /// [`SourceFileId`]: what each of these errors is about is a `zelkova.toml`, which
     /// is not a file the database holds, so each names its manifest in its own message.
     /// The graph half is raised before any source is loaded and goes back to the caller
-    /// unrendered; the name-collision half is pushed onto `compile_package`'s
+    /// unrendered; the name-collision half is pushed onto [`check_package`]'s
     /// accumulator once the packages' modules are known, and stops that package being
     /// compiled.
     Resolution(Vec<resolve::Error>),
@@ -611,19 +631,6 @@ pub enum CompilationError {
     /// program's entry point ([`program`]).
     Program(Vec<program::Error>, Name),
     DependenciesError(dependencies::Error),
-    /// The named module checked and could not be emitted as JavaScript.
-    Emit(Vec<javascript::Error>, Name),
-    /// A file of the build's output could not be written. Raised only once every module
-    /// of the build has checked and emitted, since nothing is written before that.
-    Output(output::Error),
-    /// A package's tests were compiled and could not be run: `zelkova test` could not
-    /// write its entry point or could not run `node`. A test that ran and did not pass is
-    /// not this; it is the exit code of the run.
-    TestRun(test_runner::Error),
-    /// A package's program could not be run: `zelkova run` was pointed at a package with no
-    /// `main`, or could not write its entry point or could not run `node`. A program that
-    /// ran and aborted is not this; it is the exit code of the run.
-    ProgramRun(program_runner::Error),
 
     /// An error together with the file the module it belongs to was read from.
     ///
@@ -634,20 +641,20 @@ pub enum CompilationError {
     /// should build it — an id guessed anywhere else would underline the wrong file.
     InFile(Box<CompilationError>, SourceFileId),
 
-    /// Every error accumulated over one compilation pass.
+    /// Several errors, rendered as one summary.
     ///
-    /// `compile_package` does not stop on the first failure: it keeps going so that
-    /// one broken module cannot hide the diagnostics of the others. This variant is
-    /// how that accumulation becomes a failure again at the end of the pass, with the
-    /// typed errors still intact for the caller to inspect.
+    /// Nothing in the compiler builds it: [`check_package`] hands its accumulated errors
+    /// back as [`PackageCheck::errors`], and the driver's own accumulation is
+    /// [`crate::driver::BuildError::Many`], which holds each of them on its own.
     Many(Vec<CompilationError>),
 }
 
 impl CompilationError {
     /// Turn this error into the diagnostic the user reads.
     ///
-    /// This is the compiler's single rendering point — `compile_package` calls it
-    /// and nothing else builds a `Diagnostic` from a phase error. It is public so
+    /// This is the compiler's single rendering point — nothing else builds a `Diagnostic`
+    /// from a phase error, and [`crate::driver::BuildError::as_diagnostic`] calls it for
+    /// every error of the check. It is public so
     /// that a test can assert on what the user is actually shown, rather than on
     /// `is_err()`: what a failure *says* is the behaviour this method exists for.
     pub fn as_diagnostic(&self) -> Diagnostic<SourceFileId> {
@@ -656,15 +663,14 @@ impl CompilationError {
 
     /// The name of the module this error belongs to, when it has one.
     ///
-    /// `compile_package` uses it to look up the file the module was read from, which
+    /// [`check_package`] uses it to look up the file the module was read from, which
     /// is how an [`InFile`](CompilationError::InFile) wrapper gets its id.
     pub fn module(&self) -> Option<&Name> {
         match self {
             CompilationError::Canonical(_, module)
             | CompilationError::Type(_, module)
             | CompilationError::Exhaustiveness(_, module)
-            | CompilationError::Program(_, module)
-            | CompilationError::Emit(_, module) => Some(module),
+            | CompilationError::Program(_, module) => Some(module),
             CompilationError::InFile(inner, _) => inner.module(),
             _ => None,
         }
@@ -673,7 +679,7 @@ impl CompilationError {
     /// `as_diagnostic`, carrying the file the error's module was read from.
     ///
     /// `file` is `None` until an [`InFile`](CompilationError::InFile) wrapper supplies
-    /// one, which only `compile_package` builds. Everything downstream of that
+    /// one, which only [`check_package`] builds. Everything downstream of that
     /// distinction is in `phase_diagnostic`, where it serves as the fallback file for
     /// labels that do not name one themselves.
     fn as_diagnostic_in(&self, file: Option<SourceFileId>) -> Diagnostic<SourceFileId> {
@@ -726,20 +732,6 @@ impl CompilationError {
             CompilationError::Program(errors, module) => {
                 phase_diagnostic(module, "program", errors, file)
             }
-            CompilationError::Emit(errors, module) => {
-                phase_diagnostic(module, "code generation", errors, file)
-            }
-            // A path on disk, not a place in any source, so there is nothing to label.
-            CompilationError::Output(error) => Diagnostic::error()
-                .with_message(error.message())
-                .with_notes(error.notes()),
-            // Like `Output`, about the machine and not about any source.
-            CompilationError::TestRun(error) => Diagnostic::error()
-                .with_message(error.message())
-                .with_notes(error.notes()),
-            CompilationError::ProgramRun(error) => Diagnostic::error()
-                .with_message(error.message())
-                .with_notes(error.notes()),
             // A dependency cycle belongs to the package, not to any one module, so it
             // does not go through `phase_diagnostic` — there is no module to supply
             // the fallback file that helper takes. Its labels don't need one: each
@@ -751,9 +743,9 @@ impl CompilationError {
                 .with_message(err.message())
                 .with_labels(spans_to_labels(err.labels(), None))
                 .with_notes(err.notes()),
-            // `compile_package` renders each accumulated error individually rather than
-            // wrapping first, so this arm only fires when a `Many` is rendered as a
-            // whole. It summarises rather than repeating what those diagnostics said.
+            // Nothing in the compiler builds a `Many` (see the variant), so this arm only
+            // fires when one built elsewhere is rendered as a whole. It summarises rather
+            // than repeating what its members' own diagnostics said.
             //
             // This is the one group that deliberately does not flatten its members'
             // labels. The phase-error groups that do — `canonical::Error::Many`,

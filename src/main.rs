@@ -56,7 +56,7 @@ fn main() {
 }
 
 /// Report `err` and end the process with a failing exit code.
-fn fail(err: compiler::CompilationError) -> ! {
+fn fail(err: driver::BuildError) -> ! {
     // `compile_package` renders a diagnostic for every error it accumulated and
     // hands them back as `Many`, so re-printing those here would only repeat what
     // the user just read. Errors raised before the file database exists — the
@@ -67,7 +67,7 @@ fn fail(err: compiler::CompilationError) -> ! {
     // Rust types where the user needs the sentence `message()` already writes. Only
     // the headline and the notes are printed by hand, because emitting the diagnostic
     // properly needs the `Files` database these errors are raised before.
-    if !matches!(err, compiler::CompilationError::Many(_)) {
+    if !matches!(err, driver::BuildError::Many(_)) {
         let diagnostic = err.as_diagnostic();
         eprintln!("error: {}", diagnostic.message);
         for note in &diagnostic.notes {

@@ -36,9 +36,11 @@ use log::debug;
 use crate::compiler::name::Name;
 use crate::compiler::source::files::SourceFileId;
 use crate::compiler::source::Overlay;
+use codespan_reporting::diagnostic::Diagnostic;
+
 use crate::compiler::{
-    self, javascript, output, CheckedModule, CheckedSource, CompilationError, Interface,
-    PackageCheck, Status,
+    self, javascript, output, phase_diagnostic, plain_diagnostic, program_runner, test_runner,
+    CheckedModule, CheckedSource, CompilationError, Interface, PackageCheck, PhaseError, Status,
 };
 
 /// Which of the root package's source roots a build compiles: [`compiler::check_package`]'s
@@ -49,6 +51,119 @@ enum TestRoot {
     Skipped,
     /// Both roots.
     Compiled,
+}
+
+/// Every way building a package can fail: its check, or emitting, writing or running what
+/// checked.
+///
+/// The check's own errors are [`CompilationError`]s, each wrapped in
+/// [`Check`](BuildError::Check); the other variants are what only a build can raise.
+#[derive(Debug)]
+pub enum BuildError {
+    /// An error of the check. On its own — returned rather than accumulated — it is one
+    /// raised before there was a build to check, the root's manifest or the resolution of
+    /// its dependencies, and is unrendered.
+    Check(CompilationError),
+    /// The named module checked and could not be emitted as JavaScript.
+    Emit(Vec<javascript::Error>, Name),
+    /// A file of the build's output could not be written. Raised only once every module
+    /// of the build has checked and emitted, since nothing is written before that.
+    Output(output::Error),
+    /// A package's tests were compiled and could not be run: `zelkova test` could not
+    /// write its entry point or could not run `node`. A test that ran and did not pass is
+    /// not this; it is the exit code of the run.
+    TestRun(test_runner::Error),
+    /// A package's program could not be run: `zelkova run` was pointed at a package with no
+    /// `main`, or could not write its entry point or could not run `node`. A program that
+    /// ran and aborted is not this; it is the exit code of the run.
+    ProgramRun(program_runner::Error),
+    /// An [`Emit`](BuildError::Emit) together with the file its module was read from, so
+    /// that its labels have a file to point into. It wraps nothing else: an error of the
+    /// check carries its own file inside [`Check`](BuildError::Check), as a
+    /// [`CompilationError::InFile`].
+    InFile(Box<BuildError>, SourceFileId),
+    /// Every error a build accumulated, each already rendered to stderr.
+    ///
+    /// Flat: each error of the check is one [`Check`](BuildError::Check) member, and a
+    /// [`CompilationError::Many`] is never wrapped — its members are. A build does not
+    /// stop on the first failure, so that one broken module cannot hide the diagnostics
+    /// of the others; this is how that accumulation becomes a failure again at its end,
+    /// with the typed errors still intact for the caller to inspect.
+    Many(Vec<BuildError>),
+}
+
+impl BuildError {
+    /// Turn this error into the diagnostic the user reads.
+    ///
+    /// A [`Check`](BuildError::Check) renders through [`CompilationError::as_diagnostic`];
+    /// every other variant through [`phase_diagnostic`] or [`plain_diagnostic`], the two
+    /// functions [`CompilationError::as_diagnostic`] shares with this one.
+    pub fn as_diagnostic(&self) -> Diagnostic<SourceFileId> {
+        self.as_diagnostic_in(None)
+    }
+
+    /// The name of the module this error belongs to, when it has one.
+    pub fn module(&self) -> Option<&Name> {
+        match self {
+            BuildError::Emit(_, module) => Some(module),
+            BuildError::Check(error) => error.module(),
+            BuildError::InFile(inner, _) => inner.module(),
+            _ => None,
+        }
+    }
+
+    /// `as_diagnostic`, carrying the file the error's module was read from, which only an
+    /// [`InFile`](BuildError::InFile) wrapper supplies.
+    fn as_diagnostic_in(&self, file: Option<SourceFileId>) -> Diagnostic<SourceFileId> {
+        match self {
+            BuildError::Check(error) => error.as_diagnostic(),
+            BuildError::InFile(inner, id) => inner.as_diagnostic_in(Some(*id)),
+            BuildError::Emit(errors, module) => {
+                phase_diagnostic(module, "code generation", errors, file)
+            }
+            // A path on disk, not a place in any source, so there is nothing to label.
+            BuildError::Output(error) => plain_diagnostic(error),
+            // Like `Output`, about the machine and not about any source.
+            BuildError::TestRun(error) => plain_diagnostic(error),
+            BuildError::ProgramRun(error) => plain_diagnostic(error),
+            // Each member was rendered with its own carets before this was built, so this
+            // summarises rather than flattening their labels: drawing every caret of the
+            // build a second time under one headline is what flattening would do.
+            BuildError::Many(errors) => plain_diagnostic(&Summary { errors, file }),
+        }
+    }
+}
+
+/// What a [`BuildError::Many`] renders as: one headline counting its members, and each
+/// member's own headline as a note.
+struct Summary<'a> {
+    errors: &'a [BuildError],
+    file: Option<SourceFileId>,
+}
+
+impl PhaseError for Summary<'_> {
+    fn message(&self) -> String {
+        format!(
+            "compilation failed with {} error{}",
+            self.errors.len(),
+            if self.errors.len() == 1 { "" } else { "s" }
+        )
+    }
+
+    fn notes(&self) -> Vec<String> {
+        self.errors
+            .iter()
+            .map(|e| e.as_diagnostic_in(self.file).message)
+            .collect()
+    }
+}
+
+/// What `?` goes through for an error raised before a build's accumulator exists — the
+/// root's manifest, the resolution — which comes back bare and unrendered.
+impl From<CompilationError> for BuildError {
+    fn from(error: CompilationError) -> Self {
+        BuildError::Check(error)
+    }
 }
 
 /// Compile the package rooted at `package_dir` — a directory holding a `zelkova.toml`
@@ -67,9 +182,9 @@ enum TestRoot {
 ///
 /// The check itself is [`compiler::check_package`]'s. This prints its status lines to stderr, emits
 /// and writes the build, and renders every error to stderr before returning it inside
-/// [`CompilationError::Many`]. An error raised before any source is read — the manifest,
+/// [`BuildError::Many`]. An error raised before any source is read — the manifest,
 /// the resolution — is returned bare and unrendered.
-pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
+pub fn compile_package(package_dir: &Path) -> Result<(), BuildError> {
     compile(
         package_dir,
         TestRoot::Skipped,
@@ -101,7 +216,7 @@ pub fn test_tree(build_dir: &Path) -> PathBuf {
 /// 5](../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)
 /// the reasons). Nothing is written until every module of every package has checked and
 /// emitted.
-pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), CompilationError> {
+pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), BuildError> {
     compile(package_dir, TestRoot::Skipped, build_dir, &Overlay::new()).map(|_| ())
 }
 
@@ -130,7 +245,7 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 /// [`compile_package`] would have written it: a test module never turns up there, so a
 /// plain build run afterwards never finds one left behind by a run that also compiled the
 /// tests ([`GEN-18`](../../docs/tickets/README.md)).
-pub fn compile_package_with_tests(package_dir: &Path) -> Result<Vec<Interface>, CompilationError> {
+pub fn compile_package_with_tests(package_dir: &Path) -> Result<Vec<Interface>, BuildError> {
     compile_package_with_tests_into(package_dir, &package_dir.join(BUILD_DIRECTORY))
 }
 
@@ -140,7 +255,7 @@ pub fn compile_package_with_tests(package_dir: &Path) -> Result<Vec<Interface>, 
 pub fn compile_package_with_tests_into(
     package_dir: &Path,
     build_dir: &Path,
-) -> Result<Vec<Interface>, CompilationError> {
+) -> Result<Vec<Interface>, BuildError> {
     compile(package_dir, TestRoot::Compiled, build_dir, &Overlay::new())
 }
 
@@ -173,10 +288,10 @@ fn compile(
     tests: TestRoot,
     build_dir: &Path,
     overlay: &Overlay,
-) -> Result<Vec<Interface>, CompilationError> {
+) -> Result<Vec<Interface>, BuildError> {
     let PackageCheck {
         package: root_package,
-        mut errors,
+        errors,
         sources,
         modules,
         test_dependency_modules,
@@ -186,6 +301,10 @@ fn compile(
         TestRoot::Skipped => compiler::check_package(package_dir, overlay)?,
         TestRoot::Compiled => compiler::check_package_with_tests(package_dir, overlay)?,
     };
+
+    // The build's one accumulator: each error of the check on its own, then whatever
+    // emitting and writing the build adds. An empty one is what makes this return `Ok`.
+    let mut errors: Vec<BuildError> = errors.into_iter().map(BuildError::Check).collect();
 
     // Error reporter
     let mut writer = StandardStream::stderr(ColorChoice::Auto);
@@ -289,7 +408,7 @@ fn compile(
             errors.extend(
                 output::write(&build_dir.join("out").join("js"), &files)
                     .into_iter()
-                    .map(CompilationError::Output),
+                    .map(BuildError::Output),
             );
         }
 
@@ -301,7 +420,7 @@ fn compile(
             errors.extend(
                 output::write(&test_tree(build_dir), &test_files)
                     .into_iter()
-                    .map(CompilationError::Output),
+                    .map(BuildError::Output),
             );
         }
     }
@@ -322,7 +441,7 @@ fn compile(
     if errors.is_empty() {
         Ok(root_test_interfaces)
     } else {
-        Err(CompilationError::Many(errors))
+        Err(BuildError::Many(errors))
     }
 }
 
@@ -375,7 +494,7 @@ fn to_module_to_emit(checked: CheckedSource) -> ModuleToEmit {
 fn emit_build(
     checked: Vec<ModuleToEmit>,
     unions: &javascript::Unions,
-    errors: &mut Vec<CompilationError>,
+    errors: &mut Vec<BuildError>,
 ) -> Vec<output::File> {
     let mut files = vec![output::File {
         path: javascript::RUNTIME_FILE.into(),
@@ -395,7 +514,7 @@ fn emit_build(
 fn emit_modules(
     checked: Vec<ModuleToEmit>,
     unions: &javascript::Unions,
-    errors: &mut Vec<CompilationError>,
+    errors: &mut Vec<BuildError>,
 ) -> Vec<output::File> {
     let mut files = Vec::new();
 
@@ -432,9 +551,9 @@ fn emit_modules(
                 }
             }
             Err(emit_errors) => {
-                let error = CompilationError::Emit(emit_errors, name.name().clone());
+                let error = BuildError::Emit(emit_errors, name.name().clone());
                 errors.push(match file {
-                    Some(id) => CompilationError::InFile(Box::new(error), id),
+                    Some(id) => BuildError::InFile(Box::new(error), id),
                     None => error,
                 });
             }

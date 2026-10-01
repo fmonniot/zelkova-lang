@@ -41,7 +41,7 @@ use std::process::Command;
 
 use super::name::Name;
 use super::{javascript, manifest, CompilationError, PackageName, PhaseError};
-use crate::driver::{compile_package, BUILD_DIRECTORY};
+use crate::driver::{compile_package, BuildError, BUILD_DIRECTORY};
 
 /// The entry point's file name, at the root of `build/out/js/`, beside the runtime.
 pub const MAIN_FILE: &str = "main.mjs";
@@ -115,10 +115,10 @@ impl PhaseError for Error {
 /// so a package with no `main` is reported as that and not compiled.
 ///
 /// `node`'s output goes straight to this process's own stdout and stderr.
-pub fn run(package_dir: &Path) -> Result<i32, CompilationError> {
-    let manifest = manifest::load(package_dir)?;
+pub fn run(package_dir: &Path) -> Result<i32, BuildError> {
+    let manifest = manifest::load(package_dir).map_err(CompilationError::Manifest)?;
     let Some(main) = manifest.main.clone() else {
-        return Err(CompilationError::ProgramRun(Error::NoMain {
+        return Err(BuildError::ProgramRun(Error::NoMain {
             package: manifest.name,
         }));
     };
@@ -128,7 +128,7 @@ pub fn run(package_dir: &Path) -> Result<i32, CompilationError> {
     let js_root = package_dir.join(BUILD_DIRECTORY).join("out").join("js");
     let entry = js_root.join(MAIN_FILE);
     std::fs::write(&entry, entry_point(&manifest.name, &main)).map_err(|error| {
-        CompilationError::ProgramRun(Error::WriteEntryPoint {
+        BuildError::ProgramRun(Error::WriteEntryPoint {
             path: entry.clone(),
             error,
         })
@@ -137,11 +137,11 @@ pub fn run(package_dir: &Path) -> Result<i32, CompilationError> {
     let status = Command::new(NODE)
         .arg(&entry)
         .status()
-        .map_err(|error| CompilationError::ProgramRun(Error::NodeNotStarted { error }))?;
+        .map_err(|error| BuildError::ProgramRun(Error::NodeNotStarted { error }))?;
 
     status
         .code()
-        .ok_or(CompilationError::ProgramRun(Error::NodeTerminated))
+        .ok_or(BuildError::ProgramRun(Error::NodeTerminated))
 }
 
 /// The text of `main.mjs` for the program whose `main` is exposed by the module `main` of

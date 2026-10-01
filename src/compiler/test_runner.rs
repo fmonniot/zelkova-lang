@@ -61,8 +61,8 @@ use std::process::Command;
 
 use super::name::Name;
 use super::test_collection::{self, ModuleTests};
-use super::{javascript, CompilationError, PhaseError};
-use crate::driver::{compile_package_with_tests, test_tree, BUILD_DIRECTORY};
+use super::{javascript, PhaseError};
+use crate::driver::{compile_package_with_tests, test_tree, BuildError, BUILD_DIRECTORY};
 
 /// The entry point's file name, at the root of `build/test/js/`, beside the runtime.
 pub const RUN_FILE: &str = "run.mjs";
@@ -121,7 +121,7 @@ impl PhaseError for Error {
 /// build that did not compile, `node` missing — is an `Err`.
 ///
 /// `node`'s output goes straight to this process's own stdout and stderr.
-pub fn run(package_dir: &Path) -> Result<i32, CompilationError> {
+pub fn run(package_dir: &Path) -> Result<i32, BuildError> {
     let interfaces = compile_package_with_tests(package_dir)?;
     let modules = test_collection::collect(&interfaces);
 
@@ -132,7 +132,7 @@ pub fn run(package_dir: &Path) -> Result<i32, CompilationError> {
 
     let entry = test_tree(&package_dir.join(BUILD_DIRECTORY)).join(RUN_FILE);
     std::fs::write(&entry, entry_point(&modules)).map_err(|error| {
-        CompilationError::TestRun(Error::WriteEntryPoint {
+        BuildError::TestRun(Error::WriteEntryPoint {
             path: entry.clone(),
             error,
         })
@@ -141,11 +141,11 @@ pub fn run(package_dir: &Path) -> Result<i32, CompilationError> {
     let status = Command::new(NODE)
         .arg(&entry)
         .status()
-        .map_err(|error| CompilationError::TestRun(Error::NodeNotStarted { error }))?;
+        .map_err(|error| BuildError::TestRun(Error::NodeNotStarted { error }))?;
 
     status
         .code()
-        .ok_or(CompilationError::TestRun(Error::NodeTerminated))
+        .ok_or(BuildError::TestRun(Error::NodeTerminated))
 }
 
 /// The text of `run.mjs` for `modules`, which sits at the root of `build/test/js/`: see
