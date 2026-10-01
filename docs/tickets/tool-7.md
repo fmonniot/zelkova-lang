@@ -2,14 +2,14 @@
 
 **Sizing:** medium. The size is in `tests/pipeline.rs`, which matches on `CompilationError` in
 most of its build tests and has every one of those patterns retargeted. It grows if
-[`TOOL-3`](tool-3.md) left the checking half handing back something other than what *Approach*
+[`TOOL-3`](README.md) left the checking half handing back something other than what *Approach*
 step 2 assumes.
 
 **Part of:** the *Active work: editor support* section of [the index](README.md).
 [`TOOL-5`](tool-5.md) depends on it: this ticket makes the dependency order between the future
 crates true inside the one crate, so that `TOOL-5` moves files and changes no behaviour.
 
-**Depends on:** [`TOOL-3`](tool-3.md), which splits `compile` into a checking half and a CLI
+**Depends on:** [`TOOL-3`](README.md), which splits `compile` into a checking half and a CLI
 half. This ticket moves the CLI half; it does not make that split.
 
 **Location:** `src/compiler/mod.rs` — `CompilationError`'s `Emit`, `Output`, `TestRun` and

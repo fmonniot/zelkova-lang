@@ -8,7 +8,7 @@ make.
 **Part of:** the *Active work: editor support* section of [the index](README.md).
 [`TOOL-6`](tool-6.md) depends on it.
 
-**Depends on:** [`TOOL-3`](tool-3.md), which adds the entry point that checks a package and
+**Depends on:** [`TOOL-3`](README.md), which adds the entry point that checks a package and
 writes nothing. The overlay is a parameter of that entry point and of nothing that writes a
 build.
 

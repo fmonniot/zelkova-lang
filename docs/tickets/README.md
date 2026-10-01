@@ -177,7 +177,7 @@ poorer without, and the server itself is the last to land.
 TOOL-1  TextMate grammar + VS Code extension      ← closed; the one piece that shipped value alone
 
 TOOL-3  a check that returns diagnostics as data,  ─┐
-  │       prints nothing, writes nothing            │
+  │       prints nothing, writes nothing            │  ← closed: `check_package`
   │                                                 ├─ both required by TOOL-6
 TOOL-2  that check reads open buffers through an    │
           overlay, not only the disk               ─┘
@@ -454,7 +454,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TEST-9](test-9.md) | task | — | open | A test companion's import of a companion under test that the build does not rewrite fails at run time, with a build path in the message |
 | TOOL-1 | task | — | closed 2026-10-01 | No editor highlights a `.zel` file |
 | [TOOL-2](tool-2.md) | task | — | open | A source file can only be read from disk, so nothing can check an unsaved buffer |
-| [TOOL-3](tool-3.md) | task | — | open | Checking a package always prints to stderr and writes JavaScript |
+| TOOL-3 | task | — | closed 2026-10-01 | Checking a package always prints to stderr and writes JavaScript |
 | [TOOL-4](tool-4.md) | task | — | open | A module's first syntax error is the only one reported |
 | [TOOL-5](tool-5.md) | task | — | open | The compiler, its JavaScript backend and its command line are one crate |
 | [TOOL-6](tool-6.md) | task | — | open | There is no language server |
