@@ -3,7 +3,7 @@
 **Sizing:** small-to-medium (the choice below decides which; the second option touches every identifier's blame).
 
 **Location:** `crates/zelkova-compiler/src/typer/constraint.rs` — `collect`'s `TypedTermKind::Identifier(_) => ()` arm;
-`crates/zelkova-compiler/src/typer/annotate.rs` — the annotation-versus-body constraint built for an annotated declaration;
+`crates/zelkova-compiler/src/typer/mod.rs` — `infer_annotated`, which builds the `Reason::Annotation` constraint between an annotated declaration and its body;
 `crates/zelkova-compiler/tests/typer.rs` — `a_mistyped_bare_constructor_body_is_blamed_only_through_the_annotation`.
 
 **Problem:** `collect` adds no constraint for an `Identifier`, so a declaration whose whole body is a
