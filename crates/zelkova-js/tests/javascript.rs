@@ -1081,52 +1081,15 @@ fn a_char_pattern_is_tested_by_equality() {
     );
 }
 
-/// A `Bool` pattern — `true` or `false` — is tested by the value itself, never by a `$`
-/// tag: `Bool` is a JavaScript boolean, not a tagged object, so a `case` on it reads
-/// exactly like a `Basics.True`/`Basics.False` constructor pattern would.
+/// A `True`/`False` pattern is tested by the value itself, never by a `$` tag: `Bool`
+/// is a JavaScript boolean, not a tagged object. `typer::translate_pattern` turns both
+/// constructors into an [`ir::Outcome::Literal`] before this backend sees the pattern
+/// (`a_bool_constructor_is_tested_by_its_value` in `crates/zelkova-compiler/tests/ir.rs`
+/// pins that).
 ///
 /// Mutation-checked by having `test_condition`'s `Bool` arm build a tag check,
 /// `.$ === "True"`, the way `Outcome::Constructor` does: the condition then reads a
 /// field a JavaScript boolean does not have.
-#[test]
-fn a_bool_pattern_is_tested_by_its_value_not_a_tag() {
-    let text = emitted(indoc! {r#"
-        module Test exposing (choose)
-
-        choose : Bool -> Int
-        choose flag =
-          case flag of
-            true ->
-              1
-
-            false ->
-              0
-    "#});
-
-    assert!(
-        text.contains("if ($scrutinee === true) {"),
-        "got:\n{}",
-        text
-    );
-    assert!(
-        text.contains("if ($scrutinee === false) {"),
-        "got:\n{}",
-        text
-    );
-    assert!(!text.contains("$scrutinee.$"), "got:\n{}", text);
-}
-
-/// The `True`/`False` constructor spelling emits exactly the same condition as the
-/// `true`/`false` literal spelling does — `ir::translate_pattern` normalises both to the
-/// same [`ir::Outcome::Literal`] before this backend ever sees the pattern
-/// (`a_bool_constructor_is_tested_by_value_like_a_bool_literal` in `crates/zelkova-compiler/tests/ir.rs` pins
-/// that), so this backend has no `Bool`-specific code path to tell the two spellings
-/// apart at all. `True`/`False` is the more common spelling in real code, and nothing
-/// above this test exercises it.
-///
-/// Mutation-checked the same way as the sibling test above: having `test_condition`'s
-/// `Bool` arm build a tag check turns this one red too, since `True`/`False` reaches it
-/// through the exact same `Outcome::Literal(Bool)`.
 #[test]
 fn a_bool_constructor_pattern_is_tested_by_its_value_not_a_tag() {
     let text = emitted(indoc! {r#"

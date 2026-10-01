@@ -86,7 +86,8 @@ fn reserved_words_are_the_specs() {
 
 #[test]
 fn true_and_false_are_not_keywords() {
-    // The tokenizer still reserves them (`LANG-1`); the spec does not, and the spec wins.
+    // `True` and `False` are constructors of `Basics.Bool`; the lowercase spellings are
+    // ordinary identifiers.
     let grammar = grammar_words("reserved-words");
     for word in ["true", "false"] {
         assert!(

@@ -36,7 +36,7 @@ f n =
 ```
 
 reports *UnexpectedToken `Let`, expected `lo_ident`, `up_ident`, `integer`, `float`, `char`,
-`true`, `false`, `(`, `-`, `case`, `if`, `left`, `right`, `non`*. The single-line spelling
+`(`, `-`, `case`, `if`, `left`, `right`, `non`*. The single-line spelling
 `let x = n in x` fails identically and at the same token.
 
 Neither AST can hold the construct either: `parser::ExpressionKind` has no variant, and

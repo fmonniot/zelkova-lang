@@ -21,8 +21,6 @@ extern {
         "float"      => Token::Float { value: <f64> },
         "char"       => Token::Char { value: <char> },
         "string"     => Token::String { value: <String> },
-        "true"       => Token::True,
-        "false"      => Token::False,
         "op"         => Token::Operator(<String>),
 
         // layout
@@ -161,8 +159,6 @@ Lit: Literal = {
     <"float"> => Literal::Float(<>),
     <"char"> => Literal::Char(<>),
     <"string"> => Literal::String(<>),
-    "true" => Literal::Bool(true),
-    "false" => Literal::Bool(false),
 };
 
 // `Lit` yields a bare `Literal`, which has no span of its own: it is only ever a

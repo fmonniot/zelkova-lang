@@ -1160,7 +1160,7 @@ fn a_test_companion_imports_the_companion_it_checks_by_its_build_path() {
 /// is the behaviour that changed.
 ///
 /// `!message.contains("TypeMismatch")` is not redundant with the two `contains`
-/// above it: `format!("{:?}", e)` on the same error also contains "Int" and "Bool".
+/// above it: `format!("{:?}", e)` on the same error also contains "Int" and "Char".
 /// It is what tells a real message from the `Debug` dump the other phases used to
 /// emit.
 ///
@@ -1173,13 +1173,13 @@ fn type_error_renders_as_an_error_naming_both_types() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         answer : Int
-        answer = true
+        answer = 'a'
     "#};
     let parsed = parse_source(source);
     let interfaces = HashMap::from([basics_interface()]);
 
     let error = check_module(&test_package(), &interfaces, &parsed)
-        .expect_err("`answer : Int` with a `Bool` body must not type-check");
+        .expect_err("`answer : Int` with a `Char` body must not type-check");
 
     // The phase is part of the contract: a type error must not be reported as, say,
     // a canonicalization failure that happened to mention the same names.
@@ -1202,7 +1202,7 @@ fn type_error_renders_as_an_error_naming_both_types() {
         message
     );
     assert!(
-        message.contains("Bool"),
+        message.contains("Char"),
         "the inferred type should be named, got {:?}",
         message
     );
@@ -1258,7 +1258,7 @@ fn canonical_error_renders_as_prose_naming_the_missing_module() {
 ///
 /// `ERR-3` landed this test asserting a single label across the whole declaration —
 /// annotation and body together — because that was the finest thing the typer could
-/// name. It can do better now: the caret is under `true`, and a *secondary* label
+/// name. It can do better now: the caret is under `'a'`, and a *secondary* label
 /// under `answer : Int` says where `Int` was expected from. Both ranges are computed
 /// from the fixture text, and both matter: a primary label that had widened back out
 /// to the declaration would still be "a label", and a missing secondary would leave
@@ -1268,7 +1268,7 @@ fn canonical_error_renders_as_prose_naming_the_missing_module() {
 /// build its terms with `NodeSpan::none()` (the primary falls back to the whole
 /// declaration); dropping `annotation_span` from `Value::TypedValue` in favour of
 /// `NodeSpan::none()` (the secondary disappears); pushing the annotation constraint
-/// *after* `constraint::collect` in `infer_annotated` (the primary moves off `true`);
+/// *after* `constraint::collect` in `infer_annotated` (the primary moves off `'a'`);
 /// and having `Substitution::apply` return `c.origin.clone()` unchanged, so nothing
 /// is ever explained (the secondary disappears).
 #[test]
@@ -1285,13 +1285,13 @@ fn type_error_labels_the_expression_that_disagrees() {
     let annotation_start = source
         .find(annotation)
         .expect("fixture declares `answer : Int`");
-    let body = "true";
+    let body = "'a'";
     let body_start = source
         .rfind(body)
-        .expect("fixture's body is the literal `true`");
+        .expect("fixture's body is the literal `'a'`");
 
     let error =
-        compile_package(&root).expect_err("`answer : Int` with a `Bool` body must not compile");
+        compile_package(&root).expect_err("`answer : Int` with a `Char` body must not compile");
 
     let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
@@ -5786,10 +5786,10 @@ fn check_package_hands_back_a_type_error_without_building() {
 
     let source = std::fs::read_to_string(root.join("src").join("Mismatch.zel"))
         .expect("fixture is readable");
-    let body = "true";
+    let body = "'a'";
     let body_start = source
         .rfind(body)
-        .expect("fixture's body is the literal `true`");
+        .expect("fixture's body is the literal `'a'`");
 
     let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
 

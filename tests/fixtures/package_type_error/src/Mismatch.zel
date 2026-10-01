@@ -2,4 +2,4 @@ module Mismatch exposing (..)
 
 
 answer : Int
-answer = true
+answer = 'a'

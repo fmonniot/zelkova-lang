@@ -141,14 +141,52 @@ fn function_application_types() {
         not : Bool -> Bool
         not b = b
         result : Bool
-        result = not true
+        result = not True
     "#};
     assert!(run(source).is_ok(), "not applied to Bool should type-check");
 }
 
+/// `true` and `false` are ordinary lowercase names: a top-level value, a parameter
+/// and a reference to either, with no `Bool` anywhere.
+///
+/// Mutation-checked by restoring `"true"` and `"false"` to the tokenizer's `keyword`
+/// table: the source no longer parses and `run` is never reached.
+#[test]
+fn true_and_false_are_ordinary_names() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        true : Int
+        true = 1
+        f : Int -> Int
+        f false = false
+        g : Int
+        g = f true
+    "#};
+    assert!(run(source).is_ok(), "{:?}", run(source).err());
+
+    let solved = solved(source);
+    assert_eq!(format!("{}", typed_declaration(&solved, "true").tpe), "Int");
+    assert_eq!(format!("{}", typed_declaration(&solved, "g").tpe), "Int");
+}
+
+/// `Basics.True` written qualified is the `Bool` an `if` asks for.
+///
+/// Mutation-checked by having `typer::bool_type` name a `Basics.Boolean` instead:
+/// the condition is then a `Basics.Bool` that does not match it.
+#[test]
+fn if_condition_may_be_basics_true() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        answer : Int
+        answer = if Basics.True then 1 else 2
+    "#};
+
+    assert!(run(source).is_ok(), "{:?}", run(source).err());
+}
+
 // ── Type mismatch: annotation vs body ────────────────────────────────────────
 
-/// A function annotated `Int -> Int` whose body returns a `Bool` should fail, with
+/// A function annotated `Int -> Int` whose body returns a `Char` should fail, with
 /// the caret under the body rather than across the declaration.
 ///
 /// The parameter is what makes this different from the declaration-level example in
@@ -159,29 +197,55 @@ fn function_application_types() {
 ///
 /// Mutation-checked by having the `Fun`/`Fun` arm of `unify_one_constraint` build
 /// fresh constraints instead of `constraint.component(..)`: the primary label moves
-/// off `true`.
+/// off `'a'`.
 #[test]
 fn type_mismatch_annotation_vs_body() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         bad : Int -> Int
-        bad x = true
+        bad x = 'a'
     "#};
     let error = one_type_error(source);
 
     assert_eq!(
         ranges(&error.labels()),
         vec![
-            range_of(source, "true"),
+            range_of(source, "'a'"),
             range_of(source, "bad : Int -> Int")
         ],
         "expected a caret under the body and the annotation behind it"
     );
 }
 
+/// A body that is a bare constructor gets no caret of its own: only the annotation is
+/// labelled.
+///
+/// This pins what the checker does today, not what it should do. `constraint::collect`'s
+/// `Identifier` arm adds no constraint, so nothing is blamed on `True` and the mismatch
+/// surfaces only through the annotation's constraint. `ERR-17` is the ticket that would
+/// give the body a label; when it lands this test is meant to go red and be rewritten.
+///
+/// Mutation-checked by giving the body of `answer` a literal (`'a'`) instead: the primary
+/// label moves onto it and the single-label assertion fails.
+#[test]
+fn a_mistyped_bare_constructor_body_is_blamed_only_through_the_annotation() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+        answer : Int
+        answer = True
+    "#};
+    let error = one_type_error(source);
+
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_of(source, "answer : Int")],
+        "expected only the annotation to be labelled"
+    );
+}
+
 // ── Where a type error points ─────────────────────────────────────────────────
 
-/// `ERR-4`'s worked example: the caret goes under `false`, and `Int` is explained by
+/// `ERR-4`'s worked example: the caret goes under `'a'`, and `Int` is explained by
 /// the annotation on the line above.
 ///
 /// Every part of this is a claim about a different link in the chain. The primary
@@ -200,7 +264,7 @@ fn type_mismatch_annotation_vs_body() {
 /// Mutation-checked three ways, each red on its own: giving every `Term` built by
 /// `canonical_expr_to_term` a `NodeSpan::none()` (the labels fall back to the whole
 /// declaration); pushing the annotation constraint after the body's in
-/// `infer_annotated` (the primary lands on the `if` rather than on `false`); and
+/// `infer_annotated` (the primary lands on the `if` rather than on `'a'`); and
 /// making `Substitution::apply` keep the constraint's origin unchanged (the secondary
 /// label disappears).
 #[test]
@@ -208,23 +272,23 @@ fn annotation_mismatch_points_at_the_expression_and_the_annotation() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         answer : Int
-        answer = if true then 1 else false
+        answer = if True then 1 else 'a'
     "#};
     let error = one_type_error(source);
 
     let labels = error.labels();
     assert_eq!(
         ranges(&labels),
-        vec![range_of(source, "false"), range_of(source, "answer : Int")],
-        "expected a caret under `false` and the annotation behind it"
+        vec![range_of(source, "'a'"), range_of(source, "answer : Int")],
+        "expected a caret under `'a'` and the annotation behind it"
     );
-    assert!(labels[0].primary, "`false` is what has to change");
+    assert!(labels[0].primary, "`'a'` is what has to change");
     assert!(
         !labels[1].primary,
         "the annotation is context, not the error"
     );
 
-    assert_eq!(error.message(), "cannot match `Int` with `Bool`");
+    assert_eq!(error.message(), "cannot match `Int` with `Char`");
     assert!(
         error
             .notes()
@@ -319,7 +383,7 @@ fn case_pattern_mismatch_points_into_the_scrutinee() {
         type Color = Red | Blue
         bad : Int
         bad =
-          case if true then 1 else 2 of
+          case if True then 1 else 2 of
             Red -> 1
             Blue -> 2
     "#};
@@ -329,7 +393,7 @@ fn case_pattern_mismatch_points_into_the_scrutinee() {
     assert_eq!(
         ranges(&labels),
         vec![
-            range_within(source, "if true then 1 else 2", "1"),
+            range_within(source, "if True then 1 else 2", "1"),
             range_within(source, "Red -> 1", "Red")
         ],
         "expected a caret in the scrutinee and the pattern that required its type"
@@ -475,7 +539,7 @@ fn case_branches_type_mismatch() {
         bad m =
           case m of
             Just x -> x
-            Nothing -> true
+            Nothing -> True
     "#};
     let error = one_type_error(source);
 
@@ -484,7 +548,7 @@ fn case_branches_type_mismatch() {
     assert_eq!(
         ranges(&error.labels()),
         vec![
-            range_of(source, "true"),
+            range_of(source, "True"),
             range_of(source, "bad : Maybe Int -> Int")
         ]
     );
@@ -498,7 +562,7 @@ fn if_expression_types() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         max : Int -> Int -> Int
-        max a b = if true then a else b
+        max a b = if True then a else b
     "#};
     assert!(
         run(source).is_ok(),
@@ -509,7 +573,7 @@ fn if_expression_types() {
 /// An `if` condition is a `Basics.Bool`, which is what an annotation naming `Bool`
 /// resolves to once `Basics` is in scope.
 ///
-/// `if_expression_types` above reaches the same constraint from a `true` keyword; this
+/// `if_expression_types` above reaches the same constraint from the constructor `True`; this
 /// one comes at it from the annotation, so the two sides of the `Bool` question — the
 /// type the typer produces on its own and the type a source spells — are both pinned.
 ///
@@ -713,18 +777,18 @@ fn tuple_pair_typechecks() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         pair : (Int, Bool)
-        pair = (42, true)
+        pair = (42, True)
     "#};
     assert!(run(source).is_ok(), "(Int, Bool) tuple should type-check");
 }
 
-/// Using `(Int, Int)` where `(Int, Bool)` is expected should fail.
+/// Using `(Int, Char)` where `(Int, Int)` is expected should fail.
 #[test]
 fn tuple_type_mismatch() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         bad : (Int, Int)
-        bad = (42, true)
+        bad = (42, 'a')
     "#};
     let error = one_type_error(source);
 
@@ -733,7 +797,7 @@ fn tuple_type_mismatch() {
     assert_eq!(
         ranges(&error.labels()),
         vec![
-            range_of(source, "true"),
+            range_of(source, "'a'"),
             range_of(source, "bad : (Int, Int)")
         ]
     );
@@ -750,7 +814,7 @@ fn tuple_triple_typechecks() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         triple : (Int, Bool, Char)
-        triple = (42, true, 'a')
+        triple = (42, True, 'a')
     "#};
     assert!(
         run(source).is_ok(),
@@ -765,7 +829,7 @@ fn tuple_triple_type_mismatch() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         bad : (Int, Bool, Char)
-        bad = (42, true, 7)
+        bad = (42, True, 7)
     "#};
     // `type_errors` rather than `is_err`: these are about which `unify` arm the two
     // arities reach, so a failure raised by an earlier phase would not exercise them.
@@ -783,7 +847,7 @@ fn tuple_pair_against_triple_annotation_is_a_mismatch() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         bad : (Int, Bool, Char)
-        bad = (42, true)
+        bad = (42, True)
     "#};
     // `type_errors` rather than `is_err`: these are about which `unify` arm the two
     // arities reach, so a failure raised by an earlier phase would not exercise them.
@@ -799,7 +863,7 @@ fn tuple_triple_against_pair_annotation_is_a_mismatch() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
         bad : (Int, Bool)
-        bad = (42, true, 'a')
+        bad = (42, True, 'a')
     "#};
     // `type_errors` rather than `is_err`: these are about which `unify` arm the two
     // arities reach, so a failure raised by an earlier phase would not exercise them.

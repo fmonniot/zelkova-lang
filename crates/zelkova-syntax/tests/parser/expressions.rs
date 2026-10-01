@@ -131,10 +131,10 @@ test_parse_ok!(
     r#"
     module Main exposing (..)
 
-    main = if true then 2 else 3
+    main = if True then 2 else 3
     "#,
     module(expr_if(
-        Box::new(expr_lit(Literal::Bool(true))),
+        Box::new(expr_ctor(name("True"))),
         Box::new(expr_lit(Literal::Int(2))),
         Box::new(expr_lit(Literal::Int(3))),
     ))
@@ -219,13 +219,13 @@ test_parse_ok!(
     r#"
     module Main exposing (..)
 
-    main = if false then 2 else if true then 3 else 4
+    main = if False then 2 else if True then 3 else 4
     "#,
     module(expr_if(
-        Box::new(expr_lit(Literal::Bool(false))),
+        Box::new(expr_ctor(name("False"))),
         Box::new(expr_lit(Literal::Int(2))),
         Box::new(expr_if(
-            Box::new(expr_lit(Literal::Bool(true))),
+            Box::new(expr_ctor(name("True"))),
             Box::new(expr_lit(Literal::Int(3))),
             Box::new(expr_lit(Literal::Int(4))),
         )),

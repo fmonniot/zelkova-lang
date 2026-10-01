@@ -28,7 +28,7 @@ f =
 ```
 
 reports *UnexpectedToken `Operator("\\")`, expected `lo_ident`, `up_ident`, `integer`,
-`float`, `char`, `true`, `false`, `(`, `-`, `case`, `if`, `left`, `right`, `non`*. As an
+`float`, `char`, `(`, `-`, `case`, `if`, `left`, `right`, `non`*. As an
 argument, `g (\x -> x)`, it fails the same way at the same token.
 
 Because `\` is an operator character, nothing stops a module declaring `infix left 5 (\) = f`

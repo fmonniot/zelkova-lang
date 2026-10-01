@@ -33,7 +33,7 @@ Layout reads that as `A -> 1 B`, and the parser then trips on the `->`:
 
 ```
 UnexpectedToken { token: Spanned { .. value: Arrow }, expected: ["lo_ident", "up_ident",
-  "integer", "float", "char", "true", "false", "op", "close block", "(", ".", "-",
+  "integer", "float", "char", "op", "close block", "(", ".", "-",
   "left", "right", "non"] }
 ```
 

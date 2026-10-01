@@ -46,9 +46,6 @@ equal expected actual =
 {-| A test that passes when given `True` and fails when given `False`.
 
     check (7 // 0 == 0)
-
-Named `check` rather than `true`: boolean literals are not implemented yet, and
-`true` becomes a keyword once they land.
 -}
 check : Bool -> Test
 check condition =

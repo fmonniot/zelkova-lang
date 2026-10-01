@@ -31,14 +31,6 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
     let span = term.span;
 
     match &term.kind {
-        TypedTermKind::Bool(_) => {
-            constraints.push(Constraint::new(
-                tpe.clone(),
-                bool_type(),
-                Reason::Literal,
-                span,
-            ));
-        }
         TypedTermKind::Int(_) => {
             // Integer literals are polymorphic numeric values: they can unify
             // with Int or Float (but not Bool, Char, etc.).
@@ -318,18 +310,6 @@ mod tests {
         let int = typed(t1, TypedTermKind::Int(42));
 
         assert_eq!(collect(&int), expected);
-    }
-
-    #[test]
-    fn constrains_bool() {
-        let t1 = Type::Variable(TypeVariable { id: 1 });
-
-        // t1 === Basics.Bool
-        let expected = vec![constraint(t1.clone(), basics_bool(), Reason::Literal)];
-
-        let b = typed(t1, TypedTermKind::Bool(true));
-
-        assert_eq!(collect(&b), expected);
     }
 
     #[test]

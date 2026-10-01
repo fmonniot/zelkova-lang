@@ -25,7 +25,7 @@ g = let y = 1 in y
 --  ^^^ keyword.control.zelkova
 --            ^^ keyword.control.zelkova
 
--- `true` and `false` are not reserved by the spec (LANG-1 tracks the tokenizer).
+-- `true` and `false` are not reserved.
 true = false
 -- <- - keyword.control.zelkova
 -- <- variable.other.zelkova

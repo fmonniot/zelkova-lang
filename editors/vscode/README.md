@@ -38,4 +38,4 @@ against the spec's *Reserved words* block in `docs/spec/lexical-structure.md`.
 - **`class`, `instance` and `where`** are highlighted as keywords although the compiler does
   not reserve them until `LANG-38`. `where` is reserved only as a type variable, so the
   grammar over-highlights it where a value is named.
-- **`true` and `false`** are ordinary identifiers, as the spec has it (`LANG-1`).
+- **`true` and `false`** are ordinary identifiers, as the spec has it.
