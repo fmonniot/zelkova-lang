@@ -22,7 +22,10 @@ fn zelkova_bin() -> PathBuf {
 /// directories `tests/pipeline.rs::fixture_package` uses.
 fn fixture_package(name: &str) -> PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    Path::new(&manifest).join("tests/fixtures").join(name)
+    Path::new(&manifest)
+        .join("../..")
+        .join("tests/fixtures")
+        .join(name)
 }
 
 fn run(cwd: &Path, args: &[&str]) -> Output {
@@ -44,7 +47,7 @@ fn run(cwd: &Path, args: &[&str]) -> Output {
 #[test]
 fn bare_invocation_exits_non_zero_and_prints_usage() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let output = run(Path::new(&manifest), &[]);
+    let output = run(&Path::new(&manifest).join("../.."), &[]);
 
     assert!(
         !output.status.success(),
@@ -105,7 +108,7 @@ fn compile_defaults_to_current_directory() {
 #[test]
 fn compile_routes_explicit_dir_to_compile_package() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let repo_root = PathBuf::from(&manifest);
+    let repo_root = PathBuf::from(&manifest).join("../..");
     let output = run(&repo_root, &["compile", "tests/fixtures/package_checks"]);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -291,7 +294,9 @@ fn scratch_package(fixture: &str, name: &str) -> PathBuf {
             .expect("failed to run `cp`");
         assert!(copied.success(), "failed to copy `{}`", tree);
     }
-    let std_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("std");
+    let std_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("std");
     let manifest = std::fs::read_to_string(fixture.join("zelkova.toml"))
         .expect("failed to read the fixture's manifest")
         .replace("../../../std", &std_root.display().to_string());

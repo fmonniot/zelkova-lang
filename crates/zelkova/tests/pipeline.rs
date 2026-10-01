@@ -14,6 +14,7 @@ use std::path::Path;
 
 use codespan_reporting::diagnostic::{LabelStyle, Severity};
 use codespan_reporting::files::SimpleFile;
+use zelkova::{compile_package, compile_package_with_tests, BuildError, BUILD_DIRECTORY};
 use zelkova_compiler::canonical;
 use zelkova_compiler::dependencies::{self, ModuleWalker};
 use zelkova_compiler::manifest;
@@ -27,13 +28,10 @@ use zelkova_compiler::{
     check_module, check_package, check_package_with_tests, CheckedModule, CompilationError,
     Interface, PackageName, PhaseError,
 };
-use zelkova_lang::driver::{
-    compile_package, compile_package_with_tests, BuildError, BUILD_DIRECTORY,
-};
 use zelkova_syntax::parser;
 use zelkova_test_runner::collection;
 
-#[path = "../crates/zelkova-compiler/tests/support/mod.rs"]
+#[path = "../../zelkova-compiler/tests/support/mod.rs"]
 mod support;
 
 use support::*;
@@ -55,9 +53,9 @@ fn parse_file(path: &Path) -> parser::Module {
 }
 
 fn std_src() -> std::path::PathBuf {
-    // The workspace root is `CARGO_MANIFEST_DIR` at build time.
+    // The repository root is two levels above `CARGO_MANIFEST_DIR` at build time.
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    Path::new(&manifest).join("std/core/src")
+    Path::new(&manifest).join("../..").join("std/core/src")
 }
 
 /// `std/core`, the package directory `compile_package` now takes — `zelkova.toml`
@@ -66,14 +64,14 @@ fn std_src() -> std::path::PathBuf {
 /// `load_package_sources` directly.
 fn std_package_root() -> std::path::PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    Path::new(&manifest).join("std/core")
+    Path::new(&manifest).join("../..").join("std/core")
 }
 
 /// `std/test`, the `zelkova-test` package — [`std_package_root`], for `zelkova-test`
 /// rather than `zelkova-core`.
 fn zelkova_test_package_root() -> std::path::PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    Path::new(&manifest).join("std/test")
+    Path::new(&manifest).join("../..").join("std/test")
 }
 
 /// Root of one of the small package fixtures under `tests/fixtures/`.
@@ -85,7 +83,10 @@ fn zelkova_test_package_root() -> std::path::PathBuf {
 /// `stdlib_package_compiles`.
 fn fixture_package(name: &str) -> std::path::PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    Path::new(&manifest).join("tests/fixtures").join(name)
+    Path::new(&manifest)
+        .join("../..")
+        .join("tests/fixtures")
+        .join(name)
 }
 
 /// The `.zel` modules `compile_package` would pick up under one source root of the
@@ -799,7 +800,7 @@ fn files_under(dir: &Path) -> Vec<String> {
 fn a_build_writes_one_directory_per_package() {
     let build_dir = fresh_build_dir("a_build_writes_one_directory_per_package");
 
-    let result = zelkova_lang::driver::compile_package_into(
+    let result = zelkova::compile_package_into(
         &fixture_package("package_namespaced_dependency"),
         &build_dir,
     );
@@ -845,7 +846,7 @@ fn a_build_writes_one_directory_per_package() {
 fn the_stdlib_build_writes_every_module_and_companion() {
     let build_dir = fresh_build_dir("the_stdlib_build_writes_every_module_and_companion");
 
-    let result = zelkova_lang::driver::compile_package_into(&std_package_root(), &build_dir);
+    let result = zelkova::compile_package_into(&std_package_root(), &build_dir);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
     assert_eq!(
@@ -896,11 +897,8 @@ fn the_stdlib_build_writes_every_module_and_companion() {
 fn a_build_with_a_failing_module_writes_nothing() {
     let build_dir = fresh_build_dir("a_build_with_a_failing_module_writes_nothing");
 
-    let error = zelkova_lang::driver::compile_package_into(
-        &fixture_package("package_type_error"),
-        &build_dir,
-    )
-    .expect_err("`Mismatch` does not type check");
+    let error = zelkova::compile_package_into(&fixture_package("package_type_error"), &build_dir)
+        .expect_err("`Mismatch` does not type check");
 
     // The failure is the type error, not something the build step raised.
     let errors = many(&error);
@@ -931,10 +929,7 @@ fn a_build_with_a_failing_module_writes_nothing() {
 fn a_build_whose_check_failed_returns_the_check_error_in_many() {
     let build_dir = fresh_build_dir("a_build_whose_check_failed_returns_the_check_error_in_many");
 
-    let result = zelkova_lang::driver::compile_package_into(
-        &fixture_package("package_type_error"),
-        &build_dir,
-    );
+    let result = zelkova::compile_package_into(&fixture_package("package_type_error"), &build_dir);
 
     match &result {
         Err(BuildError::Many(errors)) => assert!(
@@ -992,7 +987,7 @@ fn a_build_that_cannot_be_emitted_writes_nothing() {
     .unwrap();
     let build_dir = package.join("build");
 
-    let error = zelkova_lang::driver::compile_package_into(&package, &build_dir)
+    let error = zelkova::compile_package_into(&package, &build_dir)
         .expect_err("a facade with no companion cannot be emitted");
 
     let BuildError::Many(errors) = &error else {
@@ -1065,7 +1060,7 @@ fn a_test_build_whose_tests_cannot_be_emitted_writes_nothing() {
     .unwrap();
     let build_dir = package.join("build");
 
-    let error = zelkova_lang::driver::compile_package_with_tests_into(&package, &build_dir)
+    let error = zelkova::compile_package_with_tests_into(&package, &build_dir)
         .expect_err("a facade under `tests/` with no companion cannot be emitted");
 
     let BuildError::Many(errors) = &error else {
@@ -1139,7 +1134,7 @@ fn a_test_companion_imports_the_companion_it_checks_by_its_build_path() {
     .unwrap();
     let build_dir = package.join("build");
 
-    zelkova_lang::driver::compile_package_with_tests_into(&package, &build_dir).unwrap();
+    zelkova::compile_package_with_tests_into(&package, &build_dir).unwrap();
 
     let written = |path: &str| std::fs::read_to_string(build_dir.join(path)).unwrap();
     assert_eq!(
@@ -2659,7 +2654,9 @@ fn backing_function_of_an_exposed_operator_stays_unimportable_by_name() {
 #[test]
 fn compile_package_reports_a_missing_source_root() {
     let root = fixture_package("package_missing_src");
-    let src_root = root.join("src");
+    // Resolution names a package by its canonical path, and `fixture_package` builds one
+    // through `../..`.
+    let src_root = root.canonicalize().unwrap().join("src");
     assert!(
         !src_root.exists(),
         "fixture must have no `src/` for this test to mean anything"
@@ -4292,7 +4289,7 @@ fn a_dependencys_names_resolve_beside_a_local_module_of_the_same_name() {
     let build_dir =
         fresh_build_dir("a_dependencys_names_resolve_beside_a_local_module_of_the_same_name");
 
-    let result = zelkova_lang::driver::compile_package_into(
+    let result = zelkova::compile_package_into(
         &fixture_package("package_local_size_beside_dependency"),
         &build_dir,
     );
@@ -4314,7 +4311,7 @@ fn a_dependencys_names_resolve_beside_a_local_module_of_the_same_name() {
 fn two_packages_same_named_modules_import_under_distinct_names() {
     let build_dir = fresh_build_dir("two_packages_same_named_modules_import_under_distinct_names");
 
-    let result = zelkova_lang::driver::compile_package_into(
+    let result = zelkova::compile_package_into(
         &fixture_package("package_local_size_beside_dependency"),
         &build_dir,
     );
@@ -4376,7 +4373,7 @@ fn two_packages_same_named_modules_import_under_distinct_names() {
 fn a_dependencys_constructor_is_hoisted_under_its_own_package() {
     let build_dir = fresh_build_dir("a_dependencys_constructor_is_hoisted_under_its_own_package");
 
-    let result = zelkova_lang::driver::compile_package_into(
+    let result = zelkova::compile_package_into(
         &fixture_package("package_local_size_beside_dependency"),
         &build_dir,
     );
@@ -4991,7 +4988,7 @@ fn a_test_dependency_reaches_the_tests_root() {
 fn a_test_build_writes_a_second_tree_beside_the_plain_one() {
     let build_dir = fresh_build_dir("a_test_build_writes_a_second_tree_beside_the_plain_one");
 
-    let result = zelkova_lang::driver::compile_package_with_tests_into(
+    let result = zelkova::compile_package_with_tests_into(
         &fixture_package("package_test_dependency"),
         &build_dir,
     );
@@ -5021,10 +5018,8 @@ fn a_test_build_writes_a_second_tree_beside_the_plain_one() {
 fn a_plain_build_writes_no_test_tree() {
     let build_dir = fresh_build_dir("a_plain_build_writes_no_test_tree");
 
-    let result = zelkova_lang::driver::compile_package_into(
-        &fixture_package("package_test_dependency"),
-        &build_dir,
-    );
+    let result =
+        zelkova::compile_package_into(&fixture_package("package_test_dependency"), &build_dir);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
 
     assert_eq!(
@@ -5075,7 +5070,7 @@ fn a_test_dependency_does_not_reach_the_src_root() {
 fn cross_module_arity_fixture_compiles_and_calls_directly() {
     let build_dir = fresh_build_dir("cross_module_arity_fixture_compiles_and_calls_directly");
 
-    let result = zelkova_lang::driver::compile_package_with_tests_into(
+    let result = zelkova::compile_package_with_tests_into(
         &fixture_package("package_test_cross_module_calls"),
         &build_dir,
     );
@@ -5440,7 +5435,7 @@ fn a_plain_build_leaves_a_test_dependency_on_its_dependent_uncompiled() {
 
     let build_dir =
         fresh_build_dir("a_plain_build_leaves_a_test_dependency_on_its_dependent_uncompiled");
-    let result = zelkova_lang::driver::compile_package_into(&root, &build_dir);
+    let result = zelkova::compile_package_into(&root, &build_dir);
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     assert_eq!(
         files_under(&build_dir),
@@ -5894,7 +5889,7 @@ fn check_package_writes_nothing_for_a_package_that_checks() {
 #[test]
 fn check_package_with_tests_checks_the_tests_root_and_writes_nothing() {
     let fixture = fixture_package("package_test_run");
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let root = fresh_build_dir("check_package_with_tests");
     for dir in ["src", "tests"] {
         std::fs::create_dir_all(root.join(dir)).unwrap();

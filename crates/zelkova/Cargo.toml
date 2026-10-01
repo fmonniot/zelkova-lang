@@ -1,0 +1,25 @@
+[package]
+name = "zelkova"
+version.workspace = true
+authors.workspace = true
+edition = "2018"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "zelkova"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+codespan-reporting = "0.13"
+env_logger = "0.11"
+log = "0.4"
+zelkova-compiler = { path = "../zelkova-compiler" }
+zelkova-js = { path = "../zelkova-js" }
+zelkova-syntax = { path = "../zelkova-syntax" }
+zelkova-test-runner = { path = "../zelkova-test-runner" }
+
+[dev-dependencies]
+indoc = "2.0"

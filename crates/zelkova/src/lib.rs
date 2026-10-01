@@ -20,7 +20,7 @@
 //! checked module comes back as a [`CheckedSource`] naming the source root it was read
 //! under, and [`zelkova_js::module_file`] names the companion below it ([*A facade names
 //! a boundary, not a
-//! backend*](../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
+//! backend*](../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
 //!
 //! Every error is rendered through `as_diagnostic`, and the status lines are printed
 //! before any of them.
@@ -38,12 +38,14 @@ use zelkova_compiler::name::Name;
 use zelkova_compiler::source::files::SourceFileId;
 use zelkova_compiler::source::Overlay;
 
-use crate::compiler::program_runner;
 use zelkova_compiler::{
     phase_diagnostic, plain_diagnostic, CheckedModule, CheckedSource, CompilationError, Interface,
     PackageCheck, PhaseError, Status,
 };
 use zelkova_js::output;
+
+// Public because `BuildError::ProgramRun` carries its `Error`, and `zelkova run` calls `run`.
+pub mod program_runner;
 
 /// Which of the root package's source roots a build compiles: [`zelkova_compiler::check_package`]'s
 /// `src/` alone, or [`zelkova_compiler::check_package_with_tests`]'s `src/` and `tests/`.
@@ -170,7 +172,7 @@ impl From<CompilationError> for BuildError {
 
 /// Compile the package rooted at `package_dir` — a directory holding a `zelkova.toml`
 /// manifest beside a `src/` source root, per
-/// [`docs/spec/packages.md`](../../docs/spec/packages.md#what-a-package-is) — and every
+/// [`docs/spec/packages.md`](../docs/spec/packages.md#what-a-package-is) — and every
 /// package it depends on.
 ///
 /// Its `tests/` root is not compiled; [`compile_package_with_tests`] is that build. A
@@ -198,7 +200,7 @@ pub fn compile_package(package_dir: &Path) -> Result<(), BuildError> {
 
 /// The directory a build's output goes to, beside the root package's manifest and never
 /// beside a source it read ([*The compiler's
-/// interface*](../../docs/spec/toolchain.md#the-compilers-interface)).
+/// interface*](../docs/spec/toolchain.md#the-compilers-interface)).
 pub const BUILD_DIRECTORY: &str = "build";
 
 /// The tree a build that compiled the tests writes below `build_dir`: `build_dir/test/js/`,
@@ -215,7 +217,7 @@ pub fn test_tree(build_dir: &Path) -> PathBuf {
 /// directory per package of the build holding one `.mjs` file per module of that
 /// package, named after the module within its own package, and each facade's companion
 /// beside the facade ([`zelkova_js`]'s *Paths* section has the names, [`DEC-18` decision
-/// 5](../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)
+/// 5](../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)
 /// the reasons). Nothing is written until every module of every package has checked and
 /// emitted.
 pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), BuildError> {
@@ -227,12 +229,12 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 /// This is what running a package's own tests needs, and the only thing that ever reads
 /// a `tests/` root: the tests of the build's other packages are not compiled, because
 /// nothing outside a package reads its tests
-/// ([*Running a package's tests*](../../docs/spec/toolchain.md#running-a-packages-tests)).
+/// ([*Running a package's tests*](../docs/spec/toolchain.md#running-a-packages-tests)).
 /// A package holding no `tests/` at all compiles exactly as it does through
 /// [`compile_package`].
 ///
 /// It compiles the tests and does not run them: what makes a declaration a test is
-/// [its type](../../docs/spec/packages.md#what-a-test-is), and running one is
+/// [its type](../docs/spec/packages.md#what-a-test-is), and running one is
 /// [`test()`]'s. What it hands back on success is the `Interface` of each of
 /// the root's own `tests/` modules that checked — never a test-only package's, and never
 /// `src/`'s — so a caller can find which of their exposed values are tests without a phase
@@ -246,7 +248,7 @@ pub fn compile_package_into(package_dir: &Path, build_dir: &Path) -> Result<(), 
 /// root's `tests/` modules beside its `src/` ones. `build/out/js/` itself is left exactly as
 /// [`compile_package`] would have written it: a test module never turns up there, so a
 /// plain build run afterwards never finds one left behind by a run that also compiled the
-/// tests ([`GEN-18`](../../docs/tickets/README.md)).
+/// tests ([`GEN-18`](../docs/tickets/README.md)).
 pub fn compile_package_with_tests(package_dir: &Path) -> Result<Vec<Interface>, BuildError> {
     compile_package_with_tests_into(package_dir, &package_dir.join(BUILD_DIRECTORY))
 }
@@ -366,7 +368,7 @@ fn compile(
 
         // A test companion imports the companion it checks by its path in the source
         // tree, across the two roots, which reaches nothing in the build
-        // ([*Testing a companion*](../../docs/spec/interop.md#testing-a-companion)). Each
+        // ([*Testing a companion*](../docs/spec/interop.md#testing-a-companion)). Each
         // companion of the root's `src/` is one it may check, and `checked` holds every
         // one of them.
         let targets: Vec<&Name> = checked
@@ -485,7 +487,7 @@ struct ModuleToEmit {
     /// For a facade, its JavaScript companion when one sits beside its `.zel` source —
     /// a file of the same base name in the same directory
     /// ([*A facade names a boundary, not a
-    /// backend*](../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
+    /// backend*](../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)).
     /// `None` for every other module, and for a facade with no companion, which
     /// [`zelkova_js::emit`] refuses.
     companion: Option<std::path::PathBuf>,
@@ -499,7 +501,7 @@ struct ModuleToEmit {
 /// What emitting and writing one checked module needs: its companion when it is a facade
 /// with one sitting beside its source under its `root_dir`, so a facade under `tests/`
 /// finds its companion there rather than under `src/`
-/// ([*Testing a companion*](../../docs/spec/interop.md#testing-a-companion)).
+/// ([*Testing a companion*](../docs/spec/interop.md#testing-a-companion)).
 fn to_module_to_emit(checked: CheckedSource) -> ModuleToEmit {
     let CheckedSource {
         module,

@@ -3,7 +3,7 @@
 //! [`run`] is what `zelkova run` calls: it reads the package's manifest, compiles the
 //! package ([`compile_package`]), writes [`entry_point`]'s text to `build/out/js/main.mjs`
 //! and hands that file to `node`
-//! ([*The compiler's interface*](../../../docs/spec/toolchain.md#the-compilers-interface)).
+//! ([*The compiler's interface*](../../docs/spec/toolchain.md#the-compilers-interface)).
 //! `zelkova compile` does not write the entry point: it is the one file of `build/out/js/`
 //! that is not a module of the build, and only the command that runs it needs it. Every
 //! build prunes what it did not write, so the file is written again by each run.
@@ -15,14 +15,14 @@
 //! build emitted for the manifest's `main` module, then hands the module's `main` export to
 //! `$runTask` and waits for it. Anything that rejects — the run, or the evaluation of the
 //! module while it loads — is an
-//! [abort](../../../docs/spec/evaluation-semantics.md#when-a-program-aborts): the entry point
+//! [abort](../../docs/spec/evaluation-semantics.md#when-a-program-aborts): the entry point
 //! writes `aborted: ` and the message of what was thrown to standard error and sets
 //! `process.exitCode` to `1`.
 //!
 //! The module is loaded with a dynamic `import()` and not a static import, because every
 //! parameterless binding is evaluated when its module loads
 //! ([*A binding with no parameters is evaluated
-//! once*](../../../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once)),
+//! once*](../../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once)),
 //! so a module can abort as it loads, and only an `import()` lets that be reported the way
 //! any other abort is. The runtime is the one static import.
 //!
@@ -39,7 +39,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::driver::{compile_package, BuildError, BUILD_DIRECTORY};
+use crate::{compile_package, BuildError, BUILD_DIRECTORY};
 use zelkova_compiler::name::Name;
 use zelkova_compiler::{manifest, CompilationError, PackageName, PhaseError};
 
