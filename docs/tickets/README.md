@@ -167,11 +167,11 @@ from there rather than it being filed twice.
 
 ## Active work: editor support
 
-`TOOL-1` through `TOOL-7` are one effort: **a `.zel` file gets the editor support any
+`TOOL-1` through `TOOL-8` are one effort: **a `.zel` file gets the editor support any
 mainstream language has.** That means highlighting first, then errors shown as you type, then
 hover types and go-to-definition. They get a section because, apart from `TOOL-1`, none of them
-is visible to a user on its own. Three are compiler changes a language server needs, and the
-server itself is the last to land.
+is visible to a user on its own. Four are compiler changes a language server needs or is much
+poorer without, and the server itself is the last to land.
 
 ```
 TOOL-1  TextMate grammar + VS Code extension      ← independent; ships value alone
@@ -182,9 +182,15 @@ TOOL-3  a check that returns diagnostics as data,  ─┐
   │                                                 ├─ both required by TOOL-6
 TOOL-2  that check reads open buffers through an    │
           overlay, not only the disk               ─┘
-TOOL-4  a syntax error no longer discards the       ← not required by TOOL-6, but without
-          module                                       it every capability past diagnostics
-  │                                                   goes dark on a file mid-edit
+TOOL-4  every syntax error of a module is          ← parser only: the module is still
+  │       reported, and the declarations that         dropped from the build
+  │       parsed are handed back
+  │
+TOOL-8  one failing declaration no longer hides     ← not required by TOOL-6, but without
+  │       its module from importers and from the      it every capability past diagnostics
+  │       editor                                      goes dark on a file mid-edit; its
+  │                                                   first step needs no TOOL-4, and the
+  │                                                   rest has decisions still open
   │
 TOOL-6  zelkova-lsp: diagnostics, then hover, then go-to-definition, then semantic tokens
           ← to be split into one ticket per capability before work starts
@@ -450,7 +456,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TOOL-1](tool-1.md) | task | — | open | No editor highlights a `.zel` file |
 | [TOOL-2](tool-2.md) | task | — | open | A source file can only be read from disk, so nothing can check an unsaved buffer |
 | [TOOL-3](tool-3.md) | task | — | open | Checking a package always prints to stderr and writes JavaScript |
-| [TOOL-4](tool-4.md) | task | — | open | One syntax error discards the whole module |
+| [TOOL-4](tool-4.md) | task | — | open | A module's first syntax error is the only one reported |
 | [TOOL-5](tool-5.md) | task | — | open | The compiler, its JavaScript backend and its command line are one crate |
 | [TOOL-6](tool-6.md) | task | — | open | There is no language server |
 | [TOOL-7](tool-7.md) | task | — | open | The checking pipeline names its backend, its runners and the test package |
+| [TOOL-8](tool-8.md) | task | — | open | One failing declaration hides its whole module from its importers and from the editor |

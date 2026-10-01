@@ -55,7 +55,7 @@ layer is gone: `zelkova_lang::compiler::typer` is `zelkova_compiler::typer`.
 
 | From | To |
 |---|---|
-| `src/compiler/parser/` (all five files), `position.rs`, `tuple.rs` | `crates/zelkova-syntax/src/`, same names |
+| `src/compiler/parser/` (every file), `position.rs`, `tuple.rs` | `crates/zelkova-syntax/src/`, same names |
 | `src/compiler/name.rs` — `Name`, its two `impl`s and their tests | `crates/zelkova-syntax/src/name.rs` |
 | `build.rs` | `crates/zelkova-syntax/build.rs` |
 | `src/compiler/name.rs` — the rest: `QualName` and its tests | `crates/zelkova-compiler/src/name.rs` |

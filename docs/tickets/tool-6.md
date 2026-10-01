@@ -7,9 +7,10 @@ capability before starting, not land it as one PR.
 
 **Part of:** the *Active work: editor support* section of [the index](README.md).
 **Depends on:** [`TOOL-2`](tool-2.md) (checking an unsaved buffer) and [`TOOL-3`](tool-3.md)
-(diagnostics as data, nothing printed or written). [`TOOL-4`](tool-4.md) is not a prerequisite,
-but without it every capability except diagnostics goes dark for a file that does not parse,
-which is most files mid-edit. [`TOOL-5`](tool-5.md) is not a prerequisite either.
+(diagnostics as data, nothing printed or written). [`TOOL-4`](tool-4.md) and
+[`TOOL-8`](tool-8.md) are not prerequisites, but without them every capability except
+diagnostics goes dark for a file with an error in it, which is most files mid-edit.
+[`TOOL-5`](tool-5.md) is not a prerequisite either.
 
 **Location:** new, as a workspace member (`zelkova-lsp`) depending on the compiler library.
 What it reads: `src/compiler/mod.rs` — `CompilationError::as_diagnostic`, `SourceFiles`,
