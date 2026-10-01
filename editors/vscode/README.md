@@ -8,6 +8,10 @@ Highlighting is lexical — the grammar reads one line at a time and never runs 
 From the folder: copy or symlink `editors/vscode` to `~/.vscode/extensions/zelkova-lang.zelkova-0.0.1`
 and reload VS Code.
 
+```
+ln -s $(pwd)/editors/vscode ~/.vscode/extensions/zelkova-lang.zelkova-1.0.0
+```
+
 From a `.vsix`: `npx @vscode/vsce package` in this folder, then
 `code --install-extension zelkova-0.0.1.vsix`. `vsce` warns about the missing `repository` and
 licence and asks to continue; neither affects the highlighting. Neither install route has been
