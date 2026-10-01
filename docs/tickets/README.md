@@ -167,7 +167,7 @@ from there rather than it being filed twice.
 
 ## Active work: editor support
 
-`TOOL-1` through `TOOL-6` are one effort: **a `.zel` file gets the editor support any
+`TOOL-1` through `TOOL-7` are one effort: **a `.zel` file gets the editor support any
 mainstream language has.** That means highlighting first, then errors shown as you type, then
 hover types and go-to-definition. They get a section because, apart from `TOOL-1`, none of them
 is visible to a user on its own. Three are compiler changes a language server needs, and the
@@ -187,9 +187,16 @@ TOOL-4  a syntax error no longer discards the       ← not required by TOOL-6, 
 TOOL-6  zelkova-lsp: diagnostics, then hover, then go-to-definition, then semantic tokens
           ← to be split into one ticket per capability before work starts
 
-TOOL-5  workspace split: syntax / compiler / js / cli   ← depends on nothing and blocks
-          nothing; scheduled after TOOL-2..4 so the move does not invalidate the
-          Location of tickets still in flight
+TOOL-3
+  │
+TOOL-7  the checking modules stop naming the backend,  ← the one part of the split that
+          the runners and the test package                changes code; one crate still
+  │
+TOOL-5  workspace split: syntax / compiler / js /      ← moves files, no behaviour; blocks
+          test-runner / cli, under crates/                nothing but TIDY-12 (edition 2024);
+                                                          scheduled after TOOL-2..4 so the
+                                                          move does not invalidate the
+                                                          Location of tickets still in flight
 ```
 
 **What is not a ticket yet: incremental checking.** `TOOL-6` starts by re-checking the whole
@@ -426,6 +433,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TIDY-9](tidy-9.md) | task | — | open | `Module::from_declarations` has a `panic!` on a declaration kind its own bucketing rules out |
 | [TIDY-10](tidy-10.md) | task | — | open | `Interface::arities` is a parallel map, and a miss silently reads as arity 0 |
 | [TIDY-11](tidy-11.md) | task | — | open | `BUG-20` and `Js/Utils.mjs` describe a tuple encoding and a test file that no longer match the tree |
+| [TIDY-12](tidy-12.md) | task | — | open | The compiler's crates are on edition 2018 |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |
@@ -442,3 +450,4 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TOOL-4](tool-4.md) | task | — | open | One syntax error discards the whole module |
 | [TOOL-5](tool-5.md) | task | — | open | The compiler, its JavaScript backend and its command line are one crate |
 | [TOOL-6](tool-6.md) | task | — | open | There is no language server |
+| [TOOL-7](tool-7.md) | task | — | open | The checking pipeline names its backend, its runners and the test package |
