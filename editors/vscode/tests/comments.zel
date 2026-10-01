@@ -21,3 +21,13 @@ f = 1 -- trailing
 
 g = 2
 -- <- variable.other.zelkova
+
+{-| doc {- inner -} still doc
+-- ^^^^^^^^^^^^^^^^^^^^^^^^^^ comment.block.documentation.zelkova
+   still doc after the inner close
+-- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment.block.documentation.zelkova
+-}
+-- <- comment.block.documentation.zelkova
+
+h = 3
+-- <- variable.other.zelkova
