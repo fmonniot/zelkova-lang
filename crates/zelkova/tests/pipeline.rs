@@ -445,7 +445,7 @@ fn compile_package_fails_when_a_module_fails_to_canonicalize() {
 /// of the ticket's Acceptance.
 ///
 /// This drives the *real* `check_module`, which is what the `dummy_check` unit test in
-/// `src/compiler/dependencies.rs` cannot do. Mutation-checked by clearing `modules` at
+/// `crates/zelkova-compiler/src/dependencies.rs` cannot do. Mutation-checked by clearing `modules` at
 /// the end of `check_in_order` whenever `errors` is non-empty: that turns the `Fine`
 /// assertion below red.
 #[test]
@@ -663,7 +663,7 @@ fn check_std_core() -> Vec<CheckedModule> {
 /// every one of them now, rather than refusing the whole tree the way a blanket
 /// `module foreign` check used to.
 ///
-/// The unit tests in `tests/javascript.rs` pin the *shape* of what a facade emits as;
+/// The unit tests in `crates/zelkova-js/tests/javascript.rs` pin the *shape* of what a facade emits as;
 /// this only pins that the three real signatures do not hit an edge their small
 /// fixtures miss — among them, that every result type they declare has a boundary
 /// predicate, which is read off the result's type.
@@ -2149,7 +2149,7 @@ fn missing_exposed_import_name_labels_the_name_alone() {
 ///
 /// This exercises the `Operator` case specifically; `do_exports`
 /// (`canonical/mod.rs`) checks existence the same way for `Lower` and `Upper`
-/// names too (`BUG-8`), and `tests/compiler/canonical.rs`'s
+/// names too (`BUG-8`), and `crates/zelkova-compiler/tests/canonical.rs`'s
 /// `export_nonexistent_value_is_error`/`export_nonexistent_type_is_error` cover
 /// those directly against `canonical::Error` rather than through the whole
 /// package pipeline.
@@ -2565,7 +2565,7 @@ fn unexposed_operator_is_not_importable() {
 ///
 /// Mutation-checked by dropping the `.or_else(..)` over
 /// `interface.infix_functions` in `imported_infix`
-/// (`src/compiler/canonical/environment.rs`), which turns this red with
+/// (`crates/zelkova-compiler/src/canonical/environment.rs`), which turns this red with
 /// `cannot find a value named \`Lib.plus\``.
 #[test]
 fn exposed_operator_resolves_via_open_import_without_its_backing_function_exposed() {
@@ -2648,7 +2648,7 @@ fn backing_function_of_an_exposed_operator_stays_unimportable_by_name() {
 /// [`a_package_that_cannot_be_read_does_not_hide_an_earlier_packages_errors`].
 ///
 /// Mutation-checked by restoring the `filter_map(|r| r.ok())` discard in
-/// `load_package_sources` (`src/compiler/source/mod.rs`): with the walk error
+/// `load_package_sources` (`crates/zelkova-compiler/src/source/mod.rs`): with the walk error
 /// thrown away, `compile_package` returns `Ok(())` on this same fixture, and
 /// `expect_err` below panics.
 #[test]
@@ -2957,7 +2957,7 @@ fn foreign_names(value: &canonical::Value) -> Vec<String> {
 /// rule this file's `default_imports_resolve_without_an_import_line` exists to
 /// exercise the *opposite* side of — so that scenario can only be reproduced
 /// with a hand-built interface here, the same way `maybe_interface` in
-/// `tests/support/mod.rs` stands in for a real `Maybe.zel`.
+/// `crates/zelkova-compiler/tests/support/mod.rs` stands in for a real `Maybe.zel`.
 ///
 /// Named apart from [`support::basics_interface`], which carries no values —
 /// this one adds `+`/`add` on purpose, and a plain `use support::*` item-level
@@ -4506,7 +4506,7 @@ fn a_git_dependency_is_reported_as_one_this_compiler_cannot_obtain() {
 ///
 /// This is the path the scalar types take across a package boundary. `dep_core`
 /// declares `type Int = Int`, so the annotation below resolves to `Basics.Int` — the
-/// qualified name `src/compiler/scalars.rs` recognises — and `42` unifies with it.
+/// qualified name `crates/zelkova-compiler/src/scalars.rs` recognises — and `42` unifies with it.
 ///
 /// Mutation-checked by dropping the `CORE_PACKAGE` arm of `seen_unwrapped`: `Basics` is
 /// then `ZelkovaCore.Basics`, no default import finds it, and `Int` names nothing.
@@ -5059,7 +5059,7 @@ fn a_test_dependency_does_not_reach_the_src_root() {
 /// 6](../docs/decisions/dec-18.md)) — so a `cargo test` run never even compiled it, let
 /// alone checked what it emits. This pins that it compiles under
 /// `compile_package_with_tests_into`, against the real `zelkova-core` and `zelkova-test`
-/// interfaces rather than the hand-built ones `tests/javascript.rs`'s `emitted_across`
+/// interfaces rather than the hand-built ones `crates/zelkova-js/tests/javascript.rs`'s `emitted_across`
 /// uses, and that the emitted `PickTest.mjs` calls `Lib.pick` directly with both
 /// arguments — the cross-module call BUG-43 fixed.
 ///

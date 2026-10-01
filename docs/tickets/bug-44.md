@@ -8,7 +8,7 @@ price of landing [`GEN-2`](README.md) before type classes.)
 `a -> a -> a` and bound to `Js.Basics.addInt`, `subInt`, `mulInt` and `powInt`; `append`, bound
 to `Js.Utils.appendInt` the same way; `fromPolar`, `toPolar` and `degrees`, declared over `Float`
 with no `a` in sight but calling `mul`/`add` internally, so they abort too.
-`src/compiler/javascript.rs` — `Emitter::facade_declaration`, which emits the check that
+`crates/zelkova-js/src/lib.rs` — `Emitter::facade_declaration`, which emits the check that
 aborts. `std/core/tests/FloatTests.ignored` — the tests it breaks, disabled (via that
 extension) so CI stays green until this closes.
 

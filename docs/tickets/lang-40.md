@@ -4,10 +4,10 @@
 the tree: `unify` currently answers every constraint immediately, and a class obligation is one
 it may not be able to answer yet.
 
-**Location:** `src/compiler/typer/mod.rs` — `Type`, `Constraint`, `Origin`, `Reason`,
+**Location:** `crates/zelkova-compiler/src/typer/mod.rs` — `Type`, `Constraint`, `Origin`, `Reason`,
 `ErrorKind`, `canonical_type_to_typer_type`, `infer_annotated`,
-`value_to_term_and_annotation`; `src/compiler/typer/constraint.rs` — `collect`;
-`src/compiler/typer/unifier.rs` — `unify`, `unify_one_constraint`.
+`value_to_term_and_annotation`; `crates/zelkova-compiler/src/typer/constraint.rs` — `collect`;
+`crates/zelkova-compiler/src/typer/unifier.rs` — `unify`, `unify_one_constraint`.
 
 **Depends on:** [LANG-39](lang-39.md), for an instance environment to discharge against;
 [LANG-70](lang-70.md), for an annotation's context to reach the canonical module resolved; and
@@ -89,7 +89,7 @@ by tests and by user code long before it is exercised by the standard library, a
 [LANG-42](lang-42.md) is where that changes. Do not read a green
 `cargo run -- compile std/core` as evidence this ticket works.
 
-**Acceptance:** tests in `tests/typer.rs`, each with its neutralised-and-seen-red counterpart
+**Acceptance:** tests in `crates/zelkova-compiler/tests/typer.rs`, each with its neutralised-and-seen-red counterpart
 per `CLAUDE.md`'s *A green test proves nothing until you have seen it fail*:
 
 - A call whose obligation is discharged by a concrete instance checks.

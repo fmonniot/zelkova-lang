@@ -1,11 +1,11 @@
-//! End-to-end tests of the `zelkova` binary's command line itself — `src/main.rs`'s
-//! `Cli`/`Command` wiring — as opposed to `tests/pipeline.rs`, which drives
+//! End-to-end tests of the `zelkova` binary's command line itself — `crates/zelkova/src/main.rs`'s
+//! `Cli`/`Command` wiring — as opposed to `crates/zelkova/tests/pipeline.rs`, which drives
 //! `compile_package` directly and never goes through `main`.
 //!
 //! Every one of GEN-17's Acceptance clauses is a shell-level check (`cargo run --
 //! compile std/core`, a fixture, the bare invocation, `--manifest-path`), verified by
 //! hand when that ticket landed. Nothing here duplicates the compiler's own behaviour —
-//! `tests/pipeline.rs` and the layers below it already pin that — this file pins only
+//! `crates/zelkova/tests/pipeline.rs` and the layers below it already pin that — this file pins only
 //! the three things the CLI layer itself adds on top: that `Compile { dir }` defaults
 //! to `.`, that the subcommand actually routes to `compile_package`, and that a missing
 //! subcommand exits non-zero rather than silently doing nothing.
@@ -19,7 +19,7 @@ fn zelkova_bin() -> PathBuf {
 }
 
 /// Root of one of the small package fixtures under `tests/fixtures/`, the same
-/// directories `tests/pipeline.rs::fixture_package` uses.
+/// directories `crates/zelkova/tests/pipeline.rs::fixture_package` uses.
 fn fixture_package(name: &str) -> PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     Path::new(&manifest)
@@ -67,7 +67,7 @@ fn bare_invocation_exits_non_zero_and_prints_usage() {
 /// compiles whatever package the current directory holds.
 ///
 /// Neutralised by changing `#[arg(default_value = ".")]` to
-/// `#[arg(default_value = "/nonexistent-zelkova-cli-test-dir")]` in `src/main.rs`.
+/// `#[arg(default_value = "/nonexistent-zelkova-cli-test-dir")]` in `crates/zelkova/src/main.rs`.
 /// This test went red (exit code 1, "No such file or directory" instead of "parsed 1
 /// modules" on stderr) under that change, confirming it is that default that makes a
 /// `zelkova compile` run from inside `package_checks` compile `package_checks`.
@@ -97,7 +97,7 @@ fn compile_defaults_to_current_directory() {
 /// An explicit `zelkova compile DIR` routes `DIR` to `compile_package` — not, say, a
 /// hardcoded path left over from before GEN-17 gave the compiler a CLI.
 ///
-/// Neutralised by changing the match arm in `src/main.rs` from
+/// Neutralised by changing the match arm in `crates/zelkova/src/main.rs` from
 /// `Command::Compile { dir } => driver::compile_package(&dir)` to
 /// `Command::Compile { .. } => driver::compile_package(Path::new("tests/fixtures/package_type_error"))`
 /// — ignoring the parsed `dir` — while running from the repository root with
@@ -129,7 +129,7 @@ fn compile_routes_explicit_dir_to_compile_package() {
 
 /// A package that fails to compile makes `zelkova compile` exit non-zero, with the
 /// diagnostic on stderr — this is `compile_package`'s own contract
-/// (`tests/pipeline.rs`'s `compile_package reports failure when a module fails`), but
+/// (`crates/zelkova/tests/pipeline.rs`'s `compile_package reports failure when a module fails`), but
 /// nothing before this file pinned that `main` actually surfaces it through the exit
 /// code rather than, say, swallowing the `Err` and exiting 0.
 ///

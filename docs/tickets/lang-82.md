@@ -7,7 +7,7 @@ unknown or surrogate escape means.
 **Part of:** no active program. Noticed while reviewing [`LANG-77`](README.md), which added
 `consume_escape` for string literals and deliberately left character literals alone.
 
-**Location:** `src/compiler/parser/tokenizer.rs` — `consume_char`'s `'\''` arm, which matches
+**Location:** `crates/zelkova-syntax/src/parser/tokenizer.rs` — `consume_char`'s `'\''` arm, which matches
 exactly `'` + one character + `'` on a fixed three-character lookahead;
 `consume_escape`, the string-side decoder; `CharNotClosedError`.
 `docs/spec/lexical-structure.md` — [*Characters*](../spec/lexical-structure.md#characters),

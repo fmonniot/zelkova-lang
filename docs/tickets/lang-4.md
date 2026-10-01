@@ -2,7 +2,7 @@
 
 **Sizing:** small in the grammar; the interesting part is deciding what it desugars *to*.
 
-**Location:** `src/compiler/parser/grammar.lalrpop`, the `Expr` production
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop`, the `Expr` production
 `<l:@L> "-" <m:@R> <e: Expr>`, which builds `((-) 0) e` with `Literal::Int(0)`.
 
 **Found:** while writing `docs/spec/lexical-structure.md` under `SPEC-2`.

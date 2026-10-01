@@ -199,11 +199,8 @@ TOOL-3
 TOOL-7  the checking modules stop naming the backend,  ← closed: `driver`, `BuildError`
           the runners and the test package
   │
-TOOL-5  workspace split: syntax / compiler / js /      ← moves files, no behaviour; blocks
-          test-runner / cli, under crates/                nothing but TIDY-12 (edition 2024);
-                                                          scheduled after TOOL-2..4 so the
-                                                          move does not invalidate the
-                                                          Location of tickets still in flight
+TOOL-5  workspace split: syntax / compiler / js /      ← closed: five crates under crates/;
+          test-runner / cli, under crates/                TIDY-12 (edition 2024) is next
 ```
 
 **What is not a ticket yet: incremental checking.** `TOOL-6` starts by re-checking the whole
@@ -449,7 +446,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TEST-3 | task | — | closed 2026-09-27 | CI runs neither a package's Zelkova tests nor a `.mjs` companion's checks |
 | TEST-4 | task | — | closed 2026-09-11 | A facade's `.mjs` companion test lives in the compiler repo, not in the package that ships the companion |
 | [TEST-5](test-5.md) | task | — | open | Two `manifest` unit tests can be handed the same temporary directory, so the suite fails intermittently |
-| [TEST-6](test-6.md) | task | — | open | The `tests/cli.rs` tests that run `zelkova` on a shared fixture write one `build/` between them |
+| [TEST-6](test-6.md) | task | — | open | The `crates/zelkova/tests/cli.rs` tests that run `zelkova` on a shared fixture write one `build/` between them |
 | TEST-7 | task | — | closed 2026-09-29 | `std/core`'s companion checks are run by `node --test` and not as Zelkova tests |
 | [TEST-8](test-8.md) | task | — | open | CI never runs the runtime's own checks, `runtime/js/tests/zelkovaChecks.mjs` |
 | [TEST-9](test-9.md) | task | — | open | A test companion's import of a companion under test that the build does not rewrite fails at run time, with a build path in the message |
@@ -457,7 +454,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TOOL-2 | task | — | closed 2026-10-01 | A source file can only be read from disk, so nothing can check an unsaved buffer |
 | TOOL-3 | task | — | closed 2026-10-01 | Checking a package always prints to stderr and writes JavaScript |
 | TOOL-4 | task | — | closed 2026-10-01 | A module's first syntax error is the only one reported |
-| [TOOL-5](tool-5.md) | task | — | open | The compiler, its JavaScript backend and its command line are one crate |
+| TOOL-5 | task | — | closed 2026-10-01 | The compiler, its JavaScript backend and its command line are one crate |
 | [TOOL-6](tool-6.md) | task | — | open | There is no language server |
 | TOOL-7 | task | — | closed 2026-10-01 | The checking pipeline names its backend, its runners and the test package |
 | [TOOL-8](tool-8.md) | task | — | open | One failing declaration hides its whole module from its importers and from the editor |

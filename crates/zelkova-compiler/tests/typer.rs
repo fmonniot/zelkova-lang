@@ -399,7 +399,7 @@ fn constructor_usage_just_42() {
 
 /// `BUG-17`'s acceptance case, the positive half: `Maybe Int`'s written argument
 /// now survives canonicalization, so a body that agrees with it — `Just 1`, an
-/// `Int` — still type-checks. Layer 1 (`tests/compiler/canonical.rs`) can only see
+/// `Int` — still type-checks. Layer 1 (`crates/zelkova-compiler/tests/canonical.rs`) can only see
 /// that the argument survives; this layer is what can tell that the annotation
 /// actually constrains, because unification is what would reject a disagreement.
 #[test]

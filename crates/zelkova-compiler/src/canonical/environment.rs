@@ -1745,7 +1745,7 @@ mod tests {
     // These hand-build every `Import`/`Exposed` with `NodeSpan::none()` (see the
     // `import`/`exposing_*` helpers above), so `EnvError::labels` — which needs a
     // real span to attach a caret to — renders nothing for them; that path is
-    // covered instead by `tests/compiler/canonical.rs`, which goes through the
+    // covered instead by `crates/zelkova-compiler/tests/canonical.rs`, which goes through the
     // parser and so has real spans. These assert directly on the `Option<Name>`
     // suggestion field each variant now carries.
 

@@ -4,8 +4,8 @@
 What could make it bigger: deciding what counts as "a literal that resolves under `src/`" without
 parsing the `.mjs` file, which `javascript::rewrite_imports` deliberately does not.
 
-**Location:** `src/compiler/javascript.rs` — `test_companion_import`, `rewrite_imports`.
-`src/compiler/output.rs` — `Contents::Rewritten`. [DEC-14](../decisions/dec-14.md) — *What nothing
+**Location:** `crates/zelkova-js/src/lib.rs` — `test_companion_import`, `rewrite_imports`.
+`crates/zelkova-js/src/output.rs` — `Contents::Rewritten`. [DEC-14](../decisions/dec-14.md) — *What nothing
 checks*.
 
 **Problem:** when the tests are compiled, a root `tests/` facade's companion is written with each
@@ -28,7 +28,7 @@ acceptable.
 
 **Acceptance:** a test companion importing its target as `./../../src/Js/Basics.mjs` fails
 `compile_package` with a diagnostic naming that file and the expected spelling, in a test in
-`tests/pipeline.rs`, and the correctly spelled import still compiles. DEC-14's *What nothing
+`crates/zelkova/tests/pipeline.rs`, and the correctly spelled import still compiles. DEC-14's *What nothing
 checks* stops listing the non-shortest path.
 
 **Found:** reviewing PR #277 ([TEST-7](README.md)), which added the rewrite. Left unfixed there

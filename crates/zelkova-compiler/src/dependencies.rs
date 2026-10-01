@@ -723,7 +723,7 @@ mod tests {
     /// Mutation-checked by reverting `cycle_walk` to return `members` verbatim
     /// (`tarjan_scc`'s raw order) instead of searching it: this test goes red
     /// (`[b, c, a]` instead of `[b, a, c]`, and `b` does not import `c`).
-    /// `dependency_cycle_labels_each_import` in `tests/pipeline.rs` stays green
+    /// `dependency_cycle_labels_each_import` in `crates/zelkova/tests/pipeline.rs` stays green
     /// under that same mutation and says so itself — its two-module fixture has only
     /// one possible walk, so the raw component order and a real walk coincide.
     #[test]

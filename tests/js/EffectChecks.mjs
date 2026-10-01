@@ -1,8 +1,8 @@
 // The JavaScript checks over the wrapper `javascript::emit` puts around an effectful facade's
-// companion (src/compiler/javascript.rs, "A facade"; docs/spec/interop.md#an-effectful-facade):
+// companion (crates/zelkova-js/src/lib.rs, "A facade"; docs/spec/interop.md#an-effectful-facade):
 // running the `Task` it builds calls the companion, and yields `Ok` for a value of the declared
 // type, `Err (Threw _)` for a throw or a rejection, and `Err (Malformed _)` for a value of the
-// wrong shape. `cargo test` pins the text it emits as (tests/javascript.rs) and does not run
+// wrong shape. `cargo test` pins the text it emits as (crates/zelkova-js/tests/javascript.rs) and does not run
 // `node`
 // (docs/decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node),
 // so this file compiles its fixture itself, with the compiler built from this checkout, and

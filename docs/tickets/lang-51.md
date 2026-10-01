@@ -3,7 +3,7 @@
 **Sizing:** large. A new type form in both the canonical and the typer's own languages, plus the
 unification rule for it — the first structural type Zelkova has.
 
-**Location:** `canonical::Type` in `src/compiler/canonical/`; `src/compiler/typer/`, all three of
+**Location:** `canonical::Type` in `crates/zelkova-compiler/src/canonical/`; `crates/zelkova-compiler/src/typer/`, all three of
 `annotate.rs`, `constraint.rs` and `unifier.rs`.
 
 **Depends on:** [`LANG-48`](lang-48.md) and [`LANG-50`](lang-50.md), hard. There is no record node
@@ -45,7 +45,7 @@ and is not one goes red the day this ticket lands. The **Known gap:** paragraphs
 and the field-adding update — are what that red block asks you to delete. Grep
 [Records](../spec/records.md) for `LANG-51` before closing.
 
-**Acceptance:** `tests/typer.rs` cases for a record's inferred type, for the two spellings of one
+**Acceptance:** `crates/zelkova-compiler/tests/typer.rs` cases for a record's inferred type, for the two spellings of one
 record type unifying, for a field access at the field's type, for an update keeping the record's
 type, for `{ r | absent = x }` and `{ r | x = wrongType }` each failing with a caret under the
 offending field, and for an accessor typed from an argument position and an accessor with nothing

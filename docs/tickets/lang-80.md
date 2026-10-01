@@ -14,7 +14,7 @@ kept, so the rules below are implemented and not specified.
 
 **Location:** `docs/spec/lexical-structure.md` — [*Characters*](../spec/lexical-structure.md#characters)
 (the escape table) and [*Strings*](../spec/lexical-structure.md#strings).
-`src/compiler/parser/tokenizer.rs` — `consume_escape`, and the `InvalidEscape` and
+`crates/zelkova-syntax/src/parser/tokenizer.rs` — `consume_escape`, and the `InvalidEscape` and
 `UnicodeError` variants of `TokenizerErrorType`. `docs/spec/conventions.md` — the
 `expect=parse-error:Reason` row already lists both reasons.
 

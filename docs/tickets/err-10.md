@@ -8,8 +8,8 @@ guesswork, and recommends picking it up "together with the first real warning." 
 *is* that first warning; ERR-8 should not start until this one has landed a concrete
 diagnostic to carry.
 
-**Location:** `src/compiler/canonical/mod.rs` — `new_environment` call in `canonicalize`
-(around line 805) and `do_exports`; `src/compiler/canonical/environment.rs` — the
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `new_environment` call in `canonicalize`
+(around line 805) and `do_exports`; `crates/zelkova-compiler/src/canonical/environment.rs` — the
 `Environment` trait and `new_environment`/`process_import`, which is where every import
 currently gets consumed.
 

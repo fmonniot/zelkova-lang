@@ -46,7 +46,7 @@ triggers below, and the trigger gets reported at launch.
 4. **The change is cross-cutting by construction.** Three areas, each named in `CLAUDE.md`'s
    *Standing invariants* because getting them wrong already produced a bad diff:
    `grammar.lalrpop` + the `parser` AST + the `canonical` conversions moving together; anything
-   inside `src/compiler/typer/` (`constraint.rs`, `unifier.rs`); and the error accumulation in
+   inside `crates/zelkova-compiler/src/typer/` (`constraint.rs`, `unifier.rs`); and the error accumulation in
    `compile_package`.
 5. **The ticket is a fragment that does nothing on its own** — `LANG-37` through `LANG-41`, the
    type-classes chain, where the mechanism only works once the chain lands and a locally

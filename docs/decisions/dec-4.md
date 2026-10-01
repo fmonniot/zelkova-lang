@@ -20,7 +20,7 @@ Not a subdirectory of `docs/spec/`, and not a `DEC-` prefix inside `docs/tickets
 rationale document's whole job is to hold the arguments for options that were *rejected*, and
 filing those under the directory whose premise is "this is what the language requires" blurs
 the one boundary [the spec index](../spec/README.md) works hardest to draw. The mechanics
-agree: `tests/spec.rs` reads `*.md` directly under `docs/spec/` and nothing below it, so a
+agree: `crates/zelkova-compiler/tests/spec.rs` reads `*.md` directly under `docs/spec/` and nothing below it, so a
 subdirectory would have been unchecked anyway.
 
 **Against a ticket prefix:** tempting, because the tooling already exists — an index, stable
@@ -68,7 +68,7 @@ compiler's behaviour on syntax the language deliberately does not have.
 
 ## 4 — Rationale about the tooling moves too
 
-`tests/spec.rs`'s header carried the argument for two of its own scope decisions. It is good
+`crates/zelkova-compiler/tests/spec.rs`'s header carried the argument for two of its own scope decisions. It is good
 writing about a convention for markdown files, readable only by someone who opened a Rust file
 to find out why a test exists. It is now [DEC-3](dec-3.md), and the module comment keeps a
 sentence saying what the tests check plus a pointer — which is what `CLAUDE.md`'s *a doc

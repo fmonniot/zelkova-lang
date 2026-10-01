@@ -1,11 +1,11 @@
 // The JavaScript checks over the boundary check `javascript::emit` puts in front of an
-// `unsafe` facade's companion (src/compiler/javascript.rs, "The boundary check"): a value
+// `unsafe` facade's companion (crates/zelkova-js/src/lib.rs, "The boundary check"): a value
 // the companion hands back is run through the predicate of its declared type, returned
 // unchanged when it passes, and aborts the program, naming the export, when it does not
 // (docs/spec/interop.md#which-types-may-cross-the-boundary).
 //
 // This is the behavioural half of that check. `cargo test` pins the text it emits as
-// (tests/javascript.rs) and does not run `node`
+// (crates/zelkova-js/tests/javascript.rs) and does not run `node`
 // (docs/decisions/dec-18.md#6--the-generated-code-is-checked-in-two-halves-and-cargo-test-does-not-run-node),
 // so this file compiles its fixture itself, with the compiler built from this checkout,
 // and loads the output:

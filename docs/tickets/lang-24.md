@@ -2,7 +2,7 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/parser/grammar.lalrpop`, the `Infix` production —
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop`, the `Infix` production —
 `let precedence = u8::try_from(p).map_err(...)`. The value is carried as a `u8` from there
 through `parser::Infix`, `canonical::Infix` and `Interface::infixes`.
 

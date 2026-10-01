@@ -55,7 +55,7 @@ pub mod canonical;
 // one phase, and because two phases read it: canonicalization synthesises the imports, and
 // `dependencies` puts the matching edges in the import graph.
 pub mod default_imports;
-// Public so that `tests/pipeline.rs` can drive `ModuleWalker::check_in_order` with the
+// Public so that `crates/zelkova/tests/pipeline.rs` can drive `ModuleWalker::check_in_order` with the
 // real `check_module`, which is the only seam that observes the modules that checked
 // successfully alongside the ones that failed (`BUG-2`) — `compile_package` only reports
 // them to stderr. `dependencies::Error` was already reachable from the public
@@ -1872,7 +1872,7 @@ impl CheckedModule {
 /// checked against.
 ///
 /// It is a trait because the walker drives more than one checker. The compiler's is
-/// [`check_module`], which answers with a [`CheckedModule`]; `tests/spec.rs` drives the
+/// [`check_module`], which answers with a [`CheckedModule`]; `crates/zelkova-compiler/tests/spec.rs` drives the
 /// same walker with a checker that only canonicalizes, because a spec example is judged
 /// on the errors each phase reports and there is nothing to emit from it.
 pub trait Checked {

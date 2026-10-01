@@ -30,9 +30,9 @@ The pick cannot be made until **after Step 0.5**, because the round is part of i
 - **Round ≥ 2 is always `standard`.** It reviews a bounded delta against findings that are
   already written down and replied to. Nothing about that is a search problem.
 - **Round 1 is `standard` unless the diff reaches the cross-cutting paths.** Check with
-  `gh pr diff <PR> --repo fmonniot/zelkova-lang --name-only`: `src/compiler/parser/grammar.lalrpop`
-  together with the `parser`/`canonical` ASTs, anything under `src/compiler/typer/`, or the
-  error accumulation in `src/compiler/mod.rs`. Those are the three areas where a defect is
+  `gh pr diff <PR> --repo fmonniot/zelkova-lang --name-only`: `crates/zelkova-syntax/src/parser/grammar.lalrpop`
+  together with the `parser`/`canonical` ASTs, anything under `crates/zelkova-compiler/src/typer/`, or the
+  error accumulation in `crates/zelkova-compiler/src/lib.rs`. Those are the three areas where a defect is
   subtle enough to survive a `standard` read, and each is on the list because it already
   produced one.
 - **Round 1 is also `deep` when the ticket itself was a design-decision ticket** — the same

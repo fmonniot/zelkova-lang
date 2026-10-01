@@ -675,7 +675,7 @@ fn type_annotation_spans_cover_each_component() {
 
 /// `ERR-3`: a tuple `parser::Pattern`'s span, asserted directly.
 ///
-/// `unknown_constructor_labels_the_pattern` in `tests/pipeline.rs` covers the bare
+/// `unknown_constructor_labels_the_pattern` in `crates/zelkova/tests/pipeline.rs` covers the bare
 /// constructor production; the tuple production takes its own `@L`/`@R` around the
 /// parentheses and is otherwise unobserved, for the same `PartialEq` reason as the
 /// types above.

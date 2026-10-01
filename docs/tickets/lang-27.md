@@ -2,7 +2,7 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/canonical/mod.rs`, `do_infixes` — the iterator's
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs`, `do_infixes` — the iterator's
 `(op_name, infix)` pairs are handed to `collect_accumulate`, which builds a
 `HashMap<Name, Infix>`; `env.insert_local_infix` writes into the environment the same way.
 
@@ -35,5 +35,5 @@ duplicate-free, so it should need nothing.
 **Acceptance:** the `expect=ok` block under *An operator has one `infix` declaration* in
 [`docs/spec/declarations.md`](../spec/declarations.md) goes **red** — retag it
 `expect=canonical-error:` with the new variant and delete the **Known gap:** paragraph
-beneath it. A `tests/compiler/canonical.rs` case asserting the variant, seen to fail before
+beneath it. A `crates/zelkova-compiler/tests/canonical.rs` case asserting the variant, seen to fail before
 the fix.

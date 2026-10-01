@@ -1,18 +1,18 @@
 //! The `expect=` grammar and the markdown scanning it depends on, shared by
-//! `tests/spec.rs` (which runs each `zel` block through the compiler) and
+//! `crates/zelkova-compiler/tests/spec.rs` (which runs each `zel` block through the compiler) and
 //! `spec-site` (which renders chapters to HTML and needs the same badge and
 //! anchor rules the harness checks by). A second, drifting implementation of
 //! this grammar is the exact failure mode
 //! [*Every example is checked*](https://github.com/fmonniot/zelkova-lang/blob/main/docs/spec/README.md#every-example-is-checked)
 //! exists to prevent — so this crate has no dependencies of its own, and
-//! nothing here runs the compiler; that stays in `tests/spec.rs`.
+//! nothing here runs the compiler; that stays in `crates/zelkova-compiler/tests/spec.rs`.
 
 /// What a `zel` block's `expect=` tag asks the harness to check.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expect {
     Ok,
     /// `None` claims only that the parser rejected the block. `Some(reason)` also
-    /// pins *why*, against the names `parse_error_reasons` (in `tests/spec.rs`)
+    /// pins *why*, against the names `parse_error_reasons` (in `crates/zelkova-compiler/tests/spec.rs`)
     /// returns.
     ///
     /// Pin the reason whenever the chapter's prose describes the error the reader
@@ -23,7 +23,7 @@ pub enum Expect {
     CanonicalError(String),
     /// `None` claims only that the type checker rejected the block. `Some(kind)` also
     /// pins *which* `typer::ErrorKind` it raised, against the names
-    /// `error_kind_names` (in `tests/spec.rs`) returns.
+    /// `error_kind_names` (in `crates/zelkova-compiler/tests/spec.rs`) returns.
     ///
     /// The bare form is for a chapter that claims only "this is a type error"; pin the
     /// kind when the prose names the diagnostic the reader will see.
@@ -31,7 +31,7 @@ pub enum Expect {
     Unimplemented,
     /// The group this block belongs to has no valid module order — its imports form
     /// a cycle — so nothing in it is canonicalized at all. Group-wide by nature:
-    /// `evaluate_group` (in `tests/spec.rs`) requires every block of the group to
+    /// `evaluate_group` (in `crates/zelkova-compiler/tests/spec.rs`) requires every block of the group to
     /// agree on it.
     DependencyError,
     Fragment,

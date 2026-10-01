@@ -1,17 +1,17 @@
-# TEST-6 · The `tests/cli.rs` tests that run `zelkova` on a shared fixture write one `build/` between them
+# TEST-6 · The `crates/zelkova/tests/cli.rs` tests that run `zelkova` on a shared fixture write one `build/` between them
 
-**Sizing:** small. It moves a helper that `tests/cli.rs` already has and points more tests at
+**Sizing:** small. It moves a helper that `crates/zelkova/tests/cli.rs` already has and points more tests at
 it. What could make it bigger is a fixture whose manifest holds a path that a copy has to
 rewrite.
 
-**Location:** `tests/cli.rs` — `compile_defaults_to_current_directory` and
+**Location:** `crates/zelkova/tests/cli.rs` — `compile_defaults_to_current_directory` and
 `compile_routes_explicit_dir_to_compile_package`, both of which run `zelkova compile` on
 `tests/fixtures/package_checks` and then `remove_dir_all` its `build/`;
 `test_on_a_package_with_no_tests_exits_0_without_running_node` (`package_no_tests`) and
 `test_without_node_on_path_fails_naming_node` (`package_test_run`), which each write and remove
 their fixture's `build/`. The helper to reuse is `scratch_test_run_package`, which already gives
 the tests that put a stub `node` on `PATH` a copy of `package_test_run` under
-`CARGO_TARGET_TMPDIR`. `src/compiler/output.rs` — the module doc's account of `WRITE_LOCK`.
+`CARGO_TARGET_TMPDIR`. `crates/zelkova-js/src/output.rs` — the module doc's account of `WRITE_LOCK`.
 
 **Problem:** every one of these tests starts a `zelkova` **process**. `WRITE_LOCK` serializes
 writes within a process, and its module doc records why it exists: write-then-prune "is not
@@ -45,9 +45,9 @@ ticket does not pick:
 
 **Acceptance:**
 
-- No test in `tests/cli.rs` runs `zelkova` with a working directory, or an argument, inside
+- No test in `crates/zelkova/tests/cli.rs` runs `zelkova` with a working directory, or an argument, inside
   `tests/fixtures/`, except for a fixture the command cannot write a build for
-  (`package_type_error`, whose compile fails first). `grep -n "fixture_package" tests/cli.rs`
+  (`package_type_error`, whose compile fails first). `grep -n "fixture_package" crates/zelkova/tests/cli.rs`
   shows only `package_type_error` and the helper's own source of the copy.
 - After `cargo test --test cli`, `find tests/fixtures -name build -type d` prints nothing.
 - Each moved test is neutralised as its own doc comment already describes and still goes red.

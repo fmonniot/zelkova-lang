@@ -2,7 +2,7 @@
 
 **Sizing:** small. One macro use in the grammar.
 
-**Location:** `src/compiler/parser/grammar.lalrpop` — the `Union` production's
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — the `Union` production's
 `<variants: Pipe<Type>>`, and the `Pipe<T>` macro itself:
 
 ```

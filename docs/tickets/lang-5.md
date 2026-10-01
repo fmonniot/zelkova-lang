@@ -3,9 +3,9 @@
 **Sizing:** small. One grammar production and the `Module::from_declarations` that consumes
 it; could grow to small-to-medium if the error wanted is better than LALRPOP's default.
 
-**Location:** `src/compiler/parser/grammar.lalrpop` — the `Decl` production, which lists
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — the `Decl` production, which lists
 `Import` alongside `FunBinding`, `FunType`, `Infix` and `Union`, and the `Header` and `Decls`
-entry points that repeat it; `src/compiler/parser/mod.rs` — `parse_chunks`, which assembles
+entry points that repeat it; `crates/zelkova-syntax/src/parser/mod.rs` — `parse_chunks`, which assembles
 the module from them.
 
 **Decided (`SPEC-3`, by the language owner):** every `import` in a file sits between the
@@ -32,7 +32,7 @@ import Widget      -- accepted today
 
 **Since this was written:** `TOOL-4` deleted the `Module` production. Each top-level
 declaration is now cut into a chunk of its own before the layout pass and parsed with the
-`Decls` entry point (`src/compiler/parser/chunk.rs`), so no one grammar parse sees two
+`Decls` entry point (`crates/zelkova-syntax/src/parser/chunk.rs`), so no one grammar parse sees two
 declarations, and the order below cannot be a repetition in the grammar as written. The
 approach has to be redone against that shape.
 

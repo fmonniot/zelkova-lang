@@ -3,9 +3,9 @@
 **Sizing:** small-to-medium. The check itself is small; deciding where it lives, and what a
 package's source root is, is the part that can grow.
 
-**Location:** `src/compiler/source/files.rs` — `SourceFile::load_private`, which computes
+**Location:** `crates/zelkova-compiler/src/source/files.rs` — `SourceFile::load_private`, which computes
 `module_name` from the relative path and then marks the field `#[allow(dead_code)]`;
-`src/compiler/mod.rs` — `compile_package`'s parse loop, which builds
+`crates/zelkova-compiler/src/lib.rs` — `compile_package`'s parse loop, which builds
 `module_files: HashMap<Name, SourceFileId>` from `module.name` and carries the standing
 `// TODO Verify modules name match file system.` right underneath it.
 
@@ -55,7 +55,7 @@ for `cargo run -- compile std/core` — which is enough to implement this. Wheth
 have more than one
 source root is a *Packages and source layout* question and this ticket does not answer it.
 
-**Acceptance:** two `tests/pipeline.rs` tests over `tests/fixtures/` packages: one where a
+**Acceptance:** two `crates/zelkova/tests/pipeline.rs` tests over `tests/fixtures/` packages: one where a
 file's declared name does not match its path, asserting `compile_package` returns `Err` with
 an error naming the file and both names; one where two files declare the same module name,
 asserting `Err`. `cargo run -- compile std/core` must still print `parsed 8 modules` and list

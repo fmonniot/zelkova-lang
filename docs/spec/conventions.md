@@ -19,10 +19,10 @@ skip. When you add an example, tag it.
 |---|---|
 | `expect=ok` | Parses, canonicalizes and type checks with no errors. The typer checks the declarations it can translate and leaves the rest unchecked, raising no error for them: a pattern nested inside another pattern, an expression form the term language does not model, a reference to a declaration of the same module written without an annotation, and a `module foreign` block whole. So the tag promises that every declaration the typer *reached* honours its annotation, not that it reached every declaration — roughly one in nine of the declarations with a body across today's chapters is skipped, all of them for reaching an unannotated declaration. Exhaustiveness is not run at all: it is a stub that accepts every module. |
 | `expect=parse-error` | Fails somewhere in the parser (tokenizer, layout or grammar). Which specific error is not pinned. Use when the chapter claims only that the source is rejected. |
-| `expect=parse-error:Reason` | The same, and the reason must match. `Reason` is either the phase (`Tokenizer`, `Layout`) or one of the eighteen specific errors — `CharNotClosedError`, `StringNotClosedError`, `InvalidEscape`, `UnicodeError`, `IndentationError`, `TabError`, `UnrecognizedToken`, `IntegerOverflow`, `MultipleDecimalPoints`, `NonAsciiDigit`, `MalformedNumber` and `UnclosedBlockComment` from the tokenizer; `LayoutError` from layout; `InvalidToken`, `UnexpectedEOF`, `UnexpectedToken`, `ExtraToken` and `InfixPrecedenceOutOfRange` from the grammar — matched against the real enums in `src/compiler/parser/`. Use whenever the chapter's prose describes the error the reader will see. One of the eighteen is unusable: `MalformedNumber` exists for a tokenizer defect, and no source reaches it. |
-| `expect=canonical-error:VariantName` | Parses, then canonicalization returns a `Vec<canonical::Error>` containing at least one error of variant `VariantName` — matched against the real variant names in `src/compiler/canonical/mod.rs`'s `Error` enum. |
+| `expect=parse-error:Reason` | The same, and the reason must match. `Reason` is either the phase (`Tokenizer`, `Layout`) or one of the eighteen specific errors — `CharNotClosedError`, `StringNotClosedError`, `InvalidEscape`, `UnicodeError`, `IndentationError`, `TabError`, `UnrecognizedToken`, `IntegerOverflow`, `MultipleDecimalPoints`, `NonAsciiDigit`, `MalformedNumber` and `UnclosedBlockComment` from the tokenizer; `LayoutError` from layout; `InvalidToken`, `UnexpectedEOF`, `UnexpectedToken`, `ExtraToken` and `InfixPrecedenceOutOfRange` from the grammar — matched against the real enums in `crates/zelkova-syntax/src/parser/`. Use whenever the chapter's prose describes the error the reader will see. One of the eighteen is unusable: `MalformedNumber` exists for a tokenizer defect, and no source reaches it. |
+| `expect=canonical-error:VariantName` | Parses, then canonicalization returns a `Vec<canonical::Error>` containing at least one error of variant `VariantName` — matched against the real variant names in `crates/zelkova-compiler/src/canonical/mod.rs`'s `Error` enum. |
 | `expect=type-error` | Parses and canonicalizes, and then the type checker returns at least one error. Which one is not pinned. Use when the chapter claims only that the declaration is a type error. |
-| `expect=type-error:Kind` | The same, and the kind must match — `Kind` is one of the variant names of `ErrorKind` in `src/compiler/typer/mod.rs`, matched against the real enum. Use whenever the chapter's prose describes the error the reader will see. A block the parser or canonicalization rejects fails both of these tags rather than satisfying them: the tag names the phase that decides the rule being claimed. |
+| `expect=type-error:Kind` | The same, and the kind must match — `Kind` is one of the variant names of `ErrorKind` in `crates/zelkova-compiler/src/typer/mod.rs`, matched against the real enum. Use whenever the chapter's prose describes the error the reader will see. A block the parser or canonicalization rejects fails both of these tags rather than satisfying them: the tag names the phase that decides the rule being claimed. |
 | `expect=unimplemented` | Must fail somewhere in parse, canonicalize or type check, but deliberately does not pin *which* error: pinning would wire tokenizer/grammar internals into a prose document, and the tag's whole job is to go red the day the feature is actually implemented. On an expected failure the test run prints the error it observed, so a reviewer can eyeball that the block failed for the reason the chapter intends. |
 | `expect=dependency-error` | The block's *package* (see below) has no valid module order — its imports form a cycle — so nothing in it is canonicalized at all. The one expectation that belongs to a group rather than to a module: every block of the package carries it, or none does. |
 | `expect=fragment` | An illustrative fragment, deliberately not executed. The only opt-out, and it must be written explicitly — there is no implicit skip. |
@@ -30,7 +30,7 @@ skip. When you add an example, tag it.
 A fenced block whose info string's first token is not `zel` (` ```sh `, a bare
 ` ``` `, prose) is not touched by the harness at all.
 
-The `expect=parse-error:Reason` row above is read by `tests/spec.rs`, which checks it against
+The `expect=parse-error:Reason` row above is read by `crates/zelkova-compiler/tests/spec.rs`, which checks it against
 the reasons the harness really accepts: keep every reason name in it backticked, and keep the
 count of specific errors spelled out as a word.
 
@@ -68,7 +68,7 @@ turn a type error in one block into a wave of unresolved names in the next.
 `SPEC-3` settled this, for the *Modules, exposing and imports* chapter, which cannot be
 written one module at a time. Three alternatives were considered and rejected: adjacent
 blocks sharing one expectation (a group can then only say "something failed", not which
-module), a hand-built `Interface` in `tests/spec.rs` (the other module never appears in
+module), a hand-built `Interface` in `crates/zelkova-compiler/tests/spec.rs` (the other module never appears in
 the chapter, so the reader cannot see it), and writing the group to a temp directory for
 `compile_package` (slow, touches disk, and prints status lines on every spec run).
 

@@ -1,4 +1,4 @@
-// The JavaScript checks over the entry point `zelkova run` writes (src/compiler/program_runner.rs,
+// The JavaScript checks over the entry point `zelkova run` writes (crates/zelkova/src/program_runner.rs,
 // "The entry point"): the `main.mjs` that runs the manifest's `main`, reports an abort on
 // standard error with exit code 1, and reports a `Task` that never finishes. `cargo test`
 // pins the text of `main.mjs` (program_runner's own tests) and runs `zelkova run` only

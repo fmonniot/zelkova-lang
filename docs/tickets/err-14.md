@@ -2,9 +2,9 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/canonical/mod.rs` — the `Error::VariableNotFound` raised by the
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — the `Error::VariableNotFound` raised by the
 `ExpressionKind::Variable` arm of `Expression::from_parser`, and the `Error::VariantNotFound`
-raised beside it; `src/compiler/canonical/environment.rs` — `suggest_name`, which already
+raised beside it; `crates/zelkova-compiler/src/canonical/environment.rs` — `suggest_name`, which already
 splits a target on its last `.` and so already knows which names are qualified.
 
 **Problem:** `Widget.label` in a module that never imported `Widget` is reported as a value
@@ -33,7 +33,7 @@ Worth checking at the same time whether the prefix set can suggest a module: a t
 `process_import` already suggests over `interfaces.keys()` for a bad `import` line
 ([`ERR-7`](err-7.md)'s pattern).
 
-**Acceptance:** a `tests/compiler/canonical.rs` case asserting the new variant for
+**Acceptance:** a `crates/zelkova-compiler/tests/canonical.rs` case asserting the new variant for
 `Widget.label` with no `import Widget`, and one asserting that an imported module with a
 missing member still reports `VariableNotFound` with its suggestion. The
 `expect=canonical-error:VariableNotFound` block under *Unresolved names* in

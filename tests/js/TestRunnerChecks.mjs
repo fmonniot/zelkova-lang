@@ -1,5 +1,5 @@
 // The JavaScript checks over what `zelkova test` does with a `Test` that holds a `Task`
-// (src/compiler/test_runner.rs, "The entry point"): the `run.mjs` it generates runs the
+// (crates/zelkova-test-runner/src/lib.rs, "The entry point"): the `run.mjs` it generates runs the
 // `Task`, judges the `Test` it produces, prints a failure's reason, reports an aborted run as
 // errored, runs the tests one at a time in the order they are listed, and exits 1 when any
 // did not pass. `cargo test` pins the text of `run.mjs` (test_runner's own tests) and does

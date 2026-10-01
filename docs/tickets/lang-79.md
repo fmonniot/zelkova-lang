@@ -10,7 +10,7 @@ literal spans lines, so it crosses the tokenizer's line-start bookkeeping and th
 single-line form and left this one out because the chapter does not yet say what value the
 multi-line form has.
 
-**Location:** `src/compiler/parser/tokenizer.rs` — `consume_char`'s `'"'` arm and
+**Location:** `crates/zelkova-syntax/src/parser/tokenizer.rs` — `consume_char`'s `'"'` arm and
 `consume_string`, whose doc comment says what a `"""` reads as today. `docs/spec/lexical-structure.md`
 — [*Strings*](../spec/lexical-structure.md#strings), whose multi-line example is tagged
 `expect=unimplemented` and whose **Not implemented:** paragraph cites this ticket.
@@ -54,7 +54,7 @@ This ticket does not pick. A decision entry (or the chapter itself) settles it f
    `handle_indentation` measures leading spaces. A literal that spans lines must not have its
    interior lines measured as indentation. Check that `next_char` setting `at_line_start` on a
    `\n` inside the literal does not trigger `handle_indentation` on the next poll, and that the
-   layout pass (`src/compiler/parser/layout.rs`), which reads token positions, does not treat
+   layout pass (`crates/zelkova-syntax/src/parser/layout.rs`), which reads token positions, does not treat
    the token after the literal as starting a new line.
 4. Change the chapter's multi-line example to `expect=ok`, remove its **Not implemented:**
    paragraph, and delete this ticket.
@@ -62,7 +62,7 @@ This ticket does not pick. A decision entry (or the chapter itself) settles it f
 **Tests:** in `tokenizer.rs`'s tests, a multi-line literal's value for the chapter's `poem`
 shape, one containing an unescaped `"`, one containing an escape, an unclosed one at end
 of file, and `"""hi"""` written on one line, which today tokenizes as the three strings `""`, `"hi"`
-and `""` and so reaches the typer as an application of a `String`. A `tests/typer.rs` case that a binding to one infers `String`. A test that the
+and `""` and so reaches the typer as an application of a `String`. A `crates/zelkova-compiler/tests/typer.rs` case that a binding to one infers `String`. A test that the
 declaration after a multi-line literal still parses at the right indentation. Mutation-check
 each one.
 

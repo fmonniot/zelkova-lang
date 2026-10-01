@@ -3,11 +3,11 @@
 **Sizing:** medium. The parser already carries the construct end to end; the work is a
 desugaring in canonicalization plus the scoping and arity rules that go with it.
 
-**Location:** `src/compiler/canonical/mod.rs` — `do_values`, whose `match function.bindings.len()`
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `do_values`, whose `match function.bindings.len()`
 has a `1` arm and a `_` arm returning `Error::MultipleBindingsUnsupported`. The `_` arm already
 carries the note describing the fix: *if multiple bindings, we need to create synthetics
 variables and put all bindings into a case expression*.
-`src/compiler/parser/mod.rs` — `Function::bindings: Vec<Match>` and
+`crates/zelkova-syntax/src/parser/mod.rs` — `Function::bindings: Vec<Match>` and
 `Module::from_declarations`, which collects every `Declaration::Function` sharing a name into
 one `Function`; `Match`, which holds one clause's patterns and body.
 
@@ -59,9 +59,9 @@ built from source text, so pick a spelling the tokenizer cannot produce.
 [`docs/spec/patterns.md`](../spec/patterns.md)'s *A pattern that can fail, and one that cannot*
 goes red and is retagged `expect=ok`, with its `**Not implemented:**` paragraph deleted.
 `Error::MultipleBindingsUnsupported` is removed along with its `message`, `notes` and `labels`
-arms and its entry in `tests/spec.rs`'s `variant_names`. Tests in `tests/compiler/canonical.rs`
+arms and its entry in `crates/zelkova-compiler/tests/spec.rs`'s `variant_names`. Tests in `crates/zelkova-compiler/tests/canonical.rs`
 cover clause order, per-clause scoping, and a clause whose pattern count disagrees with the
-annotation; a test in `tests/typer.rs` covers two clauses whose bodies have different types.
+annotation; a test in `crates/zelkova-compiler/tests/typer.rs` covers two clauses whose bodies have different types.
 `cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
 
 **Note for `LANG-19`:** exhaustiveness over clauses becomes checkable only once this lands —

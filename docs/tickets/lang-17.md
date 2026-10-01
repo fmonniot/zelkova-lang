@@ -2,10 +2,10 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/canonical/mod.rs` — `Pattern::from_parser`, the
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `Pattern::from_parser`, the
 `parser::PatternKind::Constructor` arm, which resolves the constructor and then canonicalizes
 `args` without comparing its length to `ctor.type_parameters`.
-`src/compiler/typer/mod.rs` — `translate_pattern`, whose
+`crates/zelkova-compiler/src/typer/mod.rs` — `translate_pattern`, whose
 `args.iter().zip(param_types.iter())` stops at the shorter of the two.
 
 **Decided ([`docs/spec/patterns.md`](../spec/patterns.md), *The arguments must be the ones it
@@ -42,11 +42,11 @@ Add a `canonical::Error` variant carrying the constructor's `QualName`, the expe
 counts, and the pattern's `NodeSpan` — which already covers the constructor and its arguments.
 `CLAUDE.md`'s *An error has to describe itself* applies: the message is written in the
 vocabulary of the source ("`Rect` takes 2 arguments, but this pattern gives 1"), and the new
-variant must be added to `tests/spec.rs`'s `variant_names`, which is an explicit match on
+variant must be added to `crates/zelkova-compiler/tests/spec.rs`'s `variant_names`, which is an explicit match on
 purpose so a new variant fails to compile rather than silently never matching.
 
 **Acceptance:** both examples above are rejected with the new error, with a test in
-`tests/compiler/canonical.rs` for each of too-few and too-many. The `expect=ok` block in
+`crates/zelkova-compiler/tests/canonical.rs` for each of too-few and too-many. The `expect=ok` block in
 [`docs/spec/patterns.md`](../spec/patterns.md)'s *The arguments must be the ones it was
 declared with* section goes red, and is retagged `expect=canonical-error:<new variant>` with
 its `**Known gap:**` paragraph deleted. `cargo run -- compile std/core` still prints

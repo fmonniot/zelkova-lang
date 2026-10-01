@@ -3,7 +3,7 @@
 **Sizing:** small. One `Display` arm and the wording of the note around it; the thought is in
 picking a spelling that cannot be mistaken for source syntax.
 
-**Location:** `src/compiler/typer/mod.rs` — the `Type::Number => write!(f, "number")` arm of
+**Location:** `crates/zelkova-compiler/src/typer/mod.rs` — the `Type::Number => write!(f, "number")` arm of
 `impl Display for Type`, reached from `ErrorKind::message`'s
 `format!("cannot match `{}` with `{}`", left, right)`.
 
@@ -45,7 +45,7 @@ mistaken for a name. `number*`, or `{Int, Float}`, are alternatives; what matter
 reader cannot take it for an identifier.
 
 Then check the neighbours: `Signature::of_type` in the test module renders the same type
-`number` and `tests/typer.rs`'s expectations are written against that spelling, so they move
+`number` and `crates/zelkova-compiler/tests/typer.rs`'s expectations are written against that spelling, so they move
 together. Whether the *test* rendering should follow the diagnostic one or stay as it is
 worth a moment's thought — `Signature` exists to make a whole inferred type readable in an
 assertion, which is a different audience.
@@ -58,7 +58,7 @@ only about how it is spelled in the meantime. Do not render it `Int` on the stre
 rule: `Type::Number` really does unify with both today, and a message naming only one of them
 would describe the compiler wrongly rather than describe the language rightly.
 
-**Acceptance:** a test in `tests/typer.rs` pinning the rendered message for a literal against
+**Acceptance:** a test in `crates/zelkova-compiler/tests/typer.rs` pinning the rendered message for a literal against
 a non-numeric annotation, asserting the new spelling. No message anywhere renders a type using
 a spelling the grammar would accept as a type variable.
 

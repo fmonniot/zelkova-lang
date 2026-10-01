@@ -7,8 +7,8 @@ record before the IR is written, not rediscovered afterwards. It is not part of
 **Depends on:** all of [`GEN-1`](gen-1.md) — there is no backend to be the second of until the
 first exists.
 
-**Location:** a sibling of the JavaScript backend, `src/compiler/javascript.rs`, reading the same
-`src/compiler/ir/`.
+**Location:** a sibling of the JavaScript backend, `crates/zelkova-js/src/lib.rs`, reading the same
+`crates/zelkova-compiler/src/ir/`.
 
 **Decided ([`docs/spec/interop.md`](../spec/interop.md)):** Zelkova compiles to more than one
 target and [a facade is written once for all of them](../spec/interop.md#a-facade-names-a-boundary-not-a-backend):
@@ -28,7 +28,7 @@ constructor, carrying its arguments as a payload.
 
 **Problem:** nothing targets WebAssembly, which is the eventual target the project is for.
 
-**What the IR already owes this backend**, and why `src/compiler/ir/` is shaped as it is:
+**What the IR already owes this backend**, and why `crates/zelkova-compiler/src/ir/` is shaped as it is:
 
 - **Types on every node.** WebAssembly is statically typed. A representation class — i64, f64, a
   reference, and for a reference which layout — is read off a node's type, and there is nothing

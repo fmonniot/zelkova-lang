@@ -3,7 +3,7 @@
 **Sizing:** small-to-medium. The duplicate check is small and has a `TODO` waiting for it; the
 adjacency rule needs the grammar to stop treating an annotation as an unordered declaration.
 
-**Location:** `src/compiler/parser/mod.rs` — `Module::from_declarations`, which buckets
+**Location:** `crates/zelkova-syntax/src/parser/mod.rs` — `Module::from_declarations`, which buckets
 `Declaration::Function` and `Declaration::FunctionType` into a `HashMap<Name,
 Vec<Declaration>>` keyed by name, then folds each bucket with `tpe.replace(t.tpe)`. The
 `// TODO Error if more than function type is defined` sits on the line above.
@@ -19,7 +19,7 @@ longer sufficient: a blank line, and a comment, both leave the declaration order
 neither is visible to a check that only asks which declaration comes next.
 
 Answering "is the declaration on the very next line" needs something the AST does not carry.
-`NodeSpan` (`src/compiler/position.rs`) holds byte offsets only — the tokenizer's `Position`
+`NodeSpan` (`crates/zelkova-syntax/src/position.rs`) holds byte offsets only — the tokenizer's `Position`
 has `line` and `column`, but they are dropped by the time a node is built — so the check needs
 either the source text in hand (to count newlines between the annotation's end and the
 declaration's start, which also answers the comment case: anything but one newline and
@@ -97,7 +97,7 @@ written has to exempt it, or be phrased as "an annotation is followed by the dec
 annotates, if that declaration exists".
 
 **Acceptance:** two annotations for one name is an error naming the name, with a caret under
-each — a test in `tests/compiler/canonical.rs`. Three separations are errors, each with its own
+each — a test in `crates/zelkova-compiler/tests/canonical.rs`. Three separations are errors, each with its own
 test: another declaration between the annotation and its body, a blank line between them, and a
 comment between them. An annotation directly above its declaration still compiles, including a
 multi-line one. A `module javascript` facade still compiles, and `cargo run -- compile

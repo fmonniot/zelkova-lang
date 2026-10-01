@@ -2,15 +2,15 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/resolve.rs` — `Error::ModuleNameCollision`, `Error::ReservedModuleName`,
+**Location:** `crates/zelkova-compiler/src/resolve.rs` — `Error::ModuleNameCollision`, `Error::ReservedModuleName`,
 `ModuleOrigin`, `OriginKind::Local`, `LocalModule`, and the `impl PhaseError for Error` block
-(only a `message()` arm, no `labels()` arm at all); `src/compiler/mod.rs` — the loop in
+(only a `message()` arm, no `labels()` arm at all); `crates/zelkova-compiler/src/lib.rs` — the loop in
 `compile_in_build` (around the `for (id, file) in sources...` walk) that parses each file,
 already holds the file's `SourceFileId` as `id` at the exact point it builds each
 `resolve::LocalModule`, and discards it.
 
 **Problem:** `PhaseError::labels()` defaults to an empty `Vec`, which renders as no caret
-(`src/compiler/mod.rs`, `PhaseError` trait doc). `resolve::Error`'s `impl PhaseError` never
+(`crates/zelkova-compiler/src/lib.rs`, `PhaseError` trait doc). `resolve::Error`'s `impl PhaseError` never
 overrides it — the whole `impl` block is one `message()` match — so every variant in the enum
 renders with no caret, `ModuleNameCollision` and `ReservedModuleName` included.
 
@@ -44,7 +44,7 @@ reachable without a grammar/AST change, which is a separate, larger concern and 
 of scope here. What's reachable today:
 
 1. Add `file_id: SourceFileId` to `LocalModule` (`resolve.rs`), filled from `id` at the
-   `local_modules.push(resolve::LocalModule { .. })` call site in `src/compiler/mod.rs` — the
+   `local_modules.push(resolve::LocalModule { .. })` call site in `crates/zelkova-compiler/src/lib.rs` — the
    value is already in scope there, this is a field addition and one extra assignment.
 2. Give `OriginKind::Local` the same field alongside `file: String` (keep `file` — `describe()`
    still needs a display path for the message).
@@ -59,8 +59,8 @@ of scope here. What's reachable today:
    fabricating one; a collision between a local module and an unwrapped/namespaced one still
    renders with only the local half underlined, which is strictly more than today's nothing.
 
-**Acceptance:** a `tests/compiler/` (or wherever `resolve::Error` already has coverage — check
-for an existing `tests/compiler/resolve.rs` or similar first) case building a package with two
+**Acceptance:** a `crates/zelkova-compiler/tests/` (or wherever `resolve::Error` already has
+coverage — check for an existing `crates/zelkova-compiler/tests/resolve.rs` or similar first) case building a package with two
 same-named local modules, asserting the returned `ModuleNameCollision`'s `labels()` is
 non-empty and each label's `file` is `Some(..)` matching the expected `SourceFileId`. A second
 case for a non-core package declaring a module named `Basics` (or another of the eight),

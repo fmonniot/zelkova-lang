@@ -3,10 +3,10 @@
 **Sizing:** medium. A small grammar addition, but it lands in both ASTs and in the typer, and
 `\` has to stop being an operator character first.
 
-**Location:** `src/compiler/parser/tokenizer.rs` — `is_operator_char`, which lists `'\\'`
-among the operator characters. `src/compiler/parser/grammar.lalrpop` — `Expr` and
+**Location:** `crates/zelkova-syntax/src/parser/tokenizer.rs` — `is_operator_char`, which lists `'\\'`
+among the operator characters. `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `Expr` and
 `AtomicExpr`, neither of which has a lambda alternative.
-`src/compiler/parser/mod.rs` and `src/compiler/canonical/mod.rs` — `ExpressionKind` in each,
+`crates/zelkova-syntax/src/parser/mod.rs` and `crates/zelkova-compiler/src/canonical/mod.rs` — `ExpressionKind` in each,
 the canonical one carrying `// Lambda` as a placeholder comment.
 
 **Decided ([`docs/spec/expressions.md`](../spec/expressions.md), *Lambdas*;
@@ -68,6 +68,6 @@ and `\(Point x y) -> add x y` — go red and are retagged, with their **Not impl
 paragraphs deleted. The **Not implemented:** paragraph in
 [`docs/spec/name-resolution.md`](../spec/name-resolution.md)'s *Scopes* section goes with them,
 and that chapter gains a block showing a lambda parameter shadowing a top-level name. A parser
-test pins that `\x y -> e` builds the same tree as `\x -> \y -> e`, and a `tests/typer.rs`
+test pins that `\x y -> e` builds the same tree as `\x -> \y -> e`, and a `crates/zelkova-compiler/tests/typer.rs`
 test pins that a lambda passed as an argument checks. `cargo run -- compile std/core` still prints
 `parsed 8 modules` and lists all eight as checked.

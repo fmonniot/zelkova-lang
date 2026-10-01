@@ -8,9 +8,9 @@ whose meaning for `NaN` and `-0.0` the spec does not state.
 **Part of:** no active program. Found while reviewing [`LANG-77`](README.md), which made a
 string literal reachable in a pattern and left the pattern untranslated.
 
-**Location:** `src/compiler/typer/mod.rs` — `translate_pattern`, whose arms cover `Bool`,
-`Int`, `Char` and `Unit` and return `None` for every other literal pattern. `src/compiler/ir/mod.rs`
-— `LiteralValue`. `src/compiler/javascript.rs` — where a decision tree's literal test is
+**Location:** `crates/zelkova-compiler/src/typer/mod.rs` — `translate_pattern`, whose arms cover `Bool`,
+`Int`, `Char` and `Unit` and return `None` for every other literal pattern. `crates/zelkova-compiler/src/ir/mod.rs`
+— `LiteralValue`. `crates/zelkova-js/src/lib.rs` — where a decision tree's literal test is
 emitted. `docs/spec/patterns.md` — [*Literal patterns*](../spec/patterns.md#literal-patterns).
 
 **Problem:** [*Literal patterns*](../spec/patterns.md#literal-patterns) says any literal
@@ -20,7 +20,7 @@ returns `None`, so the whole declaration is left unchecked without an error: a t
 it, such as `case 1 of "a" -> …`, is never reported. The JavaScript backend then refuses the
 declaration with "cannot be compiled to JavaScript, because the type checker could not check
 it", which blames the typer for something the user wrote as the chapter allows.
-`tests/javascript.rs`'s `a_string_pattern_is_refused` pins the refusal for strings. No test
+`crates/zelkova-js/tests/javascript.rs`'s `a_string_pattern_is_refused` pins the refusal for strings. No test
 covers floats.
 
 **Approach:**

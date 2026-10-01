@@ -1119,7 +1119,7 @@ fn a_bool_pattern_is_tested_by_its_value_not_a_tag() {
 /// The `True`/`False` constructor spelling emits exactly the same condition as the
 /// `true`/`false` literal spelling does — `ir::translate_pattern` normalises both to the
 /// same [`ir::Outcome::Literal`] before this backend ever sees the pattern
-/// (`a_bool_constructor_is_tested_by_value_like_a_bool_literal` in `tests/ir.rs` pins
+/// (`a_bool_constructor_is_tested_by_value_like_a_bool_literal` in `crates/zelkova-compiler/tests/ir.rs` pins
 /// that), so this backend has no `Bool`-specific code path to tell the two spellings
 /// apart at all. `True`/`False` is the more common spelling in real code, and nothing
 /// above this test exercises it.

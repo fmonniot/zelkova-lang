@@ -3,7 +3,7 @@
 **Sizing:** medium. The change is small in `infer_annotated`; deciding what a type variable in
 an annotation *is* is the part that takes thought.
 
-**Location:** `src/compiler/typer/mod.rs` — `infer_annotated`, which turns the annotation into
+**Location:** `crates/zelkova-compiler/src/typer/mod.rs` — `infer_annotated`, which turns the annotation into
 one ordinary `Constraint` against the body's inferred type; and
 `value_to_term_and_annotation`, which runs the annotation through
 `canonical_type_to_typer_type` with a fresh `var_map`, so each type variable written in the
@@ -66,7 +66,7 @@ body forces `a := Int` proves `Comparable Int` and publishes `Comparable a`. Rig
 what make an annotation's context a thing the body is held to.
 
 **Acceptance:** `f : a -> a` with `f x = C` is a type error naming the annotation, and
-`f : a -> a` with `f x = x` still checks — tests in `tests/typer.rs`.
+`f : a -> a` with `f x = x` still checks — tests in `crates/zelkova-compiler/tests/typer.rs`.
 `cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
 
 **The spec block for this goes red on its own.** `expect=ok` means the block type checks, so

@@ -3,7 +3,7 @@
 **Severity:** low (the collision is still reported once `src/` and every test-dependency
 compile; until then the user sees other errors first, and never a wrong build).
 
-**Location:** `src/compiler/mod.rs` — `compile`'s second stage (the `if let Some((root,
+**Location:** `crates/zelkova-compiler/src/lib.rs` — `compile`'s second stage (the `if let Some((root,
 environment)) = root_tests` block), `compile_tests`'s `visible_modules` call, and
 `compile_in_build`'s step 3.d, whose `visible_modules` call is handed the plain
 `dependencies` alone.
@@ -38,7 +38,7 @@ not to the ordering that PR was about.
 
 **Acceptance:** a fixture whose root has a failing `src/` module and an unwrapped
 test-dependency exposing a module of the same name as one of the root's own; in
-`tests/pipeline.rs`, `compile_package_with_tests` on it returns the `ModuleNameCollision`
+`crates/zelkova/tests/pipeline.rs`, `compile_package_with_tests` on it returns the `ModuleNameCollision`
 alone, with no type error. The **Known gap:** paragraph in
 [`docs/spec/packages.md`](../spec/packages.md#two-modules-under-one-name-is-an-error) is
 removed (or, under option 2, narrowed to what remains) in the same diff.

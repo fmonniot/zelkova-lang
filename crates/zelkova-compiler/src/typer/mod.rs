@@ -1297,8 +1297,8 @@ fn translate_pattern(
         // Each element gets a fresh type, and the matched value has to be the tuple of
         // them. An element is held to the same limit a constructor's argument is (see
         // `translate_sub_pattern`). A tuple nested in a tuple is the stand-in for an
-        // untranslatable declaration in `tests/typer.rs`, `tests/ir.rs` and
-        // `tests/javascript.rs` — the only nested shape that parses today — so lifting
+        // untranslatable declaration in `crates/zelkova-compiler/tests/typer.rs`, `crates/zelkova-compiler/tests/ir.rs` and
+        // `crates/zelkova-js/tests/javascript.rs` — the only nested shape that parses today — so lifting
         // this limit turns all three red, and each needs a new stand-in.
         canonical::PatternKind::Tuple(elements) => {
             let elements = elements
@@ -2328,7 +2328,7 @@ mod tests {
     // These terms are written by hand rather than translated from source, so they
     // have no position — `Term::bare`. What they pin is inference, which does not
     // read spans; the tests that pin what a *diagnostic* points at go through real
-    // source, in `tests/typer.rs`.
+    // source, in `crates/zelkova-compiler/tests/typer.rs`.
     fn bool(b: bool) -> Term {
         Term::bare(TermKind::Bool(b))
     }

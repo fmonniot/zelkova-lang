@@ -2,7 +2,7 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/canonical/mod.rs`, `do_types` — the `map` over `tpe.variants` builds
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs`, `do_types` — the `map` over `tpe.variants` builds
 each variant's `type_parameters` with `Type::from_parser_type` and never compares the variables
 it finds against `tpe.type_arguments`.
 
@@ -35,6 +35,6 @@ look at a variant's immediate arguments, since `= Box (a -> a)` is the same defe
 **Acceptance:** the last `expect=ok` block of
 [`docs/spec/name-resolution.md`](../spec/name-resolution.md) (`type Box = Box a`) goes **red** —
 retag it `expect=canonical-error:` with the new variant and delete the **Known gap:** paragraph
-above it. A `tests/compiler/canonical.rs` case asserting the variant, and one asserting that
+above it. A `crates/zelkova-compiler/tests/canonical.rs` case asserting the variant, and one asserting that
 `type Box a = Box a` and a nested `type Box a = Box (a -> a)` still compile, seen to fail before
 the fix.

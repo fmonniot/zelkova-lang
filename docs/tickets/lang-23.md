@@ -3,7 +3,7 @@
 **Sizing:** small. One `AtomicExpr` alternative; the spelling already exists in two other
 positions.
 
-**Location:** `src/compiler/parser/grammar.lalrpop` — `AtomicExpr`, and the `Op` production it
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `AtomicExpr`, and the `Op` production it
 would reach; `Exposed` and `Infix`, which already spell `"(" <op:Op> ")"`.
 
 **Decided ([`docs/spec/expressions.md`](../spec/expressions.md), *Naming an operator*):** an
@@ -38,7 +38,7 @@ Watch for an ambiguity against the existing `"(" <Expr> ")"` grouping, since `-`
 apart.
 
 **Acceptance:** `plus = (+)` and `two = (+) 1 1` parse and canonicalize, with a test in
-`tests/compiler/canonical.rs` asserting the resolved name.
+`crates/zelkova-compiler/tests/canonical.rs` asserting the resolved name.
 `cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as checked.
 The `expect=unimplemented` block in
 [`docs/spec/expressions.md`](../spec/expressions.md)'s *Naming an operator* section goes red —

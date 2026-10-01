@@ -4,12 +4,12 @@
 typer do not, and the typer's `Term` language has to grow a `let` before generalisation can
 mean anything.
 
-**Location:** `src/compiler/parser/grammar.lalrpop` — the `extern` token block, which maps no
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — the `extern` token block, which maps no
 terminal to `Token::Let` or `Token::In`, and `Expr`, which has no alternative for either.
-`src/compiler/parser/tokenizer.rs` — `Token::Let` and `Token::In`, both produced already.
-`src/compiler/parser/layout.rs` — `Context::Let`, pushed on `Token::Let` and popped on
-`Token::In`, already written. `src/compiler/parser/mod.rs` and
-`src/compiler/canonical/mod.rs` — `ExpressionKind` in each, the canonical one carrying
+`crates/zelkova-syntax/src/parser/tokenizer.rs` — `Token::Let` and `Token::In`, both produced already.
+`crates/zelkova-syntax/src/parser/layout.rs` — `Context::Let`, pushed on `Token::Let` and popped on
+`Token::In`, already written. `crates/zelkova-syntax/src/parser/mod.rs` and
+`crates/zelkova-compiler/src/canonical/mod.rs` — `ExpressionKind` in each, the canonical one carrying
 `// Let`, `// LetRec` and `// LetDestruct` as placeholder comments.
 
 **Decided ([`docs/spec/expressions.md`](../spec/expressions.md), *`let … in`*;
@@ -76,6 +76,6 @@ signal to come back and finish it, and the two open layout questions are answere
 same change. The **Not implemented:** paragraph in
 [`docs/spec/name-resolution.md`](../spec/name-resolution.md)'s *Scopes* section goes with them,
 and that chapter gains a block showing a `let` binding shadowing a top-level name. A
-`tests/typer.rs` test pins that a `let`-bound identity function used at two types checks, which
+`crates/zelkova-compiler/tests/typer.rs` test pins that a `let`-bound identity function used at two types checks, which
 is the generalisation question in point 4. `cargo run -- compile std/core` still prints
 `parsed 8 modules` and lists all eight as checked.

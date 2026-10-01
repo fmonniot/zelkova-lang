@@ -82,7 +82,7 @@ ticket to be the first pass over them and expect it to find more than it was loo
 **Acceptance:** `min Red Blue`, on a user union type with no `Comparable` instance, is a type
 error — the program `SPEC-11`'s chapter and BUG-20 both use as their worked example, and the
 single check this ticket exists for. `eq` applied to a function value is a type error rather
-than a runtime crash. Tests in `tests/typer.rs` for both, plus `tests/pipeline.rs` coverage
+than a runtime crash. Tests in `crates/zelkova-compiler/tests/typer.rs` for both, plus `crates/zelkova/tests/pipeline.rs` coverage
 that the real `std/core` modules still check. `cargo run -- compile std/core` still prints
 `parsed 8 modules` and lists all eight as checked. `docs/tickets/bug-20.md` is deleted and its
 row tombstoned.

@@ -1,5 +1,5 @@
 # A program that does not compile: `main` names `App`, which is well formed, but `App` also
-# declares a value whose body does not have the type it is annotated with. `tests/cli.rs`
+# declares a value whose body does not have the type it is annotated with. `crates/zelkova/tests/cli.rs`
 # runs `zelkova run` on a copy of it with a stub `node`, to pin that a build that fails never
 # reaches `node`.
 name = "package-run-type-error"

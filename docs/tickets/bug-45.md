@@ -4,9 +4,9 @@
 program runs, and only the WebAssembly target, which does not exist yet, would have no spelling
 for it).
 
-**Location:** `src/compiler/canonical/mod.rs` — `check_facade_admitted_type`, whose
+**Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `check_facade_admitted_type`, whose
 `Type::Type(_, args)` arm checks a union's type arguments and never the union's declaration.
-`src/compiler/javascript.rs` — `Error::NoPredicate`, which is where the result-side case is
+`crates/zelkova-js/src/lib.rs` — `Error::NoPredicate`, which is where the result-side case is
 caught today.
 
 **Problem:** [Which types may cross the boundary](../spec/interop.md#which-types-may-cross-the-boundary)
@@ -36,7 +36,7 @@ unsafe run : Handler -> Int
 
 both signatures canonicalize. `first` is refused later, by `javascript::emit`, with
 `Error::NoPredicate` naming the constructor `Handler.Handler` — that refusal is what
-`tests/javascript.rs`' `a_union_holding_a_function_has_no_predicate` pins. `run` is accepted
+`crates/zelkova-js/tests/javascript.rs`' `a_union_holding_a_function_has_no_predicate` pins. `run` is accepted
 all the way through and emitted, because only a result is checked on JavaScript. The same holds
 for a constructor argument that is a type variable the union does not bind
 ([`LANG-31`](lang-31.md)).
@@ -49,7 +49,7 @@ modules and exposed without their constructors — an `Interface` does not carry
 needs either the constructor types published in the interface or the check moved to where the
 whole build is visible. The ticket does not pick. A recursive union needs a visited set.
 
-**Acceptance:** a test in `tests/compiler/canonical.rs` asserts that both `first` and `run`
+**Acceptance:** a test in `crates/zelkova-compiler/tests/canonical.rs` asserts that both `first` and `run`
 above are `FacadeTypeNotAdmitted`. `Error::NoPredicate`'s `Unpredicated::Function` and
 `Unpredicated::Variable` cases become unreachable from a signature that canonicalized, and the
 doc comment on `Error::NoPredicate` is updated to say so.

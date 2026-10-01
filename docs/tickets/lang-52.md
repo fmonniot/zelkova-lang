@@ -2,9 +2,9 @@
 
 **Sizing:** small. One rule, in the tokenizer or in a grammar action, plus the tests.
 
-**Location:** `src/compiler/parser/grammar.lalrpop`'s `QualVarIdent` and `QualTypeIdent`, which
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop`'s `QualVarIdent` and `QualTypeIdent`, which
 read `"up_ident" "." QualVarIdent` with no adjacency requirement; or
-`src/compiler/parser/tokenizer.rs`'s `consume_operator`, which is where the whitespace is still
+`crates/zelkova-syntax/src/parser/tokenizer.rs`'s `consume_operator`, which is where the whitespace is still
 visible.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decision 3):** a `.`

@@ -4,11 +4,11 @@
 away and nothing replaces them — but it changes what type checks, so every expectation written
 against the old behaviour moves with it.
 
-**Location:** `src/compiler/typer/mod.rs` — the `Number` variant of `Type`, both `Display`
+**Location:** `crates/zelkova-compiler/src/typer/mod.rs` — the `Number` variant of `Type`, both `Display`
 arms for it (the `Debug`-flavoured one and the user-facing one), `Signature::of_type` in the
-test module; `src/compiler/typer/constraint.rs` — the integer-literal arm of `collect`, which
-constrains a literal to `Type::Number`; `src/compiler/typer/unifier.rs` — `is_numeric` and the
-`(Type::Number, other)` arm of `unify_one_constraint`; `tests/typer.rs`, whose expectations are
+test module; `crates/zelkova-compiler/src/typer/constraint.rs` — the integer-literal arm of `collect`, which
+constrains a literal to `Type::Number`; `crates/zelkova-compiler/src/typer/unifier.rs` — `is_numeric` and the
+`(Type::Number, other)` arm of `unify_one_constraint`; `crates/zelkova-compiler/tests/typer.rs`, whose expectations are
 written against the `number` spelling.
 
 **Decided ([`docs/spec/expressions.md`](../spec/expressions.md), *A literal's type is its
@@ -46,7 +46,7 @@ deleting the variant and the spelling with it.
    `Type::Number`. Confirm the float-literal arm already gives `Type::Float`.
 2. `Type::Number`, `is_numeric` and the special arm in `unify_one_constraint` go away.
    `grep -rn "Type::Number" src/` returns nothing.
-3. `tests/typer.rs`'s expectations move off the `number` spelling. Several will change from
+3. `crates/zelkova-compiler/tests/typer.rs`'s expectations move off the `number` spelling. Several will change from
    passing to failing — an annotation of `Float` against an integer-literal body among them —
    and each is a case where the new behaviour is the specified one; check each rather than
    retagging in bulk.
@@ -55,7 +55,7 @@ deleting the variant and the spelling with it.
    compiler that accepted an integer literal at `Float`. Any literal there that meant a
    `Float` needs a point. Expect this to be the bulk of the diff.
 
-**Acceptance:** tests in `tests/typer.rs`. `x = 1` infers `Int`. `x = 1.5` infers `Float`.
+**Acceptance:** tests in `crates/zelkova-compiler/tests/typer.rs`. `x = 1` infers `Int`. `x = 1.5` infers `Float`.
 `x : Float` with a body of `1` is now an **error** — the reversal this ticket is for — and
 `1.0` checks. `x : Char` with a body of `1` is an error whose message contains no spelling the
 grammar would accept as a type variable, which is the assertion ERR-13 asked for, surviving

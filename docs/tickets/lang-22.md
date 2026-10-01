@@ -2,7 +2,7 @@
 
 **Sizing:** small. One production's right-hand side, plus whatever ambiguity that opens.
 
-**Location:** `src/compiler/parser/grammar.lalrpop` — `InfixExpr`'s
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `InfixExpr`'s
 `<lhs: AppExpr> <op: SpannedOp> <rhs: InfixExpr>` alternative, and `Expr`, which is where
 prefix negation, `if` and `case` live.
 

@@ -134,7 +134,7 @@ mod tests {
     }
 
     /// The shape the ticket's acceptance test pins end to end
-    /// (`tests/pipeline.rs::a_test_is_found_by_its_qualname_not_its_spelling`), at the
+    /// (`crates/zelkova/tests/pipeline.rs::a_test_is_found_by_its_qualname_not_its_spelling`), at the
     /// unit level: a real `Test`, an unrelated `Int`, and a value of some other
     /// package's own type spelled `Test` too — only the first is collected, and the
     /// unrelated one never enters the sort.

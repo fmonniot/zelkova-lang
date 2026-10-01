@@ -2,9 +2,9 @@
 
 **Sizing:** small.
 
-**Location:** `src/compiler/canonical/environment.rs` — `ScopedEnvironment::expose_pattern`,
+**Location:** `crates/zelkova-compiler/src/canonical/environment.rs` — `ScopedEnvironment::expose_pattern`,
 which walks a pattern inserting each `PatternKind::Variable` into `self.variables` with no
-check for what is already there. `src/compiler/canonical/mod.rs` — its two callers:
+check for what is already there. `crates/zelkova-compiler/src/canonical/mod.rs` — its two callers:
 `do_values` (a declaration's parameter patterns) and `Expression::from_parser`'s
 `parser::ExpressionKind::Case` arm (a branch's pattern).
 
@@ -28,7 +28,7 @@ f a a =
 Neither is reported by any phase. The body reads as if it names the first binding and does not.
 
 The typer resolves one mix of the two the other way. `wrap_with_patterns`
-(`src/compiler/typer/mod.rs`) binds a parameter written as a pattern in a match nested inside
+(`crates/zelkova-compiler/src/typer/mod.rs`) binds a parameter written as a pattern in a match nested inside
 every parameter, so the pattern's names shadow a same-named plain parameter whichever comes
 first: `f (x, _) x = x` reads the second `x` in the `canonical::Module` and the first in the
 typed term an `ir::Module` is built from. Once this ticket rejects the source, the sentence on
@@ -44,12 +44,12 @@ against the set accumulated for the whole binding position.
 Add a `canonical::Error` variant carrying the name, the span of the repeat and the span of the
 first occurrence — a secondary label under the first is what makes the message readable, and
 `PhaseError::labels` already supports more than one (`CLAUDE.md`, *An error has to describe
-itself*). Add it to `tests/spec.rs`'s `variant_names`.
+itself*). Add it to `crates/zelkova-compiler/tests/spec.rs`'s `variant_names`.
 
 `NodeSpan`'s `PartialEq` always returns `true`, so a test that cares which occurrence is
 underlined asserts on `diagnostic.labels[..].range` rather than on the whole error value.
 
-**Acceptance:** both examples above are rejected, with a test in `tests/compiler/canonical.rs`
+**Acceptance:** both examples above are rejected, with a test in `crates/zelkova-compiler/tests/canonical.rs`
 for the within-one-pattern case and one for the across-parameters case. **Both** `expect=ok`
 blocks in [`docs/spec/patterns.md`](../spec/patterns.md)'s *A pattern binds each name once*
 section go red — one per example above — and are retagged

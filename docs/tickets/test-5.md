@@ -3,8 +3,8 @@
 **Sizing:** small. It changes one test helper. What could make it bigger is finding that a
 third helper shares the scheme (see **Location**).
 
-**Location:** `src/compiler/manifest.rs` — the test module's `tempdir()` and its `TempDir`,
-whose `Drop` runs `remove_dir_all`. `src/compiler/output.rs` — the test module's `fresh_dir`,
+**Location:** `crates/zelkova-compiler/src/manifest.rs` — the test module's `tempdir()` and its `TempDir`,
+whose `Drop` runs `remove_dir_all`. `crates/zelkova-js/src/output.rs` — the test module's `fresh_dir`,
 which builds its name the same way and is not affected in practice (see **Problem**). A search
 of `src/`, `tests/` and `tools/` for `SystemTime` found only these two.
 

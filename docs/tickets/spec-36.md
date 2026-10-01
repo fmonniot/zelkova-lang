@@ -4,7 +4,7 @@
 taken.
 
 **Location:** `docs/spec/expressions.md` — the `expect=unimplemented` block declaring
-`double : Number a => a -> a` and the `**Not implemented:**` paragraph after it; `tests/spec.rs` — `stdlib_interfaces`, the
+`double : Number a => a -> a` and the `**Not implemented:**` paragraph after it; `crates/zelkova-compiler/tests/spec.rs` — `stdlib_interfaces`, the
 stand-in `Basics` a block compiles against.
 
 **Depends on:** none to file; the block's real repair depends on [LANG-12](lang-12.md) and

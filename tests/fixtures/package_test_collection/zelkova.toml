@@ -1,4 +1,4 @@
-# The fixture `tests/pipeline.rs::a_test_is_found_by_its_qualname_not_its_spelling`
+# The fixture `crates/zelkova/tests/pipeline.rs::a_test_is_found_by_its_qualname_not_its_spelling`
 # drives: `tests/AppTest.zel` exposes a real `Test.Test` value, an unrelated `Int`
 # helper, and a value of a type it declares itself under the same spelling `Test` — so
 # the collecting pass has to tell the three apart by the exposed value's full

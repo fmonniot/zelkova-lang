@@ -1088,7 +1088,7 @@ fn backticked(text: &str) -> Vec<&str> {
 /// UpperCamel identifiers.
 ///
 /// The filter is what lets the whole row be scanned rather than one of its cells:
-/// `expect=parse-error:Reason` and `src/compiler/parser/` are backticked too and carry
+/// `expect=parse-error:Reason` and `crates/zelkova-syntax/src/parser/` are backticked too and carry
 /// characters no error name has. `Reason` itself is the tag's own placeholder — the
 /// row is titled with it — and is not one of the names it documents.
 fn documented_reason_names(row: &str) -> Vec<&str> {

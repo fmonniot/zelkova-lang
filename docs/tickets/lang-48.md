@@ -4,9 +4,9 @@
 change* applies — `grammar.lalrpop`, the `parser` AST and the `canonical` conversion land
 together — and it adds a form to three of the grammar's languages at once.
 
-**Location:** `src/compiler/parser/grammar.lalrpop`; `src/compiler/parser/mod.rs`'s `TypeKind`
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop`; `crates/zelkova-syntax/src/parser/mod.rs`'s `TypeKind`
 and `ExpressionKind`; `canonical::Type::from_parser_type` and
-`canonical::Expression::from_parser_expression` in `src/compiler/canonical/`.
+`canonical::Expression::from_parser_expression` in `crates/zelkova-compiler/src/canonical/`.
 
 **Depends on:** [`LANG-47`](lang-47.md), hard. There is no brace token to consume.
 

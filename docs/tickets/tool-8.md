@@ -18,13 +18,13 @@ importer of a module with a syntax error report no missing-module error. The imp
 turned out to follow any failure in the module, so it was split out here and `TOOL-4` stops at
 the parser.
 
-**Location:** `src/compiler/mod.rs` — `check_module`, whose three phases each end it with `?`,
+**Location:** `crates/zelkova-compiler/src/lib.rs` — `check_module`, whose three phases each end it with `?`,
 `parse_root`, which drops a module that has a syntax error, and `Checked`;
-`src/compiler/dependencies.rs` — `ModuleWalker::check_in_order`, which inserts an `Interface`
+`crates/zelkova-compiler/src/dependencies.rs` — `ModuleWalker::check_in_order`, which inserts an `Interface`
 on `Ok` only, and whose doc comment already names "partial progress *within* one failing
-module" as open; `src/compiler/canonical/mod.rs` — `canonicalize`, which returns `Err` when
+module" as open; `crates/zelkova-compiler/src/canonical/mod.rs` — `canonicalize`, which returns `Err` when
 its `errors` vector holds anything, and `Module::to_interface`;
-`src/compiler/typer/mod.rs` — `type_check`.
+`crates/zelkova-compiler/src/typer/mod.rs` — `type_check`.
 
 **Problem:** a module either passes every phase or contributes nothing. When it fails, the
 modules that import it are checked against an environment it is absent from, and each reports
@@ -119,7 +119,7 @@ What is not decided:
 
 For step 1, which is its own PR:
 
-- A test in `tests/pipeline.rs` compiles the two-module package above. `A`'s type error comes
+- A test in `crates/zelkova/tests/pipeline.rs` compiles the two-module package above. `A`'s type error comes
   back and no error names `B`. It is mutation-checked by restoring the `Ok`-only insert in
   `check_in_order`.
 - A companion test gives `A` a canonicalization error instead and asserts `B` still reports the

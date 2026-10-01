@@ -82,7 +82,7 @@ and match them; `bug-2.md` and `ast-2.md` are the models.
 
 Rules that are not negotiable:
 
-- **Cite symbols, not line numbers.** `` `src/compiler/mod.rs` — `compile_package`'s final
+- **Cite symbols, not line numbers.** `` `crates/zelkova-compiler/src/lib.rs` — `compile_package`'s final
   `Ok(())` `` survives the next refactor; `mod.rs:287` does not. The migrated `TODO.md` cited
   line numbers and most of them had already drifted.
 - **Severity for bugs**: `high` = miscompile or data loss, `medium` = wrong behaviour under
