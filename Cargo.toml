@@ -30,4 +30,5 @@ clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
 indoc = "2.0"
+serde_json = "1.0.151"
 spec-doc = { path = "tools/spec-doc" }

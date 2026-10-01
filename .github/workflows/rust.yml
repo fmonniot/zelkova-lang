@@ -37,9 +37,18 @@ jobs:
       # std/core's Zelkova tests, its companions' checks among them (tests/Js/).
       - name: Zelkova tests
         run: cargo run -- test std/core
+      # The editor grammar's scope assertions (editors/vscode/tests/). Needs no compiler, so it
+      # is independent of the steps around it. The keyword list's agreement with the spec is
+      # `cargo test --test editor_grammar`, in the Test Suite job.
+      - name: Editor grammar
+        if: ${{ !cancelled() }}
+        working-directory: editors/vscode
+        run: |
+          npm ci
+          npm test
       # The behavioural half of what the compiler emits: each file compiles its own fixture
       # under tests/fixtures/ with this checkout's compiler, then loads the output. Runs even
-      # when the step above failed, so one red step does not hide the other.
+      # when an earlier step failed, so one red step does not hide the other.
       - name: Compiler checks
         if: ${{ !cancelled() }}
         run: |

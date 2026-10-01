@@ -1,0 +1,113 @@
+-- SYNTAX TEST "source.zelkova" "reserved and soft keywords"
+
+module Example exposing (f)
+-- <- keyword.control.zelkova
+--      ^^^^^^^ - keyword.control.zelkova
+--             ^^^^^^^^ keyword.control.zelkova
+
+import Maybe as M
+-- <- keyword.control.zelkova
+--           ^^ keyword.control.zelkova
+
+type T = A
+-- <- keyword.control.zelkova
+
+f x =
+  case x of
+--^^^^ keyword.control.zelkova
+--       ^^ keyword.control.zelkova
+    A -> if x then x else x
+--       ^^ keyword.control.zelkova
+--            ^^^^ keyword.control.zelkova
+--                   ^^^^ keyword.control.zelkova
+
+g = let y = 1 in y
+--  ^^^ keyword.control.zelkova
+--            ^^ keyword.control.zelkova
+
+-- `true` and `false` are not reserved by the spec (LANG-1 tracks the tokenizer).
+true = false
+-- <- - keyword.control.zelkova
+-- <- variable.other.zelkova
+--     ^^^^^ - keyword.control.zelkova
+--     ^^^^^ variable.other.zelkova
+
+-- A reserved word inside a longer name is part of that name.
+inside = asx + cases + in_
+--       ^^^ variable.other.zelkova
+--             ^^^^^ variable.other.zelkova
+--                     ^^^ variable.other.zelkova
+
+-- Not reserved yet (LANG-38), highlighted ahead of the compiler.
+class Eq a where
+-- <- keyword.control.zelkova
+--          ^^^^^ keyword.control.zelkova
+instance Eq T where
+-- <- keyword.control.zelkova
+--            ^^^^^ keyword.control.zelkova
+
+-- Soft keywords: keyword in position.
+infix left 6 (|+|) = combine
+-- <- keyword.control.zelkova
+--    ^^^^ keyword.other.soft.zelkova
+infix right 5 (+++) = combine
+--    ^^^^^ keyword.other.soft.zelkova
+infix non 4 (===) = combine
+--    ^^^ keyword.other.soft.zelkova
+
+-- Soft keywords: ordinary identifiers elsewhere.
+left = 1
+-- <- variable.other.zelkova
+-- <- - keyword.other.soft.zelkova
+right = left
+-- <- variable.other.zelkova
+--      ^^^^ variable.other.zelkova
+--      ^^^^ - keyword.other.soft.zelkova
+non = 3
+-- <- - keyword.other.soft.zelkova
+foreign = 4
+-- <- variable.other.zelkova
+-- <- - keyword.other.soft.zelkova
+derived = 5
+-- <- variable.other.zelkova
+-- <- - keyword.other.soft.zelkova
+unsafe = 6
+-- <- variable.other.zelkova
+-- <- - keyword.other.soft.zelkova
+unsafe : Int
+-- <- variable.other.zelkova
+-- <- - keyword.other.soft.zelkova
+
+module foreign Js.Example exposing (idiv)
+-- <- keyword.control.zelkova
+--     ^^^^^^^ keyword.other.soft.zelkova
+
+unsafe idiv : Int -> Int -> Int
+-- <- keyword.other.soft.zelkova
+--     ^^^^ variable.other.zelkova
+
+unsafe (+) : Int -> Int -> Int
+-- <- keyword.other.soft.zelkova
+
+h = foreign
+--  ^^^^^^^ variable.other.zelkova
+--  ^^^^^^^ - keyword.other.soft.zelkova
+
+instance Eq Colour where
+  derived
+--^^^^^^^ keyword.other.soft.zelkova
+
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+--^^^^^^^ keyword.other.soft.zelkova
+--        ^^ variable.other.zelkova
+    matched = True
+
+class Derivable a where
+  derived : a
+--^^^^^^^ - keyword.other.soft.zelkova
+--^^^^^^^ variable.other.zelkova
+  derived = True
+--^^^^^^^ - keyword.other.soft.zelkova

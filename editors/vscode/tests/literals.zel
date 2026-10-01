@@ -1,0 +1,79 @@
+-- SYNTAX TEST "source.zelkova" "literals, identifiers, operators"
+
+count = 42
+--      ^^ constant.numeric.integer.zelkova
+mask = 0xFF
+--     ^^^^ constant.numeric.hex.zelkova
+ratio = 3.14
+--      ^^^^ constant.numeric.float.zelkova
+avogadro = 6.022e23
+--         ^^^^^^^^ constant.numeric.float.zelkova
+big = 1e-9
+--    ^^^^ constant.numeric.float.zelkova
+name2 = 7
+-- <- variable.other.zelkova
+-- ^^^ - constant.numeric.zelkova
+
+greeting = "hello"
+--         ^^^^^^^ string.quoted.double.zelkova
+quoted = "she said \"hi\"\n\u{1F600}"
+--       ^ string.quoted.double.zelkova
+--                 ^^ constant.character.escape.zelkova
+--                      ^^ constant.character.escape.zelkova
+--                        ^^ constant.character.escape.zelkova
+--                          ^^^^^^^^ constant.character.escape.zelkova
+--                                  ^ string.quoted.double.zelkova
+broken = "one
+--       ^^^^ string.quoted.double.zelkova
+next = 1
+-- <- variable.other.zelkova
+-- <- - string.quoted.double.zelkova
+dashes = "a -- b"
+--       ^^^^^^^^ string.quoted.double.zelkova
+--       ^^^^^^^^ - comment.line.double-dash.zelkova
+
+letter = 'a'
+--       ^^^ string.quoted.single.zelkova
+newline = '\n'
+--         ^^ constant.character.escape.zelkova
+emoji = '\u{1F600}'
+--       ^^^^^^^^^ constant.character.escape.zelkova
+
+x : Maybe Int -> Js.Basics.Result Float
+--  ^^^^^ entity.name.type.zelkova
+--        ^^^ entity.name.type.zelkova
+--               ^^ entity.name.namespace.zelkova
+--                 ^ punctuation.accessor.zelkova
+--                  ^^^^^^ entity.name.namespace.zelkova
+--                        ^ punctuation.accessor.zelkova
+--                         ^^^^^^ entity.name.type.zelkova
+--                                ^^^^^ entity.name.type.zelkova
+
+y = List.map a b
+--  ^^^^ entity.name.namespace.zelkova
+--       ^^^ variable.other.zelkova
+--           ^ variable.other.zelkova
+
+type Форма = Ronde
+--   ^^^^^ entity.name.type.zelkova
+--           ^^^^^ entity.name.type.zelkova
+aire côté = côté
+-- <- variable.other.zelkova
+--   ^^^^ variable.other.zelkova
+
+z = a <= b |> c->d
+--    ^^ keyword.operator.zelkova
+--         ^^ keyword.operator.zelkova
+--             ^^ keyword.operator.zelkova
+w = a--a
+--  ^ variable.other.zelkova
+--   ^^^ comment.line.double-dash.zelkova
+v = a <-- not an operator
+--    ^ keyword.operator.zelkova
+--     ^^^^^^^^^^^^^^^^^^ comment.line.double-dash.zelkova
+
+p = (1, _)
+--  ^ punctuation.section.brackets.zelkova
+--   ^ constant.numeric.integer.zelkova
+--    ^ punctuation.separator.comma.zelkova
+--      ^ variable.language.wildcard.zelkova

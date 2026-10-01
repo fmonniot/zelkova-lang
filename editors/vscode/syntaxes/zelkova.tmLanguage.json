@@ -1,0 +1,164 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Zelkova",
+  "scopeName": "source.zelkova",
+  "fileTypes": ["zel"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#characters" },
+    { "include": "#soft-keywords" },
+    { "include": "#reserved-words" },
+    { "include": "#not-yet-reserved-words" },
+    { "include": "#numbers" },
+    { "include": "#identifiers" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "include": "#doc-comment" },
+        { "include": "#block-comment" },
+        {
+          "name": "comment.line.double-dash.zelkova",
+          "match": "--.*$"
+        }
+      ]
+    },
+    "block-comment": {
+      "comment": "Block comments nest (docs/spec/lexical-structure.md, Comments), so the rule includes itself.",
+      "name": "comment.block.zelkova",
+      "begin": "\\{-",
+      "end": "-\\}",
+      "patterns": [{ "include": "#block-comment" }]
+    },
+    "doc-comment": {
+      "comment": "`{-|` is an ordinary block comment to the compiler; the scope is only for themes.",
+      "name": "comment.block.documentation.zelkova",
+      "begin": "\\{-\\|",
+      "end": "-\\}",
+      "patterns": [{ "include": "#block-comment" }]
+    },
+    "escapes": {
+      "name": "constant.character.escape.zelkova",
+      "match": "\\\\(?:[nrt\\\\'\"]|u\\{[0-9A-Fa-f]+\\})"
+    },
+    "strings": {
+      "comment": "Single-line only: a string unclosed at the end of its line ends there. The multi-line form is not implemented (LANG-79).",
+      "name": "string.quoted.double.zelkova",
+      "begin": "\"",
+      "end": "\"|$",
+      "patterns": [{ "include": "#escapes" }]
+    },
+    "characters": {
+      "name": "string.quoted.single.zelkova",
+      "begin": "'",
+      "end": "'|$",
+      "patterns": [{ "include": "#escapes" }]
+    },
+    "soft-keywords": {
+      "comment": "Each is a keyword in one position only (docs/spec/lexical-structure.md, Reserved words) and an ordinary identifier elsewhere. A TextMate grammar sees a line at a time, so each rule approximates the position by what is on the same line.",
+      "patterns": [
+        {
+          "comment": "left, right, non: the associativity of an infix declaration.",
+          "match": "^(infix)(\\s+)(left|right|non)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.zelkova" },
+            "3": { "name": "keyword.other.soft.zelkova" }
+          }
+        },
+        {
+          "comment": "foreign: the header of a facade module.",
+          "match": "^(module)(\\s+)(foreign)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.zelkova" },
+            "3": { "name": "keyword.other.soft.zelkova" }
+          }
+        },
+        {
+          "comment": "unsafe: before a signature, `unsafe f : ...` or `unsafe (+) : ...`. `unsafe : ...` declares a constant called unsafe and is not matched.",
+          "match": "^(unsafe)(?=\\s+(?:\\p{Ll}[\\p{L}\\p{N}_]*|\\([^)]*\\))\\s*:)",
+          "captures": {
+            "1": { "name": "keyword.other.soft.zelkova" }
+          }
+        },
+        {
+          "comment": "derived: alone on an indented line (an instance body, or the request for a derived instance), or followed by one member name (a derivation in a class body). `derived = ...` and `derived : ...` are ordinary bindings and signatures. docs/spec/type-classes.md, An instance may be derived.",
+          "match": "^(\\s+)(derived)(?=\\s*(?:--.*)?$|\\s+\\p{Ll}[\\p{L}\\p{N}_]*\\s*(?:--.*)?$)",
+          "captures": {
+            "2": { "name": "keyword.other.soft.zelkova" }
+          }
+        }
+      ]
+    },
+    "reserved-words": {
+      "comment": "Exactly the spec's Reserved words block; tests/editor_grammar.rs fails if the two drift. `true` and `false` are deliberately absent: the spec does not reserve them (LANG-1 tracks the tokenizer, which still does).",
+      "name": "keyword.control.zelkova",
+      "match": "(?<![\\p{L}\\p{N}_])(as|case|else|exposing|if|import|in|infix|let|module|of|then|type)(?![\\p{L}\\p{N}_])"
+    },
+    "not-yet-reserved-words": {
+      "comment": "docs/spec/type-classes.md reserves these when LANG-38 lands; they are highlighted ahead of the compiler. `where` is reserved only as a type variable and stays an ordinary identifier where a value is named, so a plain keyword scope over-highlights it there. tests/editor_grammar.rs names this list, and the allowance goes when LANG-38 adds the words to the spec's reserved list.",
+      "name": "keyword.control.zelkova",
+      "match": "(?<![\\p{L}\\p{N}_])(class|instance|where)(?![\\p{L}\\p{N}_])"
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "comment": "Float: digits '.' digits with an optional exponent, or digits with an exponent.",
+          "name": "constant.numeric.float.zelkova",
+          "match": "(?<![\\p{L}\\p{N}_])[0-9]+(?:\\.[0-9]+(?:[eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)"
+        },
+        {
+          "name": "constant.numeric.hex.zelkova",
+          "match": "(?<![\\p{L}\\p{N}_])0x[0-9A-Fa-f]+"
+        },
+        {
+          "name": "constant.numeric.integer.zelkova",
+          "match": "(?<![\\p{L}\\p{N}_])[0-9]+"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "comment": "An uppercase name followed by a dot and a letter is a module qualifier: List.map, Maybe.Just.",
+          "match": "(\\p{Lu}[\\p{L}\\p{N}_]*)(\\.)(?=\\p{L})",
+          "captures": {
+            "1": { "name": "entity.name.namespace.zelkova" },
+            "2": { "name": "punctuation.accessor.zelkova" }
+          }
+        },
+        {
+          "name": "entity.name.type.zelkova",
+          "match": "\\p{Lu}[\\p{L}\\p{N}_]*"
+        },
+        {
+          "name": "variable.other.zelkova",
+          "match": "\\p{Ll}[\\p{L}\\p{N}_]*"
+        }
+      ]
+    },
+    "operators": {
+      "comment": "A run of operator characters; `--` starts a comment, so no operator contains it.",
+      "name": "keyword.operator.zelkova",
+      "match": "(?:(?!--)[!#$%&*+\\-./<=>?@\\\\^|~:])+"
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.comma.zelkova",
+          "match": ","
+        },
+        {
+          "name": "punctuation.section.brackets.zelkova",
+          "match": "[()\\[\\]{}]"
+        },
+        {
+          "name": "variable.language.wildcard.zelkova",
+          "match": "(?<![\\p{L}\\p{N}_])_"
+        }
+      ]
+    }
+  }
+}
