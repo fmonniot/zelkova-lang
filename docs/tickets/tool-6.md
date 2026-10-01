@@ -7,7 +7,7 @@ capability before starting, not land it as one PR.
 
 **Part of:** the *Active work: editor support* section of [the index](README.md).
 **Depends on:** [`TOOL-2`](README.md) (checking an unsaved buffer) and [`TOOL-3`](README.md)
-(diagnostics as data, nothing printed or written). [`TOOL-4`](tool-4.md) and
+(diagnostics as data, nothing printed or written). [`TOOL-4`](README.md) and
 [`TOOL-8`](tool-8.md) are not prerequisites, but without them every capability except
 diagnostics goes dark for a file with an error in it, which is most files mid-edit.
 [`TOOL-5`](tool-5.md) is not a prerequisite either.

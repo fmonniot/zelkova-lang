@@ -4,8 +4,9 @@
 it; could grow to small-to-medium if the error wanted is better than LALRPOP's default.
 
 **Location:** `src/compiler/parser/grammar.lalrpop` — the `Decl` production, which lists
-`Import` alongside `FunBinding`, `FunType`, `Infix` and `Union`, and the `Module` production
-that takes `<declarations:Decl*>`.
+`Import` alongside `FunBinding`, `FunType`, `Infix` and `Union`, and the `Header` and `Decls`
+entry points that repeat it; `src/compiler/parser/mod.rs` — `parse_chunks`, which assembles
+the module from them.
 
 **Decided (`SPEC-3`, by the language owner):** every `import` in a file sits between the
 module header and the first other declaration. An `import` written after a value, type or
@@ -29,7 +30,13 @@ x = 1
 import Widget      -- accepted today
 ```
 
-**Approach:** split the `Module` production so imports are their own repetition ahead of the
+**Since this was written:** `TOOL-4` deleted the `Module` production. Each top-level
+declaration is now cut into a chunk of its own before the layout pass and parsed with the
+`Decls` entry point (`src/compiler/parser/chunk.rs`), so no one grammar parse sees two
+declarations, and the order below cannot be a repetition in the grammar as written. The
+approach has to be redone against that shape.
+
+**Approach (as filed):** split the `Module` production so imports are their own repetition ahead of the
 rest — `"module" … <imports:ImportDecl*> <declarations:Decl*>` — with `Import` removed from
 `Decl`. `Module::from_declarations` then takes the imports separately and its
 `Declaration::Import(i) => imports.push(i)` arm goes away, along with `Declaration::Import`

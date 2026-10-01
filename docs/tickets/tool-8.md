@@ -9,11 +9,11 @@ what canonicalization and the typer do after their first failing declaration. Th
 file with any error in it, and each file importing that one shows an error that is about
 neither of them.
 
-**Depends on:** [`TOOL-4`](tool-4.md) for the syntax-error case: it is what hands back the
+**Depends on:** [`TOOL-4`](README.md) for the syntax-error case: it is what hands back the
 declarations of a module that parsed beside the ones that did not. The type-error and
 canonicalization-error cases depend on nothing.
 
-**Found while** settling [`TOOL-4`](tool-4.md)'s open decisions. That ticket asked that an
+**Found while** settling [`TOOL-4`](README.md)'s open decisions. That ticket asked that an
 importer of a module with a syntax error report no missing-module error. The importer's error
 turned out to follow any failure in the module, so it was split out here and `TOOL-4` stops at
 the parser.
@@ -97,13 +97,13 @@ What is not decided:
   declaration that calls a broken one still be checked and hovered.
 - **Whether a broken declaration with an intact annotation counts as broken to its callers.**
   `f : Int -> Int` followed by a body that does not parse is the commonest state mid-edit.
-  [`TOOL-4`](tool-4.md) hands back such a function with its annotation and no binding, which
+  [`TOOL-4`](README.md) hands back such a function with its annotation and no binding, which
   canonicalization reports as `Error::NoBindings`. Its callers could be checked against the
   annotation.
 - **Which errors about a broken declaration are suppressed.** An `exposing` entry naming it is
   `Error::ExportNotFound` today, and a call to it is a missing name. Both restate an error
   already reported. The same question applies to an importer naming it.
-- **What [`TOOL-4`](tool-4.md)'s `Failure` has to carry.** It holds a span and an error. Every
+- **What [`TOOL-4`](README.md)'s `Failure` has to carry.** It holds a span and an error. Every
   option above needs the name the declaration would have had, which can only be read off the
   chunk's leading tokens (`f`, `type T`, `unsafe f`), and not always.
 - **Whether a module with errors gets an `ir::Module`.** Publishing an interface needs only
