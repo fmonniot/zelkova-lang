@@ -734,16 +734,8 @@ impl CompilationError {
                 .with_notes(err.notes()),
             // Nothing in the compiler builds a `Many` (see the variant), so this arm only
             // fires when one built elsewhere is rendered as a whole. It summarises rather
-            // than repeating what its members' own diagnostics said.
-            //
-            // This is the one group that deliberately does not flatten its members'
-            // labels. The phase-error groups that do — `canonical::Error::Many`,
-            // `EnvironmentErrors` — hold errors from a single module, so their labels
-            // all belong to one file and the group is the *only* thing rendered. This
-            // one spans the whole package: its members are `InFile` wrappers naming
-            // different files, and each has already been rendered with its own carets
-            // by the time this summary is built. Flattening here would draw every
-            // caret in the package a second time under one headline.
+            // than flattening its members' labels, for the reason given at
+            // `driver::BuildError::Many`, the group a build actually renders.
             CompilationError::Many(errors) => Diagnostic::error()
                 .with_message(format!(
                     "compilation failed with {} error{}",

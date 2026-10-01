@@ -290,6 +290,19 @@ fn print_status(writer: &mut StandardStream, status: &Status) {
     let _ = writeln!(writer, " {}", status.text);
 }
 
+/// Each error of the check as one [`BuildError::Check`], with a
+/// [`CompilationError::Many`] replaced by its members, at any depth. This is what keeps
+/// [`BuildError::Many`] flat by construction rather than by `check` never building a `Many`.
+fn check_errors(errors: Vec<CompilationError>) -> Vec<BuildError> {
+    errors
+        .into_iter()
+        .flat_map(|error| match error {
+            CompilationError::Many(members) => check_errors(members),
+            other => vec![BuildError::Check(other)],
+        })
+        .collect()
+}
+
 /// The CLI half of every `compile_package` variant: check the package
 /// ([`compiler::check_package`] or [`compiler::check_package_with_tests`], as `tests`
 /// says), print its status lines, emit and write a build that checked, and render every error to stderr.
@@ -320,7 +333,7 @@ fn compile(
 
     // The build's one accumulator: each error of the check on its own, then whatever
     // emitting and writing the build adds. An empty one is what makes this return `Ok`.
-    let mut errors: Vec<BuildError> = errors.into_iter().map(BuildError::Check).collect();
+    let mut errors: Vec<BuildError> = check_errors(errors);
 
     // Error reporter
     let mut writer = StandardStream::stderr(ColorChoice::Auto);
@@ -577,4 +590,60 @@ fn emit_modules(
     }
 
     files
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `CompilationError::Many` in the check's errors becomes one `Check` per member,
+    /// however deeply it was nested, and a `Many` is never itself wrapped. A plain error
+    /// beside it stays as it was, in order.
+    ///
+    /// Mutation-checked by turning `check_errors` back into a plain
+    /// `.map(BuildError::Check)`: the first assertion sees one `Check` where three are
+    /// expected and this goes red.
+    #[test]
+    fn a_many_of_the_check_is_flattened_into_its_members() {
+        let leaf = || CompilationError::Manifest(vec![]);
+        let nested = CompilationError::Many(vec![
+            leaf(),
+            CompilationError::Many(vec![CompilationError::Resolution(vec![])]),
+        ]);
+
+        let flat = check_errors(vec![nested, leaf()]);
+
+        assert_eq!(flat.len(), 3);
+        assert!(matches!(
+            flat[0],
+            BuildError::Check(CompilationError::Manifest(_))
+        ));
+        assert!(matches!(
+            flat[1],
+            BuildError::Check(CompilationError::Resolution(_))
+        ));
+        assert!(matches!(
+            flat[2],
+            BuildError::Check(CompilationError::Manifest(_))
+        ));
+        assert!(!flat
+            .iter()
+            .any(|e| matches!(e, BuildError::Check(CompilationError::Many(_)))));
+    }
+
+    /// `module` is `Some` for an `Emit` and for a `Check` of one module, `None` for an
+    /// error that is about no one module.
+    ///
+    /// Mutation-checked by making the `Emit` arm return `None`: the first assertion
+    /// goes red.
+    #[test]
+    fn module_names_the_module_of_an_emit_error() {
+        let emit = BuildError::Emit(vec![], Name::new("Main"));
+        assert_eq!(emit.module(), Some(&Name::new("Main")));
+
+        let check = BuildError::Check(CompilationError::Canonical(vec![], Name::new("Other")));
+        assert_eq!(check.module(), Some(&Name::new("Other")));
+
+        assert_eq!(BuildError::Many(vec![]).module(), None);
+    }
 }

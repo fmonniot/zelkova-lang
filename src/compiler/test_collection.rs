@@ -139,13 +139,28 @@ mod tests {
     /// package's own type spelled `Test` too — only the first is collected, and the
     /// unrelated one never enters the sort.
     ///
-    /// Mutation-checked by comparing only `name.unqualified_name()` in `is_test_type`,
-    /// dropping the package and module comparisons: the decoy then joins the real test and
-    /// this goes red.
+    /// Each comparison of `is_test_type` has a decoy that differs from the real type in
+    /// that field alone: `acme:Test.Test` (package), `zelkova-test:Other.Test` (module) and
+    /// `zelkova-test:Test.Other` (name); `acme:AppTest.Test` differs in two.
+    ///
+    /// Mutation-checked one comparison at a time, replacing each with `true`: every one
+    /// lets its own decoy in and goes red.
     #[test]
     fn only_the_real_test_type_is_collected() {
         let decoy_type = Type::Type(
             QualName::in_module(PackageName::new("acme").unwrap(), "AppTest", "Test"),
+            vec![],
+        );
+        let wrong_package = Type::Type(
+            QualName::in_module(PackageName::new("acme").unwrap(), "Test", "Test"),
+            vec![],
+        );
+        let wrong_module = Type::Type(
+            QualName::in_module(PackageName::new(TEST_PACKAGE).unwrap(), "Other", "Test"),
+            vec![],
+        );
+        let wrong_name = Type::Type(
+            QualName::in_module(PackageName::new(TEST_PACKAGE).unwrap(), "Test", "Other"),
             vec![],
         );
         let modules = vec![interface(
@@ -155,6 +170,9 @@ mod tests {
                 ("addsUp", real_test()),
                 ("helper", int()),
                 ("decoyTest", decoy_type),
+                ("wrongPackage", wrong_package),
+                ("wrongModule", wrong_module),
+                ("wrongName", wrong_name),
             ],
         )];
 
