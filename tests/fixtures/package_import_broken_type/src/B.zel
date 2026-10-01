@@ -1,0 +1,6 @@
+module B exposing (..)
+
+import A exposing (T(..))
+
+b : A.T
+b = MkT

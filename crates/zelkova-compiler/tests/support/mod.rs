@@ -98,12 +98,11 @@ pub fn canonicalize_with_interfaces(
 }
 
 /// [`canonicalize_with_interfaces`] through `canonicalize_recovering`: the module
-/// canonicalization built beside every error it reported, or `Err` when the imports
-/// left it no environment to build one in.
+/// canonicalization built beside every error it reported.
 pub fn canonicalize_recovering_with_interfaces(
     source: &str,
     interfaces: &HashMap<Name, Interface>,
-) -> Result<canonical::Canonicalized, Vec<canonical::Error>> {
+) -> canonical::Canonicalized {
     let parsed = parse_source(source);
     canonical::canonicalize_recovering(&test_package(), interfaces, &parsed)
 }
@@ -190,6 +189,7 @@ pub fn maybe_interface() -> (Name, Interface) {
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
         file: None,
+        incomplete: false,
     };
 
     ("Maybe".into(), interface)
@@ -238,6 +238,7 @@ pub fn basics_interface() -> (Name, Interface) {
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
         file: None,
+        incomplete: false,
     };
 
     ("Basics".into(), interface)
@@ -267,6 +268,7 @@ pub fn char_interface() -> (Name, Interface) {
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
         file: None,
+        incomplete: false,
     };
 
     ("Char".into(), interface)
@@ -295,6 +297,7 @@ pub fn string_interface() -> (Name, Interface) {
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
         file: None,
+        incomplete: false,
     };
 
     ("String".into(), interface)
@@ -337,6 +340,7 @@ pub fn result_interface() -> (Name, Interface) {
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
         file: None,
+        incomplete: false,
     };
 
     ("Result".into(), interface)
@@ -398,6 +402,7 @@ pub fn task_interface() -> (Name, Interface) {
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
         file: None,
+        incomplete: false,
     };
 
     ("Task".into(), interface)

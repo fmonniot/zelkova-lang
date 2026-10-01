@@ -76,6 +76,16 @@ pub struct Module {
     /// True when this module is a `module foreign` facade.
     /// Such modules have synthetic placeholder bodies and must not be type-checked.
     pub binding_foreign: bool,
+    /// Whether a name could be missing from this module for a reason already reported.
+    ///
+    /// Set when the module's scope ended incomplete: an import did not resolve, an
+    /// import resolved to an [`Interface`] whose own
+    /// [`incomplete`](Interface::incomplete) is set, or a `type` or `infix` declaration
+    /// failed. Also set when a value declaration was written with an annotation that did
+    /// not canonicalize, which is the one way a name goes missing from
+    /// [`to_interface`](Self::to_interface) while the module's own scope is whole.
+    /// [`to_interface`](Self::to_interface) copies it to [`Interface::incomplete`].
+    pub incomplete: bool,
 }
 
 /// A value declaration canonicalization rejected, recorded in [`Module::broken`].
@@ -117,6 +127,12 @@ pub struct Canonicalized {
     pub module: Module,
     /// Every error canonicalization reported. Empty exactly when [`canonicalize`] would
     /// answer `Ok` with [`module`](Self::module).
+    ///
+    /// An error is left out of it only when another stands behind it: a not-found error
+    /// raised in an [incomplete](Module::incomplete) scope restates the failure that made
+    /// the scope incomplete (`without_restated`). A declaration whose every error was left
+    /// out is still absent from the module, so empty here does not mean
+    /// [`Module::broken`] is empty nor that [`Module::incomplete`] is false.
     pub errors: Vec<Error>,
 }
 
@@ -253,6 +269,7 @@ impl Module {
             infix_functions,
             arities,
             file,
+            incomplete: self.incomplete,
         }
     }
 
@@ -2288,7 +2305,7 @@ pub fn canonicalize(
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
 ) -> Result<Module, Vec<Error>> {
-    let Canonicalized { module, errors } = canonicalize_recovering(package, interfaces, source)?;
+    let Canonicalized { module, errors } = canonicalize_recovering(package, interfaces, source);
 
     if errors.is_empty() {
         Ok(module)
@@ -2300,13 +2317,27 @@ pub fn canonicalize(
 /// Transform a given `parser::Module` into a `canonical::Module`, and hand it back
 /// beside every error found on the way.
 ///
-/// `Err` is the one case with no module: the imports could not be turned into an
-/// environment to resolve anything against. Past that, a declaration that does not
-/// canonicalize costs the module that declaration and nothing else. A value declaration
-/// is recorded in [`Module::broken`], with its annotation when that canonicalized; a
-/// `type` or an `infix` declaration is left out of [`Module::types`] or
-/// [`Module::infixes`]. An `exposing` entry that does not resolve is left out of
-/// [`Module::exports`].
+/// There is always a module. An import that does not resolve is reported as one
+/// [`Error::EnvironmentErrors`] and costs the module that import and nothing else. A
+/// declaration that does not canonicalize costs the module that declaration and nothing
+/// else. A value declaration is recorded in [`Module::broken`], with its annotation when
+/// that canonicalized; a `type` or an `infix` declaration is left out of
+/// [`Module::types`] or [`Module::infixes`]. An `exposing` entry that does not resolve is
+/// left out of [`Module::exports`].
+///
+/// # Incomplete scopes
+///
+/// A scope is [incomplete](Module::incomplete) when a name could be missing from it for
+/// a reason already reported, and a not-found error raised in one is dropped
+/// ([`DEC-23` decision
+/// 3](../../../docs/decisions/dec-23.md#3--an-error-that-restates-a-reported-failure-is-dropped-by-a-flag-on-the-scope)).
+/// Each sub-pass's errors are filtered by the flag as it stood **before** that sub-pass
+/// ran: a declaration's own failure is reported, and what it makes incomplete is
+/// everything after it. A failed `infix` declaration makes the scope incomplete for
+/// the `type` declarations, the values and the `exposing` list, and a failed `type`
+/// declaration for the values and the `exposing` list. The declaration whose errors were
+/// dropped is left out all the same: dropping an error does not make its declaration
+/// sound.
 ///
 /// Whether this module is exempt from the default imports is not this function's
 /// question to answer: `new_environment` derives it from `package` itself
@@ -2315,15 +2346,19 @@ pub fn canonicalize_recovering(
     package: &PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
-) -> Result<Canonicalized, Vec<Error>> {
+) -> Canonicalized {
     let name = ModuleName {
         package: package.clone(),
         name: source.name.clone(),
     };
 
     let mut errors: Vec<Error> = vec![];
-    let mut env =
-        new_environment(&name, interfaces, &source.imports).map_err(|e| vec![e.into()])?;
+    let (mut env, import_errors) = new_environment(&name, interfaces, &source.imports);
+    if !import_errors.is_empty() {
+        // Reported whole, and never filtered: this is the failure everything else
+        // in an incomplete scope restates.
+        errors.push(import_errors.into());
+    }
 
     // `unsafe` is a claim about the companion standing behind a facade signature,
     // so it has nothing to say on a declaration with a body above it. The grammar
@@ -2464,14 +2499,23 @@ pub fn canonicalize_recovering(
         });
         let (values, rejected): (HashMap<Name, Value>, Vec<Box<Rejected>>) = collect_partial(iter);
         let (broken, rejected_errors) = Rejected::split(rejected);
-        errors.extend(rejected_errors);
+        errors.extend(without_restated(rejected_errors, env.is_incomplete()));
 
         (HashMap::new(), HashMap::new(), values, broken)
     } else {
         // Because we are rewriting infixes in this phase, we must do this check before
         // resolving values.
+        //
+        // Each sub-pass below has its errors filtered by whether the scope was
+        // incomplete when the sub-pass *started* (`without_restated`): the failure of a
+        // declaration is reported, and what it makes incomplete is what comes after it.
+        let incomplete = env.is_incomplete();
         let (infixes, infix_errors) = do_infixes(&source.infixes, &mut env, &source.functions);
-        errors.extend(infix_errors);
+        if !infix_errors.is_empty() {
+            // The operator the declaration would have named is missing from the scope.
+            env.set_incomplete();
+        }
+        errors.extend(without_restated(infix_errors, incomplete));
 
         // Every `type` declaration of this module is in scope for every one of
         // them, its own body included, so all of their names are registered
@@ -2485,8 +2529,14 @@ pub fn canonicalize_recovering(
             env.insert_declared_type(&tpe.name, tpe.type_arguments.clone());
         }
 
+        let incomplete = env.is_incomplete();
         let (types, type_errors) = do_types(&env, &source.types);
-        errors.extend(type_errors);
+        if !type_errors.is_empty() {
+            // The constructors the declaration would have named are missing from the
+            // scope, and so is the type from the interface.
+            env.set_incomplete();
+        }
+        errors.extend(without_restated(type_errors, incomplete));
 
         for (n, t) in types.iter() {
             env.insert_union_type(n.clone(), t.clone());
@@ -2496,12 +2546,13 @@ pub fn canonicalize_recovering(
 
         // TODO Should I manage infixes rewrite here too ?
         // Yes I should do it here
+        let incomplete = env.is_incomplete();
         let Values {
             values,
             broken,
             errors: value_errors,
         } = do_values(&mut env, &source.functions);
-        errors.extend(value_errors);
+        errors.extend(without_restated(value_errors, incomplete));
 
         (infixes, types, values, broken)
     };
@@ -2532,9 +2583,18 @@ pub fn canonicalize_recovering(
         .map(|f| (f.name.clone(), f.span))
         .collect();
     let (exports, export_errors) = do_exports(&source.exposing, &env, &values, &unannotated_broken);
-    errors.extend(export_errors);
+    errors.extend(without_restated(export_errors, env.is_incomplete()));
 
-    Ok(Canonicalized {
+    // A declaration written with an annotation that did not canonicalize is recorded
+    // with no type, and the interface cannot publish it. That is a name missing from
+    // the interface while this module's own scope is whole, so it is the one case the
+    // environment's flag does not already say.
+    let annotation_failed = source
+        .functions
+        .iter()
+        .any(|f| f.tpe.is_some() && broken.iter().any(|b| b.name == f.name && b.tpe.is_none()));
+
+    Canonicalized {
         module: Module {
             name,
             exports,
@@ -2544,9 +2604,53 @@ pub fn canonicalize_recovering(
             values,
             broken,
             binding_foreign: source.binding_foreign,
+            incomplete: env.is_incomplete() || annotation_failed,
         },
         errors,
-    })
+    }
+}
+
+/// `errors` without the ones that only restate a failure already reported, when the scope
+/// they were raised in is `incomplete`.
+///
+/// An incomplete scope is one where a name could be missing for a reason that has been
+/// reported ([`Module::incomplete`]), so a name that is not found in it says nothing new:
+/// `VariableNotFound`, `VariantNotFound`, `TypeNotFound`, `ExportNotFound` and
+/// `InfixReferenceInvalidValue` are dropped, and every other error is kept. An
+/// [`Error::Many`] is flattened into its members first, so a group holding one of each
+/// keeps the member that is not a restatement. With `incomplete` false, `errors` comes
+/// back untouched.
+///
+/// Dropping an error does not make its declaration sound. The caller has already left the
+/// declaration out of the module, and keeps it left out.
+fn without_restated(errors: Vec<Error>, incomplete: bool) -> Vec<Error> {
+    if !incomplete {
+        return errors;
+    }
+
+    fn flatten(error: Error, into: &mut Vec<Error>) {
+        match error {
+            Error::Many(members) => members.into_iter().for_each(|member| flatten(member, into)),
+            error => into.push(error),
+        }
+    }
+
+    let mut flat = Vec::new();
+    for error in errors {
+        flatten(error, &mut flat);
+    }
+
+    flat.retain(|error| {
+        !matches!(
+            error,
+            Error::VariableNotFound(..)
+                | Error::VariantNotFound(..)
+                | Error::TypeNotFound(..)
+                | Error::ExportNotFound(..)
+                | Error::InfixReferenceInvalidValue(..)
+        )
+    });
+    flat
 }
 
 /// Whether `value` names no parameter — the kind of binding a cycle
@@ -3291,5 +3395,50 @@ fn do_exports(
 
             (Exports::Specifics(specifics), errors)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn not_found() -> Error {
+        Error::TypeNotFound("T".into(), NodeSpan::none())
+    }
+
+    fn no_bindings() -> Error {
+        Error::NoBindings(NodeSpan::none())
+    }
+
+    /// A group is flattened before the filter reads it, so a member that is not a
+    /// restatement survives its group, and a group holding only restatements leaves
+    /// nothing behind. With the flag unset the list comes back as it went in, groups
+    /// included.
+    ///
+    /// Mutation-checked by pushing a group through without flattening it: the group is
+    /// kept whole and the first assertion goes red.
+    #[test]
+    fn without_restated_flattens_groups_and_keeps_what_is_not_a_missing_name() {
+        let errors = vec![
+            Error::Many(vec![
+                Error::Many(vec![not_found(), no_bindings()]),
+                not_found(),
+            ]),
+            Error::Many(vec![not_found()]),
+        ];
+
+        let kept = without_restated(errors, true);
+        assert!(
+            matches!(kept.as_slice(), [Error::NoBindings(_)]),
+            "got {:?}",
+            kept
+        );
+
+        let untouched = without_restated(vec![Error::Many(vec![not_found()])], false);
+        assert!(
+            matches!(untouched.as_slice(), [Error::Many(members)] if members.len() == 1),
+            "got {:?}",
+            untouched
+        );
     }
 }

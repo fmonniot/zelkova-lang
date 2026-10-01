@@ -1,0 +1,3 @@
+module A exposing (T(..))
+
+type T = MkT | (T, T)

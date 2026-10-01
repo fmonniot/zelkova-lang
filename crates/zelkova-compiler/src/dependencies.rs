@@ -613,6 +613,7 @@ mod tests {
             values: HashMap::new(),
             broken: Vec::new(),
             binding_foreign: false,
+            incomplete: false,
         };
         let ir = crate::ir::build(&canonical, HashMap::new());
 

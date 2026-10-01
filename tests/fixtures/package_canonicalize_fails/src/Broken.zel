@@ -1,4 +1,4 @@
-module Broken exposing (..)
+module Broken exposing ()
 
 import NonExistent exposing (..)
 

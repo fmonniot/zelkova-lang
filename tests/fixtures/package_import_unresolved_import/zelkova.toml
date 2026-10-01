@@ -1,7 +1,6 @@
 # `A` imports a module nothing declares, and `B` imports a well-typed value of `A`.
-# `crates/zelkova/tests/pipeline.rs` checks that `A` publishes nothing, so `B` reports `A`
-# as missing: an import that does not resolve leaves `A` no environment to canonicalize
-# anything in.
+# `crates/zelkova/tests/pipeline.rs` checks that `A` still publishes its interface, so the
+# build's one error is `A`'s unresolved import and `B` reports nothing.
 name = "package-import-unresolved-import"
 version = "0.1.0"
 private-modules = []

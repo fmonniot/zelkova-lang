@@ -1782,6 +1782,7 @@ fn helper_interface() -> (Name, Interface) {
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
         file: None,
+        incomplete: false,
     };
 
     ("Helper".into(), interface)
@@ -2367,7 +2368,7 @@ fn only_canonical_error(error: &CompilationError) -> String {
 #[test]
 fn unexposed_value_is_not_importable() {
     let main = indoc::indoc! {r#"
-        module Main exposing (..)
+        module Main exposing ()
         import Lib exposing (hidden)
         answer = 1
     "#};
@@ -2439,7 +2440,7 @@ fn exposed_value_still_imports() {
 #[test]
 fn unexposed_type_is_not_importable() {
     let main = indoc::indoc! {r#"
-        module Main exposing (..)
+        module Main exposing ()
         import Lib exposing (Secret(..))
         answer = 1
     "#};
@@ -2628,7 +2629,7 @@ fn backing_function_of_an_exposed_operator_stays_unimportable_by_name() {
     "#};
 
     let main = indoc::indoc! {r#"
-        module Main exposing (..)
+        module Main exposing ()
         import Lib exposing (plus)
         answer = 1
     "#};
@@ -3036,6 +3037,7 @@ fn basics_interface_with_plus() -> (Name, Interface) {
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
         file: None,
+        incomplete: false,
     };
 
     ("Basics".into(), interface)
@@ -6374,41 +6376,111 @@ fn a_caller_of_a_broken_declaration_is_checked_against_its_annotation() {
     assert_eq!(unchecked, vec![(&Name::from("f"), true)]);
 }
 
-/// A module with an import that does not resolve publishes nothing, so a module
-/// importing it still reports it as missing. This is where publishing a module with
-/// errors stops today: an unresolved import leaves the module no environment to
-/// canonicalize anything in.
+/// A module with an import that does not resolve still has a canonical form and
+/// publishes its interface, so a module importing it reports nothing about it: the one
+/// error of the build is `A`'s own unresolved import.
 ///
-/// It pins behaviour this crate already has, so there is no change to neutralise. That
-/// it can tell the two cases apart was checked by pointing it at
-/// `package_import_canonical_error`, where `A` publishes its interface: the error count
-/// goes red.
+/// `B` has no error of its own, but it was checked against an incomplete interface and
+/// so is incomplete in turn (`canonical::Module::incomplete`): `check_root` does not list
+/// it as checked, and the `checked modules` status line counts both modules as failed.
+///
+/// Mutation-checked by not setting the flag when an import fails, in `new_environment`:
+/// `A`'s interface is then complete, `B` checks whole, and the status line goes red.
 #[test]
-fn a_module_with_an_unresolved_import_publishes_nothing() {
+fn a_module_with_an_unresolved_import_publishes_its_interface() {
     let root = fixture_package("package_import_unresolved_import");
 
     let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
 
-    assert_eq!(check.errors.len(), 2, "got {:?}", check.errors);
-    let b = check
-        .errors
-        .iter()
-        .find(|error| unwrap_in_file(error).module() == Some(&Name::from("B")))
-        .unwrap_or_else(|| panic!("expected an error from `B`, got {:?}", check.errors));
+    assert_eq!(check.errors.len(), 1, "got {:?}", check.errors);
+    let a = unwrap_in_file(&check.errors[0]);
+    match a {
+        CompilationError::Canonical(errors, module) => {
+            assert_eq!(module, &Name::from("A"));
+            assert!(
+                matches!(errors.as_slice(), [canonical::Error::EnvironmentErrors(..)]),
+                "expected `A`'s unresolved import alone, got {:?}",
+                errors
+            );
+        }
+        other => panic!("expected `A` to fail canonicalization, got {:?}", other),
+    }
     assert!(
-        matches!(unwrap_in_file(b), CompilationError::Canonical(..)),
-        "expected `B` to fail canonicalization, got {:?}",
-        b
-    );
-    let message = b.as_diagnostic().message;
-    assert!(
-        message.contains("cannot find a module named `A`"),
-        "expected `B` to report `A` as missing, got {:?}",
-        message
+        check
+            .errors
+            .iter()
+            .all(|error| unwrap_in_file(error).module() != Some(&Name::from("B"))),
+        "`B` has nothing to report, got {:?}",
+        check.errors
     );
 
-    // `A` has no canonical module, so there is no tree to hand back for it.
-    assert_eq!(sorted_module_names(&check.failing), Vec::<String>::new());
+    assert_eq!(sorted_module_names(&check.failing), vec!["A", "B"]);
+    assert_eq!(
+        checked_modules_status(&check),
+        "checked modules: [] (2 failed to check)"
+    );
+}
+
+/// The `checked modules` line of a check's status.
+fn checked_modules_status(check: &zelkova_compiler::PackageCheck) -> &str {
+    check
+        .status
+        .iter()
+        .find(|status| status.text.starts_with("checked modules"))
+        .map(|status| status.text.as_str())
+        .expect("a check reports its modules")
+}
+
+/// A `type` declaration that is rejected is one error, and the module importing it
+/// reports nothing about the type: not its `T(..)` import entry, not `A.T` in an
+/// annotation, not the constructor `MkT`. `B`'s `b` has no typed tree, with the error
+/// behind it being `A`'s, and `B` is not among the modules that checked.
+///
+/// Mutation-checked twice. Leaving `Interface::incomplete` false in
+/// `canonical::Module::to_interface` reports `B`'s import entry as `UnionNotFound`, so
+/// the error count goes red. Dropping the two extra conditions in `check_root`'s
+/// partition (`broken` empty and `incomplete` false) puts `B`, whose error list is
+/// empty, in the status line's list.
+#[test]
+fn a_module_importing_a_broken_type_reports_nothing_about_it() {
+    let root = fixture_package("package_import_broken_type");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    match check.errors.as_slice() {
+        [error] => match unwrap_in_file(error) {
+            CompilationError::Canonical(errors, module) => {
+                assert_eq!(module, &Name::from("A"));
+                assert!(
+                    matches!(errors.as_slice(), [canonical::Error::InvalidVariant(..)]),
+                    "expected `A`'s invalid variant alone, got {:?}",
+                    errors
+                );
+            }
+            other => panic!("expected a Canonical error for `A`, got {:?}", other),
+        },
+        other => panic!("expected one error, got {:?}", other),
+    }
+
+    assert_eq!(sorted_module_names(&check.failing), vec!["A", "B"]);
+    let b = &check
+        .failing
+        .iter()
+        .find(|checked| checked.module.canonical.name.name() == &Name::from("B"))
+        .expect("`B` is among the failing modules")
+        .module
+        .ir;
+    let unchecked: Vec<(&Name, bool)> = b
+        .unchecked
+        .iter()
+        .map(|unchecked| (&unchecked.name, unchecked.reported))
+        .collect();
+    assert_eq!(unchecked, vec![(&Name::from("b"), true)]);
+
+    assert_eq!(
+        checked_modules_status(&check),
+        "checked modules: [] (2 failed to check)"
+    );
 }
 
 /// The `tests/` half of `check_root`'s partition: with `src/` clean and one module of

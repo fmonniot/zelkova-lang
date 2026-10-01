@@ -1,0 +1,12 @@
+# `A` declares `type T = MkT | (T, T)`, which is rejected, and `B` imports `T(..)` from it
+# and builds one. `crates/zelkova-compiler/tests/canonical.rs` and `crates/zelkova/tests/pipeline.rs`
+# check that the build's one error is `A`'s, because `A`'s interface is incomplete and
+# `B`'s import entry, annotation and constructor are not reported again. Neither module
+# names a `Basics` type, so the package has no dependency.
+name = "package-import-broken-type"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

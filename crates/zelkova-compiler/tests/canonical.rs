@@ -1575,7 +1575,7 @@ fn unresolved_import_module_suggests_a_near_miss() {
     interfaces.insert(iface_name, iface);
 
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
         import Mabye
         answer = 1
     "#};
@@ -1604,7 +1604,7 @@ fn unresolved_import_exposed_value_suggests_a_near_miss() {
     interfaces.insert(iface_name, iface);
 
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
         import Maybe exposing (widthDefault)
         answer = 1
     "#};
@@ -1641,7 +1641,7 @@ fn unresolved_opaque_import_exposed_type_suggests_a_near_miss() {
     interfaces.insert(iface_name, iface);
 
     let source = indoc::indoc! {r#"
-        module Test exposing (..)
+        module Test exposing ()
         import Maybe exposing (Mayeb)
         answer = 1
     "#};
@@ -1699,7 +1699,7 @@ fn a_constructor_entry_for_an_opaquely_exposed_type_is_rejected() {
 
     let interfaces = opaque_and_clear_lib();
     let source = indoc::indoc! {r#"
-        module Main exposing (..)
+        module Main exposing ()
         import Lib exposing (Opaque(..))
         answer = 1
     "#};
@@ -2523,6 +2523,7 @@ fn widgets_task_interface() -> (zelkova_compiler::name::Name, Interface) {
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
         file: None,
+        incomplete: false,
     };
 
     ("Widgets".into(), interface)
@@ -3957,8 +3958,7 @@ fn a_type_that_fails_does_not_cost_its_sibling_its_constructors() {
     "#};
 
     let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(source, &HashMap::new())
-            .expect("the imports resolve");
+        canonicalize_recovering_with_interfaces(source, &HashMap::new());
 
     assert!(
         matches!(
@@ -4056,8 +4056,7 @@ fn a_body_that_fails_is_broken_and_keeps_its_annotation() {
     "#};
 
     let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]))
-            .expect("the imports resolve");
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
 
     assert!(
         matches!(errors.as_slice(), [canonical::Error::VariableNotFound(..)]),
@@ -4101,8 +4100,7 @@ fn an_annotation_that_fails_is_broken_with_no_type() {
     "#};
 
     let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]))
-            .expect("the imports resolve");
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
 
     assert!(
         matches!(errors.as_slice(), [canonical::Error::TypeNotFound(..)]),
@@ -4136,8 +4134,7 @@ fn an_annotation_and_a_body_that_fail_are_both_reported() {
     "#};
 
     let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]))
-            .expect("the imports resolve");
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
 
     assert!(
         matches!(
@@ -4179,8 +4176,7 @@ fn an_export_that_fails_exposes_only_the_entries_that_resolved() {
     "#};
 
     let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]))
-            .expect("the imports resolve");
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
 
     assert!(
         matches!(
@@ -4221,8 +4217,7 @@ fn a_broken_declaration_reaches_the_interface_by_its_annotation() {
     "#};
 
     let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]))
-            .expect("the imports resolve");
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
     assert_eq!(errors.len(), 2, "got {:?}", errors);
 
     let interface = module.to_interface(None);
@@ -4261,8 +4256,7 @@ fn a_rejected_facade_signature_is_broken_and_keeps_its_type() {
     "#};
 
     let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(source, &effect_interfaces())
-            .expect("the imports resolve");
+        canonicalize_recovering_with_interfaces(source, &effect_interfaces());
 
     assert!(
         matches!(
@@ -4304,8 +4298,7 @@ fn a_facade_signature_with_a_binding_still_reports_its_own_error() {
     "#};
 
     let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(source, &effect_interfaces())
-            .expect("the imports resolve");
+        canonicalize_recovering_with_interfaces(source, &effect_interfaces());
 
     // The declarations are not canonicalized in a fixed order, so the errors are counted
     // by kind.
@@ -4380,8 +4373,7 @@ fn an_exposed_broken_declaration_with_no_annotation_is_not_annotated() {
     };
 
     let canonical::Canonicalized { module, errors } =
-        canonicalize_recovering_with_interfaces(explicit, &HashMap::from([basics_interface()]))
-            .expect("the imports resolve");
+        canonicalize_recovering_with_interfaces(explicit, &HashMap::from([basics_interface()]));
 
     assert_eq!(
         module
@@ -4397,7 +4389,282 @@ fn an_exposed_broken_declaration_with_no_annotation_is_not_annotated() {
 
     let open = explicit.replace("exposing (f, g, h, k)", "exposing (..)");
     let canonical::Canonicalized { errors, .. } =
-        canonicalize_recovering_with_interfaces(&open, &HashMap::from([basics_interface()]))
-            .expect("the imports resolve");
+        canonicalize_recovering_with_interfaces(&open, &HashMap::from([basics_interface()]));
     assert_eq!(unannotated(&errors), vec!["f"], "got {:?}", errors);
+}
+
+// ── TOOL-10: an incomplete scope drops the not-found errors that restate a failure ──
+
+/// An empty interface for a module `Lib`, with the given `incomplete` flag: nothing
+/// in it, so every name an importer asks of it is missing.
+fn lib_interface(incomplete: bool) -> HashMap<zelkova_compiler::name::Name, Interface> {
+    let interface = Interface {
+        module_name: zelkova_compiler::ModuleName::new(test_package(), "Lib".into()),
+        values: HashMap::new(),
+        unions: HashMap::new(),
+        opaque_unions: Default::default(),
+        infixes: HashMap::new(),
+        infix_functions: HashMap::new(),
+        arities: HashMap::new(),
+        file: None,
+        incomplete,
+    };
+
+    HashMap::from([("Lib".into(), interface)])
+}
+
+/// A failed `infix` declaration is one error. The operator it would have named is
+/// missing from the module's scope, where it is used, and from its `exposing` list, and
+/// neither is reported again.
+///
+/// Mutation-checked by not setting the flag after `do_infixes` in
+/// `canonicalize_recovering`: `VariableNotFound` for the use and `ExportNotFound` for the
+/// header entry come back.
+#[test]
+fn a_failed_infix_is_reported_once_and_not_again_by_its_use_and_its_export() {
+    let source = indoc::indoc! {r#"
+        module A exposing ((<+>), use)
+
+        infix left 6 (<+>) = nope
+
+        use : Int
+        use = 1 <+> 2
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [canonical::Error::InfixReferenceInvalidValue(..)]
+        ),
+        "got {:?}",
+        errors
+    );
+    assert!(module.incomplete);
+}
+
+/// A failed `type` declaration is one error. Its constructor, used below, is missing
+/// from the scope and is not reported as a missing variant.
+///
+/// Mutation-checked by not setting the flag after `do_types` in
+/// `canonicalize_recovering`: `VariantNotFound` for `MkT` comes back.
+#[test]
+fn a_failed_type_is_reported_once_and_not_again_by_its_constructor() {
+    let source = indoc::indoc! {r#"
+        module A exposing (k)
+
+        type T = MkT | (T, T)
+
+        k : T
+        k = MkT
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::InvalidVariant(..)]),
+        "got {:?}",
+        errors
+    );
+    assert!(module.incomplete);
+}
+
+/// An import that does not resolve is one error and a module is returned. The use of
+/// the module's name below is not reported again.
+///
+/// Mutation-checked by not setting the flag in `new_environment` when an import
+/// fails: `VariableNotFound` for `Nope.y` comes back.
+#[test]
+fn an_unresolved_import_is_reported_once_and_the_module_is_returned() {
+    let source = indoc::indoc! {r#"
+        module A exposing (x)
+
+        import Nope
+
+        x : Int
+        x = Nope.y
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    match errors.as_slice() {
+        [error @ canonical::Error::EnvironmentErrors(inner)] => {
+            use zelkova_compiler::PhaseError;
+
+            assert_eq!(inner.len(), 1, "got {:?}", errors);
+            assert_eq!(
+                error.message(),
+                "cannot find a module named `Nope` to import"
+            );
+        }
+        other => panic!("expected one EnvironmentErrors, got {:?}", other),
+    }
+    assert!(module.incomplete);
+}
+
+/// The control for the three above: with nothing failed, a misspelt name in a body is
+/// still `VariableNotFound`, and the module is not incomplete.
+///
+/// Mutation-checked by making `without_restated` ignore its flag (filtering
+/// unconditionally): the error is dropped and the assertion goes red.
+#[test]
+fn a_misspelt_name_in_a_complete_scope_is_still_reported() {
+    let source = indoc::indoc! {r#"
+        module A exposing (x)
+
+        x : Int
+        x = nope
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::VariableNotFound(..)]),
+        "got {:?}",
+        errors
+    );
+    assert!(!module.incomplete);
+}
+
+/// The second control: only the five not-found errors are dropped in an incomplete
+/// scope. `g` has an annotation and no binding, and is reported beside the import.
+///
+/// Mutation-checked by widening `without_restated`'s filter to drop every error:
+/// `NoBindings` goes with the rest and the assertion goes red.
+#[test]
+fn an_incomplete_scope_still_reports_what_is_not_a_missing_name() {
+    let source = indoc::indoc! {r#"
+        module A exposing (g)
+
+        import Nope
+
+        g : Int
+    "#};
+
+    let canonical::Canonicalized { errors, .. } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [
+                canonical::Error::EnvironmentErrors(..),
+                canonical::Error::NoBindings(..)
+            ]
+        ),
+        "got {:?}",
+        errors
+    );
+}
+
+/// An `exposing` entry missing from an interface that is itself missing names is
+/// dropped, and the importer is incomplete in turn. Against a complete interface the
+/// same entry is `ValueNotFound`.
+///
+/// Mutation-checked by ignoring `interface.incomplete` in `process_import`'s `Lower`
+/// arm: the first assertion goes red with `ValueNotFound`.
+#[test]
+fn an_import_entry_missing_from_an_incomplete_interface_is_dropped() {
+    let source = indoc::indoc! {r#"
+        module Main exposing ()
+
+        import Lib exposing (missing)
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &lib_interface(true));
+    assert!(errors.is_empty(), "got {:?}", errors);
+    assert!(module.incomplete);
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &lib_interface(false));
+    match errors.as_slice() {
+        [error @ canonical::Error::EnvironmentErrors(..)] => {
+            use zelkova_compiler::PhaseError;
+
+            assert_eq!(
+                error.message(),
+                "the imported module does not expose a value named `missing`"
+            );
+        }
+        other => panic!("expected one EnvironmentErrors, got {:?}", other),
+    }
+    // The failed import is what makes this scope incomplete.
+    assert!(module.incomplete);
+}
+
+/// The type and operator entries are dropped the same way, and a constructor entry for a
+/// type the incomplete interface exposes only opaquely is not: that interface did publish
+/// the type, so nothing was left out.
+///
+/// Mutation-checked by ignoring `interface.incomplete` in the `Public` (`Size(..)`) arm
+/// and in the `Operator` arm of `process_import`, each going red on the first
+/// assertion; and by dropping `ConstructorsNotExposed` along with them, which turns the
+/// second red.
+#[test]
+fn an_incomplete_interface_drops_missing_types_and_operators_but_not_opaque_constructors() {
+    let source = indoc::indoc! {r#"
+        module Main exposing ()
+
+        import Lib exposing (Gone(..), Away, (<+>))
+    "#};
+
+    let canonical::Canonicalized { errors, .. } =
+        canonicalize_recovering_with_interfaces(source, &lib_interface(true));
+    assert!(errors.is_empty(), "got {:?}", errors);
+
+    let mut interfaces = opaque_and_clear_lib();
+    let lib = interfaces.get_mut(&"Lib".into()).expect("Lib is there");
+    lib.incomplete = true;
+    let source = indoc::indoc! {r#"
+        module Main exposing ()
+
+        import Lib exposing (Opaque(..))
+    "#};
+
+    let canonical::Canonicalized { errors, .. } =
+        canonicalize_recovering_with_interfaces(source, &interfaces);
+    match errors.as_slice() {
+        [error @ canonical::Error::EnvironmentErrors(..)] => {
+            use zelkova_compiler::PhaseError;
+
+            assert_eq!(
+                error.message(),
+                "`Lib` exposes the type `Opaque` but not its constructors"
+            );
+        }
+        other => panic!("expected one EnvironmentErrors, got {:?}", other),
+    }
+}
+
+/// An annotation that does not canonicalize is the one failure that leaves a name out
+/// of the interface while the module's own scope is whole: the module is incomplete
+/// though nothing else is wrong with it.
+///
+/// Mutation-checked by dropping the `annotation_failed` half of `Module::incomplete`:
+/// the second assertion goes red.
+#[test]
+fn a_failed_annotation_makes_the_module_incomplete() {
+    let source = indoc::indoc! {r#"
+        module A exposing (f)
+
+        f : Nope -> Int
+        f x = 1
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::TypeNotFound(..)]),
+        "got {:?}",
+        errors
+    );
+    assert!(module.incomplete);
+    assert!(module.to_interface(None).incomplete);
 }

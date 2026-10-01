@@ -9,7 +9,7 @@ fifteen in `crates/zelkova-syntax/tests/parser/`.
 the five tickets `TOOL-8` through [`TOOL-12`](tool-12.md). With it the floor is complete: no
 failure in one declaration hides its module.
 
-**Depends on:** [`TOOL-10`](tool-10.md), for the incomplete flag, and `TOOL-4` (closed), which
+**Depends on:** [`TOOL-10`](README.md), for the incomplete flag, and `TOOL-4` (closed), which
 is what hands back the declarations that parsed beside the ones that did not.
 
 **Location:** `crates/zelkova-syntax/src/parser/mod.rs` — `Failure`, `Parsed`, `Module`,
@@ -101,7 +101,7 @@ reference to it is a missing name.
    each headless name no parsed module declares, an `Interface` holding nothing with
    `incomplete: true`. Add `Interface::unavailable(module_name, file)` to build it. An
    importer then resolves the module, finds nothing in it, and by
-   [`TOOL-10`](tool-10.md) reports nothing. The package has an error, so it publishes nothing
+   [`TOOL-10`](README.md) reports nothing. The package has an error, so it publishes nothing
    and the stand-in never leaves it.
 
 `parse_root`'s doc comment says a file with a syntax error contributes no module, and has to

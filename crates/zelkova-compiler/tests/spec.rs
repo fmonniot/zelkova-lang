@@ -593,13 +593,12 @@ fn canonicalize_tagged(
     source: &parser::Module,
 ) -> Outcome<canonical::Module, (Name, Vec<canonical::Error>)> {
     match canonical::canonicalize_recovering(package, interfaces, source) {
-        Ok(canonical::Canonicalized { module, errors }) if errors.is_empty() => {
+        canonical::Canonicalized { module, errors } if errors.is_empty() => {
             Outcome::Module(module, vec![])
         }
-        Ok(canonical::Canonicalized { module, errors }) => {
+        canonical::Canonicalized { module, errors } => {
             Outcome::Module(module, vec![(source.name.clone(), errors)])
         }
-        Err(errors) => Outcome::Failed((source.name.clone(), errors)),
     }
 }
 
