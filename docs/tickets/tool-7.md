@@ -1,21 +1,23 @@
 # TOOL-7 · The checking pipeline names its backend, its runners and the test package
 
 **Sizing:** medium. The size is in `tests/pipeline.rs`, which matches on `CompilationError` in
-most of its build tests and has every one of those patterns retargeted. It grows if
-[`TOOL-3`](tool-3.md) left the checking half handing back something other than what *Approach*
-step 2 assumes.
+most of its build tests and has every one of those patterns retargeted. [`TOOL-3`](README.md)
+already did *Approach* step 2's struct and its companion-discovery split, so that step is
+smaller than it reads; the size is the test retargeting.
 
 **Part of:** the *Active work: editor support* section of [the index](README.md).
 [`TOOL-5`](tool-5.md) depends on it: this ticket makes the dependency order between the future
 crates true inside the one crate, so that `TOOL-5` moves files and changes no behaviour.
 
-**Depends on:** [`TOOL-3`](tool-3.md), which splits `compile` into a checking half and a CLI
-half. This ticket moves the CLI half; it does not make that split.
+**Depends on:** [`TOOL-3`](README.md), which splits `compile` into a checking half and a CLI
+half. This ticket moves the CLI half; it does not make that split. The split exists:
+`check_package` and `check_package_with_tests` are the checking entry points, and the
+private `compile` is the CLI half they leave behind.
 
 **Location:** `src/compiler/mod.rs` — `CompilationError`'s `Emit`, `Output`, `TestRun` and
 `ProgramRun` variants and their arms in `as_diagnostic_in` and `module`; `phase_diagnostic`;
 `compile_package` and its three siblings; `BUILD_DIRECTORY`, `test_tree`, `ModuleToEmit`,
-`to_modules_to_emit`, `emit_build`, `emit_modules`; `PackageName::test_package`.
+`to_module_to_emit`, `emit_build`, `emit_modules`; `PackageName::test_package`.
 `src/compiler/test_collection.rs` — `test_type`, `is_test`. `src/compiler/test_runner.rs` and
 `src/compiler/program_runner.rs` — `run`. `src/main.rs`. `tests/pipeline.rs`, `tests/cli.rs`.
 
@@ -27,12 +29,14 @@ it, in five places:
 
 - `compile` calls `javascript::Unions::of`, `javascript::emit` (through `emit_build` and
   `emit_modules`) and `output::write`.
-- `to_modules_to_emit`, called from `compile_in_build` and `compile_tests`, finds a facade's
-  companion with `javascript::module_file`, and `compile` fills each test facade's
-  `companion_imports` with `javascript::test_companion_import`. Which file is a companion is
-  the backend's rule ([*A facade names a boundary, not a
-  backend*](../spec/interop.md#a-facade-names-a-boundary-not-a-backend)), and it is applied
-  while checking.
+- `to_module_to_emit` finds a facade's companion with `javascript::module_file`, and
+  `compile` fills each test facade's `companion_imports` with
+  `javascript::test_companion_import`. Which file is a companion is the backend's rule
+  ([*A facade names a boundary, not a
+  backend*](../spec/interop.md#a-facade-names-a-boundary-not-a-backend)). `TOOL-3` already
+  moved both out of checking: `compile_in_build` and `compile_tests` hand back
+  `CheckedSource`s through `to_checked_sources`, and the companion is looked for only in
+  `compile`, which is still in `src/compiler/mod.rs`.
 - `CompilationError` holds `javascript::Error`, `output::Error`, `test_runner::Error` and
   `program_runner::Error`, so the error type of a check names every module above it.
 - `PackageName::test_package` is built from `test_collection::TEST_PACKAGE`. Nothing else in
@@ -46,18 +50,17 @@ commit.
 1. **`src/driver.rs`, a new top-level module `zelkova_lang::driver`**, beside `compiler` in
    `src/lib.rs`. It takes the CLI half of `compile` as `TOOL-3` left it: `compile_package`,
    `compile_package_into`, `compile_package_with_tests`, `compile_package_with_tests_into`,
-   `BUILD_DIRECTORY`, `test_tree` (now `pub`), `ModuleToEmit`, `to_modules_to_emit`,
+   `BUILD_DIRECTORY`, `test_tree` (now `pub`), `ModuleToEmit`, `to_module_to_emit`,
    `emit_build` and `emit_modules`, with their doc comments. The paragraph of
    `src/compiler/mod.rs`'s module documentation that describes emitting and writing moves to
    `driver`'s. `src/main.rs`, `tests/pipeline.rs` and `tests/cli.rs` call `driver::` where they
    called `compiler::`.
-2. **Companion discovery is the driver's.** What the checking half hands back per module
-   keeps the `CheckedModule` and its `SourceFileId` and gains `root_dir`, the directory of the
-   source root the module was read under, which is the argument `to_modules_to_emit` takes
-   today. It carries no `companion` and no `companion_imports`. The struct is public, in
-   `src/compiler/mod.rs`, and is named `CheckedSource` unless `TOOL-3` already gave it a public
-   name. `driver` builds its own `ModuleToEmit` from it, and the `test_companion_import` loop
-   moves with it. `check_main` reads the new struct.
+2. **Companion discovery is the driver's.** Already done by `TOOL-3`, except for the move:
+   the checking half hands back `CheckedSource { module, file, root_dir }`, public, in
+   `src/compiler/mod.rs`, with no `companion` and no `companion_imports`, and `check_main`
+   reads it. What is left is that `driver` owns `to_module_to_emit`, which builds a
+   `ModuleToEmit` from a `CheckedSource`, and the `test_companion_import` loop that `compile`
+   still holds; both move with step 1's functions.
 3. **`driver::BuildError`**, the error of everything `driver` returns:
 
    ```rust

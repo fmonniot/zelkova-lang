@@ -42,9 +42,14 @@
 //!    package of the build (a test-only one included) and the root's `tests/` modules
 //!    beside its `src/` ones — so that tree alone is what a test runner ever reads from.
 //! 7. Report. Each phase returns every error it found, `check_module` tags those with
-//!    the module they came from, and `compile_package` accumulates them across modules
-//!    and renders them all through `CompilationError::as_diagnostic` — the one place a
-//!    `Diagnostic` is built. See the `PhaseError` trait for what a phase error owes it.
+//!    the module they came from, and `check_package` accumulates them across modules and
+//!    hands them back with the file database and every status line, printing nothing.
+//!    `compile_package` prints the status lines and renders every error through
+//!    `CompilationError::as_diagnostic` — the one place a `Diagnostic` is built. See the
+//!    `PhaseError` trait for what a phase error owes it.
+//!
+//! Steps 1 to 5 are `check_package`'s, which writes nothing anywhere. Step 6 and the
+//! printing of step 7 are `compile_package`'s, and its three siblings', alone.
 //!
 
 use codespan_reporting::diagnostic::{Diagnostic, Label};
@@ -852,6 +857,11 @@ enum TestRoot {
 /// A build that checks writes its JavaScript to `build/out/js/` beside `package_dir`'s
 /// manifest — see [`compile_package_into`] for what that tree holds. One that emitted
 /// any error writes nothing.
+///
+/// The check itself is [`check_package`]'s. This prints its status lines to stderr, emits
+/// and writes the build, and renders every error to stderr before returning it inside
+/// [`CompilationError::Many`]. An error raised before any source is read — the manifest,
+/// the resolution — is returned bare and unrendered.
 pub fn compile_package(package_dir: &Path) -> Result<(), CompilationError> {
     compile(
         package_dir,
@@ -926,11 +936,129 @@ pub fn compile_package_with_tests_into(
     compile(package_dir, TestRoot::Compiled, build_dir)
 }
 
+/// One module of a build that checked, with the file it was read from and the source root
+/// it was read under.
+pub struct CheckedSource {
+    /// The module, as [`check_module`] handed it back.
+    pub module: CheckedModule,
+    /// The file it was read from, which an error's labels about it point into. `None` for
+    /// no module today, since only a module that parsed from a file can be checked.
+    pub file: Option<SourceFileId>,
+    /// The directory of the source root it was read under — a package's `src/` or
+    /// `tests/`. A facade's companion sits below it at the same path the facade does
+    /// ([*A facade names a boundary, not a
+    /// backend*](../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)), and
+    /// nothing here looks for one: that is the build's business, not the check's.
+    pub root_dir: PathBuf,
+}
+
+/// One status line of a check, in the order the check reached it: `parsed 8 modules`,
+/// `checked modules: [..]`, or what failed in either.
+///
+/// [`check_package`] records these rather than printing them. [`compile_package`] prints
+/// each one to stderr, after `success` or `failure` in bold green or red, before anything
+/// else it prints.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Status {
+    /// Whether the phase it reports got through without an error.
+    pub success: bool,
+    /// The line after `success` or `failure`.
+    pub text: String,
+}
+
+/// What [`check_package`] found: everything a build needs to emit, and everything that
+/// went wrong, with nothing printed and nothing written.
+pub struct PackageCheck {
+    /// The package the check was pointed at.
+    pub package: PackageName,
+    /// Every error the check accumulated, across every package of the build. Empty means
+    /// the build checked. Each renders through [`CompilationError::as_diagnostic`], whose
+    /// labels index into [`sources`](PackageCheck::sources).
+    pub errors: Vec<CompilationError>,
+    /// The one file database of the build: every file of every package that was read,
+    /// which is what every [`SourceFileId`] in [`errors`](PackageCheck::errors) and in the
+    /// modules below indexes into.
+    pub sources: SourceFiles,
+    /// Every module that checked of every package the plain build holds — the root's
+    /// `src/` and its `dependencies`, direct or not — dependencies first. A package with
+    /// any error contributes none of its modules.
+    pub modules: Vec<CheckedSource>,
+    /// Every module that checked of every package the build reaches through the root's
+    /// `test-dependencies` alone. Empty unless the tests were checked
+    /// ([`check_package_with_tests`]).
+    pub test_dependency_modules: Vec<CheckedSource>,
+    /// Every module of the root's `tests/` that checked. Empty unless the tests were
+    /// checked, and unless the root's `src/` checked.
+    pub test_modules: Vec<CheckedSource>,
+    /// The status lines of the check, in order.
+    pub status: Vec<Status>,
+}
+
+/// Check the package rooted at `package_dir` and every package it depends on, as
+/// [`compile_package`] does, and hand back what was found without printing or writing
+/// anything.
+///
+/// This is the checking half of every `compile_package` variant: they call it, then print
+/// its [`status`](PackageCheck::status) lines, emit and write a build that checked, and
+/// render every error. It reads every manifest and every `.zel` source of the build from
+/// disk, and nothing else: it does not look for a facade's companion, which only a build
+/// that emits needs. It never writes to stderr, to stdout or to disk, and never builds a
+/// `Diagnostic` — a caller that wants one asks each error for it.
+///
+/// `Err` is an error raised before there is a build to check — the root's manifest, or
+/// the resolution of its dependencies — and comes with no file database, since no source
+/// was read. Every later error is in [`PackageCheck::errors`], and an `Ok` whose `errors`
+/// is not empty is a package that did not check.
+///
+/// The root's `tests/` is not checked; [`check_package_with_tests`] is that check.
+pub fn check_package(package_dir: &Path) -> Result<PackageCheck, CompilationError> {
+    check(package_dir, TestRoot::Skipped)
+}
+
+/// [`check_package`], checking the root package's `tests/` as well as its `src/`, as
+/// [`compile_package_with_tests`] does.
+pub fn check_package_with_tests(package_dir: &Path) -> Result<PackageCheck, CompilationError> {
+    check(package_dir, TestRoot::Compiled)
+}
+
+/// Print one [`Status`] line to `writer`. Failing to write a status line is not itself a
+/// compilation failure, so the write results are deliberately discarded rather than
+/// unwrapped.
+fn print_status(writer: &mut StandardStream, status: &Status) {
+    let (color, label) = if status.success {
+        (Color::Green, "success")
+    } else {
+        (Color::Red, "failure")
+    };
+    let _ = writer.set_color(ColorSpec::new().set_bold(true).set_fg(Some(color)));
+    let _ = write!(writer, "{}", label);
+    let _ = writer.reset();
+    let _ = writeln!(writer, " {}", status.text);
+}
+
+/// The CLI half of every `compile_package` variant: [`check`] the package, print its status
+/// lines, emit and write a build that checked, and render every error to stderr.
+///
+/// The status lines are printed once the check has finished rather than as each phase
+/// ends. For a check that returns, the bytes `compile_package` itself writes to stderr are
+/// the same as before, in the same order: every status line, then every diagnostic. Log
+/// output (`RUST_LOG`) and a panic's message no longer interleave with them, and a panic
+/// during checking loses the status lines already recorded.
 fn compile(
     package_dir: &Path,
     tests: TestRoot,
     build_dir: &Path,
 ) -> Result<Vec<Interface>, CompilationError> {
+    let PackageCheck {
+        package: root_package,
+        mut errors,
+        sources,
+        modules,
+        test_dependency_modules,
+        test_modules,
+        status,
+    } = check(package_dir, tests)?;
+
     // Error reporter
     let mut writer = StandardStream::stderr(ColorChoice::Auto);
     let config = codespan_reporting::term::Config {
@@ -938,91 +1066,9 @@ fn compile(
         ..codespan_reporting::term::Config::default()
     };
 
-    // Reports the outcome of one phase on stderr. Failing to write a status line is
-    // not itself a compilation failure, so the write results are deliberately
-    // discarded rather than unwrapped.
-    let mut print_status = |success: bool, text: String| {
-        let (color, label) = if success {
-            (Color::Green, "success")
-        } else {
-            (Color::Red, "failure")
-        };
-        let _ = writer.set_color(ColorSpec::new().set_bold(true).set_fg(Some(color)));
-        let _ = write!(&mut writer, "{}", label);
-        let _ = writer.reset();
-        let _ = writeln!(&mut writer, " {}", text);
-    };
-
-    // Step 1: read and validate the root package's manifest. This is the one failure
-    // that cannot be deferred to the usual accumulate-and-render path, because it
-    // happens before that path exists: the source root itself is derived from the
-    // manifest, so there is no build to walk, no accumulator and no file database yet.
-    // It goes back to the caller unrendered. Every failure after the accumulator below
-    // is created goes onto it instead, this package's source loading included.
-    debug!("phase: read package manifest");
-    let manifest = manifest::load(package_dir)?;
-    // The package the compiler was pointed at, which is the one whose `tests/` root
-    // this build compiles — every other package in the build is here because something
-    // depends on it, and a dependency's tests are never compiled.
-    let root_package = manifest.name.clone();
-
-    // Step 1b: resolve the build. Every package reachable from this one's two dependency
-    // maps, each ordered after the packages it depends on, so an
-    // `Interface` a package needs always exists by the time that package is
-    // compiled. The union is resolved whether or not the tests are being compiled, so
-    // that one version of each package and an acyclic graph are settled once for the
-    // build. A dependency's own manifest is read here, so this is raised before any
-    // source is loaded and goes back unrendered for the same reason the manifest above
-    // does.
-    debug!("phase: resolve the build");
-    let build = resolve::resolve(package_dir, manifest)?;
-
-    // Every package this build reaches only through `test-dependencies` — never through
-    // the plain `dependencies` graph. None of them is compiled by the first loop below.
-    //
-    // A build that did not ask for the tests has no use for a `test-dependency` at all:
-    // no module here can import one, since a `test-dependency`'s modules are held out of
-    // the environment `src/` is checked against. Compiling it anyway would parse and
-    // check a package the user never reached for, print its status lines, and fail this
-    // build on an error inside it. One that did ask for the tests compiles it in the
-    // second loop — the tests need its interface — but does not write it.
-    let test_only = resolve::test_only_packages(&build, &root_package);
-
-    // Further steps will produce errors. We aggregate them here and report them at the
-    // end of the compilation phase, rather than stopping on the first one, so that a
-    // single broken module doesn't hide the diagnostics of every other module.
-    //
-    // They are kept as typed `CompilationError`s and not as already-rendered
-    // `Diagnostic`s for two reasons: `as_diagnostic` stays the single rendering point,
-    // and the accumulation is still meaningful as a return value — an empty vector is
-    // what makes this function return `Ok`.
-    let mut errors: Vec<CompilationError> = vec![];
-
-    // One file database for the whole build, so that a diagnostic about any module of
-    // any package renders against the file it was written in. `SourceFileId` is an
-    // index into this one database, and it travels inside `Interface`s that outlive
-    // the package they came from (`ERR-5`), which is exactly why there is one
-    // database and not one per package.
-    let mut sources = SourceFiles::new();
-
-    // What each compiled package offers its dependents: its public modules'
-    // `Interface`s, keyed by the module's name *within* that package. The spelling a
-    // depending package reaches one by — `AcmeWidgets.Size`, or `Size` when it
-    // unwraps — belongs to that package alone and is applied by `compile_in_build`.
-    let mut published: HashMap<PackageName, HashMap<Name, Interface>> = HashMap::new();
-
-    // Every module that checked, from every package that belongs in the build's output,
-    // held until the whole build is known to have checked: a module cannot be written
-    // while another may still fail. A `test-dependency`-only package is compiled when
-    // the tests ask for it, but its modules never land here — only the first loop below
-    // extends it.
-    let mut checked: Vec<ModuleToEmit> = Vec::new();
-
-    // Every module the *test* tree (`build/test/js/`) needs beyond what `checked` already
-    // holds: each test-only package's modules, and the root's `tests/` modules. Stays
-    // empty — and unread — for a build that did not ask for the tests, since the codegen
-    // step below only reaches for it when `tests == TestRoot::Compiled`.
-    let mut test_tree_modules: Vec<ModuleToEmit> = Vec::new();
+    for line in &status {
+        print_status(&mut writer, line);
+    }
 
     // What `compile_package_with_tests` hands back: the `Interface` of each of the
     // root's own `tests/` modules that checked — never a test-only package's, and
@@ -1032,96 +1078,24 @@ fn compile(
     // did not ask for the tests, or whose root `tests/` did not check.
     let mut root_test_interfaces: Vec<Interface> = Vec::new();
 
-    // The root package's `tests/` is compiled apart from its `src/`, after every
-    // test-only package, because a test-only package may depend on the root: that edge
-    // names the root's `src/`, and the root's `tests/` in turn needs the test-only
-    // package ([*`test-dependencies`*](../../docs/spec/packages.md#test-dependencies)).
-    // So the build runs in three steps: every package the plain graph reaches, the root's
-    // `src/` last among them; then each test-only package, which sees the root through
-    // `published` like any other dependency; then the root's `tests/`, against what its
-    // `src/` left here.
-    let mut root_tests: Option<(&resolve::ResolvedPackage, TestsEnvironment)> = None;
-
-    for package in &build {
-        if test_only.contains(&package.name) {
-            debug!(
-                "phase: defer package {} — reached through `test-dependencies` alone",
-                package.name
-            );
-            continue;
-        }
-
-        debug!("phase: compile package {}", package.name);
-
-        let tests = if package.name == root_package {
-            tests
-        } else {
-            TestRoot::Skipped
-        };
-
-        if let Some(compiled) = compile_in_build(
-            package,
-            &build,
-            &published,
-            tests,
-            &mut sources,
-            &mut errors,
-            &mut print_status,
-        ) {
-            published.insert(package.name.clone(), compiled.public);
-            checked.extend(compiled.modules);
-            if let Some(environment) = compiled.tests {
-                root_tests = Some((package, environment));
-            }
-        }
-    }
-
-    // `None` unless the tests were asked for and the root's `src/` checked, and in the
-    // second case the failure is already reported: its tests would only be blamed for a
-    // type the package never managed to declare. A test-only package is in the build for
-    // the tests alone, so it is not compiled either — one that depends on the root would
-    // only add a `DependencyNotCompiled` saying what the root's own errors already say.
-    if let Some((root, environment)) = root_tests {
-        for package in build.iter().filter(|p| test_only.contains(&p.name)) {
-            debug!("phase: compile package {} for the tests", package.name);
-
-            // Compiled and published so the tests can be checked against it. Nothing
-            // outside a package's own tests reads its modules, so they never join
-            // `checked` — the plain build's output tree — but they do join
-            // `test_tree_modules`, which only the test tree reads.
-            if let Some(compiled) = compile_in_build(
-                package,
-                &build,
-                &published,
-                TestRoot::Skipped,
-                &mut sources,
-                &mut errors,
-                &mut print_status,
-            ) {
-                published.insert(package.name.clone(), compiled.public);
-                test_tree_modules.extend(compiled.modules);
-            }
-        }
-
-        debug!("phase: compile the tests of package {}", root.name);
-        let mut root_tests_checked = compile_tests(
-            root,
-            &build,
-            &published,
-            environment,
-            &mut errors,
-            &mut print_status,
-        );
+    // Step 6: generate code, only for a build in which nothing failed. Every module of
+    // both trees is emitted before anything is written, so a module that cannot be
+    // emitted — in `src/` or in `tests/` — also leaves the build with no output at all.
+    if errors.is_empty() {
+        let checked: Vec<ModuleToEmit> = modules.into_iter().map(to_module_to_emit).collect();
+        let mut root_tests_checked: Vec<ModuleToEmit> =
+            test_modules.into_iter().map(to_module_to_emit).collect();
 
         // A test companion imports the companion it checks by its path in the source
         // tree, across the two roots, which reaches nothing in the build
         // ([*Testing a companion*](../../docs/spec/interop.md#testing-a-companion)). Each
         // companion of the root's `src/` is one it may check, and `checked` holds every
-        // one of them by now.
+        // one of them.
         let targets: Vec<&Name> = checked
             .iter()
             .filter(|to_emit| {
-                to_emit.companion.is_some() && to_emit.module.canonical.name.package() == &root.name
+                to_emit.companion.is_some()
+                    && to_emit.module.canonical.name.package() == &root_package
             })
             .map(|to_emit| to_emit.module.canonical.name.name())
             .collect();
@@ -1142,13 +1116,16 @@ fn compile(
             .iter()
             .map(|to_emit| to_emit.module.to_interface(to_emit.file))
             .collect();
-        test_tree_modules.extend(root_tests_checked);
-    }
 
-    // Step 6: generate code, only for a build in which nothing failed. Every module of
-    // both trees is emitted before anything is written, so a module that cannot be
-    // emitted — in `src/` or in `tests/` — also leaves the build with no output at all.
-    if errors.is_empty() {
+        // Every module the *test* tree (`build/test/js/`) needs beyond what `checked`
+        // already holds: each test-only package's modules, and the root's `tests/` modules.
+        // Empty for a build that did not ask for the tests.
+        let mut test_tree_modules: Vec<ModuleToEmit> = test_dependency_modules
+            .into_iter()
+            .map(to_module_to_emit)
+            .collect();
+        test_tree_modules.extend(root_tests_checked);
+
         debug!("phase: codegen");
         // Every union of the build, read by a facade's boundary checks: a facade may name
         // a union any module of the build declares, and a test-only package's or the
@@ -1221,6 +1198,180 @@ fn compile(
     }
 }
 
+/// The checking half of a build, behind [`check_package`] and [`compile`]: steps 1 to 5 of
+/// this module's documentation, for every package of the build, recording what it finds.
+fn check(package_dir: &Path, tests: TestRoot) -> Result<PackageCheck, CompilationError> {
+    // The status line of every phase, in order, for the caller to print or not.
+    let mut status: Vec<Status> = Vec::new();
+
+    // Step 1: read and validate the root package's manifest. This is the one failure
+    // that cannot be deferred to the usual accumulate-and-render path, because it
+    // happens before that path exists: the source root itself is derived from the
+    // manifest, so there is no build to walk, no accumulator and no file database yet.
+    // It goes back to the caller as `Err`, and `compile` returns it unrendered. Every
+    // failure after the accumulator below is created goes onto it instead, this package's
+    // source loading included.
+    debug!("phase: read package manifest");
+    let manifest = manifest::load(package_dir)?;
+    // The package the compiler was pointed at, which is the one whose `tests/` root
+    // this build compiles — every other package in the build is here because something
+    // depends on it, and a dependency's tests are never compiled.
+    let root_package = manifest.name.clone();
+
+    // Step 1b: resolve the build. Every package reachable from this one's two dependency
+    // maps, each ordered after the packages it depends on, so an
+    // `Interface` a package needs always exists by the time that package is
+    // compiled. The union is resolved whether or not the tests are being compiled, so
+    // that one version of each package and an acyclic graph are settled once for the
+    // build. A dependency's own manifest is read here, so this is raised before any
+    // source is loaded and goes back unrendered for the same reason the manifest above
+    // does.
+    debug!("phase: resolve the build");
+    let build = resolve::resolve(package_dir, manifest)?;
+
+    // Every package this build reaches only through `test-dependencies` — never through
+    // the plain `dependencies` graph. None of them is compiled by the first loop below.
+    //
+    // A build that did not ask for the tests has no use for a `test-dependency` at all:
+    // no module here can import one, since a `test-dependency`'s modules are held out of
+    // the environment `src/` is checked against. Compiling it anyway would parse and
+    // check a package the user never reached for, record its status lines, and fail this
+    // build on an error inside it. One that did ask for the tests compiles it in the
+    // second loop — the tests need its interface — but does not write it.
+    let test_only = resolve::test_only_packages(&build, &root_package);
+
+    // Further steps will produce errors. We aggregate them here and hand them back,
+    // rather than stopping on the first one, so that a single broken module doesn't hide
+    // the diagnostics of every other module.
+    //
+    // They are kept as typed `CompilationError`s and not as already-rendered
+    // `Diagnostic`s for two reasons: `as_diagnostic` stays the single rendering point,
+    // and the accumulation is still meaningful as a return value — an empty vector is
+    // what makes `compile` return `Ok`.
+    let mut errors: Vec<CompilationError> = vec![];
+
+    // One file database for the whole build, so that a diagnostic about any module of
+    // any package renders against the file it was written in. `SourceFileId` is an
+    // index into this one database, and it travels inside `Interface`s that outlive
+    // the package they came from (`ERR-5`), which is exactly why there is one
+    // database and not one per package.
+    let mut sources = SourceFiles::new();
+
+    // What each compiled package offers its dependents: its public modules'
+    // `Interface`s, keyed by the module's name *within* that package. The spelling a
+    // depending package reaches one by — `AcmeWidgets.Size`, or `Size` when it
+    // unwraps — belongs to that package alone and is applied by `compile_in_build`.
+    let mut published: HashMap<PackageName, HashMap<Name, Interface>> = HashMap::new();
+
+    // Every module that checked, from every package that belongs in the build's output,
+    // which `compile` holds back from emission until the whole build is known to have
+    // checked: a module cannot be written while another may still fail. A
+    // `test-dependency`-only package is compiled when
+    // the tests ask for it, but its modules never land here — only the first loop below
+    // extends it.
+    let mut checked: Vec<CheckedSource> = Vec::new();
+
+    // Every module of each test-only package that checked. Stays empty for a build that
+    // did not ask for the tests.
+    let mut test_dependency_modules: Vec<CheckedSource> = Vec::new();
+
+    // Every module of the root's `tests/` that checked. Stays empty for a build that did
+    // not ask for the tests, or whose root `src/` did not check.
+    let mut test_modules: Vec<CheckedSource> = Vec::new();
+
+    // The root package's `tests/` is compiled apart from its `src/`, after every
+    // test-only package, because a test-only package may depend on the root: that edge
+    // names the root's `src/`, and the root's `tests/` in turn needs the test-only
+    // package ([*`test-dependencies`*](../../docs/spec/packages.md#test-dependencies)).
+    // So the build runs in three steps: every package the plain graph reaches, the root's
+    // `src/` last among them; then each test-only package, which sees the root through
+    // `published` like any other dependency; then the root's `tests/`, against what its
+    // `src/` left here.
+    let mut root_tests: Option<(&resolve::ResolvedPackage, TestsEnvironment)> = None;
+
+    for package in &build {
+        if test_only.contains(&package.name) {
+            debug!(
+                "phase: defer package {} — reached through `test-dependencies` alone",
+                package.name
+            );
+            continue;
+        }
+
+        debug!("phase: compile package {}", package.name);
+
+        let tests = if package.name == root_package {
+            tests
+        } else {
+            TestRoot::Skipped
+        };
+
+        if let Some(compiled) = compile_in_build(
+            package,
+            &build,
+            &published,
+            tests,
+            &mut sources,
+            &mut errors,
+            &mut status,
+        ) {
+            published.insert(package.name.clone(), compiled.public);
+            checked.extend(compiled.modules);
+            if let Some(environment) = compiled.tests {
+                root_tests = Some((package, environment));
+            }
+        }
+    }
+
+    // `None` unless the tests were asked for and the root's `src/` checked, and in the
+    // second case the failure is already reported: its tests would only be blamed for a
+    // type the package never managed to declare. A test-only package is in the build for
+    // the tests alone, so it is not compiled either — one that depends on the root would
+    // only add a `DependencyNotCompiled` saying what the root's own errors already say.
+    if let Some((root, environment)) = root_tests {
+        for package in build.iter().filter(|p| test_only.contains(&p.name)) {
+            debug!("phase: compile package {} for the tests", package.name);
+
+            // Compiled and published so the tests can be checked against it. Nothing
+            // outside a package's own tests reads its modules, so they never join
+            // `checked` — the plain build's output tree — but they do join
+            // `test_dependency_modules`, which only the test tree reads.
+            if let Some(compiled) = compile_in_build(
+                package,
+                &build,
+                &published,
+                TestRoot::Skipped,
+                &mut sources,
+                &mut errors,
+                &mut status,
+            ) {
+                published.insert(package.name.clone(), compiled.public);
+                test_dependency_modules.extend(compiled.modules);
+            }
+        }
+
+        debug!("phase: compile the tests of package {}", root.name);
+        test_modules = compile_tests(
+            root,
+            &build,
+            &published,
+            environment,
+            &mut errors,
+            &mut status,
+        );
+    }
+
+    Ok(PackageCheck {
+        package: root_package,
+        errors,
+        sources,
+        modules: checked,
+        test_dependency_modules,
+        test_modules,
+        status,
+    })
+}
+
 /// A module that checked, with what emitting and writing it needs beyond the module
 /// itself.
 struct ModuleToEmit {
@@ -1241,33 +1392,44 @@ struct ModuleToEmit {
     companion_imports: Vec<(String, String)>,
 }
 
-/// Pair each checked module of one source root with what emitting and writing it needs:
-/// the file it was read from, and its companion when it is a facade with one sitting
-/// beside its source under `root_dir` — the source root's own directory, `src/` or
-/// `tests/`, so a facade under `tests/` finds its companion there rather than under
-/// `src/` ([*Testing a companion*](../../docs/spec/interop.md#testing-a-companion)).
+/// Pair each checked module of one source root with the file it was read from and
+/// `root_dir`, the source root's own directory, `src/` or `tests/`.
 ///
 /// Shared by [`compile_in_build`] (over `src/`) and [`compile_tests`] (over `tests/`),
 /// which differ only in which root's directory and file map they pass.
-fn to_modules_to_emit(
+fn to_checked_sources(
     checked: Vec<CheckedModule>,
     root_dir: &Path,
     module_files: &HashMap<Name, SourceFileId>,
-) -> Vec<ModuleToEmit> {
+) -> Vec<CheckedSource> {
     checked
         .into_iter()
-        .map(|module| {
-            let name = module.canonical.name.name();
-            let companion = Some(root_dir.join(javascript::module_file(name)))
-                .filter(|path| module.ir.foreign && path.is_file());
-            ModuleToEmit {
-                file: module_files.get(name).copied(),
-                companion,
-                companion_imports: Vec::new(),
-                module,
-            }
+        .map(|module| CheckedSource {
+            file: module_files.get(module.canonical.name.name()).copied(),
+            root_dir: root_dir.to_path_buf(),
+            module,
         })
         .collect()
+}
+
+/// What emitting and writing one checked module needs: its companion when it is a facade
+/// with one sitting beside its source under its `root_dir`, so a facade under `tests/`
+/// finds its companion there rather than under `src/`
+/// ([*Testing a companion*](../../docs/spec/interop.md#testing-a-companion)).
+fn to_module_to_emit(checked: CheckedSource) -> ModuleToEmit {
+    let CheckedSource {
+        module,
+        file,
+        root_dir,
+    } = checked;
+    let companion = Some(root_dir.join(javascript::module_file(module.canonical.name.name())))
+        .filter(|path| module.ir.foreign && path.is_file());
+    ModuleToEmit {
+        file,
+        companion,
+        companion_imports: Vec::new(),
+        module,
+    }
 }
 
 /// Every file a build writes: the runtime, and each module of `checked` as the text
@@ -1355,7 +1517,7 @@ struct CompiledPackage {
     public: HashMap<Name, Interface>,
     /// Every module of it that was compiled, to be emitted once the whole build is known
     /// to have checked.
-    modules: Vec<ModuleToEmit>,
+    modules: Vec<CheckedSource>,
     /// What [`compile_tests`] needs to check this package's `tests/` later. `Some` only
     /// when [`compile_in_build`] was handed [`TestRoot::Compiled`].
     tests: Option<TestsEnvironment>,
@@ -1420,7 +1582,7 @@ fn compile_in_build(
     tests: TestRoot,
     sources: &mut SourceFiles,
     errors: &mut Vec<CompilationError>,
-    print_status: &mut impl FnMut(bool, String),
+    status: &mut Vec<Status>,
 ) -> Option<CompiledPackage> {
     let errors_before = errors.len();
 
@@ -1466,7 +1628,7 @@ fn compile_in_build(
     // Step 3.b
     debug!("phase: parse package sources");
     let parsed = parse_root(&src_ids, sources, errors);
-    print_parse_status(&parsed, "modules", print_status);
+    record_parse_status(&parsed, "modules", status);
 
     // `tests/` is read and parsed here, ahead of anything in `src/` being checked, even
     // though it is checked last in the build (`compile_tests`): the two roots share one
@@ -1493,7 +1655,7 @@ fn compile_in_build(
 
             debug!("phase: parse package test sources");
             let parsed_tests = parse_root(&test_ids, sources, errors);
-            print_parse_status(&parsed_tests, "test modules", print_status);
+            record_parse_status(&parsed_tests, "test modules", status);
             Some(parsed_tests)
         }
     };
@@ -1600,7 +1762,7 @@ fn compile_in_build(
         &parsed.module_files,
         &mut interfaces,
         errors,
-        print_status,
+        status,
     );
 
     // A companion sits beside its facade's source, under the same path below the
@@ -1611,7 +1773,7 @@ fn compile_in_build(
     // `tests/` checks like any other but is not this package's, so it is not among
     // these: it joins the test tree's own modules later, in `compile_tests`.
     let root_dir = package.root.join(source::SourceRoot::Src.directory());
-    let checked: Vec<ModuleToEmit> = to_modules_to_emit(can_mods, &root_dir, &parsed.module_files);
+    let checked: Vec<CheckedSource> = to_checked_sources(can_mods, &root_dir, &parsed.module_files);
 
     if errors.len() != errors_before {
         return None;
@@ -1689,7 +1851,7 @@ fn compile_in_build(
 fn check_main(
     package: &resolve::ResolvedPackage,
     main: &Name,
-    checked: &[ModuleToEmit],
+    checked: &[CheckedSource],
     errors: &mut Vec<CompilationError>,
 ) {
     let Some(entry) = checked
@@ -1739,8 +1901,8 @@ fn compile_tests(
     published: &HashMap<PackageName, HashMap<Name, Interface>>,
     environment: TestsEnvironment,
     errors: &mut Vec<CompilationError>,
-    print_status: &mut impl FnMut(bool, String),
-) -> Vec<ModuleToEmit> {
+    status: &mut Vec<Status>,
+) -> Vec<CheckedSource> {
     let TestsEnvironment {
         mut interfaces,
         modules,
@@ -1798,14 +1960,14 @@ fn compile_tests(
         &module_files,
         &mut interfaces,
         errors,
-        print_status,
+        status,
     );
 
     // A facade under `tests/` places its companion the way any other facade does — beside
     // its own source — under `tests/` here rather than `src/`
     // (`docs/spec/interop.md#testing-a-companion`).
     let root_dir = package.root.join(source::SourceRoot::Tests.directory());
-    to_modules_to_emit(can_mods, &root_dir, &module_files)
+    to_checked_sources(can_mods, &root_dir, &module_files)
 }
 
 /// The direct dependencies named by `entries`, each as the package being compiled sees
@@ -1934,22 +2096,21 @@ fn parse_root(
 }
 
 /// The status line for one root's parse: `parsed 8 modules`, or how many failed.
-fn print_parse_status(
-    parsed: &ParsedRoot,
-    what: &str,
-    print_status: &mut impl FnMut(bool, String),
-) {
+fn record_parse_status(parsed: &ParsedRoot, what: &str, status: &mut Vec<Status>) {
     let count = parsed.modules.len();
     if parsed.failures == 0 {
-        print_status(true, format!("parsed {} {}", count, what));
+        status.push(Status {
+            success: true,
+            text: format!("parsed {} {}", count, what),
+        });
     } else {
-        print_status(
-            false,
-            format!(
+        status.push(Status {
+            success: false,
+            text: format!(
                 "parsed {} {}, {} failed to parse",
                 count, what, parsed.failures
             ),
-        );
+        });
     }
 }
 
@@ -1965,7 +2126,7 @@ fn check_root(
     module_files: &HashMap<Name, SourceFileId>,
     interfaces: &mut HashMap<Name, Interface>,
     errors: &mut Vec<CompilationError>,
-    print_status: &mut impl FnMut(bool, String),
+    status: &mut Vec<Status>,
 ) -> Vec<CheckedModule> {
     debug!("phase: Build module dependency graph ({})", root);
     // A cycle leaves us with no order to check the modules in, so the check phase is
@@ -2007,17 +2168,20 @@ fn check_root(
         .collect();
 
     if check_errors.is_empty() {
-        print_status(true, format!("checked {}: {:#?}", what, names));
+        status.push(Status {
+            success: true,
+            text: format!("checked {}: {:#?}", what, names),
+        });
     } else {
-        print_status(
-            false,
-            format!(
+        status.push(Status {
+            success: false,
+            text: format!(
                 "checked {}: {:#?} ({} failed to check)",
                 what,
                 names,
                 check_errors.len()
             ),
-        );
+        });
         // Tag each error with the file its module was read from, so the spans its phase
         // produced have something to point into. A module with no entry — there is none
         // today, since only a module that parsed can be checked — stays unwrapped and

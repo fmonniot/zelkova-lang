@@ -26,8 +26,9 @@ use zelkova_lang::compiler::source::{
 use zelkova_lang::compiler::test_collection;
 use zelkova_lang::compiler::typer;
 use zelkova_lang::compiler::{
-    check_module, compile_package, compile_package_with_tests, parser, CheckedModule,
-    CompilationError, Interface, PackageName, PhaseError,
+    check_module, check_package, check_package_with_tests, compile_package,
+    compile_package_with_tests, parser, CheckedModule, CompilationError, Interface, PackageName,
+    PhaseError, BUILD_DIRECTORY,
 };
 
 mod support;
@@ -5713,4 +5714,177 @@ fn an_unchecked_main_with_the_wrong_annotation_is_still_rejected() {
         "got {}",
         message
     );
+}
+
+// ── Checking a package without building it ───────────────────────────────────
+
+/// `TOOL-3`: `check_package` hands a type error back as data — in the file database it
+/// returns, with its labels pointing into the right file — records its status lines
+/// rather than printing them, and creates no `build/` directory.
+///
+/// `package_type_error` would write nothing through `compile_package` either, since it
+/// does not check, so the `build/` assertion here is the ticket's floor and not what
+/// tells the two halves apart: `check_package_writes_nothing_for_a_package_that_checks`
+/// below is. Nothing here pins that nothing reaches stderr: the test process's stderr is
+/// shared by every test running beside this one, so capturing it in-process would be
+/// flaky. What pins it is the shape — `check` holds no writer, and its status lines come
+/// back in `PackageCheck::status`, which the assertion on the `failure` line reads.
+///
+/// Mutation-checked three ways, each red on its own: making `check` call
+/// `std::fs::create_dir_all(package_dir.join(BUILD_DIRECTORY))` (the `build/`
+/// assertion); making `check_root` stop pushing its `failure` status (the status
+/// assertion); and making `check_root` push its errors without their `InFile` wrapper
+/// (the label assertion, since the labels then have no file to point into).
+#[test]
+fn check_package_hands_back_a_type_error_without_building() {
+    let root = fixture_package("package_type_error");
+    let build = root.join(BUILD_DIRECTORY);
+    assert!(
+        !build.exists(),
+        "{:?} is left over from an earlier run; remove it",
+        build
+    );
+
+    let source = std::fs::read_to_string(root.join("src").join("Mismatch.zel"))
+        .expect("fixture is readable");
+    let body = "true";
+    let body_start = source
+        .rfind(body)
+        .expect("fixture's body is the literal `true`");
+
+    let check = check_package(&root).expect("the manifest and the build resolve");
+
+    assert!(
+        !build.exists(),
+        "checking a package must not create {:?}",
+        build
+    );
+
+    assert_eq!(check.errors.len(), 1, "got {:?}", check.errors);
+    assert!(
+        matches!(
+            unwrap_in_file(&check.errors[0]),
+            CompilationError::Type(_, module) if module == &Name::from("Mismatch")
+        ),
+        "expected `Mismatch`'s type error, got {:?}",
+        check.errors[0]
+    );
+
+    let diagnostic = check.errors[0].as_diagnostic();
+    let primary = diagnostic
+        .labels
+        .iter()
+        .find(|label| label.style == LabelStyle::Primary)
+        .unwrap_or_else(|| panic!("expected a primary label, got {:?}", diagnostic.labels));
+    let file = check
+        .sources
+        .get(primary.file_id)
+        .expect("the label's file is in the returned database");
+    assert_eq!(file.name(), "package-type-error:src/Mismatch.zel");
+    assert_eq!(file.source(), &source);
+    assert_eq!(primary.range, body_start..(body_start + body.len()));
+
+    assert!(
+        check
+            .status
+            .iter()
+            .any(|status| !status.success && status.text.starts_with("checked modules")),
+        "the failed check is recorded as a status line, got {:?}",
+        check.status
+    );
+}
+
+/// `TOOL-3`: `check_package` on a package that checks hands back its modules and writes
+/// nothing, where `compile_package` on the very same directory writes `build/`.
+///
+/// The package is a copy of `package_checks` — which has no dependency, so it can be
+/// copied anywhere — under Cargo's per-target scratch space, because other tests build the
+/// fixture in place and would race this one's `build/` assertions.
+///
+/// Mutation-checked by making `check` call `output::write` on the runtime alone under
+/// `package_dir.join(BUILD_DIRECTORY)`, the write `compile` does once a build checks:
+/// the first `build/` assertion goes red. So does making `check` create `build/` outright.
+#[test]
+fn check_package_writes_nothing_for_a_package_that_checks() {
+    let fixture = fixture_package("package_checks");
+    let root = fresh_build_dir("check_package_writes_nothing");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::copy(fixture.join("zelkova.toml"), root.join("zelkova.toml")).unwrap();
+    std::fs::copy(
+        fixture.join("src").join("Answer.zel"),
+        root.join("src").join("Answer.zel"),
+    )
+    .unwrap();
+    let build = root.join(BUILD_DIRECTORY);
+
+    let check = check_package(&root).expect("the manifest and the build resolve");
+
+    assert!(check.errors.is_empty(), "got {:?}", check.errors);
+    let names: Vec<&Name> = check
+        .modules
+        .iter()
+        .map(|checked| checked.module.canonical.name.name())
+        .collect();
+    assert_eq!(names, vec![&Name::from("Answer")]);
+    assert_eq!(check.modules[0].root_dir, root.join("src"));
+    assert!(
+        !build.exists(),
+        "checking a package must not create {:?}",
+        build
+    );
+
+    // The same directory does get a build from the CLI half, so the assertion above is
+    // looking in the right place.
+    compile_package(&root).expect("the package checks");
+    assert!(build.join("out").join("js").is_dir());
+}
+
+/// `TOOL-3`: `check_package_with_tests` checks the root's `tests/` root as well and hands
+/// the modules back in `test_modules` and `test_dependency_modules`, where `check_package`
+/// on the same directory leaves both empty. Neither writes a `build/`.
+///
+/// The package is a copy of `package_test_run` with its two dependency paths made
+/// absolute, under Cargo's per-target scratch space for the reason
+/// `check_package_writes_nothing_for_a_package_that_checks` gives.
+///
+/// Mutation-checked by making `check_package_with_tests` pass `TestRoot::Skipped`: the
+/// `test_modules` assertion goes red.
+#[test]
+fn check_package_with_tests_checks_the_tests_root_and_writes_nothing() {
+    let fixture = fixture_package("package_test_run");
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = fresh_build_dir("check_package_with_tests");
+    for dir in ["src", "tests"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    for file in ["src/App.zel", "tests/AppTest.zel"] {
+        std::fs::copy(fixture.join(file), root.join(file)).unwrap();
+    }
+    let manifest = std::fs::read_to_string(fixture.join("zelkova.toml"))
+        .unwrap()
+        .replace("../../../std", &repo.join("std").display().to_string());
+    std::fs::write(root.join("zelkova.toml"), manifest).unwrap();
+    let build = root.join(BUILD_DIRECTORY);
+
+    let check = check_package_with_tests(&root).expect("the manifest and the build resolve");
+
+    assert!(check.errors.is_empty(), "got {:?}", check.errors);
+    let test_names: Vec<&Name> = check
+        .test_modules
+        .iter()
+        .map(|checked| checked.module.canonical.name.name())
+        .collect();
+    assert_eq!(test_names, vec![&Name::from("AppTest")]);
+    assert_eq!(check.test_modules[0].root_dir, root.join("tests"));
+    assert!(
+        !check.test_dependency_modules.is_empty(),
+        "`zelkova-test`'s modules are what `tests/` imports"
+    );
+    assert!(!build.exists(), "checking must not create {:?}", build);
+
+    let src_only = check_package(&root).expect("the manifest and the build resolve");
+    assert!(src_only.errors.is_empty(), "got {:?}", src_only.errors);
+    assert!(src_only.test_modules.is_empty());
+    assert!(src_only.test_dependency_modules.is_empty());
+    assert_eq!(src_only.modules.len(), check.modules.len());
 }

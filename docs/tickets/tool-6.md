@@ -1,12 +1,12 @@
 # TOOL-6 · There is no language server
 
 **Sizing:** large, and meant to be cut. Diagnostics alone are medium once [`TOOL-2`](tool-2.md)
-and [`TOOL-3`](tool-3.md) have landed. Hover and go-to-definition each need a position-to-node
+and [`TOOL-3`](README.md) have landed. Hover and go-to-definition each need a position-to-node
 lookup the compiler does not have. Whoever picks this up should split it into one ticket per
 capability before starting, not land it as one PR.
 
 **Part of:** the *Active work: editor support* section of [the index](README.md).
-**Depends on:** [`TOOL-2`](tool-2.md) (checking an unsaved buffer) and [`TOOL-3`](tool-3.md)
+**Depends on:** [`TOOL-2`](tool-2.md) (checking an unsaved buffer) and [`TOOL-3`](README.md)
 (diagnostics as data, nothing printed or written). [`TOOL-4`](tool-4.md) and
 [`TOOL-8`](tool-8.md) are not prerequisites, but without them every capability except
 diagnostics goes dark for a file with an error in it, which is most files mid-edit.
