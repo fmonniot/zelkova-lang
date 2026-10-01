@@ -12,7 +12,7 @@
 //! # Identified by type, never by spelling
 //!
 //! `Test` is found by its full [`QualName`] — package, module and name — the same way
-//! a [`Scalar`](super::scalars::Scalar) is
+//! a [`Scalar`](zelkova_compiler::scalars::Scalar) is
 //! ([`DEC-15`](../../../docs/decisions/dec-15.md) decision 1 is that precedent). A
 //! package that declares its own `Test` type does not get its values run:
 //! `MyPackage.Test` and `zelkova-test:Test.Test` are two different declarations that
@@ -20,9 +20,9 @@
 //! A package that does not depend on `zelkova-test` at all simply has nothing that can
 //! carry the type, so [`collect`] finds nothing in it and raises no error over that.
 
-use super::canonical::Type;
-use super::name::{Name, QualName};
-use super::{Interface, ModuleName};
+use zelkova_compiler::canonical::Type;
+use zelkova_compiler::name::{Name, QualName};
+use zelkova_compiler::{Interface, ModuleName};
 
 /// The package that declares `Test`. Nothing outside the test modules names it: the
 /// checking modules do not know `zelkova-test` exists.
@@ -100,8 +100,8 @@ pub fn collect(modules: &[Interface]) -> Vec<ModuleTests> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::PackageName;
     use std::collections::HashMap;
+    use zelkova_compiler::PackageName;
     use zelkova_syntax::position::NodeSpan;
 
     fn interface(package: &str, module: &str, values: Vec<(&str, Type)>) -> Interface {

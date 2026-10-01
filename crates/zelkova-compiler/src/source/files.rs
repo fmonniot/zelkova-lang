@@ -1,5 +1,5 @@
 use super::overlay::Overlay;
-use crate::compiler::{PackageName, PhaseError};
+use crate::{PackageName, PhaseError};
 use codespan_reporting::files::{Error as FilesError, Files, SimpleFile};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 pub struct SourceFileId(usize);
 
 /// One of a package's two source roots, as
-/// [*Source roots*](../../../../docs/spec/packages.md#source-roots) fixes them: `src/`
+/// [*Source roots*](../../../docs/spec/packages.md#source-roots) fixes them: `src/`
 /// is what the package ships, `tests/` is compiled when this package's own tests are
 /// run. Neither is configurable and there is no third.
 ///

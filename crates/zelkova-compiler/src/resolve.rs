@@ -2,7 +2,7 @@
 //!
 //! A package is compiled against its own modules and the public modules of the packages
 //! its manifest lists — [*Imports across a package
-//! boundary*](../../../docs/spec/packages.md#imports-across-a-package-boundary). This
+//! boundary*](../../docs/spec/packages.md#imports-across-a-package-boundary). This
 //! module answers the two questions that has to be settled before any module of any
 //! package is compiled:
 //!
@@ -26,20 +26,20 @@
 //! A `path` dependency is read where it lies and compiled from source like any other
 //! package. A `git` dependency is not obtained at all — fetching a source, caching it
 //! and recording the result in `zelkova.lock` is [the toolchain
-//! appendix](../../../docs/spec/toolchain.md#where-a-dependency-comes-from)'s, and none
+//! appendix](../../docs/spec/toolchain.md#where-a-dependency-comes-from)'s, and none
 //! of it is written yet — so an entry naming one is
 //! [`Error::UnsupportedSource`] rather than a package quietly
 //! missing from the build.
 //!
 //! `zelkova-core` is a dependency of every package and [is not written in
-//! `dependencies`](../../../docs/spec/packages.md#zelkova-core-is-a-dependency-of-every-package);
+//! `dependencies`](../../docs/spec/packages.md#zelkova-core-is-a-dependency-of-every-package);
 //! nothing here supplies it, because a compiler that ships its own core has to know
 //! where that copy sits and nothing yet says where. What is honoured is the other half
 //! of that rule: a package named `zelkova-core` is seen unwrapped whatever the entry
 //! naming it says, so `Basics` is `Basics`. What makes `Basics.Int` the scalar is not
 //! that spelling but the package that declares it: [`scalars`](super::scalars) knows a
 //! scalar by a qualified name that includes [`CORE_PACKAGE`] ([`DEC-15` decision
-//! 1](../../../docs/decisions/dec-15.md#1--a-scalar-type-is-known-by-its-qualified-name)).
+//! 1](../../docs/decisions/dec-15.md#1--a-scalar-type-is-known-by-its-qualified-name)).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -53,7 +53,7 @@ use super::{PackageName, PhaseError};
 /// compiler knows on its own.
 ///
 /// It is [seen unwrapped in every
-/// package](../../../docs/spec/packages.md#zelkova-core-is-a-dependency-of-every-package),
+/// package](../../docs/spec/packages.md#zelkova-core-is-a-dependency-of-every-package),
 /// which is what makes `Basics` `Basics` everywhere, and it is the package every
 /// [scalar](super::scalars) is declared in — [`PackageName::core`] is this name.
 pub const CORE_PACKAGE: &str = "zelkova-core";
@@ -140,7 +140,7 @@ impl ModuleOrigin {
 /// this package sees it wrapped, and the modules it offers.
 ///
 /// `modules` holds the dependency's **public** modules only, by their names within it —
-/// [what a package exposes](../../../docs/spec/packages.md#what-a-package-exposes) is
+/// [what a package exposes](../../docs/spec/packages.md#what-a-package-exposes) is
 /// every module of `src/` except the ones `private-modules` names and every `module
 /// foreign` facade. A name that would have reached one of those is absent from the map
 /// this builds, so it fails as a module that does not exist rather than as one that is
@@ -232,7 +232,7 @@ pub enum Error {
     /// Reported when the build is resolved, before any module of that package is
     /// compiled, naming both modules and the packages they come from — [*Two modules
     /// under one
-    /// name*](../../../docs/spec/packages.md#two-modules-under-one-name-is-an-error).
+    /// name*](../../docs/spec/packages.md#two-modules-under-one-name-is-an-error).
     ModuleNameCollision {
         package: PackageName,
         name: Name,
@@ -245,7 +245,7 @@ pub enum Error {
     ///
     /// Reported when the build is resolved, before any module of the package is
     /// compiled, the same as [`ModuleNameCollision`](Error::ModuleNameCollision):
-    /// this is what makes [`DEC-17`](../../../docs/decisions/dec-17.md)'s premise
+    /// this is what makes [`DEC-17`](../../docs/decisions/dec-17.md)'s premise
     /// true rather than assumed, ahead of `LANG-62` giving the rest of
     /// `zelkova-core`'s module names the same protection. The module is reported
     /// and not claimed, so a build that also contains `zelkova-core` does not
@@ -365,7 +365,7 @@ impl PhaseError for Error {
 /// The root package's `test-dependencies` are part of the build, and no other
 /// package's are: a package listed there is available to that package's `tests/` and is
 /// [not resolved by anyone depending on
-/// it](../../../docs/spec/packages.md#test-dependencies). The rest of the rules apply to
+/// it](../../docs/spec/packages.md#test-dependencies). The rest of the rules apply to
 /// the union of the two maps, so one version of each package and an acyclic graph are
 /// settled once for the whole build rather than again when the tests are run.
 ///
@@ -404,7 +404,7 @@ pub fn resolve(root: &Path, manifest: Manifest) -> Result<Vec<ResolvedPackage>, 
 /// [`resolve`] walks the union of the two maps whether or not the tests are being
 /// compiled, because one version of each package and an acyclic graph are properties of
 /// the whole build rather than of one entry point
-/// ([*`test-dependencies`*](../../../docs/spec/packages.md#test-dependencies)). What
+/// ([*`test-dependencies`*](../../docs/spec/packages.md#test-dependencies)). What
 /// comes back here is the other half of that: which of the packages it found are in the
 /// build for the tests alone, so a build that did not ask for the tests can leave them
 /// uncompiled instead of parsing, checking and reporting on a package it cannot import.
@@ -480,7 +480,7 @@ impl Resolver {
     /// `test-dependencies`. Such a chain meeting the root at the root's own directory has
     /// reached the root's `src/`, which is already being resolved, so it stops there
     /// without an error
-    /// ([*`test-dependencies`*](../../../docs/spec/packages.md#test-dependencies)). The
+    /// ([*`test-dependencies`*](../../docs/spec/packages.md#test-dependencies)). The
     /// root is always `stack[0]`, which is how it is told apart from any other package on
     /// the stack.
     ///
@@ -647,7 +647,7 @@ impl Resolver {
 /// names, a wrapped dependency's under `<Namespace>.<module>`, and an unwrapped
 /// dependency's under their own names. That is the whole of what an `import` can
 /// reach — [*Imports across a package
-/// boundary*](../../../docs/spec/packages.md#imports-across-a-package-boundary) — and
+/// boundary*](../../docs/spec/packages.md#imports-across-a-package-boundary) — and
 /// a module has exactly one spelling in it, never two.
 ///
 /// A name claimed twice is an error and no map comes back, because there is no
@@ -750,7 +750,7 @@ pub fn visible_modules(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::manifest::Dependency;
+    use crate::manifest::Dependency;
 
     fn version(major: u64) -> Version {
         Version {

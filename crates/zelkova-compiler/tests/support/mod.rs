@@ -10,9 +10,9 @@
 
 use codespan_reporting::files::SimpleFile;
 use std::collections::HashMap;
-use zelkova_lang::compiler::canonical;
-use zelkova_lang::compiler::name::{Name, QualName};
-use zelkova_lang::compiler::{Interface, ModuleName, PackageName};
+use zelkova_compiler::canonical;
+use zelkova_compiler::name::{Name, QualName};
+use zelkova_compiler::{Interface, ModuleName, PackageName};
 use zelkova_syntax::parser;
 use zelkova_syntax::position::NodeSpan;
 

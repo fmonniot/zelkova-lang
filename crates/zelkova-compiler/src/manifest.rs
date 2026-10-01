@@ -1,6 +1,6 @@
 //! `zelkova.toml`, the package manifest.
 //!
-//! [`docs/spec/packages.md`](../../../docs/spec/packages.md#the-manifest) is the normative
+//! [`docs/spec/packages.md`](../../docs/spec/packages.md#the-manifest) is the normative
 //! shape: six fields, five of them required. This module reads the file, deserializes it
 //! with `serde`/`toml`, and validates each field on its own terms — a legal package
 //! [`name`](Manifest::name), a three-integer [`version`](Manifest::version), and each

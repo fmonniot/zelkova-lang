@@ -49,7 +49,7 @@
 //! pattern lowers through the same walk. This module's own tests build such a pattern by
 //! hand to pin that.
 
-use crate::compiler::name::Name;
+use crate::name::Name;
 
 use super::{Constructor, LiteralValue, TermPattern, TermPatternKind, Type, TypedTerm};
 
@@ -294,10 +294,10 @@ mod tests {
     //! [`build`] makes of it.
 
     use super::*;
-    use crate::compiler::ir::{SubPattern, TypedTermKind};
-    use crate::compiler::name::QualName;
-    use crate::compiler::typer::TypeLiteral;
-    use crate::compiler::PackageName;
+    use crate::ir::{SubPattern, TypedTermKind};
+    use crate::name::QualName;
+    use crate::typer::TypeLiteral;
+    use crate::PackageName;
     use zelkova_syntax::position::NodeSpan;
     use zelkova_syntax::tuple::Tuple;
 

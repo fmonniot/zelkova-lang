@@ -3,12 +3,12 @@
 //! `Int`, `Float`, `Bool`, `Char` and `String` are **scalar**: each is declared in
 //! Zelkova like any other type, and the compiler additionally knows the
 //! representation each target gives it. [*Scalar
-//! types*](../../../docs/spec/types.md#scalar-types) is the rule; this module is the
+//! types*](../../docs/spec/types.md#scalar-types) is the rule; this module is the
 //! list it names.
 //!
 //! A scalar is known by the **qualified name of its declaration** — package, module and
 //! name — and never by its spelling ([`DEC-15` decision
-//! 1](../../../docs/decisions/dec-15.md#1--a-scalar-type-is-known-by-its-qualified-name)).
+//! 1](../../docs/decisions/dec-15.md#1--a-scalar-type-is-known-by-its-qualified-name)).
 //! A module declaring its own `Int` declares an ordinary type that shares three letters
 //! with a scalar, and every phase treats it as one — which is why [`Scalar::declares`]
 //! takes a [`QualName`] and there is no entry point taking a bare
@@ -80,7 +80,7 @@ pub const FLOAT: Scalar = Scalar {
 };
 
 /// `Basics.Bool`, which is [a scalar and an ordinary union at
-/// once](../../../docs/spec/types.md#scalar-types): the compiler knows its
+/// once](../../docs/spec/types.md#scalar-types): the compiler knows its
 /// representation and nothing about its structure, so `True` and `False` stay
 /// constructors like any others.
 pub const BOOL: Scalar = Scalar {
@@ -101,7 +101,7 @@ pub const STRING: Scalar = Scalar {
 };
 
 /// The five scalar types, in the order [*Scalar
-/// types*](../../../docs/spec/types.md#scalar-types) lists them.
+/// types*](../../docs/spec/types.md#scalar-types) lists them.
 pub const SCALARS: &[Scalar] = &[INT, FLOAT, BOOL, CHAR, STRING];
 
 /// The scalar `name` declares, if it declares one.
@@ -110,14 +110,14 @@ pub fn scalar_of(name: &QualName) -> Option<Scalar> {
 }
 
 /// The four scalars whose declaration is **opaque** ([`DEC-15` decision
-/// 2](../../../docs/decisions/dec-15.md#2--a-scalar-type-is-declared-in-zelkova-and-an-opaque-ones-declaration-names-itself)):
+/// 2](../../docs/decisions/dec-15.md#2--a-scalar-type-is-declared-in-zelkova-and-an-opaque-ones-declaration-names-itself)):
 /// nothing in the language constructs or inspects a value of one, so each declares
 /// only its own name and contributes no constructor.
 ///
 /// [`BOOL`] is deliberately absent. It is a scalar — the compiler knows its
 /// representation — but its declaration is `Basics`' genuine `type Bool = True |
 /// False`, and the self-naming rule does not reach it ([`DEC-15` decision
-/// 5](../../../docs/decisions/dec-15.md#5--bool-is-a-scalar-and-an-ordinary-union-and-both-at-once)).
+/// 5](../../docs/decisions/dec-15.md#5--bool-is-a-scalar-and-an-ordinary-union-and-both-at-once)).
 pub const OPAQUE_SCALARS: &[Scalar] = &[INT, FLOAT, CHAR, STRING];
 
 /// The opaque scalar `name` declares, if it declares one — `None` for [`BOOL`] even

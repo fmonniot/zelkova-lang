@@ -69,15 +69,10 @@ pub mod dependencies;
 pub mod exhaustiveness;
 // Public because it is the compiler's hand-off to a backend and `check_module` returns one.
 pub mod ir;
-// Public so that its tests reach `emit` directly, on a module no package holds.
-pub mod javascript;
 // Public for the same reason as `source` and `dependencies` — `manifest::ManifestError` is
 // reachable from the public `CompilationError::Manifest`.
 pub mod manifest;
 pub mod name;
-// Public because `output::Error` is reachable from the public `driver::BuildError::Output`,
-// and the driver writes a build through `write`.
-pub mod output;
 // Public for the same reason as `manifest`: `program::Error` is reachable from the public
 // `CompilationError::Program`.
 pub mod program;
@@ -88,16 +83,8 @@ pub mod resolve;
 // than an implementation detail of one phase.
 pub mod scalars;
 pub mod source;
-// Public because `test_runner`, and `zelkova test` through it, is its caller, the way
-// `scalars` and `default_imports` are public for the phase that reads them.
-pub mod test_collection;
-// Public because `driver::BuildError::ProgramRun` carries its `Error`, and `zelkova run` calls
-// `run`.
-pub mod program_runner;
-// Public because `driver::BuildError::TestRun` carries its `Error`, and `zelkova test` calls
-// `run` through the driver.
-pub mod test_runner;
 pub mod typer;
+mod utils;
 
 use name::{Name, QualName};
 use source::files::{SourceFileError, SourceFileId};
@@ -108,7 +95,7 @@ use zelkova_syntax::position::{BytePos, NodeSpan, Span};
 // TODO Move PackageName and ModuleName into the name module
 /// A package name: one flat identifier, ASCII lowercase letters, digits and hyphens,
 /// starting with a letter, with every hyphen followed by a letter —
-/// [`docs/spec/packages.md`](../../docs/spec/packages.md#the-manifest)'s whole rule for
+/// [`docs/spec/packages.md`](../docs/spec/packages.md#the-manifest)'s whole rule for
 /// `name`. That shape is what keeps a package name and a module name from ever being
 /// confused (one is lowercase-with-hyphens, the other uppercase-with-dots), and what makes
 /// the namespace a package's name derives unambiguous.
@@ -149,7 +136,7 @@ impl PackageName {
 
     /// Whether this is `zelkova-core`, the one package the default imports and the
     /// scalar seeding they are replaced by both key themselves on
-    /// ([`DEC-17`](../../docs/decisions/dec-17.md) decision 4) — and, since
+    /// ([`DEC-17`](../docs/decisions/dec-17.md) decision 4) — and, since
     /// [`resolve::visible_modules`] rejects any other package that declares one of
     /// the eight, the only package that can be shaped like it.
     pub fn is_core(&self) -> bool {
@@ -158,7 +145,7 @@ impl PackageName {
 
     /// The prefix this package's modules are named through from outside it: the name
     /// split at its hyphens, each piece capitalised, joined —
-    /// [*The namespace*](../../docs/spec/packages.md#the-namespace). `acme-widgets` is
+    /// [*The namespace*](../docs/spec/packages.md#the-namespace). `acme-widgets` is
     /// `AcmeWidgets`, `todo` is `Todo`.
     ///
     /// It is a [`Name`] and not a [`PackageName`]: what comes back is a module-name
@@ -315,7 +302,7 @@ pub struct Interface {
     /// and a partial application, or a use as a value of one taking two or more, goes
     /// through the runtime's `$curry`
     /// ([`DEC-18` decision
-    /// 3](../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
+    /// 3](../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
     /// The typer's translation is where it is read, into [`ir::ReferenceKind::Foreign`].
     ///
     /// [`canonical::Module::to_interface`] records one for every value either map holds.
@@ -529,7 +516,7 @@ fn spans_to_labels(
 /// and a group, and an error that got swallowed into a note still knows where it was.
 ///
 /// Public because [`CompilationError::as_diagnostic`] shares it with
-/// [`crate::driver::BuildError::as_diagnostic`], which renders the driver's own per-module
+/// `zelkova::BuildError::as_diagnostic`, which renders the driver's own per-module
 /// errors through it.
 pub fn phase_diagnostic<E: PhaseError>(
     module: &Name,
@@ -561,7 +548,7 @@ pub fn phase_diagnostic<E: PhaseError>(
 /// Render an error that is about no place in any source — a path on disk, a program that
 /// could not be started — as its message and its notes, with no label.
 ///
-/// [`crate::driver::BuildError::as_diagnostic`] is its caller, for the errors of writing
+/// `zelkova::BuildError::as_diagnostic` is its caller, for the errors of writing
 /// and running a build.
 pub fn plain_diagnostic<E: PhaseError>(error: &E) -> Diagnostic<SourceFileId> {
     Diagnostic::error()
@@ -572,7 +559,7 @@ pub fn plain_diagnostic<E: PhaseError>(error: &E) -> Diagnostic<SourceFileId> {
 /// Every way checking a package can fail, tagged with the phase that failed.
 ///
 /// What can go wrong once a package has checked — emitting it, writing it, running it —
-/// is [`crate::driver::BuildError`]'s, which wraps this.
+/// is `zelkova::BuildError`'s, which wraps this.
 ///
 /// Each phase-carrying variant holds *all* the errors that phase produced for one
 /// module rather than only the first, plus the module's [`Name`], which is what
@@ -633,7 +620,7 @@ pub enum CompilationError {
     ///
     /// Nothing in the compiler builds it: [`check_package`] hands its accumulated errors
     /// back as [`PackageCheck::errors`], and the driver's own accumulation is
-    /// [`crate::driver::BuildError::Many`], which holds each of them on its own.
+    /// `zelkova::BuildError::Many`, which holds each of them on its own.
     Many(Vec<CompilationError>),
 }
 
@@ -641,7 +628,7 @@ impl CompilationError {
     /// Turn this error into the diagnostic the user reads.
     ///
     /// This is the compiler's single rendering point — nothing else builds a `Diagnostic`
-    /// from a phase error, and [`crate::driver::BuildError::as_diagnostic`] calls it for
+    /// from a phase error, and `zelkova::BuildError::as_diagnostic` calls it for
     /// every error of the check. It is public so
     /// that a test can assert on what the user is actually shown, rather than on
     /// `is_err()`: what a failure *says* is the behaviour this method exists for.
@@ -791,7 +778,7 @@ impl From<Vec<resolve::Error>> for CompilationError {
 ///
 /// A package has two, `src/` and `tests/`, and only the first is ever compiled for a
 /// package that is being depended on: a dependency's `tests/` is not read, not resolved
-/// and not observable ([*Tests*](../../docs/spec/packages.md#tests)). So this is a
+/// and not observable ([*Tests*](../docs/spec/packages.md#tests)). So this is a
 /// property of the build rather than of a package, and it applies to the package the
 /// compiler was pointed at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -815,7 +802,7 @@ pub struct CheckedSource {
     /// The directory of the source root it was read under — a package's `src/` or
     /// `tests/`. A facade's companion sits below it at the same path the facade does
     /// ([*A facade names a boundary, not a
-    /// backend*](../../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)), and
+    /// backend*](../docs/spec/interop.md#a-facade-names-a-boundary-not-a-backend)), and
     /// nothing here looks for one: that is the build's business, not the check's.
     pub root_dir: PathBuf,
 }
@@ -824,7 +811,7 @@ pub struct CheckedSource {
 /// `checked modules: [..]`, or what failed in either.
 ///
 /// [`check_package`] records these rather than printing them.
-/// [`crate::driver::compile_package`] prints each one to stderr, after `success` or
+/// `zelkova::compile_package` prints each one to stderr, after `success` or
 /// `failure` in bold green or red, before anything else it prints.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
@@ -863,7 +850,7 @@ pub struct PackageCheck {
 }
 
 /// Check the package rooted at `package_dir` and every package it depends on, as
-/// [`crate::driver::compile_package`] does, and hand back what was found without printing
+/// `zelkova::compile_package` does, and hand back what was found without printing
 /// or writing anything.
 ///
 /// This is the checking half of every `compile_package` variant: they call it, then print
@@ -888,7 +875,7 @@ pub fn check_package(
 }
 
 /// [`check_package`], checking the root package's `tests/` as well as its `src/`, as
-/// [`crate::driver::compile_package_with_tests`] does.
+/// `zelkova::compile_package_with_tests` does.
 pub fn check_package_with_tests(
     package_dir: &Path,
     overlay: &Overlay,
@@ -985,7 +972,7 @@ fn check(
     // The root package's `tests/` is compiled apart from its `src/`, after every
     // test-only package, because a test-only package may depend on the root: that edge
     // names the root's `src/`, and the root's `tests/` in turn needs the test-only
-    // package ([*`test-dependencies`*](../../docs/spec/packages.md#test-dependencies)).
+    // package ([*`test-dependencies`*](../docs/spec/packages.md#test-dependencies)).
     // So the build runs in three steps: every package the plain graph reaches, the root's
     // `src/` last among them; then each test-only package, which sees the root through
     // `published` like any other dependency; then the root's `tests/`, against what its
@@ -1160,7 +1147,7 @@ struct TestsEnvironment {
 /// There is deliberately no error return. Every way this can fail is a diagnostic about
 /// one package of a build whose other packages may already have accumulated diagnostics
 /// of their own, and a `Result` here is an invitation to `?` those out of
-/// [`crate::driver::compile_package`] past its reporting loop — which is the "nothing is
+/// `zelkova::compile_package` past its reporting loop — which is the "nothing is
 /// rendered and then dropped" the accumulator exists to prevent.
 // Eight parameters, one over clippy's limit, since `TOOL-2` added `overlay`. They are the
 // build, what it published, and the three accumulators a package's check appends to; none
@@ -1309,7 +1296,7 @@ fn compile_in_build(
     // the same error as two modules of one root answering to one name
     // (`docs/spec/packages.md#source-roots`). A `tests/` root is read [when this
     // package's own tests are run and at no other
-    // time](../../docs/spec/packages.md#tests), so an ordinary build has not read the
+    // time](../docs/spec/packages.md#tests), so an ordinary build has not read the
     // second file and has nothing to report.
     //
     // The dependencies here are the plain ones alone. A collision with a
@@ -1476,7 +1463,7 @@ fn check_main(
 ///
 /// `check` calls this after the package's `src/` and after every test-only package,
 /// because a test-only package may depend on this one
-/// ([*`test-dependencies`*](../../docs/spec/packages.md#test-dependencies)): `published`
+/// ([*`test-dependencies`*](../docs/spec/packages.md#test-dependencies)): `published`
 /// then holds every package `tests/` can name. Only for a package whose `src/` checked —
 /// a package whose own modules did not check cannot say anything true about its tests,
 /// since every one of them would be blamed for a type the package never managed to
@@ -1484,7 +1471,7 @@ fn check_main(
 ///
 /// Every `tests/` module that checked, as a [`CheckedSource`] — the same shape
 /// [`compile_in_build`] hands back for `src/` — so the test tree
-/// ([`crate::driver::compile_package_with_tests`]) can write them beside it. Empty, with
+/// (`zelkova::compile_package_with_tests`) can write them beside it. Empty, with
 /// nothing published or emitted, for a package whose collision check or dependency
 /// resolution failed before any module was checked. A test module is checked like any
 /// other and a failure in one fails the build, but nothing outside the package's own

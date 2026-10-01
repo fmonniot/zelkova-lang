@@ -65,7 +65,7 @@
 //! A value another module declares is called the same way as one of this module's
 //! ([`ir::ReferenceKind::Foreign`] carries its arity). A module exports each declaration
 //! as it emitted it — a declaration with parameters as the plain n-ary `function`, a
-//! parameterless binding as its `const` — and its [`Interface`](super::Interface)
+//! parameterless binding as its `const` — and its [`Interface`](zelkova_compiler::Interface)
 //! records how many parameters each takes, so an importer's `Lib.pick a b` is a direct
 //! call of its import, `app$Lib$pick(a, b)`, as `pick a b` is inside `Lib`. A
 //! parameterless binding has arity 0 and is called one argument at a time wherever it
@@ -191,14 +191,14 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 
-use super::canonical::{self, ExportType, Exports, Value};
-use super::ir::{
+use zelkova_compiler::canonical::{self, ExportType, Exports, Value};
+use zelkova_compiler::ir::{
     self, decision_tree, CaseForm, Decision, LiteralValue, Occurrence, Outcome, ReferenceKind,
     Saturation, Step, TypedTerm, TypedTermKind,
 };
-use super::name::{Name, QualName};
-use super::typer::Type;
-use super::{scalars, CheckedModule, ModuleName, PackageName, PhaseError, SpanLabel};
+use zelkova_compiler::name::{Name, QualName};
+use zelkova_compiler::typer::Type;
+use zelkova_compiler::{scalars, CheckedModule, ModuleName, PackageName, PhaseError, SpanLabel};
 use zelkova_syntax::position::NodeSpan;
 
 // ── Errors ────────────────────────────────────────────────────────────────────
@@ -517,7 +517,7 @@ fn wildcard(position: usize) -> String {
 ///
 /// This is injective because a legal package name holds no `_`, and always a valid start
 /// of a JavaScript identifier because a package name starts with a lowercase letter.
-/// It is the package's own name and never its [namespace](super::PackageName::namespace),
+/// It is the package's own name and never its [namespace](zelkova_compiler::PackageName::namespace),
 /// which is how one dependent spells the package rather than what the package is.
 fn package_segment(package: &str) -> String {
     package.replace('-', "_")
@@ -1074,7 +1074,7 @@ fn exports(module: &CheckedModule) -> Vec<String> {
 /// canonicalized it: what a facade's boundary check reads a union's constructors, and
 /// the type each declares for each of its arguments, off.
 ///
-/// It is built from the checked modules themselves, never from an [`Interface`](super::Interface):
+/// It is built from the checked modules themselves, never from an [`Interface`](zelkova_compiler::Interface):
 /// an interface exposing a type without its constructors hands over none of them, and
 /// the predicate of such a type still reads `$` against every constructor its
 /// declaration has.
@@ -1876,7 +1876,7 @@ mod tests {
         assert_eq!(
             hoisted(
                 &QualName::in_module(
-                    crate::compiler::PackageName::new("acme-widgets").unwrap(),
+                    zelkova_compiler::PackageName::new("acme-widgets").unwrap(),
                     "Page.Size",
                     "Size"
                 ),
@@ -1901,7 +1901,7 @@ mod tests {
 
     fn module(package: &str, name: &str) -> ModuleName {
         ModuleName::new(
-            crate::compiler::PackageName::new(package).unwrap(),
+            zelkova_compiler::PackageName::new(package).unwrap(),
             Name::new(name),
         )
     }

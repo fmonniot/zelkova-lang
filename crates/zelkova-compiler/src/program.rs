@@ -1,5 +1,5 @@
 //! A program's entry point: the module a manifest's `main` names, held to
-//! [*Programs*](../../../docs/spec/packages.md#programs).
+//! [*Programs*](../../docs/spec/packages.md#programs).
 //!
 //! That section asks three things of a package whose manifest has `main`: the name is a
 //! module under `src/`, the module exposes a value called `main`, and that value has type
@@ -57,7 +57,7 @@ pub enum Error {
         found: Option<Type>,
         /// `main`'s annotation, which every exposed value has
         /// ([*An exposed declaration must be
-        /// annotated*](../../../docs/spec/types.md#an-exposed-declaration-must-be-annotated)).
+        /// annotated*](../../docs/spec/types.md#an-exposed-declaration-must-be-annotated)).
         annotation: NodeSpan,
     },
 }

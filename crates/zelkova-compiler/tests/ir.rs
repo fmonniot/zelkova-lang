@@ -12,15 +12,15 @@
 use std::collections::HashMap;
 
 use indoc::indoc;
-use zelkova_lang::compiler::dependencies::ModuleWalker;
-use zelkova_lang::compiler::ir::{
+use zelkova_compiler::dependencies::ModuleWalker;
+use zelkova_compiler::ir::{
     self, decision_tree, Binding, CaseForm, Constructor, Decision, Declaration, LiteralValue,
     Occurrence, Outcome, Reference, ReferenceKind, Saturation, Step, TypedTerm, TypedTermKind,
 };
-use zelkova_lang::compiler::name::{Name, QualName};
-use zelkova_lang::compiler::source::{load_package_sources, SourceRoot};
-use zelkova_lang::compiler::typer::{Type, TypeLiteral};
-use zelkova_lang::compiler::{check_module, Interface, PackageName};
+use zelkova_compiler::name::{Name, QualName};
+use zelkova_compiler::source::{load_package_sources, SourceRoot};
+use zelkova_compiler::typer::{Type, TypeLiteral};
+use zelkova_compiler::{check_module, Interface, PackageName};
 use zelkova_syntax::parser;
 
 mod support;
@@ -724,7 +724,9 @@ fn a_declaration_with_no_ir_is_named_rather_than_dropped() {
 #[test]
 fn every_module_of_the_standard_library_gets_an_ir() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let root = std::path::Path::new(&manifest).join("std/core");
+    let root = std::path::Path::new(&manifest)
+        .join("../..")
+        .join("std/core");
 
     let sources = load_package_sources(&root, SourceRoot::Src)
         .unwrap_or_else(|e| panic!("failed to load {:?}: {:?}", root, e));

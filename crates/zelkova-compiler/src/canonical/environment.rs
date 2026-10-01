@@ -2,10 +2,10 @@
 
 use super::{parser, Pattern, PatternKind};
 use super::{Infix, Interface, ModuleName, Name, QualName, Type, TypeConstructor, UnionType};
-use crate::compiler::default_imports;
-use crate::compiler::scalars;
-use crate::compiler::{PhaseError, SourceSpan, SpanLabel};
+use crate::default_imports;
+use crate::scalars;
 use crate::utils::{collect_accumulate, suggest};
+use crate::{PhaseError, SourceSpan, SpanLabel};
 use log::trace;
 use std::collections::HashMap;
 use zelkova_syntax::position::NodeSpan;
@@ -27,7 +27,7 @@ pub(crate) enum ValueType {
 
 /// Whether a contributor to a module's scope was named by an `import` line the
 /// file wrote, or supplied by [the default import
-/// list](crate::compiler::default_imports) because the file wrote none for that
+/// list](crate::default_imports) because the file wrote none for that
 /// module.
 ///
 /// Carried alongside `ValueType::Foreign`/`Foreigns` purely for diagnostics:
@@ -307,18 +307,18 @@ pub(crate) fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>
 ///
 /// The implicit half comes first, and goes through `process_import` exactly as a
 /// written `import` does, so a name arriving through
-/// [`default_imports`](crate::compiler::default_imports) resolves exactly like one
+/// [`default_imports`](crate::default_imports) resolves exactly like one
 /// the file named — including for `insert_foreign_value`, which is what makes two
 /// imports of one name ambiguous regardless of which half either came from. The
 /// only place the two are told apart is [`ImportOrigin`], carried alongside each
 /// candidate purely so `AmbiguousVariables`' note can say which contributor the
 /// module never wrote (SPEC-32). That is also why a module that *writes* one of
 /// the default imports gets only what it wrote:
-/// [`implicit_imports`](crate::compiler::default_imports::implicit_imports) drops
+/// [`implicit_imports`](crate::default_imports::implicit_imports) drops
 /// an entry the file already names, rather than registering `Basics` twice over and
 /// turning every use of `+` into an `AmbiguousVariables`.
 ///
-/// `is_core` is [`module_name.package().is_core()`](crate::compiler::PackageName::is_core)
+/// `is_core` is [`module_name.package().is_core()`](crate::PackageName::is_core)
 /// — the same package-level answer `dependencies::add_default_import_edges` uses to
 /// decide this package's implicit edges. A module of `zelkova-core` gets none of the
 /// eight, whatever it is named — and, in their place, the five scalar type names
@@ -1049,7 +1049,7 @@ impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::canonical::*;
+    use crate::canonical::*;
 
     fn module_name() -> ModuleName {
         ModuleName::new(PackageName::new("author-project").unwrap(), "module".into())
@@ -1168,7 +1168,7 @@ mod tests {
     /// import, has an empty scope.
     ///
     /// The interfaces map is empty and that is now load-bearing: `Maybe` is on the
-    /// [default import list](crate::compiler::default_imports), so a package that
+    /// [default import list](crate::default_imports), so a package that
     /// *has* a `Maybe` puts it in scope here without a written `import` —
     /// `default_imports_reach_a_module_that_wrote_none` below is that case.
     #[test]

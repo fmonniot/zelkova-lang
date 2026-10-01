@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 ///
 /// A module's text normally comes from its file. A language server checks what the
 /// editor holds, which differs from the disk until the user saves, so the checking entry
-/// points ([`check_package`](crate::compiler::check_package) and
-/// [`check_package_with_tests`](crate::compiler::check_package_with_tests)) take an
+/// points ([`check_package`](crate::check_package) and
+/// [`check_package_with_tests`](crate::check_package_with_tests)) take an
 /// `Overlay` and every `.zel` file is read through it. The functions that write a build
 /// take none: no build is ever written from the text of a buffer.
 ///

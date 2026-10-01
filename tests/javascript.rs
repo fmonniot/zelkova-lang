@@ -12,12 +12,13 @@
 use std::collections::HashMap;
 
 use indoc::indoc;
-use zelkova_lang::compiler::canonical::Value;
+use zelkova_compiler::canonical::Value;
+use zelkova_compiler::name::Name;
+use zelkova_compiler::{check_module, CheckedModule, Interface, PackageName, PhaseError};
 use zelkova_lang::compiler::javascript::{self, Error, Unions, Unpredicated};
-use zelkova_lang::compiler::name::Name;
-use zelkova_lang::compiler::{check_module, CheckedModule, Interface, PackageName, PhaseError};
 use zelkova_syntax::position::NodeSpan;
 
+#[path = "../crates/zelkova-compiler/tests/support/mod.rs"]
 mod support;
 
 use support::*;

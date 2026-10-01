@@ -31,7 +31,7 @@ pub fn load_package_sources(
 /// A package has two source roots and they are walked separately, because a module's
 /// name is its path under *its own* root: `src/Model.zel` and `tests/Model.zel` are
 /// both `Model` ([*Source
-/// roots*](../../../../docs/spec/packages.md#source-roots)). Each file carries the root
+/// roots*](../../docs/spec/packages.md#source-roots)). Each file carries the root
 /// it came from, so a diagnostic can tell the two apart.
 ///
 /// A package must have a `src/`, and a walk of one that is not there is the error

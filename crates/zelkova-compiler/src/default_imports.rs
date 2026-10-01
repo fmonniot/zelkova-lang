@@ -4,7 +4,7 @@
 //! `Int`, `Bool`, `True`, `+` and `<|` resolve in a file whose only declaration is
 //! `x = 1 + 2`, and `Maybe`, `Just`, `List.map` and `String.length` resolve there
 //! too. [*The default
-//! imports*](../../../docs/spec/modules.md#the-default-imports) is the rule; this
+//! imports*](../../docs/spec/modules.md#the-default-imports) is the rule; this
 //! module is the list it names, plus the two questions asked of that list.
 //!
 //! # Why the list lives here and not in canonicalization
@@ -13,7 +13,7 @@
 //! `canonical::environment::new_environment`
 //! turns each entry into a [`parser::Import`] and runs it through `process_import`
 //! ahead of the module's own, so a name arriving implicitly is indistinguishable
-//! from one written by hand. [`dependencies::ModuleWalker::new`](crate::compiler::dependencies::ModuleWalker::new)
+//! from one written by hand. [`dependencies::ModuleWalker::new`](crate::dependencies::ModuleWalker::new)
 //! adds the matching edge to the import graph, because a module can only resolve
 //! against an [`Interface`] that already exists — so
 //! `Basics` has to be *checked* before the module that never named it, and nothing
@@ -26,21 +26,21 @@
 //!
 //! `Basics` cannot implicitly import `Basics`, and `Maybe` implicitly importing
 //! `Result` importing `Maybe` is exactly the loop
-//! [`dependencies`](crate::compiler::dependencies) exists to reject. What keeps the
+//! [`dependencies`](crate::dependencies) exists to reject. What keeps the
 //! graph acyclic is a property of the *package*, not of any one entry: `zelkova-core`
 //! — the package the eight belong to — is the exception, and it is all-or-nothing.
 //! No module of it receives any of the eight, not the eight themselves and not the
 //! facades they are built from, so nothing in the package can ever close a loop
 //! through an implicit edge.
-//! [`PackageName::is_core`](crate::compiler::PackageName::is_core) is that question,
+//! [`PackageName::is_core`](crate::PackageName::is_core) is that question,
 //! asked of the package's own name rather than of its module names:
-//! [`resolve::visible_modules`](crate::compiler::resolve::visible_modules) rejects any
+//! [`resolve::visible_modules`](crate::resolve::visible_modules) rejects any
 //! package other than `zelkova-core` that declares one of the eight, before any module
 //! of it is compiled, so a package this is true for is `zelkova-core` by construction
 //! rather than merely by what it happens to contain. Every module of every other
 //! package receives all eight, whatever it imports and whatever imports it. [*The
-//! default imports*](../../../docs/spec/modules.md#the-default-imports) is the rule in
-//! full, and [`DEC-17`](../../../docs/decisions/dec-17.md) is why it is scoped to the
+//! default imports*](../../docs/spec/modules.md#the-default-imports) is the rule in
+//! full, and [`DEC-17`](../../docs/decisions/dec-17.md) is why it is scoped to the
 //! package rather than judged from the import graph.
 //!
 //! `zelkova-core`'s own modules write every import they use — `Basics.zel`,
@@ -105,7 +105,7 @@ pub struct DefaultImport {
 /// The eight modules every Zelkova module behaves as though it began by importing.
 ///
 /// This is [*The default
-/// imports*](../../../docs/spec/modules.md#the-default-imports) verbatim, in the
+/// imports*](../../docs/spec/modules.md#the-default-imports) verbatim, in the
 /// order the chapter writes them. `Maybe` and `Result` bring their constructors
 /// because matching on them is the ordinary way to use them; `List`, `Task`, `Char`
 /// and `String` come as bare types because their modules' functions read better
@@ -185,7 +185,7 @@ impl DefaultImport {
     /// Whether `interface` provides what this entry asks of it.
     ///
     /// An `exposing (Maybe(..))` entry against a module that declares no `Maybe`
-    /// would raise [`EnvError::UnionNotFound`](crate::compiler::canonical::environment::EnvError::UnionNotFound)
+    /// would raise [`EnvError::UnionNotFound`](crate::canonical::environment::EnvError::UnionNotFound)
     /// from an `import` nobody wrote. Rather than report that, the entry is
     /// dropped — see this module's documentation.
     ///
@@ -193,7 +193,7 @@ impl DefaultImport {
     /// entry is that the interface declares a **union** of the module's own name.
     /// That is what `Maybe`, `Result` and `List` are, and `Char` and `String`, whose
     /// declarations in `std/core` are each a one-constructor union of their own name, as
-    /// is [`Task`](../../../docs/spec/evaluation-semantics.md#effects). The chapter does
+    /// is [`Task`](../../docs/spec/evaluation-semantics.md#effects). The chapter does
     /// not oblige `Task` to be a union: if it were declared as anything else — a type
     /// alias, or a type the compiler knows without a declaration — this entry would be
     /// silently dropped and nothing here would go red.
@@ -211,7 +211,7 @@ impl DefaultImport {
 ///
 /// Such a module receives none of them when its package is `zelkova-core`
 /// ([`implicit_imports`]) — the only package a module of this name may belong to,
-/// since [`resolve::visible_modules`](crate::compiler::resolve::visible_modules)
+/// since [`resolve::visible_modules`](crate::resolve::visible_modules)
 /// rejects any other package that declares one (see this module's documentation).
 pub fn is_default(module: &Name) -> bool {
     DEFAULT_IMPORTS
@@ -226,7 +226,7 @@ pub fn is_default(module: &Name) -> bool {
 /// the eight, including the ones named on the list themselves. That is why this
 /// no longer takes the module's own name: a module named on the list can only
 /// belong to `zelkova-core`
-/// ([`resolve::visible_modules`](crate::compiler::resolve::visible_modules) rejects
+/// ([`resolve::visible_modules`](crate::resolve::visible_modules) rejects
 /// it everywhere else), so the caller's package-level answer already covers it and
 /// there is nothing left for a per-module check to add. Otherwise this returns one
 /// [`parser::Import`] per entry that `written` does not already name and that
@@ -259,9 +259,9 @@ pub fn implicit_imports(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::canonical::{Type, TypeConstructor, UnionType};
-    use crate::compiler::name::QualName;
-    use crate::compiler::{ModuleName, PackageName};
+    use crate::canonical::{Type, TypeConstructor, UnionType};
+    use crate::name::QualName;
+    use crate::{ModuleName, PackageName};
 
     /// An interface named `module`, declaring a union of the same name when
     /// `with_union` — which is what a `Maybe(..)`-shaped entry needs to find.

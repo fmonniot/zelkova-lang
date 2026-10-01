@@ -52,7 +52,7 @@ impl<'a> std::fmt::Debug for ModuleWalker<'a> {
 ///
 /// `file` comes from the `module_files` map [`ModuleWalker::new`] is handed by
 /// `compile_package`, the only place that knows which file a parsed module came
-/// from — the same reasoning `ERR-5` used for [`crate::compiler::Interface::file`].
+/// from — the same reasoning `ERR-5` used for [`crate::Interface::file`].
 /// It is `None` for every edge built in this module's own tests, which hand-build
 /// modules with nothing on disk behind them.
 #[derive(Debug, PartialEq, Clone)]
@@ -101,7 +101,7 @@ pub enum Error {
 /// labels — one per `import` that forms an edge — each carry their own file rather
 /// than relying on a fallback the way a single-module phase error can
 /// (`CompilationError::DependenciesError` renders this without one, see there).
-impl crate::compiler::PhaseError for Error {
+impl crate::PhaseError for Error {
     fn message(&self) -> String {
         match self {
             Error::CycleDetected(cycles) => format!(
@@ -328,7 +328,7 @@ fn build_cycle(
     }
 }
 
-/// Put the [default imports](crate::compiler::default_imports) into the import
+/// Put the [default imports](crate::default_imports) into the import
 /// graph, so a module that never wrote `import Basics` is still checked after it.
 ///
 /// Canonicalization resolves an implicit import against an `Interface` that already
@@ -352,14 +352,14 @@ fn add_default_import_edges(
         names.iter().map(|(&name, &idx)| (name, idx)).collect();
     importers.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
 
-    for default in crate::compiler::default_imports::DEFAULT_IMPORTS {
+    for default in crate::default_imports::DEFAULT_IMPORTS {
         let target = default.name();
         let Some(&target_idx) = names.get(&target) else {
             continue;
         };
 
         for &(module_name, module_idx) in &importers {
-            if crate::compiler::default_imports::is_default(module_name) {
+            if crate::default_imports::is_default(module_name) {
                 continue;
             }
 
@@ -389,7 +389,7 @@ impl<'a> ModuleWalker<'a> {
     pub fn new(
         modules: &'a [Module],
         module_files: &HashMap<Name, SourceFileId>,
-        package: &crate::compiler::PackageName,
+        package: &crate::PackageName,
     ) -> Result<ModuleWalker<'a>, Error> {
         ModuleWalker::new_for_root(modules, module_files, package)
     }
@@ -398,19 +398,19 @@ impl<'a> ModuleWalker<'a> {
     ///
     /// A package has a `src/` and a `tests/`, and each is walked and checked on its own,
     /// but whether `package` is exempt from the default imports
-    /// ([`PackageName::is_core`](crate::compiler::PackageName::is_core)) does not depend
+    /// ([`PackageName::is_core`](crate::PackageName::is_core)) does not depend
     /// on which root — or which modules — either one happens to hold, so the two roots
     /// of one package always get the same answer without either walker having to be
     /// told the other's modules.
     ///
     /// The import graph is built from `modules` alone either way. An import naming a
     /// module of the other root resolves through an
-    /// [`Interface`](crate::compiler::Interface) or not at all, the same as an import
+    /// [`Interface`](crate::Interface) or not at all, the same as an import
     /// naming another package's module.
     pub fn new_for_root(
         modules: &'a [Module],
         module_files: &HashMap<Name, SourceFileId>,
-        package: &crate::compiler::PackageName,
+        package: &crate::PackageName,
     ) -> Result<ModuleWalker<'a>, Error> {
         let mut graph = DiGraph::new();
 
@@ -498,14 +498,14 @@ impl<'a> ModuleWalker<'a> {
     /// `package` alone, so a checker derives its own answer from the same package
     /// this walker was built from rather than being handed one separately.
     #[allow(clippy::type_complexity)]
-    pub fn check_in_order<M: crate::compiler::Checked, E>(
+    pub fn check_in_order<M: crate::Checked, E>(
         &self,
-        package: &crate::compiler::PackageName,
-        interfaces: &mut HashMap<Name, crate::compiler::Interface>,
-        module_files: &HashMap<Name, crate::compiler::source::files::SourceFileId>,
+        package: &crate::PackageName,
+        interfaces: &mut HashMap<Name, crate::Interface>,
+        module_files: &HashMap<Name, crate::source::files::SourceFileId>,
         check: fn(
-            package: &crate::compiler::PackageName,
-            interfaces: &HashMap<Name, crate::compiler::Interface>,
+            package: &crate::PackageName,
+            interfaces: &HashMap<Name, crate::Interface>,
             source: &zelkova_syntax::parser::Module,
         ) -> Result<M, E>,
     ) -> (Vec<M>, Vec<E>) {
@@ -538,9 +538,7 @@ impl<'a> ModuleWalker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::{
-        canonical, parser, CheckedModule, Interface, ModuleName, Name, PackageName,
-    };
+    use crate::{canonical, parser, CheckedModule, Interface, ModuleName, Name, PackageName};
     use zelkova_syntax::parser::{Exposing, Import};
     use zelkova_syntax::position::NodeSpan;
 
@@ -604,7 +602,7 @@ mod tests {
             values: HashMap::new(),
             binding_foreign: false,
         };
-        let ir = crate::compiler::ir::build(&canonical, HashMap::new());
+        let ir = crate::ir::build(&canonical, HashMap::new());
 
         CheckedModule { canonical, ir }
     }
@@ -887,7 +885,7 @@ mod tests {
     /// assertion below goes red.
     #[test]
     fn cycle_reports_component_members_left_off_the_loop() {
-        use crate::compiler::PhaseError;
+        use crate::PhaseError;
 
         let specs = [
             ("a", vec!["b"]),

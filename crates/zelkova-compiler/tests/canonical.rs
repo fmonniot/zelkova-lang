@@ -6,13 +6,12 @@
 //! key is present.
 use std::collections::HashMap;
 
-use zelkova_lang::compiler::canonical;
-use zelkova_lang::compiler::name::QualName;
-use zelkova_lang::compiler::{Interface, PackageName};
+use zelkova_compiler::canonical;
+use zelkova_compiler::name::QualName;
+use zelkova_compiler::{Interface, PackageName};
 use zelkova_syntax::position::NodeSpan;
 use zelkova_syntax::tuple::Tuple;
 
-#[path = "../support/mod.rs"]
 mod support;
 
 use support::*;
@@ -51,7 +50,7 @@ fn canonicalize_with_scalars(source: &str) -> Result<canonical::Module, Vec<cano
 
 /// The interface map [`canonicalize_with_scalars`] uses, for a test that needs
 /// to add an interface of its own beside it.
-fn scalar_interfaces() -> HashMap<zelkova_lang::compiler::name::Name, Interface> {
+fn scalar_interfaces() -> HashMap<zelkova_compiler::name::Name, Interface> {
     let mut interfaces = HashMap::new();
     let (name, interface) = basics_interface();
     interfaces.insert(name, interface);
@@ -209,10 +208,7 @@ fn union_type_definition_and_constructor() {
 
     // ── Union type structure ────────────────────────────────────────────────
     let color = module.types.get(&"Color".into()).unwrap();
-    assert_eq!(
-        color.variables,
-        Vec::<zelkova_lang::compiler::name::Name>::new()
-    );
+    assert_eq!(color.variables, Vec::<zelkova_compiler::name::Name>::new());
     assert_eq!(color.variants.len(), 3);
 
     let variant_names: Vec<_> = color.variants.iter().map(|v| v.name.clone()).collect();
@@ -379,7 +375,7 @@ fn if_then_else_expression() {
 /// `canonicalize_standalone` starts returning `Ok` again.
 #[test]
 fn export_nonexistent_value_is_error() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (nonexistent)
@@ -421,7 +417,7 @@ fn export_nonexistent_value_is_error() {
 /// starts returning `Ok` again.
 #[test]
 fn export_nonexistent_type_is_error() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (Missing)
@@ -466,7 +462,7 @@ fn export_nonexistent_type_is_error() {
 /// red — `canonicalize_standalone` starts returning `Ok` again.
 #[test]
 fn exposed_value_without_annotation_is_error() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (label)
@@ -986,7 +982,7 @@ fn module_using_imported_maybe() {
 /// `canonicalize_standalone` starts returning `Ok` again.
 #[test]
 fn type_application_with_too_few_arguments_is_an_arity_error() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -1024,7 +1020,7 @@ fn type_application_with_too_few_arguments_is_an_arity_error() {
 /// writing none.
 #[test]
 fn type_application_with_too_many_arguments_is_an_arity_error() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -1288,7 +1284,7 @@ fn an_unresolved_qualified_type_name_is_reported_as_written() {
 /// canonicalizes cleanly again and `expect_err` panics.
 #[test]
 fn an_undeclared_type_name_in_an_annotation_is_error() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (label)
@@ -1408,7 +1404,7 @@ fn a_type_declaration_may_name_a_type_declared_below_it() {
 /// so it falls through to the catch-all: `labels` comes back empty.
 #[test]
 fn annotation_without_a_body_labels_the_annotation() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -1451,7 +1447,7 @@ fn annotation_without_a_body_labels_the_annotation() {
 /// `suggest_name` call): this test goes red because `suggestion` becomes `None`.
 #[test]
 fn unresolved_variable_suggests_a_near_miss() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let (iface_name, iface) = maybe_interface();
     let mut interfaces = HashMap::new();
@@ -1569,7 +1565,7 @@ fn unresolved_constructor_with_no_near_miss_has_no_suggestion() {
 /// suggestion is asserted the same way as the parser-backed tests above.
 #[test]
 fn unresolved_import_module_suggests_a_near_miss() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let (iface_name, iface) = maybe_interface();
     let mut interfaces = HashMap::new();
@@ -1598,7 +1594,7 @@ fn unresolved_import_module_suggests_a_near_miss() {
 /// value the imported module does declare.
 #[test]
 fn unresolved_import_exposed_value_suggests_a_near_miss() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let (iface_name, iface) = maybe_interface();
     let mut interfaces = HashMap::new();
@@ -1635,7 +1631,7 @@ fn unresolved_import_exposed_value_suggests_a_near_miss() {
 /// the module then canonicalizes and `expect_err` panics.
 #[test]
 fn unresolved_opaque_import_exposed_type_suggests_a_near_miss() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let (iface_name, iface) = maybe_interface();
     let mut interfaces = HashMap::new();
@@ -1873,8 +1869,8 @@ fn assert_ambiguous_pair(source: &str, left: &str, right: &str) {
     assert_eq!(errors.len(), 1, "got {:?}", errors);
     match &errors[0] {
         canonical::Error::AmbiguousOperatorPrecedence(l, r, _) => {
-            assert_eq!(l.name, zelkova_lang::compiler::name::Name::from(left));
-            assert_eq!(r.name, zelkova_lang::compiler::name::Name::from(right));
+            assert_eq!(l.name, zelkova_compiler::name::Name::from(left));
+            assert_eq!(r.name, zelkova_compiler::name::Name::from(right));
         }
         other => panic!("expected AmbiguousOperatorPrecedence, got {:?}", other),
     }
@@ -1937,7 +1933,7 @@ fn two_different_infix_non_operators_are_rejected_and_say_why() {
           a < b > c
     "#};
 
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     assert_ambiguous_pair(source, "<", ">");
 
@@ -2027,8 +2023,8 @@ fn variant_range(source: &str, variant: &str) -> std::ops::Range<usize> {
 }
 
 /// The one label an `InvalidVariant` renders, for a source with exactly one error.
-fn only_invalid_variant_label(errors: &[canonical::Error]) -> zelkova_lang::compiler::SpanLabel {
-    use zelkova_lang::compiler::PhaseError;
+fn only_invalid_variant_label(errors: &[canonical::Error]) -> zelkova_compiler::SpanLabel {
+    use zelkova_compiler::PhaseError;
 
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
     let labels = errors[0].labels();
@@ -2040,7 +2036,7 @@ fn only_invalid_variant_label(errors: &[canonical::Error]) -> zelkova_lang::comp
 /// and says that a constructor name is capitalised.
 #[test]
 fn lowercase_name_in_variant_position_is_rejected() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -2219,7 +2215,7 @@ fn unsafe_facade_signature_is_marked() {
 /// `canonicalize`: the module then canonicalizes cleanly and `expect_err` panics.
 #[test]
 fn unsafe_outside_a_facade_is_error() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (twice)
@@ -2294,7 +2290,7 @@ fn unsafe_is_a_facade_constant_name() {
 /// panics.
 #[test]
 fn facade_signature_over_bare_variable_is_rejected() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module foreign Test exposing (equal)
@@ -2386,7 +2382,7 @@ fn facade_signature_over_admitted_tuple_is_accepted() {
 /// The interface map every test below uses: [`scalar_interfaces`] plus
 /// `Task`, `Result` and `String` — the three `zelkova-core` modules an
 /// unmarked facade's required result shape can name.
-fn effect_interfaces() -> HashMap<zelkova_lang::compiler::name::Name, Interface> {
+fn effect_interfaces() -> HashMap<zelkova_compiler::name::Name, Interface> {
     let mut interfaces = scalar_interfaces();
     for (name, interface) in [task_interface(), result_interface(), string_interface()] {
         interfaces.insert(name, interface);
@@ -2403,7 +2399,7 @@ fn canonicalize_with_effects(source: &str) -> Result<canonical::Module, Vec<cano
 /// needs to show that `Task` is recognised by the qualified name of its
 /// declaration and never by spelling: `Widgets.Task` shares four letters with
 /// `Task.Task` and nothing else.
-fn widgets_task_interface() -> (zelkova_lang::compiler::name::Name, Interface) {
+fn widgets_task_interface() -> (zelkova_compiler::name::Name, Interface) {
     let mut unions = HashMap::new();
     unions.insert(
         "Task".into(),
@@ -2419,7 +2415,7 @@ fn widgets_task_interface() -> (zelkova_lang::compiler::name::Name, Interface) {
     );
 
     let interface = Interface {
-        module_name: zelkova_lang::compiler::ModuleName::new(test_package(), "Widgets".into()),
+        module_name: zelkova_compiler::ModuleName::new(test_package(), "Widgets".into()),
         values: HashMap::new(),
         unions,
         infixes: HashMap::new(),
@@ -2498,7 +2494,7 @@ fn unmarked_facade_over_bare_int_is_rejected() {
     let annotation = "now : Int";
     let start = source.find(annotation).expect("source has the annotation");
 
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
     let labels = errors[0].labels();
     assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
     assert_eq!(
@@ -2994,7 +2990,7 @@ fn a_written_basics_import_coexists_with_the_seed() {
 /// returning `Ok`.
 #[test]
 fn self_reference_is_rejected() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing ()
@@ -3041,7 +3037,7 @@ fn self_reference_is_rejected() {
 /// `canonicalize_standalone` starts returning `Ok`.
 #[test]
 fn mutual_dependency_between_two_bindings_is_rejected() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing ()
@@ -3215,7 +3211,7 @@ fn mentioning_a_recursive_function_is_accepted() {
 /// cycle disappears, and the module is accepted.
 #[test]
 fn a_cycle_through_a_function_is_rejected() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (a)
@@ -3439,7 +3435,7 @@ fn well_formed_constraint_context_is_accepted() {
 /// the module then canonicalizes cleanly and `expect_err` panics.
 #[test]
 fn function_type_as_constraint_context_is_rejected() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (f)
@@ -3474,7 +3470,7 @@ fn function_type_as_constraint_context_is_rejected() {
 /// instead of two.
 #[test]
 fn every_malformed_constraint_of_a_list_is_reported_at_its_own_span() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (f)
@@ -3514,7 +3510,7 @@ fn every_malformed_constraint_of_a_list_is_reported_at_its_own_span() {
 /// cleanly and `expect_err` panics.
 #[test]
 fn constrained_facade_signature_is_rejected() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module foreign Test exposing (compare)
@@ -3638,7 +3634,7 @@ fn unit_pattern_canonicalizes() {
 /// report `InvalidVariantKind::Tuple`: the variant match then panics.
 #[test]
 fn unit_in_variant_position_is_rejected() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)
@@ -3673,7 +3669,7 @@ fn unit_in_variant_position_is_rejected() {
 /// assertion then fails.
 #[test]
 fn unit_as_constraint_context_is_rejected() {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     let source = indoc::indoc! {r#"
         module Test exposing (f)

@@ -39,9 +39,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::name::Name;
-use super::{javascript, manifest, CompilationError, PackageName, PhaseError};
+use super::javascript;
 use crate::driver::{compile_package, BuildError, BUILD_DIRECTORY};
+use zelkova_compiler::name::Name;
+use zelkova_compiler::{manifest, CompilationError, PackageName, PhaseError};
 
 /// The entry point's file name, at the root of `build/out/js/`, beside the runtime.
 pub const MAIN_FILE: &str = "main.mjs";

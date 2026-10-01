@@ -11,9 +11,9 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use zelkova_lang::compiler::ir::{Solved, TypedTerm, TypedTermKind};
-use zelkova_lang::compiler::name::Name;
-use zelkova_lang::compiler::{check_module, typer, CompilationError, PhaseError, SpanLabel};
+use zelkova_compiler::ir::{Solved, TypedTerm, TypedTermKind};
+use zelkova_compiler::name::Name;
+use zelkova_compiler::{check_module, typer, CompilationError, PhaseError, SpanLabel};
 
 mod support;
 
@@ -21,7 +21,7 @@ use support::*;
 
 fn run(
     source: &str,
-) -> Result<zelkova_lang::compiler::CheckedModule, zelkova_lang::compiler::CompilationError> {
+) -> Result<zelkova_compiler::CheckedModule, zelkova_compiler::CompilationError> {
     let parsed = parse_source(source);
     let interfaces = HashMap::from([basics_interface(), char_interface()]);
     check_module(&test_package(), &interfaces, &parsed)
@@ -1585,9 +1585,9 @@ fn a_nested_unit_pattern_against_an_int_is_a_type_error() {
 /// The interfaces a module outside `zelkova-core` sees when the real `Task.zel` is in
 /// the build: `Basics`, `Char`, and `Task` itself, checked from `std/core`'s source
 /// rather than the hand-built double `task_interface` supplies.
-fn interfaces_with_task() -> HashMap<Name, zelkova_lang::compiler::Interface> {
-    let source = include_str!("../std/core/src/Task.zel");
-    let core = zelkova_lang::compiler::PackageName::new("zelkova-core").unwrap();
+fn interfaces_with_task() -> HashMap<Name, zelkova_compiler::Interface> {
+    let source = include_str!("../../../std/core/src/Task.zel");
+    let core = zelkova_compiler::PackageName::new("zelkova-core").unwrap();
     let task = check_module(&core, &HashMap::new(), &parse_source(source))
         .unwrap_or_else(|error| panic!("expected Task.zel to check, got {:?}", error));
 
@@ -1599,7 +1599,7 @@ fn interfaces_with_task() -> HashMap<Name, zelkova_lang::compiler::Interface> {
 /// `source`, a module of an ordinary package, checked against [`interfaces_with_task`].
 fn run_with_task(
     source: &str,
-) -> Result<zelkova_lang::compiler::CheckedModule, zelkova_lang::compiler::CompilationError> {
+) -> Result<zelkova_compiler::CheckedModule, zelkova_compiler::CompilationError> {
     check_module(
         &test_package(),
         &interfaces_with_task(),

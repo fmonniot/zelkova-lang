@@ -2,28 +2,28 @@
 //!
 //! The typer produces it. It is the only phase that knows a node's type, and every node
 //! here carries one ([`DEC-18` decision
-//! 1](../../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
+//! 1](../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
 //! [`Term`] is the untyped half — what the translation from the canonical AST builds —
 //! and [`TypedTerm`] is the same tree once inference has solved a type for each of its
 //! nodes. A [`Module`] holds the unions a module declares and one [`Declaration`] per
 //! value: everything about a module that only emission asks for.
 //!
 //! It is not the whole of what a backend is handed. `check_module` answers with a
-//! [`CheckedModule`](crate::compiler::CheckedModule), which is this beside the
+//! [`CheckedModule`](crate::CheckedModule), which is this beside the
 //! [`canonical::Module`] it was built from, and two of the things emission needs are
 //! still only on that half — a module's `exports`, which is what a JavaScript module has
 //! to export, and `canonical::Value::TypedValue`'s `marked_unsafe`, which
-//! [`javascript::emit`](crate::compiler::javascript::emit) reads because an `unsafe`
+//! `zelkova_js::emit` reads because an `unsafe`
 //! signature and an effectful one emit differently. Nothing here duplicates them.
 //!
-//! The type language itself is still [`typer::Type`](crate::compiler::typer::Type). It is
+//! The type language itself is still [`typer::Type`](crate::typer::Type). It is
 //! the typer's own representation and unification is written against it, so it stays
 //! there; this module names it and adds nothing to it.
 //!
 //! # What this shape owes WebAssembly
 //!
 //! One IR serves both targets and JavaScript is written first ([`DEC-18` decision
-//! 2](../../../docs/decisions/dec-18.md#2--one-ir-serves-both-targets-and-javascript-is-written-first)),
+//! 2](../../docs/decisions/dec-18.md#2--one-ir-serves-both-targets-and-javascript-is-written-first)),
 //! so a reader arriving while only the JavaScript backend exists will find things
 //! JavaScript has no use for. None of them is spare:
 //!
@@ -34,23 +34,23 @@
 //!   Solved types are also what monomorphisation consumes, which is the only way
 //!   polymorphism reaches a target where [a class dictionary is erased by specialisation
 //!   and never
-//!   passed](../../../docs/decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed).
+//!   passed](../../docs/decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed).
 //! - **A constructor's index within its declaration**, and not only its name. A union is
 //!   a WIT `variant` with one case per constructor and a tuple is a `tuple` ([A union
 //!   crosses as a tagged
-//!   value](../../../docs/spec/interop.md#a-union-crosses-as-a-tagged-value)), so a
+//!   value](../../docs/spec/interop.md#a-union-crosses-as-a-tagged-value)), so a
 //!   constructor is reached by its position there. JavaScript writes the name into the
 //!   `$` field and never asks for the index.
 //! - **Arity as a fact and saturation per call site.** A declaration emits as a plain
 //!   n-ary function on both targets ([`DEC-18` decision
-//!   3](../../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)),
+//!   3](../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)),
 //!   and a facade's [plain parameter
-//!   list](../../../docs/spec/interop.md#the-javascript-companion) is the same call shape
+//!   list](../../docs/spec/interop.md#the-javascript-companion) is the same call shape
 //!   either way. WebAssembly has no closure primitive, so how a partial application is
 //!   represented there is open — and an IR that made a call site's saturation something
 //!   to re-derive would make that question harder rather than leaving it open.
 //!
-//! [`GEN-15`](../../../docs/tickets/gen-15.md) holds the questions a WebAssembly backend
+//! [`GEN-15`](../../docs/tickets/gen-15.md) holds the questions a WebAssembly backend
 //! still has to answer — linear memory or WasmGC, how a partial application is
 //! represented, whether monomorphisation is whole-program — and is unscheduled. Nothing
 //! in this module is a JavaScript decision, and a change that makes one of the four
@@ -59,10 +59,10 @@
 //! # What is not here yet
 //!
 //! One ticket adds a mark to this shape and is deliberately not written into it yet: a
-//! self tail call ([`GEN-6`](../../../docs/tickets/gen-6.md)). [`Module`] holds its
+//! self tail call ([`GEN-6`](../../docs/tickets/gen-6.md)). [`Module`] holds its
 //! declarations in a `Vec` sorted by name, which is a deterministic order and not an
 //! evaluation order; [`Module::initialisation_order`] is the evaluation order, over the
-//! parameterless ones alone, and [`javascript::emit`](crate::compiler::javascript::emit)
+//! parameterless ones alone, and `zelkova_js::emit`
 //! emits them in it.
 //!
 //! A `case`'s branches keep [`TypedTermKind::Case`]'s own flat shape rather than
@@ -92,14 +92,14 @@ pub use decision::{build as decision_tree, Binding, Decision, Occurrence, Outcom
 ///
 /// Not everything emission needs — `exports` and `marked_unsafe` stay on the
 /// [`canonical::Module`] this was built from, and a backend is handed both halves as a
-/// [`CheckedModule`](crate::compiler::CheckedModule). See this module's doc comment.
+/// [`CheckedModule`](crate::CheckedModule). See this module's doc comment.
 #[derive(Debug)]
 pub struct Module {
     pub name: ModuleName,
     /// True when this module is a `module foreign` facade: every one of its
     /// declarations is a signature with no body, and the code behind them is in the
     /// companion beside it ([Foreign
-    /// interoperability](../../../docs/spec/interop.md)).
+    /// interoperability](../../docs/spec/interop.md)).
     pub foreign: bool,
     /// The unions this module declares, sorted by name.
     pub unions: Vec<Union>,
@@ -115,7 +115,7 @@ pub struct Module {
     /// A backend handed only [`declarations`](Self::declarations) could not tell a module
     /// it may emit whole from one that quietly lost a declaration on the way here, which
     /// is the mistake [`DEC-18` decision
-    /// 1](../../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)
+    /// 1](../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)
     /// is about. Every value of the canonical module is in one list or the other.
     pub unchecked: Vec<Unchecked>,
     /// The names of [`declarations`](Self::declarations) that take no parameter, in the
@@ -136,7 +136,7 @@ pub struct Module {
     /// `canonical::canonicalize` reads to reject a cycle (`LANG-35`) rather than a second
     /// one built from the same rule; see that function's doc comment for the assumption
     /// this relies on and which phase discharges it.
-    /// [`javascript::emit`](crate::compiler::javascript::emit) is what emits declarations
+    /// `zelkova_js::emit` is what emits declarations
     /// in this order — this only computes it.
     pub initialisation_order: Vec<Name>,
 }
@@ -179,9 +179,9 @@ pub struct Declaration {
     ///
     /// For a facade signature, which has no body to count parameters off, it is the
     /// number of arrows in the signature: the companion's export [takes a plain parameter
-    /// list](../../../docs/spec/interop.md#the-javascript-companion) of exactly that
+    /// list](../../docs/spec/interop.md#the-javascript-companion) of exactly that
     /// length, and a signature with no arrow at all is [a facade
-    /// constant](../../../docs/spec/interop.md#facade-constants).
+    /// constant](../../docs/spec/interop.md#facade-constants).
     pub arity: usize,
     /// The declaration's own type, as inference solved it — or, for a facade, as the
     /// signature declares it.
@@ -192,7 +192,7 @@ pub struct Declaration {
     /// `None` is a `module foreign` facade's signature. It is the whole reason this is an
     /// `Option`: a facade declares what crosses the boundary and the code is in the
     /// companion, so there is nothing here to emit and
-    /// [`javascript::emit`](crate::compiler::javascript::emit) reads the signature
+    /// `zelkova_js::emit` reads the signature
     /// instead.
     pub body: Option<Body>,
     /// Where the declaration was written, annotation and body together.
@@ -274,7 +274,7 @@ pub enum ReferenceKind {
     /// and the package says which package's directory holds that file.
     ///
     /// The `usize` is the declaration's arity, read from the same interface
-    /// ([`Interface::arities`](crate::compiler::Interface::arities)): the count a call has
+    /// ([`Interface::arities`](crate::Interface::arities)): the count a call has
     /// to supply to be a direct call, exactly as [`Declaration::arity`] is for a
     /// [`TopLevel`](Self::TopLevel) name. A module exports each declaration as the
     /// plain n-ary function it emitted, so an importer needs the arity to call it.
@@ -306,7 +306,7 @@ pub struct Constructor {
 ///
 /// A saturated application at a callee whose arity is known emits as a direct call;
 /// everything else goes through the runtime's `$curry` helper ([`DEC-18` decision
-/// 3](../../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
+/// 3](../../docs/decisions/dec-18.md#3--a-function-emits-as-a-plain-n-ary-function-and-currying-is-a-runtime-helper)).
 /// An [`Apply`](TermKind::Apply) node supplies one argument, so this is a property of a
 /// node within the application spine and not of the spine as a whole: `f a b` at a
 /// two-parameter `f` is [`Partial`](Saturation::Partial) on the inner node and
@@ -351,8 +351,8 @@ impl Term {
 pub enum TermKind {
     // literals
     Bool(bool),
-    /// An integer literal, at the width [`Int` *is*](../../../docs/spec/evaluation-semantics.md#numbers)
-    /// ([`DEC-16`](../../../docs/decisions/dec-16.md)). Inference never reads the value
+    /// An integer literal, at the width [`Int` *is*](../../docs/spec/evaluation-semantics.md#numbers)
+    /// ([`DEC-16`](../../docs/decisions/dec-16.md)). Inference never reads the value
     /// — every literal is a `number` whatever it says — but code generation does.
     Int(i64),
     Char(char),
@@ -551,7 +551,7 @@ impl TypeBinder {
 /// Like a [Term] but with an associated [Type], and still with its position.
 /// Any term introducing a name will have a TypeBinder instead.
 ///
-/// This is what [`typer::type_check`](crate::compiler::typer::type_check) hands back for
+/// This is what [`typer::type_check`](crate::typer::type_check) hands back for
 /// a declaration it typed, and the types on it are the *solved* ones: `infer_annotated`
 /// applies `unify`'s final substitution to every node before returning. Between
 /// `annotate` and that point they are inference variables and mean nothing on their own.
@@ -594,9 +594,9 @@ pub enum TypedTermKind {
     Tuple(Tuple<TypedTerm>),
     /// The unit value, `()`. Its type is always [`Type::Unit`].
     ///
-    /// [`javascript::emit`](crate::compiler::javascript::emit) emits it as `undefined`
+    /// `zelkova_js::emit` emits it as `undefined`
     /// ([The unit value crosses as
-    /// `undefined`](../../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)).
+    /// `undefined`](../../docs/spec/interop.md#the-unit-value-crosses-as-undefined)).
     Unit,
     Case {
         scrutinee: Box<TypedTerm>,
@@ -614,7 +614,7 @@ pub enum TypedTermKind {
 /// including the ones it could not type: a caller handed only the ones that worked
 /// cannot tell a declaration the typer verified from one it walked past, and emitting
 /// code for the second is a miscompile. So the three ways a declaration goes untyped
-/// each get a variant, and [`typer::type_check`](crate::compiler::typer::type_check)
+/// each get a variant, and [`typer::type_check`](crate::typer::type_check)
 /// returns one entry per declaration either way.
 #[derive(Debug)]
 pub enum Solved {
@@ -643,7 +643,7 @@ pub enum Solved {
     /// nested inside a constructor or tuple pattern, whether a `case` branch or a
     /// parameter wrote it. Nothing about the declaration was checked.
     ///
-    /// Not an [`Error`](crate::compiler::typer::Error): it is a gap in the typer rather
+    /// Not an [`Error`](crate::typer::Error): it is a gap in the typer rather
     /// than a mistake in the source. What it wants is a warning, which the compiler does not have yet (`ERR-8`, see
     /// `docs/tickets/README.md`) — hence the span, so that the warning has a caret the
     /// day it exists. *Which* of the constructs tripped it is not carried:
@@ -663,7 +663,7 @@ pub enum Solved {
     /// own constructors and annotated declarations. A declaration of this module
     /// written without an annotation has no declared type, and a name reaching one
     /// lands here. That is not a mistake in the source, which is why this is not an
-    /// [`Error`](crate::compiler::typer::Error) either. A name that genuinely does not
+    /// [`Error`](crate::typer::Error) either. A name that genuinely does not
     /// exist is caught earlier, by canonicalization, as
     /// `canonical::Error::VariableNotFound`, with a caret under the name.
     UnboundName {
@@ -829,7 +829,7 @@ fn peel(term: TypedTerm, arity: usize) -> (Vec<TypeBinder>, TypedTerm) {
 /// signature and a synthetic body — and [`canonical::Module::emitted_arity`] counts the
 /// arrows of the type it declares instead, since the companion's export takes a parameter
 /// list of that length and no arrow at all is [a facade
-/// constant](../../../docs/spec/interop.md#facade-constants). That is the count a module
+/// constant](../../docs/spec/interop.md#facade-constants). That is the count a module
 /// importing the facade reads from its interface too.
 ///
 /// `None` is a facade declaration carrying no annotation, which nothing produces today —
@@ -839,7 +839,7 @@ fn facade_signature(value: &canonical::Value, counter: &mut u32) -> Option<Type>
         canonical::Value::Value { .. } => None,
         canonical::Value::TypedValue { tpe, .. } => {
             let mut variables = HashMap::new();
-            crate::compiler::typer::canonical_type_to_typer_type(tpe, &mut variables, counter)
+            crate::typer::canonical_type_to_typer_type(tpe, &mut variables, counter)
         }
     }
 }

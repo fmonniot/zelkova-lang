@@ -41,8 +41,8 @@ use environment::{
 };
 
 // Some elements which are common to both AST
-use crate::compiler::name::{Name, QualName};
-use crate::compiler::source::files::SourceFileId;
+use crate::name::{Name, QualName};
+use crate::source::files::SourceFileId;
 pub use parser::Associativity;
 use zelkova_syntax::position::NodeSpan;
 use zelkova_syntax::tuple::Tuple;
@@ -202,7 +202,7 @@ impl Module {
     /// written with. A `module foreign` facade's declaration is a signature with no
     /// parameters to count, and its forwarding function takes one parameter per arrow in
     /// the signature ([`Type::arrow_count`]), the [plain parameter
-    /// list](../../../docs/spec/interop.md#the-javascript-companion) its companion's
+    /// list](../../docs/spec/interop.md#the-javascript-companion) its companion's
     /// export takes.
     ///
     /// [`to_interface`](Self::to_interface) records it for each exported value, so that
@@ -363,7 +363,7 @@ pub enum Type {
     ///
     /// The name is the *declaration's*, never the spelling that reached it.
     /// `import Widget as W` followed by `W.Size` records `Widget.Size`, the same
-    /// rule [name resolution](../../../docs/spec/name-resolution.md) states for
+    /// rule [name resolution](../../docs/spec/name-resolution.md) states for
     /// values: an alias names a route to a declaration and not a second
     /// declaration. A dependency's namespace is a route too.
     Type(QualName, Vec<Type>),
@@ -372,7 +372,7 @@ pub enum Type {
     /// A tuple type. Zelkova keeps Elm's restriction of two or three elements,
     /// which [`Tuple`] carries in its shape.
     Tuple(Tuple<Type>),
-    /// [The unit type](../../../docs/spec/types.md#the-unit-type), `()`.
+    /// [The unit type](../../docs/spec/types.md#the-unit-type), `()`.
     ///
     /// A form of its own rather than a [`Type::Type`] naming a declaration: `()` is
     /// syntax, declared nowhere and resolved through no environment, so no module can
@@ -478,7 +478,7 @@ pub enum Value {
         ///
         /// The word is only meaningful on a facade signature, where it declares a
         /// plain function in place of the effect a facade declares by default —
-        /// see [Foreign interoperability](../../../docs/spec/interop.md). Only a
+        /// see [Foreign interoperability](../../docs/spec/interop.md). Only a
         /// module whose `binding_foreign` is set can carry it: [`canonicalize`]
         /// reports [`Error::UnsafeOutsideFacade`] for one written anywhere else,
         /// so this is `false` on every value of an ordinary module.
@@ -515,8 +515,8 @@ impl Value {
     /// The rule lives here rather than at any of its readers because they feed fields a
     /// backend reads together, from different phases. `typer`'s `Translation` uses it as
     /// the callee's arity at every call site naming this declaration, which is what
-    /// decides [`ir::Saturation`](crate::compiler::ir::Saturation); `ir::build` uses it as
-    /// [`ir::Declaration::arity`](crate::compiler::ir::Declaration::arity), the count a
+    /// decides [`ir::Saturation`](crate::ir::Saturation); `ir::build` uses it as
+    /// [`ir::Declaration::arity`](crate::ir::Declaration::arity), the count a
     /// direct call has to supply; and [`Module::to_interface`] records it, through
     /// [`Module::emitted_arity`], for a module that imports the declaration. Copies that
     /// drifted apart would mark a call site saturated at a count the emitted function
@@ -676,7 +676,7 @@ pub enum ExpressionKind {
     /// declares it. The package is what a backend builds the import path from: a
     /// module's name is unique within its package and not across a build, and the
     /// output keeps one directory per package
-    /// ([`DEC-18` decision 5](../../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)).
+    /// ([`DEC-18` decision 5](../../docs/decisions/dec-18.md#5--output-is-written-per-package-beside-the-root-manifest)).
     VarForeign(QualName, PackageName, Type),
     /// A union constructor, named by the package and module that declared its union
     /// whichever module the reference is written in. The [`QualName`] carries the
@@ -1127,9 +1127,9 @@ pub enum Error {
     /// declaration's span, `None` for a hand-built interface (a test) or one built
     /// before its module's file was known (`ERR-5`) — and with whether that import
     /// was written by the module under check or supplied by [the default import
-    /// list](../../../docs/spec/modules.md#the-default-imports), which a default
+    /// list](../../docs/spec/modules.md#the-default-imports), which a default
     /// entry participates in exactly as a written import does
-    /// (`SPEC-32`/[`DEC-15`](../../../docs/decisions/dec-15.md)); the note calls out
+    /// (`SPEC-32`/[`DEC-15`](../../docs/decisions/dec-15.md)); the note calls out
     /// a default contributor as implicit.
     AmbiguousVariables(
         Name,
@@ -1188,7 +1188,7 @@ pub enum Error {
     /// `Char.Char` or `String.String` — whose body is something other than
     /// exactly its own name with no arguments (`LANG-59`,
     /// [`DEC-15` decision
-    /// 2](../../../docs/decisions/dec-15.md#2--a-scalar-type-is-declared-in-zelkova-and-an-opaque-ones-declaration-names-itself)).
+    /// 2](../../docs/decisions/dec-15.md#2--a-scalar-type-is-declared-in-zelkova-and-an-opaque-ones-declaration-names-itself)).
     /// Nothing in the language constructs or inspects a value of one of these
     /// four, so the declaration exists to be read rather than built from, and a
     /// body naming anything else — a different type, extra variants, arguments —
@@ -1218,7 +1218,7 @@ pub enum Error {
     /// from the modifier, so the caret starts on the word itself.
     ///
     /// `unsafe` asserts something about the companion behind a facade signature
-    /// (`LANG-53`, [`DEC-12`](../../../docs/decisions/dec-12.md)). There is no
+    /// (`LANG-53`, [`DEC-12`](../../docs/decisions/dec-12.md)). There is no
     /// companion behind an ordinary declaration for it to be a claim about, and
     /// accepting the word there would make it mean nothing in half the places it
     /// can be written.
@@ -1240,9 +1240,9 @@ pub enum Error {
     /// `check_facade_admitted_type` has already accepted it — is not exactly
     /// `Task (Result Failure a)`: the value's name, and `function.annotation_span`.
     ///
-    /// [An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)
+    /// [An effectful facade](../../docs/spec/interop.md#an-effectful-facade)
     /// settles the shape: a facade declares an effect unless its signature is
-    /// marked [`unsafe`](../../../docs/spec/interop.md#an-unsafe-facade), and an
+    /// marked [`unsafe`](../../docs/spec/interop.md#an-unsafe-facade), and an
     /// effectful facade's result type must be exactly `Task (Result Failure a)`.
     /// Never raised for a signature `function.marked_unsafe` — `unsafe` removes
     /// the requirement, not the boundary check itself.
@@ -1255,10 +1255,10 @@ pub enum Error {
     /// the whole of an unmarked facade's result: the value's name, and
     /// `function.annotation_span`.
     ///
-    /// [An effectful facade](../../../docs/spec/interop.md#an-effectful-facade)
+    /// [An effectful facade](../../docs/spec/interop.md#an-effectful-facade)
     /// confines `Task` to that one position — never as an argument, and never
     /// nested inside another type, whether or not the signature is marked
-    /// [`unsafe`](../../../docs/spec/interop.md#an-unsafe-facade). `Task` is
+    /// [`unsafe`](../../docs/spec/interop.md#an-unsafe-facade). `Task` is
     /// recognised by the qualified name of its declaration
     /// (`is_task_declaration`) and never by spelling, so a module's own type
     /// named `Task` is an ordinary union here, not this.
@@ -1271,14 +1271,14 @@ pub enum Error {
     ///
     /// A facade is monomorphic — its signature names the types the code behind
     /// it really handles ([Type
-    /// classes](../../../docs/spec/type-classes.md#a-constrained-function-may-not-be-a-foreign-facade),
-    /// [`DEC-2` decision 6](../../../docs/decisions/dec-2.md)) — and a constrained
+    /// classes](../../docs/spec/type-classes.md#a-constrained-function-may-not-be-a-foreign-facade),
+    /// [`DEC-2` decision 6](../../docs/decisions/dec-2.md)) — and a constrained
     /// function is specialised per instance out of a body a facade does not have.
     /// Reported whatever the context's shape, a well-formed one included.
     FacadeConstrained(Name, NodeSpan),
 
     /// A parameterless binding that depends on itself — [evaluation
-    /// semantics](../../../docs/spec/evaluation-semantics.md#a-binding-may-not-depend-on-itself):
+    /// semantics](../../docs/spec/evaluation-semantics.md#a-binding-may-not-depend-on-itself):
     /// such a binding is evaluated once, before the program runs, after everything it
     /// depends on, and a cycle through it describes no such order. *Depends on* is
     /// transitive mention: the declarations its body mentions, the ones *their* bodies
@@ -1363,7 +1363,7 @@ pub enum InvalidConstraintKind {
 }
 
 /// The two forms [What a facade signature may not
-/// name](../../../docs/spec/interop.md#what-a-facade-signature-may-not-name)
+/// name](../../docs/spec/interop.md#what-a-facade-signature-may-not-name)
 /// rejects — see [`Error::FacadeTypeNotAdmitted`].
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FacadeRejectedKind {
@@ -1878,7 +1878,7 @@ fn suggestion_suffix(suggestion: &Option<Name>) -> String {
 /// The `it is exposed by: …` note shared by `Error::AmbiguousVariables` and
 /// `Error::AmbiguousVariants` — one clause for the contributors the module wrote
 /// an `import` for, one for those supplied by [the default import
-/// list](../../../docs/spec/modules.md#the-default-imports) because it wrote
+/// list](../../docs/spec/modules.md#the-default-imports) because it wrote
 /// none. Naming the latter as implicit is what removes the surprise a module can
 /// otherwise get from colliding with an import it never wrote (`SPEC-32`).
 ///
@@ -1962,7 +1962,7 @@ fn facade_signature_pieces(tpe: &Type) -> Vec<&Type> {
 
 /// Whether `tpe` — one piece of a facade signature, as
 /// [`facade_signature_pieces`] cuts it up — is one of [the admitted
-/// types](../../../docs/spec/interop.md#which-types-may-cross-the-boundary).
+/// types](../../docs/spec/interop.md#which-types-may-cross-the-boundary).
 ///
 /// A bare `Type::Variable` or a `Type::Arrow` anywhere inside `tpe` is
 /// rejected, the latter regardless of depth — a function type is inadmissible
@@ -2050,7 +2050,7 @@ fn is_task_applied(tpe: &Type) -> bool {
 /// never by spelling. `None` for any other shape, `Task Int` and
 /// `Maybe (Task Int)` included — those are [`Error::FacadeResultNotEffect`],
 /// not this function's business to name.
-pub(crate) fn effectful_result_payload(tpe: &Type) -> Option<&Type> {
+pub fn effectful_result_payload(tpe: &Type) -> Option<&Type> {
     let Type::Type(task, task_args) = tpe else {
         return None;
     };
@@ -2464,12 +2464,12 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
 /// functions included, and an edge from `u` to `v` for every [`collect_top_level_refs`]
 /// reference `u`'s body makes to `v`. A binding depends on everything it can reach along
 /// these edges ([evaluation
-/// semantics](../../../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once)):
+/// semantics](../../docs/spec/evaluation-semantics.md#a-binding-with-no-parameters-is-evaluated-once)):
 /// initialising a binding runs its body and whatever functions that body calls, and a
 /// function can only be called by code that names it or was handed it by code that did,
 /// so what can run while a binding is initialised is contained in what it reaches. The
 /// relation over-approximates — `a = f` beside `f x = a` mentions `f` without calling it —
-/// and [`DEC-19`](../../../docs/decisions/dec-19.md) is why that is the rule.
+/// and [`DEC-19`](../../docs/decisions/dec-19.md) is why that is the rule.
 ///
 /// A reference to an imported name is never an edge: it never canonicalizes to
 /// `VarTopLevel` in the first place (see [`collect_top_level_refs`]), and a cross-module

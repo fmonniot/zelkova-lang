@@ -1,7 +1,7 @@
 //! Building a package: the half of `zelkova compile`, `zelkova test` and `zelkova run`
 //! that comes after the check.
 //!
-//! [`compiler::check_package`] and [`compiler::check_package_with_tests`] check a package
+//! [`zelkova_compiler::check_package`] and [`zelkova_compiler::check_package_with_tests`] check a package
 //! and every package it depends on, and print, write and render nothing. This module
 //! takes what they hand back and does the rest: it prints each status line to stderr,
 //! emits a build that checked and writes it, and renders every error to stderr.
@@ -33,18 +33,19 @@ use codespan_reporting::term::termcolor::{Color, ColorChoice, ColorSpec, Standar
 use codespan_reporting::term::{self};
 use log::debug;
 
-use crate::compiler::name::Name;
-use crate::compiler::source::files::SourceFileId;
-use crate::compiler::source::Overlay;
 use codespan_reporting::diagnostic::Diagnostic;
+use zelkova_compiler::name::Name;
+use zelkova_compiler::source::files::SourceFileId;
+use zelkova_compiler::source::Overlay;
 
-use crate::compiler::{
-    self, javascript, output, phase_diagnostic, plain_diagnostic, program_runner, test_runner,
-    CheckedModule, CheckedSource, CompilationError, Interface, PackageCheck, PhaseError, Status,
+use crate::compiler::{javascript, output, program_runner, test_runner};
+use zelkova_compiler::{
+    phase_diagnostic, plain_diagnostic, CheckedModule, CheckedSource, CompilationError, Interface,
+    PackageCheck, PhaseError, Status,
 };
 
-/// Which of the root package's source roots a build compiles: [`compiler::check_package`]'s
-/// `src/` alone, or [`compiler::check_package_with_tests`]'s `src/` and `tests/`.
+/// Which of the root package's source roots a build compiles: [`zelkova_compiler::check_package`]'s
+/// `src/` alone, or [`zelkova_compiler::check_package_with_tests`]'s `src/` and `tests/`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TestRoot {
     /// `src/` alone.
@@ -180,7 +181,7 @@ impl From<CompilationError> for BuildError {
 /// manifest — see [`compile_package_into`] for what that tree holds. One that emitted
 /// any error writes nothing.
 ///
-/// The check itself is [`compiler::check_package`]'s. This prints its status lines to stderr, emits
+/// The check itself is [`zelkova_compiler::check_package`]'s. This prints its status lines to stderr, emits
 /// and writes the build, and renders every error to stderr before returning it inside
 /// [`BuildError::Many`]. An error raised before any source is read — the manifest,
 /// the resolution — is returned bare and unrendered.
@@ -304,7 +305,7 @@ fn check_errors(errors: Vec<CompilationError>) -> Vec<BuildError> {
 }
 
 /// The CLI half of every `compile_package` variant: check the package
-/// ([`compiler::check_package`] or [`compiler::check_package_with_tests`], as `tests`
+/// ([`zelkova_compiler::check_package`] or [`zelkova_compiler::check_package_with_tests`], as `tests`
 /// says), print its status lines, emit and write a build that checked, and render every error to stderr.
 ///
 /// The status lines are printed once the check has finished rather than as each phase
@@ -327,8 +328,8 @@ fn compile(
         test_modules,
         status,
     } = match tests {
-        TestRoot::Skipped => compiler::check_package(package_dir, overlay)?,
-        TestRoot::Compiled => compiler::check_package_with_tests(package_dir, overlay)?,
+        TestRoot::Skipped => zelkova_compiler::check_package(package_dir, overlay)?,
+        TestRoot::Compiled => zelkova_compiler::check_package_with_tests(package_dir, overlay)?,
     };
 
     // The build's one accumulator: each error of the check on its own, then whatever

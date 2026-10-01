@@ -60,9 +60,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::name::Name;
+use super::javascript;
 use super::test_collection::{self, ModuleTests};
-use super::{javascript, Interface, PhaseError};
+use zelkova_compiler::name::Name;
+use zelkova_compiler::{Interface, PhaseError};
 
 /// The entry point's file name, at the root of `build/test/js/`, beside the runtime.
 pub const RUN_FILE: &str = "run.mjs";
@@ -303,7 +304,7 @@ if (failed + errored > 0) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::{ModuleName, PackageName};
+    use zelkova_compiler::{ModuleName, PackageName};
 
     fn module(package: &str, name: &str, tests: &[&str]) -> ModuleTests {
         ModuleTests {

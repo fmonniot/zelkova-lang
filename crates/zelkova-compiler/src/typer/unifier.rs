@@ -163,7 +163,7 @@ fn unify_variable(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::typer::*;
+    use crate::typer::*;
     use zelkova_syntax::position::NodeSpan;
 
     /// These tests are about unification, not about provenance: every constraint gets
@@ -210,11 +210,7 @@ mod tests {
     #[test]
     fn a_bool_from_another_module_is_a_different_type() {
         let local_bool = Type::Adt(
-            crate::compiler::name::QualName::in_module(
-                crate::compiler::PackageName::core(),
-                "Example",
-                "Bool",
-            ),
+            crate::name::QualName::in_module(crate::PackageName::core(), "Example", "Bool"),
             vec![],
         );
         let constraints = vec![constraint(local_bool, bool_type())];
@@ -237,8 +233,8 @@ mod tests {
     #[test]
     fn a_bool_from_another_package_is_a_different_type() {
         let rival_bool = Type::Adt(
-            crate::compiler::name::QualName::in_module(
-                crate::compiler::PackageName::new("acme-basics").unwrap(),
+            crate::name::QualName::in_module(
+                crate::PackageName::new("acme-basics").unwrap(),
                 "Basics",
                 "Bool",
             ),

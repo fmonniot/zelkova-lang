@@ -29,7 +29,7 @@ use super::PackageName;
 /// A module's name is unique within its package and not across a build: a package may
 /// hold its own `Size` beside a dependency's, which it reaches as `AcmeWidgets.Size`
 /// ([*What a package boundary cannot
-/// rename*](../../../docs/spec/packages.md#what-a-package-boundary-cannot-rename)). Both
+/// rename*](../../docs/spec/packages.md#what-a-package-boundary-cannot-rename)). Both
 /// declare `Size.Size`, and only the package tells the two apart. With it, every
 /// `QualName` names one declaration on its own: once we are given a `QualName`, no further
 /// resolution is necessary, and two `QualName`s are equal exactly when they name the same

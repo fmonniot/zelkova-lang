@@ -272,8 +272,8 @@ fn pattern_constraints(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compiler::ir::{Reference, Saturation};
-    use crate::compiler::typer::*;
+    use crate::ir::{Reference, Saturation};
+    use crate::typer::*;
     use zelkova_syntax::position::NodeSpan;
 
     /// Build a typed term with no position — these tests are about which constraints
@@ -303,11 +303,7 @@ mod tests {
     /// `Bool` an `if` condition ([`DEC-15`](../../../docs/decisions/dec-15.md) decision 1).
     fn basics_bool() -> Type {
         Type::Adt(
-            crate::compiler::name::QualName::in_module(
-                crate::compiler::PackageName::core(),
-                "Basics",
-                "Bool",
-            ),
+            crate::name::QualName::in_module(crate::PackageName::core(), "Basics", "Bool"),
             vec![],
         )
     }

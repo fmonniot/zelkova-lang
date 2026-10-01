@@ -34,7 +34,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use super::PhaseError;
+use zelkova_compiler::PhaseError;
 
 /// Serializes [`write`] process-wide — see this module's doc comment for why a call
 /// cannot safely run concurrently with another.

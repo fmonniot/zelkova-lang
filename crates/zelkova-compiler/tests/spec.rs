@@ -127,11 +127,11 @@ use std::collections::HashMap;
 
 use codespan_reporting::files::SimpleFile;
 use spec_doc::{extract_zel_blocks, header_anchors, prose_lines, slugify, Block, Expect};
-use zelkova_lang::compiler::canonical;
-use zelkova_lang::compiler::dependencies::ModuleWalker;
-use zelkova_lang::compiler::name::Name;
-use zelkova_lang::compiler::typer;
-use zelkova_lang::compiler::{Interface, PackageName};
+use zelkova_compiler::canonical;
+use zelkova_compiler::dependencies::ModuleWalker;
+use zelkova_compiler::name::Name;
+use zelkova_compiler::typer;
+use zelkova_compiler::{Interface, PackageName};
 use zelkova_syntax::parser;
 use zelkova_syntax::parser::tokenizer::TokenizerErrorType;
 
@@ -167,7 +167,7 @@ fn parse(source: &str) -> Result<parser::Module, parser::Error> {
 fn package_of(declared: &[Name]) -> PackageName {
     if declared
         .iter()
-        .any(zelkova_lang::compiler::default_imports::is_default)
+        .any(zelkova_compiler::default_imports::is_default)
     {
         PackageName::core()
     } else {
@@ -214,7 +214,7 @@ fn stdlib_interfaces(declared: &[Name]) -> HashMap<Name, Interface> {
 }
 
 /// The phases are called one at a time rather than through
-/// [`check_module`](zelkova_lang::compiler::check_module), and that is a deliberate
+/// [`check_module`](zelkova_compiler::check_module), and that is a deliberate
 /// cost: `check_module` collapses every phase into one `CompilationError`, and the
 /// `expect=canonical-error:` / `expect=type-error:` distinction the tags exist to draw
 /// would have to be recovered from it by matching on the variant anyway. Calling the
@@ -585,7 +585,7 @@ fn evaluate(block: &Block) -> Verdict {
 /// as a free function rather than a closure because `check_in_order` takes a `fn`
 /// pointer.
 fn canonicalize_tagged(
-    package: &zelkova_lang::compiler::PackageName,
+    package: &zelkova_compiler::PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
 ) -> Result<canonical::Module, (Name, Vec<canonical::Error>)> {
@@ -1204,7 +1204,7 @@ fn pinned_reason_names(blocks: &[Block]) -> Vec<String> {
 /// deterministic run order.
 fn spec_chapters() -> (std::path::PathBuf, Vec<Chapter>) {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let root = std::path::PathBuf::from(manifest);
+    let root = std::path::PathBuf::from(manifest).join("../..");
     let chapters = load_chapters(&root, &root.join("docs/spec"));
     assert!(
         !chapters.is_empty(),
@@ -1221,7 +1221,7 @@ fn spec_chapters() -> (std::path::PathBuf, Vec<Chapter>) {
 /// files. `docs/decisions/dec-4.md` is why.
 fn decision_records() -> (std::path::PathBuf, Vec<Chapter>) {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let root = std::path::PathBuf::from(manifest);
+    let root = std::path::PathBuf::from(manifest).join("../..");
     let records = load_chapters(&root, &root.join("docs/decisions"));
     assert!(
         !records.is_empty(),
@@ -1452,7 +1452,10 @@ fn spec_tag_vocabulary_is_documented() {
 
 fn read_fixture(name: &str) -> String {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let path = Path::new(&manifest).join("tests/fixtures/spec").join(name);
+    let path = Path::new(&manifest)
+        .join("../..")
+        .join("tests/fixtures/spec")
+        .join(name);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e))
 }
 
@@ -1460,7 +1463,10 @@ fn read_fixture(name: &str) -> String {
 /// rather than about a fixture.
 fn read_chapter(name: &str) -> String {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let path = Path::new(&manifest).join("docs/spec").join(name);
+    let path = Path::new(&manifest)
+        .join("../..")
+        .join("docs/spec")
+        .join(name);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e))
 }
 
@@ -2046,7 +2052,7 @@ fn link_fixtures() -> (std::path::PathBuf, Vec<Chapter>) {
             content: read_fixture(name),
         })
         .collect();
-    (std::path::PathBuf::from(manifest), chapters)
+    (std::path::PathBuf::from(manifest).join("../.."), chapters)
 }
 
 /// The one failure of `failures` mentioning `needle`, or a panic naming what was found

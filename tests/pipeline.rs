@@ -14,26 +14,27 @@ use std::path::Path;
 
 use codespan_reporting::diagnostic::{LabelStyle, Severity};
 use codespan_reporting::files::SimpleFile;
-use zelkova_lang::compiler::canonical;
-use zelkova_lang::compiler::dependencies::{self, ModuleWalker};
-use zelkova_lang::compiler::javascript;
-use zelkova_lang::compiler::manifest;
-use zelkova_lang::compiler::name::Name;
-use zelkova_lang::compiler::resolve;
-use zelkova_lang::compiler::source::{
+use zelkova_compiler::canonical;
+use zelkova_compiler::dependencies::{self, ModuleWalker};
+use zelkova_compiler::manifest;
+use zelkova_compiler::name::Name;
+use zelkova_compiler::resolve;
+use zelkova_compiler::source::{
     load_package_sources, load_package_sources_into, Overlay, SourceFiles, SourceRoot,
 };
-use zelkova_lang::compiler::test_collection;
-use zelkova_lang::compiler::typer;
-use zelkova_lang::compiler::{
+use zelkova_compiler::typer;
+use zelkova_compiler::{
     check_module, check_package, check_package_with_tests, CheckedModule, CompilationError,
     Interface, PackageName, PhaseError,
 };
+use zelkova_lang::compiler::javascript;
+use zelkova_lang::compiler::test_collection;
 use zelkova_lang::driver::{
     compile_package, compile_package_with_tests, BuildError, BUILD_DIRECTORY,
 };
 use zelkova_syntax::parser;
 
+#[path = "../crates/zelkova-compiler/tests/support/mod.rs"]
 mod support;
 
 use support::*;
@@ -1767,7 +1768,7 @@ fn helper_interface() -> (Name, Interface) {
     );
 
     let interface = Interface {
-        module_name: zelkova_lang::compiler::ModuleName::new(
+        module_name: zelkova_compiler::ModuleName::new(
             PackageName::new("zelkova-core").unwrap(),
             "Helper".into(),
         ),
@@ -2333,7 +2334,7 @@ fn privacy_lib() -> &'static str {
 /// with its rendered message — the `EnvError` variants are private to
 /// `canonical::environment`, so the message is how a test names which one fired.
 fn only_canonical_error(error: &CompilationError) -> String {
-    use zelkova_lang::compiler::PhaseError;
+    use zelkova_compiler::PhaseError;
 
     match error {
         CompilationError::Canonical(errors, module) => {
@@ -3006,7 +3007,7 @@ fn basics_interface_with_plus() -> (Name, Interface) {
     );
 
     let interface = Interface {
-        module_name: zelkova_lang::compiler::ModuleName::new(
+        module_name: zelkova_compiler::ModuleName::new(
             PackageName::new("zelkova-core").unwrap(),
             "Basics".into(),
         ),
@@ -3282,7 +3283,7 @@ fn two_modules_same_named_types_do_not_unify() {
     assert!(
         matches!(
             errors[0].kind,
-            zelkova_lang::compiler::typer::ErrorKind::UnificationFailed { .. }
+            zelkova_compiler::typer::ErrorKind::UnificationFailed { .. }
         ),
         "expected a unification failure, got {:?}",
         errors[0].kind
@@ -3483,7 +3484,7 @@ fn only_type_error(main: &str) -> (CompilationError, String) {
     assert!(
         matches!(
             errors[0].kind,
-            zelkova_lang::compiler::typer::ErrorKind::UnificationFailed { .. }
+            zelkova_compiler::typer::ErrorKind::UnificationFailed { .. }
         ),
         "expected a unification failure, got {:?}",
         errors[0].kind
@@ -5596,7 +5597,7 @@ fn a_main_module_exposing_no_main_is_an_error_at_its_exposing_list() {
             assert!(
                 matches!(
                     program_errors.as_slice(),
-                    [zelkova_lang::compiler::program::Error::MainNotExposed { .. }]
+                    [zelkova_compiler::program::Error::MainNotExposed { .. }]
                 ),
                 "got {:?}",
                 program_errors
@@ -5635,7 +5636,7 @@ fn a_main_of_another_type_is_an_error_at_its_annotation() {
         CompilationError::Program(program_errors, module) => {
             assert_eq!(module, &Name::from("App"));
             match program_errors.as_slice() {
-                [zelkova_lang::compiler::program::Error::MainNotTask {
+                [zelkova_compiler::program::Error::MainNotTask {
                     found: Some(found), ..
                 }] => assert_eq!(found.to_string(), "Int"),
                 other => panic!("expected one MainNotTask, got {:?}", other),
@@ -5676,7 +5677,7 @@ fn a_main_of_a_task_some_other_module_declares_is_an_error() {
         CompilationError::Program(program_errors, _) => assert!(
             matches!(
                 program_errors.as_slice(),
-                [zelkova_lang::compiler::program::Error::MainNotTask { .. }]
+                [zelkova_compiler::program::Error::MainNotTask { .. }]
             ),
             "got {:?}",
             program_errors
@@ -5957,7 +5958,7 @@ const OVERLAID_ANSWER: &str = "module Answer exposing (..)\n\n\ntype Label = Lab
 /// Asserts that `check` holds exactly the type error of `OVERLAID_ANSWER`, and that the
 /// source its primary label's file resolves to is that text — the overlay's, not the
 /// disk's.
-fn assert_overlaid_answer_was_checked(check: &zelkova_lang::compiler::PackageCheck) {
+fn assert_overlaid_answer_was_checked(check: &zelkova_compiler::PackageCheck) {
     assert_eq!(check.errors.len(), 1, "got {:?}", check.errors);
     assert!(
         matches!(

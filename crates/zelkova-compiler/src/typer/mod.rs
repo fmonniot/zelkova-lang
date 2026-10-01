@@ -38,13 +38,13 @@
 use super::canonical;
 use super::canonical::Module;
 use super::scalars;
-use crate::compiler::ir::{
+use crate::ir::{
     pattern_parameter, CaseForm, Constructor, LiteralValue, Reference, ReferenceKind, Saturation,
     Solved, SubPattern, Term, TermKind, TermPattern, TermPatternKind, TypeBinder, TypedTerm,
     TypedTermKind,
 };
-use crate::compiler::name::{Name, QualName};
-use crate::compiler::{Interface, ModuleName, PhaseError, SpanLabel};
+use crate::name::{Name, QualName};
+use crate::{Interface, ModuleName, PhaseError, SpanLabel};
 use log::debug;
 use std::collections::HashMap;
 use zelkova_syntax::position::NodeSpan;
@@ -531,7 +531,7 @@ impl PhaseError for Error {
 /// One [`Solved`] per declaration, keyed the way `module.values` is. A declaration the
 /// typer could not type is present and says so; none is ever merely absent, because
 /// absent is indistinguishable from checked-and-fine to whatever reads this next
-/// ([`DEC-18` decision 1](../../../docs/decisions/dec-18.md)). The map is only returned
+/// ([`DEC-18` decision 1](../../docs/decisions/dec-18.md)). The map is only returned
 /// at all when no declaration failed: a module with type errors answers with them, so
 /// there is no half-checked module to interpret.
 ///
@@ -886,7 +886,7 @@ fn constructors_of(unions: &Unions) -> HashMap<QualName, Constructor> {
     let mut constructors = HashMap::new();
 
     for (union, union_type) in unions {
-        for variant in crate::compiler::ir::variants_of(union_type) {
+        for variant in crate::ir::variants_of(union_type) {
             // A union is named by its declaring package and module, so that is where
             // its constructors are named from too.
             let name = union.sibling(&variant.name);
@@ -1002,16 +1002,16 @@ fn scalar_literal(name: &QualName) -> Option<TypeLiteral> {
 /// The type of a `Bool`: the union [`scalars::BOOL`] names, with no arguments.
 ///
 /// `Bool` is [a scalar and an ordinary union at
-/// once](../../../docs/spec/types.md#scalar-types) — the compiler knows its
+/// once](../../docs/spec/types.md#scalar-types) — the compiler knows its
 /// representation and nothing about its structure — so this is the very type
 /// `canonical_type_to_typer_type` produces for an annotation naming `Basics.Bool`, and
 /// the type `Basics` registers `True` and `False` at.
 ///
 /// Three constructs need a `Bool` the source did not spell: an [`if`
-/// condition](../../../docs/spec/expressions.md#if--then--else), the `true`/`false`
+/// condition](../../docs/spec/expressions.md#if--then--else), the `true`/`false`
 /// keywords, and a `true`/`false` pattern. They name `Basics.Bool` and nothing else, so
 /// a module declaring its own `type Bool` does not satisfy them
-/// ([`DEC-15`](../../../docs/decisions/dec-15.md) decisions 1 and 5).
+/// ([`DEC-15`](../../docs/decisions/dec-15.md) decisions 1 and 5).
 pub(super) fn bool_type() -> Type {
     Type::Adt(scalars::BOOL.qual_name(), vec![])
 }
@@ -1033,7 +1033,7 @@ pub(super) fn bool_type() -> Type {
 /// and the spelling each leaves behind is bare for one of them and qualified for the
 /// rest — so a backend handed only the string could not tell them apart
 /// ([`DEC-18` decision
-/// 1](../../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
+/// 1](../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
 /// Each becomes a [`Reference`] carrying both the lookup key inference uses and what
 /// the name is. An application spine records the same way whether it is
 /// [saturated](Saturation), which is a question about the spine and not about any one
@@ -1045,7 +1045,7 @@ fn canonical_expr_to_term(
 ) -> Option<Term> {
     let kind = match &expr.kind {
         // Carried at the canonical AST's own width: [`Int` is 64
-        // bits](../../../docs/spec/evaluation-semantics.md#numbers), and a term is what
+        // bits](../../docs/spec/evaluation-semantics.md#numbers), and a term is what
         // code is generated from, so narrowing here would emit a different number than
         // the one that was written.
         canonical::ExpressionKind::Int(i) => TermKind::Int(*i),
@@ -1477,7 +1477,7 @@ fn wrap_with_patterns<'a>(
     Some(term)
 }
 
-// The term language inference runs on is [`crate::compiler::ir`], and it is no longer
+// The term language inference runs on is [`crate::ir`], and it is no longer
 // only inference's. Every node carries the [`NodeSpan`] of the canonical node it was
 // built from, so an error found down here can say where in the user's source it
 // happened (`ERR-4`), and each carries what a backend reads off it — the kind of name a
@@ -1501,7 +1501,7 @@ impl std::fmt::Debug for TypeVariable {
     }
 }
 
-/// The type of an [opaque scalar](../../../docs/spec/types.md#scalar-types): a type
+/// The type of an [opaque scalar](../../docs/spec/types.md#scalar-types): a type
 /// nothing in the language builds or inspects, whose values arrive as literals.
 ///
 /// `Bool` is not one of them: it is a scalar *and* an ordinary union, so its
@@ -1526,7 +1526,7 @@ pub enum Type {
         return_tpe: Box<Type>,
     },
     Tuple(Tuple<Type>),
-    /// [The unit type](../../../docs/spec/types.md#the-unit-type), `()`, whose one
+    /// [The unit type](../../docs/spec/types.md#the-unit-type), `()`, whose one
     /// value is also written `()`.
     ///
     /// A variant of its own, the way [`Type::Tuple`] is, rather than a [`Type::Adt`]
@@ -1958,7 +1958,7 @@ impl Substitution {
     /// type alone is enough to answer "what type is this declaration", which is all
     /// inference ever needed; it leaves every node below still holding a variable,
     /// which is not enough to generate code from
-    /// ([`DEC-18` decision 1](../../../docs/decisions/dec-18.md)).
+    /// ([`DEC-18` decision 1](../../docs/decisions/dec-18.md)).
     ///
     /// The types a pattern carries are rewritten too: a constructor pattern's
     /// arguments and the bindings it introduces are the types the branch body's
@@ -2577,11 +2577,7 @@ mod tests {
 
     /// The qualified name of `name` as declared by `module` of the package `main`.
     fn qual(module: &str, name: &str) -> QualName {
-        QualName::in_module(
-            crate::compiler::PackageName::new("main").unwrap(),
-            module,
-            name,
-        )
+        QualName::in_module(crate::PackageName::new("main").unwrap(), module, name)
     }
 
     /// `Main`'s own unions, as `translate_pattern` receives them: one nullary
@@ -2623,7 +2619,7 @@ mod tests {
     /// the string is bare for a local and qualified for the other three, so nothing
     /// downstream could tell a parameter from an import from a constructor
     /// ([`DEC-18` decision
-    /// 1](../../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
+    /// 1](../../docs/decisions/dec-18.md#1--the-backend-reads-a-typed-ir-and-the-typer-is-what-produces-it)).
     ///
     /// Written against hand-built canonical expressions rather than against source, so
     /// that all four are read off one translation with no other module needing to be
@@ -2636,7 +2632,7 @@ mod tests {
     fn the_four_kinds_of_name_stay_apart() {
         let (union_name, union) = main_size();
         let translation = Translation::of_types(HashMap::from([(union_name.clone(), &union)]));
-        let lib = crate::compiler::PackageName::new("lib").unwrap();
+        let lib = crate::PackageName::new("lib").unwrap();
         let lib_size = QualName::in_module(lib.clone(), "Lib", "size");
 
         let reference = |kind: canonical::ExpressionKind| {

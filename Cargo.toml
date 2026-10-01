@@ -1,5 +1,10 @@
 [workspace]
-members = ["crates/zelkova-syntax", "tools/spec-doc", "tools/spec-site"]
+members = [
+    "crates/zelkova-syntax",
+    "crates/zelkova-compiler",
+    "tools/spec-doc",
+    "tools/spec-site",
+]
 
 [workspace.package]
 version = "0.3.0"
@@ -21,13 +26,9 @@ path = "src/main.rs"
 log = "0.4"
 codespan-reporting = "0.13"
 env_logger = "0.11"
-walkdir = "2.5"
-petgraph = "0.8"
-toml = "1.1.6"
-serde = { version = "1.0.229", features = ["derive"] }
 clap = { version = "4", features = ["derive"] }
+zelkova-compiler = { path = "crates/zelkova-compiler" }
 zelkova-syntax = { path = "crates/zelkova-syntax" }
 
 [dev-dependencies]
 indoc = "2.0"
-spec-doc = { path = "tools/spec-doc" }
