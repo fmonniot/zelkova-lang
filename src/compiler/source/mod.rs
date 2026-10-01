@@ -1,9 +1,12 @@
 pub mod files;
+pub mod overlay;
 
 pub use files::{SourceFile, SourceFiles, SourceRoot};
+pub use overlay::Overlay;
 
 use super::{CompilationError, PackageName};
 use files::SourceFileError;
+use std::collections::HashSet;
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -18,7 +21,7 @@ pub fn load_package_sources(
     root: SourceRoot,
 ) -> Result<SourceFiles, CompilationError> {
     let mut sources = SourceFiles::new();
-    load_package_sources_into(package_dir, root, None, &mut sources)?;
+    load_package_sources_into(package_dir, root, None, &Overlay::new(), &mut sources)?;
     Ok(sources)
 }
 
@@ -47,6 +50,11 @@ pub fn load_package_sources(
 /// unique in a build — two packages may each hold a `Size.zel` — so without it a
 /// diagnostic cannot say which package it is about.
 ///
+/// `overlay` holds the text of buffers that are open in an editor: a file it holds is
+/// read from there instead of from disk, and a `.zel` file under the root that only the
+/// overlay holds is loaded after the walked ones, in path order. [`Overlay`] has the
+/// rules.
+///
 /// The ids come back rather than the files themselves: `files` is borrowed mutably for
 /// the walk, and the caller needs it borrowed immutably afterwards to read the sources
 /// back out.
@@ -54,6 +62,7 @@ pub fn load_package_sources_into(
     package_dir: &Path,
     root: SourceRoot,
     package: Option<&PackageName>,
+    overlay: &Overlay,
     sources: &mut SourceFiles,
 ) -> Result<Vec<files::SourceFileId>, CompilationError> {
     let mut loaded = vec![];
@@ -63,37 +72,61 @@ pub fn load_package_sources_into(
 
     // A package that holds no tests has no `tests/` to walk, and that is not a failure
     // the way a missing `src/` is. Asking first is what keeps the walk's own
-    // does-not-exist error meaning what it says everywhere else.
-    if root == SourceRoot::Tests && !root_dir.exists() {
-        return Ok(loaded);
-    }
+    // does-not-exist error meaning what it says everywhere else. It skips the walk and
+    // nothing more: a buffer under a `tests/` that is not on disk is still loaded below.
+    let walk = !(root == SourceRoot::Tests && !root_dir.exists());
+
+    // What the walk matched, normalised, so that an overlay key naming the same file is
+    // not loaded a second time.
+    let mut walked: HashSet<std::path::PathBuf> = HashSet::new();
 
     // `WalkDir`'s iterator advances past every entry it yields — including an `Err`
     // one — and terminates on its own (a root that doesn't exist yields exactly one
     // `Err` and then ends), so this loop cannot spin on a single failing entry the
     // way the invariant in `CLAUDE.md` about `Result`-yielding iterators warns
     // against.
-    for entry in WalkDir::new(&root_dir).follow_links(true) {
-        match entry {
-            Ok(entry) => {
-                let path = entry.path().to_path_buf();
+    if walk {
+        for entry in WalkDir::new(&root_dir).follow_links(true) {
+            match entry {
+                Ok(entry) => {
+                    let path = entry.path().to_path_buf();
 
-                match path.extension() {
-                    Some(ext) if ext == "zel" => {}
-                    _ => continue,
+                    match path.extension() {
+                        Some(ext) if ext == "zel" => {}
+                        _ => continue,
+                    }
+
+                    walked.insert(overlay::normalise(&path));
+
+                    match SourceFile::load(path, &root_dir, root, package, overlay) {
+                        Ok(src) => {
+                            loaded.push(sources.add_file(src));
+                        }
+                        Err(err) => {
+                            errors.push(err);
+                        }
+                    }
                 }
-
-                match SourceFile::load(path, &root_dir, root, package) {
-                    Ok(src) => {
-                        loaded.push(sources.add_file(src));
-                    }
-                    Err(err) => {
-                        errors.push(err);
-                    }
+                Err(walk_err) => {
+                    errors.push(SourceFileError::from_walk_error(&root_dir, walk_err));
                 }
             }
-            Err(walk_err) => {
-                errors.push(SourceFileError::from_walk_error(&root_dir, walk_err));
+        }
+    }
+
+    // What only the overlay holds. The root is normalised the way the keys are, and a
+    // file is named by its path under it.
+    let normalised_root = overlay::normalise(&root_dir);
+    for path in overlay.zel_files_under(&normalised_root) {
+        if walked.contains(path) {
+            continue;
+        }
+        match SourceFile::load(path.to_path_buf(), &normalised_root, root, package, overlay) {
+            Ok(src) => {
+                loaded.push(sources.add_file(src));
+            }
+            Err(err) => {
+                errors.push(err);
             }
         }
     }
