@@ -168,6 +168,92 @@ has a `Float`-capable `negate` to desugar to once `LANG-42` lands; between `LANG
 [`PERF-2`](perf-2.md) is narrowed by `LANG-42`, which rewrites most of the forwarding
 declarations it is about, and not closed by it.
 
+## Active work: records
+
+Six tickets are one body of work, `LANG-47` through `LANG-52`, and a seventh, `LANG-16`, is in
+their order as a prerequisite. The goal is that **a value of several parts can name them** —
+`{ taken : Celsius, expected : Celsius }` where a tuple says which part is which by position
+and stops at three.
+
+They get a section for the reason the type classes do: none of them is a record on its own. A
+record has a spelling in the type, expression and pattern grammars and a rule in the typer, and
+the tickets are cut along those lines.
+
+[`docs/spec/records.md`](../spec/records.md) is the normative record and
+[DEC-8](../decisions/dec-8.md) holds the nine decisions behind it, which the tickets cite by
+number. No ticket in the order re-argues one. Two leave a choice to the implementer and say so:
+`LANG-50` on how an attached `.` is told from a detached one, and `LANG-52` on whether that is
+decided in the tokenizer or in a grammar action — one mechanism serves both.
+
+They land in this order, one at a time:
+
+```
+LANG-52  a qualification dot takes no whitespace on either side
+  │      ← first: a rejection with no new form behind it, and LANG-50
+  │        cannot tell an access from an accessor until it lands
+  │
+LANG-47  `{` and `}` become tokens
+  │      ← needs nothing and may land beside LANG-52. No block in the
+  │        chapter turns on it alone
+  │
+LANG-48  a record type, a record and an update parse, and reach the
+  │      canonical module as a set of fields
+  │      ← a repeated label is reported from here on. Until LANG-51 a
+  │        declaration holding a record is one the typer leaves
+  │        unchecked, so the emitter refuses its module
+  │
+LANG-50  `r.name` and `.name` parse
+  │      ← needs LANG-52 and nothing else, so it may land ahead of
+  │        LANG-47 and LANG-48
+  │
+LANG-16  a constructor pattern nests          ← not a record ticket
+  │      ← here because LANG-49's acceptance turns every record-pattern
+  │        block in two chapters, and the first one in each matches a
+  │        constructor inside a field, which no sub-pattern may be
+  │        today. LANG-49 does not declare the dependency
+  │
+LANG-49  a record pattern parses, the `{ x }` shorthand included
+  │      ← needs LANG-47, and LANG-48 for how a repeated label is
+  │        reported
+  │
+LANG-51  the typer has a record type: a field, an update and an
+         accessor are checked
+         ← last, because it is the one ticket that needs another's
+           nodes. Deletes the Known gap paragraphs LANG-48 and LANG-50
+           attached
+```
+
+**The order ends with a record that type checks and does not run.** Four pieces of the chapter
+have no ticket, and are to be filed before the work reaches them:
+
+- **Emitting a record.** [`DEC-18` decision 7](../decisions/dec-18.md#7--the-program-covers-the-language-the-front-end-accepts-today)
+  gives each construct that lands after the first emitter a sibling `GEN-` ticket, and records
+  have none: nothing owns the IR's record forms, the JavaScript a record, an access, an update,
+  an accessor and a record pattern emit as, or the predicate a record crossing a facade is held
+  to. [Interop](../spec/interop.md) states that predicate and leaves the representation to code
+  generation. Until it is filed, `LANG-51` has to leave the emitter refusing a module that holds
+  a record, which it does not say.
+- **Typing a record pattern.** `LANG-49` stops at canonicalization, and `LANG-51` cites
+  decisions 2, 3, 4 and 6 — not 5 — with no pattern among its acceptance cases. The rule that a
+  pattern [takes its record type from the value matched](../spec/records.md#record-patterns),
+  and that a label that type lacks is an error, belongs to neither. It is `LANG-51`'s to grow or
+  a ticket of its own after it.
+- **A record under a derivation.** [Records and derivation](../spec/records.md#records-and-derivation)
+  has a record walked field by field in label order. `LANG-83` walks a union, a tuple and `()`,
+  and `LANG-40` discharges an obligation at a declared type, a tuple, `()` or a function, so a
+  record reaches neither. It needs both this order and the type classes' finished.
+- **`type alias`.** [Types](../spec/types.md#type-aliases) specifies it and cites no ticket.
+  It is not a record question, but a record type is written out in full wherever it appears, so
+  records are where its absence is felt, and one block of the chapter waits on it.
+
+Three tickets sit just outside. [`LANG-33`](lang-33.md) is `let`, the second place an
+irrefutable record pattern may be written. [`LANG-19`](lang-19.md) scopes exhaustiveness to the
+patterns the language has today, and whichever of it and `LANG-49` lands second adds the record
+pattern to it. [`LANG-40`](lang-40.md) adds a constraint the solver answers only once
+unification has run, which is what `LANG-51`'s accessor is too: the two are written in the same
+files of `typer/` and are not worked at the same time, and the second to land is written
+against the first's mechanism.
+
 ## Tickets
 
 Open tickets link to their file. Rows with a close date are tombstones — the file is gone; see
