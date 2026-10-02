@@ -207,9 +207,9 @@ AtomicExpr: Expression = {
 // by a `Dot` always continues into one. Were a constructor an operand of access as
 // well, `Widget.size` would have two parses, and an LR(1) parser cannot tell them apart
 // at the `.`: LALRPOP reports the pair as a local ambiguity between this production and
-// `QualTypeIdent`. Leaving the constructor out is what the spec's rule says rather than
-// a cost: a constructor has no fields, and one in parentheses, `(Just r).name`, is an
-// access of the parenthesised expression like any other.
+// `QualTypeIdent`. Leaving the constructor out loses no program: a constructor is not a
+// record and has no fields, and one in parentheses, `(Just r).name`, is an access of the
+// parenthesised expression like any other.
 //
 // Everything else is in: a variable, qualified or not (`Basics.r.x` reads `x` off
 // `Basics.r`, and `Widget.size.x` reads `x` off `Widget.size`), a literal, a
