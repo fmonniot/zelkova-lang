@@ -38,7 +38,9 @@ use petgraph::graph::{DiGraph, NodeIndex};
 pub enum Outcome<M, E> {
     /// Nothing to publish.
     Failed(E),
-    /// A module, and everything wrong with it. Empty means it checked.
+    /// A module, and everything wrong with it. An empty list does not say the module
+    /// checked: a checker may drop an error that restates another module's failure, so the
+    /// caller reads the module for whether it is whole as well.
     Module(M, Vec<E>),
 }
 
@@ -613,6 +615,7 @@ mod tests {
             values: HashMap::new(),
             broken: Vec::new(),
             binding_foreign: false,
+            incomplete: false,
         };
         let ir = crate::ir::build(&canonical, HashMap::new());
 

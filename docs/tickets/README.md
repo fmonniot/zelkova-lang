@@ -198,14 +198,14 @@ TOOL-9  a declaration that fails canonicalization   ← closed: `canonicalize_re
   │       is recorded, and the rest of its module      `Module::broken`; closed BUG-34
   │       survives
   │
-TOOL-10 a failed type, operator or import marks     ← the next one to start; the rule
-  │       its scope incomplete                         that drops an error which only
-  │                                                    restates one already reported
+TOOL-10 a failed type, operator or import marks     ← closed: `without_restated`,
+  │       its scope incomplete                         `Interface::incomplete`
   │
-  ├── TOOL-11  a module with a syntax error stays in the build   ← completes the floor
+  ├── TOOL-11  a module with a syntax error stays in the build
+  │              ← next; completes the floor
   │
   └── TOOL-12  an unresolved name in a sound body is a typed hole
-                 ← a layer on the floor: the declaration being typed keeps its tree
+                 ← next; a layer on the floor: the declaration being typed keeps its tree
 
 TOOL-6  zelkova-lsp: diagnostics, then hover, then go-to-definition, then semantic tokens
           ← to be split into one ticket per capability before work starts
@@ -479,6 +479,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TOOL-7 | task | — | closed 2026-10-01 | The checking pipeline names its backend, its runners and the test package |
 | TOOL-8 | task | — | closed 2026-10-01 | A module that fails type checking hides itself from its importers and from the editor |
 | TOOL-9 | task | — | closed 2026-10-01 | A declaration that fails canonicalization takes its whole module with it |
-| [TOOL-10](tool-10.md) | task | — | open | A failed type, operator or import is reported again by everything that names it |
+| TOOL-10 | task | — | closed 2026-10-01 | A failed type, operator or import is reported again by everything that names it |
 | [TOOL-11](tool-11.md) | task | — | open | A module with a syntax error is dropped from the build |
 | [TOOL-12](tool-12.md) | task | — | open | One unresolved name costs a declaration its whole typed tree |
+| [TOOL-13](tool-13.md) | task | — | open | A facade that declares a type is still reported for the type it declared |

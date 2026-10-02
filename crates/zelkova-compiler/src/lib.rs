@@ -32,9 +32,11 @@
 //!     2. Verify there is no cyclic relation between modules
 //! 5. Following the deps graph,
 //!     1. canonicalize each modules. A declaration that does not canonicalize costs the
-//!        module that declaration and nothing else, and the module publishes its
-//!        `Interface` to the modules checked after it, whatever the checks find in it;
-//!        one whose imports leave it no environment to canonicalize in publishes nothing
+//!        module that declaration and nothing else, an import that does not resolve costs
+//!        it that import and nothing else, and the module publishes its `Interface` to
+//!        the modules checked after it, whatever the checks find in it. A not-found
+//!        error that only restates one of those failures is not reported again
+//!        (`canonical::canonicalize_recovering`)
 //!     1. check each module (type check, exhaustiveness, etc…), and build the `ir::Module`
 //!        a backend reads out of the canonical module and what the typer solved. The IR
 //!        is built whether or not a declaration was broken or rejected, and lists each
@@ -346,6 +348,19 @@ pub struct Interface {
     /// no file to pair a span with and returns `None`, so the diagnostic degrades to
     /// no secondary label rather than a wrong one.
     pub file: Option<SourceFileId>,
+    /// A name looked up in this interface and not found may be one its module declares
+    /// and could not publish.
+    ///
+    /// [`canonical::Module::to_interface`] copies the module's own
+    /// [`incomplete`](canonical::Module::incomplete), which is set when the module's
+    /// scope was incomplete or when a declaration's annotation did not canonicalize. An
+    /// importer that names something this interface lacks reports nothing about it,
+    /// because the failure that made the name missing has already been reported against
+    /// the module ([`DEC-23` decision
+    /// 3](../docs/decisions/dec-23.md#3--an-error-that-restates-a-reported-failure-is-dropped-by-a-flag-on-the-scope)),
+    /// and the importer's own scope is incomplete in turn. A hand-built interface
+    /// leaves it `false`.
+    pub incomplete: bool,
 }
 
 impl Interface {
@@ -880,8 +895,7 @@ pub struct PackageCheck {
     /// [`test_modules`](PackageCheck::test_modules): each module of a package whose own
     /// `src/` was checked and reported an error, whether or not the module has an error
     /// of its own, and each module of the root's `tests/` that came back with errors. A
-    /// module whose imports left it no environment to canonicalize in is in none of
-    /// them, and neither is any module of a package that was not checked at all, for the
+    /// module of a package that was not checked at all is in none of them, for the
     /// reasons [`modules`](PackageCheck::modules) lists.
     ///
     /// They are for a reader that wants the typed tree of a file with errors in it, such
@@ -1794,9 +1808,23 @@ struct RootCheck {
 ///
 /// Every module the check built a tree for is inserted into `interfaces` and handed
 /// back, apart into the ones that checked and the ones that came back with errors; every
-/// error goes onto `errors`, tagged with the file its module was read from. A module
-/// whose imports left it no environment to canonicalize in is in neither list and has no
-/// interface.
+/// error goes onto `errors`, tagged with the file its module was read from.
+///
+/// A module is among the ones that checked when its error list is empty and
+/// [`canonical::Module::incomplete`] is false. The error list alone is not enough, for
+/// two reasons that both end in a module with an empty list:
+///
+/// - a module whose every error was a not-found restating a failure of another module
+///   has declarations with no IR;
+/// - a module that imports an [incomplete](Interface::incomplete) interface was checked
+///   in a scope where an error of its own could have been dropped, so it cannot be
+///   claimed as checked even when its tree is whole and none of its declarations is
+///   broken.
+///
+/// A module with a declaration in [`canonical::Module::broken`] is never among the
+/// ones that checked either, and needs no condition of its own: a declaration is only
+/// recorded there beside an error that is in the list or was dropped, and a dropped
+/// error is one raised in an incomplete scope.
 fn check_root(
     package: &resolve::ResolvedPackage,
     root: source::SourceRoot,
@@ -1829,9 +1857,13 @@ fn check_root(
     // Step 5: Follow graph and call check_module_recovering on each
     //
     // `check_in_order` checks every module regardless of earlier failures and hands back
-    // one outcome per module: a module that checked, a module with the errors found in
-    // it, or only the errors (see `docs/tickets/README.md`, `BUG-2`). The errors flow
-    // into `errors` below so a failing module keeps making the build return `Err`.
+    // one outcome per module (see `docs/tickets/README.md`, `BUG-2`).
+    // `check_module_recovering` always answers `Outcome::Module`: the module with the
+    // errors found in it, which is empty for a module that checked and for one whose errors
+    // were all dropped in an incomplete scope. `Outcome::Failed` is the walker's answer
+    // for a checker with nothing to publish, and only `dependencies.rs`'s own tests have
+    // one; the arm below keeps the walker generic. The errors flow into `errors` below so
+    // a failing module keeps making the build return `Err`.
     //
     // `module_files` is also how each module's `Interface` learns which file it came
     // from (`Interface::file`, `ERR-5`): this is the one place that knows both the
@@ -1848,7 +1880,9 @@ fn check_root(
     let mut failed = 0;
     for outcome in outcomes {
         match outcome {
-            dependencies::Outcome::Module(module, module_errors) if module_errors.is_empty() => {
+            dependencies::Outcome::Module(module, module_errors)
+                if module_errors.is_empty() && !module.canonical.incomplete =>
+            {
                 root_check.checked.push(module)
             }
             dependencies::Outcome::Module(module, module_errors) => {
@@ -1923,15 +1957,18 @@ pub fn check_module(
 /// Apply every check to one parsed module, and hand back the module the checks built
 /// beside everything they found wrong with it.
 ///
-/// A module whose imports canonicalization could not build an environment from is
-/// [`Outcome::Failed`](dependencies::Outcome::Failed): it has no canonical form to build
-/// an [`Interface`] or an IR from. Past that, the module comes back with every
-/// declaration that canonicalized, whatever canonicalization, the typer and the
-/// exhaustiveness check say, with a [`CompilationError::Canonical`], a
+/// The module always comes back, as [`Outcome::Module`](dependencies::Outcome::Module):
+/// an import that does not resolve is an error beside it and not a reason for there to
+/// be none. It holds every declaration that canonicalized, whatever canonicalization, the
+/// typer and the exhaustiveness check say, with a [`CompilationError::Canonical`], a
 /// [`CompilationError::Type`] and a [`CompilationError::Exhaustiveness`] for whichever
-/// of them reported anything. Its IR holds a typed declaration for every value the typer
-/// did not reject, and lists each rejected one, and each declaration canonicalization
-/// recorded in [`canonical::Module::broken`], in [`ir::Module::unchecked`] with
+/// of them reported anything. An empty error list does not say that the module checked
+/// whole: a not-found error raised in an [incomplete](canonical::Module::incomplete)
+/// scope is dropped, so a module can come back with no error and with declarations in
+/// [`canonical::Module::broken`]; the driver reads those two beside the list.
+///
+/// Its IR holds a typed declaration for every value the typer did not reject, and lists
+/// each rejected one, and each declaration canonicalization recorded in [`canonical::Module::broken`], in [`ir::Module::unchecked`] with
 /// [`reported`](ir::Unchecked::reported) set, which no backend emits.
 ///
 /// TODO canonicalization must happens before checkings, because type check (at least)
@@ -1962,15 +1999,7 @@ pub fn check_module_recovering(
     let canonical::Canonicalized {
         module: canonical,
         errors: canonical_errors,
-    } = match canonical::canonicalize_recovering(package, interfaces, source) {
-        Ok(canonicalized) => canonicalized,
-        Err(errors) => {
-            return dependencies::Outcome::Failed(CompilationError::Canonical(
-                errors,
-                source.name.clone(),
-            ))
-        }
-    };
+    } = canonical::canonicalize_recovering(package, interfaces, source);
 
     let mut errors = Vec::new();
     if !canonical_errors.is_empty() {

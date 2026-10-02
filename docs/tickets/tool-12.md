@@ -9,7 +9,7 @@ lines, and no arm changes what inference does to any other node: unification is 
 five tickets `TOOL-8` through `TOOL-12`. The four before it are the floor, which this one
 builds on and does not replace.
 
-**Depends on:** [`TOOL-10`](tool-10.md), for `without_restated`. It does not need
+**Depends on:** [`TOOL-10`](README.md), for `without_restated`. It does not need
 [`TOOL-11`](tool-11.md).
 
 **Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `ExpressionKind`,

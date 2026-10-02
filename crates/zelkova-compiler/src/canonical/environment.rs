@@ -305,6 +305,13 @@ pub(crate) fn suggest_name(target: &Name, candidates: impl Iterator<Item = Name>
 /// Build a module's scope out of the imports it wrote and the ones it did not have
 /// to.
 ///
+/// What comes back is the scope and the error of every import that did not resolve, in
+/// the order the imports were processed. An import that failed does not end the scope:
+/// every import that resolved is in it, and so is every entry of a failed import's
+/// `exposing` list that did resolve. The scope is [`incomplete`](RootEnvironment::is_incomplete)
+/// when any import failed, and when any import resolved to an [`Interface`] whose own
+/// [`incomplete`](Interface::incomplete) is set.
+///
 /// The implicit half comes first, and goes through `process_import` exactly as a
 /// written `import` does, so a name arriving through
 /// [`default_imports`](crate::default_imports) resolves exactly like one
@@ -336,13 +343,14 @@ pub(crate) fn new_environment(
     module_name: &ModuleName,
     interfaces: &HashMap<Name, Interface>,
     imports: &[parser::Import],
-) -> Result<RootEnvironment, Vec<EnvError>> {
+) -> (RootEnvironment, Vec<EnvError>) {
     let mut env = RootEnvironment {
         module_name: module_name.clone(),
         infixes: HashMap::new(),
         types: HashMap::new(),
         constructors: HashMap::new(),
         variables: HashMap::new(),
+        incomplete: false,
     };
     let mut errors = vec![];
 
@@ -386,16 +394,15 @@ pub(crate) fn new_environment(
         match process_import(&mut env, interfaces, name, alias, exposing, *span, origin) {
             Ok(_) => (),
             Err(err) => {
+                // A name the import would have brought in may be missing from the
+                // scope, and the error just collected is what says so.
+                env.incomplete = true;
                 errors.push(err);
             }
         }
     }
 
-    if errors.is_empty() {
-        Ok(env)
-    } else {
-        Err(errors)
-    }
+    (env, errors)
 }
 
 fn process_import(
@@ -439,6 +446,13 @@ fn process_import(
         alias,
         exposing
     );
+
+    // A name this module's importers look for here may be one it declares and could not
+    // publish, so nothing missing from the scope can be blamed on this module's
+    // importer alone.
+    if interface.incomplete {
+        env.incomplete = true;
+    }
 
     // First we insert all values/types from the module, prefixed with the module name or its alias
     let prefix = alias.as_ref().unwrap_or(imported_module_name);
@@ -506,16 +520,20 @@ fn process_import(
             let iter = exposeds.iter().map(|exposed| {
                 match &exposed.kind {
                     parser::ExposedKind::Lower(value_name) => {
-                        let (node_span, tpe) =
-                            interface.values.get(value_name).ok_or_else(|| {
-                                let suggestion =
-                                    suggest_name(value_name, interface.values.keys().cloned());
-                                EnvError::ValueNotFound(
-                                    value_name.clone(),
-                                    exposed.span,
-                                    suggestion,
-                                )
-                            })?;
+                        let Some((node_span, tpe)) = interface.values.get(value_name) else {
+                            // Missing from an interface that is missing names it
+                            // could not publish: the entry restates that failure.
+                            if interface.incomplete {
+                                return Ok(());
+                            }
+                            let suggestion =
+                                suggest_name(value_name, interface.values.keys().cloned());
+                            return Err(EnvError::ValueNotFound(
+                                value_name.clone(),
+                                exposed.span,
+                                suggestion,
+                            ));
+                        };
 
                         insert_foreign_value(
                             env,
@@ -534,11 +552,18 @@ fn process_import(
                         // whether the module exposed the constructors: this one
                         // never reads `variants`, so a type exposed opaquely is
                         // exactly what it asks for.
-                        let union = interface.unions.get(type_name).ok_or_else(|| {
+                        let Some(union) = interface.unions.get(type_name) else {
+                            if interface.incomplete {
+                                return Ok(());
+                            }
                             let suggestion =
                                 suggest_name(type_name, interface.unions.keys().cloned());
-                            EnvError::UnionNotFound(type_name.clone(), exposed.span, suggestion)
-                        })?;
+                            return Err(EnvError::UnionNotFound(
+                                type_name.clone(),
+                                exposed.span,
+                                suggestion,
+                            ));
+                        };
 
                         // Add the type without qualifier and without constructors
                         // (they are private), but with the declaration's own type
@@ -554,11 +579,18 @@ fn process_import(
                         );
                     }
                     parser::ExposedKind::Upper(type_name, parser::Privacy::Public) => {
-                        let union = interface.unions.get(type_name).ok_or_else(|| {
+                        let Some(union) = interface.unions.get(type_name) else {
+                            if interface.incomplete {
+                                return Ok(());
+                            }
                             let suggestion =
                                 suggest_name(type_name, interface.unions.keys().cloned());
-                            EnvError::UnionNotFound(type_name.clone(), exposed.span, suggestion)
-                        })?;
+                            return Err(EnvError::UnionNotFound(
+                                type_name.clone(),
+                                exposed.span,
+                                suggestion,
+                            ));
+                        };
 
                         // An opaque export's `variants` is empty, as is that of a
                         // type declared with none (which LANG-10 is to reject);
@@ -582,11 +614,18 @@ fn process_import(
                         );
                     }
                     parser::ExposedKind::Operator(variable_name) => {
-                        let infix = interface.infixes.get(variable_name).ok_or_else(|| {
+                        let Some(infix) = interface.infixes.get(variable_name) else {
+                            if interface.incomplete {
+                                return Ok(());
+                            }
                             let suggestion =
                                 suggest_name(variable_name, interface.infixes.keys().cloned());
-                            EnvError::InfixNotFound(variable_name.clone(), exposed.span, suggestion)
-                        })?;
+                            return Err(EnvError::InfixNotFound(
+                                variable_name.clone(),
+                                exposed.span,
+                                suggestion,
+                            ));
+                        };
 
                         // The entry is the whole of what the importer gets: it
                         // carries the backing function alongside the precedence
@@ -864,9 +903,28 @@ pub(crate) struct RootEnvironment {
     types: HashMap<Name, TypeArity>,
     constructors: HashMap<Name, TypeConstructor>,
     variables: HashMap<Name, ValueType>,
+    /// Whether a name could be missing from this scope for a reason already reported.
+    /// See [`is_incomplete`](Self::is_incomplete).
+    incomplete: bool,
 }
 
 impl RootEnvironment {
+    /// Whether a name could be missing from this scope for a reason that has already
+    /// been reported: an import that did not resolve, an import of a module whose own
+    /// [`Interface::incomplete`] is set, or, once `canonicalize_recovering` says so, a
+    /// `type` or `infix` declaration of this module that failed.
+    ///
+    /// A not-found error raised against an incomplete scope restates one of those
+    /// failures, and `canonicalize_recovering` drops it (`without_restated`).
+    pub(crate) fn is_incomplete(&self) -> bool {
+        self.incomplete
+    }
+
+    /// Mark this scope [incomplete](Self::is_incomplete).
+    pub(crate) fn set_incomplete(&mut self) {
+        self.incomplete = true;
+    }
+
     // TODO Do we need a local/foreign distinction for infixes ? (or in general ?)
     pub(crate) fn insert_local_infix(&mut self, name: Name, infix: Infix) {
         let declaration = InfixDeclaration::InThisModule(infix.span);
@@ -1081,6 +1139,21 @@ mod tests {
     use super::*;
     use crate::canonical::*;
 
+    /// [`new_environment`], read as all-or-nothing: the scope when every import
+    /// resolved, otherwise the errors of the ones that did not.
+    fn resolved(
+        module_name: &ModuleName,
+        interfaces: &HashMap<Name, Interface>,
+        imports: &[parser::Import],
+    ) -> Result<RootEnvironment, Vec<EnvError>> {
+        let (env, errors) = new_environment(module_name, interfaces, imports);
+        if errors.is_empty() {
+            Ok(env)
+        } else {
+            Err(errors)
+        }
+    }
+
     fn module_name() -> ModuleName {
         ModuleName::new(PackageName::new("author-project").unwrap(), "module".into())
     }
@@ -1190,6 +1263,7 @@ mod tests {
             infix_functions: HashMap::new(),
             arities: HashMap::new(),
             file: None,
+            incomplete: false,
         };
 
         ("Maybe".into(), interface)
@@ -1205,7 +1279,7 @@ mod tests {
     #[test]
     fn new_no_imports() -> Result<(), Vec<EnvError>> {
         let interfaces = HashMap::new();
-        let env = new_environment(&module_name(), &interfaces, &[])?;
+        let env = resolved(&module_name(), &interfaces, &[])?;
 
         assert_eq!(env.infixes.len(), 0, "infixes={:?}", env.infixes);
         assert_eq!(env.types.len(), 0, "types={:?}", env.types); // qual + explicit
@@ -1239,7 +1313,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = new_environment(&module_name(), &interfaces, &[])?;
+        let env = resolved(&module_name(), &interfaces, &[])?;
 
         assert!(
             env.find_type(&"Maybe".into()).is_some(),
@@ -1307,11 +1381,12 @@ mod tests {
                     infix_functions: HashMap::new(),
                     arities: HashMap::new(),
                     file: None,
+                    incomplete: false,
                 },
             )
         };
         let interfaces = HashMap::from([scalar_interface("Char"), scalar_interface("String")]);
-        let env = new_environment(&module_name(), &interfaces, &[])?;
+        let env = resolved(&module_name(), &interfaces, &[])?;
 
         assert!(
             env.find_type(&"Char".into()).is_some(),
@@ -1356,7 +1431,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
         let maybe = ModuleName::new(PackageName::new("zelkova-core").unwrap(), "Maybe".into());
-        let env = new_environment(&maybe, &interfaces, &[])?;
+        let env = resolved(&maybe, &interfaces, &[])?;
 
         let mut scalar_names: Vec<&str> = env.types.keys().map(Name::as_str).collect();
         scalar_names.sort_unstable();
@@ -1390,7 +1465,7 @@ mod tests {
             PackageName::new("zelkova-core").unwrap(),
             "Js.Basics".into(),
         );
-        let env = new_environment(&js_basics, &interfaces, &[])?;
+        let env = resolved(&js_basics, &interfaces, &[])?;
 
         let int = env.find_type(&"Int".into()).expect("Int should be seeded");
         assert_eq!(
@@ -1465,7 +1540,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
         let imports = vec![import("Maybe".into(), None, exposing_open())];
-        let env = new_environment(&module_name(), &interfaces, &imports)?;
+        let env = resolved(&module_name(), &interfaces, &imports)?;
 
         match env.find_value(&"Maybe.map".into()) {
             Some(ValueType::Foreign(..)) => (),
@@ -1487,7 +1562,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = new_environment(&module_name(), &interfaces, &imports)?;
+        let env = resolved(&module_name(), &interfaces, &imports)?;
 
         // Assert we have the expected
         assert!(
@@ -1570,7 +1645,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = new_environment(&module_name(), &interfaces, &imports)?;
+        let env = resolved(&module_name(), &interfaces, &imports)?;
 
         // Lookup the expected values
         assert!(
@@ -1634,7 +1709,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = new_environment(&module_name(), &interfaces, &imports)?;
+        let env = resolved(&module_name(), &interfaces, &imports)?;
 
         // Lookup the expected
         assert!(
@@ -1710,7 +1785,7 @@ mod tests {
             let (name, iface) = maybe_interface();
             interfaces.insert(name, iface);
         }
-        let env = new_environment(&module_name(), &interfaces, &imports)?;
+        let env = resolved(&module_name(), &interfaces, &imports)?;
 
         // Lookup the expected
         assert!(
@@ -1804,6 +1879,7 @@ mod tests {
             infix_functions: HashMap::new(),
             arities: HashMap::new(),
             file: None,
+            incomplete: false,
         };
 
         ("Ops".into(), interface)
@@ -1821,7 +1897,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = resolved(&module_name(), &interfaces, &imports)
             .expect_err("an unknown module should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -1845,7 +1921,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = resolved(&module_name(), &interfaces, &imports)
             .expect_err("an unknown module should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -1875,7 +1951,7 @@ mod tests {
         // no prefix at all — the last is the likeliest typo of the three.
         for typo in ["Js.Basicz", "Jz.Basics", "JsBasics"] {
             let imports = vec![import(typo.into(), None, exposing_open())];
-            let errors = new_environment(&module_name(), &interfaces, &imports)
+            let errors = resolved(&module_name(), &interfaces, &imports)
                 .expect_err("an unknown module should not resolve");
             assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -1917,7 +1993,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = resolved(&module_name(), &interfaces, &imports)
             .expect_err("an unknown exposed type should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -1960,7 +2036,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = resolved(&module_name(), &interfaces, &imports)
             .expect_err("an unknown opaquely exposed type should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -2008,7 +2084,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = resolved(&module_name(), &interfaces, &imports)
             .expect_err("constructors the module does not expose should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 
@@ -2047,7 +2123,7 @@ mod tests {
             interfaces.insert(name, iface);
         }
 
-        let errors = new_environment(&module_name(), &interfaces, &imports)
+        let errors = resolved(&module_name(), &interfaces, &imports)
             .expect_err("an unknown exposed infix should not resolve");
         assert_eq!(errors.len(), 1, "got {:?}", errors);
 

@@ -307,6 +307,7 @@ mod tests {
                 infix_functions: HashMap::new(),
                 arities: HashMap::new(),
                 file: None,
+                incomplete: false,
             },
         )
     }
