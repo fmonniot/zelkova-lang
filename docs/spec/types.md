@@ -476,8 +476,8 @@ count = Small
 
 `count` is exposed and carries no annotation, so the declaration itself is rejected.
 [Modules](modules.md#exposing-is-what-other-modules-can-see) shows the same rule from the
-importer's side: an exposed value that fails this check never publishes an interface at all,
-so nothing downstream can even try to resolve it.
+importer's side: an exposed value that fails this check is left out of its module's interface,
+so an importer naming it finds nothing to resolve.
 
 ### An annotation is a promise
 

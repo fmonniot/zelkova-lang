@@ -194,13 +194,13 @@ TOOL-8  a module with a type error still publishes  ← closed: `Outcome`,
   │       its interface and has a typed tree           `check_module_recovering`,
   │                                                    `PackageCheck::failing`
   │
-TOOL-9  a declaration that fails canonicalization   ← the next one to start; closes
-  │       is recorded, and the rest of its module      BUG-34: each sub-pass of
-  │       survives                                     `canonicalize` hands back what it
-  │                                                    resolved
+TOOL-9  a declaration that fails canonicalization   ← closed: `canonicalize_recovering`,
+  │       is recorded, and the rest of its module      `Module::broken`; closed BUG-34
+  │       survives
   │
-TOOL-10 a failed type, operator or import marks     ← the rule that drops an error which
-  │       its scope incomplete                         only restates one already reported
+TOOL-10 a failed type, operator or import marks     ← the next one to start; the rule
+  │       its scope incomplete                         that drops an error which only
+  │                                                    restates one already reported
   │
   ├── TOOL-11  a module with a syntax error stays in the build   ← completes the floor
   │
@@ -266,7 +266,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-31](bug-31.md) | bug | medium | open | `do_exports` accepts a `Lower`/`Upper` name that resolves only through an import |
 | [BUG-32](bug-32.md) | bug | medium | open | An exposed infix's unannotated backing function is silently dropped from the interface |
 | [BUG-33](bug-33.md) | bug | low | open | `SourceFileError::notes()` dumps `io::Error`'s `Debug` form instead of its `Display` form |
-| [BUG-34](bug-34.md) | bug | low | open | A failed sub-pass in `canonicalize` reports as if it found nothing, cascading into spurious errors from every later pass that depended on it |
+| BUG-34 | bug | low | closed 2026-10-01 | A failed sub-pass in `canonicalize` reports as if it found nothing, cascading into spurious errors from every later pass that depended on it |
 | BUG-35 | bug | medium | closed 2026-09-16 | The typer identifies a union type by its unqualified name, so two modules' `Size` are one type |
 | BUG-36 | bug | medium | closed 2026-09-23 | A value that reaches an imported constructor or an imported value is never type checked |
 | BUG-37 | bug | high | closed 2026-09-27 | A package is not part of a type's identity, so two packages' same-named modules are one type |
@@ -279,6 +279,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-44](bug-44.md) | bug | medium | open | `Float` arithmetic aborts at the `Int` facade's boundary check |
 | [BUG-45](bug-45.md) | bug | low | open | A facade signature may name a union whose constructors hold a type no predicate decides |
 | [BUG-46](bug-46.md) | bug | low | open | `Js.Utils.compareInt` and `compareFloat` declare an `Int` result their companion returns as a number |
+| [BUG-47](bug-47.md) | bug | low | open | A qualified name an imported module does not expose is reported as under the importing module |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -477,7 +478,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TOOL-6](tool-6.md) | task | — | open | There is no language server |
 | TOOL-7 | task | — | closed 2026-10-01 | The checking pipeline names its backend, its runners and the test package |
 | TOOL-8 | task | — | closed 2026-10-01 | A module that fails type checking hides itself from its importers and from the editor |
-| [TOOL-9](tool-9.md) | task | — | open | A declaration that fails canonicalization takes its whole module with it |
+| TOOL-9 | task | — | closed 2026-10-01 | A declaration that fails canonicalization takes its whole module with it |
 | [TOOL-10](tool-10.md) | task | — | open | A failed type, operator or import is reported again by everything that names it |
 | [TOOL-11](tool-11.md) | task | — | open | A module with a syntax error is dropped from the build |
 | [TOOL-12](tool-12.md) | task | — | open | One unresolved name costs a declaration its whole typed tree |

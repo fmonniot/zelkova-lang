@@ -606,7 +606,8 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
     let mut counter = 10_000u32;
 
     // First pass: build global env from every declared type in reach — the values
-    // each imported interface exposes, then this module's own annotated values.
+    // each imported interface exposes, then this module's own annotated values, broken
+    // ones included.
     let mut global: HashMap<String, Type> = HashMap::new();
 
     // An imported value is keyed the way a `VarForeign` reference spells it: its name
@@ -625,16 +626,29 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
         }
     }
 
-    for (name, value) in &module.values {
-        if let canonical::Value::TypedValue { tpe, .. } = value {
-            let mut var_map = HashMap::new();
-            if let Some(typer_tpe) = canonical_type_to_typer_type(tpe, &mut var_map, &mut counter) {
-                // Add both qualified (e.g. "test-project:Test.not") and unqualified (e.g.
-                // "not") names
-                let qname = environment_key(&module.name.qualify_name(name));
-                global.insert(qname, typer_tpe.clone());
-                global.insert(name.as_str().to_string(), typer_tpe);
-            }
+    // A declaration canonicalization recorded as broken is declared by its annotation,
+    // when that canonicalized, exactly as an annotated one is: a caller is checked
+    // against the type the declaration was written with, whatever is wrong with its body.
+    let annotated = module
+        .values
+        .iter()
+        .filter_map(|(name, value)| match value {
+            canonical::Value::TypedValue { tpe, .. } => Some((name, tpe)),
+            canonical::Value::Value { .. } => None,
+        });
+    let broken = module
+        .broken
+        .iter()
+        .filter_map(|broken| Some((&broken.name, broken.tpe.as_ref()?)));
+
+    for (name, tpe) in annotated.chain(broken) {
+        let mut var_map = HashMap::new();
+        if let Some(typer_tpe) = canonical_type_to_typer_type(tpe, &mut var_map, &mut counter) {
+            // Add both qualified (e.g. "test-project:Test.not") and unqualified (e.g.
+            // "not") names
+            let qname = environment_key(&module.name.qualify_name(name));
+            global.insert(qname, typer_tpe.clone());
+            global.insert(name.as_str().to_string(), typer_tpe);
         }
     }
 
@@ -904,8 +918,8 @@ impl<'a> Translation<'a> {
     /// it — 0 for one no interface in reach records, the arity of a parameterless binding.
     ///
     /// Every name canonicalization resolves to a `VarForeign` is one an interface in
-    /// reach exposes, so the fallback is for a hand-built interface map; see
-    /// [`Interface::arities`].
+    /// reach exposes, so the fallback is for a value its module recorded as broken, or for
+    /// a hand-built interface map; see [`Interface::arities`].
     fn foreign_arity(&self, qname: &QualName) -> usize {
         self.foreign_arities.get(qname).copied().unwrap_or(0)
     }

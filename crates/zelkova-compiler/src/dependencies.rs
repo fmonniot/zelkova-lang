@@ -28,10 +28,10 @@ use petgraph::graph::{DiGraph, NodeIndex};
 
 /// What a checker hands [`ModuleWalker::check_in_order`] back for one module.
 ///
-/// A module with errors can still have a shape: one whose declarations all
-/// canonicalized has the interface it would have had whatever the typer says of them,
-/// and a typed tree for each declaration the typer did not reject
-/// ([`DEC-23`](../../docs/decisions/dec-23.md) decisions 1 and 5). So "checked" and
+/// A module with errors can still have a shape: it has the interface its declarations
+/// that canonicalized give it, whatever the typer says of them, and a typed tree for
+/// each declaration the typer did not reject
+/// ([`DEC-23`](../../docs/decisions/dec-23.md) decisions 1, 2 and 5). So "checked" and
 /// "failed" are not the only two answers: [`Module`](Outcome::Module) carries a module
 /// together with everything wrong with it.
 #[derive(Debug)]
@@ -491,9 +491,9 @@ impl<'a> ModuleWalker<'a> {
     /// comes back as one [`Outcome`], in the order it was checked (`BUG-2`). Every
     /// module the checker hands back has its `Interface` inserted into `interfaces` as
     /// it goes, whether or not it came back with errors, so later modules keep resolving
-    /// against earlier ones: an importer of a module with a type error in one
-    /// declaration is checked against the interface that module has, and reports
-    /// nothing about the import ([`DEC-23` decision
+    /// against earlier ones: an importer of a module with an error in one declaration is
+    /// checked against the interface that module has, and reports nothing about the
+    /// import ([`DEC-23` decision
     /// 1](../../docs/decisions/dec-23.md#1--a-module-publishes-the-interface-it-has-whichever-phase-failed)).
     /// Only an [`Outcome::Failed`] module is absent from what follows it.
     ///
@@ -611,6 +611,7 @@ mod tests {
             infixes: HashMap::new(),
             types: HashMap::new(),
             values: HashMap::new(),
+            broken: Vec::new(),
             binding_foreign: false,
         };
         let ir = crate::ir::build(&canonical, HashMap::new());

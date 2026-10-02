@@ -60,10 +60,12 @@ modules at once. Each block keeps its own `expect=`, so an example can show one 
 compiling and its importer failing, and the failure is reported on the importer's line
 rather than on the group.
 
-A module that fails the **type** checker still publishes its interface to the rest of the
-group, so an importer of it goes on resolving every name it imports. An interface carries
-declared signatures and canonicalization is what validated them; withholding it would
-turn a type error in one block into a wave of unresolved names in the next.
+A module with an error still publishes its interface to the rest of the group, so an
+importer of it goes on resolving every name it imports. An interface carries the declared
+signatures canonicalization validated, and a declaration whose own canonicalization failed
+is in it by its annotation when that annotation is sound. Only a module whose imports leave
+it nothing to canonicalize against publishes nothing. Withholding the interface would turn
+an error in one block into a wave of unresolved names in the next.
 
 `SPEC-3` settled this, for the *Modules, exposing and imports* chapter, which cannot be
 written one module at a time. Three alternatives were considered and rejected: adjacent

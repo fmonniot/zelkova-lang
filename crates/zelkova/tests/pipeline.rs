@@ -16,6 +16,7 @@ use codespan_reporting::diagnostic::{LabelStyle, Severity};
 use codespan_reporting::files::SimpleFile;
 use zelkova::{compile_package, compile_package_with_tests, BuildError, BUILD_DIRECTORY};
 use zelkova_compiler::canonical;
+use zelkova_compiler::dependencies::Outcome;
 use zelkova_compiler::dependencies::{self, ModuleWalker};
 use zelkova_compiler::manifest;
 use zelkova_compiler::name::Name;
@@ -2214,23 +2215,23 @@ fn export_not_found_labels_the_exposed_name_alone() {
 //
 // `Module::to_interface` keeps a value only when it carries a type
 // (`Value::TypedValue`), so an unannotated declaration named in `exposing`
-// used to vanish from the interface silently — the importer then failed with
-// `VariableNotFound` for a name `Widget` plainly declares, blaming the wrong
-// module for the wrong reason. `SPEC-5` closes this at the source: `Widget`
-// itself is now rejected, before it ever publishes an interface.
+// used to vanish from the interface silently, and the importer's error was the
+// only one a user saw. `SPEC-5` closes this at the source: `Widget` itself is
+// rejected for the exposed, unannotated `label`. It still publishes the
+// interface it has, so `Main` is checked against it and its own `Widget.label`
+// is a missing name: two errors, the first of which says why.
 
-/// `Widget` fails to canonicalize on its own — `label` is exposed with no
-/// annotation — and `Main`, which imports it, gets an error too, but not
-/// `VariableNotFound`: `Widget` never published an `Interface` for it to
-/// resolve against, so the import itself is what fails.
+/// `Widget` exposes `label` with no annotation, so it reports
+/// `ExportedValueNotAnnotated` and publishes an `Interface` without `label`.
+/// `Main` is checked against that interface, as `check_in_order` does, and
+/// reports `VariableNotFound` for `Widget.label`.
 ///
 /// Mutation-checked: reverting `do_exports`'s `Lower` arm to accept `label`
-/// once `env.find_value` succeeds (the pre-fix behaviour, before the
-/// `values.get(name)` annotation check was added) turns `Widget`'s check
-/// green again, and with it this test — `Main` would then fail with
-/// `VariableNotFound` instead, the exact symptom `BUG-14` was filed over.
+/// once `env.find_value` succeeds (the behaviour before the `values.get(name)`
+/// annotation check was added) turns `Widget`'s check green, and this test
+/// goes red on its first assertion.
 #[test]
-fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
+fn unannotated_export_is_rejected_at_the_declaration_and_the_importer_is_told_too() {
     let widget = indoc::indoc! {r#"
         module Widget exposing (label)
         label = 1
@@ -2238,43 +2239,51 @@ fn unannotated_export_is_rejected_at_the_declaration_not_the_importer() {
     let main = indoc::indoc! {r#"
         module Main exposing (x)
         import Widget
+        x : Int
         x = Widget.label
     "#};
 
     let pkg = test_package();
+    let mut interfaces: HashMap<Name, Interface> = HashMap::from([basics_interface()]);
 
-    let widget_error = check_module(&pkg, &HashMap::new(), &parse_source(widget))
-        .expect_err("an exposed, unannotated value must not compile");
-
-    match &widget_error {
-        CompilationError::Canonical(errors, module) => {
-            assert_eq!(module, &Name::from("Widget"));
-            assert_eq!(errors.len(), 1, "got {:?}", errors);
-            match &errors[0] {
-                canonical::Error::ExportedValueNotAnnotated(name, _, _) => {
-                    assert_eq!(name.as_str(), "label");
+    // `Widget` is checked and its interface published whatever the check found,
+    // which is what `check_in_order` does with an `Outcome::Module`.
+    match check_module_recovering(&pkg, &interfaces, &parse_source(widget)) {
+        Outcome::Module(widget_module, widget_errors) => {
+            assert_eq!(widget_errors.len(), 1, "got {:?}", widget_errors);
+            match &widget_errors[0] {
+                CompilationError::Canonical(errors, module) => {
+                    assert_eq!(module, &Name::from("Widget"));
+                    assert_eq!(errors.len(), 1, "got {:?}", errors);
+                    match &errors[0] {
+                        canonical::Error::ExportedValueNotAnnotated(name, _, _) => {
+                            assert_eq!(name.as_str(), "label");
+                        }
+                        other => panic!("expected ExportedValueNotAnnotated, got {:?}", other),
+                    }
                 }
-                other => panic!("expected ExportedValueNotAnnotated, got {:?}", other),
+                other => panic!("expected a Canonical error naming Widget, got {:?}", other),
             }
+
+            interfaces.insert(
+                widget_module.canonical.name.name().clone(),
+                widget_module.to_interface(None),
+            );
         }
-        other => panic!("expected a Canonical error naming Widget, got {:?}", other),
+        Outcome::Failed(error) => panic!("`Widget` should still publish: {:?}", error),
     }
 
-    // `Widget` never checked, so there is no `Interface` for it in scope —
-    // exactly what the real pipeline would have, since `check_in_order` only
-    // inserts an `Interface` for a module that canonicalized.
-    let main_error = check_module(&pkg, &HashMap::new(), &parse_source(main))
-        .expect_err("Main imports a module that never checked");
+    let main_error = check_module(&pkg, &interfaces, &parse_source(main))
+        .expect_err("`Widget` publishes no `label` for Main to import");
 
     match &main_error {
         CompilationError::Canonical(errors, module) => {
             assert_eq!(module, &Name::from("Main"));
             assert!(
-                !errors
+                errors
                     .iter()
                     .any(|e| matches!(e, canonical::Error::VariableNotFound(..))),
-                "the importer must not blame a missing variable for a name \
-                 `Widget` plainly declares: {:?}",
+                "`Widget.label` is not in the interface `Widget` published: {:?}",
                 errors
             );
         }
@@ -3236,6 +3245,7 @@ fn an_untyped_backing_function_is_reported_under_its_own_name() {
     let main = indoc::indoc! {r#"
         module Main exposing (x)
         import Lib exposing ((+))
+        x : Int
         x = 1 + 2
     "#};
 
@@ -6249,17 +6259,133 @@ fn a_module_with_a_type_error_keeps_a_typed_tree() {
     assert_eq!(unchecked, vec![(&Name::from("bad"), true)]);
 }
 
-/// A module that fails canonicalization publishes nothing, so a module importing it
-/// still reports it as missing. This is where publishing a module with errors stops
-/// today: only a module whose declarations all canonicalized has an interface.
+/// A module with a canonicalization error in one declaration publishes its interface to
+/// the modules that import it: `B` imports `A`'s sound `ok`, and the only error of the
+/// check is `A`'s own, about `bad`. `A`'s tree holds a typed `ok`, and lists the broken
+/// `bad` as unchecked with an error behind it.
 ///
-/// It pins behaviour this crate has always had, so there is no change to neutralise.
-/// That it can tell the two cases apart was checked by pointing it at
-/// `package_import_type_error`, the same package with a type error in place of the
-/// canonicalization error: the error count goes red.
+/// Mutation-checked by making `check_module_recovering` answer `Outcome::Failed` when
+/// canonicalization reported anything: `A` publishes nothing, `B` reports it as missing,
+/// and the error count goes red.
 #[test]
-fn a_module_that_fails_canonicalization_publishes_nothing() {
+fn a_module_with_a_canonicalization_error_publishes_its_interface() {
     let root = fixture_package("package_import_canonical_error");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    assert!(
+        matches!(
+            check.errors.as_slice(),
+            [error] if matches!(
+                unwrap_in_file(error),
+                CompilationError::Canonical(_, module) if module == &Name::from("A")
+            )
+        ),
+        "expected `A`'s canonicalization error alone, got {:?}",
+        check.errors
+    );
+    assert!(
+        check
+            .errors
+            .iter()
+            .all(|error| unwrap_in_file(error).module() != Some(&Name::from("B"))),
+        "got {:?}",
+        check.errors
+    );
+
+    assert_eq!(sorted_module_names(&check.failing), vec!["A", "B"]);
+    let a = &check
+        .failing
+        .iter()
+        .find(|checked| checked.module.canonical.name.name() == &Name::from("A"))
+        .expect("`A` is among the failing modules")
+        .module
+        .ir;
+
+    let declarations: Vec<&Name> = a
+        .declarations
+        .iter()
+        .map(|declaration| &declaration.name)
+        .collect();
+    assert_eq!(declarations, vec![&Name::from("ok")]);
+
+    let unchecked: Vec<(&Name, bool)> = a
+        .unchecked
+        .iter()
+        .map(|unchecked| (&unchecked.name, unchecked.reported))
+        .collect();
+    assert_eq!(unchecked, vec![(&Name::from("bad"), true)]);
+}
+
+/// A caller of a broken declaration is checked against the declaration's annotation:
+/// `f`'s body uses an operator nothing declares, and `g = f 1` still has a typed tree,
+/// of type `Int`. `f` itself is unchecked, with its canonicalization error behind it.
+///
+/// Mutation-checked twice, each going red. Leaving `module.broken` out of the typer's
+/// `global` in `type_check_recovering` makes `f` a name the typer does not hold, and `g`
+/// becomes an unchecked declaration. Leaving `module.broken` out of what `ir::build`
+/// appends to `unchecked` empties the list.
+#[test]
+fn a_caller_of_a_broken_declaration_is_checked_against_its_annotation() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (f, g)
+
+        f : Int -> Int
+        f x = x <+> 1
+
+        g : Int
+        g = f 1
+    "#};
+    let parsed = parse_source(source);
+    let interfaces = HashMap::from([basics_interface()]);
+
+    let (module, errors) = match check_module_recovering(&test_package(), &interfaces, &parsed) {
+        dependencies::Outcome::Module(module, errors) => (module, errors),
+        dependencies::Outcome::Failed(error) => {
+            panic!("expected a module beside its errors, got {:?}", error)
+        }
+    };
+
+    assert!(
+        matches!(errors.as_slice(), [CompilationError::Canonical(..)]),
+        "got {:?}",
+        errors
+    );
+
+    let g = module
+        .ir
+        .declarations
+        .iter()
+        .find(|declaration| declaration.name == Name::from("g"))
+        .unwrap_or_else(|| {
+            panic!(
+                "`g` should have a typed tree, got unchecked {:?}",
+                module.ir.unchecked
+            )
+        });
+    assert_eq!(g.tpe.to_string(), "Int");
+
+    let unchecked: Vec<(&Name, bool)> = module
+        .ir
+        .unchecked
+        .iter()
+        .map(|unchecked| (&unchecked.name, unchecked.reported))
+        .collect();
+    assert_eq!(unchecked, vec![(&Name::from("f"), true)]);
+}
+
+/// A module with an import that does not resolve publishes nothing, so a module
+/// importing it still reports it as missing. This is where publishing a module with
+/// errors stops today: an unresolved import leaves the module no environment to
+/// canonicalize anything in.
+///
+/// It pins behaviour this crate already has, so there is no change to neutralise. That
+/// it can tell the two cases apart was checked by pointing it at
+/// `package_import_canonical_error`, where `A` publishes its interface: the error count
+/// goes red.
+#[test]
+fn a_module_with_an_unresolved_import_publishes_nothing() {
+    let root = fixture_package("package_import_unresolved_import");
 
     let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
 

@@ -19,7 +19,7 @@ use super::Interface;
 use super::PhaseError;
 use super::SpanLabel;
 use super::{ModuleName, PackageName};
-use crate::utils::collect_accumulate;
+use crate::utils::{collect_accumulate, collect_partial};
 use log::{debug, trace};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
@@ -61,9 +61,63 @@ pub struct Module {
     pub infixes: HashMap<Name, Infix>,
     pub types: HashMap<Name, UnionType>,
     pub values: HashMap<Name, Value>,
+    /// The value declarations that were written and have no canonical form, sorted by name.
+    ///
+    /// A declaration is here when its annotation or its body did not canonicalize, or, in
+    /// a facade, when its signature was rejected by the per-declaration checks; an error
+    /// beside the module says which. The checks that run on the whole signature list
+    /// before those (`FacadeConstrained`, a malformed context, `UnsafeOutsideFacade`)
+    /// report an error and leave the declaration where the per-declaration checks put it.
+    /// Every other value declaration is in [`values`](Self::values), and no name is in
+    /// both. What survives of one is its annotation, when that canonicalized:
+    /// [`to_interface`](Self::to_interface) exposes it and the typer declares it, so a
+    /// caller of a broken declaration is checked against the type it was written with.
+    pub broken: Vec<Broken>,
     /// True when this module is a `module foreign` facade.
     /// Such modules have synthetic placeholder bodies and must not be type-checked.
     pub binding_foreign: bool,
+}
+
+/// A value declaration canonicalization rejected, recorded in [`Module::broken`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Broken {
+    pub name: Name,
+    /// Where the declaration was written, annotation and body together.
+    pub span: NodeSpan,
+    /// The declaration's annotation, when it has one and it canonicalized.
+    pub tpe: Option<Type>,
+    /// Where that annotation was written; `NodeSpan::none()` when `tpe` is `None`.
+    pub annotation_span: NodeSpan,
+}
+
+impl Broken {
+    /// `function`, recorded as broken, with `tpe` as its annotation when that
+    /// canonicalized.
+    fn of(function: &parser::Function, tpe: Option<Type>) -> Broken {
+        let annotation_span = match tpe {
+            Some(_) => function.annotation_span,
+            None => NodeSpan::none(),
+        };
+
+        Broken {
+            name: function.name.clone(),
+            span: function.span,
+            tpe,
+            annotation_span,
+        }
+    }
+}
+
+/// What [`canonicalize_recovering`] built of a module, beside every error it reported.
+#[derive(Debug)]
+pub struct Canonicalized {
+    /// The module, holding every declaration that canonicalized. A value declaration
+    /// that did not is in [`Module::broken`]; a `type` or `infix` declaration that did
+    /// not is in neither.
+    pub module: Module,
+    /// Every error canonicalization reported. Empty exactly when [`canonicalize`] would
+    /// answer `Ok` with [`module`](Self::module).
+    pub errors: Vec<Error>,
 }
 
 impl Module {
@@ -91,13 +145,12 @@ impl Module {
     /// only by three rules:
     ///
     /// - a value reaches the interface when the header exposes its name as
-    ///   [`ExportType::Value`], on top of the pre-existing requirement that it
-    ///   carry a type annotation (`Value::TypedValue`). `do_exports` is what
-    ///   makes that requirement real (`SPEC-5`): it rejects a module that
-    ///   exposes an unannotated declaration before this method ever runs, so
-    ///   the `Value::Value` arm in the `filter_map` below is unreachable
-    ///   through normal use — its own comment says why it stays rather than
-    ///   becoming an `unwrap`;
+    ///   [`ExportType::Value`], on top of the requirement that it carry a type
+    ///   annotation (`Value::TypedValue`). `do_exports` reports an exposed,
+    ///   unannotated declaration (`SPEC-5`), and the declaration is left out
+    ///   here. A [`Broken`] declaration the header exposes reaches the
+    ///   interface the same way when its annotation canonicalized, with that
+    ///   annotation as its type, so an importer is checked against it;
     /// - an infix reaches it when the header exposes the operator;
     /// - a union type reaches it when the header names it either way, but a
     ///   `Size` entry ([`ExportType::UnionPrivate`]) hands over the declaration
@@ -123,16 +176,20 @@ impl Module {
             .iter()
             .filter(|(name, _)| self.exports.exposes(name, &ExportType::Value))
             .filter_map(|(name, value)| match value {
-                // Unreachable through normal use: `do_exports` (`SPEC-5`)
-                // rejects an exposed, unannotated declaration before
-                // canonicalization ever produces a `Module` for this method
-                // to run on (`BUG-14`). Kept rather than `unwrap`ped so a
-                // future caller that hands this a hand-built `Module` — a
-                // test, most likely — gets a value silently absent from the
-                // interface instead of a panic.
+                // An exposed, unannotated declaration is an error `do_exports`
+                // has reported (`SPEC-5`, `BUG-14`); it has no type to publish.
                 Value::Value { .. } => None,
                 Value::TypedValue { tpe, span, .. } => Some((name.clone(), (*span, tpe.clone()))),
             })
+            .chain(
+                self.broken
+                    .iter()
+                    .filter(|broken| self.exports.exposes(&broken.name, &ExportType::Value))
+                    .filter_map(|broken| {
+                        let tpe = broken.tpe.as_ref()?;
+                        Some((broken.name.clone(), (broken.span, tpe.clone())))
+                    }),
+            )
             .collect();
 
         let mut opaque_unions = HashSet::new();
@@ -171,14 +228,12 @@ impl Module {
         let infix_functions: HashMap<Name, (NodeSpan, Type)> = infixes
             .values()
             .filter(|infix| !values.contains_key(&infix.function_name))
-            .filter_map(|infix| match self.values.get(&infix.function_name) {
-                Some(Value::TypedValue { tpe, span, .. }) => {
-                    Some((infix.function_name.clone(), (*span, tpe.clone())))
-                }
-                _ => None,
-            })
+            .filter_map(|infix| self.declared_type(&infix.function_name))
+            .map(|(name, span, tpe)| (name.clone(), (span, tpe.clone())))
             .collect();
 
+        // A broken value has no parameters to count, so it gets no entry; an importer
+        // reads its absence as arity 0 (see `Interface::arities`).
         let arities = values
             .keys()
             .chain(infix_functions.keys())
@@ -198,6 +253,20 @@ impl Module {
             infix_functions,
             arities,
             file,
+        }
+    }
+
+    /// The annotation this module declares `name` with, and where the declaration was
+    /// written: an annotated value's, or a [`Broken`] one's whose annotation canonicalized.
+    fn declared_type(&self, name: &Name) -> Option<(&Name, NodeSpan, &Type)> {
+        match self.values.get_key_value(name) {
+            Some((name, Value::TypedValue { tpe, span, .. })) => Some((name, *span, tpe)),
+            Some((_, Value::Value { .. })) => None,
+            None => self
+                .broken
+                .iter()
+                .find(|broken| &broken.name == name)
+                .and_then(|broken| Some((&broken.name, broken.span, broken.tpe.as_ref()?))),
         }
     }
 
@@ -2080,6 +2149,101 @@ pub fn effectful_result_payload(tpe: &Type) -> Option<&Type> {
     Some(payload)
 }
 
+/// Hold a facade signature `function`, whose type canonicalized to `tpe`, to what a
+/// facade may declare: every piece one of the admitted types, `Task` nowhere but the
+/// whole of an unmarked signature's result, and that result exactly
+/// `Task (Result Failure a)` unless the signature is `unsafe`.
+///
+/// The first rule a signature breaks is its error. One bad signature does not hide the
+/// next: the caller records this one as broken and goes on to the next.
+fn check_facade_signature(function: &parser::Function, tpe: &Type) -> Result<(), Error> {
+    // Every parameter and the result — the arrows a facade's own
+    // parameter list contributes stripped first, since a facade is
+    // itself a function and that is the one place an arrow is
+    // admitted — must be one of the admitted types
+    // (`docs/spec/interop.md#which-types-may-cross-the-boundary`).
+    // Walked once and reused below for the `Task`-placement check.
+    let pieces = facade_signature_pieces(tpe);
+    if let Some(kind) = pieces
+        .iter()
+        .copied()
+        .find_map(|piece| check_facade_admitted_type(piece).err())
+    {
+        return Err(Error::FacadeTypeNotAdmitted(
+            function.name.clone(),
+            kind,
+            function.annotation_span,
+        ));
+    }
+
+    // `Task` is confined to the whole of an unmarked facade's result
+    // (`docs/spec/interop.md#an-effectful-facade`), so a parameter
+    // piece may never hold one, whether or not the signature is
+    // `unsafe`. Reached only once the loop above admits every piece,
+    // so nothing here still hides a bare type variable or function
+    // type for `contains_task` to misread.
+    if let Some((&result, parameters)) = pieces.split_last() {
+        if parameters.iter().copied().any(contains_task) {
+            return Err(Error::FacadeTaskMisplaced(
+                function.name.clone(),
+                function.annotation_span,
+            ));
+        }
+
+        // The result is held to the required effect shape unless the
+        // signature says `unsafe` (`DEC-12` decision 1 and 7): an
+        // unmarked facade's result must be exactly
+        // `Task (Result Failure a)`, and `unsafe` is what removes that
+        // requirement rather than any shape `check_facade_admitted_type`
+        // already accepted. `Task` still may not appear anywhere else —
+        // nested in the payload `a` above, nested under some other type
+        // (`Maybe (Task Int)`), or anywhere at all in an `unsafe`
+        // facade's result, which gets no exemption from this.
+        //
+        // `is_task_applied(result)` tells "the right shape with the
+        // wrong contents" (`Task Int`) apart from "`Task` in a position
+        // that was never going to be it" (`Maybe (Task Int)`), which is
+        // what keeps the two error variants pointed at what each is
+        // actually about.
+        if function.marked_unsafe {
+            if contains_task(result) {
+                return Err(Error::FacadeTaskMisplaced(
+                    function.name.clone(),
+                    function.annotation_span,
+                ));
+            }
+        } else if is_task_applied(result) {
+            match effectful_result_payload(result) {
+                Some(payload) if contains_task(payload) => {
+                    return Err(Error::FacadeTaskMisplaced(
+                        function.name.clone(),
+                        function.annotation_span,
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    return Err(Error::FacadeResultNotEffect(
+                        function.name.clone(),
+                        function.annotation_span,
+                    ))
+                }
+            }
+        } else if contains_task(result) {
+            return Err(Error::FacadeTaskMisplaced(
+                function.name.clone(),
+                function.annotation_span,
+            ));
+        } else {
+            return Err(Error::FacadeResultNotEffect(
+                function.name.clone(),
+                function.annotation_span,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 /// Check that `context` — what an annotation wrote in front of `=>` — is one
 /// constraint or a parenthesised list of them, and hand back each constraint's
 /// class name and arguments.
@@ -2114,16 +2278,44 @@ fn validate_context(context: &parser::Type) -> Result<Vec<(&Name, &[parser::Type
     }))
 }
 
-/// Transform a given `parser::Module` into a `canonical::Module`.
+/// Transform a given `parser::Module` into a `canonical::Module`, or into the errors
+/// that kept it from being one.
 ///
-/// Whether this module is exempt from the default imports is not this function's
-/// question to answer: `new_environment` derives it from `package` itself
-/// ([`PackageName::is_core`]) once `name` is built.
+/// [`canonicalize_recovering`], reduced to all-or-nothing: a module that came back with
+/// errors is `Err` with all of them.
 pub fn canonicalize(
     package: &PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
 ) -> Result<Module, Vec<Error>> {
+    let Canonicalized { module, errors } = canonicalize_recovering(package, interfaces, source)?;
+
+    if errors.is_empty() {
+        Ok(module)
+    } else {
+        Err(errors)
+    }
+}
+
+/// Transform a given `parser::Module` into a `canonical::Module`, and hand it back
+/// beside every error found on the way.
+///
+/// `Err` is the one case with no module: the imports could not be turned into an
+/// environment to resolve anything against. Past that, a declaration that does not
+/// canonicalize costs the module that declaration and nothing else. A value declaration
+/// is recorded in [`Module::broken`], with its annotation when that canonicalized; a
+/// `type` or an `infix` declaration is left out of [`Module::types`] or
+/// [`Module::infixes`]. An `exposing` entry that does not resolve is left out of
+/// [`Module::exports`].
+///
+/// Whether this module is exempt from the default imports is not this function's
+/// question to answer: `new_environment` derives it from `package` itself
+/// ([`PackageName::is_core`]) once `name` is built.
+pub fn canonicalize_recovering(
+    package: &PackageName,
+    interfaces: &HashMap<Name, Interface>,
+    source: &parser::Module,
+) -> Result<Canonicalized, Vec<Error>> {
     let name = ModuleName {
         package: package.clone(),
         name: source.name.clone(),
@@ -2170,7 +2362,7 @@ pub fn canonicalize(
         }
     }
 
-    let (infixes, types, values) = if source.binding_foreign {
+    let (infixes, types, values, mut broken) = if source.binding_foreign {
         // A `module foreign` facade runs a parallel canonicalization process as the constraints are a bit different:
         // - Only functions without bindings are authorized.
         // - Infixes and types are forbidden.
@@ -2203,104 +2395,51 @@ pub fn canonicalize(
             env.insert_top_level_value(f.name.clone());
         }
 
-        // Iterate on values
+        // Iterate on values. A signature that is rejected is recorded as broken, with
+        // its type when that canonicalized.
         let iter = source.functions.iter().map(|function| {
-            // Make sure there is no binding
-            if !function.bindings.is_empty() {
-                //println!("bindings = {:?} (js module)", function.bindings);
-                Err(Error::BindingPatternsInvalidLen(function.span))? // TODO More specific error
-            }
-
-            // Make sure there is a type
             let tpe = function
                 .tpe
                 .as_ref()
-                .ok_or_else(|| Error::NoTypeInBinding(function.name.clone(), function.span))?;
-            let tpe = Type::from_parser_type(&env, tpe)?;
+                .map(|tpe| Type::from_parser_type(&env, tpe));
 
-            // Every parameter and the result — the arrows a facade's own
-            // parameter list contributes stripped first, since a facade is
-            // itself a function and that is the one place an arrow is
-            // admitted — must be one of the admitted types
-            // (`docs/spec/interop.md#which-types-may-cross-the-boundary`).
-            // One bad signature must not hide the next, so this pushes onto
-            // `errors` the same way the checks above do rather than
-            // returning early out of the whole facade. Walked once and
-            // reused below for the `Task`-placement check.
-            let pieces = facade_signature_pieces(&tpe);
-            if let Some(kind) = pieces
-                .iter()
-                .copied()
-                .find_map(|piece| check_facade_admitted_type(piece).err())
-            {
-                Err(Error::FacadeTypeNotAdmitted(
-                    function.name.clone(),
-                    kind,
-                    function.annotation_span,
-                ))?
+            // Make sure there is no binding
+            if !function.bindings.is_empty() {
+                // The signature's own error is reported too, as `do_values` does for a
+                // body beside a failed annotation: the annotation's first, then the
+                // binding's. A missing signature is that error as well.
+                // TODO More specific error
+                let binding = Error::BindingPatternsInvalidLen(function.span);
+                return Err(match tpe {
+                    Some(Ok(tpe)) => Rejected::new(function, Some(tpe), vec![binding]),
+                    Some(Err(error)) => Rejected::new(function, None, vec![error, binding]),
+                    None => Rejected::new(
+                        function,
+                        None,
+                        vec![
+                            Error::NoTypeInBinding(function.name.clone(), function.span),
+                            binding,
+                        ],
+                    ),
+                });
             }
 
-            // `Task` is confined to the whole of an unmarked facade's result
-            // (`docs/spec/interop.md#an-effectful-facade`), so a parameter
-            // piece may never hold one, whether or not the signature is
-            // `unsafe`. Reached only once the loop above admits every piece,
-            // so nothing here still hides a bare type variable or function
-            // type for `contains_task` to misread.
-            if let Some((&result, parameters)) = pieces.split_last() {
-                if parameters.iter().copied().any(contains_task) {
-                    Err(Error::FacadeTaskMisplaced(
-                        function.name.clone(),
-                        function.annotation_span,
-                    ))?
+            // Make sure there is a type
+            let tpe = match tpe {
+                Some(Ok(tpe)) => tpe,
+                Some(Err(error)) => return Err(Rejected::new(function, None, vec![error])),
+                None => {
+                    return Err(Rejected::new(
+                        function,
+                        None,
+                        vec![Error::NoTypeInBinding(function.name.clone(), function.span)],
+                    ))
                 }
+            };
 
-                // The result is held to the required effect shape unless the
-                // signature says `unsafe` (`DEC-12` decision 1 and 7): an
-                // unmarked facade's result must be exactly
-                // `Task (Result Failure a)`, and `unsafe` is what removes that
-                // requirement rather than any shape `check_facade_admitted_type`
-                // already accepted. `Task` still may not appear anywhere else —
-                // nested in the payload `a` above, nested under some other type
-                // (`Maybe (Task Int)`), or anywhere at all in an `unsafe`
-                // facade's result, which gets no exemption from this.
-                //
-                // `is_task_applied(result)` tells "the right shape with the
-                // wrong contents" (`Task Int`) apart from "`Task` in a position
-                // that was never going to be it" (`Maybe (Task Int)`), which is
-                // what keeps the two error variants pointed at what each is
-                // actually about.
-                if function.marked_unsafe {
-                    if contains_task(result) {
-                        Err(Error::FacadeTaskMisplaced(
-                            function.name.clone(),
-                            function.annotation_span,
-                        ))?
-                    }
-                } else if is_task_applied(result) {
-                    match effectful_result_payload(result) {
-                        Some(payload) if contains_task(payload) => {
-                            Err(Error::FacadeTaskMisplaced(
-                                function.name.clone(),
-                                function.annotation_span,
-                            ))?
-                        }
-                        Some(_) => {}
-                        None => Err(Error::FacadeResultNotEffect(
-                            function.name.clone(),
-                            function.annotation_span,
-                        ))?,
-                    }
-                } else if contains_task(result) {
-                    Err(Error::FacadeTaskMisplaced(
-                        function.name.clone(),
-                        function.annotation_span,
-                    ))?
-                } else {
-                    Err(Error::FacadeResultNotEffect(
-                        function.name.clone(),
-                        function.annotation_span,
-                    ))?
-                }
+            match check_facade_signature(function, &tpe) {
+                Ok(()) => {}
+                Err(error) => return Err(Rejected::new(function, Some(tpe), vec![error])),
             }
 
             let name = function.name.clone();
@@ -2323,20 +2462,16 @@ pub fn canonicalize(
 
             Ok((name, value))
         });
-        let values = crate::utils::collect_accumulate(iter).unwrap_or_else(|err| {
-            errors.extend(err);
-            HashMap::new()
-        });
+        let (values, rejected): (HashMap<Name, Value>, Vec<Box<Rejected>>) = collect_partial(iter);
+        let (broken, rejected_errors) = Rejected::split(rejected);
+        errors.extend(rejected_errors);
 
-        (HashMap::new(), HashMap::new(), values)
+        (HashMap::new(), HashMap::new(), values, broken)
     } else {
         // Because we are rewriting infixes in this phase, we must do this check before
         // resolving values.
-        let infixes =
-            do_infixes(&source.infixes, &mut env, &source.functions).unwrap_or_else(|err| {
-                errors.extend(err);
-                HashMap::new()
-            });
+        let (infixes, infix_errors) = do_infixes(&source.infixes, &mut env, &source.functions);
+        errors.extend(infix_errors);
 
         // Every `type` declaration of this module is in scope for every one of
         // them, its own body included, so all of their names are registered
@@ -2350,10 +2485,8 @@ pub fn canonicalize(
             env.insert_declared_type(&tpe.name, tpe.type_arguments.clone());
         }
 
-        let types = do_types(&env, &source.types).unwrap_or_else(|err| {
-            errors.extend(err);
-            HashMap::new()
-        });
+        let (types, type_errors) = do_types(&env, &source.types);
+        errors.extend(type_errors);
 
         for (n, t) in types.iter() {
             env.insert_union_type(n.clone(), t.clone());
@@ -2363,13 +2496,17 @@ pub fn canonicalize(
 
         // TODO Should I manage infixes rewrite here too ?
         // Yes I should do it here
-        let values = do_values(&mut env, &source.functions).unwrap_or_else(|err| {
-            errors.extend(err);
-            HashMap::new()
-        });
+        let Values {
+            values,
+            broken,
+            errors: value_errors,
+        } = do_values(&mut env, &source.functions);
+        errors.extend(value_errors);
 
-        (infixes, types, values)
+        (infixes, types, values, broken)
     };
+
+    broken.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
 
     // A parameterless binding's value has to exist before it can be used, so a
     // cycle that holds one — through other bindings or through functions — is an
@@ -2382,24 +2519,34 @@ pub fn canonicalize(
 
     // We do exports at the end, and verify that all exported value do
     // have a reference within the current module
-    let exports = do_exports(&source.exposing, &env, &values).unwrap_or_else(|err| {
-        errors.extend(err);
-        Exports::Everything // Never exposed, as we will return the errors instead
-    });
+    // A declaration that is broken and was written with no annotation is in neither
+    // `values` nor `Broken::tpe`, so `do_exports` is told of it here: it is as exposed
+    // and as unannotated as a sound `Value::Value`. A facade is left out: its unannotated
+    // signature already is `NoTypeInBinding`.
+    let unannotated_broken: HashMap<Name, NodeSpan> = source
+        .functions
+        .iter()
+        .filter(|f| {
+            !source.binding_foreign && f.tpe.is_none() && broken.iter().any(|b| b.name == f.name)
+        })
+        .map(|f| (f.name.clone(), f.span))
+        .collect();
+    let (exports, export_errors) = do_exports(&source.exposing, &env, &values, &unannotated_broken);
+    errors.extend(export_errors);
 
-    if errors.is_empty() {
-        Ok(Module {
+    Ok(Canonicalized {
+        module: Module {
             name,
             exports,
             exposing_span: source.exposing_span,
             infixes,
             types,
             values,
+            broken,
             binding_foreign: source.binding_foreign,
-        })
-    } else {
-        Err(errors)
-    }
+        },
+        errors,
+    })
 }
 
 /// Whether `value` names no parameter — the kind of binding a cycle
@@ -2600,12 +2747,12 @@ fn check_self_dependency(values: &HashMap<Name, Value>) -> Result<(), Vec<Error>
 ///
 /// After `check_self_dependency` accepts a module, every component holding a
 /// parameterless binding is that binding alone, so each binding has one well-defined
-/// place. `check_module` only reaches `ir::build` — this function's sole caller — after
-/// `canonicalize` returned `Ok`, and `canonicalize` runs that check on this same value map
-/// first; that is what discharges the assumption. A component holding several
-/// parameterless bindings regardless (which should be unreachable) does not panic — this
+/// place. `ir::build`, this function's sole caller, also builds a module canonicalization
+/// reported errors for, and one of those can be the cycle `check_self_dependency`
+/// rejected. A component holding several parameterless bindings does not panic — this
 /// codebase holds `panic!`/`unwrap()`/`expect()` off every non-test path — its bindings
-/// come back together, in name order.
+/// come back together, in name order. A module with an error is never emitted, so that
+/// order is never run.
 ///
 /// A `module foreign` facade has no parameterless declarations to order for this purpose:
 /// `unsafe pi : Float` names a foreign binding directly, with no Zelkova body to place,
@@ -2669,10 +2816,25 @@ pub(crate) fn initialisation_order(module: &Module) -> Vec<Name> {
     order
 }
 
-fn do_values(
-    env: &mut RootEnvironment,
-    functions: &[parser::Function],
-) -> Result<HashMap<Name, Value>, Vec<Error>> {
+/// What [`do_values`] made of a module's value declarations.
+struct Values {
+    /// Every declaration that canonicalized.
+    values: HashMap<Name, Value>,
+    /// Every declaration that did not, in declaration order.
+    broken: Vec<Broken>,
+    /// Why each of [`broken`](Self::broken) did not, one or two errors per declaration.
+    errors: Vec<Error>,
+}
+
+/// Canonicalize every value declaration of a module that is not a facade.
+///
+/// A declaration's annotation is canonicalized first and on its own, so that an error
+/// in the body cannot keep the annotation from being read. A declaration whose
+/// annotation (when it has one) and body both canonicalize is a [`Value`]. One whose
+/// annotation or body does not is [`Broken`], carrying its annotation when that
+/// canonicalized, and every error of the two is reported: the annotation's, then the
+/// body's.
+fn do_values(env: &mut RootEnvironment, functions: &[parser::Function]) -> Values {
     // Before resolving expressions, we store the top-level values in the environment.
     // We do so first because their expression below could refer to them.
     for f in functions.iter() {
@@ -2680,61 +2842,25 @@ fn do_values(
     }
 
     let iter = functions.iter().map(|function| {
-        // Bindings to expression
+        let annotation = match &function.tpe {
+            Some(t) => match Type::from_parser_type(env, t) {
+                Ok(tpe) => Annotation::Canonical(tpe),
+                Err(error) => Annotation::Failed(error),
+            },
+            None => Annotation::Absent,
+        };
 
-        // TODO Better error message with position of mismatch
-        // TODO Error when bindings is empty
-        let bindings_size = function
-            .bindings
-            .iter()
-            .all(|v| v.patterns.len() == function.bindings[0].patterns.len());
-
-        if !bindings_size {
-            //println!("bindings = {:?} (bindings_size)", function.bindings);
-            Err(Error::BindingPatternsInvalidLen(function.span))?
-        }
-
-        let (patterns, body): (Vec<Pattern>, Expression) = match function.bindings.len() {
-            0 => Err(Error::NoBindings(function.span)),
-            1 => {
-                // if one binding, we can convert directly to canonical format
-                let binding = &function.bindings[0];
-
-                let mut scoped = env.new_scope();
-
-                let patterns: Vec<Pattern> = binding
-                    .patterns
-                    .iter()
-                    .map(|p| Pattern::from_parser(p, env))
-                    .collect::<Result<Vec<_>, Error>>()?;
-
-                for p in &patterns {
-                    scoped.expose_pattern(p);
-                }
-
-                // Maybe create a case_branch function and make it common with Expression::Case ?
-                // Or maybe not at the case_branch level, as here we can have multiple patterns
-                // whereas cases cannot.
-                // eg. a: Int -> Int -> Int  ==>  a b c = b + c
-                //println!("Env before transforming expression: {:?}", scoped);
-                let body = Expression::from_parser(&binding.body, &scoped)?;
-
-                Ok((patterns, body))
-            }
-            _ => {
-                // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
-                Err(Error::MultipleBindingsUnsupported(
-                    function.name.clone(),
-                    function.span,
-                ))
-            }
-        }?;
-
-        let name = function.name.clone();
-
-        match &function.tpe {
-            Some(t) => {
-                let tpe = Type::from_parser_type(env, t)?;
+        match (annotation, value_body(env, function)) {
+            (Annotation::Absent, Ok((patterns, body))) => Ok((
+                function.name.clone(),
+                Value::Value {
+                    name: function.name.clone(),
+                    patterns,
+                    body,
+                    span: function.span,
+                },
+            )),
+            (Annotation::Canonical(tpe), Ok((patterns, body))) => {
                 let linear = Type::to_linear_types(&tpe);
 
                 // Linear is a list of types making the function. Because it includes the return type,
@@ -2748,7 +2874,11 @@ fn do_values(
                         linear.len(),
                         patterns.len()
                     );
-                    Err(Error::BindingPatternsInvalidLen(function.span))?
+                    return Err(Rejected::new(
+                        function,
+                        Some(tpe),
+                        vec![Error::BindingPatternsInvalidLen(function.span)],
+                    ));
                 }
 
                 let patterns = patterns.into_iter().zip(linear).collect();
@@ -2756,7 +2886,7 @@ fn do_values(
                 Ok((
                     function.name.clone(),
                     Value::TypedValue {
-                        name,
+                        name: function.name.clone(),
                         patterns,
                         body,
                         tpe,
@@ -2769,25 +2899,126 @@ fn do_values(
                     },
                 ))
             }
-            None => Ok((
-                function.name.clone(),
-                Value::Value {
-                    name,
-                    patterns,
-                    body,
-                    span: function.span,
-                },
-            )),
+            (Annotation::Absent, Err(body_error)) => {
+                Err(Rejected::new(function, None, vec![body_error]))
+            }
+            (Annotation::Canonical(tpe), Err(body_error)) => {
+                Err(Rejected::new(function, Some(tpe), vec![body_error]))
+            }
+            (Annotation::Failed(annotation_error), body) => {
+                let mut errors = vec![annotation_error];
+                errors.extend(body.err());
+                Err(Rejected::new(function, None, errors))
+            }
         }
     });
 
-    collect_accumulate(iter)
+    let (values, rejected): (HashMap<Name, Value>, Vec<Box<Rejected>>) = collect_partial(iter);
+    let (broken, errors) = Rejected::split(rejected);
+
+    Values {
+        values,
+        broken,
+        errors,
+    }
 }
 
+/// A value declaration recorded as broken, beside the errors that say why.
+///
+/// Boxed where it is the `Err` of a declaration's result, since a [`Broken`] carries a
+/// whole [`Type`] and the `Ok` side is usually the one taken.
+struct Rejected {
+    broken: Broken,
+    errors: Vec<Error>,
+}
+
+impl Rejected {
+    /// `function`, recorded as broken with `tpe` as its annotation, because of `errors`.
+    fn new(function: &parser::Function, tpe: Option<Type>, errors: Vec<Error>) -> Box<Rejected> {
+        Box::new(Rejected {
+            broken: Broken::of(function, tpe),
+            errors,
+        })
+    }
+
+    /// Every declaration of `rejected`, and every error behind them, in the same order.
+    fn split(rejected: impl IntoIterator<Item = Box<Rejected>>) -> (Vec<Broken>, Vec<Error>) {
+        let mut broken = Vec::new();
+        let mut errors = Vec::new();
+        for rejected in rejected {
+            broken.push(rejected.broken);
+            errors.extend(rejected.errors);
+        }
+        (broken, errors)
+    }
+}
+
+/// What a value declaration's annotation canonicalized to, read apart from its body.
+enum Annotation {
+    /// The declaration has no annotation.
+    Absent,
+    Canonical(Type),
+    Failed(Error),
+}
+
+/// The parameters and the body of `function`, a value declaration of a module that is
+/// not a facade, or the first error that kept them from canonicalizing.
+fn value_body(
+    env: &RootEnvironment,
+    function: &parser::Function,
+) -> Result<(Vec<Pattern>, Expression), Error> {
+    // TODO Better error message with position of mismatch
+    let bindings_size = function
+        .bindings
+        .iter()
+        .all(|v| v.patterns.len() == function.bindings[0].patterns.len());
+
+    if !bindings_size {
+        return Err(Error::BindingPatternsInvalidLen(function.span));
+    }
+
+    match function.bindings.len() {
+        0 => Err(Error::NoBindings(function.span)),
+        1 => {
+            // if one binding, we can convert directly to canonical format
+            let binding = &function.bindings[0];
+
+            let mut scoped = env.new_scope();
+
+            let patterns: Vec<Pattern> = binding
+                .patterns
+                .iter()
+                .map(|p| Pattern::from_parser(p, env))
+                .collect::<Result<Vec<_>, Error>>()?;
+
+            for p in &patterns {
+                scoped.expose_pattern(p);
+            }
+
+            // Maybe create a case_branch function and make it common with Expression::Case ?
+            // Or maybe not at the case_branch level, as here we can have multiple patterns
+            // whereas cases cannot.
+            // eg. a: Int -> Int -> Int  ==>  a b c = b + c
+            let body = Expression::from_parser(&binding.body, &scoped)?;
+
+            Ok((patterns, body))
+        }
+        _ => {
+            // if multiple bindings, we need to create synthetics variables and put all bindings into a case expression
+            Err(Error::MultipleBindingsUnsupported(
+                function.name.clone(),
+                function.span,
+            ))
+        }
+    }
+}
+
+/// Canonicalize every `type` declaration of a module, keeping each one that canonicalized
+/// beside the errors of those that did not.
 fn do_types(
     env: &dyn Environment,
     types: &[parser::UnionType],
-) -> Result<HashMap<Name, UnionType>, Vec<Error>> {
+) -> (HashMap<Name, UnionType>, Vec<Error>) {
     let iter = types.iter().map(|tpe| {
         let tpe_name = tpe.name.clone();
         // The declaration is this module's, so this is where its variants learn
@@ -2840,7 +3071,7 @@ fn do_types(
         //
         // The `collect` below short-circuits on the first `Err`, so only the first bad
         // variant in a single `type` declaration is reported — `type T = c | (Int,
-        // Int)` names only `c`. The enclosing `collect_accumulate` still reports the
+        // Int)` names only `c`. The enclosing `collect_partial` still reports the
         // next `type` declaration independently, matching what the `Unqualified` arm
         // already did for `from_parser_type`.
         let variants = tpe
@@ -2887,14 +3118,16 @@ fn do_types(
         ))
     });
 
-    collect_accumulate(iter)
+    collect_partial(iter)
 }
 
+/// Canonicalize every `infix` declaration of a module, registering each one that names a
+/// function this module declares, beside the errors of those that do not.
 fn do_infixes(
     infixes: &[parser::Infix],
     env: &mut RootEnvironment,
     functions: &[parser::Function],
-) -> Result<HashMap<Name, Infix>, Vec<Error>> {
+) -> (HashMap<Name, Infix>, Vec<Error>) {
     let iter = infixes.iter().map(|infix| {
         let op_name = infix.operator.clone();
         let function_name = infix.function_name.clone();
@@ -2924,7 +3157,7 @@ fn do_infixes(
         }
     });
 
-    collect_accumulate(iter)
+    collect_partial(iter)
 }
 
 // Every arm below checks that the name it names actually resolves in `env`
@@ -2943,11 +3176,22 @@ fn do_infixes(
 // ever holding typed entries) — so `Lower`'s annotation check is scoped to a
 // name this module declares itself, and leaves a name it does not declare to
 // the existence check above.
+//
+// `unannotated_broken` is the declarations of this module that were written with no
+// annotation and are in `Module::broken` — absent from `values`, so without it an exposed
+// one would be accepted here and then be missing from the interface with nothing in this
+// module to say why. Each is reported exactly as an unannotated `Value::Value` is.
+//
+// What comes back is the exports that resolved beside the errors of those that did not:
+// for an explicit list, every entry that did not error, so a bad entry costs the module
+// that entry alone; for `exposing (..)`, everything, beside an error per unannotated
+// declaration.
 fn do_exports(
     source_exposing: &parser::Exposing,
     env: &dyn Environment,
     values: &HashMap<Name, Value>,
-) -> Result<Exports, Vec<Error>> {
+    unannotated_broken: &HashMap<Name, NodeSpan>,
+) -> (Exports, Vec<Error>) {
     match source_exposing {
         // `exposing (..)` exposes every top-level declaration this module
         // makes, so `SPEC-5` applies to every one of them, not just those
@@ -2965,9 +3209,12 @@ fn do_exports(
                 )),
             });
 
-            let _: Vec<()> = collect_accumulate(checked)?;
+            let ((), mut errors) = collect_partial(checked);
+            errors.extend(unannotated_broken.iter().map(|(name, span)| {
+                Error::ExportedValueNotAnnotated(name.clone(), NodeSpan::none(), *span)
+            }));
 
-            Ok(Exports::Everything)
+            (Exports::Everything, errors)
         }
         parser::Exposing::Explicit(exposed) => {
             let specifics =
@@ -2978,6 +3225,14 @@ fn do_exports(
                                 name.clone(),
                                 ExportType::Value,
                                 exposed.span,
+                            ));
+                        }
+
+                        if let Some(span) = unannotated_broken.get(name) {
+                            return Err(Error::ExportedValueNotAnnotated(
+                                name.clone(),
+                                exposed.span,
+                                *span,
                             ));
                         }
 
@@ -3032,9 +3287,9 @@ fn do_exports(
                     }
                 });
 
-            let specifics = collect_accumulate(specifics)?;
+            let (specifics, errors) = collect_partial(specifics);
 
-            Ok(Exports::Specifics(specifics))
+            (Exports::Specifics(specifics), errors)
         }
     }
 }

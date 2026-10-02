@@ -83,7 +83,7 @@ reference to it is a missing name.
    - in `do_values` and the facade branch, a function whose name a failed chunk declares is a
      `Broken`. Its body is not canonicalized and no error is reported for it, `NoBindings`
      included, because the syntax error already says what is wrong. Its annotation is read as
-     [`TOOL-9`](tool-9.md) reads any other, so `tpe` is `Some` when one parsed and
+     [`TOOL-9`](README.md) reads any other, so `tpe` is `Some` when one parsed and
      canonicalizes;
    - a `declares: Some(name)` with no `parser::Function` of that name is a `Broken` with
      `tpe: None` and the chunk's span;

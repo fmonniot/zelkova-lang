@@ -1,8 +1,9 @@
 # `package_import_type_error` with `bad`'s body using an operator nothing declares, so `A`
 # fails canonicalization rather than the typer. `crates/zelkova/tests/pipeline.rs` checks
-# that `B` still reports `A` as missing: a module that fails canonicalization publishes
-# nothing. An operator rather than a misspelt name keeps it a broken declaration once an
-# unresolved name inside a body becomes a typed hole.
+# that `A` still publishes its interface, `bad` in it by its annotation, so `B` reports
+# nothing, and that `A` still comes back with a typed tree for `ok`. An operator rather
+# than a misspelt name keeps it a broken declaration once an unresolved name inside a body
+# becomes a typed hole.
 name = "package-import-canonical-error"
 version = "0.1.0"
 private-modules = []

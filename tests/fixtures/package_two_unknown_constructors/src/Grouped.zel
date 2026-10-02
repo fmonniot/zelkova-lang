@@ -1,4 +1,4 @@
-module Grouped exposing (..)
+module Grouped exposing ()
 
 
 classify c =

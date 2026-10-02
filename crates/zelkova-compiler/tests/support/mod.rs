@@ -97,6 +97,17 @@ pub fn canonicalize_with_interfaces(
     canonical::canonicalize(&test_package(), interfaces, &parsed)
 }
 
+/// [`canonicalize_with_interfaces`] through `canonicalize_recovering`: the module
+/// canonicalization built beside every error it reported, or `Err` when the imports
+/// left it no environment to build one in.
+pub fn canonicalize_recovering_with_interfaces(
+    source: &str,
+    interfaces: &HashMap<Name, Interface>,
+) -> Result<canonical::Canonicalized, Vec<canonical::Error>> {
+    let parsed = parse_source(source);
+    canonical::canonicalize_recovering(&test_package(), interfaces, &parsed)
+}
+
 /// Build a minimal Maybe interface for use in tests that need it.
 /// Mirrors the `maybe_interface()` helper in environment.rs tests.
 pub fn maybe_interface() -> (Name, Interface) {

@@ -24,7 +24,7 @@ builds on and does not replace.
 `crates/zelkova-compiler/src/typer/constraint.rs` — `collect` and its pattern half;
 `crates/zelkova-js/src/lib.rs` — `Construct` and the emitter's expression and `case` arms.
 
-**Problem:** after [`TOOL-9`](tool-9.md), a body that names something unresolved is a
+**Problem:** after [`TOOL-9`](README.md), a body that names something unresolved is a
 `Broken`: the error is reported and the declaration has no canonical form.
 
 ```zel

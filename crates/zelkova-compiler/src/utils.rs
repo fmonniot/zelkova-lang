@@ -59,12 +59,13 @@ where
         .map(|(c, _)| c)
 }
 
-/// This let use collect an iterator of result into a result of vectors.
-/// This let us partition an iteration of result into an iterator of result or a vector of errors if any.
+/// Collect an iterator of results into everything that succeeded, beside every error.
 ///
-/// The generic signature, assuming `I: FromIterator` would look like `Iterator<Result<T, E>> -> Result<I<T>, I<E>>`.
-/// I wish this was part of the standard library, but as it is not here is my custom version.
-pub(crate) fn collect_accumulate<T, E, I, R>(iterator: I) -> Result<R, Vec<E>>
+/// Nothing is dropped on either side: an `Err` item does not stop the iteration, and
+/// does not cost the caller the `Ok` items around it. A pass that resolves many
+/// declarations independently reads it to keep each one that resolved when another did
+/// not.
+pub(crate) fn collect_partial<T, E, I, R>(iterator: I) -> (R, Vec<E>)
 where
     I: Iterator<Item = Result<T, E>>,
     R: FromIterator<T>,
@@ -81,6 +82,21 @@ where
         })
         .collect();
 
+    (r, errors)
+}
+
+/// Collect an iterator of results into every `Ok` item, or into every error when there
+/// is at least one.
+///
+/// [`collect_partial`] reduced to all-or-nothing, for a caller with no use for the
+/// items that succeeded once anything failed.
+pub(crate) fn collect_accumulate<T, E, I, R>(iterator: I) -> Result<R, Vec<E>>
+where
+    I: Iterator<Item = Result<T, E>>,
+    R: FromIterator<T>,
+{
+    let (r, errors) = collect_partial(iterator);
+
     if errors.is_empty() {
         Ok(r)
     } else {
@@ -91,6 +107,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collect_partial_keeps_every_ok_item_and_every_error() {
+        let items: Vec<Result<u8, &str>> = vec![Ok(1), Err("a"), Ok(2), Err("b"), Ok(3)];
+        let (oks, errors): (Vec<u8>, Vec<&str>) = collect_partial(items.into_iter());
+        assert_eq!(oks, vec![1, 2, 3]);
+        assert_eq!(errors, vec!["a", "b"]);
+    }
 
     #[test]
     fn levenshtein_distance_identical_strings_is_zero() {
