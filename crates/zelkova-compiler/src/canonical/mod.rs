@@ -629,6 +629,76 @@ impl Value {
             Value::TypedValue { patterns, .. } => patterns.len(),
         }
     }
+
+    /// Whether the declaration's parameters or body hold a hole, an
+    /// [`ExpressionKind::Hole`] or a [`PatternKind::Hole`] — a name that did not resolve.
+    ///
+    /// A hole is made only where the error for it was raised, and that error is either
+    /// reported or dropped in an [incomplete](Module::incomplete) scope, where the failure
+    /// that made the scope incomplete stands in its place
+    /// ([`DEC-23` decision 3](../../../docs/decisions/dec-23.md)). So a declaration for which this
+    /// is true always has an error standing behind it, which is what
+    /// [`ir::Unchecked::reported`](crate::ir::Unchecked::reported) asks of an entry.
+    /// A facade signature has no body, and the body of a `TypedValue` is read the same way
+    /// a `Value`'s is.
+    pub fn holds_hole(&self) -> bool {
+        match self {
+            Value::Value { patterns, body, .. } => {
+                patterns.iter().any(pattern_holds_hole) || expression_holds_hole(body)
+            }
+            Value::TypedValue { patterns, body, .. } => {
+                patterns
+                    .iter()
+                    .any(|(pattern, _)| pattern_holds_hole(pattern))
+                    || expression_holds_hole(body)
+            }
+        }
+    }
+}
+
+/// Whether `expr` is a hole or holds one in any subexpression or `case` pattern. The
+/// walk is [`collect_top_level_refs`]'s, looking for a different kind.
+fn expression_holds_hole(expr: &Expression) -> bool {
+    match &expr.kind {
+        ExpressionKind::Hole => true,
+        ExpressionKind::VarTopLevel(_)
+        | ExpressionKind::VarLocal(_)
+        | ExpressionKind::VarKernel(_)
+        | ExpressionKind::VarForeign(_, _, _)
+        | ExpressionKind::VarConstructor(_, _)
+        | ExpressionKind::Char(_)
+        | ExpressionKind::String(_)
+        | ExpressionKind::Int(_)
+        | ExpressionKind::Float(_)
+        | ExpressionKind::Unit => false,
+        ExpressionKind::Apply(a, b) => expression_holds_hole(a) || expression_holds_hole(b),
+        ExpressionKind::If(cond, then, els) => {
+            expression_holds_hole(cond) || expression_holds_hole(then) || expression_holds_hole(els)
+        }
+        ExpressionKind::Case(scrutinee, branches) => {
+            expression_holds_hole(scrutinee)
+                || branches.iter().any(|branch| {
+                    pattern_holds_hole(&branch.pattern) || expression_holds_hole(&branch.expression)
+                })
+        }
+        ExpressionKind::Tuple(tuple) => tuple.iter().any(expression_holds_hole),
+    }
+}
+
+/// Whether `pattern` is a hole or holds one in any argument or element.
+fn pattern_holds_hole(pattern: &Pattern) -> bool {
+    match &pattern.kind {
+        PatternKind::Hole(_) => true,
+        PatternKind::Constructor { args, .. } => args.iter().any(pattern_holds_hole),
+        PatternKind::Tuple(tuple) => tuple.iter().any(pattern_holds_hole),
+        PatternKind::Anything
+        | PatternKind::Variable(_)
+        | PatternKind::Int(_)
+        | PatternKind::Float(_)
+        | PatternKind::Char(_)
+        | PatternKind::String(_)
+        | PatternKind::Unit => false,
+    }
 }
 
 /// A canonical pattern, and where it was written.

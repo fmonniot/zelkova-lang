@@ -227,7 +227,8 @@ pub struct Body {
 /// ([`Solved::Untranslatable`]), a name the typer's environment does not hold
 /// ([`Solved::UnboundName`]), or a facade declaration with no signature to read. The
 /// second kind is not a mistake in the user's source and not an error, but a gap in
-/// today's typer. [`reported`](Self::reported) is the one distinction carried this far,
+/// today's typer — unless the declaration also holds a hole, whose error stands behind
+/// it. [`reported`](Self::reported) is the one distinction carried this far,
 /// so that `ERR-8`'s warning about a gap is not also given to a declaration the user has
 /// already been shown an error for.
 #[derive(Debug, Clone, PartialEq)]
@@ -236,8 +237,10 @@ pub struct Unchecked {
     /// Where the declaration was written.
     pub span: NodeSpan,
     /// Whether an error stands behind this entry: `true` for a declaration
-    /// canonicalization recorded as broken or inference rejected, `false` for one the
-    /// typer walked past.
+    /// canonicalization recorded as broken or inference rejected, and for one the typer
+    /// walked past whose body holds a hole (a name that did not resolve, with its error
+    /// reported or standing in the failure that made the scope incomplete); `false` for
+    /// one the typer walked past with no hole in it.
     pub reported: bool,
 }
 
@@ -814,15 +817,22 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
                 span,
                 reported: true,
             }),
-            // Untranslatable, UnboundName, and — impossible today, since the typer
-            // answers for every value it was given — a declaration with no entry at all.
-            Some(Solved::Untranslatable { .. }) | Some(Solved::UnboundName { .. }) | None => {
-                unchecked.push(Unchecked {
+            // The typer walked past it. A name that did not resolve is a hole in the
+            // body, and its error stands behind the declaration whatever else kept the
+            // typer from typing it, so the entry is `reported` all the same
+            // ([`DEC-23` decision 5](../../../docs/decisions/dec-23.md)).
+            Some(Solved::Untranslatable { .. }) | Some(Solved::UnboundName { .. }) => unchecked
+                .push(Unchecked {
                     name: name.clone(),
                     span,
-                    reported: false,
-                })
-            }
+                    reported: value.holds_hole(),
+                }),
+            // Impossible today, since the typer answers for every value it was given.
+            None => unchecked.push(Unchecked {
+                name: name.clone(),
+                span,
+                reported: false,
+            }),
         }
     }
 

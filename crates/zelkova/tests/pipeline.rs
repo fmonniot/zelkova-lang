@@ -18,6 +18,7 @@ use zelkova::{compile_package, compile_package_with_tests, BuildError, BUILD_DIR
 use zelkova_compiler::canonical;
 use zelkova_compiler::dependencies::Outcome;
 use zelkova_compiler::dependencies::{self, ModuleWalker};
+use zelkova_compiler::ir::{TermPatternKind, TypedTermKind};
 use zelkova_compiler::manifest;
 use zelkova_compiler::name::Name;
 use zelkova_compiler::resolve;
@@ -6896,7 +6897,12 @@ fn a_hole_does_not_hide_a_type_error_beside_it() {
 /// needs.
 ///
 /// Mutation-checked by refusing a pattern hole in `translate_pattern` (`return None`): `h`
-/// is then untranslatable, an unchecked declaration, and the lookup of it panics.
+/// is then untranslatable, an unchecked declaration, and the lookup of it panics. The
+/// argument's type is checked by answering a pattern hole with the identity in
+/// `apply_pattern` (`TermPatternKind::Hole { args }` for itself): `y` then keeps the
+/// unsolved variable it was annotated with and the `Int` assertion goes red. The
+/// `pattern_constraints` arm is pinned by
+/// `a_pattern_hole_with_a_unit_argument_is_held_to_unit`.
 #[test]
 fn a_pattern_hole_leaves_its_declaration_a_typed_tree() {
     let source = indoc::indoc! {r#"
@@ -6917,6 +6923,116 @@ fn a_pattern_hole_leaves_its_declaration_a_typed_tree() {
     );
     let h = declaration(&module, "h");
     assert_eq!(h.tpe.to_string(), "Int -> Int");
+
+    // The hole's argument is the type the branch body solved it to, not the variable it
+    // was annotated with: `y` is returned from an `Int -> Int`.
+    let body = h.body.as_ref().expect("`h` has a body");
+    let TypedTermKind::Case { branches, .. } = &body.expression.kind else {
+        panic!("expected a `case`, got {:?}", body.expression.kind);
+    };
+    let [(pattern, _)] = branches.as_slice() else {
+        panic!("expected one branch, got {} of them", branches.len());
+    };
+    let TermPatternKind::Hole { args } = &pattern.kind else {
+        panic!("expected a pattern hole, got {:?}", pattern.kind);
+    };
+    let [argument] = args.as_slice() else {
+        panic!("expected one argument, got {:?}", args);
+    };
+    assert_eq!(argument.tpe.to_string(), "Int");
+}
+
+/// A pattern hole's `()` argument is held to `()`: the argument is constrained as a
+/// resolved constructor's is, and so solves to the unit type.
+///
+/// Mutation-checked by changing the `Hole` arm of `pattern_constraints` to
+/// `(None, vec![])`: the argument is then constrained by nothing and keeps its unsolved
+/// variable, and the assertion goes red.
+#[test]
+fn a_pattern_hole_with_a_unit_argument_is_held_to_unit() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (h)
+
+        h : Int -> Int
+        h x =
+          case x of
+            Nope () -> 1
+    "#};
+
+    let (module, errors) = recovering(source);
+
+    assert!(
+        matches!(errors.as_slice(), [CompilationError::Canonical(..)]),
+        "got {:?}",
+        errors
+    );
+    let body = declaration(&module, "h")
+        .body
+        .as_ref()
+        .expect("`h` has a body");
+    let TypedTermKind::Case { branches, .. } = &body.expression.kind else {
+        panic!("expected a `case`, got {:?}", body.expression.kind);
+    };
+    let TermPatternKind::Hole { args } = &branches[0].0.kind else {
+        panic!("expected a pattern hole, got {:?}", branches[0].0.kind);
+    };
+    assert_eq!(args[0].tpe.to_string(), "()");
+}
+
+/// A declaration that holds a hole but that the typer cannot type is `reported`: the
+/// hole's error stands behind it, though the typer walked past it rather than rejecting
+/// it. The first is `Solved::Untranslatable` (the literal argument of the unresolved
+/// constructor is refused), the second `Solved::UnboundName` (`u` has no annotation, so
+/// the typer's environment does not hold it). A declaration the typer walks past with no
+/// hole in it stays unreported.
+///
+/// Mutation-checked by setting `reported` to `false` for those two arms in `ir::build`:
+/// both assertions on `reported: true` go red.
+#[test]
+fn a_hole_the_typer_cannot_type_is_a_reported_unchecked_declaration() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (h, g)
+
+        h : Int -> Int
+        h x =
+          case x of
+            Nope 1 -> 1
+            _ -> 2
+
+        u x = x
+
+        g : Int
+        g = u nope
+    "#};
+
+    let (module, errors) = recovering(source);
+
+    assert!(
+        errors
+            .iter()
+            .all(|error| matches!(error, CompilationError::Canonical(..))),
+        "got {:?}",
+        errors
+    );
+    let reported = |name: &str| {
+        module
+            .ir
+            .unchecked
+            .iter()
+            .find(|unchecked| unchecked.name == Name::from(name))
+            .unwrap_or_else(|| {
+                panic!(
+                    "`{}` should be unchecked, got {:?}",
+                    name, module.ir.unchecked
+                )
+            })
+            .reported
+    };
+    assert!(
+        reported("h"),
+        "an untranslatable declaration holding a hole"
+    );
+    assert!(reported("g"), "an unbound-name declaration holding a hole");
 }
 
 /// A module whose declaration holds a hole is not among the modules that checked, though
