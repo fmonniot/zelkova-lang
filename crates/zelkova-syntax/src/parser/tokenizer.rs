@@ -2015,8 +2015,12 @@ mod tests {
     /// directly, which opens a block comment.
     ///
     /// Verified to fail by moving the `'{'` brace arm of `consume_char` ahead of the
-    /// `'{' if self.lookahead.1 == Some('-')` arm: the first assertion then reads `{- a
-    /// note -}` as a brace and an operator, and fails along with the block comment tests.
+    /// `'{' if self.lookahead.1 == Some('-')` arm: the second assertion, `f = {- a note
+    /// -} { a = 1 }`, then reads the `{- a note -}` as a brace, a minus and so on, and
+    /// fails along with the block comment tests. The first assertion has no comment in
+    /// it and passes either way. The swap also leaves the comment arm unreachable, so
+    /// rustc warns `unreachable pattern`, which the `clippy -D warnings` gate rejects on
+    /// its own.
     #[test]
     fn braces_are_tokens_and_a_brace_dash_is_a_comment() {
         let low = |s: &str| Token::LowerIdentifier(s.to_owned());

@@ -33,9 +33,10 @@ The choice of mechanism is made: `LANG-52` put the left-hand half in the tokeniz
 when it is written against an operand on its left — an identifier, a literal, `)`, `]` or `}` —
 and against the character after it. Every other `.` is `SpacedDot`, which no production consumes,
 and that includes a `.` opening an expression after `(`, `[`, `{`, `,`, an operator or a keyword:
-`(.name)` begins with `SpacedDot`, as `f .name` does. A `.` opening an expression is an accessor, so every accessor starts with `SpacedDot` and
-needs no `Dot` production; the doc comment on `consume_operator` has the reasons. A scratch `"spaced dot" VarIdent` production in
-`AtomicExpr` builds without a conflict.
+`(.name)` begins with `SpacedDot`, as `f .name` does. A `.` opening an expression is an accessor,
+so every accessor starts with `SpacedDot` and needs no `Dot` production; the doc comment on
+`consume_operator` has the reasons. A scratch `"spaced dot" VarIdent` production in `AtomicExpr`
+builds without a conflict.
 
 What is left to this ticket is the rest of the whitespace rule. The accessor's own `.` is written
 against its label with no space after it, but `.name` and `. name` are both a `SpacedDot` followed
