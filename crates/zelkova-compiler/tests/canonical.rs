@@ -4884,3 +4884,107 @@ fn a_facade_signature_named_by_a_failed_chunk_is_broken_with_its_type() {
         other => panic!("expected `inc` alone to be broken, got {:?}", other),
     }
 }
+
+/// A function whose annotation is itself the chunk that failed to parse, beside a binding
+/// that did, is exposed without `ExportedValueNotAnnotated`: the user did write an
+/// annotation, and the syntax error says it is wrong.
+///
+/// Mutation-checked by removing `&& !unparsed.contains_key(&f.name)` from the
+/// `unannotated_broken` filter in `canonicalize_recovering`: `f` is then told to
+/// `do_exports` as an unannotated declaration and `ExportedValueNotAnnotated` is reported.
+#[test]
+fn an_exposed_function_whose_annotation_failed_to_parse_is_not_reported_unannotated() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+
+        f : Int ->
+
+        f x = x
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_partly_parsed(source, &HashMap::from([basics_interface()]));
+
+    assert!(errors.is_empty(), "got {:?}", errors);
+    assert!(
+        module
+            .broken
+            .iter()
+            .any(|broken| broken.name.as_str() == "f"),
+        "got {:?}",
+        module.broken
+    );
+}
+
+/// A function the parser kept an annotation of and a failed chunk also names is broken
+/// over the whole of what it was written as: its span starts at the annotation and ends
+/// at the end of the failed binding.
+///
+/// Mutation-checked by replacing the span merge in `Rejected::unparsed` with
+/// `let _ = chunk;`: the span ends with the annotation and the end assertion goes red.
+#[test]
+fn a_function_named_by_a_failed_chunk_is_spanned_over_the_chunk_too() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+
+        f : Int -> Int
+        f x = = x
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_partly_parsed(source, &HashMap::from([basics_interface()]));
+
+    assert!(errors.is_empty(), "got {:?}", errors);
+    let [broken] = module.broken.as_slice() else {
+        panic!("expected `f` alone to be broken, got {:?}", module.broken);
+    };
+    let range = broken.span.to_range().expect("`f` is spanned");
+    assert_eq!(
+        range.start,
+        source.find("f : Int").expect("source declares `f`")
+    );
+    assert!(
+        range.end >= source.find("= x").expect("source holds the binding") + "= x".len(),
+        "the span ends at {}, before the failed binding does",
+        range.end
+    );
+}
+
+/// A facade function named by a failed chunk is still checked against the rules of a
+/// facade signature: an annotation that parsed and breaks one is reported beside the
+/// syntax error, as it is for any other facade.
+///
+/// Mutation-checked by replacing `check_facade_signature(function, &tpe).err()` in the
+/// failed-chunk branch of the facade loop with `None`: the error is silenced and the
+/// assertion goes red.
+#[test]
+fn a_facade_signature_named_by_a_failed_chunk_still_reports_its_own_errors() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (id)
+
+        unsafe id : a -> a
+
+        id x = = x
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_partly_parsed(source, &effect_interfaces());
+
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [canonical::Error::FacadeTypeNotAdmitted(..)]
+        ),
+        "got {:?}",
+        errors
+    );
+    assert!(module.values.is_empty(), "got {:?}", module.values);
+    assert!(
+        module
+            .broken
+            .iter()
+            .any(|broken| broken.name.as_str() == "id"),
+        "got {:?}",
+        module.broken
+    );
+}
