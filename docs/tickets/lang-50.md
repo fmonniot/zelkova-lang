@@ -17,24 +17,33 @@ be told from the other.
 what separates the two. [Records](../spec/records.md#reading-a-field) is the rule.
 
 **Not implemented:** `.` is consumed only by the qualified-name productions, both of which want an
-uppercase identifier to its left. `f r = r.name` is `UnexpectedToken` at the `Dot`, and so is
-`f = .name`.
+uppercase identifier to its left. `f r = r.name` is `UnexpectedToken` at the `Dot`, and `f =
+.name` is `Error::SpacedDot` at the `SpacedDot`.
 
 **Approach:** two productions. Access is postfix on `AtomicExpr` and binds tighter than
 application, so `f r.name` is `f (r.name)` and `r.centre.x` is `(r.centre).x`. The accessor is an
-atomic expression of its own: `"." "lo_ident"`.
+atomic expression of its own, and it begins with the `SpacedDot` token: `"spaced dot" VarIdent`.
 
 **The whitespace rule is the whole difficulty**, because the grammar cannot see whitespace. `f
 .name` is an application of `f` to an accessor and `f.name` is an access, and a grammar fed one
 token for both cannot tell them apart.
 
-The choice of mechanism is made: `LANG-52` put it in the tokenizer. `consume_operator` in
-`crates/zelkova-syntax/src/parser/tokenizer.rs` reads a `.` written against the previous token and
-against the character after it as `Dot`, and any other as `SpacedDot`, which no production
-consumes; its doc comment has the reason. This ticket splits `SpacedDot` by what follows it — a `.`
-with whitespace before it and a label attached after it is the accessor's — and adds the
-productions. The accessor's own `.` is written against its label with no space after it, which the
-same token decides.
+The choice of mechanism is made: `LANG-52` put the left-hand half in the tokenizer.
+`consume_operator` in `crates/zelkova-syntax/src/parser/tokenizer.rs` reads a `.` as `Dot` only
+when it is written against an operand on its left — an identifier, a literal, `)` or `]`, and `}`
+once `LANG-47` lands — and against the character after it. Every other `.` is `SpacedDot`, which no
+production consumes, and that includes a `.` opening an expression after `(`, `[`, `,`, an operator
+or a keyword: `(.name)` begins with `SpacedDot`, as `f .name` does. A `.` opening an expression is
+an accessor, so every accessor starts with `SpacedDot` and needs no `Dot` production; the doc
+comment on `consume_operator` has the reasons. A scratch `"spaced dot" VarIdent` production in
+`AtomicExpr` builds without a conflict.
+
+What is left to this ticket is the rest of the whitespace rule. The accessor's own `.` is written
+against its label with no space after it, but `.name` and `. name` are both a `SpacedDot` followed
+by a name, so telling them apart means looking at the spans in an action or splitting the token
+further; which, is the implementer's to choose. And the access production: a scratch `AtomicExpr
+"." VarIdent` reports a local ambiguity against `QualTypeIdent` after an uppercase name, so what
+an access may take as its left operand is this ticket's to settle.
 
 **`Just .name` becomes an application.** `LANG-52` landed first and rejects every detached `.`
 after an uppercase name, `Widget .size` included, because no accessor exists yet.

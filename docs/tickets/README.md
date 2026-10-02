@@ -183,11 +183,13 @@ the tickets are cut along those lines, with the emitter last.
 [DEC-8](../decisions/dec-8.md) holds the ten decisions behind it, which the tickets cite by
 number. **No ticket in the order leaves a language decision open**, and none re-argues one.
 Where a ticket says a choice is the implementer's, it means that and names the constraints:
-`LANG-50` on how an attached `.` is told from a detached one. `LANG-52` has landed and chose the
-tokenizer: it reads a `.` written against both sides as `Dot` and any other as `SpacedDot`, and
-`LANG-50` inherits that rather than choosing again. The reason is in the doc comment on
-`consume_operator` in `crates/zelkova-syntax/src/parser/tokenizer.rs`. Anything else that looks
-like a decision is a gap to report, not to fill.
+`LANG-50` on how an accessor's own `.` is told from a spaced one (`.name` from `. name`) and on
+what an access takes as its left operand. `LANG-52` has landed and chose the tokenizer for the
+rest: it reads a `.` written against an operand on its left and against the character after it as
+`Dot`, and any other, `(.name)` included, as `SpacedDot`, and `LANG-50` inherits that rather than
+choosing again. The reason is in the doc comment on `consume_operator` in
+`crates/zelkova-syntax/src/parser/tokenizer.rs`. Anything else that looks like a decision is a gap
+to report, not to fill.
 
 They land in this order, one at a time:
 
