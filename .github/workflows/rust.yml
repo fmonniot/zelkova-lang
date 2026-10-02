@@ -31,7 +31,7 @@ jobs:
       # Pinned rather than taken from the runner image, whose preinstalled Node moves under
       # us. The floor is 21: `node --test` expands a quoted glob itself only from there on.
       # 24 is the current LTS.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       # std/core's Zelkova tests, its companions' checks among them (tests/Js/).
