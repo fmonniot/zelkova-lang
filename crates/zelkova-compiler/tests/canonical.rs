@@ -2378,7 +2378,7 @@ fn unsafe_is_a_facade_constant_name() {
 // ── Scenario 14: a facade signature naming an inadmissible type ──────────────
 //
 // `docs/spec/interop.md#which-types-may-cross-the-boundary` admits the
-// primitives, tuples and union types applied to admitted types, and rejects a
+// primitives, tuples, records and union types applied to admitted types, and rejects a
 // bare type variable and a function type wherever either appears
 // (`docs/spec/interop.md#what-a-facade-signature-may-not-name`, `LANG-43`).
 
@@ -5209,5 +5209,458 @@ fn a_hole_in_an_incomplete_scope_drops_its_error_and_keeps_its_declaration() {
             assert_eq!(argument.span.to_range(), Some(range_of(source, "Nope.y")));
         }
         other => panic!("expected `g` to apply `f`, got {:?}", other),
+    }
+}
+
+// ── Records ──────────────────────────────────────────────────────────────────
+//
+// `docs/spec/records.md`: a record type is a set of fields, so its canonical form is
+// order-independent; a record and an update keep the order their fields were written
+// in, since each is a subexpression evaluated in that order; and a label given twice in
+// any of the three is an error, under the repeat.
+
+/// The annotation `name` was declared with.
+fn annotation_of<'m>(module: &'m canonical::Module, name: &str) -> &'m canonical::Type {
+    match module.values.get(&name.into()) {
+        Some(canonical::Value::TypedValue { tpe, .. }) => tpe,
+        other => panic!("expected `{}` to be annotated, got {:?}", name, other),
+    }
+}
+
+/// `{ label : tpe, … }`, built the way canonicalization builds one.
+fn record_t(fields: Vec<(&str, canonical::Type)>) -> canonical::Type {
+    canonical::Type::Record(
+        fields
+            .into_iter()
+            .map(|(label, tpe)| (label.into(), tpe))
+            .collect(),
+    )
+}
+
+/// The labels of a canonical record's or update's fields, in their order.
+fn labels_of(fields: &[canonical::Field]) -> Vec<&str> {
+    fields.iter().map(|field| field.label.as_str()).collect()
+}
+
+/// A record type is a set of fields: two spellings that order the same fields
+/// differently canonicalize to one value, and each field's type is resolved as any
+/// other type is.
+///
+/// Mutation-checked by making `Type::Record` hold the fields as a `Vec<(Name, Type)>`
+/// in written order (the `BTreeMap` swapped for a `Vec` in the type and in
+/// `from_parser_type`'s collect): `first` and `second` then differ and the first
+/// assertion goes red.
+#[test]
+fn a_record_type_is_the_same_type_in_any_field_order() {
+    let module = canonicalize_with_scalars(indoc::indoc! {r#"
+        module Test exposing (first, second)
+
+        first : { low : Int, high : Char } -> Int
+        first r = 1
+
+        second : { high : Char, low : Int } -> Int
+        second r = 1
+    "#})
+    .expect("a record type in an annotation canonicalizes");
+
+    assert_eq!(
+        annotation_of(&module, "first"),
+        annotation_of(&module, "second")
+    );
+    assert_eq!(
+        annotation_of(&module, "first"),
+        &canonical::Type::Arrow(
+            Box::new(record_t(vec![("high", char_t()), ("low", int_t())])),
+            Box::new(int_t()),
+        )
+    );
+}
+
+/// The canonical field set is walked in label order — the order two spellings of one
+/// record type agree on — whatever order the source wrote.
+#[test]
+fn a_record_types_fields_are_in_label_order() {
+    let module = canonicalize_with_scalars(indoc::indoc! {r#"
+        module Test exposing (f)
+
+        f : { b : Int, ab : Int, a : Int } -> Int
+        f r = 1
+    "#})
+    .expect("a record type canonicalizes");
+
+    let canonical::Type::Arrow(record, _) = annotation_of(&module, "f") else {
+        panic!(
+            "expected a function type, got {:?}",
+            annotation_of(&module, "f")
+        );
+    };
+    let canonical::Type::Record(fields) = record.as_ref() else {
+        panic!("expected a record type, got {:?}", record);
+    };
+    assert_eq!(
+        fields
+            .keys()
+            .map(|label| label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a", "ab", "b"]
+    );
+}
+
+/// A field's type that names nothing in scope is reported as any other type is, at its
+/// own span.
+#[test]
+fn a_record_types_field_resolves_its_type() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+
+        f : { a : Missing } -> Int
+        f r = 1
+    "#};
+    let errors = canonicalize_with_scalars(source).expect_err("`Missing` is not a type");
+
+    match errors.as_slice() {
+        [canonical::Error::TypeNotFound(name, span)] => {
+            assert_eq!(name.as_str(), "Missing");
+            assert_eq!(span.to_range(), Some(range_of(source, "Missing")));
+        }
+        other => panic!("expected one TypeNotFound, got {:?}", other),
+    }
+}
+
+/// A record expression keeps its fields in the order they were written — `b` before `a`
+/// — because each is a subexpression, evaluated left to right, and the label set is the
+/// only order-independent part of it. Each field's value is canonicalized in the scope
+/// the record is written in.
+///
+/// Mutation-checked by sorting the fields by label in `Field::from_parser`: the
+/// assertion on the labels then sees `a` first.
+#[test]
+fn a_record_keeps_the_order_its_fields_were_written_in() {
+    let module = canonicalize_with_scalars(indoc::indoc! {r#"
+        module Test exposing ()
+
+        r x =
+          { b = x, a = 2 }
+    "#})
+    .expect("a record canonicalizes");
+
+    let canonical::ExpressionKind::Record(fields) = &body_of(&module, "r").kind else {
+        panic!("expected a record, got {:?}", body_of(&module, "r"));
+    };
+    assert_eq!(labels_of(fields), vec!["b", "a"]);
+    assert_eq!(fields[0].value, c_var_local("x"));
+    assert_eq!(fields[1].value, c_int(2));
+}
+
+/// An update is the record it updates, canonicalized as any expression is, and its fields
+/// in the order they were written.
+///
+/// Mutation-checked by building the update arm of `Expression::from_parser` from a reversed
+/// field list: the label assertion goes red.
+#[test]
+fn an_update_keeps_its_record_and_the_order_of_its_fields() {
+    let module = canonicalize_with_scalars(indoc::indoc! {r#"
+        module Test exposing ()
+
+        u r =
+          { r | taken = 1, expected = 2 }
+    "#})
+    .expect("an update canonicalizes");
+
+    let canonical::ExpressionKind::Update(record, fields) = &body_of(&module, "u").kind else {
+        panic!("expected an update, got {:?}", body_of(&module, "u"));
+    };
+    assert_eq!(**record, c_var_local("r"));
+    assert_eq!(labels_of(fields), vec!["taken", "expected"]);
+}
+
+/// The label spans of a repeated-label error: the primary under the repeat, the
+/// secondary under the first field to give the label.
+fn assert_repeated_at(
+    error: &canonical::Error,
+    label: &str,
+    form: canonical::RecordForm,
+    repeat: std::ops::Range<usize>,
+    first: std::ops::Range<usize>,
+) {
+    use zelkova_compiler::PhaseError;
+
+    match error {
+        canonical::Error::RepeatedLabel(name, found, repeat_span, first_span) => {
+            assert_eq!(name.as_str(), label);
+            assert_eq!(*found, form);
+            assert_eq!(repeat_span.to_range(), Some(repeat.clone()));
+            assert_eq!(first_span.to_range(), Some(first.clone()));
+        }
+        other => panic!("expected RepeatedLabel, got {:?}", other),
+    }
+
+    let labels = error.labels();
+    assert_eq!(labels.len(), 2, "expected two labels, got {:?}", labels);
+    assert!(labels[0].primary, "the repeat carries the primary label");
+    assert_eq!(
+        labels[0].span.to_range(),
+        repeat,
+        "the caret under the repeat"
+    );
+    assert!(
+        !labels[1].primary,
+        "the first field carries a secondary label"
+    );
+    assert_eq!(
+        labels[1].span.to_range(),
+        first,
+        "the label under the first"
+    );
+}
+
+/// The byte range of the `nth` occurrence (from 0) of `needle` in `source`.
+fn nth_range_of(source: &str, needle: &str, nth: usize) -> std::ops::Range<usize> {
+    let start = source
+        .match_indices(needle)
+        .nth(nth)
+        .unwrap_or_else(|| panic!("`{}` does not occur {} times", needle, nth + 1))
+        .0;
+    start..start + needle.len()
+}
+
+/// A label given twice in a record type is an error, with the caret under the repeated
+/// label and not the record, and the declaration does not canonicalize.
+///
+/// Mutation-checked twice: making `repeated_labels` return `Ok(())` (the module then
+/// canonicalizes and `expect_err` panics), and giving the error the record's span in
+/// place of the repeat's label (the range assertion goes red).
+#[test]
+fn a_label_repeated_in_a_record_type_is_an_error_at_the_repeat() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+
+        f : { abc : Int, b : Int, abc : Char } -> Int
+        f r = 1
+    "#};
+    let errors = canonicalize_with_scalars(source).expect_err("`abc` is given twice");
+
+    let [error] = errors.as_slice() else {
+        panic!("expected one error, got {:?}", errors);
+    };
+    assert_repeated_at(
+        error,
+        "abc",
+        canonical::RecordForm::Type,
+        nth_range_of(source, "abc", 1),
+        nth_range_of(source, "abc", 0),
+    );
+}
+
+/// The same in a record, where it is checked although the fields' order is kept.
+///
+/// Mutation-checked by removing the `repeated_labels` call from `Field::from_parser`: the
+/// module then canonicalizes.
+#[test]
+fn a_label_repeated_in_a_record_is_an_error_at_the_repeat() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        r =
+          { abc = 1, b = 2, abc = 3 }
+    "#};
+    let errors = canonicalize_with_scalars(source).expect_err("`abc` is given twice");
+
+    let [error] = errors.as_slice() else {
+        panic!("expected one error, got {:?}", errors);
+    };
+    assert_repeated_at(
+        error,
+        "abc",
+        canonical::RecordForm::Record,
+        nth_range_of(source, "abc", 1),
+        nth_range_of(source, "abc", 0),
+    );
+}
+
+/// The same in an update.
+#[test]
+fn a_label_repeated_in_an_update_is_an_error_at_the_repeat() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        u r =
+          { r | abc = 1, abc = 2 }
+    "#};
+    let errors = canonicalize_with_scalars(source).expect_err("`abc` is given twice");
+
+    let [error] = errors.as_slice() else {
+        panic!("expected one error, got {:?}", errors);
+    };
+    assert_repeated_at(
+        error,
+        "abc",
+        canonical::RecordForm::Update,
+        nth_range_of(source, "abc", 1),
+        nth_range_of(source, "abc", 0),
+    );
+}
+
+/// A label given three times is two errors, each under its own repeat and both naming
+/// the first, grouped so that the group's labels are every member's.
+///
+/// Mutation-checked by recording each repeat against the field before it rather than the
+/// first: the second error's secondary label then sits under the second `abc`.
+#[test]
+fn a_label_given_three_times_is_two_errors_naming_the_first() {
+    use zelkova_compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        r =
+          { abc = 1, abc = 2, abc = 3 }
+    "#};
+    let errors = canonicalize_with_scalars(source).expect_err("`abc` is given three times");
+
+    let [canonical::Error::Many(members)] = errors.as_slice() else {
+        panic!("expected one group, got {:?}", errors);
+    };
+    let [second, third] = members.as_slice() else {
+        panic!("expected two errors, got {:?}", members);
+    };
+    let first = nth_range_of(source, "abc", 0);
+    assert_repeated_at(
+        second,
+        "abc",
+        canonical::RecordForm::Record,
+        nth_range_of(source, "abc", 1),
+        first.clone(),
+    );
+    assert_repeated_at(
+        third,
+        "abc",
+        canonical::RecordForm::Record,
+        nth_range_of(source, "abc", 2),
+        first,
+    );
+    assert_eq!(
+        errors[0].labels().len(),
+        4,
+        "the group flattens its members' labels"
+    );
+}
+
+/// A record type is not a variant: a `type` declaration's body naming one is rejected
+/// at the record, as every other shape that is not a constructor is.
+///
+/// Mutation-checked by making `do_types`' record arm build a constructor of no
+/// arguments: the module then canonicalizes.
+#[test]
+fn a_record_type_is_not_a_variant() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Point
+          = { x : Int }
+    "#};
+    let errors = canonicalize_with_scalars(source).expect_err("a record is not a variant");
+
+    match errors.as_slice() {
+        [canonical::Error::InvalidVariant(canonical::InvalidVariantKind::Record, span)] => {
+            assert_eq!(span.to_range(), Some(range_of(source, "{ x : Int }")));
+        }
+        other => panic!("expected InvalidVariant(Record), got {:?}", other),
+    }
+}
+
+/// A record type is not a constraint: one written before `=>` is rejected at itself.
+#[test]
+fn a_record_type_is_not_a_constraint() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        f : { x : a } => a -> a
+        f y = y
+    "#};
+    let errors = canonicalize_with_scalars(source).expect_err("a record is not a constraint");
+
+    match errors.as_slice() {
+        [canonical::Error::InvalidConstraint(canonical::InvalidConstraintKind::Record, span)] => {
+            assert_eq!(span.to_range(), Some(range_of(source, "{ x : a }")));
+        }
+        other => panic!("expected InvalidConstraint(Record), got {:?}", other),
+    }
+}
+
+/// A record type is admitted in a facade signature when every field's type is
+/// ([Which types may cross the
+/// boundary](../../docs/spec/interop.md#which-types-may-cross-the-boundary)), so a
+/// function type inside a field is rejected as one anywhere else is, and a record of
+/// admitted fields is not.
+///
+/// Mutation-checked by making `check_facade_admitted_type`'s record arm answer `Ok(())`:
+/// `apply` then canonicalizes and the first assertion goes red.
+#[test]
+fn a_facade_record_is_admitted_when_its_fields_are() {
+    let errors = canonicalize_with_scalars(indoc::indoc! {r#"
+        module foreign Test exposing (apply)
+
+        unsafe apply : { f : Int -> Int } -> Int
+    "#})
+    .expect_err("a function type inside a record cannot cross");
+    match errors.as_slice() {
+        [canonical::Error::FacadeTypeNotAdmitted(name, kind, _)] => {
+            assert_eq!(name.as_str(), "apply");
+            assert_eq!(*kind, canonical::FacadeRejectedKind::Function);
+        }
+        other => panic!("expected FacadeTypeNotAdmitted, got {:?}", other),
+    }
+
+    canonicalize_with_scalars(indoc::indoc! {r#"
+        module foreign Test exposing (point)
+
+        unsafe point : Int -> { x : Int, y : (Int, Char) }
+    "#})
+    .expect("a record of admitted fields is admitted");
+}
+
+/// A record's fields and an update's record are part of the body a parameterless
+/// binding depends on, so a cycle running through them is reported.
+///
+/// Mutation-checked by making `collect_top_level_refs`'s record and update arms collect
+/// nothing: the module then canonicalizes.
+#[test]
+fn a_cycle_through_a_record_is_a_self_dependency() {
+    for source in [
+        "module Test exposing ()\n\na =\n  { x = a }\n",
+        "module Test exposing ()\n\na =\n  { a | x = 1 }\n",
+    ] {
+        let errors = canonicalize_with_scalars(source).expect_err("`a` depends on its own value");
+        assert!(
+            matches!(errors.as_slice(), [canonical::Error::SelfDependency(..)]),
+            "{}: got {:?}",
+            source,
+            errors
+        );
+    }
+}
+
+/// A name that does not resolve inside a record field or an update's record is a hole,
+/// and the declaration holding it says so.
+///
+/// Mutation-checked by making `expression_holds_hole`'s record and update arms answer
+/// `false`: `holds_hole` then answers `false` for the declarations.
+#[test]
+fn a_hole_inside_a_record_is_held_by_its_declaration() {
+    for source in [
+        "module Test exposing ()\n\nr =\n  { x = nope }\n",
+        "module Test exposing ()\n\nr =\n  { nope | x = 1 }\n",
+    ] {
+        let canonical::Canonicalized { module, errors } =
+            canonicalize_recovering_with_interfaces(source, &scalar_interfaces());
+        assert!(
+            matches!(errors.as_slice(), [canonical::Error::VariableNotFound(..)]),
+            "{}: got {:?}",
+            source,
+            errors
+        );
+        let value = module.values.get(&"r".into()).expect("`r` is kept");
+        assert!(value.holds_hole(), "{}: `r` holds a hole", source);
     }
 }

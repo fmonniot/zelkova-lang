@@ -300,6 +300,16 @@ pub enum Unpredicated {
     /// A union no module of the build declares, so there are no constructors to read
     /// `$` against. [`Unions::of`] over every checked module leaves none.
     Undeclared(QualName),
+    /// A record type. [Which types may cross the
+    /// boundary](../docs/spec/interop.md#which-types-may-cross-the-boundary) admits one,
+    /// and canonicalization does too, but this backend has no representation of a record
+    /// to build its predicate over ([`GEN-25`](../docs/tickets/gen-25.md)).
+    ///
+    /// Not reached while the typer has no record type: `ir::build` reads a facade's
+    /// signature through the typer's types, cannot read one holding a record, and leaves
+    /// it in [`ir::Module::unchecked`], which [`emit`] refuses as [`Error::Unchecked`]
+    /// before any predicate is built.
+    Record,
 }
 
 impl Unpredicated {
@@ -316,6 +326,9 @@ impl Unpredicated {
                 "`{}`, whose declaration is not part of this build",
                 union.to_name().as_str()
             ),
+            Unpredicated::Record => {
+                "a record type, which the JavaScript backend does not emit yet".to_string()
+            }
         }
     }
 }
@@ -1163,6 +1176,7 @@ impl Predicates<'_> {
                 None => Err(Box::new((Unpredicated::Variable(name.clone()), None))),
             },
             canonical::Type::Arrow(..) => Err(Box::new((Unpredicated::Function, None))),
+            canonical::Type::Record(_) => Err(Box::new((Unpredicated::Record, None))),
             canonical::Type::Type(name, arguments) => match scalars::scalar_of(name) {
                 Some(scalars::INT) => Ok(format!(
                     "typeof {v} === \"bigint\" && BigInt.asIntN(64, {v}) === {v}",

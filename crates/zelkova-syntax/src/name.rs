@@ -9,7 +9,12 @@
 /// might want to introduce interning (either on `Name` or `QualName`). The inner
 /// `String` is private so that such a change stays local to this module; reach
 /// for `Name::new`, `as_str`, `From<&str>`, or `Display` instead of the field.
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+///
+/// Names are ordered by their text, byte by byte. For UTF-8 that is the order of the
+/// code points, and a name that another begins with comes first: the label order a
+/// record type's fields are kept in once canonicalized (`docs/spec/records.md`,
+/// *Records and derivation*).
+#[derive(Debug, PartialEq, Clone, Eq, Hash, PartialOrd, Ord)]
 pub struct Name(String);
 
 impl Name {

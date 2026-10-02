@@ -398,6 +398,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             InvalidVariant(..) => vec!["InvalidVariant"],
             InvalidScalarDeclaration(..) => vec!["InvalidScalarDeclaration"],
             InvalidConstraint(..) => vec!["InvalidConstraint"],
+            RepeatedLabel(..) => vec!["RepeatedLabel"],
             SelfDependency(..) => vec!["SelfDependency"],
         }
     }

@@ -2025,3 +2025,56 @@ fn a_case_matching_a_pattern_hole_is_refused() {
         },
     }
 }
+
+/// A declaration holding a record is one the typer leaves unchecked until `LANG-51`, so
+/// its module is refused: a record, an update, and a record type in an annotation over a
+/// body the typer could otherwise check.
+#[test]
+fn a_declaration_holding_a_record_is_refused() {
+    let errors = refused(indoc! {r#"
+        module Test exposing ()
+
+        annotated : { a : Int } -> Int
+        annotated r = 1
+
+        built x =
+          { a = x }
+    "#});
+
+    let mut names: Vec<&str> = errors
+        .iter()
+        .map(|error| match error {
+            Error::Unchecked { name, .. } => name.as_str(),
+            other => panic!("expected only Unchecked refusals, got {:?}", other),
+        })
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["annotated", "built"]);
+}
+
+/// A facade signature holding a record type is refused, as a parameter or inside a
+/// result: canonicalization admits a record of admitted fields, but `ir::build` reads a
+/// facade's type through the typer's, which has no record type until `LANG-51`, so the
+/// signature is a declaration the typer could not check.
+///
+/// Mutation-checked by making `ir::build` treat a facade signature whose type does not
+/// translate as `Typed` with the type `()`: both facades then emit and `refused` panics.
+#[test]
+fn a_facade_signature_holding_a_record_is_refused() {
+    let errors = refused(indoc! {r#"
+        module foreign Test exposing (point, take)
+
+        unsafe point : Int -> (Int, { x : Int })
+        unsafe take : { x : Int } -> Int
+    "#});
+
+    let mut names: Vec<&str> = errors
+        .iter()
+        .map(|error| match error {
+            Error::Unchecked { name, .. } => name.as_str(),
+            other => panic!("expected only Unchecked refusals, got {:?}", other),
+        })
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["point", "take"]);
+}

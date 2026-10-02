@@ -7076,3 +7076,62 @@ fn a_module_holding_a_hole_does_not_check_and_writes_nothing() {
     zelkova::compile_package_into(&root, &build_dir).expect_err("`g` holds a hole");
     assert!(!build_dir.exists());
 }
+
+/// `LANG-48`: a label given twice in a record renders as a canonicalization error in
+/// prose, its primary caret under the repeated label and a secondary one under the first,
+/// both in the module's own file.
+///
+/// The fixture is `package_private_module_parse_failure` with its one module replaced
+/// through the overlay, since `check_package` is what pairs an error with its file and
+/// a label with no file is not rendered.
+///
+/// Mutation-checked by giving `Error::RepeatedLabel`'s primary label the first field's
+/// span instead of the repeat's: the primary range assertion goes red.
+#[test]
+fn a_repeated_label_renders_under_the_repeat() {
+    let source = "module Broken exposing ()\n\nr =\n  { taken = 1, taken = 2 }\n";
+    let root = fixture_package("package_private_module_parse_failure");
+    let mut overlay = Overlay::new();
+    overlay.insert(root.join("src").join("Broken.zel"), source.into());
+
+    let check = check_package(&root, &overlay).expect("the manifest and the build resolve");
+    let [error] = check.errors.as_slice() else {
+        panic!("expected one error, got {:?}", check.errors);
+    };
+    assert!(
+        matches!(unwrap_in_file(error), CompilationError::Canonical(..)),
+        "expected a canonicalization error, got {:?}",
+        error
+    );
+
+    let diagnostic = error.as_diagnostic();
+    assert_eq!(diagnostic.severity, Severity::Error);
+    assert!(
+        diagnostic
+            .message
+            .contains("`taken` labels two fields of one record"),
+        "got {:?}",
+        diagnostic.message
+    );
+
+    let first = source.find("taken").expect("the source gives `taken`");
+    let repeat = source
+        .rfind("taken")
+        .expect("the source gives `taken` again");
+    let ranges = |style: LabelStyle| -> Vec<std::ops::Range<usize>> {
+        diagnostic
+            .labels
+            .iter()
+            .filter(|label| label.style == style)
+            .map(|label| label.range.clone())
+            .collect()
+    };
+    assert_eq!(
+        ranges(LabelStyle::Primary),
+        vec![repeat..repeat + "taken".len()]
+    );
+    assert_eq!(
+        ranges(LabelStyle::Secondary),
+        vec![first..first + "taken".len()]
+    );
+}

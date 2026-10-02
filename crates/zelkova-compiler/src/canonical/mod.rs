@@ -25,7 +25,7 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use zelkova_syntax::parser;
 
 mod environment;
@@ -468,7 +468,17 @@ pub enum Type {
     /// values: an alias names a route to a declaration and not a second
     /// declaration. A dependency's namespace is a route too.
     Type(QualName, Vec<Type>),
-    // Record
+    /// A [record type](../../docs/spec/records.md#the-type): each label, and the type
+    /// of the field it names.
+    ///
+    /// A map rather than the list the source wrote, because [a record type is a set
+    /// of fields](../../docs/spec/records.md#a-record-type-is-a-set-of-fields): `{ a :
+    /// Int, b : Char }` and `{ b : Char, a : Int }` are one type, and are one value
+    /// here. The map is ordered by label ([`Name`]'s `Ord`), so walking it is the
+    /// label order two spellings of a type agree on. A label appears once:
+    /// `Type::from_parser_type` reports a repeated one as [`Error::RepeatedLabel`]
+    /// and builds no `Record`.
+    Record(BTreeMap<Name, Type>),
     Arrow(Box<Type>, Box<Type>),
     /// A tuple type. Zelkova keeps Elm's restriction of two or three elements,
     /// which [`Tuple`] carries in its shape.
@@ -534,6 +544,21 @@ impl Type {
                 tuple.try_map(|t| Type::from_parser_type(env, t))?,
             )),
             parser::TypeKind::Unit => Ok(Type::Unit),
+            parser::TypeKind::Record(fields) => {
+                repeated_labels(fields, RecordForm::Type)?;
+
+                let fields = fields
+                    .iter()
+                    .map(|field| {
+                        Ok((
+                            field.label.clone(),
+                            Type::from_parser_type(env, &field.value)?,
+                        ))
+                    })
+                    .collect::<Result<BTreeMap<_, _>, Error>>()?;
+
+                Ok(Type::Record(fields))
+            }
         }
     }
 
@@ -684,6 +709,15 @@ fn expression_holds_hole(expr: &Expression) -> bool {
                 })
         }
         ExpressionKind::Tuple(tuple) => tuple.iter().any(expression_holds_hole),
+        ExpressionKind::Record(fields) => fields
+            .iter()
+            .any(|field| expression_holds_hole(&field.value)),
+        ExpressionKind::Update(record, fields) => {
+            expression_holds_hole(record)
+                || fields
+                    .iter()
+                    .any(|field| expression_holds_hole(&field.value))
+        }
     }
 }
 
@@ -888,7 +922,20 @@ pub enum ExpressionKind {
     Case(Box<Expression>, Vec<CaseBranch>),
     // Accessor
     // Access
-    // Update (record)
+    /// A [record](../../docs/spec/records.md#building-a-record), `{ label = expr, … }`,
+    /// its fields in the order they were written.
+    ///
+    /// A list and not a map, as [`Type::Record`] is: each field is a subexpression,
+    /// and [subexpressions are evaluated left to
+    /// right](../../docs/spec/evaluation-semantics.md#order-of-evaluation), so `{ b = f
+    /// x, a = g y }` calls `f` first and a backend has to be able to see that. Only the
+    /// set of labels is order-independent, and no label appears twice:
+    /// `Expression::from_parser` reports a repeated one as [`Error::RepeatedLabel`].
+    Record(Vec<Field>),
+    /// An [update](../../docs/spec/records.md#updating-a-record), `{ expr | label =
+    /// expr, … }`: the record being updated, and the fields replaced in it in the order
+    /// they were written, for the reason a [`Record`](ExpressionKind::Record)'s are.
+    Update(Box<Expression>, Vec<Field>),
     /// The unit value, `()`.
     Unit,
     /// A tuple expression. Zelkova keeps Elm's restriction of two or three
@@ -900,6 +947,86 @@ pub enum ExpressionKind {
     /// its body is still checked ([`DEC-23` decision
     /// 6](../../../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
     Hole,
+}
+
+/// One field of a [record](ExpressionKind::Record) or an
+/// [update](ExpressionKind::Update): a label, where the label was written, and the
+/// expression it was given.
+#[derive(Debug, PartialEq)]
+pub struct Field {
+    pub label: Name,
+    /// Where the label alone was written; the value carries its own span.
+    pub label_span: NodeSpan,
+    pub value: Expression,
+}
+
+impl Field {
+    /// The canonical form of `fields`, a record's or an update's, in the order they
+    /// were written. Every value is canonicalized before the labels are compared, so a
+    /// name that does not resolve in one is pushed onto `unresolved` whether or not a
+    /// label is repeated; a repeated label is then the error returned.
+    fn from_parser(
+        fields: &[parser::Field<parser::Expression>],
+        form: RecordForm,
+        env: &dyn Environment,
+        unresolved: &mut Vec<Error>,
+    ) -> Result<Vec<Field>, Error> {
+        let canonical = fields
+            .iter()
+            .map(|field| {
+                Ok(Field {
+                    label: field.label.clone(),
+                    label_span: field.label_span,
+                    value: Expression::from_parser(&field.value, env, unresolved)?,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        repeated_labels(fields, form)?;
+
+        Ok(canonical)
+    }
+}
+
+/// Which of the three record forms a [`Error::RepeatedLabel`] was found in.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum RecordForm {
+    /// A record type, `{ label : Type, … }`.
+    Type,
+    /// A record, `{ label = expr, … }`.
+    Record,
+    /// An update, `{ expr | label = expr, … }`.
+    Update,
+}
+
+/// Every field of `fields` whose label an earlier field already has, each as an
+/// [`Error::RepeatedLabel`] at its own label and naming the first field's: `Ok` when
+/// there is none, the one error when there is one, and [`Error::Many`] of them when
+/// there are several. A label written three times is two errors, both naming the
+/// first.
+fn repeated_labels<T>(fields: &[parser::Field<T>], form: RecordForm) -> Result<(), Error> {
+    let mut first: HashMap<&Name, NodeSpan> = HashMap::new();
+    let mut errors = vec![];
+
+    for field in fields {
+        match first.get(&field.label) {
+            Some(earlier) => errors.push(Error::RepeatedLabel(
+                field.label.clone(),
+                form,
+                field.label_span,
+                *earlier,
+            )),
+            None => {
+                first.insert(&field.label, field.label_span);
+            }
+        }
+    }
+
+    match errors.len() {
+        0 => Ok(()),
+        1 => Err(errors.remove(0)),
+        _ => Err(Error::Many(errors)),
+    }
 }
 
 impl Expression {
@@ -1071,6 +1198,20 @@ impl Expression {
                 let els = Expression::from_parser(els, env, unresolved)?;
 
                 ExpressionKind::If(Box::new(cond), Box::new(then), Box::new(els))
+            }
+            parser::ExpressionKind::Record(fields) => ExpressionKind::Record(Field::from_parser(
+                fields,
+                RecordForm::Record,
+                env,
+                unresolved,
+            )?),
+            // The record being updated is canonicalized ahead of its fields, the order
+            // it is written and evaluated in.
+            parser::ExpressionKind::Update(record, fields) => {
+                let record = Expression::from_parser(record, env, unresolved)?;
+                let fields = Field::from_parser(fields, RecordForm::Update, env, unresolved)?;
+
+                ExpressionKind::Update(Box::new(record), fields)
             }
         };
 
@@ -1424,6 +1565,17 @@ pub enum Error {
     /// so every shape a type can take arrives here; `validate_context` is what
     /// narrows it to one constraint or a tuple of them.
     InvalidConstraint(InvalidConstraintKind, NodeSpan),
+    /// A label given to two fields of one record type, record or update: the label,
+    /// which of the three forms it was found in, where the repeat was written and
+    /// where the first field with that label was. Both spans are the label's alone,
+    /// so the primary caret sits under the repeat and a secondary one under the
+    /// first.
+    ///
+    /// [Records](../../docs/spec/records.md#the-type) makes it an error in all three:
+    /// a record type is a set of fields, and a record and an update say each field's
+    /// value once. One error per repeat, each naming the first, so a label written
+    /// three times is two.
+    RepeatedLabel(Name, RecordForm, NodeSpan, NodeSpan),
 
     // Binding module
     InfixDeclared(Name, NodeSpan),
@@ -1553,6 +1705,9 @@ pub enum InvalidVariantKind {
     /// variant rather than a suffix of it, `Wrap Int` being its left operand, so
     /// there is no constructor here to keep either.
     Arrow,
+    /// A record type — `type Point = { x : Int }`. A record type is declared by no
+    /// `type` declaration; one may sit inside a variant, `Point { x : Int }`.
+    Record,
 }
 
 /// What was written in front of `=>` in place of a constraint — see
@@ -1576,6 +1731,8 @@ pub enum InvalidConstraintKind {
     Tuple,
     /// The unit type — `() => a`.
     Unit,
+    /// A record type — `{ x : a } => a`.
+    Record,
 }
 
 /// The two forms [What a facade signature may not
@@ -1705,12 +1862,25 @@ impl PhaseError for Error {
                     "a variant is a constructor name followed by its arguments, and this one is a function type"
                         .to_owned()
                 }
+                InvalidVariantKind::Record => {
+                    "a variant is a constructor name followed by its arguments, and this one is a record type"
+                        .to_owned()
+                }
             },
             Error::InvalidScalarDeclaration(name, _) => format!(
                 "`{}` is an opaque scalar type, so its declaration must be exactly `type {} = {}`",
                 name.to_name(),
                 name.unqualified_name(),
                 name.unqualified_name()
+            ),
+            Error::RepeatedLabel(label, form, _, _) => format!(
+                "`{}` labels two fields of one {}, and a label may be given only once",
+                label,
+                match form {
+                    RecordForm::Type => "record type",
+                    RecordForm::Record => "record",
+                    RecordForm::Update => "update",
+                }
             ),
             Error::InvalidConstraint(kind, _) => match kind {
                 InvalidConstraintKind::Variable(name) => format!(
@@ -1727,6 +1897,10 @@ impl PhaseError for Error {
                 }
                 InvalidConstraintKind::Tuple => {
                     "only constraints may be written before `=>`, and a tuple inside the list of constraints is not one"
+                        .to_owned()
+                }
+                InvalidConstraintKind::Record => {
+                    "only constraints may be written before `=>`, and a record type is not one"
                         .to_owned()
                 }
                 InvalidConstraintKind::Unit => {
@@ -1952,6 +2126,7 @@ impl PhaseError for Error {
                     InvalidVariantKind::Tuple => "a tuple type, written where a variant belongs",
                     InvalidVariantKind::Unit => "the unit type, written where a variant belongs",
                     InvalidVariantKind::Arrow => "a function type, written where a variant belongs",
+                    InvalidVariantKind::Record => "a record type, written where a variant belongs",
                 },
             ),
             Error::InvalidScalarDeclaration(name, span) => primary(
@@ -1977,8 +2152,23 @@ impl PhaseError for Error {
                     InvalidConstraintKind::Unit => {
                         "the unit type, written where a constraint belongs"
                     }
+                    InvalidConstraintKind::Record => {
+                        "a record type, written where a constraint belongs"
+                    }
                 },
             ),
+            Error::RepeatedLabel(label, _, repeat, first) => {
+                let mut labels = primary(repeat, &format!("`{}` is given a second time here", label));
+                if let Some(span) = first.span() {
+                    labels.push(SpanLabel {
+                        span,
+                        message: format!("`{}` is first given here", label),
+                        primary: false,
+                        file: None,
+                    });
+                }
+                labels
+            }
             Error::InfixDeclared(_, span) => primary(span, "declared here"),
             Error::TypeDeclared(_, span) => primary(span, "declared here"),
             Error::NoTypeInBinding(_, span) => primary(span, "declared here"),
@@ -2038,7 +2228,7 @@ impl PhaseError for Error {
                     .to_owned(),
             ],
             Error::FacadeTypeNotAdmitted(..) => vec![
-                "a facade signature may only name a type whose values a target can decide from the value alone, which admits the primitives, tuples and union types applied to admitted types"
+                "a facade signature may only name a type whose values a target can decide from the value alone, which admits the primitives, tuples, records and union types applied to admitted types"
                     .to_owned(),
             ],
             Error::InvalidConstraint(..) => vec![
@@ -2192,6 +2382,7 @@ fn check_facade_admitted_type(tpe: &Type) -> Result<(), FacadeRejectedKind> {
         Type::Arrow(_, _) => Err(FacadeRejectedKind::Function),
         Type::Type(_, args) => args.iter().try_for_each(check_facade_admitted_type),
         Type::Tuple(tuple) => tuple.iter().try_for_each(check_facade_admitted_type),
+        Type::Record(fields) => fields.values().try_for_each(check_facade_admitted_type),
         Type::Unit => Ok(()),
     }
 }
@@ -2242,6 +2433,7 @@ fn contains_task(tpe: &Type) -> bool {
     match tpe {
         Type::Type(name, args) => is_task_declaration(name) || args.iter().any(contains_task),
         Type::Tuple(tuple) => tuple.iter().any(contains_task),
+        Type::Record(fields) => fields.values().any(contains_task),
         Type::Arrow(param, rest) => contains_task(param) || contains_task(rest),
         Type::Variable(_) | Type::Unit => false,
     }
@@ -2417,6 +2609,7 @@ fn validate_context(context: &parser::Type) -> Result<Vec<(&Name, &[parser::Type
             parser::TypeKind::Arrow(..) => InvalidConstraintKind::Arrow,
             parser::TypeKind::Tuple(..) => InvalidConstraintKind::Tuple,
             parser::TypeKind::Unit => InvalidConstraintKind::Unit,
+            parser::TypeKind::Record(..) => InvalidConstraintKind::Record,
         };
 
         Err(Error::InvalidConstraint(kind, constraint.span))
@@ -2928,6 +3121,17 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
         ExpressionKind::Tuple(tuple) => {
             for e in tuple.iter() {
                 collect_top_level_refs(e, out);
+            }
+        }
+        ExpressionKind::Record(fields) => {
+            for field in fields {
+                collect_top_level_refs(&field.value, out);
+            }
+        }
+        ExpressionKind::Update(record, fields) => {
+            collect_top_level_refs(record, out);
+            for field in fields {
+                collect_top_level_refs(&field.value, out);
             }
         }
     }
@@ -3485,6 +3689,9 @@ fn do_types(
                 }
                 parser::TypeKind::Arrow(_, _) => {
                     Err(Error::InvalidVariant(InvalidVariantKind::Arrow, t.span))
+                }
+                parser::TypeKind::Record(_) => {
+                    Err(Error::InvalidVariant(InvalidVariantKind::Record, t.span))
                 }
             })
             .collect::<Result<Vec<_>, Error>>()?;
