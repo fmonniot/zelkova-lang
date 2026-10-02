@@ -484,3 +484,4 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TOOL-11 | task | — | closed 2026-10-02 | A module with a syntax error is dropped from the build |
 | [TOOL-12](tool-12.md) | task | — | open | One unresolved name costs a declaration its whole typed tree |
 | [TOOL-13](tool-13.md) | task | — | open | A facade that declares a type is still reported for the type it declared |
+| [TOOL-14](tool-14.md) | task | — | open | A declaration a failed chunk shares a name with is spanned over everything between them |
