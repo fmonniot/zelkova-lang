@@ -137,9 +137,11 @@ pub struct Canonicalized {
     /// raised in an [incomplete](Module::incomplete) scope restates the failure that made
     /// the scope incomplete (`without_restated`), and nothing about a declaration a chunk
     /// that failed to parse names is said beyond its annotation's own errors, since the
-    /// syntax error stands for it. A declaration whose every error was left out is still
-    /// absent from the module, so empty here does not mean [`Module::broken`] is empty
-    /// nor that [`Module::incomplete`] is false.
+    /// syntax error stands for it. A declaration that every error was left out of is
+    /// either still absent from the module, because the error broke it, or present holding
+    /// a hole for a name that did not resolve ([`Value::holds_hole`]). So empty here does
+    /// not mean [`Module::broken`] is empty, that [`Module::incomplete`] is false, nor that
+    /// no value holds a hole.
     pub errors: Vec<Error>,
 }
 
@@ -2472,9 +2474,11 @@ pub fn canonicalize(
 /// ran: a declaration's own failure is reported, and what it makes incomplete is
 /// everything after it. A failed `infix` declaration makes the scope incomplete for
 /// the `type` declarations, the values and the `exposing` list, and a failed `type`
-/// declaration for the values and the `exposing` list. The declaration whose errors were
-/// dropped is left out all the same: dropping an error does not make its declaration
-/// sound.
+/// declaration for the values and the `exposing` list. Dropping an error does not make
+/// its declaration sound. A declaration the dropped error broke is left out all the same;
+/// one whose only error was a name that did not resolve stays in [`Module::values`] holding
+/// a hole ([`ExpressionKind::Hole`], [`PatternKind::Hole`]) for it, which no backend emits
+/// and [`Value::holds_hole`] finds.
 ///
 /// Whether this module is exempt from the default imports is not this function's
 /// question to answer: `new_environment` derives it from `package` itself
