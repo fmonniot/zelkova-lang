@@ -239,8 +239,9 @@ fn lower<'a>(
 
     match &pattern.kind {
         // The unit type has one value, so a value of it always matches `()`: no test,
-        // and nothing to bind.
-        TermPatternKind::Anything | TermPatternKind::Unit => {
+        // and nothing to bind. A constructor that did not resolve has no case to test
+        // for; no backend emits a tree built from one, since an error stands behind it.
+        TermPatternKind::Anything | TermPatternKind::Unit | TermPatternKind::Hole { .. } => {
             lower(pending, bindings, body, on_fail)
         }
         TermPatternKind::Bind(name) => {

@@ -1488,19 +1488,22 @@ fn unknown_constructor_labels_the_pattern() {
 
 /// `ERR-3`, commit 2: `canonical::Error::Many` flattens its members' labels.
 ///
-/// The two case branches in the fixture each name an undeclared constructor, and
+/// The two case branches in the fixture each use an operator nothing declares, and
 /// `Expression::from_parser` collects both through `collect_accumulate`, so what
-/// reaches the reporter is a *single* `Error::Many` holding two `VariantNotFound`s.
+/// reaches the reporter is a *single* `Error::Many` holding two `VariableNotFound`s.
 /// `Many` has no position of its own, so if it did not flatten it would render as a
 /// summary with no caret at all and both carets would vanish silently — the failure
 /// mode is invisible, which is why this is asserted rather than assumed.
+///
+/// The fixture uses operators because an unresolved constructor is a hole rather than a
+/// failure of its branch, and so is never grouped.
 ///
 /// Mutation-checked by replacing the `Error::Many` arm of `canonical::Error::labels`
 /// with `Vec::new()`: the diagnostic keeps its message and its notes and loses both
 /// labels.
 #[test]
 fn grouped_canonical_error_keeps_every_label() {
-    let root = fixture_package("package_two_unknown_constructors");
+    let root = fixture_package("package_two_unknown_operators");
     assert_eq!(
         module_names(&root, SourceRoot::Src),
         vec!["src/Grouped.zel"]
@@ -1508,17 +1511,17 @@ fn grouped_canonical_error_keeps_every_label() {
 
     let source =
         std::fs::read_to_string(root.join("src").join("Grouped.zel")).expect("fixture is readable");
-    let ranges: Vec<_> = ["Purple", "Crimson"]
+    let ranges: Vec<_> = ["<+>", "<*>"]
         .iter()
-        .map(|ctor| {
-            let start = source.find(ctor).unwrap_or_else(|| {
-                panic!("fixture matches on an undeclared `{}`", ctor);
+        .map(|operator| {
+            let start = source.find(operator).unwrap_or_else(|| {
+                panic!("fixture uses an undeclared `{}`", operator);
             });
-            start..(start + ctor.len())
+            start..(start + operator.len())
         })
         .collect();
 
-    let error = compile_package(&root).expect_err("two undeclared constructors must not compile");
+    let error = compile_package(&root).expect_err("two undeclared operators must not compile");
 
     let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
@@ -1526,9 +1529,8 @@ fn grouped_canonical_error_keeps_every_label() {
     // One phase error — the group — carrying two members.
     match unwrap_in_file(&errors[0]) {
         CompilationError::Canonical(canonical_errors, _) => {
-            assert_eq!(
-                canonical_errors.len(),
-                1,
+            assert!(
+                matches!(canonical_errors.as_slice(), [canonical::Error::Many(members)] if members.len() == 2),
                 "the two failures should arrive as one group, got {:?}",
                 canonical_errors
             );
@@ -1541,7 +1543,7 @@ fn grouped_canonical_error_keeps_every_label() {
     let rendered: Vec<_> = diagnostic.labels.iter().map(|l| l.range.clone()).collect();
     assert_eq!(
         rendered, ranges,
-        "the group must carry a caret for each constructor it swallowed"
+        "the group must carry a caret for each operator it swallowed"
     );
 }
 

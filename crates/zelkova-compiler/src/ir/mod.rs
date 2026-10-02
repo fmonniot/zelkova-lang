@@ -35,6 +35,9 @@
 //!   polymorphism reaches a target where [a class dictionary is erased by specialisation
 //!   and never
 //!   passed](../../docs/decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed).
+//!   A [hole](TypedTermKind::Hole), a name that did not resolve, has a type too: the one
+//!   inference solved for its position, which is an unsolved variable when nothing
+//!   around it constrains it.
 //! - **A constructor's index within its declaration**, and not only its name. A union is
 //!   a WIT `variant` with one case per constructor and a tuple is a `tuple` ([A union
 //!   crosses as a tagged
@@ -109,6 +112,9 @@ pub struct Module {
     /// same order — `canonical::Module::values` is a `HashMap` and yields none. It is
     /// not an evaluation order: [`initialisation_order`](Self::initialisation_order) is
     /// what works out which parameterless declaration has to be initialised before which.
+    ///
+    /// A declaration here may hold a [hole](TypedTermKind::Hole), with an error standing
+    /// behind it, and a backend refuses it.
     pub declarations: Vec<Declaration>,
     /// The declarations that have no IR, and therefore cannot be emitted.
     ///
@@ -398,6 +404,11 @@ pub enum TermKind {
         /// What the source wrote that this match was built from.
         form: CaseForm,
     },
+    /// A name that did not resolve, translated from `canonical::ExpressionKind::Hole`.
+    /// Inference gives it a fresh type variable and constrains nothing by it, so its type
+    /// is whatever the node around it requires ([`DEC-23` decision
+    /// 6](../../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
+    Hole,
 }
 
 /// What the source wrote that a `Case` term was built from.
@@ -481,6 +492,15 @@ pub enum TermPatternKind {
     /// [`Type::Unit`] and binds nothing. Since that
     /// type has a single value, [`decision_tree`] builds no test for it.
     Unit,
+    /// A constructor pattern whose constructor did not resolve, translated from
+    /// `canonical::PatternKind::Hole`; carries one sub-pattern per argument written after
+    /// it, each at a fresh type.
+    ///
+    /// It places no constraint on the matched value, since nothing says what type the
+    /// constructor would have built, and binds what its arguments bind, as a constructor's
+    /// do. [`decision_tree`] tests nothing for it, as for
+    /// [`Anything`](Self::Anything), and no backend emits a tree built from one.
+    Hole { args: Vec<SubPattern> },
 }
 
 /// A pattern written in a position inside another one — a constructor's argument or a
@@ -516,7 +536,7 @@ impl TermPattern {
             TermPatternKind::Anything | TermPatternKind::Literal { .. } | TermPatternKind::Unit => {
             }
             TermPatternKind::Bind(name) => bindings.push((name.clone(), tpe.clone())),
-            TermPatternKind::Constructor { args, .. } => {
+            TermPatternKind::Constructor { args, .. } | TermPatternKind::Hole { args } => {
                 for arg in args {
                     arg.pattern.collect_bindings(&arg.tpe, bindings);
                 }
@@ -613,6 +633,13 @@ pub enum TypedTermKind {
         /// See [`TermKind::Case`].
         form: CaseForm,
     },
+    /// A name that did not resolve ([`TermKind::Hole`]). Its type is the one inference
+    /// solved for its position, and is an unsolved variable when nothing around it
+    /// constrains it.
+    ///
+    /// An error stands behind every hole, so a declaration holding one is never emitted:
+    /// `zelkova_js::emit` refuses it by name.
+    Hole,
 }
 
 // ── What the typer answers with ───────────────────────────────────────────────
@@ -634,6 +661,9 @@ pub enum Solved {
     /// Boxed because a term carries a whole [`QualName`] — package included — for every
     /// union and constructor it names, and every other variant would otherwise pay for
     /// its size.
+    ///
+    /// The term may hold a [hole](TypedTermKind::Hole), with an error standing behind it,
+    /// and a backend refuses it.
     Typed(Box<TypedTerm>),
     /// A declaration of a `module foreign` facade, whose body is a synthetic
     /// placeholder rather than anything the user wrote. Nothing about it is inferred.

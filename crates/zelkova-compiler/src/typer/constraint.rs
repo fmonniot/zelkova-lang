@@ -84,6 +84,9 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             constraints.extend(collect(body));
         }
         TypedTermKind::Identifier(_) => (),
+        // A name that did not resolve constrains nothing: its type is solved by whatever
+        // constrains the node around it.
+        TypedTermKind::Hole => (),
         TypedTermKind::Apply { fun, arg, .. } => {
             let param_tpe = Box::new(arg.tpe.clone());
             let return_tpe = Box::new(tpe.clone());
@@ -251,6 +254,9 @@ fn pattern_constraints(
             elements.iter().collect(),
         ),
         TermPatternKind::Bind(_) | TermPatternKind::Anything => (None, vec![]),
+        // A constructor that did not resolve says nothing about the type it would have
+        // built, and its arguments are constrained as a constructor's are.
+        TermPatternKind::Hole { args } => (None, args.iter().collect()),
     };
 
     if let Some(own) = own {
