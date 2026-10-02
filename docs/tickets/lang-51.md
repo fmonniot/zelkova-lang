@@ -6,8 +6,8 @@ already exists, plus the unification rule for it — the first structural type Z
 **Location:** `canonical::Type` in `crates/zelkova-compiler/src/canonical/`; `crates/zelkova-compiler/src/typer/`, all three of
 `annotate.rs`, `constraint.rs` and `unifier.rs`.
 
-**Depends on:** [`LANG-50`](lang-50.md), hard. There is no access or accessor node to type until
-the grammar builds one.
+**Depends on:** `LANG-50`, hard, and landed ([the index](README.md)). There was no access or
+accessor node to type until the grammar built one.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decisions 2, 3, 4,
 6 and 10):** a record type is a set of labelled fields, order-insensitive and structural; an
@@ -63,9 +63,13 @@ new form needs an arm, and until [`GEN-25`](gen-25.md) that arm is a refusal nam
 **The blocks this makes correct are held to account, as long as they are tagged `expect=ok`.**
 The spec harness type checks every `expect=ok` block, so a block that ought to be a type error
 and is not one goes red the day this ticket lands. The **Known gap:** paragraphs
-`LANG-48` and [`LANG-50`](lang-50.md) attach — on the order-insensitivity block
-and the field-adding update — are what that red block asks you to delete. Grep
-[Records](../spec/records.md) for `LANG-51` before closing.
+`LANG-48` attaches — on the order-insensitivity block
+and the field-adding update — are what that red block asks you to delete. The ones `LANG-50`
+attaches under [Reading a field](../spec/records.md#reading-a-field), [The
+accessor](../spec/records.md#the-accessor) and
+[Expressions](../spec/expressions.md#forms-the-compiler-does-not-have) sit beside blocks that
+stay green, so nothing turns red to point at them. Grep [Records](../spec/records.md) and
+[Expressions](../spec/expressions.md) for `LANG-51` before closing.
 
 **Acceptance:** `crates/zelkova-compiler/tests/typer.rs` cases for a record's inferred type, for the two spellings of one
 record type unifying, for a field access at the field's type, for an update keeping the record's
@@ -77,9 +81,9 @@ by a record expression written *after* it in the same declaration. In
 `crates/zelkova-js/tests/javascript.rs`, a module holding a record is refused. Each seen red with
 what it pins neutralised.
 
-Three `**Known gap:**` paragraphs in [Records](../spec/records.md) deleted — the two above, and
-the one [`LANG-50`](lang-50.md) attaches under
-[A use does not decide a record's type](../spec/records.md#a-use-does-not-decide-a-records-type),
+Every `**Known gap:**` paragraph naming `LANG-51` in [Records](../spec/records.md) and
+[Expressions](../spec/expressions.md) deleted — the five above, and the one `LANG-50` attaches
+under [A use does not decide a record's type](../spec/records.md#a-use-does-not-decide-a-records-type),
 whose block becomes `expect=type-error`.
 
 **Found:** while writing [`docs/spec/records.md`](../spec/records.md) (`SPEC-21`).
