@@ -1,7 +1,8 @@
-//! The three record forms of the grammar: a record type, a record and an update
-//! (`docs/spec/records.md`). Each test asserts the `TypeKind` or `ExpressionKind` the
-//! source parses to, not only that it parsed; the ones about positions read the spans
-//! directly, since `NodeSpan`'s `PartialEq` is blind.
+//! The four record forms of the grammar: a record type, a record, an update and a
+//! record pattern (`docs/spec/records.md`). Each test asserts the `TypeKind`,
+//! `ExpressionKind` or `PatternKind` the source parses to, not only that it parsed; the
+//! ones about positions read the spans directly, since `NodeSpan`'s `PartialEq` is
+//! blind.
 
 use super::support::*;
 use codespan_reporting::files::SimpleFile;
@@ -438,4 +439,244 @@ fn a_field_is_spelled_for_its_grammar() {
     let annotation = "module Main exposing (..)\n\nf : { a = Int }\n";
     let equal = annotation.rfind('=').expect("the source has an equal sign") as u32;
     assert_eq!(rejected_at(annotation), (Token::Equal, equal));
+}
+
+// ── Record patterns ──────────────────────────────────────────────────────────
+
+fn pattern_record(fields: Vec<Field<Pattern>>) -> Pattern {
+    Pattern::bare(PatternKind::Record(fields))
+}
+
+fn pattern_var(variable: &str) -> Pattern {
+    Pattern::bare(PatternKind::Variable(name(variable)))
+}
+
+fn pattern_ctor_with(constructor: &str, args: Vec<Pattern>) -> Pattern {
+    Pattern::bare(PatternKind::Constructor(name(constructor), args))
+}
+
+/// The parameters of the module's only function.
+fn parameters(source: &str) -> Vec<Pattern> {
+    let module = parsed(source);
+    let [function] = module.functions.as_slice() else {
+        panic!("expected one function, got {:?}", module.functions);
+    };
+    let [binding] = function.bindings.as_slice() else {
+        panic!("expected one binding, got {:?}", function.bindings);
+    };
+    binding.patterns.clone()
+}
+
+/// The patterns of the `case` branches in the body of the module's only function.
+fn branch_patterns(source: &str) -> Vec<Pattern> {
+    let ExpressionKind::Case(_, branches) = body(source).kind else {
+        panic!("expected the body to be a `case`");
+    };
+    branches.into_iter().map(|branch| branch.pattern).collect()
+}
+
+/// `{ x }` is the shorthand for `{ x = x }`: the grammar builds the entry `x` holding a
+/// variable pattern `x`, the one shape a record pattern has, and both spans the
+/// shorthand builds — the entry's label and the variable's — are the label's.
+///
+/// Mutation-checked twice: building the shorthand's value as `PatternKind::Anything` in
+/// `PatternField`'s bare alternative (the shape assertion goes red), and giving that
+/// value `NodeSpan::none()` (the variable's range assertion goes red).
+#[test]
+fn the_shorthand_is_its_label_bound_as_a_variable() {
+    let source = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        nameOf { name } = name
+    "#};
+
+    let patterns = parameters(source);
+    assert_eq!(
+        patterns,
+        vec![pattern_record(vec![field("name", pattern_var("name"))])]
+    );
+
+    let PatternKind::Record(fields) = &patterns[0].kind else {
+        panic!("expected a record pattern, got {:?}", patterns[0].kind);
+    };
+    let label = at(source, "name }");
+    let label = label.map(|span| Span {
+        start: span.start,
+        end: BytePos(span.start.0 + "name".len() as u32),
+    });
+    assert_eq!(fields[0].label_span.span(), label);
+    assert_eq!(fields[0].value.span.span(), label);
+    assert_eq!(patterns[0].span.span(), at(source, "{ name }"));
+}
+
+/// `label = pattern` keeps its pattern, and the entries stay in the order written —
+/// `b` before `a` — beside a shorthand entry of the same pattern.
+///
+/// Mutation-checked twice: deleting `Pattern`'s record production (the source is then
+/// rejected at its `{`), and sorting `fields` by label in it (the assertion then sees
+/// `a` first).
+#[test]
+fn a_record_pattern_keeps_its_entries_in_written_order() {
+    assert_eq!(
+        parameters(indoc::indoc! {r#"
+            module Main exposing (..)
+
+            f { b = _, a = 1, c } = c
+        "#}),
+        vec![pattern_record(vec![
+            field("b", Pattern::bare(PatternKind::Anything)),
+            field("a", Pattern::bare(PatternKind::Literal(Literal::Int(1)))),
+            field("c", pattern_var("c")),
+        ])]
+    );
+}
+
+/// A record pattern nests in both directions: a record inside a field, a constructor —
+/// nullary bare, applied in parentheses — inside a field, and a record pattern as an
+/// applied constructor's argument inside a tuple element, with no parentheses around the
+/// record itself.
+///
+/// Mutation-checked by moving the record production from `Pattern` to `CasePattern`:
+/// every position here is a `Pattern`, so the source is then rejected at the first `{`.
+#[test]
+fn a_record_pattern_nests_in_both_directions() {
+    let patterns = parameters(indoc::indoc! {r#"
+        module Main exposing (..)
+
+        f ((Reading { centre = { x }, taken = Celsius, expected = (Kelvin k) }), n) = x
+    "#});
+
+    assert_eq!(
+        patterns,
+        vec![Pattern::bare(PatternKind::Tuple(
+            zelkova_syntax::tuple::Tuple::two(
+                pattern_ctor_with(
+                    "Reading",
+                    vec![pattern_record(vec![
+                        field("centre", pattern_record(vec![field("x", pattern_var("x"))])),
+                        field("taken", pattern_ctor_with("Celsius", vec![])),
+                        field(
+                            "expected",
+                            pattern_ctor_with("Kelvin", vec![pattern_var("k")]),
+                        ),
+                    ])],
+                ),
+                pattern_var("n"),
+            )
+        ))]
+    );
+}
+
+/// A record pattern is the argument of a constructor written bare at a `case` branch's
+/// head, and a branch head of its own.
+///
+/// Mutation-checked with the test above, by moving the record production from `Pattern`
+/// to `CasePattern`: the first branch's argument is a `Pattern`, so the source is then
+/// rejected at its `{`.
+#[test]
+fn a_record_pattern_is_a_branch_head_and_a_bare_constructors_argument() {
+    assert_eq!(
+        branch_patterns(indoc::indoc! {r#"
+            module Main exposing (..)
+
+            f r =
+              case r of
+                Reading { centre = { x } } ->
+                  x
+
+                { expected } ->
+                  expected
+        "#}),
+        vec![
+            pattern_ctor_with(
+                "Reading",
+                vec![pattern_record(vec![field(
+                    "centre",
+                    pattern_record(vec![field("x", pattern_var("x"))]),
+                )])],
+            ),
+            pattern_record(vec![field("expected", pattern_var("expected"))]),
+        ]
+    );
+}
+
+/// `{}` names no field and `{ x, }` ends on a comma, and each is rejected at its `}`, as
+/// a record and a record type are.
+///
+/// Mutation-checked twice: replacing `CommaOne` with the `Comma` macro in `Pattern`'s
+/// record production (each source then parses), and deleting that production (each is
+/// then rejected at its `{`).
+#[test]
+fn a_record_pattern_of_no_entry_or_a_trailing_comma_is_rejected() {
+    for source in [
+        "module Main exposing (..)\n\nf {} = 1\n",
+        "module Main exposing (..)\n\nf { x, } = 1\n",
+    ] {
+        let brace = source.rfind('}').expect("the source has a closing brace") as u32;
+        assert_eq!(rejected_at(source), (Token::RBrace, brace), "{}", source);
+    }
+}
+
+/// An entry is a lowercase label, alone or followed by `=` and a pattern: `{ x = }` is
+/// rejected at the `}` where its pattern should be, `{ X }` at the uppercase name, and
+/// `{ x y }` at the second name, which no separator divides from the first.
+///
+/// Mutation-checked by deleting `Pattern`'s record production: each source is then
+/// rejected at its `{` and the positions go red.
+#[test]
+fn a_malformed_record_pattern_entry_is_rejected_where_it_goes_wrong() {
+    let cases = [
+        (
+            "module Main exposing (..)\n\nf { x = } = 1\n",
+            Token::RBrace,
+            "} =",
+        ),
+        (
+            "module Main exposing (..)\n\nf { X } = 1\n",
+            Token::UpperIdentifier("X".to_owned()),
+            "X",
+        ),
+        (
+            "module Main exposing (..)\n\nf { x y } = 1\n",
+            Token::LowerIdentifier("y".to_owned()),
+            "y",
+        ),
+    ];
+
+    for (source, token, needle) in cases {
+        let position = source.find(needle).expect("the source has the token") as u32;
+        assert_eq!(rejected_at(source), (token, position), "{}", source);
+    }
+}
+
+/// An entry is spanned at its label and keeps its pattern's own span, and the record
+/// pattern spans its braces.
+///
+/// Mutation-checked by giving `PatternField`'s `label = pattern` alternative the span
+/// `NodeSpan::none()`: the label assertions go red.
+#[test]
+fn a_record_pattern_entry_is_spanned_at_its_label() {
+    let source = indoc::indoc! {r#"
+        module Main exposing (..)
+
+        f { taken = t, expected = _ } = t
+    "#};
+    let patterns = parameters(source);
+    let PatternKind::Record(fields) = &patterns[0].kind else {
+        panic!("expected a record pattern, got {:?}", patterns[0].kind);
+    };
+
+    assert_eq!(
+        patterns[0].span.span(),
+        at(source, "{ taken = t, expected = _ }")
+    );
+    assert_eq!(fields[0].label_span.span(), at(source, "taken"));
+    assert_eq!(
+        fields[0].value.span.span(),
+        at(source, "t,").map(|span| Span {
+            start: span.start,
+            end: BytePos(span.start.0 + 1),
+        })
+    );
+    assert_eq!(fields[1].label_span.span(), at(source, "expected"));
 }
