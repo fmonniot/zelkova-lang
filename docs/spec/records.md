@@ -292,7 +292,7 @@ correct reading =
 A record pattern matches a record by naming fields. Each entry is `label = pattern`, and the
 field's value is matched against that pattern:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius, describe)
 
 type Celsius
@@ -305,9 +305,6 @@ describe reading =
       e
 ```
 
-**Not implemented:** no record production exists in the pattern grammar
-([`LANG-49`](../tickets/lang-49.md)).
-
 `{ name }` is shorthand for `{ name = name }`: the field matched against a
 [variable pattern](patterns.md#variable-patterns) of its own label.
 
@@ -316,7 +313,7 @@ bound. It is therefore [refutable](patterns.md#a-pattern-that-can-fail-and-one-t
 exactly when one of its sub-patterns is, and a pattern of shorthand entries alone can never fail
 — so one may be written where a pattern must not fail, as a parameter or in a `let` binding:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Text, nameOf)
 
 type Text
@@ -327,13 +324,11 @@ nameOf { name } =
   name
 ```
 
-**Not implemented:** [`LANG-49`](../tickets/lang-49.md).
-
 Sub-patterns are whole patterns, so record patterns [nest](patterns.md#patterns-nest) the way
 every other form does, in both directions — a record pattern inside a constructor pattern, and a
 constructor or record pattern inside a field.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius, Reading, depth)
 
 type Celsius
@@ -348,8 +343,6 @@ depth r =
     Reading { centre = { x } } ->
       x
 ```
-
-**Not implemented:** [`LANG-49`](../tickets/lang-49.md).
 
 A record pattern says nothing about which record type it matches, since it names a subset of some
 record's fields. The type comes from the value being matched, the same way an

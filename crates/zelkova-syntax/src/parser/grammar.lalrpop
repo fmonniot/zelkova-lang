@@ -434,6 +434,34 @@ Pattern: Pattern = {
 
     <l:@L> "(" <a: Pattern> "," <b: Pattern> "," <c: Pattern> ")" <r:@R> =>
         Pattern::new(NodeSpan::new(l, r), PatternKind::Tuple(Tuple::three(a, b, c))),
+
+    // A record pattern, `{ label = pattern, … }`: at least one entry and no trailing
+    // comma, the shape `CommaOne` gives a record's fields. Braces delimit it on both
+    // sides, so it is written bare in every position this production serves — a
+    // parameter, a constructor's argument, a tuple's element and a field of another
+    // record pattern. An entry's pattern is this production too, so it takes an applied
+    // constructor parenthesised, as a tuple's element does.
+    <l:@L> "{" <fields: CommaOne<PatternField>> "}" <r:@R> =>
+        Pattern::new(NodeSpan::new(l, r), PatternKind::Record(fields)),
+}
+
+// One entry of a record pattern: `label = pattern`, or the shorthand `label`, which is
+// `label = label` — the field matched against a variable pattern of its own label
+// (`docs/spec/records.md`, *Record patterns*). The shorthand is desugared here, so
+// `PatternKind::Record` has one shape and no later phase can tell the two spellings
+// apart. Both spans the shorthand builds are the label's, the only text it wrote: the
+// entry's, as `ExprField`'s is, and the variable pattern's, so a diagnostic about the
+// binding sits under the same name as one about the field.
+PatternField: Field<Pattern> = {
+    <l:@L> <label: VarIdent> <r:@R> "=" <value: Pattern> =>
+        Field::new(label, NodeSpan::new(l, r), value),
+
+    <l:@L> <label: VarIdent> <r:@R> => {
+        let span = NodeSpan::new(l, r);
+        let value = Pattern::new(span, PatternKind::Variable(label.clone()));
+
+        Field::new(label, span, value)
+    },
 }
 
 // The left-hand side of a `case` branch: a whole pattern, or an applied constructor
