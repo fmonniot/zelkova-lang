@@ -1571,10 +1571,12 @@ pub enum Error {
     /// so the primary caret sits under the repeat and a secondary one under the
     /// first.
     ///
-    /// [Records](../../docs/spec/records.md#the-type) makes it an error in all three:
-    /// a record type is a set of fields, and a record and an update say each field's
-    /// value once. One error per repeat, each naming the first, so a label written
-    /// three times is two.
+    /// [Records](../../docs/spec/records.md) makes it an error in all three, once
+    /// where it states it for [a record type](../../docs/spec/records.md#the-type),
+    /// [a record](../../docs/spec/records.md#building-a-record) and
+    /// [an update](../../docs/spec/records.md#updating-a-record): a record type is a
+    /// set of fields, and a record and an update say each field's value once. One
+    /// error per repeat, each naming the first, so a label written three times is two.
     RepeatedLabel(Name, RecordForm, NodeSpan, NodeSpan),
 
     // Binding module
@@ -2373,9 +2375,9 @@ fn facade_signature_pieces(tpe: &Type) -> Vec<&Type> {
 /// A bare `Type::Variable` or a `Type::Arrow` anywhere inside `tpe` is
 /// rejected, the latter regardless of depth — a function type is inadmissible
 /// wherever it is found, not only at the top of the signature.
-/// `Type::Type` and `Type::Tuple` recurse into their own arguments, which may
-/// still hide either form. `Type::Unit` is admitted: it has one value, and the
-/// table gives it a predicate like any other admitted type.
+/// `Type::Type`, `Type::Tuple` and `Type::Record` recurse into their own arguments or
+/// fields, which may still hide either form. `Type::Unit` is admitted: it has one
+/// value, and the table gives it a predicate like any other admitted type.
 fn check_facade_admitted_type(tpe: &Type) -> Result<(), FacadeRejectedKind> {
     match tpe {
         Type::Variable(_) => Err(FacadeRejectedKind::Variable),
@@ -2419,8 +2421,8 @@ fn is_failure_declaration(name: &QualName) -> bool {
 }
 
 /// Whether `Task` — recognised by [`is_task_declaration`], never by spelling —
-/// appears anywhere inside `tpe`, at the top or nested inside a tuple or
-/// another type's arguments.
+/// appears anywhere inside `tpe`, at the top or nested inside a tuple, a record's
+/// fields or another type's arguments.
 ///
 /// What [`Error::FacadeTaskMisplaced`] is raised from: `Task` may appear only
 /// as the whole of an unmarked facade's result

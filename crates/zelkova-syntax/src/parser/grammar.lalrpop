@@ -224,9 +224,11 @@ AtomicExpr: Expression = {
     // one production with an optional head. The update's head is a whole expression
     // and not a name, so after the `{` the parser cannot know which of the two it is
     // reading until the token after the first component: `=` makes that component a
-    // label, `|` makes it the head. Written as two productions, both would have to
-    // decide at the identifier, which LALRPOP reports as a conflict; written as one,
-    // the identifier is only reduced to an expression once a `|` can follow it.
+    // label, `|` makes it the head. Two productions, one per form, are no conflict
+    // either: LR(1) decides at the token after the identifier, shifting into a field on
+    // `=` and reducing the identifier towards an expression on anything else. One
+    // production is a choice, not a necessity: the span is computed once and a single
+    // `match` builds both nodes.
     //
     // A record is delimited on both sides, so it is atomic: `f { a = 1 }` applies `f`
     // to a record with no parentheses needed.

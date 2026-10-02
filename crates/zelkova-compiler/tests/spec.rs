@@ -21,7 +21,8 @@
 //!   [`typer::type_check`] raises no error for a declaration whose function head holds
 //!   a constructor or tuple pattern, one that names a constructor of a union this
 //!   module does not declare, one whose body uses an expression form its term language
-//!   does not model, one holding a record type, a record or an update, one that hits an
+//!   does not model, one holding a record type, a record or an update, one that refers
+//!   to a value or constructor whose type holds a record, one that hits an
 //!   `ErrorKind::UnboundVariable` — every reference to another module's value does — or
 //!   any `binding_foreign` module whole. It marks each of those in the types it returns —
 //!   an `ir::Solved` that is not `Typed` — and this harness reads only the errors, so the

@@ -52,8 +52,8 @@ pub enum Error {
     MainNotTask {
         /// The type `main` was judged to have: the one inference solved, or, when the typer
         /// marked `main` unchecked rather than failing it, the one its annotation
-        /// declares. `None` only when the annotation cannot be read as a typer type,
-        /// which no annotation today is.
+        /// declares. `None` only when the annotation cannot be read as a typer type, which
+        /// is an annotation holding a record type: the typer has no record type yet.
         found: Option<Type>,
         /// `main`'s annotation, which every exposed value has
         /// ([*An exposed declaration must be

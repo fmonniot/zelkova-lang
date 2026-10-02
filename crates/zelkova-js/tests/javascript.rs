@@ -1536,6 +1536,45 @@ fn a_union_holding_a_function_has_no_predicate() {
     assert_eq!(errors, vec![refusal("first"), refusal("second")]);
 }
 
+/// A facade signature that names no record itself can still lead its result's predicate
+/// to one, through the argument of a union's constructor: `ir::build` reads the facade's
+/// signature, which is `Int -> Shape`, without trouble, so it is a declaration, and
+/// `Predicates` then walks `Shape`'s constructor into the record. That is refused as
+/// `NoPredicate`, naming the constructor, rather than emitted with a predicate for a type
+/// this backend has no representation of.
+///
+/// Mutation-checked by making the `Type::Record` arm of `Predicates::test` answer
+/// `Ok("true".to_string())`: the facade then emits and `expect_err` fails.
+#[test]
+fn a_union_holding_a_record_has_no_predicate() {
+    let errors = facade_across(
+        indoc! {r#"
+            module Shape exposing (Shape(..))
+
+            type Shape
+              = Box { x : Int }
+        "#},
+        indoc! {r#"
+            module foreign Test exposing (f)
+
+            import Shape exposing (Shape)
+
+            unsafe f : Int -> Shape
+        "#},
+    )
+    .expect_err("expected the facade to be refused");
+
+    assert_eq!(
+        errors,
+        vec![Error::NoPredicate {
+            name: Name::new("f"),
+            span: NodeSpan::none(),
+            found: Unpredicated::Record,
+            constructor: Some(test_qual("Shape.Box")),
+        }]
+    );
+}
+
 /// The text an effectful facade `source` emits as, with `Task`, `Failure` and `Result` in
 /// the build.
 fn emitted_effectful(source: &str) -> String {

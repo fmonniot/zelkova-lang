@@ -5631,6 +5631,38 @@ fn a_facade_record_is_admitted_when_its_fields_are() {
     .expect("a record of admitted fields is admitted");
 }
 
+/// `Task` inside a record's field is as misplaced as it is anywhere else in a facade
+/// signature, whether the record is a parameter or the result: the record does not hide
+/// it from the "`Task` nowhere else" rule.
+///
+/// Mutation-checked by making `contains_task`'s record arm answer `false`: both
+/// signatures then canonicalize and the first `expect_err` panics.
+#[test]
+fn task_inside_a_record_field_is_rejected() {
+    for source in [
+        indoc::indoc! {r#"
+            module foreign Test exposing (f)
+
+            unsafe f : { t : Task Int } -> Int
+        "#},
+        indoc::indoc! {r#"
+            module foreign Test exposing (f)
+
+            unsafe f : Int -> { t : Task Int }
+        "#},
+    ] {
+        let errors = canonicalize_with_effects(source)
+            .expect_err("`Task` inside a record's field is not admitted");
+
+        match errors.as_slice() {
+            [canonical::Error::FacadeTaskMisplaced(name, _)] => {
+                assert_eq!(name.as_str(), "f");
+            }
+            other => panic!("expected one FacadeTaskMisplaced, got {:?}", other),
+        }
+    }
+}
+
 /// A record's fields and an update's record are part of the body a parameterless
 /// binding depends on, so a cycle running through them is reported.
 ///

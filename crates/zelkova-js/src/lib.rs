@@ -305,10 +305,12 @@ pub enum Unpredicated {
     /// and canonicalization does too, but this backend has no representation of a record
     /// to build its predicate over ([`GEN-25`](../docs/tickets/gen-25.md)).
     ///
-    /// Not reached while the typer has no record type: `ir::build` reads a facade's
-    /// signature through the typer's types, cannot read one holding a record, and leaves
-    /// it in [`ir::Module::unchecked`], which [`emit`] refuses as [`Error::Unchecked`]
-    /// before any predicate is built.
+    /// Reached through a union's constructor argument: a facade signature naming a record
+    /// itself is one `ir::build` cannot read through the typer's types, since the typer has
+    /// no record type, so it leaves the declaration in [`ir::Module::unchecked`], which
+    /// [`emit`] refuses as [`Error::Unchecked`] before any predicate is built. A signature
+    /// naming a union such as `type Shape = Box { x : Int }` reads fine, and the predicate
+    /// walk then reaches the record in `Box`'s argument.
     Record,
 }
 
