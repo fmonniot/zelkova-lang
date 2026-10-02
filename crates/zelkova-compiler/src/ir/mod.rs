@@ -514,10 +514,8 @@ pub enum TermPatternKind {
 /// any other pattern written there constrains this type the way a `case` branch's
 /// pattern constrains the scrutinee's.
 ///
-/// Today the pattern is only ever a [`TermPatternKind::Bind`], a
-/// [`TermPatternKind::Anything`] or a [`TermPatternKind::Unit`]:
-/// `typer::translate_pattern` refuses anything else nested (`LANG-16`). The shape does
-/// not assume it.
+/// The pattern may be any [`TermPatternKind`], itself holding sub-patterns to any depth:
+/// `typer::translate_pattern` translates one written here as it does one at the top.
 #[derive(Debug, Clone)]
 pub struct SubPattern {
     pub tpe: Type,
@@ -681,10 +679,9 @@ pub enum Solved {
     /// what reads it back out.
     NoBody,
     /// `value_to_term_and_annotation` could not translate the declaration into the
-    /// typer's term language — a `VarKernel` reference, a float pattern, a pattern
-    /// nested inside a constructor or tuple pattern, whether a `case` branch or a
-    /// parameter wrote it, or a record type, a record, an update, a field access or an
-    /// accessor, in the annotation or the body. Nothing about the declaration was checked.
+    /// typer's term language — a `VarKernel` reference, a float or string pattern at
+    /// any depth, whether a `case` branch or a parameter wrote it, or a record type, a
+    /// record, an update, a field access or an accessor, in the annotation or the body. Nothing about the declaration was checked.
     ///
     /// Not an [`Error`](crate::typer::Error): it is a gap in the typer rather
     /// than a mistake in the source. What it wants is a warning, which the compiler does not have yet (`ERR-8`, see

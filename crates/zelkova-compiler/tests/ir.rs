@@ -663,9 +663,8 @@ fn independent_parameterless_bindings_come_back_in_name_sorted_order() {
 ///
 /// A backend handed only the declarations that worked cannot tell a module it may emit
 /// whole from one that quietly lost a declaration, which is the mistake `DEC-18`'s first
-/// decision is about. `helper` below matches a tuple pattern nested inside another
-/// tuple pattern, which the typer does not translate, so it is exactly such a
-/// declaration.
+/// decision is about. `helper` below matches a float pattern, which the typer does not
+/// translate, so it is exactly such a declaration.
 ///
 /// Mutation-checked by dropping the `unchecked.push` in `ir::build`'s catch-all arm:
 /// `helper` then goes missing from both lists and the count assertion goes red.
@@ -678,11 +677,14 @@ fn a_declaration_with_no_ir_is_named_rather_than_dropped() {
         answer =
           1
 
-        helper : ((Int, Int), Int) -> Int
-        helper pair =
-          case pair of
-            ((a, b), c) ->
-              a
+        helper : Float -> Int
+        helper x =
+          case x of
+            1.5 ->
+              1
+
+            _ ->
+              0
     "#});
 
     assert_eq!(
@@ -1118,6 +1120,68 @@ fn two_branches_on_the_same_constructor_keep_source_order() {
                     fail("first"),
                 ),
             ),
+        )
+    );
+}
+
+/// A constructor nested inside another is a `Test` of its own, one step below
+/// [`Occurrence::Root`]: `Wrapper (Circle n)` tests the scrutinee for `Wrapper`, then
+/// `Wrapper`'s argument for `Circle`, and binds `n` two steps down, at the type `Circle`
+/// declares for it. Each of the two `Test`s falls back to the wildcard branch's leaf.
+///
+/// Mutation-checked two ways, each red on its own: having `decision::lower`'s
+/// `Constructor` arm push each argument at `occurrence` itself rather than at
+/// `occurrence.field(..)` (the inner `Test` is then on the root, and the assertion goes
+/// red), and restoring `translate_sub_pattern`'s refusal of anything but a variable, `_`
+/// or `()` (`inner` has no IR, and `declaration` panics).
+#[test]
+fn a_nested_constructor_is_a_test_below_the_root() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (Count, Shape, Wrapper, inner)
+
+        type Count
+          = One
+          | Many
+
+        type Shape
+          = Dot
+          | Circle Count
+
+        type Wrapper
+          = Wrapper Shape
+
+        inner : Wrapper -> Count
+        inner w =
+          case w of
+            Wrapper (Circle n) ->
+              n
+
+            _ ->
+              One
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "inner"), "inner");
+
+    let count = Type::Adt(QualName::in_module(test_package(), "Test", "Count"), vec![]);
+    let argument = Occurrence::Root.field(Step::ConstructorArgument(0));
+    assert_eq!(
+        tree,
+        test_root(
+            test_constructor("Wrapper", "Wrapper", 0, 1),
+            Decision::Test {
+                scrutinee: argument.clone(),
+                outcome: test_constructor("Shape", "Circle", 1, 1),
+                matched: Box::new(leaf(
+                    vec![binding(
+                        "n",
+                        argument.field(Step::ConstructorArgument(0)),
+                        count
+                    )],
+                    bodies[0],
+                )),
+                default: Box::new(leaf(vec![], bodies[1])),
+            },
+            leaf(vec![], bodies[1]),
         )
     );
 }

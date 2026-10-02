@@ -1109,9 +1109,9 @@ fn a_declaration_the_typer_cannot_resolve_comes_back_marked() {
 /// The other skip: a declaration the term language cannot express is present too, and
 /// says so.
 ///
-/// A pattern nested inside a tuple pattern is one `translate_pattern` refuses, and a
-/// parameter's pattern goes through it as a `case` branch's does, so nothing about
-/// `unwrap` is checked — including its annotation.
+/// A float pattern is one `translate_pattern` refuses, and a parameter's pattern goes
+/// through it as a `case` branch's does, so nothing about `unwrap` is checked —
+/// including its annotation.
 ///
 /// The span is asserted because the warning `ERR-8` will make of this needs a caret,
 /// and the whole declaration is the only position available: which construct stopped
@@ -1125,8 +1125,8 @@ fn a_declaration_the_typer_cannot_resolve_comes_back_marked() {
 fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
     let source = indoc::indoc! {r#"
         module Test exposing (..)
-        unwrap : ((Int, Int), Int) -> Int
-        unwrap ((n, m), k) = n
+        unwrap : (Float, Int) -> Int
+        unwrap (1.5, k) = k
     "#};
 
     let solved = solved(source);
@@ -1145,7 +1145,7 @@ fn a_declaration_the_typer_cannot_translate_comes_back_marked() {
         span.to_range(),
         Some(range_of(
             source,
-            "unwrap : ((Int, Int), Int) -> Int\nunwrap ((n, m), k) = n"
+            "unwrap : (Float, Int) -> Int\nunwrap (1.5, k) = k"
         ))
     );
 }
@@ -1622,13 +1622,12 @@ fn a_unit_pattern_against_an_int_is_a_type_error() {
     assert_eq!(labels[0].message, "this pattern");
 }
 
-/// A `()` written as a tuple's element is typed, as `_` there is: `()` is irrefutable,
-/// so `translate_sub_pattern` admits it below the top of a pattern. Without an
+/// A `()` written as a tuple's element is typed, as `_` there is. Without an
 /// annotation, the nested `()` is the only thing saying what the second element's type
 /// is.
 ///
-/// Mutation-checked two ways, each red on its own: dropping `PatternKind::Unit` from
-/// `translate_sub_pattern`'s admitted shapes (neither declaration is typed), and making
+/// Mutation-checked two ways, each red on its own: making `translate_sub_pattern`
+/// answer `None` for a `()` (neither declaration is typed), and making
 /// `pattern_constraints` place no constraint for a `TermPatternKind::Unit` (`second`
 /// then renders with an unsolved element).
 #[test]
@@ -1655,9 +1654,9 @@ fn a_nested_unit_pattern_is_typed() {
 /// with the caret under the nested `()` — reported by the typer, rather than the
 /// declaration going untyped and surfacing only at code generation.
 ///
-/// Mutation-checked two ways, each red on its own: dropping `PatternKind::Unit` from
-/// `translate_sub_pattern`'s admitted shapes (the declaration is then skipped and no type
-/// error is reported), and making `pattern_constraints` place no constraint for a
+/// Mutation-checked two ways, each red on its own: making `translate_sub_pattern`
+/// answer `None` for a `()` (the declaration is then skipped and no type error is
+/// reported), and making `pattern_constraints` place no constraint for a
 /// `TermPatternKind::Unit` (the module then checks).
 #[test]
 fn a_nested_unit_pattern_against_an_int_is_a_type_error() {
@@ -1679,6 +1678,147 @@ fn a_nested_unit_pattern_against_an_int_is_a_type_error() {
         "expected the caret under the nested `()`, got {:?}",
         labels
     );
+}
+
+// ── Nested constructor patterns ──────────────────────────────────────────────
+
+/// The unions the nested-pattern tests below match on.
+///
+/// The module exposes only them, so that a declaration below can be left unannotated
+/// and have its type inferred from its patterns alone.
+const NESTED_UNIONS: &str = indoc::indoc! {r#"
+    module Test exposing (Flag, Count, Shape, Boxed, Wrapper)
+    type Flag = On | Off
+    type Count = One | Many
+    type Shape = Dot | Circle Count
+    type Boxed = Boxed Count
+    type Wrapper = Wrapper Shape
+"#};
+
+/// The first branch's pattern of the `case` that `term`'s body is, under however many
+/// parameters it takes.
+fn first_branch_pattern(term: &TypedTerm) -> &zelkova_compiler::ir::TermPattern {
+    match &term.kind {
+        TypedTermKind::Fun { body, .. } => first_branch_pattern(body),
+        TypedTermKind::Case { branches, .. } => &branches[0].0,
+        other => panic!("expected a `case` under the parameters, got {:?}", other),
+    }
+}
+
+/// Every name `pattern` binds below its top, with the solved type of the position it is
+/// bound at, in source order.
+fn nested_bindings(pattern: &zelkova_compiler::ir::TermPattern) -> Vec<(String, String)> {
+    use zelkova_compiler::ir::TermPatternKind;
+
+    let subs: Vec<_> = match &pattern.kind {
+        TermPatternKind::Constructor { args, .. } | TermPatternKind::Hole { args } => {
+            args.iter().collect()
+        }
+        TermPatternKind::Tuple { elements } => elements.iter().collect(),
+        _ => vec![],
+    };
+    subs.into_iter()
+        .flat_map(|sub| match &sub.pattern.kind {
+            TermPatternKind::Bind(name) => vec![(name.clone(), sub.tpe.to_string())],
+            _ => nested_bindings(&sub.pattern),
+        })
+        .collect()
+}
+
+/// A `case` over a tuple with a constructor in each element: `On` and `(Circle n)` are
+/// the only things saying what the two elements' types are, and `n` is bound at the
+/// type `Circle` declares for its argument.
+///
+/// Mutation-checked two ways, each red on its own: restoring the refusal in
+/// `translate_sub_pattern` (anything but a variable, `_` or `()` answers `None`), so
+/// `pick` comes back untranslatable and `typed_declaration` panics; and making
+/// `pattern_constraints` stop at the top of a pattern rather than recurse into its
+/// sub-patterns, so nothing says what the elements are and the type comes out with two
+/// unsolved variables.
+#[test]
+fn a_constructor_in_a_tuple_element_is_typed() {
+    let source = format!(
+        "{}{}",
+        NESTED_UNIONS,
+        indoc::indoc! {r#"
+            pick pair =
+              case pair of
+                (On, (Circle n)) ->
+                  n
+        "#}
+    );
+
+    let solved = solved(&source);
+    let pick = typed_declaration(&solved, "pick");
+
+    assert_eq!(format!("{}", pick.tpe), "( Flag, Shape ) -> Count");
+    assert_eq!(
+        nested_bindings(first_branch_pattern(pick)),
+        vec![("n".to_string(), "Count".to_string())]
+    );
+}
+
+/// A `case` over a constructor holding an applied constructor: `Wrapper (Circle n)`
+/// binds `n` two levels down, at `Circle`'s argument type, and `Wrapper` alone says what
+/// the scrutinee is.
+///
+/// Mutation-checked by restoring the refusal in `translate_sub_pattern`: `inner` comes
+/// back untranslatable, and `typed_declaration` panics.
+#[test]
+fn an_applied_constructor_in_a_constructor_argument_is_typed() {
+    let source = format!(
+        "{}{}",
+        NESTED_UNIONS,
+        indoc::indoc! {r#"
+            inner w =
+              case w of
+                Wrapper (Circle n) ->
+                  n
+        "#}
+    );
+
+    let solved = solved(&source);
+    let inner = typed_declaration(&solved, "inner");
+
+    assert_eq!(format!("{}", inner.tpe), "Wrapper -> Count");
+    assert_eq!(
+        nested_bindings(first_branch_pattern(inner)),
+        vec![("n".to_string(), "Count".to_string())]
+    );
+}
+
+/// A nested constructor of a union other than the one its position holds is a type
+/// error, with the caret under the nested pattern — its parentheses, name and argument,
+/// the span the grammar gives it — rather than under `Wrapper` or the whole branch.
+///
+/// Mutation-checked two ways, each red on its own: restoring the refusal in
+/// `translate_sub_pattern` (the declaration is skipped and the module checks), and
+/// making `pattern_constraints` stop at the top of a pattern rather than recurse into
+/// its sub-patterns (the module checks).
+#[test]
+fn a_nested_constructor_of_the_wrong_type_is_a_type_error() {
+    let source = format!(
+        "{}{}",
+        NESTED_UNIONS,
+        indoc::indoc! {r#"
+            bad : Wrapper -> Count
+            bad w =
+              case w of
+                Wrapper (Boxed n) ->
+                  n
+        "#}
+    );
+
+    let error = one_type_error(&source);
+
+    let labels = error.labels();
+    assert_eq!(
+        ranges(&labels).first(),
+        Some(&range_of(&source, "(Boxed n)")),
+        "expected the caret under the nested pattern, got {:?}",
+        labels
+    );
+    assert_eq!(labels[0].message, "this pattern");
 }
 
 // ── `Task`, as `std/core/src/Task.zel` declares it ───────────────────────────

@@ -39,26 +39,22 @@
 //! a whole.
 //!
 //! That fallback tree is copied into each such `default` rather than shared, since a
-//! [`Decision`] is a tree and not a graph. One level deep, as every pattern is today,
-//! that is one copy per branch; a pattern with several refutable sub-patterns copies it
-//! once per refutable sub-pattern.
+//! [`Decision`] is a tree and not a graph: a pattern with one refutable part costs one
+//! copy, and a pattern with several refutable sub-patterns copies it once per refutable
+//! sub-pattern.
 //!
-//! Today `typer::translate_pattern` admits only a name, `_` or `()` below the top of a
-//! pattern (`LANG-16`), none of which is a `Test`, so no `Test` below
-//! [`Occurrence::Root`] is ever built from real source, and every binding is at most one
-//! step deep. Nothing here assumes it: the day `LANG-16` lifts that refusal, a nested
-//! pattern lowers through the same walk. This module's own tests build such a pattern by
-//! hand to pin that.
+//! A sub-pattern may be any pattern, so a constructor or a literal nested inside another
+//! pattern is a `Test` below [`Occurrence::Root`], and a binding may sit any number of
+//! steps down. `crates/zelkova-compiler/tests/ir.rs` pins the tree built from source for
+//! one; this module's own tests build the patterns by hand, to pin the walk alone.
 
 use crate::name::Name;
 
 use super::{Constructor, LiteralValue, TermPattern, TermPatternKind, Type, TypedTerm};
 
 /// A path to one value reached from a `case`'s scrutinee: the scrutinee itself, or one
-/// step inside another occurrence.
-///
-/// See this module's doc comment for why a path of more than one [`Step`] can be built
-/// here but is never built from real source today.
+/// step inside another occurrence. A pattern nested `n` deep is reached by a path of `n`
+/// [`Step`]s.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Occurrence {
     /// The scrutinee itself.
@@ -290,10 +286,9 @@ fn lower<'a>(
 
 #[cfg(test)]
 mod tests {
-    //! Nothing in real source builds a `Test` below the top of a pattern yet
-    //! (`LANG-16`), so these build a nested [`TermPattern`] by hand, the shape
-    //! `typer::translate_pattern` will produce once it admits one, and pin what
-    //! [`build`] makes of it.
+    //! These build each [`TermPattern`] by hand, the shape `typer::translate_pattern`
+    //! produces, and pin what [`build`] makes of it with no typer in the way.
+    //! `crates/zelkova-compiler/tests/ir.rs` builds the same kind of tree from source.
 
     use super::*;
     use crate::ir::{SubPattern, TypedTermKind};
