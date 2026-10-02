@@ -730,6 +730,9 @@ fn pattern_holds_hole(pattern: &Pattern) -> bool {
         PatternKind::Hole(_) => true,
         PatternKind::Constructor { args, .. } => args.iter().any(pattern_holds_hole),
         PatternKind::Tuple(tuple) => tuple.iter().any(pattern_holds_hole),
+        PatternKind::Record(fields) => fields
+            .iter()
+            .any(|field| pattern_holds_hole(&field.pattern)),
         PatternKind::Anything
         | PatternKind::Variable(_)
         | PatternKind::Int(_)
@@ -779,6 +782,35 @@ pub enum PatternKind {
     /// branch or the body the pattern governs, and a use of one there is not reported as a
     /// second missing name.
     Hole(Vec<Pattern>),
+    /// A [record pattern](../../docs/spec/records.md#record-patterns), `{ label =
+    /// pattern, … }`: the fields it names, each with the pattern its value is matched
+    /// against, in the order they were written. The `{ label }` shorthand is not a form
+    /// of its own: the grammar desugared it to `label = label`.
+    ///
+    /// The entries name a **subset** of the record's fields, so this is not the whole
+    /// field set a [`Type::Record`] is, and it is not keyed by label the way that one
+    /// is. No label appears twice — `Pattern::from_parser` reports a repeated one as
+    /// [`Error::RepeatedLabel`] — and what the pattern matches does not depend on the
+    /// order of its entries. The written order is kept as a tuple's is: a variable bound
+    /// in two entries is exposed in that order by `ScopedEnvironment::expose_pattern`,
+    /// the way one bound in two elements of a tuple is (`LANG-18`). Each entry keeps its
+    /// label's span, which is where a diagnostic about that field points.
+    ///
+    /// Refutable exactly when one of its entries' patterns is (`{ x }` cannot fail,
+    /// `{ x = 0 }` can). Nothing here records that, and nothing may read a record
+    /// pattern as irrefutable for being a record.
+    Record(Vec<PatternField>),
+}
+
+/// One entry of a [record pattern](PatternKind::Record): the label it names, where the
+/// label alone was written, and the pattern that field's value is matched against.
+#[derive(Debug, PartialEq)]
+pub struct PatternField {
+    pub label: Name,
+    /// Where the label alone was written; the pattern carries its own span. For the
+    /// `{ label }` shorthand the two are the same text.
+    pub label_span: NodeSpan,
+    pub pattern: Pattern,
 }
 
 impl Pattern {
@@ -844,6 +876,25 @@ impl Pattern {
                     Some(ctor) => PatternKind::Constructor { ctor, args },
                     None => PatternKind::Hole(args),
                 }
+            }
+            // Every entry's pattern is canonicalized before the labels are compared, as a
+            // record's fields are in `Field::from_parser`, so a constructor that does not
+            // resolve in one is pushed onto `unresolved` whether or not a label repeats.
+            parser::PatternKind::Record(fields) => {
+                let entries = fields
+                    .iter()
+                    .map(|field| {
+                        Ok(PatternField {
+                            label: field.label.clone(),
+                            label_span: field.label_span,
+                            pattern: Pattern::from_parser(&field.value, env, unresolved)?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?;
+
+                repeated_labels(fields, RecordForm::Pattern)?;
+
+                PatternKind::Record(entries)
             }
         };
 
@@ -1001,7 +1052,7 @@ impl Field {
     }
 }
 
-/// Which of the three record forms a [`Error::RepeatedLabel`] was found in.
+/// Which of the four record forms a [`Error::RepeatedLabel`] was found in.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum RecordForm {
     /// A record type, `{ label : Type, … }`.
@@ -1010,6 +1061,8 @@ pub enum RecordForm {
     Record,
     /// An update, `{ expr | label = expr, … }`.
     Update,
+    /// A record pattern, `{ label = pattern, … }`, the `{ label }` shorthand included.
+    Pattern,
 }
 
 /// Every field of `fields` whose label an earlier field already has, each as an
@@ -1586,18 +1639,20 @@ pub enum Error {
     /// so every shape a type can take arrives here; `validate_context` is what
     /// narrows it to one constraint or a tuple of them.
     InvalidConstraint(InvalidConstraintKind, NodeSpan),
-    /// A label given to two fields of one record type, record or update: the label,
-    /// which of the three forms it was found in, where the repeat was written and
-    /// where the first field with that label was. Both spans are the label's alone,
-    /// so the primary caret sits under the repeat and a secondary one under the
-    /// first.
+    /// A label given to two fields of one record type, record, update or record
+    /// pattern: the label, which of the four forms it was found in, where the repeat
+    /// was written and where the first field with that label was. Both spans are the
+    /// label's alone, so the primary caret sits under the repeat and a secondary one
+    /// under the first.
     ///
-    /// [Records](../../docs/spec/records.md) makes it an error in all three, once
+    /// [Records](../../docs/spec/records.md) makes it an error in all four, once
     /// where it states it for [a record type](../../docs/spec/records.md#the-type),
-    /// [a record](../../docs/spec/records.md#building-a-record) and
-    /// [an update](../../docs/spec/records.md#updating-a-record): a record type is a
-    /// set of fields, and a record and an update say each field's value once. One
-    /// error per repeat, each naming the first, so a label written three times is two.
+    /// [a record](../../docs/spec/records.md#building-a-record),
+    /// [an update](../../docs/spec/records.md#updating-a-record) and
+    /// [a record pattern](../../docs/spec/records.md#record-patterns): a record type is
+    /// a set of fields, a record and an update say each field's value once, and a
+    /// record pattern says once what each field it names is matched against. One error
+    /// per repeat, each naming the first, so a label written three times is two.
     RepeatedLabel(Name, RecordForm, NodeSpan, NodeSpan),
 
     // Binding module
@@ -1903,6 +1958,7 @@ impl PhaseError for Error {
                     RecordForm::Type => "record type",
                     RecordForm::Record => "record",
                     RecordForm::Update => "update",
+                    RecordForm::Pattern => "record pattern",
                 }
             ),
             Error::InvalidConstraint(kind, _) => match kind {
