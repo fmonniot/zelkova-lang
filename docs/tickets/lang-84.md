@@ -14,10 +14,10 @@ arm answers `None`, and `translate_sub_pattern`; `crates/zelkova-compiler/src/ty
 grammar builds one — and [`LANG-51`](lang-51.md), hard, for the record type and for the
 late-solved constraint its accessor needs.
 
-**Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decision 5):** a
-record pattern names a **subset** of a record's fields, takes its record type from the value
-being matched, and is an error when it names a label that type does not have.
-[Records](../spec/records.md#record-patterns) is the rule.
+**Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decisions 5 and
+10):** a record pattern names a **subset** of a record's fields, takes its record type from the
+value being matched, is an error when it names a label that type does not have, and is an error
+when nothing supplies that type. [Records](../spec/records.md#record-patterns) is the rule.
 
 **Not implemented:** neither ticket above owns this. `LANG-49` stops at canonicalization, and
 `LANG-51` cites decisions 2, 3, 4 and 6 with no pattern among its acceptance cases. So once both
@@ -45,28 +45,24 @@ the module that holds it. A pattern naming a label the record does not have is a
    not under the whole pattern, and a field whose sub-pattern disagrees with the field's type
    is blamed on the sub-pattern.
 
-3. **Sub-patterns are whatever `translate_sub_pattern` admits when this lands.** Today that is
-   a variable, `_` and `()`, so `{ taken = Celsius }` — a constructor in a field — is refused
-   and its declaration left unchecked. `translate_sub_pattern`'s doc comment gives lifting that
-   to [`LANG-16`](lang-16.md), and `LANG-16`'s own text confines itself to the grammar. This
-   ticket does not lift it; it must not make it harder to.
+3. **An entry's sub-pattern is a whole pattern**, translated by `translate_sub_pattern` like a
+   constructor's argument. [`LANG-16`](lang-16.md) is ahead of this in the order and lifts that
+   function's refusal of anything but a variable, `_` and `()`, so `{ taken = Celsius }` — a
+   constructor in a field — is checked with nothing written here for it.
 
 4. **`decision_tree` needs an arm the day the variant exists.** A record has one shape, so the
    pattern itself tests nothing, and each entry is a sub-occurrence reached by its label: `Step`
    gains a field step beside `ConstructorArgument` and `TupleElement`. That much is written
    here. Emitting a read of it is [`GEN-25`](gen-25.md)'s.
 
-**Not decided, and not this ticket's to pick: a record pattern whose type nothing fixes.** The
-chapter says where the type comes from, "the same way an accessor's does", and says of an
-accessor that where nothing fixes the type it is an error naming itself. It does not say that of
-a pattern in words. Two of the chapter's own blocks turn on it: `describe reading = case reading
-of { taken = Celsius, expected = e } -> …` and `nameOf { name } = name` are both unannotated, so
-nothing fixes the record type in either. Read by the accessor's rule, both are type errors and
-the chapter's examples want an annotation; read any other way, the pattern has to infer a record
-type from a subset of its fields, which closed records cannot express. Ask the language owner
-before writing step 2's failure case. `LANG-51` meets the same question at `person.name`, in the
-unannotated block under [Reading a field](../spec/records.md#reading-a-field), and does not
-raise it.
+5. **A record pattern whose type nothing supplies is an error**, with the caret on the pattern
+   and a message saying an annotation would supply the type
+   ([A use does not decide a record's type](../spec/records.md#a-use-does-not-decide-a-records-type),
+   [`DEC-8` decision 10](../decisions/dec-8.md#10--a-use-does-not-decide-a-records-type)). It is
+   the error `LANG-51` reports for a field access on an unsolved type, reached the same way:
+   read once unification has run over the declaration, and never solved by the pattern itself.
+   `nameOf { name } = name` with no annotation is that error; under
+   `nameOf : { name : Text } -> Text` it checks.
 
 **Acceptance:** in `crates/zelkova-compiler/tests/typer.rs`, each seen red with what it pins
 neutralised:
@@ -78,15 +74,18 @@ neutralised:
   `diagnostic.labels[..].range` to sit under that label;
 - `{ centre = { x } }` against a record holding a record binds `x` at the inner field's type;
 - a record pattern inside a constructor pattern takes its type from the constructor's argument;
-- the case the owner's answer above decides, pinned whichever way it goes.
+- `{ taken = Celsius, expected = e }` checks, and a constructor of the wrong type in a field is
+  an error under that constructor;
+- an unannotated `nameOf { name } = name` is the error of step 5, asserted to sit under the
+  pattern, and the same declaration annotated checks.
 
 In `crates/zelkova-compiler/tests/ir.rs`: the decision tree of a `case` over a record with one
 branch `{ x, y }` holds no `Decision::Test`, and each binding's occurrence ends in a field step.
 
 The record-pattern blocks in [Records](../spec/records.md#record-patterns) and
 [Patterns](../spec/patterns.md#record-patterns) are `expect=ok` after `LANG-49` only because the
-typer leaves them unchecked. After this they are checked: each either stays green, or goes red
-and is annotated or retagged as the answer above requires. `cargo test --workspace` is green and
+typer leaves them unchecked. After this they are checked, and every one of them is annotated, so
+each stays green; one that goes red is a bug in this ticket and not a tag to change. `cargo test --workspace` is green and
 `cargo run -- compile std/core` still lists all ten modules as checked.
 
 **Found:** while ordering the record tickets for *Active work: records* in

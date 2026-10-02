@@ -680,9 +680,11 @@ Three expression forms are part of the language and are specified elsewhere:
 ```zel expect=unimplemented
 module Example exposing (f)
 
+f : { name : Int } -> Int
 f r =
   r.name
 ```
 
-**Not implemented:** `.` is punctuation for qualified names only, so `r.name` is rejected
-rather than read as a projection ([`LANG-50`](../tickets/lang-50.md)).
+**Not implemented:** braces are not tokens ([`LANG-47`](../tickets/lang-47.md)), and `.` is
+punctuation for qualified names only, so `r.name` is rejected rather than read as a projection
+([`LANG-50`](../tickets/lang-50.md)).

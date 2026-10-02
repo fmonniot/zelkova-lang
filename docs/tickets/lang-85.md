@@ -48,15 +48,15 @@ lands second meets the gap first, and until this ticket it is an error.
    `LANG-83` step 3 runs for an application.
 
 4. **The member at a record type is the fold `LANG-83` step 4 describes, with only the fold.**
-   Fields in label order, sorted by the label's characters whatever order the type was spelled
-   in; right-nested; `combine`'s body placed and not called, its first parameter bound once
+   Fields in label order whatever order the type was spelled in — labels compared character by
+   character, by code point, a label that another begins with first, which is the chapter's
+   rule; right-nested; `combine`'s body placed and not called, its first parameter bound once
    ([`DEC-24` decision 8](../decisions/dec-24.md#8--combines-first-parameter-is-a-value-and-its-second-is-the-rest-of-the-walk)).
-   The chapter says "sorted by the label's characters" and no more. Sort by code point, and say
-   so in the doc comment; if that reading is wrong it is a `SPEC-` ticket.
 
-**Where that definition lives is this ticket's to choose, and it does not pick here.** A derived
-instance's definitions are canonical code placed where a written binding would be. A record has
-no such place.
+**Where that definition lives is the implementer's choice**, within the three constraints
+below. It is not a language question: no program can observe it. A derived instance's
+definitions are canonical code placed where a written binding would be, and a record has no such
+place. The two shapes that fit:
 
 - **In `GEN-24`'s pass**, as a specialisation keyed by the class, the member and the record
   type, emitted into the using module like any other. It needs no new home, and the cost

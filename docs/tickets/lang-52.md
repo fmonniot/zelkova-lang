@@ -34,8 +34,13 @@ The diagnostic matters more than usual, because the source looks reasonable. `Wi
 reports that a qualified name is written with no spaces around its `.`, and not that `Widget` is
 not a function.
 
+A module's own name is held to the same rule and needs no second mechanism: `module` and
+`import` read their name through `QualTypeIdent`, and
+[a dotted module name is a single identifier](../spec/modules.md#the-module-header), so
+`import Ui . Widget` is rejected with the same diagnostic.
+
 **Acceptance:** `Widget . size`, `Widget .size` and `Widget. size` are all rejected, in an
-expression and in a type; `Widget.size` is unaffected. The package block in
+expression and in a type, and so is `import Ui . Widget`; `Widget.size` is unaffected. The package block in
 [Records](../spec/records.md#whitespace-before-a--decides-which-form-it-is) goes red, is retagged
 `expect=parse-error` with its reason pinned, and its **Known gap:** paragraph is rewritten to
 state the rule without the gap. A parser test asserts the rejection in both languages.

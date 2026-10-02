@@ -39,6 +39,13 @@ field list becomes an order-independent representation and where a repeated labe
 new `canonical::Error` variant carries that, with the caret under the repeated label rather than
 under the record.
 
+**That is the type's rule and not the expression's.** A record expression and an update keep
+their fields in the order they were written, in both ASTs: the fields are subexpressions, and
+[subexpressions are evaluated left to right](../spec/evaluation-semantics.md#order-of-evaluation),
+so `{ b = f x, a = g y }` calls `f` first and [`GEN-25`](gen-25.md) needs that order to still be
+there. Only the label *set* is order-independent, for the repeated-label check here and for the
+typer's comparison in [`LANG-51`](lang-51.md).
+
 **Acceptance:** every `expect=unimplemented` block in [Records](../spec/records.md) that shows a
 record type, a record or an update goes red — that tag's whole job — and is retagged `expect=ok`,
 except those [Records](../spec/records.md#a-record-type-is-a-set-of-fields) marks as rejected by

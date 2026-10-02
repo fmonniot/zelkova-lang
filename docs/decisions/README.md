@@ -107,7 +107,7 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-5](dec-5.md) | A pattern's sign is the pattern grammar's, not the tokenizer's | live |
 | [DEC-6](dec-6.md) | Which types may cross the JavaScript boundary | live; 1 extended by DEC-13 |
 | [DEC-7](dec-7.md) | Lists: six decisions | live |
-| [DEC-8](dec-8.md) | Records: nine decisions | live |
+| [DEC-8](dec-8.md) | Records: ten decisions | live |
 | [DEC-9](dec-9.md) | What a program may rely on about space: sharing, not closures | live |
 | [DEC-10](dec-10.md) | The law on a derivation's `combine` is checked by nothing, permanently | live |
 | [DEC-11](dec-11.md) | What a value describing an effect is: seven decisions | live; 5 extended by DEC-12 |
@@ -124,3 +124,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-22](dec-22.md) | How a `Task` is represented and run: a survey and eight decisions | live |
 | [DEC-23](dec-23.md) | A module with errors still has a shape: seven decisions | live |
 | [DEC-24](dec-24.md) | What implementing type classes had to settle: twelve decisions | live |
+| [DEC-25](dec-25.md) | Type aliases: two decisions | live |

@@ -180,10 +180,13 @@ record has a spelling in the type, expression and pattern grammars and a rule in
 the tickets are cut along those lines, with the emitter last.
 
 [`docs/spec/records.md`](../spec/records.md) is the normative record and
-[DEC-8](../decisions/dec-8.md) holds the nine decisions behind it, which the tickets cite by
-number. No ticket in the order re-argues one. Two leave a choice to the implementer and say so:
+[DEC-8](../decisions/dec-8.md) holds the ten decisions behind it, which the tickets cite by
+number. **No ticket in the order leaves a language decision open**, and none re-argues one.
+Where a ticket says a choice is the implementer's, it means that and names the constraints:
 `LANG-50` on how an attached `.` is told from a detached one, and `LANG-52` on whether that is
-decided in the tokenizer or in a grammar action — one mechanism serves both.
+decided in the tokenizer or in a grammar action — one mechanism serves both, and `LANG-52` lands
+first, so its choice is the one `LANG-50` inherits. Anything else that looks like a decision is a
+gap to report, not to fill.
 
 They land in this order, one at a time:
 
@@ -203,14 +206,14 @@ LANG-48  a record type, a record and an update parse, and reach the
   │        unchecked, so the emitter refuses its module
   │
 LANG-50  `r.name` and `.name` parse
-  │      ← needs LANG-52 and nothing else, so it may land ahead of
-  │        LANG-47 and LANG-48
+  │      ← needs LANG-52 to parse, and LANG-48 before the chapter's
+  │        blocks turn: each annotates with a record type
   │
-LANG-16  a constructor pattern nests          ← not a record ticket
-  │      ← here because LANG-49's acceptance turns every record-pattern
-  │        block in two chapters, and the first one in each matches a
-  │        constructor inside a field, which no sub-pattern may be
-  │        today
+LANG-16  a pattern nests, and is type checked where it does
+  │      ← not a record ticket. Here because the first record-pattern
+  │        block in two chapters matches a constructor inside a field,
+  │        which no sub-pattern may be today, and because it lifts the
+  │        typer's refusal of a nested pattern, which LANG-84 relies on
   │
 LANG-49  a record pattern parses, the `{ x }` shorthand included
   │      ← needs LANG-47, and LANG-48 for how a repeated label is
@@ -232,18 +235,13 @@ GEN-25   a record, an access, an update, an accessor and a record
          ← the first point at which a program using a record runs
 ```
 
-**One question is open, and two tickets wait on the language owner for it.** The chapter says an
-accessor that nothing fixes the type of is an error, and says a record pattern takes its type
-"the same way". It does not say what an unannotated `nameOf { name } = name` or
-`nameOf person = person.name` is, and both are blocks of the chapter. `LANG-84` states the
-question; `LANG-51` meets it at the field access and does not raise it.
-
 Two tickets follow from records and are outside the order. [`LANG-85`](lang-85.md) is a record
 under a derivation — what `==` on two records computes once [`LANG-42`](lang-42.md) lands — and
 is the one ticket that needs both this order and the type classes' finished.
 [`LANG-86`](lang-86.md) is `type alias`. It is not a record question and needs none of the
 above, but a record type is written out in full wherever it appears, so records are where its
-absence is felt; it has four questions of its own for the owner.
+absence is felt. [DEC-25](../decisions/dec-25.md) holds its two decisions. Neither ticket leaves
+a language decision open; `LANG-85` leaves one choice to the implementer and says so.
 
 Three more sit beside the order. [`LANG-33`](lang-33.md) is `let`, the second place an
 irrefutable record pattern may be written. [`LANG-19`](lang-19.md) scopes exhaustiveness to the
