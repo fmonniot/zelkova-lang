@@ -2903,6 +2903,52 @@ fn a_header_that_does_not_parse_does_not_also_report_its_module_as_unheld() {
     );
 }
 
+/// A module with a declaration that does not parse, beside a header that does, is held,
+/// so a `private-modules` entry naming a module the package really lacks is still
+/// reported: the manifest's error stands beside the syntax error rather than waiting
+/// behind it.
+///
+/// `package_private_module_unparsed_declaration` declares `private-modules = ["Ghost"]`
+/// and holds `A`, whose `import` does not parse.
+///
+/// Mutation-checked by reverting the `private-modules` guard in `compile_in_build` to
+/// `parsed.failures == 0`: the `PrivateModuleNotFound` is not pushed and the assertion
+/// that finds it goes red.
+#[test]
+fn a_declaration_that_does_not_parse_does_not_hide_a_missing_private_module() {
+    let root = fixture_package("package_private_module_unparsed_declaration");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    assert!(
+        check
+            .errors
+            .iter()
+            .any(|error| matches!(error, CompilationError::Source(..))),
+        "expected `A`'s syntax error, got {:?}",
+        check.errors
+    );
+    let missing: Vec<&Name> = check
+        .errors
+        .iter()
+        .filter_map(|error| match error {
+            CompilationError::Manifest(errors) => Some(errors),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|error| match error {
+            manifest::ManifestError::PrivateModuleNotFound { name, .. } => Some(name),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        missing,
+        vec![&Name::from("Ghost")],
+        "got {:?}",
+        check.errors
+    );
+}
+
 // ── Test 29: the default imports reach a module that wrote none ─────────────
 
 /// Every checked module of the fixture package, in the order they were checked.
@@ -6671,6 +6717,44 @@ fn a_module_whose_header_did_not_parse_still_exists_for_its_importers() {
         check.errors
     );
     assert!(check.modules.is_empty());
+}
+
+/// A headless file named like a module a dependency already answers to does not replace
+/// that module for the package's other modules: `B` still sees the dependency's `Basics`,
+/// so both of its own errors are reported beside the header's syntax error, and `Int`
+/// resolves.
+///
+/// `package_headless_dependency_name` depends on a stand-in `zelkova-core` and holds a
+/// `src/Basics.zel` whose header does not parse, beside a `B` with two ill-typed values.
+///
+/// Mutation-checked by dropping `|| interfaces.contains_key(name)` from the stand-in
+/// loop in `compile_in_build`: the stand-in replaces the dependency's `Basics`, `B`'s
+/// errors are lost and the count goes red.
+#[test]
+fn a_headless_file_named_like_a_dependency_module_does_not_replace_it() {
+    let root = fixture_package("package_headless_dependency_name");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    let in_b: Vec<&CompilationError> = check
+        .errors
+        .iter()
+        .filter(|error| unwrap_in_file(error).module() == Some(&Name::from("B")))
+        .collect();
+    assert_eq!(
+        in_b.len(),
+        2,
+        "expected `B`'s two own errors, got {:?}",
+        check.errors
+    );
+    assert!(
+        check
+            .errors
+            .iter()
+            .any(|error| matches!(error, CompilationError::Source(..))),
+        "expected the header's syntax error, got {:?}",
+        check.errors
+    );
 }
 
 /// A build holding a module with a syntax error writes nothing, though the module is

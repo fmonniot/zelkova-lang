@@ -1427,9 +1427,13 @@ fn compile_in_build(
     // it, and an importer of it finds an interface that holds nothing and is incomplete.
     // The header's syntax error is the one error that stands behind everything the
     // importer then does not report, and it fails this package, so the stand-in is
-    // never published. A name a parsed module declares is that module's.
+    // never published. A name a parsed module declares is that module's, and so is a name
+    // a dependency's interface already holds: a headless file named like one is a
+    // collision whatever its header says, and the dependency's interface is the better
+    // guess for every importer, which keeps the errors of those importers that the
+    // header's syntax error does not explain.
     for (name, file) in &parsed.headless {
-        if parsed.module_files.contains_key(name) {
+        if parsed.module_files.contains_key(name) || interfaces.contains_key(name) {
             continue;
         }
         let module_name = ModuleName {

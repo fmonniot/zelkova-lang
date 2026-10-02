@@ -1,0 +1,11 @@
+# `Ghost` is named and not held, and `A` holds a declaration that does not parse beside a
+# header that does. `crates/zelkova/tests/pipeline.rs` checks that the manifest's error is
+# reported beside the syntax error, since `A`'s header parsed and the list of held
+# modules is complete.
+name = "package-private-module-unparsed-declaration"
+version = "0.1.0"
+private-modules = ["Ghost"]
+
+[dependencies]
+
+[test-dependencies]

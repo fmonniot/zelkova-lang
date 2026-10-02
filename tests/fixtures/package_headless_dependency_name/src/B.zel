@@ -1,0 +1,9 @@
+module B exposing (..)
+
+
+b : Int
+b = typo
+
+
+c : Int
+c = "not an int"
