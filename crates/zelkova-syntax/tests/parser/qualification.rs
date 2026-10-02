@@ -13,12 +13,12 @@ use super::support::*;
 use codespan_reporting::files::SimpleFile;
 use zelkova_syntax::parser;
 
-/// Parse `source`, which must fail with `Error::SpacedDot`, and return the text of the
-/// byte range the error's diagnostic labels, which must be the `.` and nothing else.
+/// Parse `source`, which must fail with `Error::SpacedDot`, and return the diagnostic's
+/// message and notes, and the start and text of the byte range it labels.
 ///
 /// A whole-value `assert_eq!` on the error would pin the variant but not where it points,
 /// so the range is read off the rendered diagnostic, as `layout_error` does.
-fn spaced_dot(source: &str) -> (usize, String) {
+fn rejected_dot(source: &str) -> (String, Vec<String>, usize, String) {
     let file = SimpleFile::new("test".to_owned(), source.to_owned());
 
     let error = match parser::parse(&file) {
@@ -34,14 +34,27 @@ fn spaced_dot(source: &str) -> (usize, String) {
     );
 
     let diagnostic = error.diagnostic(());
-    assert_eq!(
+    let range = diagnostic.labels[0].range.clone();
+
+    (
         diagnostic.message,
+        diagnostic.notes,
+        range.start,
+        source[range].to_owned(),
+    )
+}
+
+/// `rejected_dot` for a `.` that interrupts a qualified name, whose message is the one
+/// about qualified names.
+fn spaced_dot(source: &str) -> (usize, String) {
+    let (message, _, start, text) = rejected_dot(source);
+
+    assert_eq!(
+        message,
         "a qualified name is written with no spaces around its `.`"
     );
 
-    let range = diagnostic.labels[0].range.clone();
-
-    (range.start, source[range].to_owned())
+    (start, text)
 }
 
 /// Assert that `source` is rejected as `SpacedDot`, pointing at the `.` of the first
@@ -172,5 +185,30 @@ fn the_unspaced_spelling_of_each_parses() {
         if let Err(error) = parser::parse(&file) {
             panic!("{:?} should parse, got {:?}", source, error);
         }
+    }
+}
+
+/// A `.` that interrupts no qualified name gets no advice about one: there is no name in
+/// `.name`, `f .name`, `(.name)`, `1 .` or `a . b` to write in one piece. The message is
+/// the neutral one, with no note, and still labels exactly the `.`.
+///
+/// Verified to fail by making `From<ParseError>` set `continues_a_name` to `true`
+/// unconditionally: every source below then gets the qualified-name message.
+#[test]
+fn a_dot_that_interrupts_no_name_is_not_called_a_qualified_name() {
+    for source in [
+        "module Main exposing (..)\n\nmain = .name\n",
+        "module Main exposing (..)\n\nmain = f .name\n",
+        "module Main exposing (..)\n\nmain = (.name)\n",
+        "module Main exposing (..)\n\nmain = 1 .\n",
+        "module Main exposing (..)\n\nmain = a . b\n",
+    ] {
+        let (message, notes, start, text) = rejected_dot(source);
+
+        assert_eq!(message, "unexpected `.`", "for {:?}", source);
+        assert!(notes.is_empty(), "for {:?}: {:?}", source, notes);
+        assert_eq!(text, ".", "for {:?}", source);
+        // Each source has one `.` after the `(..)` of its header, and it is the one rejected.
+        assert_eq!(Some(start), source.rfind('.'), "for {:?}", source);
     }
 }

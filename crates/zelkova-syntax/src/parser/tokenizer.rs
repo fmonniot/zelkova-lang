@@ -43,14 +43,15 @@ pub enum Token {
     /// (`Comparable a => a -> a -> a`). A symbol of the language rather than an
     /// operator name, so it cannot be declared with `infix` or exposed as `(=>)`.
     FatArrow,
-    /// A `.` written against the token before it and against the character after it:
+    /// A `.` written against an operand on its left and against the character after it:
     /// the `.` of `Dict.get`. The only `.` the grammar consumes.
     Dot,
-    /// A `.` with whitespace, a comment, or the start or end of the source on either
-    /// side of it: `Dict . get`, `Dict .get`, `Dict. get`. No production consumes
-    /// it, so the parser rejects it where it stands, and `Error::SpacedDot` says why.
-    /// The doc comment on the tokenizer's `consume_operator` has the reason this is a
-    /// token of its own.
+    /// Any other `.`: one with whitespace, a comment, or the start or end of the source
+    /// on a side of it (`Dict . get`, `Dict .get`, `Dict. get`), or one opening an
+    /// expression, after `(`, `[`, `,`, an operator or a keyword (`(.name)`). No
+    /// production consumes it, so the parser rejects it where it stands, and
+    /// `Error::SpacedDot` says why. The doc comment on the tokenizer's `consume_operator`
+    /// has the reason this is a token of its own.
     SpacedDot,
     DotDot,
     Underscore,
@@ -90,6 +91,68 @@ pub enum Token {
     // Layout
     OpenBlock,
     CloseBlock,
+}
+
+impl Token {
+    /// Whether an expression can end with this token, which is to say whether a `.`
+    /// written straight after it can be the `.` of a field access or a qualified name.
+    ///
+    /// Identifiers (the soft keywords are identifiers where an expression reads them,
+    /// see `VarIdent` in `grammar.lalrpop`), literals of every kind, `)` and `]`. Every
+    /// other token — an operator, `(`, `[`, `,`, a keyword, layout — leaves the next
+    /// expression still to begin, so a `.` after it opens one.
+    ///
+    /// The match has no wildcard arm on purpose: a new token has to be placed here.
+    /// `}` ends an operand once it exists as a token (`LANG-47`), and is added by one
+    /// more name in the first arm.
+    fn ends_an_operand(&self) -> bool {
+        match self {
+            Token::UpperIdentifier(_)
+            | Token::LowerIdentifier(_)
+            | Token::Left
+            | Token::Right
+            | Token::Non
+            | Token::Foreign
+            | Token::Unsafe
+            | Token::Integer { .. }
+            | Token::Float { .. }
+            | Token::Char { .. }
+            | Token::String { .. }
+            | Token::RPar
+            | Token::RBracket => true,
+
+            Token::Operator(_)
+            | Token::EndOfFile
+            | Token::LPar
+            | Token::LBracket
+            | Token::Comma
+            | Token::Arrow
+            | Token::FatArrow
+            | Token::Dot
+            | Token::SpacedDot
+            | Token::DotDot
+            | Token::Underscore
+            | Token::Colon
+            | Token::Pipe
+            | Token::Equal
+            | Token::Minus
+            | Token::Module
+            | Token::Exposing
+            | Token::Import
+            | Token::As
+            | Token::Infix
+            | Token::Type
+            | Token::Case
+            | Token::Of
+            | Token::If
+            | Token::Then
+            | Token::Else
+            | Token::Let
+            | Token::In
+            | Token::OpenBlock
+            | Token::CloseBlock => false,
+        }
+    }
 }
 
 /// Look up a reserved keyword by its textual representation.
@@ -315,10 +378,11 @@ struct Tokenizer<I: Iterator<Item = char>> {
     processed_tokens: Vec<Spanned<Position, Token>>,
     /// The current position in the source code
     position: Position,
-    /// Where the last token handed out by `process_next_tokens` ended, or `None` before
-    /// the first. A `.` whose start is this byte is written against the token before it;
-    /// whitespace or a comment in between puts the two apart.
-    previous_token_end: Option<BytePos>,
+    /// Where the last token handed out by `process_next_tokens` ended, when that token
+    /// [can end an operand](Token::ends_an_operand); `None` before the first token and
+    /// after any other. A `.` whose start is this byte is written against an operand to
+    /// its left; whitespace or a comment in between puts the two apart.
+    previous_operand_end: Option<BytePos>,
     /// A preview of the current character (and the two following).
     ///
     /// This is especially helpful to let us find symbols containing
@@ -337,7 +401,7 @@ where
             at_line_start: true, // Nothing have been read yet, so…
             processed_tokens: vec![],
             position: Position::new(0, 1, 1),
-            previous_token_end: None,
+            previous_operand_end: None,
             lookahead: (None, None, None),
         };
 
@@ -475,7 +539,10 @@ where
         }
 
         let token = self.processed_tokens.remove(0);
-        self.previous_token_end = Some(token.span.end.absolute);
+        self.previous_operand_end = token
+            .value
+            .ends_an_operand()
+            .then_some(token.span.end.absolute);
 
         Ok(token)
     }
@@ -1065,9 +1132,13 @@ where
     ///
     /// A lone `.` is where the rule that a qualified name takes no whitespace around
     /// its dot is decided: `Dict.get` is `Dict` qualifying `get`, and `Dict . get`,
-    /// `Dict .get` and `Dict. get` are not. A `.` written against the token before it
-    /// and against the character after it is [`Token::Dot`]; any other is
-    /// [`Token::SpacedDot`], which the grammar has no production for.
+    /// `Dict .get` and `Dict. get` are not. A `.` is [`Token::Dot`] only when it is
+    /// written against an operand on its left — a token for which
+    /// [`Token::ends_an_operand`] holds, with nothing between — and against the character
+    /// after it. Any other `.` is [`Token::SpacedDot`], which the grammar has no
+    /// production for. That includes a `.` after a token that cannot end an operand, as in
+    /// `(.name)`, `[.name]` and `a,.name`, however close it sits: it opens an expression
+    /// and is not the right-hand side of an access.
     ///
     /// This is decided here and not in the `QualVarIdent`/`QualTypeIdent` actions of
     /// `grammar.lalrpop`, for two reasons. Whitespace is only visible here: the grammar
@@ -1077,9 +1148,13 @@ where
     /// tell the two spellings apart where it needs to. Records need exactly that: `f
     /// .name` is `f` applied to an accessor and `f.name` is an access, and a grammar
     /// that gets the same token for both can only be made to distinguish them by
-    /// resolving a conflict in an action. A grammar that gets a different token for each
-    /// has no conflict to resolve, so `LANG-50` splits [`Token::SpacedDot`] by what
-    /// follows it and adds the productions, and does not move the rule.
+    /// resolving a conflict in an action. With the two spellings split into two tokens,
+    /// `Dot` is an access or a qualification and `SpacedDot` is never either. Where the
+    /// `.` opens an expression it is `SpacedDot` and never `Dot`, so a `Dot` production
+    /// for the accessor is not needed: `(.name)` begins with `SpacedDot` like `f .name`.
+    /// What this does not decide is the second half of the accessor's own spelling, that
+    /// its `.` is written against its label: `.name` and `. name` are both `SpacedDot`
+    /// followed by a name, and a grammar that rejects the second has to look at the spans.
     ///
     /// Adjacency is compared against where the previous token ended, not against the
     /// previous character, so a block comment between a name and its dot — `Dict{- -}.get`
@@ -1110,7 +1185,7 @@ where
                     (Some(c), _) => c.is_whitespace(),
                 };
 
-                if self.previous_token_end == Some(start_pos.absolute) && !after_is_apart {
+                if self.previous_operand_end == Some(start_pos.absolute) && !after_is_apart {
                     Token::Dot
                 } else {
                     Token::SpacedDot
@@ -1817,6 +1892,106 @@ mod tests {
         );
         assert_eq!(tokenize(".size"), vec![Token::SpacedDot, low("size")]);
         assert_eq!(tokenize("Widget."), vec![up("Widget"), Token::SpacedDot]);
+    }
+
+    /// A `.` is written against the token before it only when that token can end an
+    /// operand. Any other token before it leaves the `.` opening an expression, so it is
+    /// `SpacedDot` however close it sits: `(.name)`, `[.name]`, `a,.name`, `then.name`.
+    ///
+    /// Verified to fail by making `ends_an_operand` answer `true` for every token: the
+    /// first group then fails; and by making it answer `false` for `RPar`, `RBracket` and
+    /// the string literal: the second group then fails.
+    #[test]
+    fn a_dot_after_a_token_that_cannot_end_an_operand_is_spaced() {
+        let up = |s: &str| Token::UpperIdentifier(s.to_owned());
+        let low = |s: &str| Token::LowerIdentifier(s.to_owned());
+
+        assert_eq!(
+            tokenize("(.name)"),
+            vec![Token::LPar, Token::SpacedDot, low("name"), Token::RPar]
+        );
+        assert_eq!(
+            tokenize("[.name]"),
+            vec![
+                Token::LBracket,
+                Token::SpacedDot,
+                low("name"),
+                Token::RBracket
+            ]
+        );
+        assert_eq!(
+            tokenize("a,.name"),
+            vec![low("a"), Token::Comma, Token::SpacedDot, low("name")]
+        );
+        assert_eq!(
+            tokenize("f (.name) r"),
+            vec![
+                low("f"),
+                Token::LPar,
+                Token::SpacedDot,
+                low("name"),
+                Token::RPar,
+                low("r")
+            ]
+        );
+        assert_eq!(
+            tokenize("then.name"),
+            vec![Token::Then, Token::SpacedDot, low("name")]
+        );
+        assert_eq!(
+            tokenize("else.name"),
+            vec![Token::Else, Token::SpacedDot, low("name")]
+        );
+        assert_eq!(
+            tokenize("of.name"),
+            vec![Token::Of, Token::SpacedDot, low("name")]
+        );
+
+        // The tokens that can end an operand keep the `.` attached.
+        assert_eq!(
+            tokenize("(f x).y"),
+            vec![
+                Token::LPar,
+                low("f"),
+                low("x"),
+                Token::RPar,
+                Token::Dot,
+                low("y")
+            ]
+        );
+        assert_eq!(
+            tokenize("[a].y"),
+            vec![
+                Token::LBracket,
+                low("a"),
+                Token::RBracket,
+                Token::Dot,
+                low("y")
+            ]
+        );
+        assert_eq!(
+            tokenize("\"s\".y"),
+            vec![
+                Token::String {
+                    value: "s".to_owned()
+                },
+                Token::Dot,
+                low("y")
+            ]
+        );
+        assert_eq!(
+            tokenize("'c'.y"),
+            vec![Token::Char { value: 'c' }, Token::Dot, low("y")]
+        );
+        assert_eq!(
+            tokenize("r.centre.x"),
+            vec![low("r"), Token::Dot, low("centre"), Token::Dot, low("x")]
+        );
+        assert_eq!(tokenize("left.x"), vec![Token::Left, Token::Dot, low("x")]);
+        assert_eq!(
+            tokenize("Widget.size"),
+            vec![up("Widget"), Token::Dot, low("size")]
+        );
     }
 
     /// `=>` is its own token, the separator of a constraint context, and a longer

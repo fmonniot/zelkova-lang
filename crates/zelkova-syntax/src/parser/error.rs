@@ -32,15 +32,21 @@ pub enum Error {
     InfixPrecedenceOutOfRange {
         precedence: Spanned<BytePos, i64>,
     },
-    /// A `.` with whitespace on a side of it — `Widget . size`, `Widget .size`,
-    /// `Widget. size`, `import Ui . Widget`. The tokenizer reads such a `.` as
-    /// `Token::SpacedDot`, which no production consumes, so the parser reports it as an
-    /// unexpected token and `From<ParseError>` turns that into this. `dot` is the `.`.
+    /// A `.` the tokenizer did not read as `Token::Dot`: one with whitespace on a side
+    /// of it — `Widget . size`, `Widget .size`, `Widget. size`, `import Ui . Widget` —
+    /// or one opening an expression, as in `(.name)`. No production consumes
+    /// `Token::SpacedDot`, so the parser reports it as an unexpected token and
+    /// `From<ParseError>` turns that into this. `dot` is the `.`.
     ///
-    /// The message speaks of a qualified name because that is the only construct that
-    /// has a `.` today, and the spelling it rejects looks reasonable.
+    /// `continues_a_name` is whether the parser, at the point it met the `.`, would have
+    /// accepted a `Token::Dot` there: it had read an uppercase name that a `.` extends into
+    /// a qualified name, and the whitespace is what stopped it. Only then does the message
+    /// speak of a qualified name; `main = .name`, `f .name` and `main = 1 .` have no
+    /// qualified name in them, and advice about one would be about something the user did
+    /// not write.
     SpacedDot {
         dot: Span<BytePos>,
+        continues_a_name: bool,
     },
 }
 
@@ -233,13 +239,24 @@ impl Error {
                     "Zelkova represents an operator's precedence as one byte, so it must be between 0 and 255".to_owned()
                 ]),
 
-            Error::SpacedDot { dot } => Diagnostic::error()
+            Error::SpacedDot {
+                dot,
+                continues_a_name: true,
+            } => Diagnostic::error()
                 .with_message("a qualified name is written with no spaces around its `.`")
                 .with_labels(vec![Label::primary(name, non_empty(dot.to_range()))
                     .with_message("this `.` has whitespace next to it")])
                 .with_notes(vec![
                     "write the name in one piece, as in `Dict.get` or `Ui.Widget`".to_owned()
                 ]),
+
+            Error::SpacedDot {
+                dot,
+                continues_a_name: false,
+            } => Diagnostic::error()
+                .with_message("unexpected `.`")
+                .with_labels(vec![Label::primary(name, non_empty(dot.to_range()))
+                    .with_message("a `.` cannot be used here")]),
         }
     }
 }
@@ -292,9 +309,11 @@ impl From<ParseError<BytePos, Token, Error>> for Error {
             },
             ParseError::UnrecognizedToken {
                 token: (start, Token::SpacedDot, end),
-                ..
+                expected,
             } => Error::SpacedDot {
                 dot: Span { start, end },
+                // The terminal is spelled `"."` in the grammar, and lalrpop quotes it.
+                continues_a_name: expected.iter().any(|terminal| terminal == "\".\""),
             },
             ParseError::UnrecognizedToken { token, expected } => Error::UnexpectedToken {
                 token: token.into(),
