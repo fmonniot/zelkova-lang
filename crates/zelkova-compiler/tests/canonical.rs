@@ -5708,6 +5708,201 @@ fn a_hole_inside_a_record_is_held_by_its_declaration() {
     }
 }
 
+// ── Record patterns ──────────────────────────────────────────────────────────
+//
+// `docs/spec/records.md`, *Record patterns*: a record pattern reaches the canonical
+// module as its entries, in the order written, each a label and a whole pattern; it
+// binds what those patterns bind and nothing for its labels; and a label given twice is
+// the error the other three record forms report.
+
+/// The patterns `name` was declared with, its parameters in order.
+fn parameters_of<'m>(module: &'m canonical::Module, name: &str) -> Vec<&'m canonical::Pattern> {
+    match module.values.get(&name.into()) {
+        Some(canonical::Value::Value { patterns, .. }) => patterns.iter().collect(),
+        Some(canonical::Value::TypedValue { patterns, .. }) => {
+            patterns.iter().map(|(pattern, _)| pattern).collect()
+        }
+        None => panic!("expected `{}` to be a value", name),
+    }
+}
+
+/// A record pattern is `PatternKind::Record`, its entries in the order they were written
+/// — `b` before `a` — each keeping its label's span and its own pattern, canonicalized as
+/// any pattern is.
+///
+/// Mutation-checked twice: sorting the entries by label in `Pattern::from_parser`'s record
+/// arm (the label assertion sees `a` first), and giving each entry the record pattern's
+/// span in place of its label's (the label range assertion goes red).
+#[test]
+fn a_record_pattern_keeps_its_entries_in_written_order() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        f { b = x, a = 1 } =
+          x
+    "#};
+    let module = canonicalize_with_scalars(source).expect("a record pattern canonicalizes");
+
+    let [pattern] = parameters_of(&module, "f")[..] else {
+        panic!("expected one parameter");
+    };
+    let canonical::PatternKind::Record(entries) = &pattern.kind else {
+        panic!("expected a record pattern, got {:?}", pattern);
+    };
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| entry.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["b", "a"]
+    );
+    assert_eq!(entries[0].pattern, p_var("x"));
+    assert_eq!(
+        entries[1].pattern,
+        canonical::Pattern::bare(canonical::PatternKind::Int(1))
+    );
+    assert_eq!(
+        entries[0].label_span.to_range(),
+        Some(range_of(source, "b =").start..range_of(source, "b =").start + 1)
+    );
+    assert_eq!(
+        pattern.span.to_range(),
+        Some(range_of(source, "{ b = x, a = 1 }"))
+    );
+}
+
+/// A record pattern binds what its entries' patterns bind, at any depth: `x` from the
+/// shorthand inside a field, `t` from a field's variable, the record inside a
+/// constructor's argument. It binds nothing for a label: `centre` names a field, and a
+/// body using it is a name that does not resolve.
+///
+/// Mutation-checked twice: making `ScopedEnvironment::expose_pattern`'s record arm expose
+/// nothing (`x` and `t` are then unresolved and `depth` is not a value), and making it
+/// expose each entry's label as a variable as well (`centre` then resolves and the
+/// assertion on the errors goes red).
+#[test]
+fn a_nested_record_pattern_binds_its_entries_variables_and_not_its_labels() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Celsius
+          = Celsius
+
+        type Reading
+          = Reading { centre : { x : Celsius }, taken : Celsius }
+
+        depth r =
+          case r of
+            Reading { centre = { x }, taken = t } ->
+              (x, t)
+
+        label r =
+          case r of
+            Reading { centre = { x } } ->
+              centre
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &scalar_interfaces());
+
+    match errors.as_slice() {
+        [canonical::Error::VariableNotFound(name, span, _)] => {
+            assert_eq!(name.unqualified_name().as_str(), "centre");
+            assert_eq!(span.to_range(), Some(nth_range_of(source, "centre", 3)));
+        }
+        other => panic!("expected `centre` alone to be unresolved, got {:?}", other),
+    }
+
+    let canonical::ExpressionKind::Case(_, branches) = &body_of(&module, "depth").kind else {
+        panic!("expected `depth` to be a `case`");
+    };
+    assert_eq!(
+        branches[0].expression,
+        c_tuple(Tuple::two(c_var_local("x"), c_var_local("t")))
+    );
+}
+
+/// A name bound by two entries is not reported here, as one bound by two tuple elements
+/// is not: both are `LANG-18`'s gap, and in both the body's `x` resolves to a local.
+///
+/// Mutation-checked by making `ScopedEnvironment::expose_pattern`'s record arm expose
+/// nothing: `x` is then unresolved in `record` alone and the comparison goes red.
+#[test]
+fn a_name_bound_by_two_entries_is_treated_as_one_bound_by_two_tuple_elements() {
+    let module = canonicalize_with_scalars(indoc::indoc! {r#"
+        module Test exposing ()
+
+        tuple (x, x) =
+          x
+
+        record { a = x, b = x } =
+          x
+    "#})
+    .expect("a repeated name is not reported (LANG-18)");
+
+    assert_eq!(body_of(&module, "tuple"), &c_var_local("x"));
+    assert_eq!(body_of(&module, "record"), body_of(&module, "tuple"));
+}
+
+/// A label given twice in a record pattern is the error the other three forms report,
+/// its caret under the repeat and the first entry's label named, the shorthand included,
+/// and its message says it was found in a record pattern.
+///
+/// Mutation-checked three times: removing the `repeated_labels` call from
+/// `Pattern::from_parser`'s record arm (the module then canonicalizes and `expect_err`
+/// panics), passing it `RecordForm::Record` (the form assertion goes red), and spelling
+/// `RecordForm::Pattern`'s message "record" (the message assertion goes red).
+#[test]
+fn a_label_repeated_in_a_record_pattern_is_an_error_at_the_repeat() {
+    use zelkova_compiler::PhaseError;
+
+    for source in [
+        "module Test exposing ()\n\nf { abc = x, b = y, abc = z } =\n  1\n",
+        "module Test exposing ()\n\nf { abc, b, abc } =\n  1\n",
+    ] {
+        let errors = canonicalize_with_scalars(source).expect_err("`abc` is given twice");
+
+        let [error] = errors.as_slice() else {
+            panic!("{}: expected one error, got {:?}", source, errors);
+        };
+        assert_repeated_at(
+            error,
+            "abc",
+            canonical::RecordForm::Pattern,
+            nth_range_of(source, "abc", 1),
+            nth_range_of(source, "abc", 0),
+        );
+        assert_eq!(
+            error.message(),
+            "`abc` labels two fields of one record pattern, and a label may be given only once"
+        );
+    }
+}
+
+/// A constructor that does not resolve inside a record pattern's entry is a hole, the
+/// declaration holding it says so, and what the hole's arguments bind is in scope: `y`
+/// is not reported.
+///
+/// Mutation-checked twice: making `pattern_holds_hole`'s record arm answer `false`
+/// (`holds_hole` then answers `false` for `f`), and making
+/// `ScopedEnvironment::expose_pattern`'s record arm expose nothing (`y` is then a second
+/// missing name and the assertion on the errors goes red).
+#[test]
+fn a_hole_inside_a_record_pattern_is_held_by_its_declaration() {
+    let source =
+        "module Test exposing ()\n\nf r =\n  case r of\n    { a = (Nope y) } ->\n      y\n";
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &scalar_interfaces());
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::VariantNotFound(..)]),
+        "got {:?}",
+        errors
+    );
+    let value = module.values.get(&"f".into()).expect("`f` is kept");
+    assert!(value.holds_hole(), "`f` holds a hole");
+}
+
 // ── Reading a field ──────────────────────────────────────────────────────────
 //
 // `docs/spec/records.md`, *Reading a field* and *The accessor*: `r.name` and `.name`

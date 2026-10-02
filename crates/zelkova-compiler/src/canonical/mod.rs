@@ -791,10 +791,10 @@ pub enum PatternKind {
     /// field set a [`Type::Record`] is, and it is not keyed by label the way that one
     /// is. No label appears twice — `Pattern::from_parser` reports a repeated one as
     /// [`Error::RepeatedLabel`] — and what the pattern matches does not depend on the
-    /// order of its entries. The written order is kept as a tuple's is: a variable bound
-    /// in two entries is exposed in that order by `ScopedEnvironment::expose_pattern`,
-    /// the way one bound in two elements of a tuple is (`LANG-18`). Each entry keeps its
-    /// label's span, which is where a diagnostic about that field points.
+    /// order of its entries. They are kept as the source wrote them, as a tuple's
+    /// elements are, and `ScopedEnvironment::expose_pattern` walks them in that order.
+    /// Each entry keeps its label's span, which is where a diagnostic about that field
+    /// points.
     ///
     /// Refutable exactly when one of its entries' patterns is (`{ x }` cannot fail,
     /// `{ x = 0 }` can). Nothing here records that, and nothing may read a record
