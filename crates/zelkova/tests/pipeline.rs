@@ -1308,7 +1308,7 @@ fn type_error_labels_the_expression_that_disagrees() {
 
     // The phase is part of the contract: this must be the type error, not a
     // canonicalization failure that happened to land on the same line.
-    match unwrap_in_file(errors[0]) {
+    match unwrap_in_file(&errors[0]) {
         CompilationError::Type(type_errors, module) => {
             assert_eq!(module, &Name::from("Mismatch"));
             assert_eq!(type_errors.len(), 1, "got {:?}", type_errors);
