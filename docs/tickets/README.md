@@ -463,6 +463,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-23](gen-23.md) | task | — | open | An `unsafe` facade's forwarding code does not catch what its companion throws |
 | [GEN-24](gen-24.md) | task | — | open | A class member, an instance and a constrained function are not emitted |
 | [GEN-25](gen-25.md) | task | — | open | A record, a field access, an update, an accessor and a record pattern are not emitted |
+| [GEN-26](gen-26.md) | task | — | open | A `case` over a tuple of constructors emits code exponential in its number of branches |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

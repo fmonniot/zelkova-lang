@@ -39,9 +39,16 @@
 //! a whole.
 //!
 //! That fallback tree is copied into each such `default` rather than shared, since a
-//! [`Decision`] is a tree and not a graph: a pattern with one refutable part costs one
-//! copy, and a pattern with several refutable sub-patterns copies it once per refutable
-//! sub-pattern.
+//! [`Decision`] is a tree and not a graph. A branch with `k` refutable parts (each
+//! constructor or literal anywhere in its pattern) holds `k` copies of the tree for the
+//! branches after it, and those branches were built the same way, so the tree's size is
+//! the *product* over the branches of each one's `k`, not the sum. A pattern that tests
+//! at most one value, as every branch did while a sub-pattern below the top could only
+//! be irrefutable, keeps that linear. A `case` over a tuple of constructors does not:
+//! eight branches over `(Flag, Flag, Flag)` come to 3^8 copies of the final `Fail` and
+//! 2.2 MB of JavaScript, and sixteen over a `(Msg, State)` pair to 2^16 copies and about
+//! 40 MB. Nothing bounds it or reports it. `GEN-26` tracks the fix; this pass does not
+//! do it.
 //!
 //! A sub-pattern may be any pattern, so a constructor or a literal nested inside another
 //! pattern is a `Test` below [`Occurrence::Root`], and a binding may sit any number of
@@ -107,7 +114,8 @@ pub struct Binding {
 /// `'a` is the lifetime of the [`TypedTerm`] the branches were built from: a leaf
 /// borrows its branch's body rather than cloning it, since [`TypedTerm`] carries no
 /// `Clone` impl. A body can appear in more than one leaf once a fallback tree is copied
-/// (see this module's doc comment), which a borrow makes free.
+/// (see this module's doc comment), which a borrow makes free in the IR; a backend that
+/// writes each leaf out writes the body once per leaf (`GEN-26`).
 ///
 /// Two trees are equal when they have the same shape and each pair of leaves borrows
 /// the *same* body — compared by address, since [`TypedTerm`] has no `PartialEq`. That
