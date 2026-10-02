@@ -46,9 +46,9 @@ the module that holds it. A pattern naming a label the record does not have is a
    is blamed on the sub-pattern.
 
 3. **An entry's sub-pattern is a whole pattern**, translated by `translate_sub_pattern` like a
-   constructor's argument. [`LANG-16`](lang-16.md) is ahead of this in the order and lifts that
-   function's refusal of anything but a variable, `_` and `()`, so `{ taken = Celsius }` — a
-   constructor in a field — is checked with nothing written here for it.
+   constructor's argument. That function translates any pattern at any depth (`LANG-16`,
+   closed), so `{ taken = Celsius }` — a constructor in a field — is checked with nothing
+   written here for it.
 
 4. **`decision_tree` needs an arm the day the variant exists.** A record has one shape, so the
    pattern itself tests nothing, and each entry is a sub-occurrence reached by its label: `Step`

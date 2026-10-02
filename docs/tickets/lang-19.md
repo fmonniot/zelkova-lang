@@ -35,9 +35,10 @@ literal pattern never covers a type on its own, so a `case` over a numeric or ch
 needs a wildcard or a variable branch; a tuple is covered when the product of its elements'
 coverage is.
 
-Sequence after [LANG-16](lang-16.md) and [LANG-17](lang-17.md): nested constructor patterns
-are the case the algorithm is hardest for and cannot be written today, and an unchecked arity
-would make a pattern's shape disagree with the constructor it names.
+Sequence after [LANG-17](lang-17.md): an unchecked arity would make a pattern's shape disagree
+with the constructor it names. Nested constructor patterns, the case the algorithm is hardest
+for, parse and type check (`LANG-16`, closed), so the algorithm has to handle them from the
+start.
 
 Two things to keep straight. Declaration clauses are the same question one level up, and
 `MultipleBindingsUnsupported` means a declaration has exactly one clause today — so the

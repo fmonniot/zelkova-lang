@@ -170,10 +170,10 @@ declarations it is about, and not closed by it.
 
 ## Active work: records
 
-Four tickets remain of one body of work — `LANG-49`, `LANG-51`, `LANG-84` and `GEN-25` — and a
-fifth, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
-parts can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says which part
-is which by position and stops at three.
+Four tickets remain of one body of work — `LANG-49`, `LANG-51`, `LANG-84` and `GEN-25`. The
+goal is that **a value of several parts can name them** —
+`{ taken : Celsius, expected : Celsius }` where a tuple says which part is which by position
+and stops at three.
 
 They get a section for the reason the type classes do: none of them is a record on its own. A
 record has a spelling in the type, expression and pattern grammars and a rule in the typer, and
@@ -197,15 +197,14 @@ accessor parse and reach the canonical module, the type as a set of fields, and 
 is reported as `canonical::Error::RepeatedLabel`. Until `LANG-51` a declaration holding a record
 or reading a field is one the typer leaves unchecked, so the emitter refuses its module.
 
+`LANG-16`, which the order took as a prerequisite, has landed too: a pattern nests to any depth,
+an applied constructor written as a sub-pattern being parenthesised, and the typer checks a
+nested pattern as it does one at the top. That is what the first record-pattern block in two
+chapters needs, since it matches a constructor inside a field, and what `LANG-84` relies on.
+
 The rest land in this order, one at a time:
 
 ```
-LANG-16  a pattern nests, and is type checked where it does
-  │      ← not a record ticket. Here because the first record-pattern
-  │        block in two chapters matches a constructor inside a field,
-  │        which no sub-pattern may be today, and because it lifts the
-  │        typer's refusal of a nested pattern, which LANG-84 relies on
-  │
 LANG-49  a record pattern parses, the `{ x }` shorthand included
   │      ← reports a repeated label the way the other three forms do
   │
@@ -365,7 +364,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-13 | task | — | closed 2026-09-19 | A package has no manifest, and its name is hardcoded |
 | LANG-14 | task | — | closed 2026-09-20 | Nothing implements a package boundary |
 | LANG-15 | task | — | closed 2026-09-20 | A package has no test root, and nothing runs a package's tests |
-| [LANG-16](lang-16.md) | task | — | open | A constructor pattern may not nest, and may not be parenthesised in a `case` branch |
+| LANG-16 | task | — | closed 2026-10-02 | A constructor pattern may not nest, and may not be parenthesised in a `case` branch |
 | [LANG-17](lang-17.md) | task | — | open | A constructor pattern's arity is never checked |
 | [LANG-18](lang-18.md) | task | — | open | A pattern may bind the same name more than once |
 | [LANG-19](lang-19.md) | task | — | open | Nothing checks that a `case` covers its type |
