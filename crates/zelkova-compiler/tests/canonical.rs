@@ -5135,9 +5135,10 @@ fn an_unresolved_constructor_pattern_binds_its_arguments() {
 /// leaves its infix chain with nothing to associate by, so the declaration is broken as
 /// before.
 ///
-/// Mutation-checked by answering `resolve_infix_operator`'s failure with a hole in the
-/// `InfixChain` arm of `Expression::from_parser` — the operand left in place of the
-/// chain — which makes `g` a value.
+/// Mutation-checked by answering an operator `resolve_infix_operator` cannot resolve with
+/// a hole standing for the whole chain, in the `InfixChain` arm of
+/// `Expression::from_parser`: `g` is then a value and the assertion on `values` goes
+/// red.
 #[test]
 fn an_unresolved_operator_still_breaks_its_declaration() {
     let source = indoc::indoc! {r#"

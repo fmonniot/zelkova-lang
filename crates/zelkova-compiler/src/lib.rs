@@ -1884,10 +1884,11 @@ struct RootCheck {
 ///   claimed as checked even when its tree is whole and none of its declarations is
 ///   broken.
 ///
-/// A module with a declaration in [`canonical::Module::broken`] is never among the
-/// ones that checked either, and needs no condition of its own: a declaration is only
-/// recorded there beside a syntax error, beside an error that is in the list, or beside
-/// one that was dropped, and a dropped error is one raised in an incomplete scope.
+/// A module with a declaration in [`canonical::Module::broken`], or with a hole in one
+/// of its declarations, is never among the ones that checked either, and needs no
+/// condition of its own: a declaration is only recorded as broken, and a name is only a
+/// hole, beside a syntax error, beside an error that is in the list, or beside one that
+/// was dropped, and a dropped error is one raised in an incomplete scope.
 fn check_root(
     package: &resolve::ResolvedPackage,
     root: source::SourceRoot,
@@ -2036,11 +2037,14 @@ pub fn check_module(
 /// of them reported anything. An empty error list does not say that the module checked
 /// whole: a not-found error raised in an [incomplete](canonical::Module::incomplete)
 /// scope is dropped, so a module can come back with no error and with declarations in
-/// [`canonical::Module::broken`]; the driver reads those two beside the list.
+/// [`canonical::Module::broken`] or holding a hole; the driver reads the flag beside the
+/// list.
 ///
 /// Its IR holds a typed declaration for every value the typer did not reject, and lists
 /// each rejected one, and each declaration canonicalization recorded in [`canonical::Module::broken`], in [`ir::Module::unchecked`] with
-/// [`reported`](ir::Unchecked::reported) set, which no backend emits.
+/// [`reported`](ir::Unchecked::reported) set, which no backend emits. A name that did not
+/// resolve stands in a typed declaration as a [hole](ir::TypedTermKind::Hole), which no
+/// backend emits either.
 ///
 /// TODO canonicalization must happens before checkings, because type check (at least)
 /// will require access to other modules canonical representation.

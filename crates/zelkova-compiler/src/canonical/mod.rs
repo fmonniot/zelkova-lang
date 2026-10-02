@@ -2764,8 +2764,10 @@ fn unparsed_values(source: &parser::Module) -> HashMap<Name, NodeSpan> {
 /// made the scope incomplete stands in the build. It would restate one if a function that
 /// failed were ever left out of that function list.
 ///
-/// Dropping an error does not make its declaration sound. The caller has already left the
-/// declaration out of the module, and keeps it left out.
+/// Dropping an error does not make its declaration sound. A declaration the error broke
+/// has already been left out of the module by the caller, and stays left out; one whose
+/// error was a name that did not resolve keeps the hole standing for it, which no backend
+/// emits.
 fn without_restated(errors: Vec<Error>, incomplete: bool) -> Vec<Error> {
     if !incomplete {
         return errors;

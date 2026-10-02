@@ -15,7 +15,7 @@ use indoc::indoc;
 use zelkova_compiler::canonical::Value;
 use zelkova_compiler::name::Name;
 use zelkova_compiler::{check_module, CheckedModule, Interface, PackageName, PhaseError};
-use zelkova_js::{Error, Unions, Unpredicated};
+use zelkova_js::{Construct, Error, Unions, Unpredicated};
 use zelkova_syntax::position::NodeSpan;
 
 #[path = "../../zelkova-compiler/tests/support/mod.rs"]
@@ -1929,5 +1929,100 @@ fn std_cores_task_module_emits_with_every_handoff_a_bounce() {
             helper,
             body
         );
+    }
+}
+
+/// The module `source` canonicalizes and types to beside its errors, which here are the
+/// error of a name that did not resolve: such a module still has a typed tree, and a
+/// hole in it.
+fn checked_with_a_hole(source: &str) -> CheckedModule {
+    let interfaces = HashMap::from([basics_interface()]);
+    match zelkova_compiler::check_module_recovering(
+        &test_package(),
+        &interfaces,
+        &parse_source(source),
+    ) {
+        zelkova_compiler::dependencies::Outcome::Module(module, errors) => {
+            assert!(!errors.is_empty(), "expected the hole's error");
+            module
+        }
+        zelkova_compiler::dependencies::Outcome::Failed(error) => {
+            panic!("expected a module beside its errors, got {:?}", error)
+        }
+    }
+}
+
+/// A hole is refused by name: `g` is typed, so it is no unchecked declaration, and
+/// emitting it is what has to refuse the name that did not resolve, with a caret under
+/// it.
+///
+/// Mutation-checked by emitting `undefined` for a `TypedTermKind::Hole` in
+/// `Emitter::expression`: the module is then emitted.
+#[test]
+fn a_hole_is_refused_by_name() {
+    let source = indoc! {r#"
+        module Test exposing (g)
+
+        f : Int -> Int
+        f x = x
+
+        g : Int
+        g = f nope
+    "#};
+    let module = checked_with_a_hole(source);
+    assert!(
+        module.ir.unchecked.is_empty(),
+        "got {:?}",
+        module.ir.unchecked
+    );
+
+    match zelkova_js::emit(&module, true, &unions_of(&module)) {
+        Ok(text) => panic!("expected the hole to be refused, got:\n{}", text),
+        Err(errors) => match errors.as_slice() {
+            [Error::Unsupported {
+                construct: Construct::Hole,
+                declaration,
+                span,
+            }] => {
+                assert_eq!(declaration, &Name::new("g"));
+                let start = position(source, "nope");
+                assert_eq!(span.to_range(), Some(start..start + "nope".len()));
+            }
+            other => panic!("expected one refused hole, got {:?}", other),
+        },
+    }
+}
+
+/// A `case` whose pattern is a constructor that did not resolve is refused before its
+/// decision tree is built, with a caret under the pattern.
+///
+/// Mutation-checked by removing the check for a pattern hole from
+/// `Emitter::case_expression`: the tree treats the hole as a wildcard, and the module is
+/// emitted.
+#[test]
+fn a_case_matching_a_pattern_hole_is_refused() {
+    let source = indoc! {r#"
+        module Test exposing (h)
+
+        h : Int -> Int
+        h x =
+          case x of
+            Nope y -> y
+    "#};
+    let module = checked_with_a_hole(source);
+
+    match zelkova_js::emit(&module, true, &unions_of(&module)) {
+        Ok(text) => panic!("expected the pattern hole to be refused, got:\n{}", text),
+        Err(errors) => match errors.as_slice() {
+            [Error::Unsupported {
+                construct: Construct::Hole,
+                span,
+                ..
+            }] => {
+                let start = position(source, "Nope y");
+                assert_eq!(span.to_range(), Some(start..start + "Nope y".len()));
+            }
+            other => panic!("expected one refused hole, got {:?}", other),
+        },
     }
 }

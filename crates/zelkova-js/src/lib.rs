@@ -249,7 +249,8 @@ pub enum Error {
         found: Unpredicated,
         constructor: Option<QualName>,
     },
-    /// A construct this backend does not emit yet.
+    /// A construct this backend does not emit: one the front end does not accept yet,
+    /// or a name that did not resolve.
     Unsupported {
         construct: Construct,
         /// The declaration it was written in.

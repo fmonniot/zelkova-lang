@@ -30,7 +30,8 @@
 //! A branch's pattern is lowered by walking it, and then its sub-patterns, depth first
 //! and left to right, each at the [`Occurrence`] that leads to it from the scrutinee. A
 //! wildcard tests nothing and binds nothing, and neither does `()`, whose type has
-//! one value. A variable binds the value at its occurrence. A tuple tests nothing,
+//! one value, nor a constructor that did not resolve, which has no case to test for and
+//! is never emitted. A variable binds the value at its occurrence. A tuple tests nothing,
 //! since a value of a tuple type is always a tuple, and goes on to its elements. A
 //! literal or a constructor is a `Test` at its occurrence; a constructor then goes on
 //! to its arguments. Every `Test` on the way down falls back, as its `default`, to the

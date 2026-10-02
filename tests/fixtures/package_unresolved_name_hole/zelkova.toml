@@ -1,0 +1,11 @@
+# `A`'s `g` applies `f` to a name nothing declares, so the name is a hole and `g` keeps its
+# typed tree. `crates/zelkova/tests/pipeline.rs` checks that the hole's error is the build's
+# one error, that `A` is still not among the modules that checked, and that the build
+# writes nothing.
+name = "package-unresolved-name-hole"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]
