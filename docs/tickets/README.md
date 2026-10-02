@@ -190,12 +190,14 @@ TOOL-4  every syntax error of a module is          ← closed: `parse_recovering
   │       reported, and the declarations that         only, the module is still dropped
   │       parsed are handed back                      from the build
   │
-TOOL-8  a module with a type error still publishes  ← the next one to start; builds the
-  │       its interface and has a typed tree           shape the four below extend
+TOOL-8  a module with a type error still publishes  ← closed: `Outcome`,
+  │       its interface and has a typed tree           `check_module_recovering`,
+  │                                                    `PackageCheck::failing`
   │
-TOOL-9  a declaration that fails canonicalization   ← closes BUG-34: each sub-pass of
-  │       is recorded, and the rest of its module      `canonicalize` hands back what it
-  │       survives                                     resolved
+TOOL-9  a declaration that fails canonicalization   ← the next one to start; closes
+  │       is recorded, and the rest of its module      BUG-34: each sub-pass of
+  │       survives                                     `canonicalize` hands back what it
+  │                                                    resolved
   │
 TOOL-10 a failed type, operator or import marks     ← the rule that drops an error which
   │       its scope incomplete                         only restates one already reported
@@ -474,7 +476,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TOOL-5 | task | — | closed 2026-10-01 | The compiler, its JavaScript backend and its command line are one crate |
 | [TOOL-6](tool-6.md) | task | — | open | There is no language server |
 | TOOL-7 | task | — | closed 2026-10-01 | The checking pipeline names its backend, its runners and the test package |
-| [TOOL-8](tool-8.md) | task | — | open | A module that fails type checking hides itself from its importers and from the editor |
+| TOOL-8 | task | — | closed 2026-10-01 | A module that fails type checking hides itself from its importers and from the editor |
 | [TOOL-9](tool-9.md) | task | — | open | A declaration that fails canonicalization takes its whole module with it |
 | [TOOL-10](tool-10.md) | task | — | open | A failed type, operator or import is reported again by everything that names it |
 | [TOOL-11](tool-11.md) | task | — | open | A module with a syntax error is dropped from the build |

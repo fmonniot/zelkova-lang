@@ -3,10 +3,10 @@
 //!
 //!# How to compile a package ?
 //!
-//! Note: an interface is built for every module that checks and kept for whatever
-//! imports it, within this package and in the packages that depend on it. What is
-//! still missing is emitting one, so a dependency is compiled from source on every
-//! build.
+//! Note: an interface is built for every module that canonicalizes and kept for whatever
+//! imports it within its package; a package that checks also offers its modules'
+//! interfaces to the packages that depend on it. What is still missing is emitting one,
+//! so a dependency is compiled from source on every build.
 //!
 //! 1. Read the package's `zelkova.toml` manifest, and resolve the build: every package
 //!    reachable through `dependencies`, plus the root package's `test-dependencies`, each
@@ -31,11 +31,15 @@
 //!     1. build it
 //!     2. Verify there is no cyclic relation between modules
 //! 5. Following the deps graph,
-//!     1. canonicalize each modules
+//!     1. canonicalize each modules. A module that canonicalized publishes its
+//!        `Interface` to the modules checked after it, whatever the later checks find
+//!        in it; one that did not publishes nothing
 //!     1. check each module (type check, exhaustiveness, etc…), and build the `ir::Module`
-//!        a backend reads out of the canonical module and what the typer solved
+//!        a backend reads out of the canonical module and what the typer solved. The IR
+//!        is built whether or not the typer rejected a declaration, and lists each
+//!        rejected one as unchecked
 //!     1. Bonus point to parallelize the tree branches which are not dependent on each others
-//! 6. Report. Each phase returns every error it found, `check_module` tags those with
+//! 6. Report. Each phase returns every error it found, `check_module_recovering` tags those with
 //!    the module they came from, and `check_package` accumulates them across modules and
 //!    hands them back with the file database and every status line, printing nothing.
 //!    See the `PhaseError` trait for what a phase error owes the `Diagnostic` it renders
@@ -56,7 +60,7 @@ pub mod canonical;
 // `dependencies` puts the matching edges in the import graph.
 pub mod default_imports;
 // Public so that `crates/zelkova/tests/pipeline.rs` can drive `ModuleWalker::check_in_order` with the
-// real `check_module`, which is the only seam that observes the modules that checked
+// real `check_module_recovering`, which is the only seam that observes the modules that checked
 // successfully alongside the ones that failed (`BUG-2`) — `compile_package` only reports
 // them to stderr. `dependencies::Error` was already reachable from the public
 // `CompilationError::DependenciesError`, so this names an existing part of the API
@@ -762,7 +766,7 @@ impl CompilationError {
 // here. Both used to exist and neither could be written honestly: a `CompilationError`
 // needs the name of the module its error belongs to, and a phase error does not know
 // it. `From` has nowhere to get it from, so the two impls lost information instead —
-// one discarded the error and the other panicked. `check_module` is the one place that
+// one discarded the error and the other panicked. `check_module_recovering` is the one place that
 // knows both halves, so that is where the conversion happens (see `ERR-2` in
 // `docs/tickets/README.md`).
 
@@ -807,10 +811,11 @@ enum TestRoot {
     Compiled,
 }
 
-/// One module of a build that checked, with the file it was read from and the source root
-/// it was read under.
+/// One module of a build the check built a tree for, with the file it was read from and
+/// the source root it was read under. Which list of [`PackageCheck`] holds it says
+/// whether it checked.
 pub struct CheckedSource {
-    /// The module, as [`check_module`] handed it back.
+    /// The module, as [`check_module_recovering`] handed it back.
     pub module: CheckedModule,
     /// The file it was read from, which an error's labels about it point into. `None` for
     /// no module today, since only a module that parsed from a file can be checked.
@@ -851,8 +856,13 @@ pub struct PackageCheck {
     /// modules below indexes into.
     pub sources: SourceFiles,
     /// Every module that checked of every package the plain build holds — the root's
-    /// `src/` and its `dependencies`, direct or not — dependencies first. A package with
-    /// any error contributes none of its modules.
+    /// `src/` and its `dependencies`, direct or not — dependencies first. A package whose
+    /// own `src/` was checked and reported an error in it contributes none of its
+    /// modules here: the ones it built a tree for are in
+    /// [`failing`](PackageCheck::failing). A package that was never checked, because a
+    /// dependency did not compile, its sources could not be read or two of its modules
+    /// claim one name, has its modules in no list at all. An error from the package's
+    /// `main` alone ([`program`] has the check) leaves its modules here.
     pub modules: Vec<CheckedSource>,
     /// Every module that checked of every package the build reaches through the root's
     /// `test-dependencies` alone. Empty unless the tests were checked
@@ -861,6 +871,22 @@ pub struct PackageCheck {
     /// Every module of the root's `tests/` that checked. Empty unless the tests were
     /// checked, and unless the root's `src/` checked.
     pub test_modules: Vec<CheckedSource>,
+    /// Every module the check built a tree for and put in none of
+    /// [`modules`](PackageCheck::modules),
+    /// [`test_dependency_modules`](PackageCheck::test_dependency_modules) and
+    /// [`test_modules`](PackageCheck::test_modules): each module of a package whose own
+    /// `src/` was checked and reported an error, whether or not the module has an error
+    /// of its own, and each module of the root's `tests/` that came back with errors. A
+    /// module whose declarations did not all canonicalize is in none of them, and neither
+    /// is any module of a package that was not checked at all, for the reasons
+    /// [`modules`](PackageCheck::modules) lists.
+    ///
+    /// They are for a reader that wants the typed tree of a file with errors in it, such
+    /// as an editor, and never for a backend: an emitting build reads the three lists
+    /// above, and an IR built here lists every declaration the typer rejected in
+    /// [`ir::Module::unchecked`], which no backend emits
+    /// ([`DEC-23` decision 5](../docs/decisions/dec-23.md)).
+    pub failing: Vec<CheckedSource>,
     /// The status lines of the check, in order.
     pub status: Vec<Status>,
 }
@@ -985,6 +1011,9 @@ fn check(
     // not ask for the tests, or whose root `src/` did not check.
     let mut test_modules: Vec<CheckedSource> = Vec::new();
 
+    // Every module the check built a tree for that none of the three lists above holds.
+    let mut failing: Vec<CheckedSource> = Vec::new();
+
     // The root package's `tests/` is compiled apart from its `src/`, after every
     // test-only package, because a test-only package may depend on the root: that edge
     // names the root's `src/`, and the root's `tests/` in turn needs the test-only
@@ -1020,6 +1049,7 @@ fn check(
             overlay,
             &mut sources,
             &mut errors,
+            &mut failing,
             &mut status,
         ) {
             published.insert(package.name.clone(), compiled.public);
@@ -1051,6 +1081,7 @@ fn check(
                 overlay,
                 &mut sources,
                 &mut errors,
+                &mut failing,
                 &mut status,
             ) {
                 published.insert(package.name.clone(), compiled.public);
@@ -1065,6 +1096,7 @@ fn check(
             &published,
             environment,
             &mut errors,
+            &mut failing,
             &mut status,
         );
     }
@@ -1076,6 +1108,7 @@ fn check(
         modules: checked,
         test_dependency_modules,
         test_modules,
+        failing,
         status,
     })
 }
@@ -1152,22 +1185,25 @@ struct TestsEnvironment {
 /// `test-dependency`'s — an import naming one is a module that does not exist, the same
 /// as a private module of another package.
 ///
-/// `None` means nothing here was compiled and this package publishes nothing. It
-/// always comes with at least one error already pushed onto `errors` — a dependency
-/// that did not compile, sources that could not be read, a name claimed twice, or a
-/// failure in one of this package's own modules — so a package that publishes nothing
-/// can never be read as one that compiled. A package whose modules failed publishes
-/// nothing for the same reason: its dependents would otherwise be checked against half
-/// an interface and report errors belonging to a module they never wrote.
+/// `None` means this package did not check and publishes nothing. It always comes with
+/// at least one error already pushed onto `errors` — a dependency that did not compile,
+/// sources that could not be read, a name claimed twice, or a failure in one of this
+/// package's own modules — so a package that publishes nothing can never be read as one
+/// that compiled. A package whose modules failed publishes nothing to its dependents:
+/// they would otherwise be checked against half a package and report errors belonging
+/// to a module they never wrote. Within the package it is otherwise: a module with an
+/// error in it was still checked against the interfaces of the modules before it, and
+/// every module of `src/` the check built a tree for, checked or not, is pushed onto
+/// `failing` ([`PackageCheck::failing`]).
 ///
 /// There is deliberately no error return. Every way this can fail is a diagnostic about
 /// one package of a build whose other packages may already have accumulated diagnostics
 /// of their own, and a `Result` here is an invitation to `?` those out of
 /// `zelkova::compile_package` past its reporting loop — which is the "nothing is
 /// rendered and then dropped" the accumulator exists to prevent.
-// Eight parameters, one over clippy's limit, since `TOOL-2` added `overlay`. They are the
-// build, what it published, and the three accumulators a package's check appends to; none
-// of them groups with another without a type that exists only to pass them along.
+// Nine parameters, two over clippy's limit. They are the build, what it published, and the
+// four accumulators a package's check appends to; none of them groups with another without
+// a type that exists only to pass them along.
 #[allow(clippy::too_many_arguments)]
 fn compile_in_build(
     package: &resolve::ResolvedPackage,
@@ -1177,6 +1213,7 @@ fn compile_in_build(
     overlay: &Overlay,
     sources: &mut SourceFiles,
     errors: &mut Vec<CompilationError>,
+    failing: &mut Vec<CheckedSource>,
     status: &mut Vec<Status>,
 ) -> Option<CompiledPackage> {
     let errors_before = errors.len();
@@ -1352,7 +1389,10 @@ fn compile_in_build(
     // rather than a flag computed once and threaded through.
 
     // Steps 4 and 5.
-    let can_mods = check_root(
+    let RootCheck {
+        checked: can_mods,
+        failing: failing_mods,
+    } = check_root(
         package,
         source::SourceRoot::Src,
         &parsed.modules,
@@ -1372,7 +1412,16 @@ fn compile_in_build(
     let root_dir = package.root.join(source::SourceRoot::Src.directory());
     let checked: Vec<CheckedSource> = to_checked_sources(can_mods, &root_dir, &parsed.module_files);
 
+    // A package with an error publishes nothing and emits nothing, so none of its modules
+    // joins `checked` — but each one the check built a tree for is handed back, for a
+    // reader that wants the tree of a file with an error in it.
     if errors.len() != errors_before {
+        failing.extend(checked);
+        failing.extend(to_checked_sources(
+            failing_mods,
+            &root_dir,
+            &parsed.module_files,
+        ));
         return None;
     }
 
@@ -1491,13 +1540,15 @@ fn check_main(
 /// nothing published or emitted, for a package whose collision check or dependency
 /// resolution failed before any module was checked. A test module is checked like any
 /// other and a failure in one fails the build, but nothing outside the package's own
-/// tests reads it, so it is never published to a dependent.
+/// tests reads it, so it is never published to a dependent. A test module that came
+/// back with errors is pushed onto `failing` ([`PackageCheck::failing`]).
 fn compile_tests(
     package: &resolve::ResolvedPackage,
     build: &[resolve::ResolvedPackage],
     published: &HashMap<PackageName, HashMap<Name, Interface>>,
     environment: TestsEnvironment,
     errors: &mut Vec<CompilationError>,
+    failing: &mut Vec<CheckedSource>,
     status: &mut Vec<Status>,
 ) -> Vec<CheckedSource> {
     let TestsEnvironment {
@@ -1550,7 +1601,10 @@ fn compile_tests(
         &mut interfaces,
     );
 
-    let can_mods = check_root(
+    let RootCheck {
+        checked: can_mods,
+        failing: failing_mods,
+    } = check_root(
         package,
         source::SourceRoot::Tests,
         &modules,
@@ -1564,6 +1618,7 @@ fn compile_tests(
     // its own source — under `tests/` here rather than `src/`
     // (`docs/spec/interop.md#testing-a-companion`).
     let root_dir = package.root.join(source::SourceRoot::Tests.directory());
+    failing.extend(to_checked_sources(failing_mods, &root_dir, &module_files));
     to_checked_sources(can_mods, &root_dir, &module_files)
 }
 
@@ -1723,11 +1778,21 @@ fn record_parse_status(parsed: &ParsedRoot, what: &str, status: &mut Vec<Status>
     }
 }
 
+/// The modules of one source root that [`check_root`] built a tree for.
+struct RootCheck {
+    /// The modules that checked.
+    checked: Vec<CheckedModule>,
+    /// The modules that came back with errors beside them.
+    failing: Vec<CheckedModule>,
+}
+
 /// Order the modules of one source root by their imports and check each one, against
 /// `interfaces` and every module of the root checked before it.
 ///
-/// Every module that checked is inserted into `interfaces` and handed back; every error
-/// goes onto `errors`, tagged with the file its module was read from.
+/// Every module the check built a tree for is inserted into `interfaces` and handed
+/// back, apart into the ones that checked and the ones that came back with errors; every
+/// error goes onto `errors`, tagged with the file its module was read from. A module that
+/// failed canonicalization is in neither list and has no interface.
 fn check_root(
     package: &resolve::ResolvedPackage,
     root: source::SourceRoot,
@@ -1736,7 +1801,12 @@ fn check_root(
     interfaces: &mut HashMap<Name, Interface>,
     errors: &mut Vec<CompilationError>,
     status: &mut Vec<Status>,
-) -> Vec<CheckedModule> {
+) -> RootCheck {
+    let mut root_check = RootCheck {
+        checked: Vec::new(),
+        failing: Vec::new(),
+    };
+
     debug!("phase: Build module dependency graph ({})", root);
     // A cycle leaves us with no order to check the modules in, so the check phase is
     // skipped — but the error goes through the same reporting path as the others
@@ -1746,37 +1816,60 @@ fn check_root(
             Ok(walker) => walker,
             Err(err) => {
                 errors.push(err.into());
-                return Vec::new();
+                return root_check;
             }
         };
 
     debug!("phase: Check modules ({})", root);
 
-    // Step 5: Follow graph and call check_module on each
+    // Step 5: Follow graph and call check_module_recovering on each
     //
     // `check_in_order` checks every module regardless of earlier failures and hands back
-    // both halves: the modules that checked, and the errors from the ones that didn't
-    // (see `docs/tickets/README.md`, `BUG-2`). Both are reported here, and the errors
-    // still flow into `errors` below so a failing module keeps making the build return
-    // `Err`.
+    // one outcome per module: a module that checked, a module with the errors found in
+    // it, or only the errors (see `docs/tickets/README.md`, `BUG-2`). The errors flow
+    // into `errors` below so a failing module keeps making the build return `Err`.
     //
-    // `module_files` is also how each checked module's `Interface` learns which file it
-    // came from (`Interface::file`, `ERR-5`): this is the one place that knows both the
+    // `module_files` is also how each module's `Interface` learns which file it came
+    // from (`Interface::file`, `ERR-5`): this is the one place that knows both the
     // module and its file, so `check_in_order` takes the map and stamps it onto every
     // interface it inserts as it goes.
-    let (can_mods, check_errors) =
-        walker.check_in_order(&package.name, interfaces, module_files, check_module);
+    let outcomes = walker.check_in_order(
+        &package.name,
+        interfaces,
+        module_files,
+        check_module_recovering,
+    );
+
+    let mut check_errors = Vec::new();
+    let mut failed = 0;
+    for outcome in outcomes {
+        match outcome {
+            dependencies::Outcome::Module(module, module_errors) if module_errors.is_empty() => {
+                root_check.checked.push(module)
+            }
+            dependencies::Outcome::Module(module, module_errors) => {
+                failed += 1;
+                root_check.failing.push(module);
+                check_errors.extend(module_errors);
+            }
+            dependencies::Outcome::Failed(error) => {
+                failed += 1;
+                check_errors.push(error);
+            }
+        }
+    }
 
     let what = match root {
         source::SourceRoot::Src => "modules",
         source::SourceRoot::Tests => "test modules",
     };
-    let names: Vec<String> = can_mods
+    let names: Vec<String> = root_check
+        .checked
         .iter()
         .map(|m| m.canonical.name.as_human_string())
         .collect();
 
-    if check_errors.is_empty() {
+    if failed == 0 {
         status.push(Status {
             success: true,
             text: format!("checked {}: {:#?}", what, names),
@@ -1786,27 +1879,53 @@ fn check_root(
             success: false,
             text: format!(
                 "checked {}: {:#?} ({} failed to check)",
-                what,
-                names,
-                check_errors.len()
+                what, names, failed
             ),
         });
-        // Tag each error with the file its module was read from, so the spans its phase
-        // produced have something to point into. A module with no entry — there is none
-        // today, since only a module that parsed can be checked — stays unwrapped and
-        // renders exactly as it did before spans existed.
-        errors.extend(check_errors.into_iter().map(|error| {
-            match error.module().and_then(|name| module_files.get(name)) {
-                Some(id) => CompilationError::InFile(Box::new(error), *id),
-                None => error,
-            }
-        }));
     }
 
-    can_mods
+    // Tag each error with the file its module was read from, so the spans its phase
+    // produced have something to point into. A module with no entry — there is none
+    // today, since only a module that parsed can be checked — stays unwrapped and
+    // renders exactly as it did before spans existed.
+    errors.extend(check_errors.into_iter().map(|error| {
+        match error.module().and_then(|name| module_files.get(name)) {
+            Some(id) => CompilationError::InFile(Box::new(error), *id),
+            None => error,
+        }
+    }));
+
+    root_check
 }
 
 /// Take a parsed module file within the ecosystem and apply all checks to it
+///
+/// [`check_module_recovering`], reduced to a module that either checked or did not: a
+/// module that came back with errors is `Err` with the first of them.
+pub fn check_module(
+    package: &PackageName,
+    interfaces: &HashMap<Name, Interface>,
+    source: &parser::Module,
+) -> Result<CheckedModule, CompilationError> {
+    match check_module_recovering(package, interfaces, source) {
+        dependencies::Outcome::Failed(error) => Err(error),
+        dependencies::Outcome::Module(module, errors) => match errors.into_iter().next() {
+            None => Ok(module),
+            Some(error) => Err(error),
+        },
+    }
+}
+
+/// Apply every check to one parsed module, and hand back the module the checks built
+/// beside everything they found wrong with it.
+///
+/// A module that fails canonicalization is [`Outcome::Failed`](dependencies::Outcome::Failed):
+/// it has no canonical form to build an [`Interface`] or an IR from. Past that, the
+/// module comes back whatever the typer and the exhaustiveness check say, with a
+/// [`CompilationError::Type`] and a [`CompilationError::Exhaustiveness`] for whichever
+/// of them reported anything. Its IR holds a typed declaration for every value the typer
+/// did not reject, and lists each rejected one in [`ir::Module::unchecked`] with
+/// [`reported`](ir::Unchecked::reported) set, which no backend emits.
 ///
 /// TODO canonicalization must happens before checkings, because type check (at least)
 /// will require access to other modules canonical representation.
@@ -1817,12 +1936,12 @@ fn check_root(
 /// ([`PackageName::is_core`]), so this function needs nothing beyond the package it
 /// already receives — which is why `check` in
 /// [`ModuleWalker::check_in_order`](dependencies::ModuleWalker::check_in_order) can
-/// carry `check_module` as a plain `fn` pointer over the package alone.
-pub fn check_module(
+/// carry this as a plain `fn` pointer over the package alone.
+pub fn check_module_recovering(
     package: &PackageName,
     interfaces: &HashMap<Name, Interface>,
     source: &parser::Module,
-) -> Result<CheckedModule, CompilationError> {
+) -> dependencies::Outcome<CheckedModule, CompilationError> {
     // - desugar ~?~ *!*
     // Should I have an intermediate AST before type checking ?
     // This could actually be useful to have something optimized for
@@ -1833,33 +1952,57 @@ pub fn check_module(
     // Each phase accumulates its own errors and hands back all of them; this is where
     // they are tagged with the module they came from, because a phase only ever sees
     // one module and has no reason to carry its name around.
-    let canonical = canonical::canonicalize(package, interfaces, source)
-        .map_err(|errors| CompilationError::Canonical(errors, source.name.clone()))?;
+    let canonical = match canonical::canonicalize(package, interfaces, source) {
+        Ok(canonical) => canonical,
+        Err(errors) => {
+            return dependencies::Outcome::Failed(CompilationError::Canonical(
+                errors,
+                source.name.clone(),
+            ))
+        }
+    };
+
+    let mut errors = Vec::new();
 
     // - type checking and inference
     //
     // The typer answers with the types it solved — one `ir::Solved` per declaration,
     // carrying a type on every node of the ones it could type and saying why for the
-    // ones it could not. Not logged on the way out: `infer_annotated` already dumps each
-    // declaration's term under `debug`, and `typer::type_check` is `pub`, so a test that
-    // wants the map calls it directly. It reads the same interfaces canonicalization
-    // resolved this module's imports against, for the types of what they declare.
-    let solved = typer::type_check(&canonical, interfaces)
-        .map_err(|errors| CompilationError::Type(errors, source.name.clone()))?;
+    // ones it could not, the ones it rejected included. Not logged on the way out:
+    // `infer_annotated` already dumps each declaration's term under `debug`, and
+    // `typer::type_check_recovering` is `pub`, so a test that wants the map calls it
+    // directly. It reads the same interfaces canonicalization resolved this module's
+    // imports against, for the types of what they declare.
+    let typer::TypeCheck {
+        solved,
+        errors: type_errors,
+    } = typer::type_check_recovering(&canonical, interfaces);
+    if !type_errors.is_empty() {
+        errors.push(CompilationError::Type(type_errors, source.name.clone()));
+    }
 
     // verify in pattern matching branches that all variants are covered
-    exhaustiveness::check(&canonical)
-        .map_err(|errors| CompilationError::Exhaustiveness(errors, source.name.clone()))?;
+    if let Err(exhaustiveness_errors) = exhaustiveness::check(&canonical) {
+        errors.push(CompilationError::Exhaustiveness(
+            exhaustiveness_errors,
+            source.name.clone(),
+        ));
+    }
 
     // - the shape a backend reads. Built here because this is the last frame holding
     // both the canonical module and what the typer solved from it, and nothing after
-    // this point needs either half separately.
+    // this point needs either half separately. Built whether or not anything above
+    // reported an error, since a module with errors still has a typed tree for every
+    // declaration the typer did not reject.
     let ir = ir::build(&canonical, solved);
 
-    Ok(CheckedModule { canonical, ir })
+    dependencies::Outcome::Module(CheckedModule { canonical, ir }, errors)
 }
 
-/// One module that passed every check, in both the forms the compiler still needs it.
+/// One module the checks built a tree for, in both the forms the compiler still needs
+/// it. Whether it passed them is said beside it: by [`check_module`]'s `Ok`, or by the
+/// empty error list of [`check_module_recovering`]'s
+/// [`Outcome::Module`](dependencies::Outcome::Module).
 ///
 /// The two halves answer different questions and neither is derivable from the other.
 /// [`canonical`](Self::canonical) is what an [`Interface`] is built from, so the modules
@@ -1888,7 +2031,7 @@ impl CheckedModule {
 /// checked against.
 ///
 /// It is a trait because the walker drives more than one checker. The compiler's is
-/// [`check_module`], which answers with a [`CheckedModule`]; `crates/zelkova-compiler/tests/spec.rs` drives the
+/// [`check_module_recovering`], which answers with a [`CheckedModule`]; `crates/zelkova-compiler/tests/spec.rs` drives the
 /// same walker with a checker that only canonicalizes, because a spec example is judged
 /// on the errors each phase reports and there is nothing to emit from it.
 pub trait Checked {

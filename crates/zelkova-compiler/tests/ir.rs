@@ -20,7 +20,7 @@ use zelkova_compiler::ir::{
 use zelkova_compiler::name::{Name, QualName};
 use zelkova_compiler::source::{load_package_sources, SourceRoot};
 use zelkova_compiler::typer::{Type, TypeLiteral};
-use zelkova_compiler::{check_module, Interface, PackageName};
+use zelkova_compiler::{check_module, check_module_recovering, Interface, PackageName};
 use zelkova_syntax::parser;
 
 mod support;
@@ -744,8 +744,12 @@ fn every_module_of_the_standard_library_gets_an_ir() {
     let walker =
         ModuleWalker::new(&modules, &module_files, &package).expect("no cycle in std/core");
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
-    let (checked, errors): (Vec<_>, Vec<_>) =
-        walker.check_in_order(&package, &mut interfaces, &module_files, check_module);
+    let (checked, errors) = checked_and_errors(walker.check_in_order(
+        &package,
+        &mut interfaces,
+        &module_files,
+        check_module_recovering,
+    ));
 
     assert!(errors.is_empty(), "std/core must check: {:?}", errors);
     assert_eq!(checked.len(), 10);

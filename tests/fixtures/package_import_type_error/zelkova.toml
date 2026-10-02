@@ -1,0 +1,10 @@
+# `A` has one ill-typed declaration, `bad`, and `B` imports a different, well-typed one,
+# `ok`. `crates/zelkova/tests/pipeline.rs` checks that `A` still publishes its interface,
+# so `B` reports nothing, and that `A` still comes back with a typed tree for `ok`.
+name = "package-import-type-error"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

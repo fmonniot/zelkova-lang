@@ -26,6 +26,22 @@ use zelkova_syntax::position::NodeSpan;
 
 use petgraph::graph::{DiGraph, NodeIndex};
 
+/// What a checker hands [`ModuleWalker::check_in_order`] back for one module.
+///
+/// A module with errors can still have a shape: one whose declarations all
+/// canonicalized has the interface it would have had whatever the typer says of them,
+/// and a typed tree for each declaration the typer did not reject
+/// ([`DEC-23`](../../docs/decisions/dec-23.md) decisions 1 and 5). So "checked" and
+/// "failed" are not the only two answers: [`Module`](Outcome::Module) carries a module
+/// together with everything wrong with it.
+#[derive(Debug)]
+pub enum Outcome<M, E> {
+    /// Nothing to publish.
+    Failed(E),
+    /// A module, and everything wrong with it. Empty means it checked.
+    Module(M, Vec<E>),
+}
+
 // TODO Improve this with barrier on each module, to be able to parallelize
 // the processing down thel line.
 pub struct ModuleWalker<'a> {
@@ -471,18 +487,15 @@ impl<'a> ModuleWalker<'a> {
     /// Given a package name, a set of existing interfaces and a checker function,
     /// check each module in its dependencies order.
     ///
-    /// Every module is checked regardless of whether an earlier one failed: the
-    /// successes are returned alongside the errors rather than being discarded as
-    /// soon as one module fails (`BUG-2`). A successfully checked module still has
-    /// its `Interface` inserted into `interfaces` as it goes, so later modules keep
-    /// resolving against earlier ones even when some sibling failed.
-    ///
-    /// This is the narrower half of a wider idea, still open: making partial
-    /// progress *within* one failing module (accumulating more errors from it
-    /// rather than stopping at its first) instead of only across modules as this
-    /// does. That would need `check` itself to return something like
-    /// `Result<(Module, Errors), Errors>`, and scoped-fail semantics through
-    /// canonicalization to produce it.
+    /// Every module is checked regardless of whether an earlier one failed, and each
+    /// comes back as one [`Outcome`], in the order it was checked (`BUG-2`). Every
+    /// module the checker hands back has its `Interface` inserted into `interfaces` as
+    /// it goes, whether or not it came back with errors, so later modules keep resolving
+    /// against earlier ones: an importer of a module with a type error in one
+    /// declaration is checked against the interface that module has, and reports
+    /// nothing about the import ([`DEC-23` decision
+    /// 1](../../docs/decisions/dec-23.md#1--a-module-publishes-the-interface-it-has-whichever-phase-failed)).
+    /// Only an [`Outcome::Failed`] module is absent from what follows it.
     ///
     /// `module_files` is how a checked module's `Interface` learns the file it was
     /// read from (`Interface::file`, `ERR-5`) — `check` itself is a phase-orchestrating
@@ -507,31 +520,29 @@ impl<'a> ModuleWalker<'a> {
             package: &crate::PackageName,
             interfaces: &HashMap<Name, crate::Interface>,
             source: &zelkova_syntax::parser::Module,
-        ) -> Result<M, E>,
-    ) -> (Vec<M>, Vec<E>) {
-        let mut modules = Vec::new();
-        let mut errors = Vec::new();
+        ) -> Outcome<M, E>,
+    ) -> Vec<Outcome<M, E>> {
+        let mut outcomes = Vec::new();
 
         for module in self.modules.iter() {
-            match check(package, interfaces, module) {
-                Ok(m) => {
-                    // Once we have successfuly checked a module, we can add it to the available interfaces
-                    // for the following modules.
-                    let iface_name = m.name().name().clone();
-                    // Driver code, so this is where the module's file is known: the
-                    // interface carries it so a *later* module's diagnostic can point
-                    // back into this one's source (`ERR-5`).
-                    let iface = m.to_interface(module_files.get(&module.name).copied());
-                    debug!("Inserting {} with value {:?}", iface_name, iface);
-                    interfaces.insert(iface_name, iface);
+            let outcome = check(package, interfaces, module);
 
-                    modules.push(m);
-                }
-                Err(err) => errors.push(err),
+            // A module the checker handed back is available to the modules after it,
+            // with or without errors.
+            if let Outcome::Module(m, _) = &outcome {
+                let iface_name = m.name().name().clone();
+                // Driver code, so this is where the module's file is known: the
+                // interface carries it so a *later* module's diagnostic can point
+                // back into this one's source (`ERR-5`).
+                let iface = m.to_interface(module_files.get(&module.name).copied());
+                debug!("Inserting {} with value {:?}", iface_name, iface);
+                interfaces.insert(iface_name, iface);
             }
+
+            outcomes.push(outcome);
         }
 
-        (modules, errors)
+        outcomes
     }
 }
 
@@ -611,8 +622,8 @@ mod tests {
         package: &PackageName,
         _interfaces: &HashMap<Name, Interface>,
         source: &parser::Module,
-    ) -> Result<CheckedModule, ()> {
-        Ok(dummy_module(package, source))
+    ) -> Outcome<CheckedModule, ()> {
+        Outcome::Module(dummy_module(package, source), vec![])
     }
 
     /// Like `dummy_check`, except module `b` always fails. Used to pin `BUG-2`:
@@ -626,27 +637,60 @@ mod tests {
         package: &PackageName,
         _interfaces: &HashMap<Name, Interface>,
         source: &parser::Module,
-    ) -> Result<CheckedModule, Name> {
+    ) -> Outcome<CheckedModule, Name> {
         if source.name.as_str() == "b" {
-            Err(source.name.clone())
+            Outcome::Failed(source.name.clone())
         } else {
-            Ok(dummy_module(package, source))
+            Outcome::Module(dummy_module(package, source), vec![])
         }
+    }
+
+    /// Like `dummy_check`, except module `b` comes back with an error beside its
+    /// module, the way a module with a type error does.
+    fn dummy_check_reports_for_b(
+        package: &PackageName,
+        _interfaces: &HashMap<Name, Interface>,
+        source: &parser::Module,
+    ) -> Outcome<CheckedModule, Name> {
+        let errors = if source.name.as_str() == "b" {
+            vec![source.name.clone()]
+        } else {
+            vec![]
+        };
+        Outcome::Module(dummy_module(package, source), errors)
+    }
+
+    /// The name of each module an outcome holds, and the errors of every outcome, in
+    /// the order `check_in_order` handed them back.
+    fn modules_and_errors<E>(outcomes: Vec<Outcome<CheckedModule, E>>) -> (Vec<String>, Vec<E>) {
+        let mut modules = Vec::new();
+        let mut errors = Vec::new();
+        for outcome in outcomes {
+            match outcome {
+                Outcome::Module(m, module_errors) => {
+                    modules.push(m.canonical.name.name().as_str().to_string());
+                    errors.extend(module_errors);
+                }
+                Outcome::Failed(error) => errors.push(error),
+            }
+        }
+        (modules, errors)
     }
 
     fn assert_walker_processed_order(walker: ModuleWalker, expected: Vec<&str>) {
         let name = ordinary_package();
         let mut ifaces = HashMap::new();
         let module_files = HashMap::new();
-        let (modules, errors): (Vec<CheckedModule>, Vec<()>) =
-            walker.check_in_order(&name, &mut ifaces, &module_files, dummy_check);
+        let (modules, errors) = modules_and_errors(walker.check_in_order(
+            &name,
+            &mut ifaces,
+            &module_files,
+            dummy_check,
+        ));
 
-        assert_eq!(errors, Vec::new());
+        assert_eq!(errors, Vec::<()>::new());
         assert_eq!(
-            modules
-                .into_iter()
-                .map(|m| m.canonical.name.name().as_str().to_string())
-                .collect::<Vec<_>>(),
+            modules,
             expected
                 .into_iter()
                 .map(|s| s.to_string())
@@ -1024,16 +1068,13 @@ mod tests {
 
     /// `BUG-2`: one failing module used to make `check_in_order` discard every
     /// module that checked successfully, returning `Err(errors)` with no way to
-    /// recover the successes. It must now hand back both: the modules that
-    /// checked, and the errors from the ones that didn't.
+    /// recover the successes. It must hand back both: the modules that checked, and
+    /// the errors from the ones that didn't.
     ///
-    /// Mutation-checked with `modules.clear()` before the `(modules, errors)` return
-    /// below, guarded on `!errors.is_empty()` — the old discard behaviour, expressed
-    /// in a way that still compiles against the tuple return type. It turns this test
-    /// red, since `successes` then comes back empty instead of `["a", "c"]`.
-    /// (Literally restoring `collect_accumulate` would not be rerunnable: it changes
-    /// the return type back to `Result<Vec<Module>, Vec<E>>`, so the destructuring
-    /// below stops typechecking and the test fails to build rather than to assert.)
+    /// Mutation-checked by keeping only the `Failed` outcomes whenever one is present
+    /// (`outcomes.retain(..)` before the return) — the old discard behaviour, expressed
+    /// in a way that still compiles against the return type. It turns this test red,
+    /// since `successes` then comes back empty instead of `["a", "c"]`.
     #[test]
     fn check_in_order_keeps_successful_modules_when_one_fails() {
         let a = module("a", vec![]);
@@ -1046,8 +1087,12 @@ mod tests {
         let walker = ModuleWalker::new(&modules, &module_files, &name).expect("no errors here");
 
         let mut ifaces = HashMap::new();
-        let (successes, errors) =
-            walker.check_in_order(&name, &mut ifaces, &module_files, dummy_check_fails_for_b);
+        let (successes, errors) = modules_and_errors(walker.check_in_order(
+            &name,
+            &mut ifaces,
+            &module_files,
+            dummy_check_fails_for_b,
+        ));
 
         assert_eq!(
             errors,
@@ -1055,13 +1100,43 @@ mod tests {
             "expected exactly the one error, and for `b`"
         );
         assert_eq!(
-            successes
-                .into_iter()
-                .map(|m| m.canonical.name.name().as_str().to_string())
-                .collect::<Vec<_>>(),
+            successes,
             vec!["a".to_string(), "c".to_string()],
             "expected the non-failing modules to still be returned"
         );
+        assert!(
+            !ifaces.contains_key(&Name::new("b")),
+            "a module that failed has no interface to publish"
+        );
+    }
+
+    /// A module that comes back with errors beside it publishes its interface all the
+    /// same, so the modules importing it are checked against it.
+    ///
+    /// Mutation-checked by inserting the interface only for an `Outcome::Module` whose
+    /// error list is empty: `b`'s interface is then missing and this turns red.
+    #[test]
+    fn check_in_order_publishes_a_module_that_came_back_with_errors() {
+        let a = module("a", vec![]);
+        let b = module("b", vec!["a"]);
+        let c = module("c", vec!["b"]);
+
+        let modules = vec![a, b, c];
+        let module_files = HashMap::new();
+        let name = ordinary_package();
+        let walker = ModuleWalker::new(&modules, &module_files, &name).expect("no errors here");
+
+        let mut ifaces = HashMap::new();
+        let outcomes =
+            walker.check_in_order(&name, &mut ifaces, &module_files, dummy_check_reports_for_b);
+
+        let (modules, errors) = modules_and_errors(outcomes);
+        assert_eq!(modules, vec!["a", "b", "c"]);
+        assert_eq!(errors, vec![Name::new("b")]);
+
+        let mut published: Vec<&str> = ifaces.keys().map(Name::as_str).collect();
+        published.sort();
+        assert_eq!(published, vec!["a", "b", "c"]);
     }
 
     /// The implicit edges `add_default_import_edges` adds, as slot pairs.

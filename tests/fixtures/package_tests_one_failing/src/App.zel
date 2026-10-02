@@ -1,0 +1,6 @@
+module App exposing (T(..), start)
+
+type T = T
+
+start : T
+start = T

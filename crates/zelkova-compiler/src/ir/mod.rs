@@ -209,19 +209,25 @@ pub struct Body {
     pub expression: TypedTerm,
 }
 
-/// A declaration the typer could not type, and which therefore has no IR.
+/// A declaration the typer did not type, and which therefore has no IR.
 ///
-/// Why it could not is decided in [`build`], from the [`Solved`] entry, and is not
-/// carried here: a construct the translation cannot represent
-/// ([`Solved::Untranslatable`]) or a name the typer's environment does not hold
-/// ([`Solved::UnboundName`]). Neither is a mistake in the user's source, and neither is
-/// an error; both are gaps in today's typer, and `ERR-8`'s warning is what will need the
-/// reason carried this far.
+/// Why is decided in [`build`], from the [`Solved`] entry. Inference reported an error
+/// for it ([`Solved::Rejected`]), and that error is the user's to fix; or the typer
+/// walked past it: a construct the translation cannot represent
+/// ([`Solved::Untranslatable`]), a name the typer's environment does not hold
+/// ([`Solved::UnboundName`]), or a facade declaration with no signature to read. The
+/// second kind is not a mistake in the user's source and not an error, but a gap in
+/// today's typer. [`reported`](Self::reported) is the one distinction carried this far,
+/// so that `ERR-8`'s warning about a gap is not also given to a declaration the user has
+/// already been shown an error for.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Unchecked {
     pub name: Name,
     /// Where the declaration was written.
     pub span: NodeSpan,
+    /// Whether an error stands behind this entry: `true` for a declaration inference
+    /// rejected, `false` for one the typer walked past.
+    pub reported: bool,
 }
 
 // ── Names ─────────────────────────────────────────────────────────────────────
@@ -611,8 +617,8 @@ pub enum TypedTermKind {
 /// A phase that answers with types has to answer for *every* declaration it was given,
 /// including the ones it could not type: a caller handed only the ones that worked
 /// cannot tell a declaration the typer verified from one it walked past, and emitting
-/// code for the second is a miscompile. So the three ways a declaration goes untyped
-/// each get a variant, and [`typer::type_check`](crate::typer::type_check)
+/// code for the second is a miscompile. So each way a declaration goes untyped gets a
+/// variant, and [`typer::type_check_recovering`](crate::typer::type_check_recovering)
 /// returns one entry per declaration either way.
 #[derive(Debug)]
 pub enum Solved {
@@ -670,6 +676,13 @@ pub enum Solved {
         /// Where it was written.
         span: NodeSpan,
     },
+    /// Inference reported an error for this declaration.
+    ///
+    /// The error itself is in [`TypeCheck::errors`](crate::typer::TypeCheck::errors),
+    /// beside the map this entry is in. The entry is what keeps the declaration from
+    /// being merely absent, so a module with a type error still answers for every
+    /// declaration it holds.
+    Rejected,
 }
 
 impl Solved {
@@ -753,14 +766,24 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
                 None => unchecked.push(Unchecked {
                     name: name.clone(),
                     span,
+                    reported: false,
                 }),
             },
-            // Untranslatable, UnboundName, and — impossible today, since `type_check`
-            // answers for every value it was given — a declaration with no entry at all.
-            _ => unchecked.push(Unchecked {
+            // The error inference reported for it is the caller's to report.
+            Some(Solved::Rejected) => unchecked.push(Unchecked {
                 name: name.clone(),
                 span,
+                reported: true,
             }),
+            // Untranslatable, UnboundName, and — impossible today, since the typer
+            // answers for every value it was given — a declaration with no entry at all.
+            Some(Solved::Untranslatable { .. }) | Some(Solved::UnboundName { .. }) | None => {
+                unchecked.push(Unchecked {
+                    name: name.clone(),
+                    span,
+                    reported: false,
+                })
+            }
         }
     }
 

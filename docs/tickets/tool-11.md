@@ -21,7 +21,7 @@ which keeps a module only when `failures.is_empty()`, `ParsedRoot`, `record_pars
 `do_infixes`.
 
 **Problem:** `parse_recovering` hands back every declaration that parsed, and `parse_root`
-throws the module away if any did not. With the package from [`TOOL-8`](tool-8.md)'s Problem
+throws the module away if any did not. With the package from [`TOOL-8`](README.md)'s Problem
 and `bad`'s body changed to `= T`:
 
 ```
@@ -130,7 +130,7 @@ Tests in `crates/zelkova-compiler/tests/canonical.rs`, each parsing with `parse_
 Tests in `crates/zelkova/tests/pipeline.rs`:
 
 - A new fixture, `tests/fixtures/package_import_syntax_error/`, the two modules of
-  [`TOOL-8`](tool-8.md)'s Problem with `bad = = T`. The errors are exactly one
+  [`TOOL-8`](README.md)'s Problem with `bad = = T`. The errors are exactly one
   `CompilationError::Source`. `failing` holds `A` with `ok` in `ir.declarations`, typed `T`,
   and `bad` in `ir.unchecked` with `reported: true`, and holds `B` with nothing unchecked.
   Mutation-checked by restoring `failures.is_empty()` in `parse_root`.

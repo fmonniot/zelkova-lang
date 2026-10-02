@@ -329,6 +329,8 @@ fn compile(
         modules,
         test_dependency_modules,
         test_modules,
+        // A build emits only what checked; these are for a reader of a module's tree.
+        failing: _,
         status,
     } = match tests {
         TestRoot::Skipped => zelkova_compiler::check_package(package_dir, overlay)?,
