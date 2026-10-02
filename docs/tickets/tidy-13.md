@@ -23,4 +23,5 @@ nothing outside this crate (`tools/`, `tests/`) names it. Whether anything is to
 it, such as the language server of [`TOOL-6`](tool-6.md), is not decided here; if so, keep it.
 
 **Acceptance:** `grep -rn "CompilationError::Many" src tests tools` finds nothing, and
-`cargo test --workspace` and `cargo clippy --workspace --all-features -- -D warnings` pass.
+`cargo test --workspace` and
+`cargo clippy --workspace --all-features --all-targets -- -D warnings` pass.

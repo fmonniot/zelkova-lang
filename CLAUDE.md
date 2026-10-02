@@ -24,7 +24,7 @@ cargo run -- test <dir>        # compiles a package and its tests, runs them und
 cargo run -- run <dir>         # compiles a program and runs its `main` under node
 cargo run -p spec-site -- --out site   # renders the site locally; open site/index.html
 cargo fmt --all
-cargo clippy --workspace --all-features
+cargo clippy --workspace --all-features --all-targets -- -D warnings
 ```
 
 Bare `cargo test` runs only the compiler's own tests and silently skips `tools/spec-site`'s —
@@ -55,10 +55,10 @@ closes, tracked there rather than left red in CI. Any error, failure, or a diffe
 what's left is a regression you introduced.
 
 `.github/workflows/rust.yml` gates a PR on `fmt`, on `clippy`, and on a `rustdoc` job that
-builds the crates' docs with the flags `rustdoc.yml` deploys them with. The clippy job passes
-no `-D warnings`, so it fails on a clippy error and only annotates a warning: run
-`cargo clippy --workspace --all-features -- -D warnings` locally to catch those. To reproduce
-the `rustdoc` job locally:
+builds the crates' docs with the flags `rustdoc.yml` deploys them with. The clippy job lints
+every target, `tests/` binaries included, and passes `-D warnings`, so a warning fails it; the
+command under *Commands* is what it runs. Its toolchain floats on `stable`, so a release that
+adds a lint can turn `main` red without a commit. To reproduce the `rustdoc` job locally:
 
 ```sh
 RUSTFLAGS="-D warnings -W unreachable-pub" RUSTDOCFLAGS="-D warnings" cargo doc --no-deps -p zelkova-syntax -p zelkova-compiler -p zelkova-js -p zelkova-test-runner -p zelkova

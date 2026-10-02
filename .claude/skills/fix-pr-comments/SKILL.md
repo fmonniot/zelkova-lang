@@ -216,12 +216,11 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 >    ```bash
 >    cargo build && cargo test --workspace
 >    cargo fmt --all
->    cargo clippy --workspace --all-features -- -D warnings
+>    cargo clippy --workspace --all-features --all-targets -- -D warnings
 >    cargo run -- compile std/core   # must match the baseline in CLAUDE.md
 >    ```
->    `.github/workflows/rust.yml` fails a PR on a formatting diff and on a clippy *error*, but
->    its clippy job passes no `-D warnings`, so **CI will not fail on a clippy warning** — a
->    green run proves nothing about those. Leave no warnings regardless.
+>    `.github/workflows/rust.yml` fails a PR on a formatting diff and on any clippy finding,
+>    since its clippy job runs the same command with `-D warnings`. Leave no warnings.
 > 5. Push: `git push origin <branch>`.
 > 6. Reply to **every** comment, implemented or not:
 >    - **Implemented** — the short commit SHA that addressed it and a one-line description; if
@@ -298,9 +297,9 @@ If the agent reported `NEEDS-ESCALATION`, its other commits still stand — re-s
 agent into the same worktree, scoped to that one finding, with the first agent's account pasted
 in as prior findings rather than instructions. Do not re-run the whole pass.
 
-CI gates formatting and clippy errors, and lets a clippy warning through, so a passing
-`gh pr checks` is not evidence clippy is clean. Confirm in the worktree:
-`cargo clippy --workspace --all-features -- -D warnings`.
+CI gates formatting and clippy warnings alike, so a passing `gh pr checks` is evidence clippy is
+clean. Confirm in the worktree anyway, before pushing:
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`.
 
 ## Step 5 — Report
 

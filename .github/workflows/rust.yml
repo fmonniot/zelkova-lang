@@ -92,7 +92,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions-rs-plus/clippy-check@v2.1.1
         with:
-          args: --workspace --all-features
+          args: --workspace --all-features --all-targets -- -D warnings
 
   rustdoc:
     name: Rustdoc

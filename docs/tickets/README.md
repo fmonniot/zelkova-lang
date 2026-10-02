@@ -461,7 +461,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [TIDY-11](tidy-11.md) | task | — | open | `BUG-20` and `Js/Utils.mjs` describe a tuple encoding and a test file that no longer match the tree |
 | [TIDY-12](tidy-12.md) | task | — | open | The compiler's crates are on edition 2018 |
 | [TIDY-13](tidy-13.md) | task | — | open | `CompilationError::Many` is never constructed |
-| [TIDY-14](tidy-14.md) | task | — | open | CI's clippy job never lints test code, and test code already fails it |
+| TIDY-14 | task | — | closed 2026-10-02 | CI's clippy job never lints test code, and test code already fails it |
 | ERR-1 | task | — | closed 2026-08-25 | Replace `panic!`/`unwrap()` with proper error handling in non-test code |
 | TEST-1 | task | — | closed 2026-04-12 | Add integration tests running the full pipeline on `.zel` sources |
 | TEST-2 | task | — | closed 2026-09-10 | The spec harness stops at canonicalization, so no chapter can pin a type error |
