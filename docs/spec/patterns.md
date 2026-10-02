@@ -721,6 +721,7 @@ module Example exposing (Celsius, describe)
 type Celsius
   = Celsius
 
+describe : { taken : Celsius, expected : Celsius } -> Celsius
 describe reading =
   case reading of
     { taken = Celsius, expected = e } ->

@@ -21,14 +21,15 @@ dispatch and must keep doing so: a `{` followed by `-` opens a comment and is no
 The tokenizer's own test module asserts a token sequence for a punctuation soup input; extend it
 rather than adding a second one.
 
-**Watch the block-comment gap.** `{-` is recognised only in a line's leading whitespace today, so
-`f = {- a note -} 1` is rejected — [Lexical structure](../spec/lexical-structure.md#comments)
-states that and it is not this ticket's to fix. Emitting `LBrace` from the dispatch must not turn
-that rejection into a *silent* misread, where `{-` mid-line lexes as a brace and an operator and
-the grammar then reports something unrelated to the comment the author wrote.
+**Watch the block comment mid-line.** `{-` opens a comment anywhere a space may be written, so
+`f = {- a note -} 1` is accepted — [Lexical structure](../spec/lexical-structure.md#comments)
+pins that block `expect=ok`, and the dispatch has a `'{'` arm guarded on the `-` that follows
+(`BUG-13`). The new brace arm goes after that one. Ahead of it, `{-` mid-line lexes as a brace
+and an operator, and the grammar then reports something unrelated to the comment the author
+wrote.
 
 **Acceptance:** `f = { a = 1 }` fails in the grammar rather than the tokenizer; a tokenizer test
-asserts `LBrace`/`RBrace` in a sequence; `f = {- x -} 1` is still rejected and the block comment
+asserts `LBrace`/`RBrace` in a sequence; `f = {- x -} 1` is still accepted and the block comment
 tests are unchanged. No block in [Records](../spec/records.md) goes green on this alone — every
 one of them still needs a production — so this ticket lands with the spec suite unchanged, and
 [`LANG-48`](lang-48.md) is what turns them.

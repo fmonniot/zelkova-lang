@@ -817,12 +817,43 @@ type alias Pair = (Size, Size)
 ```
 
 **Not implemented:** `type alias` is a syntax error — the grammar reads `type` and then wants
-an uppercase name, and `alias` is neither. Several modules under `std/core/src/` write aliases
-(`Array.ignored`) and the documentation comments in `Maybe.zel` and `Result.zel` use them in
-their examples, so this is a hole in the compiler rather than a question about the language.
+an uppercase name, and `alias` is neither ([`LANG-86`](../tickets/lang-86.md)). Several modules
+under `std/core/src/` write aliases (`Array.ignored`) and the documentation comments in
+`Maybe.zel` and `Result.zel` use them in their examples, so this is a hole in the compiler
+rather than a question about the language. Every block of this section fails there.
 
 `Pair` above is *not* a new type that happens to be a pair; it is `(Size, Size)`, spelled
 differently. A function annotated `Pair -> Size` accepts a `(Size, Size)` with no conversion,
 and a type error mentioning one may mention the other. Where a genuinely distinct type is
 wanted — one the compiler will keep apart from its representation — that is a `type`
 declaration with a single variant.
+
+An alias may take type parameters, written after its name the way a `type` declaration's are and
+in scope throughout the type it names. Every use applies it to exactly that many arguments:
+[arity is part of the application](#arity-is-part-of-the-application) for an alias as for a
+declared type, and an alias applied to fewer names no type.
+
+```zel expect=unimplemented
+module Example exposing (Size, Pair, both)
+
+type Size
+  = Small
+
+type alias Pair a = (a, a)
+
+both : Pair Size
+both = (Small, Small)
+```
+
+An alias cannot name itself, directly or through another alias. It stands for the type written
+to the right of its `=`, and a type that mentions the alias has no such spelling. A recursive
+type is a `type` declaration, whose constructor is what the recursion turns on.
+
+```zel expect=unimplemented
+module Example exposing (Forever)
+
+type alias Forever = (Forever, Forever)
+```
+
+An alias is exposed and imported by its name alone. It declares no constructors, so `Pair(..)`
+is an error in an [`exposing` list](modules.md#the-exposing-list) and in an import.

@@ -168,6 +168,89 @@ has a `Float`-capable `negate` to desugar to once `LANG-42` lands; between `LANG
 [`PERF-2`](perf-2.md) is narrowed by `LANG-42`, which rewrites most of the forwarding
 declarations it is about, and not closed by it.
 
+## Active work: records
+
+Eight tickets are one body of work — `LANG-47` through `LANG-52`, `LANG-84` and `GEN-25` — and
+a ninth, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
+parts can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says which part
+is which by position and stops at three.
+
+They get a section for the reason the type classes do: none of them is a record on its own. A
+record has a spelling in the type, expression and pattern grammars and a rule in the typer, and
+the tickets are cut along those lines, with the emitter last.
+
+[`docs/spec/records.md`](../spec/records.md) is the normative record and
+[DEC-8](../decisions/dec-8.md) holds the ten decisions behind it, which the tickets cite by
+number. **No ticket in the order leaves a language decision open**, and none re-argues one.
+Where a ticket says a choice is the implementer's, it means that and names the constraints:
+`LANG-50` on how an attached `.` is told from a detached one, and `LANG-52` on whether that is
+decided in the tokenizer or in a grammar action — one mechanism serves both, and `LANG-52` lands
+first, so its choice is the one `LANG-50` inherits. Anything else that looks like a decision is a
+gap to report, not to fill.
+
+They land in this order, one at a time:
+
+```
+LANG-52  a qualification dot takes no whitespace on either side
+  │      ← first: a rejection with no new form behind it, and LANG-50
+  │        cannot tell an access from an accessor until it lands
+  │
+LANG-47  `{` and `}` become tokens
+  │      ← needs nothing and may land beside LANG-52. No block in the
+  │        chapter turns on it alone
+  │
+LANG-48  a record type, a record and an update parse, and reach the
+  │      canonical module as a set of fields
+  │      ← a repeated label is reported from here on. Until LANG-51 a
+  │        declaration holding a record is one the typer leaves
+  │        unchecked, so the emitter refuses its module
+  │
+LANG-50  `r.name` and `.name` parse
+  │      ← needs LANG-52 to parse, and LANG-48 before the chapter's
+  │        blocks turn: each annotates with a record type
+  │
+LANG-16  a pattern nests, and is type checked where it does
+  │      ← not a record ticket. Here because the first record-pattern
+  │        block in two chapters matches a constructor inside a field,
+  │        which no sub-pattern may be today, and because it lifts the
+  │        typer's refusal of a nested pattern, which LANG-84 relies on
+  │
+LANG-49  a record pattern parses, the `{ x }` shorthand included
+  │      ← needs LANG-47, and LANG-48 for how a repeated label is
+  │        reported
+  │
+LANG-51  the typer has a record type: a field, an update and an
+  │      accessor are checked
+  │      ← the first ticket that needs another's nodes. Deletes the
+  │        Known gap paragraphs LANG-48 and LANG-50 attached. The
+  │        emitter refuses a module holding a record from here on
+  │
+LANG-84  a record pattern is type checked
+  │      ← written against the constraint LANG-51 gives an accessor:
+  │        both are answered once unification has said what the
+  │        record is
+  │
+GEN-25   a record, an access, an update, an accessor and a record
+         pattern are emitted, and a record may cross a facade
+         ← the first point at which a program using a record runs
+```
+
+Two tickets follow from records and are outside the order. [`LANG-85`](lang-85.md) is a record
+under a derivation — what `==` on two records computes once [`LANG-42`](lang-42.md) lands — and
+is the one ticket that needs both this order and the type classes' finished.
+[`LANG-86`](lang-86.md) is `type alias`. It is not a record question and needs none of the
+above, but a record type is written out in full wherever it appears, so records are where its
+absence is felt. [DEC-25](../decisions/dec-25.md) holds its two decisions. Neither ticket leaves
+a language decision open; `LANG-85` leaves one choice to the implementer and says so.
+
+Three more sit beside the order. [`LANG-33`](lang-33.md) is `let`, the second place an
+irrefutable record pattern may be written. [`LANG-19`](lang-19.md) scopes exhaustiveness to the
+patterns the language has today, and whichever of it and `LANG-49` lands second adds the record
+pattern to it. [`LANG-40`](lang-40.md) adds a constraint the solver answers only once
+unification has run, which is what `LANG-51`'s accessor is too: the two are written in the same
+files of `typer/` and are not worked at the same time, and the second to land is written against
+the first's mechanism.
+
 ## Tickets
 
 Open tickets link to their file. Rows with a close date are tombstones — the file is gone; see
@@ -358,6 +441,9 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-81](lang-81.md) | task | — | open | A `Float` or `String` literal pattern is not checked by the typer and not emitted |
 | [LANG-82](lang-82.md) | task | — | open | A character literal recognises no escape sequence |
 | [LANG-83](lang-83.md) | task | — | open | A derivation is not checked, and a `derived` instance has no members |
+| [LANG-84](lang-84.md) | task | — | open | A record pattern is not type checked |
+| [LANG-85](lang-85.md) | task | — | open | An obligation at a record type is never discharged, so no derivation walks a record |
+| [LANG-86](lang-86.md) | task | — | open | There is no `type alias` production, so a type cannot be given a second name |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [SITE-3](site-3.md) | task | — | open | A doc comment's link into `docs/` resolves nowhere, and nothing checks it |
@@ -385,6 +471,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-22 | task | — | closed 2026-09-29 | There is no `zelkova run`: nothing runs a program's `main` |
 | [GEN-23](gen-23.md) | task | — | open | An `unsafe` facade's forwarding code does not catch what its companion throws |
 | [GEN-24](gen-24.md) | task | — | open | A class member, an instance and a constrained function are not emitted |
+| [GEN-25](gen-25.md) | task | — | open | A record, a field access, an update, an accessor and a record pattern are not emitted |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

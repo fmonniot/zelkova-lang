@@ -1,6 +1,7 @@
-# DEC-8 · Records: nine decisions
+# DEC-8 · Records: ten decisions
 
-**Settled:** 2026-09-07, by the language owner (`SPEC-21`).
+**Settled:** 2026-09-07, by the language owner (`SPEC-21`); decision 10 on 2026-10-02, when the
+[record tickets](../tickets/README.md#active-work-records) were put in order.
 **Status:** live.
 **Where the rule lives:** [Records](../spec/records.md), with the pattern half also stated in
 [Patterns](../spec/patterns.md#record-patterns) and the label namespace in
@@ -10,7 +11,8 @@ Records were named by four chapters and specified by none, and one decision alre
 them: [tuples stop at three](../spec/types.md#tuple-types) because "a tuple of four is where a
 record belongs". The nine questions below are what a chapter had to commit to. The first is the
 one the rest hang off — extensibility decides the shape of everything else, so it is taken first
-here even though the chapter states it late.
+here even though the chapter states it late. The tenth came later, out of the tickets: two of
+them met a case the chapter had answered for one form and not for the other three.
 
 ## 1 — Records are closed: no row polymorphism
 
@@ -160,3 +162,25 @@ Recorded because two things a reader may expect to find are deliberately absent:
 cannot contain itself — it is written out in full wherever it appears, so recursion goes through
 a `type` declaration — and there is no field-removal or field-addition form, which decision 1
 already rules out at the type level.
+
+## 10 — A use does not decide a record's type
+
+A field access, an update, an accessor and a record pattern are each checked against a record
+type something else supplies, and each is an error where nothing does.
+[Records](../spec/records.md#a-use-does-not-decide-a-records-type) is the rule.
+
+Decision 3 had said this of the accessor alone. The other three forms were left to be read by
+analogy, and the chapter's own examples did not survive the reading: `nameOf person =
+person.name` and `nameOf { name } = name` were written without annotations, and under the
+accessor's rule both are errors. [`LANG-51`](../tickets/lang-51.md) and
+[`LANG-84`](../tickets/lang-84.md) could not be implemented without knowing which was meant.
+
+**Inferring a closed record of exactly the fields touched** was the alternative. It needs no
+annotation, and it is wrong in the way that is hardest to see: `person.name` would make `nameOf`
+take a record with one field, so the error for passing a record with two arrives at the call and
+blames the caller for a type nobody wrote. For a pattern it is worse, since decision 5 says a
+pattern names a *subset* — the inferred type would be the one thing the pattern says it is not.
+The inference that would do what a reader expects is the row variable decision 1 declines.
+
+The cost is an annotation on every function that takes a record and only reads it. It falls on
+the functions a reader most wants annotated, and the error says which record type was missing.

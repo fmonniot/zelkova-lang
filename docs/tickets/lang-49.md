@@ -7,6 +7,12 @@ the canonical conversion land together.
 `crates/zelkova-syntax/src/parser/mod.rs`'s `PatternKind`; `canonical::Pattern::from_parser_pattern`.
 
 **Depends on:** [`LANG-47`](lang-47.md), hard — there is no brace token.
+[`LANG-16`](lang-16.md), hard for the acceptance below: the first record-pattern block in
+[Records](../spec/records.md#record-patterns) and the one in
+[Patterns](../spec/patterns.md#record-patterns) both write `{ taken = Celsius, … }`, a
+constructor as a sub-pattern, which `Pattern` has no alternative for until `LANG-16` gives it
+one — so neither block can go red before then. [`LANG-48`](lang-48.md), for the
+`canonical::Error` variant a repeated label is reported with.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decision 5):** a
 record pattern is `{ label = pattern, … }`, `{ label }` is shorthand for `{ label = label }`, and
@@ -25,16 +31,20 @@ shape and no later phase learns about the shorthand.
 Sub-patterns are whole patterns, so nesting falls out with no extra work; a repeated label is
 reported the way [`LANG-48`](lang-48.md) reports one in a record expression.
 
-**Refutability is the part with a real consequence.** A record pattern is refutable exactly when
-one of its sub-patterns is, so `{ x }` and `{ x, y }` are irrefutable and legal in a parameter
-and a `let` binding, while `{ x = 0 }` is not. Whatever decides refutability for a tuple pattern
-today is where this goes — a record pattern is not irrefutable by virtue of being a record, which
-is the tempting shortcut.
+**Refutability needs no code here.** A record pattern is refutable exactly when one of its
+sub-patterns is, so `{ x }` and `{ x, y }` can never fail and `{ x = 0 }` can. Nothing in the
+compiler asks that question today: a parameter and a `case` branch both accept both kinds, and
+what the language requires is that the patterns of a position cover the type, which is
+[`LANG-19`](lang-19.md)'s stub. So this ticket writes no check. What it must not do is build
+one in that treats a record pattern as irrefutable for being a record.
 
 **Acceptance:** every `expect=unimplemented` block in
-[Records](../spec/records.md#record-patterns) goes red and is retagged; the same for
-[Patterns](../spec/patterns.md#record-patterns)' worked examples, which are written when this
-lands. A parser test asserts the desugared `PatternKind` for `{ x }` rather than only that it
-parsed, and a canonicalization test asserts the bindings a nested record pattern produces.
+[Records](../spec/records.md#record-patterns) goes red and is retagged; the same for the block in
+[Patterns](../spec/patterns.md#record-patterns), whose **Not implemented:** paragraph goes. Every
+one of those blocks annotates with a record type, so [`LANG-48`](lang-48.md) is what lets them
+parse at all. Typing a record pattern is not this ticket's: it is [`LANG-84`](lang-84.md)'s, and
+until then the typer leaves a declaration holding one unchecked. A parser test asserts the
+desugared `PatternKind` for `{ x }` rather than only that it parsed, and a canonicalization test
+asserts the bindings a nested record pattern produces.
 
 **Found:** while writing [`docs/spec/records.md`](../spec/records.md) (`SPEC-21`).

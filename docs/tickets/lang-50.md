@@ -37,6 +37,13 @@ streams are identical. Two ways out, and the choice is the implementer's:
 A `.` opening an expression is an accessor under either. The accessor's own `.` is written against
 its label with no space after it, which the same mechanism decides.
 
+**`Just .name` becomes an application.** [`LANG-52`](lang-52.md) lands first and rejects every
+detached `.` after an uppercase name, `Widget .size` included, because no accessor exists yet.
+Once one does, an uppercase name followed by a detached `.` and an attached label is that name
+applied to an accessor — a constructor taking a function, or a canonicalization error where the
+name is a module and no constructor. `Widget . size` and `Widget. size` stay parse errors, and
+`LANG-52`'s parser test for `Widget .size` moves to the phase that now rejects it.
+
 **A bare accessor has no type of its own.** Records are closed
 ([Records](../spec/records.md#records-are-closed)), so there is no "any record with a `name`
 field" for `.name` to be polymorphic in: it is typed from where it is written and is an error
@@ -47,7 +54,12 @@ where nothing fixes the record type. That is the typer's half and belongs to
 [Records](../spec/records.md#reading-a-field) and [The accessor](../spec/records.md#the-accessor)
 go red and are retagged, as does the `r.name` block in
 [Expressions](../spec/expressions.md#forms-the-compiler-does-not-have), whose **Not implemented:**
-paragraph goes with it. Parser tests assert that `f r.name` parses as one application with an
+paragraph goes with it. All three annotate with a record type, so they turn only once
+[`LANG-48`](lang-48.md) has landed as well, and whichever of the two lands second retags them.
+The unannotated block under
+[A use does not decide a record's type](../spec/records.md#a-use-does-not-decide-a-records-type)
+needs no brace and turns on this ticket alone: it becomes `expect=ok` under a **Known gap:**
+naming [`LANG-51`](lang-51.md), which is what makes it an error. Parser tests assert that `f r.name` parses as one application with an
 access argument, that `f .name` parses as an application to an accessor, and that `r.a.b` nests
 left.
 

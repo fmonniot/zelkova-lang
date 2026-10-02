@@ -110,7 +110,7 @@ its type is the record type its labels and its values' types spell out. Every fi
 is given a value.
 
 ```zel expect=unimplemented
-module Example exposing (Celsius, reading)
+module Example exposing (Celsius)
 
 type Celsius
   = Celsius
@@ -127,7 +127,7 @@ Repeating a label is an error here too.
 A record may be written across several lines with the separator leading each line:
 
 ```zel expect=unimplemented
-module Example exposing (Celsius, reading)
+module Example exposing (Celsius)
 
 type Celsius
   = Celsius
@@ -166,12 +166,14 @@ module Example exposing (Text, nameOf)
 type Text
   = Text
 
+nameOf : { name : Text } -> Text
 nameOf person =
   person.name
 ```
 
-**Not implemented:** `.` is punctuation for a qualified name, so the grammar rejects `person.name`
-at the `.` ([`LANG-50`](../tickets/lang-50.md)).
+**Not implemented:** braces do not tokenize ([`LANG-47`](../tickets/lang-47.md)), and `.` is
+punctuation for a qualified name, so the grammar rejects `person.name` at the `.`
+([`LANG-50`](../tickets/lang-50.md)).
 
 Access binds tighter than [application](expressions.md#application), so `f r.name` is
 `f (r.name)`. It chains left to right: `r.centre.x` is `(r.centre).x`.
@@ -191,6 +193,7 @@ apply : ({ name : Text } -> Text) -> { name : Text } -> Text
 apply f r =
   f r
 
+nameOf : { name : Text } -> Text
 nameOf person =
   apply .name person
 ```
@@ -201,7 +204,8 @@ nameOf person =
 [a record type is written out in full](#records-are-closed), so there is no type an accessor can
 stand for on its own. It is therefore typed **from where it is written**: the record type comes
 from what the accessor is applied to, or from the annotation of the position it sits in. Where
-nothing fixes that type, the accessor is an error naming itself.
+nothing fixes that type, the accessor is an error naming itself, as
+[every use of a record is](#a-use-does-not-decide-a-records-type).
 
 ### Whitespace before a `.` decides which form it is
 
@@ -247,6 +251,7 @@ module Example exposing (Celsius, correct)
 type Celsius
   = Celsius
 
+correct : { taken : Celsius, expected : Celsius } -> { taken : Celsius, expected : Celsius }
 correct reading =
   { reading | taken = Celsius }
 ```
@@ -285,6 +290,7 @@ module Example exposing (Celsius, describe)
 type Celsius
   = Celsius
 
+describe : { taken : Celsius, expected : Celsius } -> Celsius
 describe reading =
   case reading of
     { taken = Celsius, expected = e } ->
@@ -308,6 +314,7 @@ module Example exposing (Text, nameOf)
 type Text
   = Text
 
+nameOf : { name : Text } -> Text
 nameOf { name } =
   name
 ```
@@ -327,6 +334,7 @@ type Celsius
 type Reading
   = Reading { centre : { x : Celsius }, taken : Celsius }
 
+depth : Reading -> Celsius
 depth r =
   case r of
     Reading { centre = { x } } ->
@@ -338,7 +346,8 @@ depth r =
 A record pattern says nothing about which record type it matches, since it names a subset of some
 record's fields. The type comes from the value being matched, the same way an
 [accessor's](#the-accessor) does, and a pattern naming a label the matched type does not have is
-an error.
+an error. So is a pattern matched against a value
+[whose record type nothing supplies](#a-use-does-not-decide-a-records-type).
 
 ## Labels are not values
 
@@ -353,7 +362,7 @@ and no declaration ever introduced a label. A value and a field of one spelling 
 do with each other:
 
 ```zel expect=unimplemented
-module Example exposing (Celsius, x, origin)
+module Example exposing (Celsius, x)
 
 type Celsius
   = Celsius
@@ -401,6 +410,36 @@ beside the one it solves for types.
 A function loses by it the ability to be written once over records that differ. A function
 wanting to serve many records takes the fields it needs as arguments.
 
+## A use does not decide a record's type
+
+A field access, an update, an accessor and a record pattern each name some of a record's fields,
+and a record type names all of them. None of the four says which record type it is used at. The
+type is supplied by something else in the declaration — its annotation, a record expression, the
+result of a function whose type is known, a constructor's argument — and the form is checked
+against it.
+
+Where nothing supplies it, the form is an error. A record type is never worked out from the
+fields a declaration happens to touch: that would read `person.name` as taking a record with
+exactly one field.
+
+```zel expect=unimplemented
+module Example exposing (Text)
+
+type Text
+  = Text
+
+nameOf person =
+  person.name
+```
+
+**Not implemented:** rejected at the `.` today ([`LANG-50`](../tickets/lang-50.md)); the rule
+that rejects it is the typer's ([`LANG-51`](../tickets/lang-51.md)), and for a record pattern
+[`LANG-84`](../tickets/lang-84.md)'s.
+
+What supplies the type may be written anywhere in the declaration, before the form or after it.
+A use of the declaration from another one does not: `nameOf` above is an error however it is
+called.
+
 ## Records and derivation
 
 A [derivation](type-classes.md#a-class-says-how-it-is-derived) folds the answers a value's parts
@@ -414,7 +453,8 @@ type, folded with `combine`. A two-value derivation walks the fields in pairs an
 singly and starts at the first field's answer, which every record has because it has
 [at least one field](#the-type).
 
-The fields are walked **in label order**, sorted by the label's characters. A record type is a
+The fields are walked **in label order**, sorted by the label's characters, each compared by its
+code point, and a label that another begins with comes first. A record type is a
 set of fields with no order of its own, so the walk supplies one, and sorting is the only order
 available that two spellings of one type agree on. Where
 [reordering a union's variants changes what a derived member computes](type-classes.md#what-a-derived-instance-computes),

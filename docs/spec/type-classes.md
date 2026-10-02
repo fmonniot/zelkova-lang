@@ -156,6 +156,8 @@ variable written twice. An instance is therefore identified by its class and the
 front of its head, and two instances that agree on both are the same instance declared twice.
 
 A function type is not a head, and neither is a [record type](records.md#records-and-derivation).
+A head written through a [type alias](types.md#type-aliases) is the type the alias names, and is
+held to this rule as that type.
 
 An instance for a type with parameters may need something of them. It says so with a context,
 in the notation [a signature uses](#constraining-an-annotation):
