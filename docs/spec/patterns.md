@@ -523,15 +523,9 @@ Every pattern position takes a whole pattern, so patterns nest to any depth: a c
 argument may be a tuple or another constructor pattern, and a tuple element may be a
 constructor pattern. An applied constructor written as a sub-pattern is parenthesised.
 
-**Known gap:** a constructor pattern may not appear inside another pattern at all, and a
-parenthesised one may not head a `case` branch. The grammar has one production for
-sub-patterns and it has no constructor alternative, which also means the parenthesised form
-does not admit one. [`docs/tickets/lang-16.md`](../tickets/lang-16.md) is the ticket, and each
-of the three blocks below is an `expect=ok` once it lands.
-
 A nullary constructor as a tuple element:
 
-```zel expect=parse-error:UnexpectedToken
+```zel expect=ok
 module Example exposing (Flag, both)
 
 type Flag
@@ -550,7 +544,7 @@ both pair =
 
 An applied constructor as a constructor's argument:
 
-```zel expect=parse-error:UnexpectedToken
+```zel expect=ok
 module Example exposing (Count, Shape, Wrapper, inner)
 
 type Count
@@ -576,7 +570,7 @@ inner w =
 
 A parenthesised constructor pattern at the head of a `case` branch:
 
-```zel expect=parse-error:UnexpectedToken
+```zel expect=ok
 module Example exposing (Count, Shape, describe)
 
 type Count

@@ -6,6 +6,7 @@ mod parser {
     mod field_access;
     mod layout;
     mod modules;
+    mod patterns;
     mod qualification;
     mod records;
     mod recovery;

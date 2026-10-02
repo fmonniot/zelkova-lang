@@ -4,8 +4,8 @@
 change* applies — `grammar.lalrpop`, the `parser` AST and the `canonical` conversion land
 together.
 
-**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `Pattern`, `CasePattern` and
-`DeclPattern`, none of which has a bracket or a `::` alternative;
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `Pattern` and `CasePattern`,
+neither of which has a bracket or a `::` alternative;
 `crates/zelkova-syntax/src/parser/mod.rs`'s `PatternKind`; and `canonical`'s pattern conversion.
 
 **Depends on:** [`LANG-46`](lang-46.md), hard, for the same reason as

@@ -1443,14 +1443,15 @@ fn unknown_variable_labels_the_identifier() {
 /// name was written.
 ///
 /// The variable case above goes through `Expression::from_parser`; this is the other
-/// conversion, `Pattern::from_parser`, and the other grammar site — `DeclPattern`,
-/// which spans a bare constructor used as a function argument. Taking it from a
+/// conversion, `Pattern::from_parser`, and the other grammar site — `Pattern`'s
+/// nullary-constructor alternative, which spans a bare constructor used as a function
+/// argument. Taking it from a
 /// binding pattern rather than a `case` branch keeps this error out of
 /// `Error::Many`, so it pins the pattern span on its own; the grouping is
 /// `grouped_canonical_error_keeps_every_label` below.
 ///
-/// Mutation-checked two ways, each red on its own: making the `DeclPattern`
-/// `QualTypeIdent` production emit `NodeSpan::none()`, and dropping the span from
+/// Mutation-checked two ways, each red on its own: making `Pattern`'s nullary
+/// `QualTypeIdent` alternative emit `NodeSpan::none()`, and dropping the span from
 /// `canonical::Error::VariantNotFound`'s `labels` arm.
 #[test]
 fn unknown_constructor_labels_the_pattern() {
