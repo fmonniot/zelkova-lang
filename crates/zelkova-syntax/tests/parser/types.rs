@@ -12,6 +12,7 @@ fn module_custom_type(tpe: UnionType) -> Module {
         infixes: vec![],
         types: vec![tpe],
         functions: vec![],
+        failed: vec![],
     }
 }
 
@@ -37,6 +38,7 @@ fn module_constrained_function_type(function: &str, context: Option<Type>, tpe: 
             span: no_span(),
             annotation_span: no_span(),
         }],
+        failed: vec![],
     }
 }
 

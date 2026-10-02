@@ -1,0 +1,11 @@
+module A exposing (ok,
+
+type T = T
+
+type U = U
+
+ok : T
+ok = T
+
+bad : T
+bad = T

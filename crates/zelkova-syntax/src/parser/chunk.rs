@@ -23,6 +23,7 @@
 
 use super::error::Error;
 use super::tokenizer::Token;
+use crate::name::Name;
 use crate::position::{BytePos, Position, Span, Spanned};
 use std::iter::FusedIterator;
 
@@ -81,6 +82,19 @@ impl Chunk {
         Span {
             start: self.start,
             end: self.end.absolute,
+        }
+    }
+
+    /// The value this chunk is a declaration of, read off its first item alone: the name
+    /// of a `LowerIdentifier` there, and `None` for any other first item, a tokenizer
+    /// error included. Only a declaration chunk is asked; the header is not.
+    pub(crate) fn declares(&self) -> Option<Name> {
+        match self.tokens.first() {
+            Some(Ok(Spanned {
+                value: Token::LowerIdentifier(name),
+                ..
+            })) => Some(Name::new(name.as_str())),
+            _ => None,
         }
     }
 }

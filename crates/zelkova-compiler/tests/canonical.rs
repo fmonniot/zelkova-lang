@@ -4668,3 +4668,219 @@ fn a_failed_annotation_makes_the_module_incomplete() {
     assert!(module.incomplete);
     assert!(module.to_interface(None).incomplete);
 }
+
+// ── TOOL-11: a declaration that failed to parse ─────────────────────────────
+
+/// Parse `source` with `parser::parse_recovering`, which keeps the module beside its
+/// syntax errors, and canonicalize it against `interfaces`. The syntax errors themselves
+/// are the parser's to report and are not looked at here.
+fn canonicalize_partly_parsed(
+    source: &str,
+    interfaces: &HashMap<zelkova_compiler::name::Name, Interface>,
+) -> canonical::Canonicalized {
+    use codespan_reporting::files::SimpleFile;
+    use zelkova_syntax::parser;
+
+    let file = SimpleFile::new("Test.zel".to_string(), source.to_string());
+    let parsed = parser::parse_recovering(&file);
+    assert!(
+        !parsed.failures.is_empty(),
+        "the source is meant to hold a syntax error"
+    );
+    let module = parsed.module.expect("the header parses");
+    canonical::canonicalize_recovering(&test_package(), interfaces, &module)
+}
+
+/// A function whose binding failed to parse is broken with the annotation that did, no
+/// error is reported for it, and a caller of it is a value: the syntax error is what says
+/// what is wrong.
+///
+/// Mutation-checked by removing the test on the failed chunk's name from `do_values`:
+/// `f` is then read as an annotation with no binding and `NoBindings` is reported.
+#[test]
+fn a_function_whose_binding_failed_to_parse_is_broken_with_its_annotation() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (f, g)
+
+        f : Int -> Int
+        f x = = x
+
+        g : Int
+        g = f 1
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_partly_parsed(source, &HashMap::from([basics_interface()]));
+
+    assert!(errors.is_empty(), "got {:?}", errors);
+    assert_eq!(sorted_value_names(&module), vec!["g"]);
+    match module.broken.as_slice() {
+        [broken] => {
+            assert_eq!(broken.name.as_str(), "f");
+            assert_eq!(
+                broken.tpe,
+                Some(canonical::Type::Arrow(Box::new(int_t()), Box::new(int_t())))
+            );
+        }
+        other => panic!("expected `f` alone to be broken, got {:?}", other),
+    }
+    assert!(!module.incomplete);
+}
+
+/// A value with no annotation whose only declaration failed to parse is still a name in
+/// scope, so a reference to it resolves and nothing is reported; it is broken with no
+/// type, and since its annotation could have been the chunk that failed, the module is
+/// incomplete.
+///
+/// Mutation-checked twice, each going red: not registering a failed chunk's name with
+/// `insert_top_level_value` reports `g`'s reference to `h` as `VariableNotFound`, and
+/// dropping the failed-chunk half of `annotation_failed` leaves `incomplete` false.
+#[test]
+fn a_value_that_failed_to_parse_with_no_annotation_makes_the_module_incomplete() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (g)
+
+        h = = 2
+
+        g : Int
+        g = h
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_partly_parsed(source, &HashMap::from([basics_interface()]));
+
+    assert!(errors.is_empty(), "got {:?}", errors);
+    assert_eq!(sorted_value_names(&module), vec!["g"]);
+    match module.broken.as_slice() {
+        [broken] => {
+            assert_eq!(broken.name.as_str(), "h");
+            assert_eq!(broken.tpe, None);
+            let chunk = source.find("h = = 2").expect("source declares `h`");
+            assert_eq!(broken.span.to_range().map(|range| range.start), Some(chunk));
+        }
+        other => panic!("expected `h` alone to be broken, got {:?}", other),
+    }
+    assert!(module.incomplete);
+}
+
+/// The control for the two tests above: an annotation with no binding in a module with no
+/// syntax error is reported as `NoBindings`, because no failed chunk stands behind it.
+///
+/// Mutation-checked by making `do_values` treat every function as one a failed chunk
+/// names (dropping the name test in its `unparsed.get`): `NoBindings` is silenced.
+#[test]
+fn an_annotation_with_no_binding_and_no_syntax_error_is_still_reported() {
+    use codespan_reporting::files::SimpleFile;
+    use zelkova_syntax::parser;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+
+        f : Int
+    "#};
+    let file = SimpleFile::new("Test.zel".to_string(), source.to_string());
+    let parsed = parser::parse_recovering(&file);
+    assert!(parsed.failures.is_empty(), "got {:?}", parsed.failures);
+    let module = parsed.module.expect("the module parses");
+
+    let canonical::Canonicalized { errors, .. } = canonical::canonicalize_recovering(
+        &test_package(),
+        &HashMap::from([basics_interface()]),
+        &module,
+    );
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::NoBindings(..)]),
+        "got {:?}",
+        errors
+    );
+}
+
+/// A `type` declaration that failed to parse names nothing that can be read off it, so
+/// the scope is incomplete: a value naming the type or its constructor is broken, and
+/// neither not-found is reported.
+///
+/// Mutation-checked by not setting the environment's flag for a failed chunk that names
+/// nothing: `TypeNotFound` is reported for `k`'s annotation.
+#[test]
+fn a_type_that_failed_to_parse_makes_the_scope_incomplete() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (k)
+
+        type U = (
+
+        k : U
+        k = MkU
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_partly_parsed(source, &HashMap::from([basics_interface()]));
+
+    assert!(errors.is_empty(), "got {:?}", errors);
+    assert!(module.values.is_empty(), "got {:?}", module.values);
+    match module.broken.as_slice() {
+        [broken] => assert_eq!(broken.name.as_str(), "k"),
+        other => panic!("expected `k` alone to be broken, got {:?}", other),
+    }
+    assert!(module.incomplete);
+}
+
+/// An `infix` declaration may name a function whose only declaration failed to parse:
+/// the operator is declared and nothing is reported.
+///
+/// Mutation-checked by making `do_infixes` look only at the parsed functions:
+/// `InfixReferenceInvalidValue` is reported for `(<+>)`.
+#[test]
+fn an_infix_may_name_a_function_that_failed_to_parse() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ((<+>))
+
+        infix left 6 (<+>) = plus
+
+        plus x y = = x
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_partly_parsed(source, &HashMap::from([basics_interface()]));
+
+    assert!(errors.is_empty(), "got {:?}", errors);
+    assert!(
+        module
+            .infixes
+            .contains_key(&zelkova_compiler::name::Name::from("<+>")),
+        "got {:?}",
+        module.infixes
+    );
+}
+
+/// A facade signature that parsed beside a binding chunk of the same name that did not
+/// is broken with its type, and nothing is reported for it.
+///
+/// Mutation-checked by removing the failed-chunk test from the facade branch of
+/// `canonicalize_recovering`: `inc` is then a sound signature, a value.
+#[test]
+fn a_facade_signature_named_by_a_failed_chunk_is_broken_with_its_type() {
+    let source = indoc::indoc! {r#"
+        module foreign Test exposing (inc)
+
+        unsafe inc : Int -> Int
+
+        inc x = = x
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_partly_parsed(source, &effect_interfaces());
+
+    assert!(errors.is_empty(), "got {:?}", errors);
+    assert!(module.values.is_empty(), "got {:?}", module.values);
+    match module.broken.as_slice() {
+        [broken] => {
+            assert_eq!(broken.name.as_str(), "inc");
+            assert_eq!(
+                broken.tpe,
+                Some(canonical::Type::Arrow(Box::new(int_t()), Box::new(int_t())))
+            );
+        }
+        other => panic!("expected `inc` alone to be broken, got {:?}", other),
+    }
+}

@@ -51,6 +51,7 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
             exposing,
             exposing_span,
             declarations,
+            vec![],
         )),
     }
 }
@@ -59,9 +60,9 @@ pub fn parse(source_file: &SimpleFile<String, String>) -> Result<Module, Error> 
 /// chunk that did not.
 #[derive(Debug)]
 pub struct Parsed {
-    /// The module, holding every declaration that parsed. `None` exactly when the module
-    /// header is among the `failures`. What a failed declaration would have been called
-    /// is not recovered, so the module has no trace of it.
+    /// The module, holding every declaration that parsed and, in
+    /// [`Module::failed`], a record of every declaration that did not. `None` exactly
+    /// when the module header is among the `failures`.
     pub module: Option<Module>,
     /// Every chunk that failed to parse, in source order: the header first if it failed,
     /// then each declaration.
@@ -77,6 +78,25 @@ pub struct Failure {
     /// The first error the chunk's tokenizer, layout pass or grammar raised. Nothing
     /// after it in the same chunk is reported.
     pub error: Error,
+    /// The value the chunk declares, when its tokens say so: `Some(name)` for a
+    /// declaration chunk whose first item is the token `LowerIdentifier(name)`, `None`
+    /// for every other chunk and for the header.
+    ///
+    /// A chunk opening on a lowercase identifier is the annotation or a binding of the
+    /// value of that name, because those are the only two declaration forms the grammar
+    /// opens on one. Every other opening — `type`, `infix`, `import`, `unsafe` or another
+    /// soft keyword — is read as naming nothing: past the first token what the chunk
+    /// would have declared is a guess (`docs/decisions/dec-23.md`, decision 4).
+    pub declares: Option<Name>,
+}
+
+/// A record, kept on [`Module::failed`], of one declaration chunk that failed to parse.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Failed {
+    /// The chunk's source text, as [`Failure::span`].
+    pub span: Span<BytePos>,
+    /// The value the chunk declares, as [`Failure::declares`].
+    pub declares: Option<Name>,
 }
 
 /// Parse `source_file`, carrying on past a syntax error to the next top-level
@@ -99,6 +119,13 @@ pub fn parse_recovering(source_file: &SimpleFile<String, String>) -> Parsed {
                 exposing,
                 exposing_span,
                 declarations,
+                failures
+                    .iter()
+                    .map(|failure| Failed {
+                        span: failure.span,
+                        declares: failure.declares.clone(),
+                    })
+                    .collect(),
             )),
             failures,
         },
@@ -134,6 +161,7 @@ fn parse_chunks(source: &str) -> (Result<Header, Failure>, Vec<Declaration>, Vec
         Err(error) => Err(Failure {
             span: header_chunk.span(),
             error,
+            declares: None,
         }),
     };
 
@@ -143,6 +171,7 @@ fn parse_chunks(source: &str) -> (Result<Header, Failure>, Vec<Declaration>, Vec
             Err(error) => failures.push(Failure {
                 span: chunk.span(),
                 error,
+                declares: chunk.declares(),
             }),
         }
     }
@@ -271,6 +300,13 @@ pub struct Module {
     pub infixes: Vec<Infix>,
     pub types: Vec<UnionType>,
     pub functions: Vec<Function>,
+    /// The declaration chunks that failed to parse, in source order.
+    ///
+    /// Only [`parse_recovering`] fills it: [`parse`] has no module to return when any
+    /// declaration failed. A failed chunk that names a value is how canonicalization
+    /// knows the name exists while nothing of it parsed, and one that names nothing is
+    /// how it knows a name could be missing from the module's scope.
+    pub failed: Vec<Failed>,
 }
 
 impl Module {
@@ -280,6 +316,7 @@ impl Module {
         exposing: Exposing,
         exposing_span: NodeSpan,
         declarations: Vec<Declaration>,
+        failed: Vec<Failed>,
     ) -> Module {
         let binding_foreign = matches!(modifier, Some(tokenizer::Token::Foreign));
 
@@ -350,6 +387,7 @@ impl Module {
             infixes,
             types,
             functions,
+            failed,
         }
     }
 }

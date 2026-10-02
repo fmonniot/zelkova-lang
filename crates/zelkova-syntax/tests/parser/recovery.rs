@@ -307,3 +307,75 @@ fn a_stray_column_1_token_is_rejected_as_it_was_before_the_cut() {
     let module = module.expect("the header parsed, so the module is there");
     assert_eq!(function_names(&module), vec![Name::from("g")]);
 }
+
+/// `TOOL-11`: a failed declaration chunk that opens on a lowercase identifier declares the
+/// value of that name, whether the chunk is a binding (`bad = = T`) or an annotation cut
+/// short (`f : Int ->`). A chunk opening on anything else — `type`, `unsafe` — declares
+/// nothing, and the module's `failed` records each failure's span and name.
+///
+/// Mutation-checked by making `Chunk::declares` return `None` always: the `Some` assertions
+/// go red.
+#[test]
+fn a_failed_chunk_declares_the_value_it_opens_on() {
+    let source = indoc::indoc! {"
+        module Main exposing (..)
+
+        bad = = T
+
+        f : Int ->
+
+        ok = 1
+
+        type U = (
+
+        unsafe g : (
+    "};
+
+    let Parsed { module, failures } = parse_recovering(source);
+
+    let declares: Vec<Option<Name>> = failures.iter().map(|f| f.declares.clone()).collect();
+    assert_eq!(
+        declares,
+        vec![Some(Name::from("bad")), Some(Name::from("f")), None, None],
+        "got {:?}",
+        failures
+    );
+    let starts: Vec<usize> = failures.iter().map(|f| f.span.start.0 as usize).collect();
+    assert_eq!(
+        starts,
+        vec![
+            source.find("bad =").unwrap(),
+            source.find("f :").unwrap(),
+            source.find("type U").unwrap(),
+            source.find("unsafe g").unwrap(),
+        ]
+    );
+
+    let module = module.expect("the header parsed, so the module is there");
+    assert_eq!(function_names(&module), vec![Name::from("ok")]);
+    assert_eq!(module.failed.len(), failures.len());
+    for (failed, failure) in module.failed.iter().zip(&failures) {
+        assert_eq!(failed.span, failure.span);
+        assert_eq!(failed.declares, failure.declares);
+    }
+}
+
+/// `TOOL-11`: a header that fails declares nothing, even when it opens on a lowercase
+/// identifier that a declaration chunk would be read as declaring.
+///
+/// Mutation-checked by giving the header's `Failure` the `declares` of its chunk in
+/// `parse_chunks`: it is then `Some("main")`.
+#[test]
+fn a_failed_header_declares_nothing() {
+    let source = indoc::indoc! {"
+        main exposing (..)
+
+        ok = 1
+    "};
+
+    let Parsed { module, failures } = parse_recovering(source);
+
+    assert!(module.is_none(), "got {:?}", module);
+    assert_eq!(failures.len(), 1, "got {:?}", failures);
+    assert_eq!(failures[0].declares, None);
+}

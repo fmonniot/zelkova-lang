@@ -1,0 +1,11 @@
+# `A` has one declaration with a syntax error in its body, `bad`, and `B` imports a
+# different, sound one, `ok`. `crates/zelkova/tests/pipeline.rs` checks that `A` stays in
+# the build beside its syntax error, so `B` reports nothing, and that `A` still comes back
+# with a typed tree for `ok` and `bad` listed as unchecked.
+name = "package-import-syntax-error"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]

@@ -186,9 +186,9 @@ TOOL-3  a check that returns diagnostics as data,  ─┐
   │                                                 ├─ both required by TOOL-6
 TOOL-2  that check reads open buffers through an    │
           overlay, not only the disk               ─┘  ← closed: `Overlay`
-TOOL-4  every syntax error of a module is          ← closed: `parse_recovering`; parser
-  │       reported, and the declarations that         only, the module is still dropped
-  │       parsed are handed back                      from the build
+TOOL-4  every syntax error of a module is          ← closed: `parse_recovering`
+  │       reported, and the declarations that
+  │       parsed are handed back
   │
 TOOL-8  a module with a type error still publishes  ← closed: `Outcome`,
   │       its interface and has a typed tree           `check_module_recovering`,
@@ -202,7 +202,8 @@ TOOL-10 a failed type, operator or import marks     ← closed: `without_restate
   │       its scope incomplete                         `Interface::incomplete`
   │
   ├── TOOL-11  a module with a syntax error stays in the build
-  │              ← next; completes the floor
+  │              ← closed: `parser::Module::failed`, `Interface::unavailable`;
+  │                the floor is complete
   │
   └── TOOL-12  an unresolved name in a sound body is a typed hole
                  ← next; a layer on the floor: the declaration being typed keeps its tree
@@ -480,6 +481,6 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TOOL-8 | task | — | closed 2026-10-01 | A module that fails type checking hides itself from its importers and from the editor |
 | TOOL-9 | task | — | closed 2026-10-01 | A declaration that fails canonicalization takes its whole module with it |
 | TOOL-10 | task | — | closed 2026-10-01 | A failed type, operator or import is reported again by everything that names it |
-| [TOOL-11](tool-11.md) | task | — | open | A module with a syntax error is dropped from the build |
+| TOOL-11 | task | — | closed 2026-10-02 | A module with a syntax error is dropped from the build |
 | [TOOL-12](tool-12.md) | task | — | open | One unresolved name costs a declaration its whole typed tree |
 | [TOOL-13](tool-13.md) | task | — | open | A facade that declares a type is still reported for the type it declared |

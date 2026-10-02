@@ -710,8 +710,9 @@ impl Solved {
 /// Every value of `module`, in [`values`](canonical::Module::values) or in
 /// [`broken`](canonical::Module::broken), ends up in exactly one of
 /// [`Module::declarations`] and [`Module::unchecked`] — see the second field for why
-/// nothing may merely go missing. A broken one is always unchecked, with the error
-/// canonicalization reported behind it.
+/// nothing may merely go missing. A broken one is always unchecked, with an error
+/// reported behind it: canonicalization's, or the syntax error of a declaration chunk
+/// that did not parse.
 pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Module {
     let mut unions: Vec<Union> = module
         .types
@@ -796,7 +797,7 @@ pub fn build(module: &canonical::Module, solved: HashMap<Name, Solved>) -> Modul
     }
 
     // A broken declaration has no canonical form for the typer to have read, and the
-    // error canonicalization reported for it is the caller's to report.
+    // error behind it — canonicalization's, or a syntax error — is the caller's to report.
     unchecked.extend(module.broken.iter().map(|broken| Unchecked {
         name: broken.name.clone(),
         span: broken.span,

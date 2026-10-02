@@ -1,0 +1,10 @@
+# `A`'s module header does not parse, and `B` imports `A`. `crates/zelkova/tests/pipeline.rs`
+# checks that `A` still exists as a module `B` can import, so the header's syntax error is
+# the build's only error and nothing is reported about `B`.
+name = "package-import-header-error"
+version = "0.1.0"
+private-modules = []
+
+[dependencies]
+
+[test-dependencies]
