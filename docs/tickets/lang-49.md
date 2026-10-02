@@ -7,6 +7,12 @@ the canonical conversion land together.
 `crates/zelkova-syntax/src/parser/mod.rs`'s `PatternKind`; `canonical::Pattern::from_parser_pattern`.
 
 **Depends on:** [`LANG-47`](lang-47.md), hard — there is no brace token.
+[`LANG-16`](lang-16.md), hard for the acceptance below: the first record-pattern block in
+[Records](../spec/records.md#record-patterns) and the one in
+[Patterns](../spec/patterns.md#record-patterns) both write `{ taken = Celsius, … }`, a
+constructor as a sub-pattern, which `Pattern` has no alternative for until `LANG-16` gives it
+one — so neither block can go red before then. [`LANG-48`](lang-48.md), for the
+`canonical::Error` variant a repeated label is reported with.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decision 5):** a
 record pattern is `{ label = pattern, … }`, `{ label }` is shorthand for `{ label = label }`, and
@@ -34,7 +40,8 @@ is the tempting shortcut.
 **Acceptance:** every `expect=unimplemented` block in
 [Records](../spec/records.md#record-patterns) goes red and is retagged; the same for
 [Patterns](../spec/patterns.md#record-patterns)' worked examples, which are written when this
-lands. A parser test asserts the desugared `PatternKind` for `{ x }` rather than only that it
+lands. Typing a record pattern is not this ticket's: it is [`LANG-84`](lang-84.md)'s, and until
+then the typer leaves a declaration holding one unchecked. A parser test asserts the desugared `PatternKind` for `{ x }` rather than only that it
 parsed, and a canonicalization test asserts the bindings a nested record pattern produces.
 
 **Found:** while writing [`docs/spec/records.md`](../spec/records.md) (`SPEC-21`).
