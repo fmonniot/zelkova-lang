@@ -3,9 +3,9 @@
 **Settled:** 2026-10-01, by the language owner, in the session that settled the decisions
 [`TOOL-8`](../tickets/README.md) had been filed with open.
 **Status:** live.
-**Where the rule lives:** the *Active work: editor support* section of
-[the ticket index](../tickets/README.md#active-work-editor-support), whose `TOOL-8` through
-`TOOL-12` implement these. None of them is a rule about the *language*, so no chapter changes;
+**Where the rule lives:** the code sites each decision below names; `TOOL-8` through `TOOL-12`
+implemented them, and the editor-support program they belonged to has been dropped from
+[the ticket index](../tickets/README.md). None of them is a rule about the *language*, so no chapter changes;
 each decision below names the code site it lands at, because the tickets carrying them are
 deleted as they close.
 
