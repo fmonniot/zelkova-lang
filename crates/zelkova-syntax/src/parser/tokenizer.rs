@@ -43,7 +43,15 @@ pub enum Token {
     /// (`Comparable a => a -> a -> a`). A symbol of the language rather than an
     /// operator name, so it cannot be declared with `infix` or exposed as `(=>)`.
     FatArrow,
+    /// A `.` written against the token before it and against the character after it:
+    /// the `.` of `Dict.get`. The only `.` the grammar consumes.
     Dot,
+    /// A `.` with whitespace, a comment, or the start or end of the source on either
+    /// side of it: `Dict . get`, `Dict .get`, `Dict. get`. No production consumes
+    /// it, so the parser rejects it where it stands, and `Error::SpacedDot` says why.
+    /// The doc comment on the tokenizer's `consume_operator` has the reason this is a
+    /// token of its own.
+    SpacedDot,
     DotDot,
     Underscore,
     Colon,
@@ -307,6 +315,10 @@ struct Tokenizer<I: Iterator<Item = char>> {
     processed_tokens: Vec<Spanned<Position, Token>>,
     /// The current position in the source code
     position: Position,
+    /// Where the last token handed out by `process_next_tokens` ended, or `None` before
+    /// the first. A `.` whose start is this byte is written against the token before it;
+    /// whitespace or a comment in between puts the two apart.
+    previous_token_end: Option<BytePos>,
     /// A preview of the current character (and the two following).
     ///
     /// This is especially helpful to let us find symbols containing
@@ -325,6 +337,7 @@ where
             at_line_start: true, // Nothing have been read yet, so…
             processed_tokens: vec![],
             position: Position::new(0, 1, 1),
+            previous_token_end: None,
             lookahead: (None, None, None),
         };
 
@@ -461,7 +474,10 @@ where
             self.consume_char()?;
         }
 
-        Ok(self.processed_tokens.remove(0))
+        let token = self.processed_tokens.remove(0);
+        self.previous_token_end = Some(token.span.end.absolute);
+
+        Ok(token)
     }
 
     //
@@ -1045,6 +1061,31 @@ where
         Ok(spanned(start_pos, end_pos, token))
     }
 
+    /// Consume a run of operator characters and name the token it is.
+    ///
+    /// A lone `.` is where the rule that a qualified name takes no whitespace around
+    /// its dot is decided: `Dict.get` is `Dict` qualifying `get`, and `Dict . get`,
+    /// `Dict .get` and `Dict. get` are not. A `.` written against the token before it
+    /// and against the character after it is [`Token::Dot`]; any other is
+    /// [`Token::SpacedDot`], which the grammar has no production for.
+    ///
+    /// This is decided here and not in the `QualVarIdent`/`QualTypeIdent` actions of
+    /// `grammar.lalrpop`, for two reasons. Whitespace is only visible here: the grammar
+    /// sees the same `up_ident "." up_ident` stream whichever way the source was spaced,
+    /// so deciding it there means comparing the `@R` of one token with the `@L` of the
+    /// next in an action that can only accept or fail, and leaves the grammar unable to
+    /// tell the two spellings apart where it needs to. Records need exactly that: `f
+    /// .name` is `f` applied to an accessor and `f.name` is an access, and a grammar
+    /// that gets the same token for both can only be made to distinguish them by
+    /// resolving a conflict in an action. A grammar that gets a different token for each
+    /// has no conflict to resolve, so `LANG-50` splits [`Token::SpacedDot`] by what
+    /// follows it and adds the productions, and does not move the rule.
+    ///
+    /// Adjacency is compared against where the previous token ended, not against the
+    /// previous character, so a block comment between a name and its dot — `Dict{- -}.get`
+    /// — separates them as whitespace does. The character after the dot is whitespace, the
+    /// end of the source, or the opening of a block comment when it is not written against
+    /// the dot.
     fn consume_operator(&mut self) -> Spanned<Position, Token> {
         let mut buf = String::new();
         let start_pos = self.position;
@@ -1062,7 +1103,19 @@ where
         let end_pos = self.position;
 
         let tok = match buf.as_ref() {
-            "." => Token::Dot,
+            "." => {
+                let after_is_apart = match (self.lookahead.0, self.lookahead.1) {
+                    (None, _) => true,
+                    (Some('{'), Some('-')) => true,
+                    (Some(c), _) => c.is_whitespace(),
+                };
+
+                if self.previous_token_end == Some(start_pos.absolute) && !after_is_apart {
+                    Token::Dot
+                } else {
+                    Token::SpacedDot
+                }
+            }
             ".." => Token::DotDot,
             "|" => Token::Pipe,
             "=" => Token::Equal,
@@ -1721,6 +1774,49 @@ mod tests {
                 Token::Pipe
             ]
         );
+    }
+
+    /// A `.` is `Dot` only when it is written against the token before it and against the
+    /// character after it; whitespace, a block comment, or an end of the source on either
+    /// side makes it `SpacedDot`.
+    ///
+    /// Verified to fail by making `consume_operator` yield `Token::Dot` for every lone
+    /// `.`: every `SpacedDot` expectation below then fails.
+    #[test]
+    fn a_dot_is_spaced_unless_written_against_both_sides() {
+        let up = |s: &str| Token::UpperIdentifier(s.to_owned());
+        let low = |s: &str| Token::LowerIdentifier(s.to_owned());
+
+        assert_eq!(
+            tokenize("Widget.size"),
+            vec![up("Widget"), Token::Dot, low("size")]
+        );
+        assert_eq!(
+            tokenize("Widget . size"),
+            vec![up("Widget"), Token::SpacedDot, low("size")]
+        );
+        assert_eq!(
+            tokenize("Widget .size"),
+            vec![up("Widget"), Token::SpacedDot, low("size")]
+        );
+        assert_eq!(
+            tokenize("Widget. size"),
+            vec![up("Widget"), Token::SpacedDot, low("size")]
+        );
+        assert_eq!(
+            tokenize("Widget\n.size"),
+            vec![up("Widget"), Token::SpacedDot, low("size")]
+        );
+        assert_eq!(
+            tokenize("Widget{- -}.size"),
+            vec![up("Widget"), Token::SpacedDot, low("size")]
+        );
+        assert_eq!(
+            tokenize("Widget.{- -}size"),
+            vec![up("Widget"), Token::SpacedDot, low("size")]
+        );
+        assert_eq!(tokenize(".size"), vec![Token::SpacedDot, low("size")]);
+        assert_eq!(tokenize("Widget."), vec![up("Widget"), Token::SpacedDot]);
     }
 
     /// `=>` is its own token, the separator of a constraint context, and a longer

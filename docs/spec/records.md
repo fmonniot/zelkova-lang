@@ -214,23 +214,12 @@ whitespace before it, or one opening an expression, is an **accessor**, and it i
 its label with no space after it.
 
 The same rule governs the `.` of a [qualified name](name-resolution.md#namespaces): `Dict.get`
-is one name, and `Dict .get` is `Dict` applied to an accessor.
+is one name, and `Dict .get` is `Dict` applied to an accessor. A qualified name takes no
+whitespace on either side of its `.`, so `Widget . size` and `Widget. size` are not names at
+all, and the block below is rejected with an error saying so. The module header and an
+`import` read their name the same way, so `import Ui . Widget` is rejected as well.
 
-**Known gap:** whitespace around a qualification dot is accepted today, so the block below
-compiles and names `Widget`'s `size`. The language reads it as an application of a module name
-and rejects it ([`LANG-52`](../tickets/lang-52.md)).
-
-```zel expect=ok package=spaced
-module Widget exposing (Size, size)
-
-type Size
-  = Small
-
-size : Size
-size = Small
-```
-
-```zel expect=ok package=spaced
+```zel expect=parse-error:SpacedDot
 module Example exposing ()
 
 import Widget

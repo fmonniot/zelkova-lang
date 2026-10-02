@@ -1,6 +1,6 @@
 use super::layout::LayoutError;
 use super::tokenizer::{Token, TokenizerError, TokenizerErrorType};
-use crate::position::{BytePos, Spanned};
+use crate::position::{BytePos, Span, Spanned};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use lalrpop_util::ParseError;
 use std::ops::Range;
@@ -31,6 +31,16 @@ pub enum Error {
     /// and the grammar is what rejects it (`BUG-12`).
     InfixPrecedenceOutOfRange {
         precedence: Spanned<BytePos, i64>,
+    },
+    /// A `.` with whitespace on a side of it — `Widget . size`, `Widget .size`,
+    /// `Widget. size`, `import Ui . Widget`. The tokenizer reads such a `.` as
+    /// `Token::SpacedDot`, which no production consumes, so the parser reports it as an
+    /// unexpected token and `From<ParseError>` turns that into this. `dot` is the `.`.
+    ///
+    /// The message speaks of a qualified name because that is the only construct that
+    /// has a `.` today, and the spelling it rejects looks reasonable.
+    SpacedDot {
+        dot: Span<BytePos>,
     },
 }
 
@@ -222,6 +232,14 @@ impl Error {
                 .with_notes(vec![
                     "Zelkova represents an operator's precedence as one byte, so it must be between 0 and 255".to_owned()
                 ]),
+
+            Error::SpacedDot { dot } => Diagnostic::error()
+                .with_message("a qualified name is written with no spaces around its `.`")
+                .with_labels(vec![Label::primary(name, non_empty(dot.to_range()))
+                    .with_message("this `.` has whitespace next to it")])
+                .with_notes(vec![
+                    "write the name in one piece, as in `Dict.get` or `Ui.Widget`".to_owned()
+                ]),
         }
     }
 }
@@ -271,6 +289,12 @@ impl From<ParseError<BytePos, Token, Error>> for Error {
             ParseError::UnrecognizedEof { location, expected } => Error::UnexpectedEOF {
                 position: location,
                 expected: unquote_tokens(expected),
+            },
+            ParseError::UnrecognizedToken {
+                token: (start, Token::SpacedDot, end),
+                ..
+            } => Error::SpacedDot {
+                dot: Span { start, end },
             },
             ParseError::UnrecognizedToken { token, expected } => Error::UnexpectedToken {
                 token: token.into(),

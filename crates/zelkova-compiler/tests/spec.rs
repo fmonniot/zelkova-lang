@@ -293,6 +293,7 @@ const PARSE_ERROR_SPECIFICS: &[&str] = &[
     "UnexpectedToken",
     "ExtraToken",
     "InfixPrecedenceOutOfRange",
+    "SpacedDot",
 ];
 
 /// Every name an `expect=parse-error:<reason>` tag may pin, phases and specific errors
@@ -340,6 +341,7 @@ fn parse_error_reasons(error: &parser::Error) -> Vec<&'static str> {
         parser::Error::UnexpectedToken { .. } => vec!["UnexpectedToken"],
         parser::Error::ExtraToken { .. } => vec!["ExtraToken"],
         parser::Error::InfixPrecedenceOutOfRange { .. } => vec!["InfixPrecedenceOutOfRange"],
+        parser::Error::SpacedDot { .. } => vec!["SpacedDot"],
     };
 
     // A name the match can produce but the constants above do not list is a name

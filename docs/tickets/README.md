@@ -170,8 +170,8 @@ declarations it is about, and not closed by it.
 
 ## Active work: records
 
-Eight tickets are one body of work — `LANG-47` through `LANG-52`, `LANG-84` and `GEN-25` — and
-a ninth, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
+Seven tickets remain of one body of work — `LANG-47` through `LANG-51`, `LANG-84` and `GEN-25` —
+and an eighth, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
 parts can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says which part
 is which by position and stops at three.
 
@@ -183,21 +183,17 @@ the tickets are cut along those lines, with the emitter last.
 [DEC-8](../decisions/dec-8.md) holds the ten decisions behind it, which the tickets cite by
 number. **No ticket in the order leaves a language decision open**, and none re-argues one.
 Where a ticket says a choice is the implementer's, it means that and names the constraints:
-`LANG-50` on how an attached `.` is told from a detached one, and `LANG-52` on whether that is
-decided in the tokenizer or in a grammar action — one mechanism serves both, and `LANG-52` lands
-first, so its choice is the one `LANG-50` inherits. Anything else that looks like a decision is a
-gap to report, not to fill.
+`LANG-50` on how an attached `.` is told from a detached one. `LANG-52` has landed and chose the
+tokenizer: it reads a `.` written against both sides as `Dot` and any other as `SpacedDot`, and
+`LANG-50` inherits that rather than choosing again. The reason is in the doc comment on
+`consume_operator` in `crates/zelkova-syntax/src/parser/tokenizer.rs`. Anything else that looks
+like a decision is a gap to report, not to fill.
 
 They land in this order, one at a time:
 
 ```
-LANG-52  a qualification dot takes no whitespace on either side
-  │      ← first: a rejection with no new form behind it, and LANG-50
-  │        cannot tell an access from an accessor until it lands
-  │
 LANG-47  `{` and `}` become tokens
-  │      ← needs nothing and may land beside LANG-52. No block in the
-  │        chapter turns on it alone
+  │      ← needs nothing. No block in the chapter turns on it alone
   │
 LANG-48  a record type, a record and an update parse, and reach the
   │      canonical module as a set of fields
@@ -206,8 +202,8 @@ LANG-48  a record type, a record and an update parse, and reach the
   │        unchecked, so the emitter refuses its module
   │
 LANG-50  `r.name` and `.name` parse
-  │      ← needs LANG-52 to parse, and LANG-48 before the chapter's
-  │        blocks turn: each annotates with a record type
+  │      ← needs LANG-48 before the chapter's blocks turn: each
+  │        annotates with a record type
   │
 LANG-16  a pattern nests, and is type checked where it does
   │      ← not a record ticket. Here because the first record-pattern
@@ -409,7 +405,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-49](lang-49.md) | task | — | open | There is no record pattern production |
 | [LANG-50](lang-50.md) | task | — | open | Field access `r.name` and the accessor `.name` do not parse |
 | [LANG-51](lang-51.md) | task | — | open | The typer has no record type, so nothing checks a field, an update or an accessor |
-| [LANG-52](lang-52.md) | task | — | open | Whitespace around a qualification dot is accepted, and records need it not to be |
+| LANG-52 | task | — | closed 2026-10-02 | Whitespace around a qualification dot is accepted, and records need it not to be |
 | LANG-53 | task | — | closed 2026-09-13 | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | LANG-54 | task | — | closed 2026-09-13 | The interop modifier is `foreign`, not `javascript` |
 | LANG-55 | task | — | closed 2026-09-16 | The `Char` and `String` default imports bring their modules but not their types |

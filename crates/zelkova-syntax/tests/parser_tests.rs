@@ -5,6 +5,7 @@ mod parser {
     mod expressions;
     mod layout;
     mod modules;
+    mod qualification;
     mod recovery;
     mod types;
 }

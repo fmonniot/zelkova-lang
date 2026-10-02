@@ -32,6 +32,9 @@ extern {
         ")"  => Token::RPar,
         ":"  => Token::Colon,
         "."  => Token::Dot,
+        // No production consumes this one; it is declared so that the parser reports it
+        // as an unexpected token, which `Error::from` turns into `Error::SpacedDot`.
+        "spaced dot" => Token::SpacedDot,
         ".." => Token::DotDot,
         "="  => Token::Equal,
         ","  => Token::Comma,
@@ -125,6 +128,9 @@ VarIdent: Name = {
     "unsafe" => Name::new("unsafe"),
 };
 
+// A qualified name's `.` is the tokenizer's `Dot`, which is written against the name on
+// both sides; a `.` with whitespace next to it is a `SpacedDot` and no production
+// accepts it. `consume_operator` in `tokenizer.rs` has the reason that rule is there.
 QualVarIdent: Name = {
     <VarIdent> => <>,
     <i:"up_ident"> "." <n:QualVarIdent> => {
