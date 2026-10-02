@@ -5707,3 +5707,162 @@ fn a_hole_inside_a_record_is_held_by_its_declaration() {
         assert!(value.holds_hole(), "{}: `r` holds a hole", source);
     }
 }
+
+// ── Reading a field ──────────────────────────────────────────────────────────
+//
+// `docs/spec/records.md`, *Reading a field* and *The accessor*: `r.name` and `.name`
+// reach the canonical module with their record canonicalized as any expression is and
+// their label, which names no declaration, left as written.
+
+/// An access keeps its record, canonicalized in the scope it is written in, and its
+/// label; an accessor keeps its label. Each label carries the span of the label alone.
+///
+/// Mutation-checked by giving the canonical `Access` and `Accessor` the node's span in
+/// place of the parser's label span in `Expression::from_parser`: the two label range
+/// assertions go red.
+#[test]
+fn an_access_and_an_accessor_keep_their_labels() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        get r =
+          r.name
+
+        pick =
+          .label
+    "#};
+    let module = canonicalize_with_scalars(source).expect("an access and an accessor canonicalize");
+
+    let get = body_of(&module, "get");
+    let canonical::ExpressionKind::Access(record, label, label_span) = &get.kind else {
+        panic!("expected an access, got {:?}", get);
+    };
+    assert_eq!(**record, c_var_local("r"));
+    assert_eq!(label.as_str(), "name");
+    assert_eq!(label_span.to_range(), Some(range_of(source, "name")));
+    assert_eq!(get.span.to_range(), Some(range_of(source, "r.name")));
+
+    let pick = body_of(&module, "pick");
+    let canonical::ExpressionKind::Accessor(label, label_span) = &pick.kind else {
+        panic!("expected an accessor, got {:?}", pick);
+    };
+    assert_eq!(label.as_str(), "label");
+    let accessor = range_of(source, ".label");
+    assert_eq!(
+        label_span.to_range(),
+        Some(accessor.start + 1..accessor.end)
+    );
+    assert_eq!(pick.span.to_range(), Some(accessor));
+}
+
+/// `Maybe .withDefault` is `Maybe` applied to an accessor, and `Maybe` names a module
+/// and no constructor, so it is reported as a constructor that does not resolve, under
+/// `Maybe`. The same spacing after a constructor is an ordinary application of it, and
+/// with no space the name is the qualified `Maybe.withDefault`.
+///
+/// This is where `LANG-52`'s rejection of `Widget .size` went once an accessor existed:
+/// the parser reads the source, and canonicalization is the phase that rejects it.
+///
+/// Mutation-checked by making `consume_operator` never yield `AccessorDot`: the first
+/// source then fails to parse and `parse_source` panics.
+#[test]
+fn a_module_name_applied_to_an_accessor_is_no_constructor() {
+    let mut interfaces = scalar_interfaces();
+    let (name, interface) = maybe_interface();
+    interfaces.insert(name, interface);
+
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        import Maybe
+
+        f =
+          Maybe .withDefault
+    "#};
+    let errors = canonicalize_with_interfaces(source, &interfaces)
+        .expect_err("`Maybe` is a module and not a constructor");
+    match errors.as_slice() {
+        [canonical::Error::VariantNotFound(name, span, _)] => {
+            assert_eq!(name.unqualified_name().as_str(), "Maybe");
+            // The second `Maybe`: the first is the import's.
+            assert_eq!(span.to_range(), Some(nth_range_of(source, "Maybe", 1)));
+        }
+        other => panic!("expected one VariantNotFound, got {:?}", other),
+    }
+
+    let module = canonicalize_with_interfaces(
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            import Maybe exposing (Maybe(..))
+
+            f =
+              Just .withDefault
+
+            g =
+              Maybe.withDefault
+        "#},
+        &interfaces,
+    )
+    .expect("a constructor applied to an accessor, and a qualified name, canonicalize");
+
+    let f = body_of(&module, "f");
+    let canonical::ExpressionKind::Apply(ctor, arg) = &f.kind else {
+        panic!("expected an application, got {:?}", f);
+    };
+    assert!(
+        matches!(&ctor.kind, canonical::ExpressionKind::VarConstructor(name, _) if name.unqualified_name().as_str() == "Just"),
+        "expected `Just`, got {:?}",
+        ctor
+    );
+    assert!(
+        matches!(&arg.kind, canonical::ExpressionKind::Accessor(label, _) if label.as_str() == "withDefault"),
+        "expected the accessor `.withDefault`, got {:?}",
+        arg
+    );
+    assert!(
+        matches!(
+            &body_of(&module, "g").kind,
+            canonical::ExpressionKind::VarForeign(..)
+        ),
+        "expected `Maybe.withDefault` to be the imported value, got {:?}",
+        body_of(&module, "g")
+    );
+}
+
+/// An access's record is part of the body a parameterless binding depends on, so a
+/// cycle running through it is reported.
+///
+/// Mutation-checked by making `collect_top_level_refs`'s `Access` arm collect nothing:
+/// the module then canonicalizes.
+#[test]
+fn a_cycle_through_an_access_is_a_self_dependency() {
+    let errors = canonicalize_with_scalars("module Test exposing ()\n\na =\n  a.x\n")
+        .expect_err("`a` depends on its own value");
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::SelfDependency(..)]),
+        "got {:?}",
+        errors
+    );
+}
+
+/// A name that does not resolve inside an access's record is a hole, reported under the
+/// name, and the declaration holding it says so.
+///
+/// Mutation-checked by making `expression_holds_hole`'s `Access` arm answer `false`:
+/// `holds_hole` then answers `false` for `r`.
+#[test]
+fn a_hole_inside_an_access_is_held_by_its_declaration() {
+    let source = "module Test exposing ()\n\nr =\n  nope.x\n";
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &scalar_interfaces());
+    match errors.as_slice() {
+        [canonical::Error::VariableNotFound(name, span, _)] => {
+            assert_eq!(name.unqualified_name().as_str(), "nope");
+            assert_eq!(span.to_range(), Some(range_of(source, "nope")));
+        }
+        other => panic!("expected one VariableNotFound, got {:?}", other),
+    }
+    let value = module.values.get(&"r".into()).expect("`r` is kept");
+    assert!(value.holds_hole(), "`r` holds a hole");
+}

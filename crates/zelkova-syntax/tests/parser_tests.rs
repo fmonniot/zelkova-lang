@@ -3,6 +3,7 @@ mod parser {
     mod support;
 
     mod expressions;
+    mod field_access;
     mod layout;
     mod modules;
     mod qualification;

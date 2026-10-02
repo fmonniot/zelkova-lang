@@ -1830,3 +1830,38 @@ fn a_declaration_holding_a_record_is_left_unchecked() {
         );
     }
 }
+
+/// The term language has no record until `LANG-51`, so a declaration reading a field —
+/// by an access or an accessor — is left unchecked and says so, and raises no error.
+/// `read`'s annotation is one the typer can read, so the access in its body is the whole
+/// reason it is skipped.
+///
+/// Mutation-checked by translating an access in `canonical_expr_to_term` as its record's
+/// term and an accessor as a hole: `read` is then checked as `r` against `Int -> Int`
+/// and comes back typed, and `pick` likewise, and the assertion goes red.
+#[test]
+fn a_declaration_reading_a_field_is_left_unchecked() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        read : Int -> Int
+        read r =
+          r.a
+
+        pick : Int
+        pick =
+          .a
+    "#});
+
+    for name in ["read", "pick"] {
+        assert!(
+            matches!(
+                solved.get(&Name::new(name)),
+                Some(Solved::Untranslatable { .. })
+            ),
+            "expected `{}` to be marked untranslatable, got {:?}",
+            name,
+            solved.get(&Name::new(name))
+        );
+    }
+}
