@@ -226,7 +226,7 @@ fn a_constructor_before_a_spaced_dot_is_applied_to_an_accessor() {
 ///
 /// Mutation-checked by making `consume_operator` yield `AccessorDot` for a `.` with
 /// whitespace after it (`before_a_lowercase_name || after_is_apart`): `. name` and `.
-/// name` then parse as accessors and `rejected_at_dot` panics on `Ok`.
+/// name` then parse as accessors and the test's `match` reaches its panic on `Ok`.
 #[test]
 fn an_accessor_is_written_against_its_label() {
     for expression in [". name", ".  name", "f . name", "(. name)", ".Name"] {
