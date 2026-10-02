@@ -1525,8 +1525,7 @@ fn a_union_holding_a_function_has_no_predicate() {
             unsafe second : Handler
         "#},
     )
-    .err()
-    .expect("expected the facade to be refused");
+    .expect_err("expected the facade to be refused");
 
     let refusal = |name: &str| Error::NoPredicate {
         name: Name::new(name),
