@@ -1308,7 +1308,7 @@ fn type_error_labels_the_expression_that_disagrees() {
 
     // The phase is part of the contract: this must be the type error, not a
     // canonicalization failure that happened to land on the same line.
-    match unwrap_in_file(&errors[0]) {
+    match unwrap_in_file(errors[0]) {
         CompilationError::Type(type_errors, module) => {
             assert_eq!(module, &Name::from("Mismatch"));
             assert_eq!(type_errors.len(), 1, "got {:?}", type_errors);
@@ -1413,7 +1413,7 @@ fn unknown_variable_labels_the_identifier() {
     let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
-    match unwrap_in_file(&errors[0]) {
+    match unwrap_in_file(errors[0]) {
         CompilationError::Canonical(canonical_errors, module) => {
             assert_eq!(module, &Name::from("Unknown"));
             assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
@@ -1528,7 +1528,7 @@ fn grouped_canonical_error_keeps_every_label() {
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
     // One phase error — the group — carrying two members.
-    match unwrap_in_file(&errors[0]) {
+    match unwrap_in_file(errors[0]) {
         CompilationError::Canonical(canonical_errors, _) => {
             assert!(
                 matches!(canonical_errors.as_slice(), [canonical::Error::Many(members)] if members.len() == 2),
@@ -1600,7 +1600,7 @@ fn case_bodied_declaration_label_stops_at_the_case() {
     let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
-    match unwrap_in_file(&errors[0]) {
+    match unwrap_in_file(errors[0]) {
         CompilationError::Type(type_errors, module) => {
             assert_eq!(module, &Name::from("CaseBody"));
             assert_eq!(type_errors.len(), 1, "got {:?}", type_errors);
@@ -1687,7 +1687,7 @@ fn ambiguous_import_labels_point_into_each_defining_module() {
     let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
-    match unwrap_in_file(&errors[0]) {
+    match unwrap_in_file(errors[0]) {
         CompilationError::Canonical(canonical_errors, module) => {
             assert_eq!(module, &Name::from("Main"));
             assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
@@ -1886,7 +1886,7 @@ fn ambiguous_imported_operators_are_labeled_in_their_own_module() {
     let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
-    match unwrap_in_file(&errors[0]) {
+    match unwrap_in_file(errors[0]) {
         CompilationError::Canonical(canonical_errors, module) => {
             assert_eq!(module, &Name::from("User"));
             assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
@@ -1964,7 +1964,7 @@ fn cross_module_labels_render_without_the_checked_module_file() {
 
     // The bare phase error, with no `InFile` wrapper: nothing tells it which file
     // `Main` was read from.
-    let bare = unwrap_in_file(&errors[0]);
+    let bare = unwrap_in_file(errors[0]);
     let diagnostic = bare.as_diagnostic();
 
     let secondary: Vec<_> = diagnostic
@@ -2132,7 +2132,7 @@ fn missing_exposed_import_name_labels_the_name_alone() {
     let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
-    match unwrap_in_file(&errors[0]) {
+    match unwrap_in_file(errors[0]) {
         CompilationError::Canonical(canonical_errors, module) => {
             assert_eq!(module, &Name::from("Main"));
             assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);
@@ -2191,7 +2191,7 @@ fn export_not_found_labels_the_exposed_name_alone() {
     let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
 
-    match unwrap_in_file(&errors[0]) {
+    match unwrap_in_file(errors[0]) {
         CompilationError::Canonical(canonical_errors, module) => {
             assert_eq!(module, &Name::from("Main"));
             assert_eq!(canonical_errors.len(), 1, "got {:?}", canonical_errors);

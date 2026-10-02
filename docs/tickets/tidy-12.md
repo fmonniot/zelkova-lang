@@ -23,8 +23,8 @@ written, and it means the workspace's crates are formatted and linted under two 
    commit, and it holds no formatting change.
 2. `cargo fmt --all` in a second commit that holds nothing else. The 2024 style edition sorts
    imports differently, so this one touches most files.
-3. Fix what `cargo clippy --workspace --all-features -- -D warnings` newly reports, in a third
-   commit if there is anything.
+3. Fix what `cargo clippy --workspace --all-features --all-targets -- -D warnings` newly
+   reports, in a third commit if there is anything.
 
 `grammar.lalrpop` is not covered by `cargo fix`. The parser LALRPOP generates from it is
 compiled under the crate's edition, so a build failure inside the generated file after step 1
@@ -34,7 +34,8 @@ is fixed in the grammar's own Rust blocks.
 
 - `grep -rn "edition" --include=Cargo.toml .` shows `2024` once, under `[workspace.package]`,
   and `edition.workspace = true` in every member.
-- `cargo test --workspace`, `cargo clippy --workspace --all-features -- -D warnings`,
+- `cargo test --workspace`,
+  `cargo clippy --workspace --all-features --all-targets -- -D warnings`,
   `cargo fmt --all --check` and the local rustdoc command in `CLAUDE.md` are green.
 - `cargo run -- compile std/core` prints `parsed 10 modules`, lists all ten as checked, and
   exits 0. `cargo run -- test std/core` reports the count `CLAUDE.md` records.

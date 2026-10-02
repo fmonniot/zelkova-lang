@@ -210,10 +210,10 @@ Single message, multiple `Agent` calls. For each:
 > - **Comments that describe something other than what the code does.** Only raise wording when
 >   the comment states something *false*; imprecision is a `[note]` at most.
 >
-> Skip pure style and formatting: `.github/workflows/rust.yml` fails a PR on a formatting
-> diff. Its clippy job fails only on a clippy *error*, though — it passes no `-D warnings` —
-> so **a clippy warning in this PR is a legitimate finding**, not something CI already caught.
-> Check with `cargo clippy --workspace --all-features -- -D warnings` in your worktree.
+> Skip pure style and formatting, and clippy findings: `.github/workflows/rust.yml` fails a PR on
+> a formatting diff and on a clippy warning in any target. A red `Clippy` check is the author's
+> to fix and is not a finding of yours. Reproduce with
+> `cargo clippy --workspace --all-features --all-targets -- -D warnings` in your worktree.
 >
 > Also check the ticket close-out, which is part of the diff: the PR should **delete**
 > `docs/tickets/<ID-LOWER>.md` and rewrite that ticket's row in `docs/tickets/README.md` as a
