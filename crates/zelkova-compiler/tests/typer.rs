@@ -1971,6 +1971,49 @@ fn a_declaration_holding_a_record_is_left_unchecked() {
     }
 }
 
+/// The term language has no record pattern until `LANG-84`, so a declaration holding one
+/// is left unchecked and says so, and raises no error, wherever the pattern is written: a
+/// parameter, a constructor's argument inside a tuple element, and a constructor's
+/// argument at a branch head. Every annotation here is one the typer can read, so the
+/// record pattern is the whole reason each is skipped.
+///
+/// Mutation-checked by translating a record pattern as `TermPatternKind::Anything` in
+/// `translate_pattern`: all three then check and come back typed, and the assertion goes
+/// red.
+#[test]
+fn a_declaration_holding_a_record_pattern_is_left_unchecked() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Box
+          = Box Int
+
+        parameter : Int -> Int
+        parameter { a } = 1
+
+        nested : (Box, Int) -> Int
+        nested ((Box { a }), b) = b
+
+        branch : Box -> Int
+        branch x =
+          case x of
+            Box { a = _ } ->
+              1
+    "#});
+
+    for name in ["parameter", "nested", "branch"] {
+        assert!(
+            matches!(
+                solved.get(&Name::new(name)),
+                Some(Solved::Untranslatable { .. })
+            ),
+            "expected `{}` to be marked untranslatable, got {:?}",
+            name,
+            solved.get(&Name::new(name))
+        );
+    }
+}
+
 /// The term language has no record until `LANG-51`, so a declaration reading a field —
 /// by an access or an accessor — is left unchecked and says so, and raises no error.
 /// `read`'s annotation is one the typer can read, so the access in its body is the whole
