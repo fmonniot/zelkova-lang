@@ -25,7 +25,9 @@
 //! 3. Create a `SourceFiles` mapping from `ModuleName` to `parser::Module`.
 //!     1. module names are deduced from file name
 //!     2. parsing is done through `parser::parse_recovering`, which reports every
-//!        declaration that fails rather than only the first
+//!        declaration that fails rather than only the first. A file whose header parsed
+//!        keeps its module, with a record of each declaration that failed; one whose
+//!        header did not is still a module its importers find, holding nothing
 //!     3. Verify that `parser::Module.name` match the one from the file system
 //! 4. Build a dependency graphs from the modules import
 //!     1. build it
@@ -353,10 +355,11 @@ pub struct Interface {
     ///
     /// [`canonical::Module::to_interface`] copies the module's own
     /// [`incomplete`](canonical::Module::incomplete), which is set when the module's
-    /// scope was incomplete or when a declaration's annotation did not canonicalize. An
-    /// importer that names something this interface lacks reports nothing about it,
-    /// because the failure that made the name missing has already been reported against
-    /// the module ([`DEC-23` decision
+    /// scope was incomplete or when a declaration's annotation did not canonicalize or
+    /// may be a chunk that failed to parse. [`Interface::unavailable`], the stand-in for a
+    /// module whose header did not parse, sets it. An importer that names something this
+    /// interface lacks reports nothing about it, because the failure that made the name
+    /// missing has already been reported against the module ([`DEC-23` decision
     /// 3](../docs/decisions/dec-23.md#3--an-error-that-restates-a-reported-failure-is-dropped-by-a-flag-on-the-scope)),
     /// and the importer's own scope is incomplete in turn. A hand-built interface
     /// leaves it `false`.
@@ -364,6 +367,28 @@ pub struct Interface {
 }
 
 impl Interface {
+    /// The interface of a module whose header did not parse: it holds nothing, and is
+    /// [incomplete](Self::incomplete), so an importer finds the module and reports
+    /// nothing about what it does not find in it. `file` is the file the module was read
+    /// from.
+    ///
+    /// The header's syntax error is the one that stands behind every name missing from
+    /// it, and is reported with the package, which therefore publishes nothing: the
+    /// stand-in is only ever seen by the modules of its own package.
+    pub fn unavailable(module_name: ModuleName, file: SourceFileId) -> Interface {
+        Interface {
+            module_name,
+            values: HashMap::new(),
+            unions: HashMap::new(),
+            opaque_unions: HashSet::new(),
+            infixes: HashMap::new(),
+            infix_functions: HashMap::new(),
+            arities: HashMap::new(),
+            file: Some(file),
+            incomplete: true,
+        }
+    }
+
     /// Pair a [`NodeSpan`] taken from this interface's own data — a value's
     /// declaration, a [`canonical::UnionType`]'s or [`canonical::Infix`]'s `span`
     /// field — with the file it was written in, when both halves are known.
@@ -1325,11 +1350,11 @@ fn compile_in_build(
     // this package does not hold — the same answer whether or not the tests are being
     // compiled.
     //
-    // A file that failed to parse contributes no module, so with any parse failure the list
-    // of modules the package holds is known to be short. Checking against it then blames the
+    // A file whose header failed to parse contributes no module, so with one the list of
+    // modules the package holds is known to be short. Checking against it then blames the
     // manifest for the parser's failure, and the parse error is already on its way to the
     // user, so the check is skipped entirely rather than run on a list it cannot trust.
-    if parsed.failures == 0 {
+    if parsed.headless.is_empty() {
         let held_modules: std::collections::HashSet<&Name> =
             parsed.modules.iter().map(|m| &m.name).collect();
         let missing_private_modules: Vec<manifest::ManifestError> = package
@@ -1397,6 +1422,26 @@ fn compile_in_build(
     // dependency differently agreeing about every type in it.
     let mut interfaces: HashMap<Name, Interface> = HashMap::new();
     insert_dependency_interfaces(package, &visible, published, |_| true, &mut interfaces);
+
+    // A module whose header did not parse still exists, under the name its path gives
+    // it, and an importer of it finds an interface that holds nothing and is incomplete.
+    // The header's syntax error is the one error that stands behind everything the
+    // importer then does not report, and it fails this package, so the stand-in is
+    // never published. A name a parsed module declares is that module's, and so is a name
+    // a dependency's interface already holds: a headless file named like one is a
+    // collision whatever its header says, and the dependency's interface is the better
+    // guess for every importer, which keeps the errors of those importers that the
+    // header's syntax error does not explain.
+    for (name, file) in &parsed.headless {
+        if parsed.module_files.contains_key(name) || interfaces.contains_key(name) {
+            continue;
+        }
+        let module_name = ModuleName {
+            package: package.name.clone(),
+            name: name.clone(),
+        };
+        interfaces.insert(name.clone(), Interface::unavailable(module_name, *file));
+    }
 
     // Whether this package is exempt from the default imports, and so receives none
     // of them, is `package.name.is_core()` — a property of the package's own name,
@@ -1727,17 +1772,24 @@ struct ParsedRoot {
     /// both answer to loses one of them in `module_files`, so the collision check is
     /// given this list instead.
     local_modules: Vec<resolve::LocalModule>,
-    /// How many files failed to parse, each already reported.
+    /// How many files failed to parse, each already reported. A file counts once
+    /// however many of its declarations failed.
     failures: usize,
+    /// Every file whose module header did not parse, under the module name its path
+    /// gives it ([`source::files::SourceFile::module_name`]). Such a file contributes no
+    /// module, and these are the names it is still known by.
+    headless: Vec<(Name, SourceFileId)>,
 }
 
 /// Parse every file of `ids`, pushing every syntax error of each file that has any onto
 /// `errors`.
 ///
 /// A file is parsed past its first error (`parser::parse_recovering`), so each of its
-/// failing declarations is reported. It still counts once in `failures` however many it
-/// has, and still contributes no module: what the phases after parsing do with a module
-/// that is only partly there is `TOOL-11`'s, in `docs/tickets/`.
+/// failing declarations is reported. It counts once in `failures` however many it has.
+/// Its module is kept whenever the header parsed, holding every declaration that parsed
+/// and a record of each that did not ([`parser::Module::failed`]), which canonicalization
+/// reads as broken or as making the scope incomplete. A file whose header did not parse
+/// contributes no module, and is listed in `headless` instead.
 fn parse_root(
     ids: &[SourceFileId],
     sources: &SourceFiles,
@@ -1748,13 +1800,23 @@ fn parse_root(
         module_files: HashMap::new(),
         local_modules: vec![],
         failures: 0,
+        headless: vec![],
     };
 
     for (id, file) in sources.iter().filter(|(id, _)| ids.contains(id)) {
         let parser::Parsed { module, failures } = parser::parse_recovering(file.file());
 
+        if !failures.is_empty() {
+            parsed.failures += 1;
+            errors.extend(
+                failures
+                    .into_iter()
+                    .map(|failure| CompilationError::from(failure.error, id)),
+            );
+        }
+
         match module {
-            Some(module) if failures.is_empty() => {
+            Some(module) => {
                 parsed.module_files.insert(module.name.clone(), id);
                 parsed.local_modules.push(resolve::LocalModule {
                     name: module.name.clone(),
@@ -1762,23 +1824,21 @@ fn parse_root(
                 });
                 parsed.modules.push(module);
             }
-            _ => {
-                parsed.failures += 1;
-                errors.extend(
-                    failures
-                        .into_iter()
-                        .map(|failure| CompilationError::from(failure.error, id)),
-                );
-            }
+            None => parsed.headless.push((file.module_name(), id)),
         }
     }
 
     parsed
 }
 
-/// The status line for one root's parse: `parsed 8 modules`, or how many failed.
+/// The status line for one root's parse: `parsed 8 modules`, or how many failed. The
+/// first number is the files that parsed whole.
 fn record_parse_status(parsed: &ParsedRoot, what: &str, status: &mut Vec<Status>) {
-    let count = parsed.modules.len();
+    let count = parsed
+        .modules
+        .iter()
+        .filter(|module| module.failed.is_empty())
+        .count();
     if parsed.failures == 0 {
         status.push(Status {
             success: true,
@@ -1810,10 +1870,13 @@ struct RootCheck {
 /// back, apart into the ones that checked and the ones that came back with errors; every
 /// error goes onto `errors`, tagged with the file its module was read from.
 ///
-/// A module is among the ones that checked when its error list is empty and
-/// [`canonical::Module::incomplete`] is false. The error list alone is not enough, for
-/// two reasons that both end in a module with an empty list:
+/// A module is among the ones that checked when it parsed whole, its error list is empty
+/// and [`canonical::Module::incomplete`] is false. The error list alone is not enough, for
+/// three reasons that all end in a module with an empty list:
 ///
+/// - a module with a declaration that failed to parse has that syntax error reported
+///   apart, by `parse_root`, and canonicalization reports nothing more about the
+///   declaration;
 /// - a module whose every error was a not-found restating a failure of another module
 ///   has declarations with no IR;
 /// - a module that imports an [incomplete](Interface::incomplete) interface was checked
@@ -1823,8 +1886,8 @@ struct RootCheck {
 ///
 /// A module with a declaration in [`canonical::Module::broken`] is never among the
 /// ones that checked either, and needs no condition of its own: a declaration is only
-/// recorded there beside an error that is in the list or was dropped, and a dropped
-/// error is one raised in an incomplete scope.
+/// recorded there beside a syntax error, beside an error that is in the list, or beside
+/// one that was dropped, and a dropped error is one raised in an incomplete scope.
 fn check_root(
     package: &resolve::ResolvedPackage,
     root: source::SourceRoot,
@@ -1876,12 +1939,20 @@ fn check_root(
         check_module_recovering,
     );
 
+    let unparsed: HashSet<&Name> = modules
+        .iter()
+        .filter(|module| !module.failed.is_empty())
+        .map(|module| &module.name)
+        .collect();
+
     let mut check_errors = Vec::new();
     let mut failed = 0;
     for outcome in outcomes {
         match outcome {
             dependencies::Outcome::Module(module, module_errors)
-                if module_errors.is_empty() && !module.canonical.incomplete =>
+                if module_errors.is_empty()
+                    && !module.canonical.incomplete
+                    && !unparsed.contains(module.canonical.name.name()) =>
             {
                 root_check.checked.push(module)
             }

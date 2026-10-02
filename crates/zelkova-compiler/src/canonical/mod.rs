@@ -65,9 +65,12 @@ pub struct Module {
     ///
     /// A declaration is here when its annotation or its body did not canonicalize, or, in
     /// a facade, when its signature was rejected by the per-declaration checks; an error
-    /// beside the module says which. The checks that run on the whole signature list
-    /// before those (`FacadeConstrained`, a malformed context, `UnsafeOutsideFacade`)
-    /// report an error and leave the declaration where the per-declaration checks put it.
+    /// beside the module says which. It is also here when a declaration chunk that failed
+    /// to parse names it ([`parser::Module::failed`]), whatever else of it parsed; the
+    /// syntax error says why, and only its annotation, when one parsed, is checked. The
+    /// checks that run on the whole signature list before those (`FacadeConstrained`, a
+    /// malformed context, `UnsafeOutsideFacade`) report an error and leave the
+    /// declaration where the per-declaration checks put it.
     /// Every other value declaration is in [`values`](Self::values), and no name is in
     /// both. What survives of one is its annotation, when that canonicalized:
     /// [`to_interface`](Self::to_interface) exposes it and the typer declares it, so a
@@ -80,9 +83,11 @@ pub struct Module {
     ///
     /// Set when the module's scope ended incomplete: an import did not resolve, an
     /// import resolved to an [`Interface`] whose own
-    /// [`incomplete`](Interface::incomplete) is set, or a `type` or `infix` declaration
-    /// failed. Also set when a value declaration was written with an annotation that did
-    /// not canonicalize, which is the one way a name goes missing from
+    /// [`incomplete`](Interface::incomplete) is set, a `type` or `infix` declaration
+    /// failed, or a declaration chunk that names nothing failed to parse. Also set when a
+    /// value declaration was written with an annotation that did not canonicalize, or is
+    /// named by a chunk that failed to parse and has no type, since its annotation may be
+    /// that chunk: those are the two ways a name goes missing from
     /// [`to_interface`](Self::to_interface) while the module's own scope is whole.
     /// [`to_interface`](Self::to_interface) copies it to [`Interface::incomplete`].
     pub incomplete: bool,
@@ -130,9 +135,11 @@ pub struct Canonicalized {
     ///
     /// An error is left out of it only when another stands behind it: a not-found error
     /// raised in an [incomplete](Module::incomplete) scope restates the failure that made
-    /// the scope incomplete (`without_restated`). A declaration whose every error was left
-    /// out is still absent from the module, so empty here does not mean
-    /// [`Module::broken`] is empty nor that [`Module::incomplete`] is false.
+    /// the scope incomplete (`without_restated`), and nothing about a declaration a chunk
+    /// that failed to parse names is said beyond its annotation's own errors, since the
+    /// syntax error stands for it. A declaration whose every error was left out is still
+    /// absent from the module, so empty here does not mean [`Module::broken`] is empty
+    /// nor that [`Module::incomplete`] is false.
     pub errors: Vec<Error>,
 }
 
@@ -2325,6 +2332,17 @@ pub fn canonicalize(
 /// [`Module::types`] or [`Module::infixes`]. An `exposing` entry that does not resolve is
 /// left out of [`Module::exports`].
 ///
+/// # Declarations that failed to parse
+///
+/// `source` may be a module that parsed only in part ([`parser::Module::failed`]), and
+/// each declaration chunk that failed has already been reported as a syntax error. A chunk
+/// that names a value puts that name in scope, so a reference to it resolves, and the
+/// value is recorded in [`Module::broken`] with no error of its own: its annotation, when
+/// one parsed, is read and checked as any other's, and nothing else of it is. A chunk that
+/// names nothing makes the scope incomplete before the first sub-pass runs ([`DEC-23`
+/// decision
+/// 4](../../../docs/decisions/dec-23.md#4--one-name-is-read-off-a-failed-chunk-a-values)).
+///
 /// # Incomplete scopes
 ///
 /// A scope is [incomplete](Module::incomplete) when a name could be missing from it for
@@ -2358,6 +2376,20 @@ pub fn canonicalize_recovering(
         // Reported whole, and never filtered: this is the failure everything else
         // in an incomplete scope restates.
         errors.push(import_errors.into());
+    }
+
+    // A declaration that failed to parse has already been reported as a syntax error.
+    // One that names a value puts the name in scope, so a reference to it resolves, and
+    // the value is broken below with no error of its own. One that names nothing could
+    // have declared any name at all, so the scope is incomplete from the first sub-pass
+    // on ([`DEC-23` decision
+    // 4](../../../docs/decisions/dec-23.md#4--one-name-is-read-off-a-failed-chunk-a-values)).
+    let unparsed = unparsed_values(source);
+    for name in unparsed.keys() {
+        env.insert_top_level_value(name.clone());
+    }
+    if source.failed.iter().any(|failed| failed.declares.is_none()) {
+        env.set_incomplete();
     }
 
     // `unsafe` is a claim about the companion standing behind a facade signature,
@@ -2438,6 +2470,25 @@ pub fn canonicalize_recovering(
                 .as_ref()
                 .map(|tpe| Type::from_parser_type(&env, tpe));
 
+            // A declaration a failed chunk names is broken whatever parsed of it, and
+            // only its annotation, when one parsed, is checked: a missing signature or
+            // a binding beside it may be the chunk that failed.
+            if let Some(chunk) = unparsed.get(&function.name) {
+                return Err(match tpe {
+                    Some(Ok(tpe)) => {
+                        let errors = check_facade_signature(function, &tpe).err();
+                        Rejected::unparsed(
+                            function,
+                            Some(tpe),
+                            errors.into_iter().collect(),
+                            *chunk,
+                        )
+                    }
+                    Some(Err(error)) => Rejected::unparsed(function, None, vec![error], *chunk),
+                    None => Rejected::unparsed(function, None, vec![], *chunk),
+                });
+            }
+
             // Make sure there is no binding
             if !function.bindings.is_empty() {
                 // The signature's own error is reported too, as `do_values` does for a
@@ -2510,7 +2561,8 @@ pub fn canonicalize_recovering(
         // incomplete when the sub-pass *started* (`without_restated`): the failure of a
         // declaration is reported, and what it makes incomplete is what comes after it.
         let incomplete = env.is_incomplete();
-        let (infixes, infix_errors) = do_infixes(&source.infixes, &mut env, &source.functions);
+        let (infixes, infix_errors) =
+            do_infixes(&source.infixes, &mut env, &source.functions, &unparsed);
         if !infix_errors.is_empty() {
             // The operator the declaration would have named is missing from the scope.
             env.set_incomplete();
@@ -2551,12 +2603,25 @@ pub fn canonicalize_recovering(
             values,
             broken,
             errors: value_errors,
-        } = do_values(&mut env, &source.functions);
+        } = do_values(&mut env, &source.functions, &unparsed);
         errors.extend(without_restated(value_errors, incomplete));
 
         (infixes, types, values, broken)
     };
 
+    // A value only a failed chunk declares has no `parser::Function` for either branch
+    // to have read, and nothing of it to keep but where it was written.
+    broken.extend(
+        unparsed
+            .iter()
+            .filter(|(name, _)| !source.functions.iter().any(|f| &f.name == *name))
+            .map(|(name, chunk)| Broken {
+                name: name.clone(),
+                span: *chunk,
+                tpe: None,
+                annotation_span: NodeSpan::none(),
+            }),
+    );
     broken.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
 
     // A parameterless binding's value has to exist before it can be used, so a
@@ -2573,12 +2638,16 @@ pub fn canonicalize_recovering(
     // A declaration that is broken and was written with no annotation is in neither
     // `values` nor `Broken::tpe`, so `do_exports` is told of it here: it is as exposed
     // and as unannotated as a sound `Value::Value`. A facade is left out: its unannotated
-    // signature already is `NoTypeInBinding`.
+    // signature already is `NoTypeInBinding`. So is a declaration a failed chunk names,
+    // whose annotation may be that chunk.
     let unannotated_broken: HashMap<Name, NodeSpan> = source
         .functions
         .iter()
         .filter(|f| {
-            !source.binding_foreign && f.tpe.is_none() && broken.iter().any(|b| b.name == f.name)
+            !source.binding_foreign
+                && f.tpe.is_none()
+                && !unparsed.contains_key(&f.name)
+                && broken.iter().any(|b| b.name == f.name)
         })
         .map(|f| (f.name.clone(), f.span))
         .collect();
@@ -2587,12 +2656,16 @@ pub fn canonicalize_recovering(
 
     // A declaration written with an annotation that did not canonicalize is recorded
     // with no type, and the interface cannot publish it. That is a name missing from
-    // the interface while this module's own scope is whole, so it is the one case the
-    // environment's flag does not already say.
+    // the interface while this module's own scope is whole, so it is a case the
+    // environment's flag does not already say. A declaration a failed chunk names and
+    // that has no type is the other: its annotation may be the chunk that failed.
     let annotation_failed = source
         .functions
         .iter()
-        .any(|f| f.tpe.is_some() && broken.iter().any(|b| b.name == f.name && b.tpe.is_none()));
+        .any(|f| f.tpe.is_some() && broken.iter().any(|b| b.name == f.name && b.tpe.is_none()))
+        || broken
+            .iter()
+            .any(|b| b.tpe.is_none() && unparsed.contains_key(&b.name));
 
     Canonicalized {
         module: Module {
@@ -2608,6 +2681,21 @@ pub fn canonicalize_recovering(
         },
         errors,
     }
+}
+
+/// Every value a declaration chunk of `source` that failed to parse names
+/// ([`parser::Failed::declares`]), with where it was written: the chunk's text, or the
+/// text of every chunk naming it merged.
+fn unparsed_values(source: &parser::Module) -> HashMap<Name, NodeSpan> {
+    let mut unparsed: HashMap<Name, NodeSpan> = HashMap::new();
+    for failed in &source.failed {
+        if let Some(name) = &failed.declares {
+            let chunk = NodeSpan::new(failed.span.start, failed.span.end);
+            let span = unparsed.entry(name.clone()).or_insert(chunk);
+            *span = span.merge(chunk);
+        }
+    }
+    unparsed
 }
 
 /// `errors` without the ones that only restate a failure already reported, when the scope
@@ -2943,8 +3031,13 @@ struct Values {
 /// annotation (when it has one) and body both canonicalize is a [`Value`]. One whose
 /// annotation or body does not is [`Broken`], carrying its annotation when that
 /// canonicalized, and every error of the two is reported: the annotation's, then the
-/// body's.
-fn do_values(env: &mut RootEnvironment, functions: &[parser::Function]) -> Values {
+/// body's. A declaration `unparsed` names — a chunk of it failed to parse — is
+/// [`Broken`] whatever its body, with its annotation's error alone reported.
+fn do_values(
+    env: &mut RootEnvironment,
+    functions: &[parser::Function],
+    unparsed: &HashMap<Name, NodeSpan>,
+) -> Values {
     // Before resolving expressions, we store the top-level values in the environment.
     // We do so first because their expression below could refer to them.
     for f in functions.iter() {
@@ -2959,6 +3052,21 @@ fn do_values(env: &mut RootEnvironment, functions: &[parser::Function]) -> Value
             },
             None => Annotation::Absent,
         };
+
+        // A declaration a failed chunk names is broken whatever parsed of it. Its body
+        // is not read: a binding that parsed may be one of several, and a missing one
+        // may be the chunk that failed, so nothing said about it would be news.
+        if let Some(chunk) = unparsed.get(&function.name) {
+            return Err(match annotation {
+                Annotation::Absent => Rejected::unparsed(function, None, vec![], *chunk),
+                Annotation::Canonical(tpe) => {
+                    Rejected::unparsed(function, Some(tpe), vec![], *chunk)
+                }
+                Annotation::Failed(error) => {
+                    Rejected::unparsed(function, None, vec![error], *chunk)
+                }
+            });
+        }
 
         match (annotation, value_body(env, function)) {
             (Annotation::Absent, Ok((patterns, body))) => Ok((
@@ -3049,6 +3157,20 @@ impl Rejected {
             broken: Broken::of(function, tpe),
             errors,
         })
+    }
+
+    /// `function`, which a declaration chunk that failed to parse also declares, recorded
+    /// as broken with `tpe` as its annotation, because of `errors` and of the syntax error
+    /// already reported. Its span covers the failed chunk, `chunk`, as well as what parsed.
+    fn unparsed(
+        function: &parser::Function,
+        tpe: Option<Type>,
+        errors: Vec<Error>,
+        chunk: NodeSpan,
+    ) -> Box<Rejected> {
+        let mut rejected = Rejected::new(function, tpe, errors);
+        rejected.broken.span = rejected.broken.span.merge(chunk);
+        rejected
     }
 
     /// Every declaration of `rejected`, and every error behind them, in the same order.
@@ -3232,20 +3354,20 @@ fn do_types(
 }
 
 /// Canonicalize every `infix` declaration of a module, registering each one that names a
-/// function this module declares, beside the errors of those that do not.
+/// function this module declares, beside the errors of those that do not. A function
+/// `unparsed` names is declared, though nothing of it parsed.
 fn do_infixes(
     infixes: &[parser::Infix],
     env: &mut RootEnvironment,
     functions: &[parser::Function],
+    unparsed: &HashMap<Name, NodeSpan>,
 ) -> (HashMap<Name, Infix>, Vec<Error>) {
     let iter = infixes.iter().map(|infix| {
         let op_name = infix.operator.clone();
         let function_name = infix.function_name.clone();
 
-        let function_exist = functions
-            .iter()
-            .find(|f| f.name == infix.function_name)
-            .is_some();
+        let function_exist = functions.iter().any(|f| f.name == infix.function_name)
+            || unparsed.contains_key(&infix.function_name);
 
         if function_exist {
             let infix = Infix {

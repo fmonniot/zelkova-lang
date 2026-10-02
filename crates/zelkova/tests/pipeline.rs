@@ -2845,19 +2845,18 @@ fn compile_package_reports_a_private_module_that_does_not_exist() {
 
 // ── Test 28d: a parse failure does not become a manifest error too ───────────
 
-/// A module that fails to parse contributes nothing to the list of modules the
-/// package holds, so a `private-modules` entry naming it would read as an entry
-/// naming a module that does not exist — one broken file reported twice, once
-/// truthfully and once as the manifest's fault.
+/// A module with a declaration that fails to parse is still among the modules the
+/// package holds when its header parsed, so a `private-modules` entry naming it names a
+/// module that exists — and the one broken file is reported once, truthfully, and not
+/// a second time as the manifest's fault.
 ///
 /// `package_private_module_parse_failure` declares `private-modules = ["Broken"]`
-/// and holds exactly one module, `Broken`, which does not parse. The only error is
-/// the parse error.
+/// and holds exactly one module, `Broken`, whose `import` does not parse. The only
+/// error is the parse error.
 ///
-/// Mutation-checked by removing the `parse_failures == 0` guard around the
-/// `private-modules` check in `compile_package`: a second
-/// `CompilationError::Manifest` joins the parse error and the length assertion
-/// below fails.
+/// Mutation-checked by making `parse_root` drop a module with a failed declaration
+/// without listing it in `headless`: a second `CompilationError::Manifest` joins the
+/// parse error and the length assertion below fails.
 #[test]
 fn a_parse_failure_does_not_also_report_its_module_as_unheld() {
     let root = fixture_package("package_private_module_parse_failure");
@@ -2876,6 +2875,77 @@ fn a_parse_failure_does_not_also_report_its_module_as_unheld() {
         matches!(errors[0], CompilationError::Source(..)),
         "expected the parse error alone, got {:?}",
         errors[0]
+    );
+}
+
+/// A module whose header does not parse contributes no module, so the list of modules
+/// the package holds is short and the `private-modules` check is not run against it:
+/// the header's syntax error is the only error.
+///
+/// Mutation-checked by removing the `headless.is_empty()` guard around the
+/// `private-modules` check in `compile_in_build`: a `CompilationError::Manifest` joins
+/// the syntax error and the assertion goes red.
+#[test]
+fn a_header_that_does_not_parse_does_not_also_report_its_module_as_unheld() {
+    let root = fixture_package("package_private_module_parse_failure");
+    let mut overlay = Overlay::new();
+    overlay.insert(
+        root.join("src").join("Broken.zel"),
+        "module Broken exposing (\n".into(),
+    );
+
+    let check = check_package(&root, &overlay).expect("the manifest and the build resolve");
+
+    assert!(
+        matches!(check.errors.as_slice(), [CompilationError::Source(..)]),
+        "expected the syntax error alone, got {:?}",
+        check.errors
+    );
+}
+
+/// A module with a declaration that does not parse, beside a header that does, is held,
+/// so a `private-modules` entry naming a module the package really lacks is still
+/// reported: the manifest's error stands beside the syntax error rather than waiting
+/// behind it.
+///
+/// `package_private_module_unparsed_declaration` declares `private-modules = ["Ghost"]`
+/// and holds `A`, whose `import` does not parse.
+///
+/// Mutation-checked by reverting the `private-modules` guard in `compile_in_build` to
+/// `parsed.failures == 0`: the `PrivateModuleNotFound` is not pushed and the assertion
+/// that finds it goes red.
+#[test]
+fn a_declaration_that_does_not_parse_does_not_hide_a_missing_private_module() {
+    let root = fixture_package("package_private_module_unparsed_declaration");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    assert!(
+        check
+            .errors
+            .iter()
+            .any(|error| matches!(error, CompilationError::Source(..))),
+        "expected `A`'s syntax error, got {:?}",
+        check.errors
+    );
+    let missing: Vec<&Name> = check
+        .errors
+        .iter()
+        .filter_map(|error| match error {
+            CompilationError::Manifest(errors) => Some(errors),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|error| match error {
+            manifest::ManifestError::PrivateModuleNotFound { name, .. } => Some(name),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        missing,
+        vec![&Name::from("Ghost")],
+        "got {:?}",
+        check.errors
     );
 }
 
@@ -6004,13 +6074,14 @@ fn assert_overlaid_answer_was_checked(check: &zelkova_compiler::PackageCheck) {
 
 /// `TOOL-4`: a module with a syntax error in each of two declarations reports both, each
 /// with a label in that file, and the file still counts once among those that failed to
-/// parse.
+/// parse. The declaration between them is annotated, because the module is checked
+/// beside its syntax errors and `exposing (..)` would report an unannotated one.
 ///
 /// Mutation-checked by making `parse_root` push only the first failure's error: the
 /// error-count assertion goes red.
 #[test]
 fn check_package_reports_every_syntax_error_of_a_module() {
-    const TWO_ERRORS: &str = "module Answer exposing (..)\n\nfirst = = 1\n\nok = 2\n\nsecond = )\n";
+    const TWO_ERRORS: &str = "module Answer exposing (..)\n\nfirst = = 1\n\ntype Label = Label\n\nok : Label\nok = Label\n\nsecond = )\n";
     let root = overlay_fixture("every_syntax_error_of_a_module");
     let mut overlay = Overlay::new();
     overlay.insert(root.join("src").join("Answer.zel"), TWO_ERRORS.into());
@@ -6537,6 +6608,172 @@ fn a_build_with_a_module_that_has_a_typed_tree_and_an_error_writes_nothing() {
             errors.as_slice(),
             [CompilationError::InFile(inner, _)] if matches!(**inner, CompilationError::Type(..))
         ),
+        "got {:?}",
+        errors
+    );
+    assert!(!build_dir.exists());
+}
+
+// ── TOOL-11: a module with a syntax error stays in the build ────────────────
+
+/// A module with a syntax error in one declaration stays in the build: `B` imports `A`'s
+/// sound `ok` and reports nothing, and the only error of the check is the syntax error.
+/// `A`'s tree holds a typed `ok` and lists `bad`, whose binding did not parse, as
+/// unchecked with an error behind it; `B` checks whole.
+///
+/// Mutation-checked by restoring `failures.is_empty()` as the condition `parse_root`
+/// keeps a module on: `A` is dropped, `B` reports it as a module that does not exist,
+/// and the error assertion goes red. Dropping the test on a module's parse failures from
+/// `check_root` reds the status-line assertions: `A` is then counted as checked.
+#[test]
+fn a_module_with_a_syntax_error_stays_in_the_build() {
+    let root = fixture_package("package_import_syntax_error");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    assert!(
+        matches!(check.errors.as_slice(), [CompilationError::Source(..)]),
+        "expected `A`'s syntax error alone, got {:?}",
+        check.errors
+    );
+    assert!(check.modules.is_empty());
+    assert_eq!(sorted_module_names(&check.failing), vec!["A", "B"]);
+
+    let ir_of = |name: &str| {
+        &check
+            .failing
+            .iter()
+            .find(|checked| checked.module.canonical.name.name() == &Name::from(name))
+            .unwrap_or_else(|| panic!("`{}` is among the failing modules", name))
+            .module
+            .ir
+    };
+
+    let a = ir_of("A");
+    let ok = a
+        .declarations
+        .iter()
+        .find(|declaration| declaration.name == Name::from("ok"))
+        .unwrap_or_else(|| panic!("`ok` should have a declaration, got {:?}", a.declarations));
+    assert_eq!(ok.tpe.to_string(), "T");
+    let unchecked: Vec<(&Name, bool)> = a
+        .unchecked
+        .iter()
+        .map(|unchecked| (&unchecked.name, unchecked.reported))
+        .collect();
+    assert_eq!(unchecked, vec![(&Name::from("bad"), true)]);
+
+    let b = ir_of("B");
+    assert!(b.unchecked.is_empty(), "got {:?}", b.unchecked);
+
+    // `A` came back with no error of its own, since the syntax error is the parser's, and
+    // is still not among the modules that checked.
+    let checked = check
+        .status
+        .iter()
+        .find(|status| status.text.starts_with("checked modules"))
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a status line for the check, got {:?}",
+                check.status
+            )
+        });
+    assert!(!checked.success, "got {:?}", checked);
+    assert!(
+        !checked.text.contains("\"package-import-syntax-error:A\""),
+        "got {:?}",
+        checked
+    );
+    assert!(
+        checked.text.ends_with("(1 failed to check)"),
+        "got {:?}",
+        checked
+    );
+}
+
+/// A module whose header did not parse is still a module its importers can find: the
+/// header's syntax error is the only error, and nothing is reported about `B`, which
+/// imports a value and names a type of it.
+///
+/// Mutation-checked by not inserting the stand-in interface in `compile_in_build`: `B`
+/// reports `A` as a module it cannot find, and the error assertion goes red.
+#[test]
+fn a_module_whose_header_did_not_parse_still_exists_for_its_importers() {
+    let root = fixture_package("package_import_header_error");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    assert!(
+        matches!(check.errors.as_slice(), [CompilationError::Source(..)]),
+        "expected `A`'s syntax error alone, got {:?}",
+        check.errors
+    );
+    assert!(
+        check
+            .errors
+            .iter()
+            .all(|error| unwrap_in_file(error).module() != Some(&Name::from("B"))),
+        "got {:?}",
+        check.errors
+    );
+    assert!(check.modules.is_empty());
+}
+
+/// A headless file named like a module a dependency already answers to does not replace
+/// that module for the package's other modules: `B` still sees the dependency's `Basics`,
+/// so both of its own errors are reported beside the header's syntax error, and `Int`
+/// resolves.
+///
+/// `package_headless_dependency_name` depends on a stand-in `zelkova-core` and holds a
+/// `src/Basics.zel` whose header does not parse, beside a `B` with two ill-typed values.
+///
+/// Mutation-checked by dropping `|| interfaces.contains_key(name)` from the stand-in
+/// loop in `compile_in_build`: the stand-in replaces the dependency's `Basics`, `B`'s
+/// errors are lost and the count goes red.
+#[test]
+fn a_headless_file_named_like_a_dependency_module_does_not_replace_it() {
+    let root = fixture_package("package_headless_dependency_name");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    let in_b: Vec<&CompilationError> = check
+        .errors
+        .iter()
+        .filter(|error| unwrap_in_file(error).module() == Some(&Name::from("B")))
+        .collect();
+    assert_eq!(
+        in_b.len(),
+        2,
+        "expected `B`'s two own errors, got {:?}",
+        check.errors
+    );
+    assert!(
+        check
+            .errors
+            .iter()
+            .any(|error| matches!(error, CompilationError::Source(..))),
+        "expected the header's syntax error, got {:?}",
+        check.errors
+    );
+}
+
+/// A build holding a module with a syntax error writes nothing, though the module is
+/// kept and checked beside the error.
+///
+/// Mutation-checked by replacing the driver's two `if errors.is_empty()` guards around
+/// emitting and writing in `compile` with `if true`: the build directory is created and
+/// its assertion goes red.
+#[test]
+fn a_build_with_a_module_that_has_a_syntax_error_writes_nothing() {
+    let build_dir = fresh_build_dir("a_build_with_a_module_that_has_a_syntax_error_writes_nothing");
+
+    let error =
+        zelkova::compile_package_into(&fixture_package("package_import_syntax_error"), &build_dir)
+            .expect_err("`A` does not parse whole");
+
+    let errors = many(&error);
+    assert!(
+        matches!(errors.as_slice(), [CompilationError::Source(..)]),
         "got {:?}",
         errors
     );

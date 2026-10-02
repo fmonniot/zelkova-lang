@@ -576,6 +576,7 @@ mod tests {
             infixes: vec![],
             types: vec![],
             functions: vec![],
+            failed: vec![],
         }
     }
 

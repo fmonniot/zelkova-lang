@@ -10,7 +10,7 @@ five tickets `TOOL-8` through `TOOL-12`. The four before it are the floor, which
 builds on and does not replace.
 
 **Depends on:** [`TOOL-10`](README.md), for `without_restated`. It does not need
-[`TOOL-11`](tool-11.md).
+[`TOOL-11`](README.md).
 
 **Location:** `crates/zelkova-compiler/src/canonical/mod.rs` — `ExpressionKind`,
 `PatternKind`, `Expression::from_parser`, `Pattern::from_parser`, `do_values` and

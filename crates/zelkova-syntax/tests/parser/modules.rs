@@ -18,6 +18,7 @@ test_parse_ok!(
         infixes: vec![],
         types: vec![],
         functions: vec![],
+        failed: vec![],
     }
 );
 
@@ -103,6 +104,7 @@ test_parse_ok!(
         infixes: vec![],
         types: vec![],
         functions: vec![],
+        failed: vec![],
     }
 );
 
@@ -138,6 +140,7 @@ test_parse_ok!(
         infixes: vec![],
         types: vec![],
         functions: vec![],
+        failed: vec![],
     }
 );
 
@@ -171,6 +174,7 @@ test_parse_ok!(
         infixes: vec![],
         types: vec![],
         functions: vec![],
+        failed: vec![],
     }
 );
 
@@ -220,6 +224,7 @@ test_parse_ok!(
         infixes: vec![],
         types: vec![],
         functions: vec![],
+        failed: vec![],
     }
 );
 
@@ -247,6 +252,7 @@ test_parse_ok!(
         }],
         types: vec![],
         functions: vec![],
+        failed: vec![],
     }
 );
 
@@ -272,6 +278,7 @@ test_parse_ok!(
         }],
         types: vec![],
         functions: vec![],
+        failed: vec![],
     }
 );
 
@@ -297,6 +304,7 @@ test_parse_ok!(
         }],
         types: vec![],
         functions: vec![],
+        failed: vec![],
     }
 );
 
@@ -768,6 +776,7 @@ test_parse_ok!(
             span: no_span(),
             annotation_span: no_span(),
         }],
+        failed: vec![],
     }
 );
 
@@ -800,6 +809,7 @@ test_parse_ok!(
             span: no_span(),
             annotation_span: no_span(),
         }],
+        failed: vec![],
     }
 );
 
@@ -836,6 +846,7 @@ test_parse_ok!(
             span: no_span(),
             annotation_span: no_span(),
         }],
+        failed: vec![],
     }
 );
 
@@ -874,6 +885,7 @@ test_parse_ok!(
             span: no_span(),
             annotation_span: no_span(),
         }],
+        failed: vec![],
     }
 );
 

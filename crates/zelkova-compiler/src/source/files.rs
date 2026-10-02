@@ -1,4 +1,5 @@
 use super::overlay::Overlay;
+use crate::name::Name;
 use crate::{PackageName, PhaseError};
 use codespan_reporting::files::{Error as FilesError, Files, SimpleFile};
 use std::ops::Range;
@@ -40,7 +41,9 @@ impl std::fmt::Display for SourceRoot {
 // This should probably implements `Files` directly instead of relying on SimpleFile
 #[derive(Debug)] // TODO Implement Debug manually (don't want to embedded the entire source code)
 pub struct SourceFile {
-    #[allow(dead_code)]
+    /// The module name the file's path gives it: its path under its root, without the
+    /// `.zel` extension and with `.` for each separator — see
+    /// [`module_name`](Self::module_name).
     module_name: String,
     /// Which of the package's two source roots this file was walked from, and its path
     /// under that root. Together they are [`SourceFile::package_path`], the file's place
@@ -123,6 +126,14 @@ impl SourceFile {
 
     pub fn file(&self) -> &SimpleFile<String, String> {
         &self.file
+    }
+
+    /// The module name this file's path gives it: `src/Js/Basics.zel` is `Js.Basics`.
+    ///
+    /// A module is otherwise called by the name its header declares, and nothing checks
+    /// the two agree. This is the name a file whose header did not parse is known by.
+    pub fn module_name(&self) -> Name {
+        Name::new(self.module_name.as_str())
     }
 
     /// Where this file sits in its package: the source root it was walked from and its

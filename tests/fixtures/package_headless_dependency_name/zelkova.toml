@@ -1,0 +1,11 @@
+# `src/Basics.zel` has a module header that does not parse, and `zelkova-core` already
+# answers to `Basics`. `crates/zelkova/tests/pipeline.rs` checks that `B` still sees the
+# dependency's `Basics`, so the errors `B` really has are reported beside the header's.
+name = "package-headless-dependency-name"
+version = "0.1.0"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../dep_core"
+
+[test-dependencies]
