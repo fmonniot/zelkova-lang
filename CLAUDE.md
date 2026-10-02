@@ -246,10 +246,10 @@ divergence from Elm — parse but are rejected by canonicalization
 compiler never special-cased them, and `std/core/src/` now spells all three `a`. **Type
 classes**, without higher-kinded variables, are what replaces them:
 [`docs/spec/type-classes.md`](docs/spec/type-classes.md) specifies the mechanism,
-[`DEC-2`](docs/decisions/dec-2.md) holds the eleven decisions behind it, and the LANG-37
-through LANG-42 program, plus LANG-70 and LANG-71, in
-[`docs/tickets/README.md`](docs/tickets/README.md) carries the order the eight implementing
-tickets have to land in. Read the chapter before touching any of it.
+[`DEC-2`](docs/decisions/dec-2.md) and [`DEC-24`](docs/decisions/dec-24.md) hold the decisions
+behind it, and *Active work: type classes* in
+[`docs/tickets/README.md`](docs/tickets/README.md) carries the tickets implementing it and the
+order they have to land in. Read the chapter before touching any of it.
 
 One of its rules constrains diffs outside that program today: **`class` and `instance` become
 reserved, and `where` becomes reserved as a type variable.** All three are ordinary identifiers

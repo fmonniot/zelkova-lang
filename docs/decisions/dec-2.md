@@ -2,7 +2,8 @@
 
 **Settled:** 2026-08-29, by the language owner, in one session (`SPEC-12`).
 **Status:** live, with two exceptions recorded in [what has changed
-since](#what-has-changed-since) — decision 8 is superseded and decision 11 was overtaken.
+since](#what-has-changed-since) — decision 8 is superseded and decision 11 was overtaken — and
+decisions 2, 3 and 9 extended by [DEC-24](dec-24.md).
 **Where the rule lives:** [Type classes](../spec/type-classes.md), and for decision 6 also
 [Foreign interoperability](../spec/interop.md).
 
@@ -171,3 +172,15 @@ now in the chapter: an instance body may be the single word
 [`derived <member>`](../spec/type-classes.md#a-class-says-how-it-is-derived) plus three
 bindings. `derived` is a soft keyword in both positions and does not join the reserved words
 decision 2 names.
+
+**Decisions 2, 3 and 9 were extended by [DEC-24](dec-24.md)**, which settled what the tickets
+filed from this entry had left to the chapter: what an instance head may be and that a tuple
+is one ([decision 2](dec-24.md#2--an-instance-head-is-a-declared-type-a-tuple-or--over-distinct-variables)),
+which narrows decision 3's "the module declaring `T`'s head" to the class's module where `T` is
+a tuple or `()`; how a class is exposed and imported
+([decision 6](dec-24.md#6--a-class-name-is-a-type-name-and-its-members-travel-with-it)); and the
+members of the four classes decision 9 names
+([decision 7](dec-24.md#7--stdcores-classes-one-member-where-the-class-is-derivable)). It also
+corrects decision 7's second consequence: polymorphic recursion over a constraint is not ruled
+out by decision 5, and is [an error found while
+specialising](dec-24.md#9--a-constrained-function-whose-specialisations-never-end-is-an-error).

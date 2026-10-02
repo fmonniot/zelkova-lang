@@ -73,10 +73,11 @@ privileged.
 
 **Acceptance:** `std/core/tests/FloatTests.ignored` is renamed back to `FloatTests.zel`, and
 `cargo run -- test std/core` reports every test passing, `FloatTests`' two included, and exits
-0. The line in `CLAUDE.md`'s *Commands* section giving `23 tests: 23 passed` as that command's
-expected result is updated to `25 tests: 25 passed`, and the comments on `add`, `sub`, `mul`,
-`pow`, `fromPolar`, `toPolar` and `degrees` in `std/core/src/Basics.zel` stop naming this
-ticket. `degrees` additionally needs `180` written `180.0` ([`LANG-41`](lang-41.md)) — check it
+0. The paragraph in `CLAUDE.md`'s *Commands* section that gives that command's expected count
+and explains `FloatTests.ignored` is updated for the new count and stops mentioning the file,
+and the comments on `add`, `sub`, `mul`, `pow`, `fromPolar`, `toPolar` and `degrees` in
+`std/core/src/Basics.zel` stop naming this ticket. [`LANG-42`](lang-42.md) lists all of this
+in its own acceptance and closes this ticket with itself. `degrees` additionally needs `180` written `180.0` ([`LANG-41`](lang-41.md)) — check it
 by hand, since nothing tests `degrees` today.
 
 **Found:** while working [`GEN-2`](README.md), which escalated it rather than choosing; the

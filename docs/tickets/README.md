@@ -96,74 +96,77 @@ git show <that-sha>^:TODO.md                    # the nine items in their final 
 
 ## Active work: type classes
 
-`LANG-37` through `LANG-42`, and `LANG-70` and `LANG-71`, which were filed while working `LANG-37`, are one body
-of work, filed after the language owner settled the mechanism. The goal is that **a signature can say what it needs of its type** —
-`min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what `min`'s type has
-always actually been.
+Eleven tickets are one body of work: `LANG-37` through `LANG-42`, `LANG-70`, `LANG-71`,
+`LANG-83`, `LANG-12` and `GEN-24`. The goal is that **a signature can say what it needs of its
+type** — `min : Comparable a => a -> a -> a` rather than `a -> a -> a`, which is what `min`'s
+type has always actually been.
 
-These eight get their own section despite sharing the `LANG-` prefix with everything else,
-because most `LANG-` tickets each close a complete, independently shippable gap on landing,
-while none of `LANG-37` through `LANG-41` and `LANG-70` does anything on its own — they're fragments of one
-mechanism that only works once the chain lands. `LANG-42` and `LANG-71` are the exceptions; see the graph.
+They get their own section because most tickets each close a complete, independently shippable
+gap on landing, while these are fragments of one mechanism that only works once the chain
+lands. `LANG-41` is the exception: it stands alone, and is in the order because `LANG-40` needs
+it gone first.
 
 [`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
 read before picking any of these up: none of them re-argues a decision, and several would look
-arbitrary without it. The decisions themselves, and the arguments the chapter does not carry,
-are [DEC-2](../decisions/dec-2.md) — which is what the tickets below cite by number.
+arbitrary without it. The arguments the chapter does not carry are two entries:
+[DEC-2](../decisions/dec-2.md), the eleven decisions that settled what a class is, and
+[DEC-24](../decisions/dec-24.md), the twelve that implementing one had to settle — which is
+what the tickets below cite by number. **No ticket in the order leaves a language decision
+open.** Where one says a choice is the implementer's, it means that and names the constraints;
+anything else that looks like a decision is a gap to report, not to fill.
 
-They have a dependency order, and three tickets that already existed sit inside it rather than
-beside it:
+They land in this order, one at a time, each on a `main` whose `std/core` compiles and whose
+tests pass:
 
 ```
 LANG-37  `=>` becomes a token; a constrained annotation parses   ← closed
   │
-LANG-38  `class` / `instance` declarations, and a `where` block of members
-  │      (the next one to start)
-  │      ← LANG-9, which lets an instance head write `(List a)`, is closed
-  │      ← an instance body is a member list or the single word `derived`;
-  │        a class body may carry `derived <member>` — both specified in
-  │        the chapter
+LANG-71  a context holds any number of constraints, as a list
+  │      ← first, because a class head and an instance head parse a
+  │        context too, and LANG-38 is written against this shape
   │
-LANG-39  resolution, the instance environment, and the orphan rule
-  │      ← BUG-16, which invented a type for a misspelt instance head, and
-  │        BUG-17, which made two instance heads indistinguishable, are
-  │        both fixed.
+LANG-41  `Type::Number` retires; an integer literal is an `Int`
+  │      ← needs nothing and may land beside LANG-38 or LANG-39; it is
+  │        here because LANG-40 must not meet an obligation at a type
+  │        that is neither `Int` nor `Float`
+  │      ← closes ERR-13
   │
-LANG-70  a constraint in an annotation is resolved; its context is kept
-  │      ← LANG-37 validated a constraint's shape and dropped it. Its class
-  │        name and argument are not checked, and LANG-40's rigid half has
-  │        no context to read. Not part of LANG-39, whose Problem is the
-  │        declarations rather than their use in an annotation.
+LANG-38  `class` / `instance` parse, with a `where` block of members
+  │      ← syntax only: canonicalization rejects each one, the way a
+  │        multi-clause declaration is rejected today
+  │
+LANG-39  resolution: what a class and an instance are, members in the
+  │      value namespace, instances across modules, the orphan rule
+  │      ← the emitter refuses a module holding a class from here on
+  │
+LANG-70  a constraint in an annotation is resolved; its context is
+  │      kept, on the value and in the `Interface`
   │
 LANG-40  the solver: obligations are collected, deferred and discharged
-  │      ← LANG-12 is a HARD prerequisite. Without rigid annotation
-  │        variables a constrained declaration proves `Comparable Int`
-  │        and publishes `Comparable a` — strictly weaker than its own
-  │        signature, and nothing downstream notices.
-  │      ← the spec harness runs the type checker (TEST-2), so the
-  │        chapter's examples — all `expect=unimplemented` today, since
-  │        nothing about a class parses — can be retagged
-  │        `expect=type-error` as this lands.
+  │      ← on today's flexible annotation variables. A constrained
+  │        declaration can under-prove its signature until LANG-12,
+  │        and a test here pins that it does
   │
-  └── LANG-42  `std/core` declares Eq, Comparable, Number, Appendable
-                 ← needs LANG-41, which is independent of this order
-                 ← fixes BUG-44: until `Number` picks `addFloat` for a `Float`,
-                   `Basics.add` calls `addInt` and GEN-2's check aborts
-
-LANG-41  `Type::Number` retires; an integer literal is an `Int`   ← independent
-           ← supersedes ERR-13
-
-LANG-71  a constraint context of four or more constraints parses   ← independent
-           ← LANG-37 reads the context as a tuple type, which has two or three
-             elements; the chapter says "several" with no cap
+LANG-83  a derivation is checked, and a `derived` instance gets members
+  │
+GEN-24   specialisation: a member, an instance and a constrained
+  │      function are emitted
+  │      ← the first point at which a program using a class runs
+  │
+LANG-42  `std/core` declares Eq, Comparable, Number, Appendable
+  │      ← closes BUG-20, BUG-44 and BUG-46
+  │
+LANG-12  an annotation's variables are rigid
+         ← last, where it used to be LANG-40's hard prerequisite: until
+           LANG-42 it rejects thirteen declarations of `Basics` itself
+           (DEC-24 decision 10). Closes SPEC-36, and the order
 ```
 
-**What is not a ticket: dictionary erasure.**
-[`DEC-2` decision 7](../decisions/dec-2.md#7--dictionaries-are-erased-by-specialisation-not-passed)
-settles that a constrained function is specialised per instantiation and no dictionary exists
-at runtime — a constraint on code generation, which has not started. It is recorded in
-`docs/spec/type-classes.md` and `docs/spec/interop.md`, and [`GEN-1`](gen-1.md) inherits it
-from there rather than it being filed twice.
+Two tickets sit just outside it. [`LANG-4`](lang-4.md) wants prefix `-` to mean `negate`, and
+has a `Float`-capable `negate` to desugar to once `LANG-42` lands; between `LANG-41` and then,
+`-x` on a `Float` is a type error where it used to abort at run time.
+[`PERF-2`](perf-2.md) is narrowed by `LANG-42`, which rewrites most of the forwarding
+declarations it is about, and not closed by it.
 
 ## Tickets
 
@@ -312,7 +315,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-38](lang-38.md) | task | — | open | `class` and `instance` declarations parse, with a `where` block of members |
 | [LANG-39](lang-39.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
 | [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |
-| [LANG-41](lang-41.md) | task | — | open | Retire `Type::Number` in favour of a `Number` class, defaulting to `Int` |
+| [LANG-41](lang-41.md) | task | — | open | Retire `Type::Number`: an integer literal is an `Int` |
 | [LANG-42](lang-42.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |
 | LANG-43 | task | — | closed 2026-09-27 | A facade signature may name any type at all, including ones no runtime predicate can decide |
 | [LANG-44](lang-44.md) | task | — | open | There is no list-literal production, so `[1, 2]` does not parse |
@@ -354,6 +357,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-80](lang-80.md) | task | — | open | The spec does not settle a string's unknown escape, surrogate escape or `\u{…}` digit count |
 | [LANG-81](lang-81.md) | task | — | open | A `Float` or `String` literal pattern is not checked by the typer and not emitted |
 | [LANG-82](lang-82.md) | task | — | open | A character literal recognises no escape sequence |
+| [LANG-83](lang-83.md) | task | — | open | A derivation is not checked, and a `derived` instance has no members |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [SITE-3](site-3.md) | task | — | open | A doc comment's link into `docs/` resolves nowhere, and nothing checks it |
@@ -380,6 +384,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-21 | task | — | closed 2026-09-29 | The JavaScript runtime cannot run a `Task` |
 | GEN-22 | task | — | closed 2026-09-29 | There is no `zelkova run`: nothing runs a program's `main` |
 | [GEN-23](gen-23.md) | task | — | open | An `unsafe` facade's forwarding code does not catch what its companion throws |
+| [GEN-24](gen-24.md) | task | — | open | A class member, an instance and a constrained function are not emitted |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

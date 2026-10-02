@@ -4,103 +4,195 @@
 the tree: `unify` currently answers every constraint immediately, and a class obligation is one
 it may not be able to answer yet.
 
-**Location:** `crates/zelkova-compiler/src/typer/mod.rs` — `Type`, `Constraint`, `Origin`, `Reason`,
-`ErrorKind`, `canonical_type_to_typer_type`, `infer_annotated`,
-`value_to_term_and_annotation`; `crates/zelkova-compiler/src/typer/constraint.rs` — `collect`;
-`crates/zelkova-compiler/src/typer/unifier.rs` — `unify`, `unify_one_constraint`.
+**Location:** `crates/zelkova-compiler/src/typer/mod.rs` — `type_check_recovering`, which builds
+the environment every declaration is checked against; `Types`, `Types::by_name` and
+`Types::instantiate`; `infer_annotated`; `Constraint`, `Origin`, `Reason`, `ErrorKind`, `Solved`;
+`canonical_type_to_typer_type`, `value_to_term_and_annotation`;
+`crates/zelkova-compiler/src/typer/constraint.rs` — `collect`;
+`crates/zelkova-compiler/src/typer/unifier.rs` — `unify`;
+`crates/zelkova-compiler/src/ir/mod.rs` — `Module`, `Declaration`, the reference node and its
+`ReferenceKind`, `build`, and the module doc comment's *What is not here yet*;
+`crates/zelkova-js/src/lib.rs` — `emit`'s refusals.
 
-**Depends on:** [LANG-39](lang-39.md), for an instance environment to discharge against;
-[LANG-70](lang-70.md), for an annotation's context to reach the canonical module resolved; and
-[LANG-12](lang-12.md), for rigid annotation variables. The last is the one that is easy to
-get wrong by sequencing, so it is worth spelling out.
+**Depends on:** [LANG-39](lang-39.md), for a class table and an instance table to discharge
+against; [LANG-70](lang-70.md), for an annotation's context on the canonical value and in the
+`Interface`; and [LANG-41](lang-41.md), so that an integer literal is an `Int` before anything
+asks for an instance at its type. With `Type::Number` still in the tree, `eq 1 2` raises an
+obligation at a type that is neither `Int` nor `Float` and has no instance, and this ticket
+would have to invent a rule for it that `LANG-41` then deletes.
 
-**Why `LANG-12` comes first.** `canonical_type_to_typer_type` turns every variable written in
-an annotation into a fresh *unification* variable, so an annotation more general than its body
-is silently specialised. Add constraints on top of that and the specialisation becomes unsound
-rather than merely permissive: checking
+**Not on [LANG-12](lang-12.md), which this ticket used to call a hard prerequisite.** The order
+was turned round ([`DEC-24` decision
+10](../decisions/dec-24.md#10--lang-12-closes-the-order-instead-of-opening-it)): `LANG-12`'s
+rigid variables reject thirteen declarations of `std/core`'s `Basics` that only the class
+mechanism can make honest, so the solver lands first, on the flexible annotation variables the
+tree has today, and `LANG-12` closes the order. What that costs here is stated under *Given
+constraints* below, and it is a hole this ticket leaves open on purpose.
 
-```zel
-min : Comparable a => a -> a -> a
-min x y =
-  …
-```
-
-would let the body solve `a := Int`, at which point the obligation the checker proves is
-`Comparable Int` — discharged, declaration accepted — while the signature still promises
-`Comparable a` for every `a`. The compiler would have proved something strictly weaker than
-what it published, and no later phase would notice.
-
-Inside a declaration's own body, `a` has to be **rigid**: an opaque constant whose only
-operations are the ones its context provides. That is precisely `LANG-12`'s skolemization, and
-it is what makes "given `Comparable a`, `a` has a `compare`" a statement the checker can hold.
-At a *call site* the opposite is true — `a` is instantiated fresh, which `Types::by_name`
-already does for every use of a declared name, and the obligation is discharged against a
-concrete type. What is new there is only that the instantiated obligation has to travel with the
-instantiated type.
+**Decided (by the language owner):** a caller supplying a type with no instance is an error at
+the call ([*Constraining an annotation*](../spec/type-classes.md#constraining-an-annotation)); a
+superclass is implied by its subclass ([*Superclasses*](../spec/type-classes.md#superclasses));
+nothing defaults and the compiler knows no class by name
+([*Numeric literals*](../spec/type-classes.md#numeric-literals)); and a constraint is never
+inferred — a declaration with no annotation left needing a class of an undetermined type is an
+error asking for the annotation
+([`DEC-24` decision 5](../decisions/dec-24.md#5--a-constraint-is-never-inferred)).
 
 **Problem:** the typer has no notion of an obligation. `Constraint` is a pair of types plus an
-`Origin`, `unify` solves each one on sight, and the only thing resembling a class today is
-`Type::Number` — a hard-coded case that unifies with `Int`, `Float` and itself and is never
-recorded, deferred, or reported as unsatisfiable. It is the degenerate ancestor of what this
-ticket builds, and [LANG-41](lang-41.md) is what retires it.
+`Origin`, `unify` solves each one on sight, and the environment `type_check_recovering` builds
+maps a name to a type and nothing else, so a constrained function is checked exactly as it would
+be without its constraint and a class member is not in the environment at all. The only thing
+resembling a class is `Type::Number` — a hard-coded case that unifies with `Int`, `Float` and
+itself and is never recorded, deferred, or reported as unsatisfiable. It is the degenerate
+ancestor of what this ticket builds, and [LANG-41](lang-41.md) retires it first.
 
 **Approach:**
 
-1. **A class obligation is a second kind of constraint**, not a new `Type` case.
-   [`DEC-2` decision 5](../decisions/dec-2.md#5--no-higher-kinded-variables)
-   — no higher-kinded variables — is what makes this simple: a class is always over
-   a complete type, so an obligation is a (class name, type) pair and never a partial
-   application. Keep it in the same `Vec` as the equalities, for the reason `CLAUDE.md` gives:
-   constraints live in a `Vec` and not a `HashSet` because deduplication drops provenance and an
-   unordered collection makes *which* error is reported vary between runs.
+1. **A name's type is a context and a type.** The environment's entries gain the context
+   `LANG-70` put on `Value::TypedValue` and on `Interface` entries. A class member enters the
+   environment here for the first time, from the module's own classes and from every imported
+   interface's class table, typed as its signature with the class's constraint in front
+   (`compare : Comparable a => a -> a -> Order`). `Types::by_name` instantiates the context with
+   the same fresh variables it gives the type, and each instantiated constraint is an
+   **obligation** of that use.
 
-2. **Obligations are deferred, not solved on sight.** `Comparable t7` cannot be answered while
-   `t7` is unsolved. The usual shape: `unify` collects obligations as it goes, applying each
-   substitution to them the way it already applies one to the remaining equalities, and a
-   second pass discharges what is left against the instance environment. Order matters here for
-   the same reason it already does in `unify` — it decides which of several unsatisfiable
-   constraints is the one reported.
+2. **A class obligation is a second kind of constraint**, not a new `Type` case.
+   [`DEC-2` decision 5](../decisions/dec-2.md#5--no-higher-kinded-variables) — no higher-kinded
+   variables — is what makes this simple: a class is always over a complete type, so an
+   obligation is a (class name, type) pair and never a partial application. Keep obligations in
+   order, in a `Vec`, for the reason `Constraint`'s own doc comment gives (*Why these are held
+   in a `Vec` and not a `HashSet`*): deduplication drops provenance, and an unordered collection
+   makes *which* error is reported vary between runs.
 
-3. **Provenance carries over unchanged, and must.** Every obligation records an `Origin` — the
-   span it came from and a `Reason` naming why. `Reason` gains at least one variant for *this
-   call requires an instance*, and its `describes()` / `explains()` / `note()` arms are written
-   for the reader. Note `Reason::describes` names no type deliberately, and that reasoning
-   applies to obligations too: by the time one fails, substitution has moved types around and
-   neither side is reliably the type of the text under the caret.
+3. **Obligations are deferred, not solved on sight.** `Comparable t7` cannot be answered while
+   `t7` is unsolved. Unification runs as it does today; then each obligation is read with the
+   final substitution applied and discharged:
 
-4. **The rigid half.** Inside a constrained declaration's body, the context's obligations are
-   *given* rather than proved: `Comparable a` with `a` rigid is discharged by the annotation
-   itself, and any obligation on `a` that the context does not provide is an error. This is the
-   interesting case and the one to write tests around first.
+   - **Its type is a declared type, a tuple or `()`.** Look the instance up by class and the
+     head's name, which [the head rule](../spec/type-classes.md#what-an-instance-is-declared-for)
+     makes a plain lookup with at most one answer. No instance is an error naming the class and
+     the type. An instance with a context turns into further obligations, the context
+     instantiated at the type's arguments: `Eq (Maybe Colour)` asks for `Eq Colour`.
+   - **Its type is a function.** No instance can exist; the same error.
+   - **Its type is still a variable.** It is discharged if the declaration's own context
+     provides it — see the next step — and is otherwise one of three errors, told apart because
+     the fix differs. If the variable appears in the declaration's type and the declaration is
+     annotated, the annotation is missing a constraint: say which, and that adding it is the
+     fix. If the declaration has no annotation, it needs one: say what it has to state. If the
+     variable appears nowhere in the declaration's type, nothing determines the type the class
+     is needed at, and no annotation on this declaration can.
 
-5. **New `ErrorKind` variants.** At minimum: no instance for this class and this type; and an
-   obligation on a rigid variable its context does not provide. Each with a `message()` in the
-   user's vocabulary — the second one especially, because *`a` is not `Comparable` here* is
-   meaningless without saying that `a` is the annotation's own variable and the fix is to add
-   the constraint. `ERR-4`'s labelling gives the caret and the secondary label for free once the
-   obligation carries an `Origin`.
+4. **Given constraints.** Inside a constrained declaration's body the annotation's context is
+   *given*, not proved: `Comparable a` discharges an obligation `Comparable a` on that variable,
+   and, through the superclass, `Eq a` — transitively, for a superclass of a superclass.
 
-**What this ticket does not reach.** Nothing in `std/core` carries a constraint for this
-solver to discharge. Probed, 45 of the package's 133 values are in `module javascript` facades
-that `type_check` returns early on. The declarations built on them — `add = Js.Basics.add`,
-`min`, `compare`, `append` — are type checked since `BUG-36`, but against the unconstrained
-`a -> a -> …` signatures `SPEC-11` left them with. So the solver built here will be exercised
-by tests and by user code long before it is exercised by the standard library, and
-[LANG-42](lang-42.md) is where that changes. Do not read a green
-`cargo run -- compile std/core` as evidence this ticket works.
+   On flexible variables this means: an annotation's variable is the unification variable
+   `canonical_type_to_typer_type` made for it, a given is that variable with the final
+   substitution applied, and an obligation still on a variable is discharged when a given is on
+   the same variable. **If the body forced the variable to a concrete type, the given goes with
+   it and the obligation is discharged by an instance** — `min : Comparable a => a -> a -> a`
+   whose body solves `a := Int` proves `Comparable Int` and publishes `Comparable a`. That is
+   the hole `LANG-12` closes, it is exactly as wide as the one every annotation has today, and
+   this ticket does not close it. Do not add a partial rigidity check here to narrow it.
 
-**Acceptance:** tests in `crates/zelkova-compiler/tests/typer.rs`, each with its neutralised-and-seen-red counterpart
-per `CLAUDE.md`'s *A green test proves nothing until you have seen it fail*:
+5. **Everything with a body is checked.** Besides value declarations:
 
-- A call whose obligation is discharged by a concrete instance checks.
-- A call whose obligation has no instance is a type error naming the class and the type, with a
-  `diagnostic.labels[..]` assertion putting the caret under the call and not under the
-  declaration.
-- A constrained declaration whose body uses only its context's operations checks; one that uses
-  an operation its context does not provide is an error.
-- `min : Comparable a => a -> a -> a` with a body that forces `a := Int` is an error, not a
-  silent specialisation — the `LANG-12` interaction, and the reason this ticket is sequenced
-  after it.
+   - **An instance's bindings.** Each is checked as a declaration whose annotation is the
+     member's signature with the class variable replaced by the instance's head, and whose given
+     context is the instance's own.
+   - **An instance's superclasses.** `LANG-39` checked that `instance Comparable T` has an `Eq`
+     instance with the same head in scope. Here the obligation `Eq T` is discharged with the
+     instance's context as given, which is what catches `instance Comparable (Box a)` beside
+     `instance Eq a => Eq (Box a)`: `Eq (Box a)` needs `Eq a`, and nothing provides it.
+   - A `derived` instance and a derivation's bindings are [LANG-83](lang-83.md)'s. Treat a
+     derived instance as an instance that exists, with the context `LANG-39` recorded for it —
+     none, until `LANG-83` infers one.
 
-`cargo run -- compile std/core` still prints `parsed 8 modules` and lists all eight as
-checked.
+6. **Provenance carries over unchanged, and must.** Every obligation records an `Origin` — the
+   span of the use it came from and a `Reason` naming why. `Reason` gains at least one variant
+   for *this use requires an instance*, and its `describes()` / `explains()` / `note()` arms are
+   written for the reader. `Reason::describes` names no type deliberately, and that reasoning
+   applies to obligations too: by the time one fails, substitution has moved types around.
+   `ERR-4`'s labelling gives the caret for free once the obligation carries an `Origin`.
+
+7. **New `ErrorKind` variants**, one per failure in step 3 — four of them — each with a
+   `message()` in the user's vocabulary. Their names become `expect=type-error:Kind` tags in the
+   chapter, so choose them to read well there.
+
+8. **The typer hands back what it discharged.** A backend cannot re-derive an instantiation, and
+   [GEN-24](gen-24.md) specialises on it. In the IR:
+
+   - a reference to a name whose type has a context carries that context as instantiated at the
+     use — one (class, type) pair per constraint, with the final substitution applied like every
+     other type on the node;
+   - a declaration carries its own context, as the variables of its solved type;
+   - a module carries its instances, each with its class, head, context and one checked body per
+     member, built the way a declaration's body is, and a declaration or instance binding that
+     did not check is accounted for the way `ir::Module::unchecked` accounts for a value.
+
+   Rewrite the IR module doc comment's *What is not here yet* and the paragraph on *A type on
+   every node* for what is now there. The shape is this ticket's to choose within those three
+   requirements; `GEN-24` is written against them and not against field names.
+
+9. **`zelkova_js::emit` refuses what it cannot emit yet.** `LANG-39` made it refuse a module
+   holding a class or an instance. A module that holds neither can still hold a constrained
+   declaration or a use of an imported member, and after this ticket both reach the IR. `emit`
+   answers an error for a declaration with a context and for a reference carrying obligations,
+   until `GEN-24`.
+
+**What this ticket does not reach.** Nothing in `std/core` declares a class, so nothing there
+carries a constraint for this solver to discharge; [LANG-42](lang-42.md) is where that changes.
+The solver is exercised by tests and by the chapter's blocks long before it is exercised by the
+standard library. Do not read a green `cargo run -- compile std/core` as evidence this ticket
+works.
+
+**Acceptance:** tests in `crates/zelkova-compiler/tests/typer.rs`, each a source string
+declaring its own classes and instances, each error asserted by kind and by
+`diagnostic.labels[..].range`, each seen red with its check neutralised
+(`CLAUDE.md`, *A green test proves nothing until you have seen it fail*):
+
+- A use whose obligation is discharged by an instance checks. One through an instance with a
+  context checks when the context's own obligation is discharged, and is an error when it is
+  not, naming the inner class and type.
+- A use at a type with no instance is an error naming the class and the type, with the caret
+  under the use and not under the declaration. A use at a function type likewise.
+- A constrained declaration whose body uses a member of its context's class checks; so does one
+  using a member of that class's superclass. One using a class its context does not provide is
+  the missing-constraint error, naming the constraint to add.
+- A declaration with no annotation whose body needs a class of an undetermined type is the
+  needs-annotation error. `isZero n = eq n 0`, with no annotation, checks.
+- A use whose class is needed at a type nothing determines is the third error of step 3.
+- An instance binding is checked against the member's signature at the instance's type: a
+  binding of the wrong type is an error. `instance Comparable (Box a)` beside
+  `instance Eq a => Eq (Box a)` is an error naming `Eq a`.
+- A member and a constrained function imported from another module are checked against the
+  context in that module's `Interface`, and an instance declared in a third module discharges
+  the obligation.
+- A use through an operator whose `infix` declaration names a member raises the same obligation
+  the member does.
+- `min : Comparable a => a -> a -> a` with a body that forces `a := Int` **checks**, and the
+  test says why in a comment naming `LANG-12` — it pins the hole so that `LANG-12` has a test
+  to turn round.
+
+In `crates/zelkova-compiler/tests/ir.rs`: a reference to a constrained function carries its
+instantiated context, a declaration carries its own, and a module carries its instances with
+their bodies. In `crates/zelkova-js/tests/javascript.rs`: a constrained declaration and a
+reference carrying obligations are each refused.
+
+`cargo test --workspace` is green. `cargo run -- compile std/core` still prints
+`parsed 10 modules`, lists all ten as checked and exits 0, and `cargo run -- test std/core`
+still reports `98 tests: 98 passed`.
+
+**The chapter's blocks.** Run `cargo test --test spec -- --nocapture`. In
+[`docs/spec/type-classes.md`](../spec/type-classes.md):
+
+- **The block under *A constraint is never inferred* will not go red.** It is
+  `expect=unimplemented` and after this ticket fails for the reason the chapter gives. Retag it
+  `expect=type-error:<the needs-annotation kind>`.
+- The `**Not implemented:**` paragraph under *Constraining an annotation* says a constrained
+  annotation asks nothing of a caller. It now does; delete the paragraph and its ticket links.
+- A block that now type checks and is tagged `expect=unimplemented` goes red by itself; retag
+  it `expect=ok` if its prose claims no more than that.
+
+[SPEC-36](spec-36.md)'s block in `docs/spec/expressions.md` is not repaired by this ticket and
+its paragraph should stop citing this one alone: what makes `double` an error is `LANG-12`.

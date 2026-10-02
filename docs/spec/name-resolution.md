@@ -15,8 +15,8 @@ A program has six namespaces, and a name in one never collides with a name in an
 
 | Namespace | Holds | Written |
 |---|---|---|
-| values | top-level bindings, parameters, pattern bindings | lowercase-initial |
-| types | `type` declarations | uppercase-initial, in a [type expression](types.md#type-names) |
+| values | top-level bindings, [class members](type-classes.md#declaring-a-class), parameters, pattern bindings | lowercase-initial |
+| types | `type` declarations and [`class` declarations](type-classes.md#declaring-a-class) | uppercase-initial, in a [type expression](types.md#type-names), a [constraint](type-classes.md#constraining-an-annotation), or the head of a class or an instance |
 | constructors | the variants of a `type` declaration | uppercase-initial, [in an expression](expressions.md#names) or a [pattern](patterns.md#constructor-patterns) |
 | operators | `infix` declarations | operator characters, never letters |
 | modules | the prefix of a qualified name | uppercase-initial, before the final `.` |

@@ -20,8 +20,9 @@ number `-1`, so any call to either facade aborts with
 Nothing reaches it yet: `Basics.compare` answers `EQ` without calling anything, and the body
 meant to replace that, which calls `Js.Utils.compareInt`, is commented out until `let` parses
 ([`LANG-33`](lang-33.md)).
-[`LANG-42`](lang-42.md)'s third point plans to call `compareInt` per `Comparable` instance, and
-will meet this the first time it does.
+[`LANG-42`](lang-42.md) writes the `Comparable` instances and closes this ticket with itself,
+either way: by returning a `bigint` from the facades it keeps, or by deleting the ones it does
+not call.
 
 `std/core/tests/Js/UtilsChecks.mjs` pins the mismatch rather than catching it: its `compare`
 checks assert `compareInt` returns the numbers `-1`, `0` and `1`.

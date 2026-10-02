@@ -127,6 +127,9 @@ parenthesised list of entries. There are exactly four kinds of entry:
 | `Size(..)` | a type together with every one of its constructors |
 | `(+)` | an operator, which must have an `infix` declaration in this module |
 
+A [class](type-classes.md#exposing-and-importing-a-class) is exposed by its bare name as well,
+written as an opaque type's is, and that entry exposes its members with it.
+
 ```zel expect=ok
 module Widget exposing (Color, Shape(..), label, (+))
 

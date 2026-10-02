@@ -420,11 +420,10 @@ available that two spellings of one type agree on. Where
 [reordering a union's variants changes what a derived member computes](type-classes.md#what-a-derived-instance-computes),
 reordering a record's fields changes nothing — it did not produce a different type.
 
-A record is walked because it has no instance to delegate to. An
-[instance may be declared only in the module declaring its class or its type](type-classes.md#where-an-instance-may-be-declared),
-and a record type is declared in no module — so `instance Eq { x : Int }` names no module that
-could hold it and is not writable. Each field's *value* still goes through its own type's
-instance in the ordinary way.
+A record is walked because it has no instance to delegate to. A record type is
+[not something an instance is declared for](type-classes.md#what-an-instance-is-declared-for),
+so `instance Eq { x : Int }` is not writable. Each field's *value* still goes through its own
+type's instance in the ordinary way.
 
 [Structural equality](evaluation-semantics.md#what-structural-equality-computes) over two records
 is that walk with `Eq`'s answers filled in: equal when every field is equal.

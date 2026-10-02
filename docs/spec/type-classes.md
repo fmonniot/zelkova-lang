@@ -64,7 +64,26 @@ Declaring `Comparable` puts `compare` and `lt` into the module's value namespace
 `type` declaration puts its constructors there. There is no separate step that exports a member,
 and no qualified spelling that reaches "the class's `compare`" as distinct from the `compare`.
 
-A class has exactly one variable.
+A class has exactly one variable, and every member's signature must mention it: a member that
+does not is an error, since no use of it could say which instance it meant.
+
+A member signature is a type and nothing more. It carries no constraint of its own, so `=>` in
+one is an error at the class declaration.
+
+A class is declared among the module's types, in [the same
+namespace](name-resolution.md#namespaces): a module cannot declare a type and a class of one
+name.
+
+### Exposing and importing a class
+
+A class is exposed by its name, written in an [`exposing` list](modules.md#the-exposing-list)
+the way a type's is — `exposing (Order, Comparable)` above. That one entry exposes the class and
+every member. A member is not listed in its own module's `exposing` list: it is exposed with its
+class, or not at all.
+
+An import list that names the class brings the class name and every member into scope
+unqualified. An import list may also name a member by itself, as it may any exposed value, and a
+member is reachable qualified — `Example.compare` — with neither.
 
 ## Declaring an instance
 
@@ -91,8 +110,9 @@ instance Comparable Colour where
     False
 ```
 
-An instance must implement **every** member of its class. A missing member is an error naming
-the member and the class: a constrained caller may rely on the members being there.
+An instance must implement **every** member of its class, and nothing else. A missing member is
+an error naming the member and the class: a constrained caller may rely on the members being
+there. A binding that names no member of the class is an error too.
 
 An instance has no name and is never mentioned by one. It is not exposed, not imported, and
 never written in an `exposing` list. It is in scope wherever its class and its type are, and how
@@ -116,6 +136,47 @@ else*. `instance` is an ordinary lowercase identifier, so the parser reads the l
 declaration named `instance` whose parameters are `Comparable`, `Colour`, `where`, `compare`, `a`
 and `b` — and when those names happen to resolve. [`LANG-38`](../tickets/lang-38.md) is the ticket,
 and this block goes red when it lands.
+
+### What an instance is declared for
+
+The type an instance is for is its **head**, and a head is one of three things: a declared type
+applied to as many distinct type variables as it has parameters, a tuple type whose elements are
+distinct type variables, or `()`.
+
+```zel expect=fragment
+instance Eq Colour where …
+
+instance Eq (Maybe a) where …
+
+instance Eq (a, b) where …
+```
+
+An argument that is not a variable is an error — `instance Eq (Maybe Int)` — and so is one
+variable written twice. An instance is therefore identified by its class and the name at the
+front of its head, and two instances that agree on both are the same instance declared twice.
+
+A function type is not a head, and neither is a [record type](records.md#records-and-derivation).
+
+An instance for a type with parameters may need something of them. It says so with a context,
+in the notation [a signature uses](#constraining-an-annotation):
+
+```zel expect=unimplemented
+module Example exposing (Box, Eq)
+
+type Box a
+  = Box a
+
+class Eq a where
+  eq : a -> a -> Bool
+
+instance Eq a => Eq (Box a) where
+  eq (Box left) (Box right) =
+    eq left right
+```
+
+Each constraint of the context is on one of the head's variables. Inside the instance's bindings
+the context holds as it does inside a constrained function, and a use of the instance at
+`Box Colour` requires an `Eq Colour` in turn.
 
 ### An instance may be derived
 
@@ -287,6 +348,24 @@ There is no `matched`, because the fold begins at `atConstructor`'s answer and i
 empty, not even for a constructor with no arguments. What `combine` is
 [trusted to keep](#what-a-derivation-is-trusted-to-keep) is associativity alone.
 
+### Deriving for a tuple
+
+A tuple has one shape, so the half of the walk that answers for a constructor is never reached:
+there are no two constructors to differ, and no position to hand `differed` or `atConstructor`.
+What is left is the argument half — each element in turn, through the instance belonging to that
+element's type, folded with `combine`. A two-value derivation walks the elements in pairs and
+ends at `matched`; a one-value derivation walks them singly and starts at the first element's
+answer.
+
+```zel expect=fragment
+instance Eq (a, b) where
+  derived
+```
+
+`()` has no element. A two-value derivation answers `matched` for it; a one-value derivation has
+nothing for its fold to begin at, so `instance C () where derived` is an error for a class
+whose derivation walks one value.
+
 ### What a derivation cannot render
 
 `toString : a -> String` has the signature a one-value derivation takes, so a class may carry one
@@ -311,6 +390,11 @@ A derivation is a **compile-time** step. The compiler reads the class's bindings
 shape and writes the member's definition out of them; what runs is that definition. Neither the
 walk nor the bindings exist at run time: a derivation's bindings are substituted into the
 generated definition at each step rather than called as functions.
+
+`combine`'s two parameters are not alike. Its first names a **value**: the answer for one part,
+computed once however often the body mentions it. Its second stands for **the rest of the
+walk** — everything after that part — which is performed where the body reaches it and nowhere
+else.
 
 Under [strict evaluation](evaluation-semantics.md#evaluation-is-strict) the difference is
 observable, and it is not one the compiler could make on its own. An argument is a value before
@@ -423,6 +507,11 @@ function type [has no useful equality at all](evaluation-semantics.md#functions-
 A superclass obligation is unchanged: a derived `Comparable Colour` is rejected unless an
 `Eq Colour` instance exists, derived in its turn or written out.
 
+The type's constructors must be in scope where the instance is written, since the walk is read
+off them: a derived instance for a type imported [without its
+constructors](modules.md#the-exposing-list) is an error. And a [scalar
+type](types.md#scalar-types) has no shape for a walk to read, so its instances are written.
+
 And the class must be one that says how it is derived. `derived` under a class whose declaration
 carries no derivation is an error naming the class — not because the compiler holds a list of the
 classes that do, but because the declaration the instance names has nothing in it to run.
@@ -430,7 +519,8 @@ classes that do, but because the declaration the instance names has nothing in i
 ## Constraining an annotation
 
 A constraint is written in front of the type, separated from it by `=>`. It names a class and
-the variable that class applies to.
+the variable that class applies to, and that variable must be one the type mentions:
+`Eq b => a -> a` is an error, since no caller could say which `b` it meant.
 
 ```zel expect=ok
 module Example exposing (Order, min)
@@ -482,6 +572,25 @@ four : (Eq a, Eq b, Eq c, Eq d) => a -> b -> c -> d -> Bit
 four a b c d =
   Zero
 ```
+
+### A constraint is never inferred
+
+A constraint is part of a declaration's type only where its annotation wrote it. A declaration
+with no annotation, whose body needs a class of a type nothing determines, is an error:
+
+```zel expect=unimplemented
+module Example exposing (Eq)
+
+class Eq a where
+  eq : a -> a -> Bool
+
+same x y =
+  eq x y
+```
+
+`same : Eq a => a -> a -> Bool` is what that declaration has to say. A declaration whose body
+pins the type down needs no annotation — the class is required of a known type, and that is
+settled where it stands.
 
 ### A constraint belongs to a signature, not to a type
 
@@ -552,6 +661,10 @@ first, and the declaration is where that is enforced.
 
 An `instance C T` declaration is legal in **the module that declares `C`**, and in **the module
 that declares `T`**, and nowhere else.
+
+A tuple type and `()` are declared in no module, so for them only the first clause applies: an
+instance whose [head](#what-an-instance-is-declared-for) is a tuple or `()` is legal in the
+module that declares the class, and nowhere else.
 
 An instance in any third module is rejected:
 
@@ -673,12 +786,23 @@ instance Comparable Int where
     orderOf (Js.Utils.compareInt a b)
 ```
 
+Specialisation asks one thing of a program: the specialisations it needs must be a finite set.
+A constrained function that calls itself at an ever-larger type has no such set.
+
+```zel expect=fragment
+loop : Eq a => a -> Bool
+loop x =
+  loop (Box x)
+```
+
+`loop` at `Colour` needs `loop` at `Box Colour`, which needs it at `Box (Box Colour)`, without
+end. That is an error, reported against the declaration with the type that kept growing. It is
+the same error when the chain runs through two functions that call each other.
+
 **Not implemented:** specialisation is a rule about code generation, and the compiler's code
-generation specialises nothing yet. When it does, the generated JavaScript holds one ordinary function per instantiation
-and no table of operations is built or passed at runtime. Two consequences: a program is compiled
-as a whole rather than a module at a time, and a constrained function cannot call itself at a
-different type than it was called with. The second is already impossible — a class variable
-stands for a complete type, so there is no different type for it to recurse at.
+generation specialises nothing yet ([`GEN-24`](../tickets/gen-24.md)). When it does, the
+generated JavaScript holds one ordinary function per instantiation, no table of operations is
+built or passed at runtime, and a program is compiled as a whole.
 
 **Known gap:** `Basics.lt`, `compare`, `min`, `max` and friends are ordinary declarations —
 not facade signatures — over any type at all, so a user union type still type-checks where none
@@ -758,38 +882,50 @@ built into the compiler.
 No name is an exception. `Number` is as ordinary as the other three: the compiler does not know
 it by name and knows no instance of it (*[Numeric literals](#numeric-literals)*, above).
 
-| Class | Members, roughly | What it constrains a variable to |
+| Class | Members | What it constrains a variable to |
 |---|---|---|
-| `Eq` | `eq`, `neq` | types that can be compared for equality |
+| `Eq` | `eq` | types that can be compared for equality |
 | `Comparable` (superclass `Eq`) | `compare` | types that are ordered |
-| `Number` | `add`, `sub`, `mul`, and the rest of the arithmetic | the numeric types |
+| `Number` | `add`, `sub`, `mul`, `pow`, `negate`, `abs` | the numeric types |
 | `Appendable` | `append` | types `++` joins |
 
-`Comparable` has the one member, and the four ordering operators are ordinary functions
-constrained by it — `lt : Comparable a => a -> a -> Bool`, and so on — rather than members of
-it. A class is derivable only when *every* member is, and `lt` is not: a lexicographic `lt`
-cannot be folded out of the `lt` of each pair of arguments, because it has to know whether the
-pair before it was *equal*. `compare` can, so `Comparable` keeps `compare` and builds the rest on
-top.
+`Eq` and `Comparable` have one member each, and what is built on them is ordinary functions
+constrained by the class: `neq : Eq a => a -> a -> Bool`, `lt : Comparable a => a -> a -> Bool`,
+and `le`, `gt`, `ge`, `min`, `max` and `clamp` likewise. A class is derivable only when *every*
+member is, and `lt` is not: a lexicographic `lt` cannot be folded out of the `lt` of each pair
+of arguments, because it has to know whether the pair before it was *equal*. `compare` can, so
+`Comparable` keeps `compare` and builds the rest on top.
+
+`Number` carries `negate` and `abs` as members because neither can be written over the other
+four: both need a zero, and [a literal is an `Int`](#numeric-literals).
+
+| Class | Instances |
+|---|---|
+| `Eq` | `Int`, `Float`, `Char`, `String`, `Bool`, `Order`, `Maybe`, `Result`, `Failure`, `Position`, a tuple of two and of three, `()` |
+| `Comparable` | `Int`, `Float`, `Char`, `String`, `Position`, a tuple of two and of three |
+| `Number` | `Int`, `Float` |
+| `Appendable` | `String`, and `List` |
+
+The tuple and `()` instances are [declared beside the class](#where-an-instance-may-be-declared)
+and are [derived](#deriving-for-a-tuple).
 
 Two of the four carry [derivations](#a-class-says-how-it-is-derived): `Eq` and `Comparable`.
 `Number` and `Appendable` carry none and could not — `add` and `append` return the class
 variable, which no walk over a value has a way to produce. A program's own class is derivable on
 exactly the same terms as either.
 
-`std/core` also declares `Position`, the type a derivation
-[is handed for a constructor](#a-class-says-how-it-is-derived) — with an `Eq` instance, a
-`Comparable` instance and `positionIndex : Position -> Int`, and with no way to construct one. It
+`Basics`, the module declaring `Eq` and `Comparable`, also declares `Position`, the type a
+derivation [is handed for a constructor](#a-class-says-how-it-is-derived) — with an `Eq`
+instance, a `Comparable` instance and `positionIndex : Position -> Int`, and with no way to
+construct one. It
 is the one type here the compiler knows by name, because it has to give those parameters a type
 before any class has been read. That is a name for a *type*, which the compiler already has four
 of; it is not a name for a class.
 
-`Appendable` ranges over strings and [lists](lists.md). The compiler implements neither type —
-see the note on brackets and quotes in [Lexical structure](lexical-structure.md#punctuation).
-
 **Not implemented:** [`LANG-42`](../tickets/lang-42.md) is the pass that declares them. A
 constrained function cannot be a single-line re-export of a JavaScript facade, which is what most
-of these are in `std/core` — its body has to choose an instance.
+of these are in `std/core` — its body has to choose an instance. [Lists](lists.md) are not
+implemented either, so `Appendable`'s `List` instance waits on them.
 
 ## Open questions
 
@@ -800,3 +936,8 @@ of these are in `std/core` — its body has to choose an instance.
   not a reason to hold this design. Records reach the mechanism too and are settled:
   [a record is walked field by field in label order](records.md#records-and-derivation), with the
   bindings a class already supplies.
+- **A record and a class that carries no derivation.** A record is walked by a class that says
+  how it is derived and is [the head of no instance](#what-an-instance-is-declared-for). A class
+  that carries no derivation — one turning a value into JSON, say — therefore cannot reach a
+  record at all, where it reaches a tuple through an instance its own module declares. Whether a
+  record type may be a head, and what such an instance would be declared over, is unsettled.

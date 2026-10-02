@@ -101,7 +101,7 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | ID | title | status |
 |---|---|---|
 | [DEC-1](dec-1.md) | Deriving in other languages | live |
-| [DEC-2](dec-2.md) | The type-class mechanism: eleven decisions | live; 8 superseded, 11 overtaken |
+| [DEC-2](dec-2.md) | The type-class mechanism: eleven decisions | live; 8 superseded, 11 overtaken, 2, 3 and 9 extended by DEC-24 |
 | [DEC-3](dec-3.md) | What the spec harness checks, and what it declines to | live |
 | [DEC-4](dec-4.md) | Design rationale gets its own directory | live |
 | [DEC-5](dec-5.md) | A pattern's sign is the pattern grammar's, not the tokenizer's | live |
@@ -123,3 +123,4 @@ holds the citations is checked too — [DEC-4](dec-4.md) decision 3.
 | [DEC-21](dec-21.md) | The unit value crosses as `undefined` | live |
 | [DEC-22](dec-22.md) | How a `Task` is represented and run: a survey and eight decisions | live |
 | [DEC-23](dec-23.md) | A module with errors still has a shape: seven decisions | live |
+| [DEC-24](dec-24.md) | What implementing type classes had to settle: twelve decisions | live |

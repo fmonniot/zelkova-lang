@@ -48,9 +48,9 @@ triggers below, and the trigger gets reported at launch.
    `grammar.lalrpop` + the `parser` AST + the `canonical` conversions moving together; anything
    inside `crates/zelkova-compiler/src/typer/` (`constraint.rs`, `unifier.rs`); and the error accumulation in
    `compile_package`.
-5. **The ticket is a fragment that does nothing on its own** — `LANG-37` through `LANG-41`, the
-   type-classes chain, where the mechanism only works once the chain lands and a locally
-   sensible choice can be wrong three tickets later.
+5. **The ticket is a fragment that does nothing on its own** — the type-classes chain listed
+   under *Active work: type classes* in `docs/tickets/README.md`, where the mechanism only works
+   once the chain lands and a locally sensible choice can be wrong three tickets later.
 
 Deliberately **not** triggers: file count, diff size, how long the ticket has been open, a
 prefix (`BUG-` is not inherently harder than `TIDY-`), or the fact that an earlier review round

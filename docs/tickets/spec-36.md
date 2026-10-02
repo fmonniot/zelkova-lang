@@ -8,7 +8,10 @@ taken.
 stand-in `Basics` a block compiles against.
 
 **Depends on:** none to file; the block's real repair depends on [LANG-12](lang-12.md) and
-[LANG-40](lang-40.md).
+[LANG-40](lang-40.md). **[LANG-12](lang-12.md) now closes this ticket with itself**, by the
+first option below: it is the last ticket of [the type-class
+order](README.md#active-work-type-classes), so both have landed when it does, and its own
+acceptance carries the repair.
 
 **Found while:** reviewing the PR that closed [LANG-37](README.md), which made `Number a =>` parse
 and rewrote that paragraph. Not caused by that PR: before it the block failed in the parser and
