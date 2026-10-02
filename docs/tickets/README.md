@@ -165,68 +165,6 @@ at runtime — a constraint on code generation, which has not started. It is rec
 `docs/spec/type-classes.md` and `docs/spec/interop.md`, and [`GEN-1`](gen-1.md) inherits it
 from there rather than it being filed twice.
 
-## Active work: editor support
-
-`TOOL-1` through `TOOL-12` are one effort: **a `.zel` file gets the editor support any
-mainstream language has.** That means highlighting first, then errors shown as you type, then
-hover types and go-to-definition. They get a section because, apart from `TOOL-1`, none of them
-is visible to a user on its own. Most are compiler changes a language server needs or is much
-poorer without, and the server itself is the last to land.
-
-`TOOL-8` through `TOOL-12` were one design, cut by the phase a failure is found in, and all
-five are closed. [DEC-23](../decisions/dec-23.md) holds its seven decisions and what each was
-chosen over, and is what to read before changing what a module with errors still has.
-
-```
-TOOL-1  TextMate grammar + VS Code extension      ← closed; the one piece that shipped value alone
-
-TOOL-3  a check that returns diagnostics as data,  ─┐
-  │       prints nothing, writes nothing            │  ← closed: `check_package`
-  │                                                 ├─ both required by TOOL-6
-TOOL-2  that check reads open buffers through an    │
-          overlay, not only the disk               ─┘  ← closed: `Overlay`
-TOOL-4  every syntax error of a module is          ← closed: `parse_recovering`
-  │       reported, and the declarations that
-  │       parsed are handed back
-  │
-TOOL-8  a module with a type error still publishes  ← closed: `Outcome`,
-  │       its interface and has a typed tree           `check_module_recovering`,
-  │                                                    `PackageCheck::failing`
-  │
-TOOL-9  a declaration that fails canonicalization   ← closed: `canonicalize_recovering`,
-  │       is recorded, and the rest of its module      `Module::broken`; closed BUG-34
-  │       survives
-  │
-TOOL-10 a failed type, operator or import marks     ← closed: `without_restated`,
-  │       its scope incomplete                         `Interface::incomplete`
-  │
-  ├── TOOL-11  a module with a syntax error stays in the build
-  │              ← closed: `parser::Module::failed`, `Interface::unavailable`;
-  │                the floor is complete
-  │
-  └── TOOL-12  an unresolved name in a sound body is a typed hole
-                 ← closed: `ExpressionKind::Hole`, `TypedTermKind::Hole`; a layer on
-                   the floor: the declaration being typed keeps its tree
-
-TOOL-6  zelkova-lsp: diagnostics, then hover, then go-to-definition, then semantic tokens
-          ← to be split into one ticket per capability before work starts
-          ← needs none of TOOL-8 to TOOL-12, which keep every capability past
-            diagnostics working on a file mid-edit
-
-TOOL-3
-  │
-TOOL-7  the checking modules stop naming the backend,  ← closed: `driver`, `BuildError`
-          the runners and the test package
-  │
-TOOL-5  workspace split: syntax / compiler / js /      ← closed: five crates under crates/;
-          test-runner / cli, under crates/                TIDY-12 (edition 2024) is next
-```
-
-**What is not a ticket yet: incremental checking.** `TOOL-6` starts by re-checking the whole
-package on each change. Whether the compiler moves to a query-based architecture (e.g. `salsa`)
-is a much larger decision, deferred until a whole-package check is measurably too slow in an
-editor.
-
 ## Tickets
 
 Open tickets link to their file. Rows with a close date are tombstones — the file is gone; see
