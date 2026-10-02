@@ -272,6 +272,19 @@ typer's, which has no record type and leaves `added` unchecked
 The expression left of the `|` is an ordinary expression rather than a name, so
 `{ f x | taken = Celsius }` updates whatever `f x` returns.
 
+An update names each label once. Repeating one is an error, reported at the repeated label:
+
+```zel expect=canonical-error:RepeatedLabel
+module Example exposing (Celsius, correct)
+
+type Celsius
+  = Celsius
+
+correct : { taken : Celsius } -> { taken : Celsius }
+correct reading =
+  { reading | taken = Celsius, taken = Celsius }
+```
+
 ## Record patterns
 
 A record pattern matches a record by naming fields. Each entry is `label = pattern`, and the
