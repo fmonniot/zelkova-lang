@@ -90,7 +90,7 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - uses: actions-rs-plus/clippy-check@v2.1.1
+      - uses: actions-rs-plus/clippy-check@v2.7.1
         with:
           args: --workspace --all-features --all-targets -- -D warnings
 
