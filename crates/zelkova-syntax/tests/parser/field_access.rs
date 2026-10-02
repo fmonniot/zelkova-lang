@@ -78,9 +78,11 @@ fn at(source: &str, needle: &str) -> Option<Span<BytePos>> {
 /// Access binds tighter than application: `f r.name` is one application of `f`, to the
 /// access `r.name`, and not `(f r).name`.
 ///
-/// Mutation-checked by moving the access production from `Accessible` to `AppExpr`, as
-/// `<record: AppExpr> "." <label: VarIdent>`: `f r.name` then parses as an access of the
-/// application `f r`, and the assertion goes red.
+/// Mutation-checked by rewriting `AppExpr`'s application action so that an access
+/// argument takes the application as its record, which reads `f r.name` as `(f r).name`:
+/// the assertions go red. Moving the access production onto `AppExpr` itself, the
+/// grammar-level way to bind it looser, does not build: LALRPOP reports the local
+/// ambiguity against `QualTypeIdent` that `Accessible` exists to avoid.
 #[test]
 fn an_access_binds_tighter_than_application() {
     assert_eq!(body("f r.name"), app(var("f"), access(var("r"), "name")));
@@ -94,8 +96,9 @@ fn an_access_binds_tighter_than_application() {
 /// the only thing that tells it from the access `f.name`.
 ///
 /// Mutation-checked by making `consume_operator` yield `Dot` for a `.` after an operand
-/// whatever lies between them (dropping the `previous_operand_end` comparison): `f
-/// .name` then parses as the access `f.name`, and the first assertion goes red.
+/// whatever lies between them (testing `previous_operand_end.is_some()` in place of
+/// comparing it with the `.`'s start): `f .name` then parses as the access `f.name`, and
+/// the first assertion goes red.
 #[test]
 fn a_spaced_dot_before_a_label_is_an_application_to_an_accessor() {
     assert_eq!(body("f .name"), app(var("f"), accessor("name")));
@@ -110,8 +113,8 @@ fn a_spaced_dot_before_a_label_is_an_application_to_an_accessor() {
 /// record the outer one reads.
 ///
 /// Mutation-checked by replacing `<record: Accessible>` in the access production with a
-/// copy of `Accessible` that has no access in it, which makes access non-recursive:
-/// `r.a.b` then no longer parses and `body` panics. (The AST has no right-nested reading
+/// nonterminal holding only a variable and a parenthesised expression, which makes
+/// access non-recursive: `r.a.b` then no longer parses and `body` panics. (The AST has no right-nested reading
 /// of `r.a.b` to compare against, since a label is not an expression.)
 #[test]
 fn an_access_nests_left() {
@@ -124,11 +127,11 @@ fn an_access_nests_left() {
 /// accessor and another access each take one; `Widget.size` and `Widget.Size.x` stay
 /// qualified names, and `Widget.size.x` reads `x` off the qualified `Widget.size`.
 ///
-/// Mutation-checked by adding a constructor production to `Accessible`: LALRPOP then
-/// reports the local ambiguity against `QualTypeIdent` and the crate does not build,
-/// which is the case the grammar comment on `Accessible` names. And by removing the
-/// parenthesised production from `Accessible` (and adding it to `AtomicExpr`): `(Just
-/// r).name` then fails to parse.
+/// Mutation-checked by moving the constructor production from `AtomicExpr` into
+/// `Accessible`: LALRPOP then reports a local ambiguity at `QualTypeIdent` and the crate
+/// does not build, which is the case the grammar comment on `Accessible` names. And by
+/// moving the parenthesised production from `Accessible` to `AtomicExpr`: `(Just
+/// r).name` then fails to parse and `body` panics.
 #[test]
 fn what_an_access_may_be_written_on() {
     assert_eq!(

@@ -190,16 +190,18 @@ fn the_unspaced_spelling_of_each_parses() {
 }
 
 /// A `.` that interrupts no qualified name gets no advice about one: there is no name in
-/// `. name`, `(. name)`, `1 .`, `a . b`, `r. name` or `(f x) .1` to write in one piece. The
-/// message is the neutral one, with no note, and still labels exactly the `.`.
+/// `. name`, `(. name)`, `1 .`, `a . b`, `r. name`, `(f x) .1` or `type Widget . a` to
+/// write in one piece. The message is the neutral one, with no note, and still labels
+/// exactly the `.`.
 ///
 /// The grammar would have accepted a `Dot` after `1`, `a`, `r` and `)`, each of which a
 /// field access may be written on, so the expected tokens alone would call each of
 /// those a qualified name; what keeps them neutral is that no uppercase name stands
-/// before the `.`.
+/// before the `.`. `type Widget . a` is the other half: an uppercase name stands before
+/// its `.`, and a declaration's own name is never qualified, so no `Dot` was expected.
 ///
 /// Verified to fail by making `From<ParseError>` set `continues_a_name` to `true`
-/// unconditionally: every source below then gets the qualified-name message. And by
+/// unconditionally: `type Widget . a` then gets the qualified-name message. And by
 /// making `after_a_name` in `parser/mod.rs` return its error unchanged: `1 .`, `a . b` and
 /// `r. name` then get it.
 #[test]
@@ -211,6 +213,7 @@ fn a_dot_that_interrupts_no_name_is_not_called_a_qualified_name() {
         "module Main exposing (..)\n\nmain = a . b\n",
         "module Main exposing (..)\n\nmain = r. name\n",
         "module Main exposing (..)\n\nmain = (f x) .1\n",
+        "module Main exposing (..)\n\ntype Widget . a = A\n",
     ] {
         let (message, notes, start, text) = rejected_dot(source);
 
