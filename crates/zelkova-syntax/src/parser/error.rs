@@ -32,18 +32,23 @@ pub enum Error {
     InfixPrecedenceOutOfRange {
         precedence: Spanned<BytePos, i64>,
     },
-    /// A `.` the tokenizer did not read as `Token::Dot`: one with whitespace on a side
-    /// of it — `Widget . size`, `Widget .size`, `Widget. size`, `import Ui . Widget` —
-    /// or one opening an expression, as in `(.name)`. No production consumes
-    /// `Token::SpacedDot`, so the parser reports it as an unexpected token and
-    /// `From<ParseError>` turns that into this. `dot` is the `.`.
+    /// A `.` the tokenizer did not read as `Token::Dot`, where the grammar did not take
+    /// it: one with whitespace after it — `Widget . size`, `Widget. size`, `. name`,
+    /// `import Ui . Widget` — or before an uppercase name, `Widget .Size`, which are
+    /// `Token::SpacedDot`; or an accessor's `.` where no expression may stand, as in
+    /// `import Ui .widget`, which is `Token::AccessorDot`. No production consumes the
+    /// first, and the second only where an expression begins, so the parser reports
+    /// either as an unexpected token and `From<ParseError>` turns that into this. `dot`
+    /// is the `.`.
     ///
-    /// `continues_a_name` is whether the parser, at the point it met the `.`, would have
-    /// accepted a `Token::Dot` there: it had read an uppercase name that a `.` extends into
-    /// a qualified name, and the whitespace is what stopped it. Only then does the message
-    /// speak of a qualified name; `main = .name`, `f .name` and `main = 1 .` have no
-    /// qualified name in them, and advice about one would be about something the user did
-    /// not write.
+    /// `continues_a_name` is whether an uppercase name stands right before the `.` and the
+    /// parser, at the point it met the `.`, would have accepted a `Token::Dot` there: a
+    /// `.` would have extended that name into a qualified one, and the whitespace is what
+    /// stopped it. Only then does the message speak of a qualified name; `main = . name`,
+    /// `main = 1 .` and `main = a . b` have no qualified name in them, and advice about
+    /// one would be about something the user did not write. `From<ParseError>` sees only
+    /// the second half, which a field access also satisfies, and `parser::parse_chunk`,
+    /// which has the tokens, adds the first.
     SpacedDot {
         dot: Span<BytePos>,
         continues_a_name: bool,
@@ -308,11 +313,14 @@ impl From<ParseError<BytePos, Token, Error>> for Error {
                 expected: unquote_tokens(expected),
             },
             ParseError::UnrecognizedToken {
-                token: (start, Token::SpacedDot, end),
+                token: (start, Token::SpacedDot | Token::AccessorDot, end),
                 expected,
             } => Error::SpacedDot {
                 dot: Span { start, end },
-                // The terminal is spelled `"."` in the grammar, and lalrpop quotes it.
+                // The terminal is spelled `"."` in the grammar, and lalrpop quotes it. A
+                // `Dot` is accepted after every operand a field access may be written on
+                // as well as after a name it would qualify, so this is only half of what
+                // the field says; `parser::parse_chunk` narrows it.
                 continues_a_name: expected.iter().any(|terminal| terminal == "\".\""),
             },
             ParseError::UnrecognizedToken { token, expected } => Error::UnexpectedToken {

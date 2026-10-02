@@ -23,7 +23,7 @@ language.
 
 Three more forms — list literals, records, and record field access — are part of the language
 and are specified in their own chapters: [Lists](lists.md) for the first and
-[Records](records.md) for the other two. None of the three is implemented; see
+[Records](records.md) for the other two. None of the three is implemented in full; see
 [Forms the compiler does not have](#forms-the-compiler-does-not-have) at the foot of this
 chapter.
 
@@ -677,7 +677,7 @@ Three expression forms are part of the language and are specified elsewhere:
 | Records — `{ a = 1 }`, `{ r \| a = 2 }` | [Records](records.md#building-a-record) |
 | Field access — `r.name`, `.name` | [Records](records.md#reading-a-field) |
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (f)
 
 f : { name : Int } -> Int
@@ -685,7 +685,5 @@ f r =
   r.name
 ```
 
-**Not implemented:** `.` is punctuation for qualified names only, so `r.name` is rejected rather
-than read as a projection ([`LANG-50`](../tickets/lang-50.md)). The type checker has no record
-type, so a declaration holding a record or an update is left unchecked
-([`LANG-51`](../tickets/lang-51.md)).
+**Known gap:** the type checker has no record type, so a declaration holding a record, an
+update, a field access or an accessor is left unchecked ([`LANG-51`](../tickets/lang-51.md)).

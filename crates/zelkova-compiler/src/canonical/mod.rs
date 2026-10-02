@@ -697,7 +697,10 @@ fn expression_holds_hole(expr: &Expression) -> bool {
         | ExpressionKind::String(_)
         | ExpressionKind::Int(_)
         | ExpressionKind::Float(_)
-        | ExpressionKind::Unit => false,
+        | ExpressionKind::Unit
+        // A label is not a name, so it never resolves and is never a hole.
+        | ExpressionKind::Accessor(_, _) => false,
+        ExpressionKind::Access(record, _, _) => expression_holds_hole(record),
         ExpressionKind::Apply(a, b) => expression_holds_hole(a) || expression_holds_hole(b),
         ExpressionKind::If(cond, then, els) => {
             expression_holds_hole(cond) || expression_holds_hole(then) || expression_holds_hole(els)
@@ -920,8 +923,18 @@ pub enum ExpressionKind {
     // LetRec
     // LetDestruct (eg. `(a,b) = someTuple`)
     Case(Box<Expression>, Vec<CaseBranch>),
-    // Accessor
-    // Access
+    /// An [accessor](../../docs/spec/records.md#the-accessor), `.name`, the function
+    /// reading that field: the label, and where the label alone was written.
+    ///
+    /// The label names no declaration, so nothing about it is resolved here: [labels
+    /// are not values](../../docs/spec/records.md#labels-are-not-values), and which
+    /// record the label belongs to is decided by the type the accessor is read against.
+    Accessor(Name, NodeSpan),
+    /// A [field access](../../docs/spec/records.md#reading-a-field), `r.name`: the
+    /// record, the label, and where the label alone was written. The label is not
+    /// resolved here either, for the reason an [`Accessor`](ExpressionKind::Accessor)'s
+    /// is not.
+    Access(Box<Expression>, Name, NodeSpan),
     /// A [record](../../docs/spec/records.md#building-a-record), `{ label = expr, … }`,
     /// its fields in the order they were written.
     ///
@@ -1212,6 +1225,14 @@ impl Expression {
                 let fields = Field::from_parser(fields, RecordForm::Update, env, unresolved)?;
 
                 ExpressionKind::Update(Box::new(record), fields)
+            }
+            parser::ExpressionKind::Access(record, label, label_span) => ExpressionKind::Access(
+                Box::new(Expression::from_parser(record, env, unresolved)?),
+                label.clone(),
+                *label_span,
+            ),
+            parser::ExpressionKind::Accessor(label, label_span) => {
+                ExpressionKind::Accessor(label.clone(), *label_span)
             }
         };
 
@@ -3103,8 +3124,11 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
         | ExpressionKind::Int(_)
         | ExpressionKind::Float(_)
         | ExpressionKind::Unit
+        // A label names no declaration.
+        | ExpressionKind::Accessor(_, _)
         // A name that did not resolve names no declaration of this module.
         | ExpressionKind::Hole => {}
+        ExpressionKind::Access(record, _, _) => collect_top_level_refs(record, out),
         ExpressionKind::Apply(a, b) => {
             collect_top_level_refs(a, out);
             collect_top_level_refs(b, out);

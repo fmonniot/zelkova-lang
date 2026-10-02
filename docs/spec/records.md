@@ -166,7 +166,7 @@ f = { a = 1, }
 `r.name` is the value of `r`'s `name` field. The record's type must have that label, and the
 expression's type is the field's.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Text, nameOf)
 
 type Text
@@ -177,8 +177,9 @@ nameOf person =
   person.name
 ```
 
-**Not implemented:** `.` is punctuation for a qualified name, so the grammar rejects
-`person.name` at the `.` ([`LANG-50`](../tickets/lang-50.md)).
+**Known gap:** the typer has no record type, so it leaves `nameOf` unchecked: an access
+naming a label the record's type does not have is accepted, and so is a field used at a type
+other than its own ([`LANG-51`](../tickets/lang-51.md)).
 
 Access binds tighter than [application](expressions.md#application), so `f r.name` is
 `f (r.name)`. It chains left to right: `r.centre.x` is `(r.centre).x`.
@@ -188,7 +189,7 @@ Access binds tighter than [application](expressions.md#application), so `f r.nam
 `.name` on its own is a function that reads that field: `.name` is `\r -> r.name`, and it is an
 expression wherever one may be written.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Text, nameOf)
 
 type Text
@@ -203,7 +204,8 @@ nameOf person =
   apply .name person
 ```
 
-**Not implemented:** no production consumes a leading `.` ([`LANG-50`](../tickets/lang-50.md)).
+**Known gap:** the typer has no record type, so it leaves `apply` and `nameOf` unchecked, and
+nothing types the accessor from where it is written ([`LANG-51`](../tickets/lang-51.md)).
 
 `.name` names a field of *some* record, and
 [a record type is written out in full](#records-are-closed), so there is no type an accessor can
@@ -389,7 +391,7 @@ other [pattern binding](patterns.md#variable-patterns).
 A record type names every field the record has. There is no way to write "any record with a
 `name` field", and a function that wants one accepts the whole record type it is given.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Text, Number, greet)
 
 type Text
@@ -402,8 +404,6 @@ greet : { name : Text, age : Number } -> Text
 greet person =
   person.name
 ```
-
-**Not implemented:** [`LANG-50`](../tickets/lang-50.md).
 
 Opening records up means a variable standing for "the rest of the fields", a second kind of thing
 a type variable may be: today [a type variable stands for a type](types.md#type-variables) and
@@ -425,7 +425,7 @@ Where nothing supplies it, the form is an error. A record type is never worked o
 fields a declaration happens to touch: that would read `person.name` as taking a record with
 exactly one field.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Text)
 
 type Text
@@ -435,8 +435,9 @@ nameOf person =
   person.name
 ```
 
-**Not implemented:** rejected at the `.` today ([`LANG-50`](../tickets/lang-50.md)); the rule
-that rejects it is the typer's ([`LANG-51`](../tickets/lang-51.md)), and for a record pattern
+**Known gap:** that block should be rejected and is accepted. The rule that rejects it is the
+typer's, which has no record type and leaves `nameOf` unchecked
+([`LANG-51`](../tickets/lang-51.md)), and for a record pattern it is
 [`LANG-84`](../tickets/lang-84.md)'s.
 
 What supplies the type may be written anywhere in the declaration, before the form or after it.

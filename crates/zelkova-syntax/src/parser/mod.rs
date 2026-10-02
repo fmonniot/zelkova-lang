@@ -197,13 +197,47 @@ fn parse_chunk<T>(
     let mut indented = layout::Layout::new(chunk.tokens.iter().cloned(), chunk.end);
 
     entry(&mut indented).map_err(|e| {
-        indented.explain(e.into(), |line_start| {
+        let error = after_a_name(e.into(), &chunk.tokens);
+
+        indented.explain(error, |line_start| {
             let before = chunk.tokens.iter().take_while(|item| {
                 matches!(item, Ok(token) if token.span.start.absolute.0 < line_start.absolute.0)
             });
             entry(&mut layout::Layout::new(before.cloned(), line_start)).is_ok()
         })
     })
+}
+
+/// `error`, with an [`Error::SpacedDot`]'s `continues_a_name` kept only when the token
+/// right before the `.` is an uppercase name.
+///
+/// `From<ParseError>` sets the flag when the grammar would have accepted a `Dot` where it
+/// met the `.`, and that holds after every operand a field access may be written on —
+/// `a . b`, `1 .`, `r. name` — as well as after a name a qualification continues. Only
+/// the second has a qualified name for the message to speak of, and the grammar's
+/// expected tokens cannot tell the two apart, so this reads the token itself.
+fn after_a_name(error: Error, tokens: &[chunk::RawToken]) -> Error {
+    match error {
+        Error::SpacedDot {
+            dot,
+            continues_a_name: true,
+        } => {
+            let before = tokens
+                .iter()
+                .filter_map(|item| item.as_ref().ok())
+                .take_while(|token| token.span.start.absolute.0 < dot.start.0)
+                .last();
+
+            Error::SpacedDot {
+                dot,
+                continues_a_name: matches!(
+                    before,
+                    Some(token) if matches!(token.value, tokenizer::Token::UpperIdentifier(_))
+                ),
+            }
+        }
+        error => error,
+    }
 }
 
 /// A part of a declared type. This is also used in type annotations.
@@ -825,6 +859,15 @@ pub enum ExpressionKind {
     /// the named fields replaced. The fields keep their written order, as a
     /// [`Record`](ExpressionKind::Record)'s do.
     Update(Box<Expression>, Vec<Field<Expression>>),
+    /// A field access, `r.name`: the record, the label, and where the label alone was
+    /// written. The expression's own span covers the whole `r.name`.
+    ///
+    /// The record is never a bare constructor name: `Widget.size` is a qualified name,
+    /// and the grammar's `Accessible` says why that leaves the constructor out.
+    Access(Box<Expression>, Name, NodeSpan),
+    /// An accessor, `.name`, the function reading that field: the label, and where the
+    /// label alone was written. The expression's own span covers the `.` as well.
+    Accessor(Name, NodeSpan),
 }
 
 impl Expression {

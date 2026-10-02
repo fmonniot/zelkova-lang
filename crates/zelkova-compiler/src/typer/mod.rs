@@ -1071,9 +1071,9 @@ pub(super) fn bool_type() -> Type {
 /// Convert a canonical expression to a Term, keeping the position it was written at.
 ///
 /// Returns None for constructs the inference engine doesn't yet handle (a `VarKernel`
-/// reference, complex patterns inside a `Case`, a record or an update), and for a
-/// constructor of a union neither this module nor an interface in [`Translation`]
-/// declares.
+/// reference, complex patterns inside a `Case`, a record, an update, a field access or
+/// an accessor), and for a constructor of a union neither this module nor an interface in
+/// [`Translation`] declares.
 ///
 /// Every arm attaches `expr.span` to the term it builds. That is the whole of what
 /// `ERR-4` needed from this function: a constraint can only point at a
@@ -1210,11 +1210,12 @@ fn canonical_expr_to_term(
         // A name that did not resolve. Its error is canonicalization's, and the term
         // stands where the name was written so the rest of the body is still checked.
         canonical::ExpressionKind::Hole => TermKind::Hole,
-        // The term language has no record until `LANG-51`, so a declaration holding one
-        // is left unchecked.
-        canonical::ExpressionKind::Record(_) | canonical::ExpressionKind::Update(..) => {
-            return None
-        }
+        // The term language has no record until `LANG-51`, so a declaration holding one,
+        // or reading a field of one, is left unchecked.
+        canonical::ExpressionKind::Record(_)
+        | canonical::ExpressionKind::Update(..)
+        | canonical::ExpressionKind::Access(..)
+        | canonical::ExpressionKind::Accessor(..) => return None,
         // Not yet supported: VarKernel
         _ => return None,
     };

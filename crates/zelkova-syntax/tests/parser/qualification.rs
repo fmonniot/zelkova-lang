@@ -2,8 +2,10 @@
 //! (`docs/spec/records.md`, *Whitespace before a `.` decides which form it is*).
 //!
 //! `Widget.size` is one name. `Widget . size`, `Widget .size` and `Widget. size` are not,
-//! in an expression, in a type, in an `import` and in a module header, and each is
-//! reported as `parser::Error::SpacedDot` pointing at the `.`.
+//! in an expression, in a type, in an `import` and in a module header. Each is reported
+//! as `parser::Error::SpacedDot` pointing at the `.`, but for `Widget .size` in an
+//! expression, which is `Widget` applied to the accessor `.size` (`records.rs`), and
+//! which canonicalization rejects where `Widget` is a module and not a constructor.
 //!
 //! Every rejection test below was verified to fail by making `consume_operator` in
 //! `tokenizer.rs` yield `Token::Dot` for every lone `.`, which returns the parser to
@@ -76,7 +78,7 @@ fn assert_rejected_at_dot(source: &str, needle: &str) {
 
 #[test]
 fn a_name_in_an_expression_takes_no_space_around_its_dot() {
-    for spelling in ["Widget . size", "Widget .size", "Widget. size"] {
+    for spelling in ["Widget . size", "Widget. size"] {
         assert_rejected_at_dot(
             &format!("module Main exposing (..)\n\nmain = {}\n", spelling),
             spelling,
@@ -132,12 +134,11 @@ fn a_module_header_takes_no_space_around_its_dot() {
     }
 }
 
+/// A comment after a `.` separates it from the name as a space does. One before it does
+/// too, and makes `Widget{- a -}.size` an application to an accessor, as `Widget .size`
+/// is (`records.rs`).
 #[test]
 fn a_comment_next_to_a_dot_is_whitespace() {
-    assert_rejected_at_dot(
-        "module Main exposing (..)\n\nmain = Widget{- a -}.size\n",
-        "-}.size",
-    );
     assert_rejected_at_dot(
         "module Main exposing (..)\n\nmain = Widget.{- a -}size\n",
         "Widget.{",
@@ -189,19 +190,27 @@ fn the_unspaced_spelling_of_each_parses() {
 }
 
 /// A `.` that interrupts no qualified name gets no advice about one: there is no name in
-/// `.name`, `f .name`, `(.name)`, `1 .` or `a . b` to write in one piece. The message is
-/// the neutral one, with no note, and still labels exactly the `.`.
+/// `. name`, `(. name)`, `1 .`, `a . b`, `r. name` or `(f x) .1` to write in one piece. The
+/// message is the neutral one, with no note, and still labels exactly the `.`.
+///
+/// The grammar would have accepted a `Dot` after `1`, `a`, `r` and `)`, each of which a
+/// field access may be written on, so the expected tokens alone would call each of
+/// those a qualified name; what keeps them neutral is that no uppercase name stands
+/// before the `.`.
 ///
 /// Verified to fail by making `From<ParseError>` set `continues_a_name` to `true`
-/// unconditionally: every source below then gets the qualified-name message.
+/// unconditionally: every source below then gets the qualified-name message. And by
+/// making `after_a_name` in `parser/mod.rs` return its error unchanged: `1 .`, `a . b` and
+/// `r. name` then get it.
 #[test]
 fn a_dot_that_interrupts_no_name_is_not_called_a_qualified_name() {
     for source in [
-        "module Main exposing (..)\n\nmain = .name\n",
-        "module Main exposing (..)\n\nmain = f .name\n",
-        "module Main exposing (..)\n\nmain = (.name)\n",
+        "module Main exposing (..)\n\nmain = . name\n",
+        "module Main exposing (..)\n\nmain = (. name)\n",
         "module Main exposing (..)\n\nmain = 1 .\n",
         "module Main exposing (..)\n\nmain = a . b\n",
+        "module Main exposing (..)\n\nmain = r. name\n",
+        "module Main exposing (..)\n\nmain = (f x) .1\n",
     ] {
         let (message, notes, start, text) = rejected_dot(source);
 

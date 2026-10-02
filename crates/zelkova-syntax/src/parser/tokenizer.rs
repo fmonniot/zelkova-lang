@@ -51,11 +51,16 @@ pub enum Token {
     /// operator name, so it cannot be declared with `infix` or exposed as `(=>)`.
     FatArrow,
     /// A `.` written against an operand on its left and against the character after it:
-    /// the `.` of `Dict.get`. The only `.` the grammar consumes.
+    /// the `.` of `Dict.get` and of the field access `r.name`.
     Dot,
-    /// Any other `.`: one with whitespace, a comment, or the start or end of the source
-    /// on a side of it (`Dict . get`, `Dict .get`, `Dict. get`), or one opening an
-    /// expression, after `(`, `[`, `,`, an operator or a keyword (`(.name)`). No
+    /// A `.` that is not a [`Dot`](Token::Dot) and is written against the start of a
+    /// lowercase name after it: the `.` of an accessor, as in `f .name`, `(.name)` and
+    /// `Dict .get`. Where the grammar has no accessor to read — in a type, a pattern, an
+    /// `import` — the parser rejects it as it rejects a [`SpacedDot`](Token::SpacedDot).
+    AccessorDot,
+    /// Any other `.`: one with whitespace, a comment, or the end of the source after it
+    /// (`Dict . get`, `Dict. get`, `. name`), or one with neither a `Dot`'s operand on
+    /// its left nor a lowercase name against its right (`Dict .Get`, `(.1)`). No
     /// production consumes it, so the parser rejects it where it stands, and
     /// `Error::SpacedDot` says why. The doc comment on the tokenizer's `consume_operator`
     /// has the reason this is a token of its own.
@@ -138,6 +143,7 @@ impl Token {
             | Token::Arrow
             | Token::FatArrow
             | Token::Dot
+            | Token::AccessorDot
             | Token::SpacedDot
             | Token::DotDot
             | Token::Underscore
@@ -1145,15 +1151,18 @@ where
 
     /// Consume a run of operator characters and name the token it is.
     ///
-    /// A lone `.` is where the rule that a qualified name takes no whitespace around
-    /// its dot is decided: `Dict.get` is `Dict` qualifying `get`, and `Dict . get`,
-    /// `Dict .get` and `Dict. get` are not. A `.` is [`Token::Dot`] only when it is
-    /// written against an operand on its left — a token for which
-    /// [`Token::ends_an_operand`] holds, with nothing between — and against the character
-    /// after it. Any other `.` is [`Token::SpacedDot`], which the grammar has no
-    /// production for. That includes a `.` after a token that cannot end an operand, as in
-    /// `(.name)`, `[.name]` and `a,.name`, however close it sits: it opens an expression
-    /// and is not the right-hand side of an access.
+    /// A lone `.` is where the whitespace rule of `docs/spec/records.md` (*Whitespace
+    /// before a `.` decides which form it is*) is decided, and it is one of three tokens.
+    ///
+    /// - [`Token::Dot`] when it is written against an operand on its left — a token for
+    ///   which [`Token::ends_an_operand`] holds, with nothing between — and against the
+    ///   character after it: `Dict.get` qualifying `get`, and `r.name` reading a field.
+    /// - [`Token::AccessorDot`] when it is not a `Dot` and the character after it starts
+    ///   a lowercase name: the `.` of an accessor, in `f .name`, `Dict .get`, and in
+    ///   `(.name)`, `[.name]` and `a,.name`, where it follows a token that cannot end an
+    ///   operand and opens an expression however close it sits.
+    /// - [`Token::SpacedDot`] otherwise: `Dict . get`, `Dict. get`, `. name`, `Dict
+    ///   .Get`. The grammar has no production for it.
     ///
     /// This is decided here and not in the `QualVarIdent`/`QualTypeIdent` actions of
     /// `grammar.lalrpop`, for two reasons. Whitespace is only visible here: the grammar
@@ -1163,19 +1172,26 @@ where
     /// tell the two spellings apart where it needs to. Records need exactly that: `f
     /// .name` is `f` applied to an accessor and `f.name` is an access, and a grammar
     /// that gets the same token for both can only be made to distinguish them by
-    /// resolving a conflict in an action. With the two spellings split into two tokens,
-    /// `Dot` is an access or a qualification and `SpacedDot` is never either. Where the
-    /// `.` opens an expression it is `SpacedDot` and never `Dot`, so a `Dot` production
-    /// for the accessor is not needed: `(.name)` begins with `SpacedDot` like `f .name`.
-    /// What this does not decide is the second half of the accessor's own spelling, that
-    /// its `.` is written against its label: `.name` and `. name` are both `SpacedDot`
-    /// followed by a name, and a grammar that rejects the second has to look at the spans.
+    /// resolving a conflict in an action. With the spellings split into tokens, `Dot` is
+    /// an access or a qualification, `AccessorDot` begins an accessor and is never
+    /// either, and `SpacedDot` is none of the three.
+    ///
+    /// The accessor's own `.` is written against its label, and that half is decided
+    /// here too, by the character after the `.`, for the same reason: `.name` and `.
+    /// name` would otherwise reach the grammar as one token followed by a name, and
+    /// rejecting the second would take a comparison of spans in the accessor's action.
+    /// Such an action can only fail where it stands, after the parser has already taken
+    /// the `.` as an accessor's, so `Widget . size` would be reported without knowing
+    /// that a qualified name was what it interrupted, and `1 .` at the end of a line as
+    /// the layout token after it. A label is a lowercase name, so a `.` against an
+    /// uppercase one, a digit or a symbol is no accessor's and is `SpacedDot`: `Widget
+    /// .Size` is rejected at its `.` as `Widget . Size` is.
     ///
     /// Adjacency is compared against where the previous token ended, not against the
     /// previous character, so a block comment between a name and its dot — `Dict{- -}.get`
-    /// — separates them as whitespace does. The character after the dot is whitespace, the
-    /// end of the source, or the opening of a block comment when it is not written against
-    /// the dot.
+    /// — separates them as whitespace does, and makes the dot an accessor's. The character
+    /// after the dot is whitespace, the end of the source, or the opening of a block
+    /// comment when it is not written against the dot.
     fn consume_operator(&mut self) -> Spanned<Position, Token> {
         let mut buf = String::new();
         let start_pos = self.position;
@@ -1200,8 +1216,18 @@ where
                     (Some(c), _) => c.is_whitespace(),
                 };
 
+                // A name is lowercase exactly when `consume_identifier` would make it a
+                // `LowerIdentifier` or a keyword: its first character starts an
+                // identifier and is not uppercase.
+                let before_a_lowercase_name = self
+                    .lookahead
+                    .0
+                    .is_some_and(|c| self.is_identifier_start(c) && !c.is_uppercase());
+
                 if self.previous_operand_end == Some(start_pos.absolute) && !after_is_apart {
                     Token::Dot
+                } else if before_a_lowercase_name {
+                    Token::AccessorDot
                 } else {
                     Token::SpacedDot
                 }
@@ -1869,11 +1895,12 @@ mod tests {
     }
 
     /// A `.` is `Dot` only when it is written against the token before it and against the
-    /// character after it; whitespace, a block comment, or an end of the source on either
-    /// side makes it `SpacedDot`.
+    /// character after it. Whitespace, a block comment, or an end of the source after it
+    /// makes it `SpacedDot`; the same before it, with a lowercase name against its right,
+    /// makes it the `AccessorDot` of `Widget .size`.
     ///
     /// Verified to fail by making `consume_operator` yield `Token::Dot` for every lone
-    /// `.`: every `SpacedDot` expectation below then fails.
+    /// `.`: every `SpacedDot` and `AccessorDot` expectation below then fails.
     #[test]
     fn a_dot_is_spaced_unless_written_against_both_sides() {
         let up = |s: &str| Token::UpperIdentifier(s.to_owned());
@@ -1889,7 +1916,7 @@ mod tests {
         );
         assert_eq!(
             tokenize("Widget .size"),
-            vec![up("Widget"), Token::SpacedDot, low("size")]
+            vec![up("Widget"), Token::AccessorDot, low("size")]
         );
         assert_eq!(
             tokenize("Widget. size"),
@@ -1897,55 +1924,88 @@ mod tests {
         );
         assert_eq!(
             tokenize("Widget\n.size"),
-            vec![up("Widget"), Token::SpacedDot, low("size")]
+            vec![up("Widget"), Token::AccessorDot, low("size")]
         );
         assert_eq!(
             tokenize("Widget{- -}.size"),
-            vec![up("Widget"), Token::SpacedDot, low("size")]
+            vec![up("Widget"), Token::AccessorDot, low("size")]
         );
         assert_eq!(
             tokenize("Widget.{- -}size"),
             vec![up("Widget"), Token::SpacedDot, low("size")]
         );
-        assert_eq!(tokenize(".size"), vec![Token::SpacedDot, low("size")]);
+        assert_eq!(tokenize(".size"), vec![Token::AccessorDot, low("size")]);
         assert_eq!(tokenize("Widget."), vec![up("Widget"), Token::SpacedDot]);
+    }
+
+    /// A `.` that is not a `Dot` is an accessor's exactly when a lowercase name is written
+    /// against its right: a label is a lowercase name, so a `.` before an uppercase name, a
+    /// digit, a symbol or a space is a `SpacedDot` wherever it stands. A soft keyword and a
+    /// reserved word are lowercase names too; the grammar is what rejects `.if`.
+    ///
+    /// Verified to fail by making `before_a_lowercase_name` in `consume_operator` answer
+    /// `true` for every character: the `SpacedDot` expectations then read `AccessorDot`;
+    /// and by making it answer `false`: the `AccessorDot` ones then read `SpacedDot`.
+    #[test]
+    fn a_dot_is_an_accessors_only_against_a_lowercase_name() {
+        let up = |s: &str| Token::UpperIdentifier(s.to_owned());
+        let low = |s: &str| Token::LowerIdentifier(s.to_owned());
+
+        assert_eq!(tokenize(".name"), vec![Token::AccessorDot, low("name")]);
+        assert_eq!(tokenize(".left"), vec![Token::AccessorDot, Token::Left]);
+        assert_eq!(tokenize(".if"), vec![Token::AccessorDot, Token::If]);
+        assert_eq!(tokenize(".été"), vec![Token::AccessorDot, low("été")]);
+
+        assert_eq!(tokenize(". name"), vec![Token::SpacedDot, low("name")]);
+        assert_eq!(tokenize(".Name"), vec![Token::SpacedDot, up("Name")]);
+        assert_eq!(tokenize(".Été"), vec![Token::SpacedDot, up("Été")]);
+        assert_eq!(tokenize(".1"), vec![Token::SpacedDot, int_token(1)]);
+        assert_eq!(
+            tokenize(".(a)"),
+            vec![Token::SpacedDot, Token::LPar, low("a"), Token::RPar]
+        );
+        assert_eq!(
+            tokenize("Widget .Size"),
+            vec![up("Widget"), Token::SpacedDot, up("Size")]
+        );
     }
 
     /// A `.` is written against the token before it only when that token can end an
     /// operand. Any other token before it leaves the `.` opening an expression, so it is
-    /// `SpacedDot` however close it sits: `(.name)`, `[.name]`, `a,.name`, `then.name`.
+    /// never `Dot` however close it sits, and before a name it is an accessor's:
+    /// `(.name)`, `[.name]`, `a,.name`, `then.name`.
     ///
     /// Verified to fail by making `ends_an_operand` answer `true` for every token: the
     /// first group then fails; and by making it answer `false` for `RPar`, `RBracket` and
     /// the string literal: the second group then fails.
     #[test]
-    fn a_dot_after_a_token_that_cannot_end_an_operand_is_spaced() {
+    fn a_dot_after_a_token_that_cannot_end_an_operand_is_not_a_dot() {
         let up = |s: &str| Token::UpperIdentifier(s.to_owned());
         let low = |s: &str| Token::LowerIdentifier(s.to_owned());
 
         assert_eq!(
             tokenize("(.name)"),
-            vec![Token::LPar, Token::SpacedDot, low("name"), Token::RPar]
+            vec![Token::LPar, Token::AccessorDot, low("name"), Token::RPar]
         );
         assert_eq!(
             tokenize("[.name]"),
             vec![
                 Token::LBracket,
-                Token::SpacedDot,
+                Token::AccessorDot,
                 low("name"),
                 Token::RBracket
             ]
         );
         assert_eq!(
             tokenize("a,.name"),
-            vec![low("a"), Token::Comma, Token::SpacedDot, low("name")]
+            vec![low("a"), Token::Comma, Token::AccessorDot, low("name")]
         );
         assert_eq!(
             tokenize("f (.name) r"),
             vec![
                 low("f"),
                 Token::LPar,
-                Token::SpacedDot,
+                Token::AccessorDot,
                 low("name"),
                 Token::RPar,
                 low("r")
@@ -1953,15 +2013,15 @@ mod tests {
         );
         assert_eq!(
             tokenize("then.name"),
-            vec![Token::Then, Token::SpacedDot, low("name")]
+            vec![Token::Then, Token::AccessorDot, low("name")]
         );
         assert_eq!(
             tokenize("else.name"),
-            vec![Token::Else, Token::SpacedDot, low("name")]
+            vec![Token::Else, Token::AccessorDot, low("name")]
         );
         assert_eq!(
             tokenize("of.name"),
-            vec![Token::Of, Token::SpacedDot, low("name")]
+            vec![Token::Of, Token::AccessorDot, low("name")]
         );
 
         // The tokens that can end an operand keep the `.` attached.
@@ -2073,8 +2133,8 @@ mod tests {
     /// after `(` and `[`.
     ///
     /// Verified to fail by making `ends_an_operand` answer `false` for `RBrace`: the first
-    /// group then reads `Dot` as `SpacedDot`. And by making it answer `true` for `LBrace`:
-    /// the second group then reads `{.name}`'s `SpacedDot` as `Dot`.
+    /// group then reads `Dot` as `AccessorDot`. And by making it answer `true` for `LBrace`:
+    /// the second group then reads `{.name}`'s `AccessorDot` as `Dot`.
     #[test]
     fn a_dot_after_a_brace() {
         let low = |s: &str| Token::LowerIdentifier(s.to_owned());
@@ -2097,14 +2157,15 @@ mod tests {
                 low("b")
             ]
         );
-        // Whitespace on either side of the dot, or a comment before it, makes it spaced.
+        // Whitespace after the dot makes it spaced, and whitespace or a comment before it
+        // makes it an accessor's.
         assert_eq!(
             tokenize("{ r } .a"),
             vec![
                 Token::LBrace,
                 low("r"),
                 Token::RBrace,
-                Token::SpacedDot,
+                Token::AccessorDot,
                 low("a")
             ]
         );
@@ -2124,25 +2185,35 @@ mod tests {
                 Token::LBrace,
                 low("r"),
                 Token::RBrace,
-                Token::SpacedDot,
+                Token::AccessorDot,
                 low("a")
             ]
         );
 
         assert_eq!(
             tokenize("{.name}"),
-            vec![Token::LBrace, Token::SpacedDot, low("name"), Token::RBrace]
+            vec![
+                Token::LBrace,
+                Token::AccessorDot,
+                low("name"),
+                Token::RBrace
+            ]
         );
         assert_eq!(
             tokenize("{ .name }"),
-            vec![Token::LBrace, Token::SpacedDot, low("name"), Token::RBrace]
+            vec![
+                Token::LBrace,
+                Token::AccessorDot,
+                low("name"),
+                Token::RBrace
+            ]
         );
         assert_eq!(
             tokenize("f {.name} r"),
             vec![
                 low("f"),
                 Token::LBrace,
-                Token::SpacedDot,
+                Token::AccessorDot,
                 low("name"),
                 Token::RBrace,
                 low("r")
