@@ -24,9 +24,8 @@ reading =
   { taken = Celsius, expected = Celsius }
 ```
 
-**Not implemented:** `{` and `}` are not tokens — the tokenizer reads `{` only as the opening of
-a `{-` block comment and rejects it anywhere else ([`LANG-47`](../tickets/lang-47.md)) — and no
-production consumes a record in a type or an expression ([`LANG-48`](../tickets/lang-48.md)).
+**Not implemented:** no production consumes a record in a type or an expression, so the parser
+stops at the `{` ([`LANG-48`](../tickets/lang-48.md)).
 
 A label is a lowercase-initial identifier, spelled the way a
 [value name](lexical-structure.md#identifiers) is. A field's type is any
@@ -52,8 +51,7 @@ type Chain
   | Link { value : Chain, next : Chain }
 ```
 
-**Not implemented:** the same two ([`LANG-47`](../tickets/lang-47.md),
-[`LANG-48`](../tickets/lang-48.md)).
+**Not implemented:** the same ([`LANG-48`](../tickets/lang-48.md)).
 
 ## A record type is a set of fields
 
@@ -76,8 +74,8 @@ swapped =
   taken
 ```
 
-**Not implemented:** braces do not tokenize ([`LANG-47`](../tickets/lang-47.md)), and the typer
-has no record type to compare field sets of ([`LANG-51`](../tickets/lang-51.md)).
+**Not implemented:** no production consumes a record ([`LANG-48`](../tickets/lang-48.md)), and
+the typer has no record type to compare field sets of ([`LANG-51`](../tickets/lang-51.md)).
 
 This makes a record type **structural**: it is described entirely by what it holds. Two modules
 that separately annotate `{ x : Int, y : Int }` have written one type, and a value of it crosses
@@ -119,7 +117,7 @@ reading =
   { taken = Celsius, expected = Celsius }
 ```
 
-**Not implemented:** [`LANG-47`](../tickets/lang-47.md), [`LANG-48`](../tickets/lang-48.md).
+**Not implemented:** [`LANG-48`](../tickets/lang-48.md).
 
 Each field's value is an ordinary expression, so anything an expression may be a field may hold.
 Repeating a label is an error here too.
@@ -138,7 +136,7 @@ reading =
   }
 ```
 
-**Not implemented:** [`LANG-47`](../tickets/lang-47.md), [`LANG-48`](../tickets/lang-48.md).
+**Not implemented:** [`LANG-48`](../tickets/lang-48.md).
 
 A trailing comma is an error, following the [variant list](types.md#a-variant-list-has-at-least-one-variant)
 and the [list literal](lists.md#list-literals) rather than the
@@ -151,9 +149,9 @@ module Example exposing (f)
 f = { a = 1, }
 ```
 
-**Not implemented:** that block is rejected at the `{` rather than at the comma
-([`LANG-47`](../tickets/lang-47.md)), so it does not yet distinguish the rule it illustrates from
-the missing token around it.
+**Not implemented:** that block is rejected at the `{`, which no production consumes yet
+([`LANG-48`](../tickets/lang-48.md)), so it does not yet distinguish the rule it illustrates from
+the missing production around it.
 
 ## Reading a field
 
@@ -171,8 +169,8 @@ nameOf person =
   person.name
 ```
 
-**Not implemented:** braces do not tokenize ([`LANG-47`](../tickets/lang-47.md)), and `.` is
-punctuation for a qualified name, so the grammar rejects `person.name` at the `.`
+**Not implemented:** no production consumes a record type ([`LANG-48`](../tickets/lang-48.md)),
+and `.` is punctuation for a qualified name, so the grammar rejects `person.name` at the `.`
 ([`LANG-50`](../tickets/lang-50.md)).
 
 Access binds tighter than [application](expressions.md#application), so `f r.name` is
@@ -245,7 +243,7 @@ correct reading =
   { reading | taken = Celsius }
 ```
 
-**Not implemented:** [`LANG-47`](../tickets/lang-47.md), [`LANG-48`](../tickets/lang-48.md).
+**Not implemented:** [`LANG-48`](../tickets/lang-48.md).
 
 An update **has the type of the record it updates**. Each label it names must already be a field
 of that type, and each value must have the type that field already has. An update can therefore
@@ -262,7 +260,7 @@ added reading =
   { reading | expected = Celsius }
 ```
 
-**Not implemented:** rejected at the brace today ([`LANG-47`](../tickets/lang-47.md)); the rule
+**Not implemented:** rejected at the brace today ([`LANG-48`](../tickets/lang-48.md)); the rule
 that rejects it is the typer's ([`LANG-51`](../tickets/lang-51.md)).
 
 The expression left of the `|` is an ordinary expression rather than a name, so
@@ -363,7 +361,7 @@ origin =
   { x = Celsius }
 ```
 
-**Not implemented:** [`LANG-47`](../tickets/lang-47.md), [`LANG-48`](../tickets/lang-48.md).
+**Not implemented:** [`LANG-48`](../tickets/lang-48.md).
 
 The shorthand pattern is where the two namespaces meet, in one direction only: `{ x }` reads the
 label `x` and binds the **value** `x`, which then shadows an outer value of that name like any
@@ -388,8 +386,7 @@ greet person =
   person.name
 ```
 
-**Not implemented:** [`LANG-47`](../tickets/lang-47.md), [`LANG-48`](../tickets/lang-48.md),
-[`LANG-50`](../tickets/lang-50.md).
+**Not implemented:** [`LANG-48`](../tickets/lang-48.md), [`LANG-50`](../tickets/lang-50.md).
 
 Opening records up means a variable standing for "the rest of the fields", a second kind of thing
 a type variable may be: today [a type variable stands for a type](types.md#type-variables) and

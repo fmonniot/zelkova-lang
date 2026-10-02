@@ -37,6 +37,13 @@ pub enum Token {
     RPar,
     LBracket,
     RBracket,
+    /// `{`, which opens a record: a record type, a record expression, an update and a
+    /// record pattern. A `{` written against a `-` after it is not this token but the
+    /// opening of a block comment.
+    LBrace,
+    /// `}`, which closes a record. An expression can end with one, so a `.` written against
+    /// it is an access of the record.
+    RBrace,
     Comma,
     Arrow,
     /// `=>`, which separates a signature's constraint context from its type
@@ -98,13 +105,13 @@ impl Token {
     /// written straight after it can be the `.` of a field access or a qualified name.
     ///
     /// Identifiers (the soft keywords are identifiers where an expression reads them,
-    /// see `VarIdent` in `grammar.lalrpop`), literals of every kind, `)` and `]`. Every
-    /// other token — an operator, `(`, `[`, `,`, a keyword, layout — leaves the next
-    /// expression still to begin, so a `.` after it opens one.
+    /// see `VarIdent` in `grammar.lalrpop`), literals of every kind, `)`, `]` and `}`:
+    /// the `}` of a record ends it, and `{ a = 1 }.a` reads a field of that record. Every
+    /// other token — an operator, `(`, `[`, `{`, `,`, a keyword, layout — leaves the next
+    /// expression still to begin, so a `.` after it opens one: `{.name}` has a `SpacedDot`
+    /// after its `{`.
     ///
     /// The match has no wildcard arm on purpose: a new token has to be placed here.
-    /// `}` ends an operand once it exists as a token (`LANG-47`), and is added by one
-    /// more name in the first arm.
     fn ends_an_operand(&self) -> bool {
         match self {
             Token::UpperIdentifier(_)
@@ -119,12 +126,14 @@ impl Token {
             | Token::Char { .. }
             | Token::String { .. }
             | Token::RPar
-            | Token::RBracket => true,
+            | Token::RBracket
+            | Token::RBrace => true,
 
             Token::Operator(_)
             | Token::EndOfFile
             | Token::LPar
             | Token::LBracket
+            | Token::LBrace
             | Token::Comma
             | Token::Arrow
             | Token::FatArrow
@@ -799,14 +808,20 @@ where
                     }
                 }
                 // A block comment may appear anywhere a space may (SPEC-2), including
-                // mid-expression, not only in a line's leading whitespace — `{` had no
-                // arm here at all before, so `f = {- a note -} 1` fell through to the
-                // catch-all below and was rejected as an `UnrecognizedToken` naming `{`,
-                // which is not the problem (BUG-13). `{` is not otherwise a valid start
-                // of a token today, so a `{` not followed by `-` falls through to that
-                // same catch-all unchanged.
+                // mid-expression, not only in a line's leading whitespace, so `f = {- a
+                // note -} 1` is accepted (BUG-13). This arm has to stay ahead of the
+                // `{` arm below: a `{` followed by `-` opens a comment, and read the
+                // other way round it would be a brace and an operator.
                 '{' if self.lookahead.1 == Some('-') => {
                     self.consume_comment()?;
+                }
+                '{' => {
+                    let spanned = self.skip_char_as(Token::LBrace);
+                    self.processed_tokens.push(spanned);
+                }
+                '}' => {
+                    let spanned = self.skip_char_as(Token::RBrace);
+                    self.processed_tokens.push(spanned);
                 }
                 '\'' => {
                     match (self.lookahead.1, self.lookahead.2) {
@@ -1821,13 +1836,15 @@ mod tests {
     fn symbols() {
         let op = |s: &str| Token::Operator(s.to_owned());
         assert_eq!(
-            tokenize("(),[]._ .. -> = + - / * == < <= >= > && || |> <| |"),
+            tokenize("(),[]{}._ .. -> = + - / * == < <= >= > && || |> <| |"),
             vec![
                 Token::LPar,
                 Token::RPar,
                 Token::Comma,
                 Token::LBracket,
                 Token::RBracket,
+                Token::LBrace,
+                Token::RBrace,
                 Token::Dot,
                 Token::Underscore,
                 Token::DotDot,
@@ -1994,6 +2011,141 @@ mod tests {
         );
     }
 
+    /// `{` and `}` are tokens of their own, and a `{` is a brace unless a `-` follows it
+    /// directly, which opens a block comment.
+    ///
+    /// Verified to fail by moving the `'{'` brace arm of `consume_char` ahead of the
+    /// `'{' if self.lookahead.1 == Some('-')` arm: the first assertion then reads `{- a
+    /// note -}` as a brace and an operator, and fails along with the block comment tests.
+    #[test]
+    fn braces_are_tokens_and_a_brace_dash_is_a_comment() {
+        let low = |s: &str| Token::LowerIdentifier(s.to_owned());
+
+        assert_eq!(
+            tokenize("f = { a = 1 }"),
+            vec![
+                low("f"),
+                Token::Equal,
+                Token::LBrace,
+                low("a"),
+                Token::Equal,
+                int_token(1),
+                Token::RBrace
+            ]
+        );
+        assert_eq!(
+            tokenize("f = {- a note -} { a = 1 }"),
+            vec![
+                low("f"),
+                Token::Equal,
+                Token::LBrace,
+                low("a"),
+                Token::Equal,
+                int_token(1),
+                Token::RBrace
+            ]
+        );
+        // A space between the `{` and the `-` ends the comment's opening: the `-` is the
+        // minus sign again.
+        assert_eq!(
+            tokenize("{ -a }"),
+            vec![Token::LBrace, Token::Minus, low("a"), Token::RBrace]
+        );
+        assert_eq!(
+            tokenize("{a}{b}"),
+            vec![
+                Token::LBrace,
+                low("a"),
+                Token::RBrace,
+                Token::LBrace,
+                low("b"),
+                Token::RBrace
+            ]
+        );
+    }
+
+    /// A `}` can end an operand and a `{` cannot: a `.` written against the `}` of a
+    /// record is an access of it, and a `.` after a `{` opens an expression, as it does
+    /// after `(` and `[`.
+    ///
+    /// Verified to fail by making `ends_an_operand` answer `false` for `RBrace`: the first
+    /// group then reads `Dot` as `SpacedDot`. And by making it answer `true` for `LBrace`:
+    /// the second group then reads `{.name}`'s `SpacedDot` as `Dot`.
+    #[test]
+    fn a_dot_after_a_brace() {
+        let low = |s: &str| Token::LowerIdentifier(s.to_owned());
+
+        assert_eq!(
+            tokenize("{ r }.a"),
+            vec![Token::LBrace, low("r"), Token::RBrace, Token::Dot, low("a")]
+        );
+        assert_eq!(
+            tokenize("{ a = 1 }.a.b"),
+            vec![
+                Token::LBrace,
+                low("a"),
+                Token::Equal,
+                int_token(1),
+                Token::RBrace,
+                Token::Dot,
+                low("a"),
+                Token::Dot,
+                low("b")
+            ]
+        );
+        // Whitespace on either side of the dot, or a comment before it, makes it spaced.
+        assert_eq!(
+            tokenize("{ r } .a"),
+            vec![
+                Token::LBrace,
+                low("r"),
+                Token::RBrace,
+                Token::SpacedDot,
+                low("a")
+            ]
+        );
+        assert_eq!(
+            tokenize("{ r }. a"),
+            vec![
+                Token::LBrace,
+                low("r"),
+                Token::RBrace,
+                Token::SpacedDot,
+                low("a")
+            ]
+        );
+        assert_eq!(
+            tokenize("{ r }{- -}.a"),
+            vec![
+                Token::LBrace,
+                low("r"),
+                Token::RBrace,
+                Token::SpacedDot,
+                low("a")
+            ]
+        );
+
+        assert_eq!(
+            tokenize("{.name}"),
+            vec![Token::LBrace, Token::SpacedDot, low("name"), Token::RBrace]
+        );
+        assert_eq!(
+            tokenize("{ .name }"),
+            vec![Token::LBrace, Token::SpacedDot, low("name"), Token::RBrace]
+        );
+        assert_eq!(
+            tokenize("f {.name} r"),
+            vec![
+                low("f"),
+                Token::LBrace,
+                Token::SpacedDot,
+                low("name"),
+                Token::RBrace,
+                low("r")
+            ]
+        );
+    }
+
     /// `=>` is its own token, the separator of a constraint context, and a longer
     /// run of operator characters that merely starts with it is still one ordinary
     /// operator: the table matches the whole run, not a prefix of it.
@@ -2126,8 +2278,8 @@ mod tests {
     /// `UnrecognizedToken` naming `{` — a character that was never the problem.
     ///
     /// Verified to fail by removing the `'{' if self.lookahead.1 == Some('-')` arm from
-    /// `consume_char`: `tokenize` then panics inside its `.expect("no error in tokenize")`
-    /// on the `UnrecognizedToken` the catch-all raises instead.
+    /// `consume_char`: the `{` is then read as `LBrace` and the `-` as `Minus`, so the
+    /// token sequence no longer matches.
     #[test]
     fn block_comment_recognised_mid_expression() {
         assert_eq!(
@@ -2161,10 +2313,8 @@ mod tests {
     /// source.
     ///
     /// Verified to fail by reverting the block branch to the old first-`-}`-wins loop:
-    /// `tokenize` then panics inside `.expect("no error in tokenize")`, because `still`
-    /// and `outer` tokenize fine but the trailing `-}` becomes a `Minus` immediately
-    /// followed by `}`, and `}` has no arm in `consume_char` and is rejected as an
-    /// `UnrecognizedToken`.
+    /// the sequence then holds `still` and `outer` as identifiers, and the trailing `-}`
+    /// as a `Minus` immediately followed by an `RBrace`.
     #[test]
     fn nested_block_comments() {
         assert_eq!(
