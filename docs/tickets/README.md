@@ -312,6 +312,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-16](err-16.md) | task | — | open | `ModuleNameCollision` and `ReservedModuleName` have a file to point at and don't |
 | [ERR-17](err-17.md) | task | — | open | A mistyped bare identifier or constructor body gets no caret of its own |
 | [ERR-18](err-18.md) | task | — | open | An unexpected-token error names the token by its Rust variant, not as the user wrote it |
+| [ERR-19](err-19.md) | task | — | open | A module name used as a constructor is reported as a missing constructor of the current module |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
