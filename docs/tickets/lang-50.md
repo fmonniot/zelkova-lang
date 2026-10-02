@@ -62,8 +62,8 @@ where nothing fixes the record type. That is the typer's half and belongs to
 [Records](../spec/records.md#reading-a-field) and [The accessor](../spec/records.md#the-accessor)
 go red and are retagged, as does the `r.name` block in
 [Expressions](../spec/expressions.md#forms-the-compiler-does-not-have), whose **Not implemented:**
-paragraph goes with it. All three annotate with a record type, so they turn only once
-[`LANG-48`](lang-48.md) has landed as well, and whichever of the two lands second retags them.
+paragraph goes with it. All three annotate with a record type, which parses, so they turn on
+this ticket.
 The unannotated block under
 [A use does not decide a record's type](../spec/records.md#a-use-does-not-decide-a-records-type)
 needs no brace and turns on this ticket alone: it becomes `expect=ok` under a **Known gap:**

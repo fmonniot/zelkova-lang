@@ -9,8 +9,9 @@ the module doc comment's *What this shape owes WebAssembly*;
 `crates/zelkova-compiler/src/ir/decision.rs` — `Step`; `crates/zelkova-js/src/lib.rs` —
 `Emitter`, `Construct`, `Predicates::test`, `Unpredicated`, and the *Representations*, *The
 boundary check*, *A `case`* and *What is refused* sections of the module doc comment;
-`crates/zelkova-compiler/src/canonical/mod.rs` — `check_facade_admitted_type`, which has an arm
-per form of `canonical::Type` and none for a record; `tests/fixtures/` and `tests/js/`.
+`tests/fixtures/` and `tests/js/`. `check_facade_admitted_type` in
+`crates/zelkova-compiler/src/canonical/mod.rs` already admits a record whose every field is
+admitted.
 
 **Depends on:** [`LANG-51`](lang-51.md), hard: the typer is what produces the IR, and until it
 has a record type no record reaches `ir::Module`. [`LANG-84`](lang-84.md) for the pattern half.
@@ -27,9 +28,9 @@ A field of type `()` is present, holding `undefined`
 **Problem:** nothing owns the emission of a record. After `LANG-51` a module holding one type
 checks and cannot be built: `zelkova_js::emit` matches on `TypedTermKind` and has no arm for a
 form that does not exist yet, so whatever `LANG-51` adds has to be refused there until this
-lands — `Construct` is where the existing refusals are named. `check_facade_admitted_type` has
-no record arm either, so a facade signature cannot name a record type and `Predicates::test`
-builds nothing for one.
+lands — `Construct` is where the existing refusals are named. A facade signature
+naming a record type is admitted by canonicalization, and `Predicates::test` builds nothing for
+one: it answers `Unpredicated::Record`.
 
 **What the result has to be:**
 
@@ -46,8 +47,8 @@ builds nothing for one.
 2. **Fields are evaluated in the order they are written**, in a record and in an update, and an
    update's left operand before any of them
    ([Order of evaluation](../spec/evaluation-semantics.md#order-of-evaluation)). A record
-   *type* is a set, and [`LANG-48`](lang-48.md) makes the field list order-independent in
-   canonicalization. The *expression* must not go the same way: `{ b = f x, a = g y }` calls
+   *type* is a set, and canonicalization makes its field list order-independent
+   (`canonical::Type::Record`). The *expression* must not go the same way: `{ b = f x, a = g y }` calls
    `f` first. If the term `LANG-51` built keeps only a map, restoring the written order is the
    first step here.
 
@@ -64,7 +65,7 @@ builds nothing for one.
 
 6. **The predicate decides exactly the record's fields**: an object that is not an array and
    not `null`, whose own keys are the record's labels and no others, each field passing its own
-   type's predicate. `check_facade_admitted_type` admits a record whose every field is admitted.
+   type's predicate. It replaces the `Unpredicated::Record` refusal, which goes.
 
 7. **A label is safe as a property name.** A label is a Zelkova lowercase identifier, which
    admits JavaScript reserved words (`class`, `new`) and names every object inherits

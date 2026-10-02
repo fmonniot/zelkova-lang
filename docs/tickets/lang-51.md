@@ -1,13 +1,13 @@
 # LANG-51 · The typer has no record type, so nothing checks a field, an update or an accessor
 
-**Sizing:** large. A new type form in both the canonical and the typer's own languages, plus the
-unification rule for it — the first structural type Zelkova has.
+**Sizing:** large. A new type form in the typer's own language, beside the canonical one that
+already exists, plus the unification rule for it — the first structural type Zelkova has.
 
 **Location:** `canonical::Type` in `crates/zelkova-compiler/src/canonical/`; `crates/zelkova-compiler/src/typer/`, all three of
 `annotate.rs`, `constraint.rs` and `unifier.rs`.
 
-**Depends on:** [`LANG-48`](lang-48.md) and [`LANG-50`](lang-50.md), hard. There is no record node
-to type until the grammar builds one.
+**Depends on:** [`LANG-50`](lang-50.md), hard. There is no access or accessor node to type until
+the grammar builds one.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decisions 2, 3, 4,
 6 and 10):** a record type is a set of labelled fields, order-insensitive and structural; an
@@ -19,8 +19,8 @@ declaration supplies the record type.
 [A use does not decide a record's type](../spec/records.md#a-use-does-not-decide-a-records-type)
 for the last.
 
-**Not implemented:** neither `canonical::Type` nor the typer's type language has a record form,
-so nothing checks a field's type, nothing rejects `{ r | absent = x }`, and there is no rule to
+**Not implemented:** the typer's type language has no record form — `canonical::Type::Record`
+does, and `canonical_type_to_typer_type` answers `None` for it — so nothing checks a field's type, nothing rejects `{ r | absent = x }`, and there is no rule to
 unify two record types under.
 
 **Approach:** a record type is a map from label to type, and two record types unify when they
@@ -54,7 +54,7 @@ this cannot be decided at the point the form is met. [`LANG-84`](lang-84.md) wri
 pattern against the same mechanism.
 
 **The record expression's fields stay in written order** in the term this builds, as
-[`LANG-48`](lang-48.md) keeps them: only the type is a set.
+canonicalization keeps them: only the type is a set.
 
 **The emitter refuses what this adds.** `zelkova_js::emit` matches on `TypedTermKind`, so each
 new form needs an arm, and until [`GEN-25`](gen-25.md) that arm is a refusal named in
@@ -63,7 +63,7 @@ new form needs an arm, and until [`GEN-25`](gen-25.md) that arm is a refusal nam
 **The blocks this makes correct are held to account, as long as they are tagged `expect=ok`.**
 The spec harness type checks every `expect=ok` block, so a block that ought to be a type error
 and is not one goes red the day this ticket lands. The **Known gap:** paragraphs
-[`LANG-48`](lang-48.md) and [`LANG-50`](lang-50.md) attach — on the order-insensitivity block
+`LANG-48` and [`LANG-50`](lang-50.md) attach — on the order-insensitivity block
 and the field-adding update — are what that red block asks you to delete. Grep
 [Records](../spec/records.md) for `LANG-51` before closing.
 
