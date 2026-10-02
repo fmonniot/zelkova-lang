@@ -27,8 +27,10 @@
 //!   `ErrorKind::UnboundVariable` — every reference to another module's value does — or
 //!   any `binding_foreign` module whole. It marks each of those in the types it returns —
 //!   an `ir::Solved` that is not `Typed` — and this harness reads only the errors, so the
-//!   distinction does not reach a verdict. Across `docs/spec/` that is roughly one
-//!   declaration in seven, so a green
+//!   distinction does not reach a verdict. Across `docs/spec/` that is roughly one in six
+//!   of the declarations with a body (42 of 244, counting each `Typed`, `UnboundName` and
+//!   `Untranslatable` entry `spec_chapters_pass` returns): two in three of those reach an
+//!   unannotated declaration and the rest hold a record. So a green
 //!   `expect=ok` block may still hold an annotation its body contradicts —
 //!   `docs/spec/conventions.md`'s row carries the same caveat for chapter authors.
 //!   Exhaustiveness is not run at all — it is a stub that accepts every module.

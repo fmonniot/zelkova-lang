@@ -395,11 +395,15 @@ InfixExpr = {
 // A whole pattern, as every position inside another pattern takes one, and as a
 // function declaration's parameter is written.
 //
-// A constructor applied to arguments is written parenthesised here, because in every
-// position this production fills — a constructor's argument, a tuple's element, a
-// parameter — juxtaposition already separates one pattern from the next. A nullary
-// constructor is not, since there is nothing for juxtaposition to be ambiguous about.
-// `CasePattern` below is the one position that also takes the applied form bare.
+// A constructor applied to arguments is written parenthesised here, as
+// `docs/spec/patterns.md`'s *Patterns nest* requires of every sub-pattern. For a
+// constructor's argument and a parameter that is because juxtaposition already
+// separates one pattern from the next. A tuple's element is not such a position —
+// commas separate tuple elements, so `(Just x, y)` has one reading and is rejected only
+// because the tuple alternatives below take their elements from this same production.
+// A nullary constructor is not parenthesised, since there is nothing for juxtaposition
+// to be ambiguous about. `CasePattern` below is the one position that also takes the
+// applied form bare.
 Pattern: Pattern = {
     <l:@L> "_" <r:@R> => Pattern::new(NodeSpan::new(l, r), PatternKind::Anything),
 
