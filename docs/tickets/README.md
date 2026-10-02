@@ -173,10 +173,9 @@ hover types and go-to-definition. They get a section because, apart from `TOOL-1
 is visible to a user on its own. Most are compiler changes a language server needs or is much
 poorer without, and the server itself is the last to land.
 
-`TOOL-8` through `TOOL-12` are one design, cut by the phase a failure is found in.
-[DEC-23](../decisions/dec-23.md) holds its seven decisions and what each was chosen over, and
-is what to read before picking any of them up: no ticket re-argues a decision, and each leaves
-nothing open.
+`TOOL-8` through `TOOL-12` were one design, cut by the phase a failure is found in, and all
+five are closed. [DEC-23](../decisions/dec-23.md) holds its seven decisions and what each was
+chosen over, and is what to read before changing what a module with errors still has.
 
 ```
 TOOL-1  TextMate grammar + VS Code extension      ← closed; the one piece that shipped value alone
@@ -206,12 +205,13 @@ TOOL-10 a failed type, operator or import marks     ← closed: `without_restate
   │                the floor is complete
   │
   └── TOOL-12  an unresolved name in a sound body is a typed hole
-                 ← next; a layer on the floor: the declaration being typed keeps its tree
+                 ← closed: `ExpressionKind::Hole`, `TypedTermKind::Hole`; a layer on
+                   the floor: the declaration being typed keeps its tree
 
 TOOL-6  zelkova-lsp: diagnostics, then hover, then go-to-definition, then semantic tokens
           ← to be split into one ticket per capability before work starts
-          ← needs none of TOOL-8 to TOOL-12, but without them every capability past
-            diagnostics goes dark on a file mid-edit
+          ← needs none of TOOL-8 to TOOL-12, which keep every capability past
+            diagnostics working on a file mid-edit
 
 TOOL-3
   │
@@ -482,6 +482,6 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | TOOL-9 | task | — | closed 2026-10-01 | A declaration that fails canonicalization takes its whole module with it |
 | TOOL-10 | task | — | closed 2026-10-01 | A failed type, operator or import is reported again by everything that names it |
 | TOOL-11 | task | — | closed 2026-10-02 | A module with a syntax error is dropped from the build |
-| [TOOL-12](tool-12.md) | task | — | open | One unresolved name costs a declaration its whole typed tree |
+| TOOL-12 | task | — | closed 2026-10-02 | One unresolved name costs a declaration its whole typed tree |
 | [TOOL-13](tool-13.md) | task | — | open | A facade that declares a type is still reported for the type it declared |
 | [TOOL-14](tool-14.md) | task | — | open | A declaration a failed chunk shares a name with is spanned over everything between them |

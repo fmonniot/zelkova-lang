@@ -18,6 +18,7 @@ use zelkova::{compile_package, compile_package_with_tests, BuildError, BUILD_DIR
 use zelkova_compiler::canonical;
 use zelkova_compiler::dependencies::Outcome;
 use zelkova_compiler::dependencies::{self, ModuleWalker};
+use zelkova_compiler::ir::{TermPatternKind, TypedTermKind};
 use zelkova_compiler::manifest;
 use zelkova_compiler::name::Name;
 use zelkova_compiler::resolve;
@@ -1488,19 +1489,22 @@ fn unknown_constructor_labels_the_pattern() {
 
 /// `ERR-3`, commit 2: `canonical::Error::Many` flattens its members' labels.
 ///
-/// The two case branches in the fixture each name an undeclared constructor, and
+/// The two case branches in the fixture each use an operator nothing declares, and
 /// `Expression::from_parser` collects both through `collect_accumulate`, so what
-/// reaches the reporter is a *single* `Error::Many` holding two `VariantNotFound`s.
+/// reaches the reporter is a *single* `Error::Many` holding two `VariableNotFound`s.
 /// `Many` has no position of its own, so if it did not flatten it would render as a
 /// summary with no caret at all and both carets would vanish silently — the failure
 /// mode is invisible, which is why this is asserted rather than assumed.
+///
+/// The fixture uses operators because an unresolved constructor is a hole rather than a
+/// failure of its branch, and so is never grouped.
 ///
 /// Mutation-checked by replacing the `Error::Many` arm of `canonical::Error::labels`
 /// with `Vec::new()`: the diagnostic keeps its message and its notes and loses both
 /// labels.
 #[test]
 fn grouped_canonical_error_keeps_every_label() {
-    let root = fixture_package("package_two_unknown_constructors");
+    let root = fixture_package("package_two_unknown_operators");
     assert_eq!(
         module_names(&root, SourceRoot::Src),
         vec!["src/Grouped.zel"]
@@ -1508,17 +1512,17 @@ fn grouped_canonical_error_keeps_every_label() {
 
     let source =
         std::fs::read_to_string(root.join("src").join("Grouped.zel")).expect("fixture is readable");
-    let ranges: Vec<_> = ["Purple", "Crimson"]
+    let ranges: Vec<_> = ["<+>", "<*>"]
         .iter()
-        .map(|ctor| {
-            let start = source.find(ctor).unwrap_or_else(|| {
-                panic!("fixture matches on an undeclared `{}`", ctor);
+        .map(|operator| {
+            let start = source.find(operator).unwrap_or_else(|| {
+                panic!("fixture uses an undeclared `{}`", operator);
             });
-            start..(start + ctor.len())
+            start..(start + operator.len())
         })
         .collect();
 
-    let error = compile_package(&root).expect_err("two undeclared constructors must not compile");
+    let error = compile_package(&root).expect_err("two undeclared operators must not compile");
 
     let errors = many(&error);
     assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
@@ -1526,9 +1530,8 @@ fn grouped_canonical_error_keeps_every_label() {
     // One phase error — the group — carrying two members.
     match unwrap_in_file(&errors[0]) {
         CompilationError::Canonical(canonical_errors, _) => {
-            assert_eq!(
-                canonical_errors.len(),
-                1,
+            assert!(
+                matches!(canonical_errors.as_slice(), [canonical::Error::Many(members)] if members.len() == 2),
                 "the two failures should arrive as one group, got {:?}",
                 canonical_errors
             );
@@ -1541,7 +1544,7 @@ fn grouped_canonical_error_keeps_every_label() {
     let rendered: Vec<_> = diagnostic.labels.iter().map(|l| l.range.clone()).collect();
     assert_eq!(
         rendered, ranges,
-        "the group must carry a caret for each constructor it swallowed"
+        "the group must carry a caret for each operator it swallowed"
     );
 }
 
@@ -6777,5 +6780,299 @@ fn a_build_with_a_module_that_has_a_syntax_error_writes_nothing() {
         "got {:?}",
         errors
     );
+    assert!(!build_dir.exists());
+}
+
+// ── TOOL-12: an unresolved name inside a sound body is a typed hole ─────────
+
+/// The module `check_module_recovering` builds from `source`, checked against `Basics`,
+/// beside the errors it found.
+fn recovering(source: &str) -> (CheckedModule, Vec<CompilationError>) {
+    let interfaces = HashMap::from([basics_interface()]);
+    match check_module_recovering(&test_package(), &interfaces, &parse_source(source)) {
+        dependencies::Outcome::Module(module, errors) => (module, errors),
+        dependencies::Outcome::Failed(error) => {
+            panic!("expected a module beside its errors, got {:?}", error)
+        }
+    }
+}
+
+/// The declaration `name` of `module`'s IR, or a panic listing the unchecked ones.
+fn declaration<'m>(module: &'m CheckedModule, name: &str) -> &'m zelkova_compiler::ir::Declaration {
+    module
+        .ir
+        .declarations
+        .iter()
+        .find(|declaration| declaration.name == Name::from(name))
+        .unwrap_or_else(|| {
+            panic!(
+                "`{}` should have a typed tree, got unchecked {:?}",
+                name, module.ir.unchecked
+            )
+        })
+}
+
+/// A declaration holding a hole has a typed tree, and the hole's type is the one its
+/// position expects: `f` takes an `Int`, so the hole `nope` is an `Int`.
+///
+/// Mutation-checked by making `annotate` answer a hole with `ErrorKind::UnboundVariable`:
+/// `g` is then rejected, an unchecked declaration, and the lookup of it panics.
+#[test]
+fn a_hole_is_typed_as_its_position_expects() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (g)
+
+        f : Int -> Int
+        f x = x
+
+        g : Int
+        g = f nope
+    "#};
+
+    let (module, errors) = recovering(source);
+
+    match errors.as_slice() {
+        [CompilationError::Canonical(canonical_errors, _)] => assert!(
+            matches!(
+                canonical_errors.as_slice(),
+                [canonical::Error::VariableNotFound(..)]
+            ),
+            "got {:?}",
+            canonical_errors
+        ),
+        other => panic!("expected the hole's error alone, got {:?}", other),
+    }
+
+    let g = declaration(&module, "g");
+    let body = &g.body.as_ref().expect("`g` has a body").expression;
+    match &body.kind {
+        zelkova_compiler::ir::TypedTermKind::Apply { arg, .. } => {
+            assert!(
+                matches!(arg.kind, zelkova_compiler::ir::TypedTermKind::Hole),
+                "got {:?}",
+                arg
+            );
+            assert_eq!(arg.tpe.to_string(), "Int");
+        }
+        other => panic!("expected `g` to apply `f`, got {:?}", other),
+    }
+}
+
+/// A hole leaves the rest of its body checked: `g` reports both that `nope` does not
+/// resolve and that `'c'` is not the `Int` `f` takes, for the one declaration.
+///
+/// Mutation-checked by returning the `VariableNotFound` from `Expression::from_parser`'s
+/// `Variable` arm instead of pushing it: `g` is then broken, the typer never reads it, and
+/// the type error goes missing.
+#[test]
+fn a_hole_does_not_hide_a_type_error_beside_it() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (g)
+
+        f : Int -> Int -> Int
+        f a b = a
+
+        g : Int
+        g = f nope 'c'
+    "#};
+
+    let (_, errors) = recovering(source);
+
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [
+                CompilationError::Canonical(canonical_errors, _),
+                CompilationError::Type(type_errors, _),
+            ] if matches!(canonical_errors.as_slice(), [canonical::Error::VariableNotFound(..)])
+                && type_errors.len() == 1
+        ),
+        "got {:?}",
+        errors
+    );
+}
+
+/// A declaration whose `case` matches on a constructor that does not resolve has a typed
+/// tree: the pattern hole's argument is bound in the branch, at the type the branch body
+/// needs.
+///
+/// Mutation-checked by refusing a pattern hole in `translate_pattern` (`return None`): `h`
+/// is then untranslatable, an unchecked declaration, and the lookup of it panics. The
+/// argument's type is checked by answering a pattern hole with the identity in
+/// `apply_pattern` (`TermPatternKind::Hole { args }` for itself): `y` then keeps the
+/// unsolved variable it was annotated with and the `Int` assertion goes red. The
+/// `pattern_constraints` arm is pinned by
+/// `a_pattern_hole_with_a_unit_argument_is_held_to_unit`.
+#[test]
+fn a_pattern_hole_leaves_its_declaration_a_typed_tree() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (h)
+
+        h : Int -> Int
+        h x =
+          case x of
+            Nope y -> y
+    "#};
+
+    let (module, errors) = recovering(source);
+
+    assert!(
+        matches!(errors.as_slice(), [CompilationError::Canonical(..)]),
+        "got {:?}",
+        errors
+    );
+    let h = declaration(&module, "h");
+    assert_eq!(h.tpe.to_string(), "Int -> Int");
+
+    // The hole's argument is the type the branch body solved it to, not the variable it
+    // was annotated with: `y` is returned from an `Int -> Int`.
+    let body = h.body.as_ref().expect("`h` has a body");
+    let TypedTermKind::Case { branches, .. } = &body.expression.kind else {
+        panic!("expected a `case`, got {:?}", body.expression.kind);
+    };
+    let [(pattern, _)] = branches.as_slice() else {
+        panic!("expected one branch, got {} of them", branches.len());
+    };
+    let TermPatternKind::Hole { args } = &pattern.kind else {
+        panic!("expected a pattern hole, got {:?}", pattern.kind);
+    };
+    let [argument] = args.as_slice() else {
+        panic!("expected one argument, got {:?}", args);
+    };
+    assert_eq!(argument.tpe.to_string(), "Int");
+}
+
+/// A pattern hole's `()` argument is held to `()`: the argument is constrained as a
+/// resolved constructor's is, and so solves to the unit type.
+///
+/// Mutation-checked by changing the `Hole` arm of `pattern_constraints` to
+/// `(None, vec![])`: the argument is then constrained by nothing and keeps its unsolved
+/// variable, and the assertion goes red.
+#[test]
+fn a_pattern_hole_with_a_unit_argument_is_held_to_unit() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (h)
+
+        h : Int -> Int
+        h x =
+          case x of
+            Nope () -> 1
+    "#};
+
+    let (module, errors) = recovering(source);
+
+    assert!(
+        matches!(errors.as_slice(), [CompilationError::Canonical(..)]),
+        "got {:?}",
+        errors
+    );
+    let body = declaration(&module, "h")
+        .body
+        .as_ref()
+        .expect("`h` has a body");
+    let TypedTermKind::Case { branches, .. } = &body.expression.kind else {
+        panic!("expected a `case`, got {:?}", body.expression.kind);
+    };
+    let TermPatternKind::Hole { args } = &branches[0].0.kind else {
+        panic!("expected a pattern hole, got {:?}", branches[0].0.kind);
+    };
+    assert_eq!(args[0].tpe.to_string(), "()");
+}
+
+/// A declaration that holds a hole but that the typer cannot type is `reported`: the
+/// hole's error stands behind it, though the typer walked past it rather than rejecting
+/// it. The first is `Solved::Untranslatable` (the literal argument of the unresolved
+/// constructor is refused), the second `Solved::UnboundName` (`u` has no annotation, so
+/// the typer's environment does not hold it). A declaration the typer walks past with no
+/// hole in it stays unreported.
+///
+/// Mutation-checked by setting `reported` to `false` for those two arms in `ir::build`:
+/// both assertions on `reported: true` go red.
+#[test]
+fn a_hole_the_typer_cannot_type_is_a_reported_unchecked_declaration() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (h, g)
+
+        h : Int -> Int
+        h x =
+          case x of
+            Nope 1 -> 1
+            _ -> 2
+
+        u x = x
+
+        g : Int
+        g = u nope
+    "#};
+
+    let (module, errors) = recovering(source);
+
+    assert!(
+        errors
+            .iter()
+            .all(|error| matches!(error, CompilationError::Canonical(..))),
+        "got {:?}",
+        errors
+    );
+    let reported = |name: &str| {
+        module
+            .ir
+            .unchecked
+            .iter()
+            .find(|unchecked| unchecked.name == Name::from(name))
+            .unwrap_or_else(|| {
+                panic!(
+                    "`{}` should be unchecked, got {:?}",
+                    name, module.ir.unchecked
+                )
+            })
+            .reported
+    };
+    assert!(
+        reported("h"),
+        "an untranslatable declaration holding a hole"
+    );
+    assert!(reported("g"), "an unbound-name declaration holding a hole");
+}
+
+/// A module whose declaration holds a hole is not among the modules that checked, though
+/// nothing of it is broken: the hole's error stands in its error list, the build's one
+/// error, and the build writes nothing.
+///
+/// Mutation-checked by not pushing the error in `Expression::from_parser`'s `Variable`
+/// arm, leaving the hole: `A` then comes back with no error and checks, and the error
+/// assertion goes red.
+#[test]
+fn a_module_holding_a_hole_does_not_check_and_writes_nothing() {
+    let root = fixture_package("package_unresolved_name_hole");
+
+    let check = check_package(&root, &Overlay::new()).expect("the manifest and the build resolve");
+
+    assert!(
+        matches!(
+            check.errors.as_slice(),
+            [error] if matches!(
+                unwrap_in_file(error),
+                CompilationError::Canonical(errors, module)
+                    if module == &Name::from("A")
+                        && matches!(errors.as_slice(), [canonical::Error::VariableNotFound(..)])
+            )
+        ),
+        "expected `A`'s unresolved name alone, got {:?}",
+        check.errors
+    );
+    assert!(check.modules.is_empty());
+    assert_eq!(sorted_module_names(&check.failing), vec!["A"]);
+
+    let a = &check.failing[0].module;
+    assert!(
+        a.canonical.broken.is_empty(),
+        "got {:?}",
+        a.canonical.broken
+    );
+    assert!(a.ir.unchecked.is_empty(), "got {:?}", a.ir.unchecked);
+
+    let build_dir = fresh_build_dir("a_module_holding_a_hole_does_not_check_and_writes_nothing");
+    zelkova::compile_package_into(&root, &build_dir).expect_err("`g` holds a hole");
     assert!(!build_dir.exists());
 }

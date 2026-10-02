@@ -137,9 +137,11 @@ pub struct Canonicalized {
     /// raised in an [incomplete](Module::incomplete) scope restates the failure that made
     /// the scope incomplete (`without_restated`), and nothing about a declaration a chunk
     /// that failed to parse names is said beyond its annotation's own errors, since the
-    /// syntax error stands for it. A declaration whose every error was left out is still
-    /// absent from the module, so empty here does not mean [`Module::broken`] is empty
-    /// nor that [`Module::incomplete`] is false.
+    /// syntax error stands for it. A declaration that every error was left out of is
+    /// either still absent from the module, because the error broke it, or present holding
+    /// a hole for a name that did not resolve ([`Value::holds_hole`]). So empty here does
+    /// not mean [`Module::broken`] is empty, that [`Module::incomplete`] is false, nor that
+    /// no value holds a hole.
     pub errors: Vec<Error>,
 }
 
@@ -629,6 +631,76 @@ impl Value {
             Value::TypedValue { patterns, .. } => patterns.len(),
         }
     }
+
+    /// Whether the declaration's parameters or body hold a hole, an
+    /// [`ExpressionKind::Hole`] or a [`PatternKind::Hole`] — a name that did not resolve.
+    ///
+    /// A hole is made only where the error for it was raised, and that error is either
+    /// reported or dropped in an [incomplete](Module::incomplete) scope, where the failure
+    /// that made the scope incomplete stands in its place
+    /// ([`DEC-23` decision 3](../../../docs/decisions/dec-23.md)). So a declaration for which this
+    /// is true always has an error standing behind it, which is what
+    /// [`ir::Unchecked::reported`](crate::ir::Unchecked::reported) asks of an entry.
+    /// A facade signature has no body, and the body of a `TypedValue` is read the same way
+    /// a `Value`'s is.
+    pub fn holds_hole(&self) -> bool {
+        match self {
+            Value::Value { patterns, body, .. } => {
+                patterns.iter().any(pattern_holds_hole) || expression_holds_hole(body)
+            }
+            Value::TypedValue { patterns, body, .. } => {
+                patterns
+                    .iter()
+                    .any(|(pattern, _)| pattern_holds_hole(pattern))
+                    || expression_holds_hole(body)
+            }
+        }
+    }
+}
+
+/// Whether `expr` is a hole or holds one in any subexpression or `case` pattern. The
+/// walk is [`collect_top_level_refs`]'s, looking for a different kind.
+fn expression_holds_hole(expr: &Expression) -> bool {
+    match &expr.kind {
+        ExpressionKind::Hole => true,
+        ExpressionKind::VarTopLevel(_)
+        | ExpressionKind::VarLocal(_)
+        | ExpressionKind::VarKernel(_)
+        | ExpressionKind::VarForeign(_, _, _)
+        | ExpressionKind::VarConstructor(_, _)
+        | ExpressionKind::Char(_)
+        | ExpressionKind::String(_)
+        | ExpressionKind::Int(_)
+        | ExpressionKind::Float(_)
+        | ExpressionKind::Unit => false,
+        ExpressionKind::Apply(a, b) => expression_holds_hole(a) || expression_holds_hole(b),
+        ExpressionKind::If(cond, then, els) => {
+            expression_holds_hole(cond) || expression_holds_hole(then) || expression_holds_hole(els)
+        }
+        ExpressionKind::Case(scrutinee, branches) => {
+            expression_holds_hole(scrutinee)
+                || branches.iter().any(|branch| {
+                    pattern_holds_hole(&branch.pattern) || expression_holds_hole(&branch.expression)
+                })
+        }
+        ExpressionKind::Tuple(tuple) => tuple.iter().any(expression_holds_hole),
+    }
+}
+
+/// Whether `pattern` is a hole or holds one in any argument or element.
+fn pattern_holds_hole(pattern: &Pattern) -> bool {
+    match &pattern.kind {
+        PatternKind::Hole(_) => true,
+        PatternKind::Constructor { args, .. } => args.iter().any(pattern_holds_hole),
+        PatternKind::Tuple(tuple) => tuple.iter().any(pattern_holds_hole),
+        PatternKind::Anything
+        | PatternKind::Variable(_)
+        | PatternKind::Int(_)
+        | PatternKind::Float(_)
+        | PatternKind::Char(_)
+        | PatternKind::String(_)
+        | PatternKind::Unit => false,
+    }
 }
 
 /// A canonical pattern, and where it was written.
@@ -660,6 +732,16 @@ pub enum PatternKind {
         ctor: TypeConstructor,
         args: Vec<Pattern>,
     },
+    /// A constructor pattern whose constructor did not resolve, with the patterns written
+    /// as its arguments. The error saying so has been reported, or dropped in an
+    /// [incomplete](Module::incomplete) scope, and the declaration is kept ([`DEC-23`
+    /// decision
+    /// 6](../../../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
+    ///
+    /// The arguments are kept so that the names they bind are still in scope in the
+    /// branch or the body the pattern governs, and a use of one there is not reported as a
+    /// second missing name.
+    Hole(Vec<Pattern>),
 }
 
 impl Pattern {
@@ -676,7 +758,16 @@ impl Pattern {
         }
     }
 
-    fn from_parser(p: &parser::Pattern, env: &dyn Environment) -> Result<Pattern, Error> {
+    /// The canonical form of `p`, or the first error that kept it from having one.
+    ///
+    /// A constructor that does not resolve is not such an error: its `VariantNotFound` is
+    /// pushed onto `unresolved` and the pattern becomes a [`PatternKind::Hole`] holding its
+    /// arguments, canonicalized as a resolved constructor's are.
+    fn from_parser(
+        p: &parser::Pattern,
+        env: &dyn Environment,
+        unresolved: &mut Vec<Error>,
+    ) -> Result<Pattern, Error> {
         let kind = match &p.kind {
             parser::PatternKind::Anything => PatternKind::Anything,
             parser::PatternKind::Variable(name) => PatternKind::Variable(name.clone()),
@@ -687,31 +778,35 @@ impl Pattern {
                 PatternKind::String(s.clone())
             }
             parser::PatternKind::Tuple(tuple) => {
-                PatternKind::Tuple(tuple.try_map(|p| Pattern::from_parser(p, env))?)
+                PatternKind::Tuple(tuple.try_map(|p| Pattern::from_parser(p, env, unresolved))?)
             }
             parser::PatternKind::Unit => PatternKind::Unit,
             parser::PatternKind::Constructor(name, args) => {
                 // `p.span` covers the constructor and its arguments, which is the
                 // text a "no such constructor" caret should sit under.
-                let ctor = env
-                    .find_type_constructor(name)
-                    .ok_or_else(|| {
+                let ctor = match env.find_type_constructor(name) {
+                    Some(ctor) => Some(ctor.clone()),
+                    None => {
                         let suggestion =
                             suggest_name(name, env.type_constructor_names().into_iter());
-                        Error::VariantNotFound(
+                        unresolved.push(Error::VariantNotFound(
                             env.module_name().qualify_name(name),
                             p.span,
                             suggestion,
-                        )
-                    })?
-                    .clone();
+                        ));
+                        None
+                    }
+                };
 
                 let args = args
                     .iter()
-                    .map(|p| Pattern::from_parser(p, env))
+                    .map(|p| Pattern::from_parser(p, env, unresolved))
                     .collect::<Result<Vec<_>, Error>>()?;
 
-                PatternKind::Constructor { ctor, args }
+                match ctor {
+                    Some(ctor) => PatternKind::Constructor { ctor, args },
+                    None => PatternKind::Hole(args),
+                }
             }
         };
 
@@ -799,6 +894,12 @@ pub enum ExpressionKind {
     /// A tuple expression. Zelkova keeps Elm's restriction of two or three
     /// elements, which [`Tuple`] carries in its shape.
     Tuple(Tuple<Expression>),
+    /// A value or a constructor that did not resolve, inside a body that otherwise
+    /// canonicalized. The error saying so has been reported, or dropped in an
+    /// [incomplete](Module::incomplete) scope, and the declaration is kept, so the rest of
+    /// its body is still checked ([`DEC-23` decision
+    /// 6](../../../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
+    Hole,
 }
 
 impl Expression {
@@ -816,7 +917,19 @@ impl Expression {
         }
     }
 
-    fn from_parser(e: &parser::Expression, env: &dyn Environment) -> Result<Expression, Error> {
+    /// The canonical form of `e`, or the first error that kept it from having one.
+    ///
+    /// A value or a constructor that does not resolve is not such an error: its
+    /// `VariableNotFound` or `VariantNotFound` is pushed onto `unresolved` and the node
+    /// becomes an [`ExpressionKind::Hole`]. Every other failure is returned, among them an
+    /// ambiguous name, which did resolve, and an operator that does not resolve or an infix
+    /// chain that cannot be associated, either of which leaves the chain with no shape to
+    /// put a hole in.
+    fn from_parser(
+        e: &parser::Expression,
+        env: &dyn Environment,
+        unresolved: &mut Vec<Error>,
+    ) -> Result<Expression, Error> {
         // Every arm builds a kind and every kind gets `e.span`, so a name the
         // environment cannot resolve is underlined where it was written rather than
         // somewhere up the tree.
@@ -828,14 +941,17 @@ impl Expression {
                 ExpressionKind::String(s.clone())
             }
             parser::ExpressionKind::Variable(name) => {
-                match env.find_value(name).ok_or_else(|| {
+                let Some(found) = env.find_value(name) else {
                     let suggestion = suggest_name(name, env.value_names().into_iter());
-                    Error::VariableNotFound(
+                    unresolved.push(Error::VariableNotFound(
                         env.module_name().qualify_name(name),
                         e.span,
                         suggestion,
-                    )
-                })? {
+                    ));
+                    return Ok(Expression::new(e.span, ExpressionKind::Hole));
+                };
+
+                match found {
                     ValueType::Local => ExpressionKind::VarLocal(name.clone()),
                     ValueType::TopLevel => {
                         ExpressionKind::VarTopLevel(env.module_name().qualify_name(name))
@@ -862,10 +978,15 @@ impl Expression {
                 }
             }
             parser::ExpressionKind::TypeConstructor(name) => {
-                let ctor = env.find_type_constructor(name).ok_or_else(|| {
+                let Some(ctor) = env.find_type_constructor(name) else {
                     let suggestion = suggest_name(name, env.type_constructor_names().into_iter());
-                    Error::VariantNotFound(env.module_name().qualify_name(name), e.span, suggestion)
-                })?;
+                    unresolved.push(Error::VariantNotFound(
+                        env.module_name().qualify_name(name),
+                        e.span,
+                        suggestion,
+                    ));
+                    return Ok(Expression::new(e.span, ExpressionKind::Hole));
+                };
 
                 let tpe = if ctor.type_parameters.is_empty() {
                     Type::Type(ctor.tpe.clone(), vec![])
@@ -896,19 +1017,19 @@ impl Expression {
                 ExpressionKind::VarConstructor(name, tpe)
             }
             parser::ExpressionKind::Application(a, b) => {
-                let a = Expression::from_parser(a, env)?;
-                let b = Expression::from_parser(b, env)?;
+                let a = Expression::from_parser(a, env, unresolved)?;
+                let b = Expression::from_parser(b, env, unresolved)?;
 
                 ExpressionKind::Apply(Box::new(a), Box::new(b))
             }
             parser::ExpressionKind::InfixChain(first, rest) => {
-                let first = Expression::from_parser(first, env)?;
+                let first = Expression::from_parser(first, env, unresolved)?;
 
                 let rest = rest
                     .iter()
                     .map(|(op_name, op_span, operand)| {
                         let op = resolve_infix_operator(op_name, *op_span, env)?;
-                        let operand = Expression::from_parser(operand, env)?;
+                        let operand = Expression::from_parser(operand, env, unresolved)?;
                         Ok((op, operand))
                     })
                     .collect::<Result<Vec<_>, Error>>()?;
@@ -918,20 +1039,20 @@ impl Expression {
 
                 reassociated.kind
             }
-            parser::ExpressionKind::Tuple(tuple) => {
-                ExpressionKind::Tuple(tuple.try_map(|e| Expression::from_parser(e, env))?)
-            }
+            parser::ExpressionKind::Tuple(tuple) => ExpressionKind::Tuple(
+                tuple.try_map(|e| Expression::from_parser(e, env, unresolved))?,
+            ),
             parser::ExpressionKind::Unit => ExpressionKind::Unit,
             parser::ExpressionKind::Case(expr, branches) => {
-                let expr = Expression::from_parser(expr, env)?;
+                let expr = Expression::from_parser(expr, env, unresolved)?;
 
                 let b = branches.iter().map::<Result<CaseBranch, Error>, _>(|cb| {
-                    let pattern = Pattern::from_parser(&cb.pattern, env)?;
+                    let pattern = Pattern::from_parser(&cb.pattern, env, unresolved)?;
                     let mut scoped = env.new_scope();
 
                     scoped.expose_pattern(&pattern);
 
-                    let expression = Expression::from_parser(&cb.expression, &scoped)?;
+                    let expression = Expression::from_parser(&cb.expression, &scoped, unresolved)?;
 
                     Ok(CaseBranch {
                         pattern,
@@ -945,9 +1066,9 @@ impl Expression {
                 ExpressionKind::Case(Box::new(expr), branches)
             }
             parser::ExpressionKind::If(cond, then, els) => {
-                let cond = Expression::from_parser(cond, env)?;
-                let then = Expression::from_parser(then, env)?;
-                let els = Expression::from_parser(els, env)?;
+                let cond = Expression::from_parser(cond, env, unresolved)?;
+                let then = Expression::from_parser(then, env, unresolved)?;
+                let els = Expression::from_parser(els, env, unresolved)?;
 
                 ExpressionKind::If(Box::new(cond), Box::new(then), Box::new(els))
             }
@@ -2353,9 +2474,11 @@ pub fn canonicalize(
 /// ran: a declaration's own failure is reported, and what it makes incomplete is
 /// everything after it. A failed `infix` declaration makes the scope incomplete for
 /// the `type` declarations, the values and the `exposing` list, and a failed `type`
-/// declaration for the values and the `exposing` list. The declaration whose errors were
-/// dropped is left out all the same: dropping an error does not make its declaration
-/// sound.
+/// declaration for the values and the `exposing` list. Dropping an error does not make
+/// its declaration sound. A declaration the dropped error broke is left out all the same;
+/// one whose only error was a name that did not resolve stays in [`Module::values`] holding
+/// a hole ([`ExpressionKind::Hole`], [`PatternKind::Hole`]) for it, which no backend emits
+/// and [`Value::holds_hole`] finds.
 ///
 /// Whether this module is exempt from the default imports is not this function's
 /// question to answer: `new_environment` derives it from `package` itself
@@ -2715,8 +2838,10 @@ fn unparsed_values(source: &parser::Module) -> HashMap<Name, NodeSpan> {
 /// made the scope incomplete stands in the build. It would restate one if a function that
 /// failed were ever left out of that function list.
 ///
-/// Dropping an error does not make its declaration sound. The caller has already left the
-/// declaration out of the module, and keeps it left out.
+/// Dropping an error does not make its declaration sound. A declaration the error broke
+/// has already been left out of the module by the caller, and stays left out; one whose
+/// error was a name that did not resolve keeps the hole standing for it, which no backend
+/// emits.
 fn without_restated(errors: Vec<Error>, incomplete: bool) -> Vec<Error> {
     if !incomplete {
         return errors;
@@ -2782,7 +2907,9 @@ fn collect_top_level_refs(expr: &Expression, out: &mut Vec<Name>) {
         | ExpressionKind::String(_)
         | ExpressionKind::Int(_)
         | ExpressionKind::Float(_)
-        | ExpressionKind::Unit => {}
+        | ExpressionKind::Unit
+        // A name that did not resolve names no declaration of this module.
+        | ExpressionKind::Hole => {}
         ExpressionKind::Apply(a, b) => {
             collect_top_level_refs(a, out);
             collect_top_level_refs(b, out);
@@ -3020,7 +3147,9 @@ struct Values {
     values: HashMap<Name, Value>,
     /// Every declaration that did not, in declaration order.
     broken: Vec<Broken>,
-    /// Why each of [`broken`](Self::broken) did not, one or two errors per declaration.
+    /// Why each of [`broken`](Self::broken) did not, one or two errors per declaration,
+    /// and every name a declaration of either list could not resolve, in declaration
+    /// order.
     errors: Vec<Error>,
 }
 
@@ -3033,6 +3162,11 @@ struct Values {
 /// canonicalized, and every error of the two is reported: the annotation's, then the
 /// body's. A declaration `unparsed` names — a chunk of it failed to parse — is
 /// [`Broken`] whatever its body, with its annotation's error alone reported.
+///
+/// A name in the body that does not resolve does not stop the body canonicalizing: it
+/// is a hole ([`ExpressionKind::Hole`], [`PatternKind::Hole`]), and its error is
+/// reported after the declaration's others, whether the declaration is a [`Value`] or
+/// [`Broken`].
 fn do_values(
     env: &mut RootEnvironment,
     functions: &[parser::Function],
@@ -3044,100 +3178,113 @@ fn do_values(
         env.insert_top_level_value(f.name.clone());
     }
 
-    let iter = functions.iter().map(|function| {
-        let annotation = match &function.tpe {
-            Some(t) => match Type::from_parser_type(env, t) {
-                Ok(tpe) => Annotation::Canonical(tpe),
-                Err(error) => Annotation::Failed(error),
-            },
-            None => Annotation::Absent,
-        };
+    let mut values = HashMap::new();
+    let mut broken = Vec::new();
+    let mut errors = Vec::new();
 
-        // A declaration a failed chunk names is broken whatever parsed of it. Its body
-        // is not read: a binding that parsed may be one of several, and a missing one
-        // may be the chunk that failed, so nothing said about it would be news.
-        if let Some(chunk) = unparsed.get(&function.name) {
-            return Err(match annotation {
-                Annotation::Absent => Rejected::unparsed(function, None, vec![], *chunk),
-                Annotation::Canonical(tpe) => {
-                    Rejected::unparsed(function, Some(tpe), vec![], *chunk)
-                }
-                Annotation::Failed(error) => {
-                    Rejected::unparsed(function, None, vec![error], *chunk)
-                }
-            });
-        }
-
-        match (annotation, value_body(env, function)) {
-            (Annotation::Absent, Ok((patterns, body))) => Ok((
-                function.name.clone(),
-                Value::Value {
-                    name: function.name.clone(),
-                    patterns,
-                    body,
-                    span: function.span,
-                },
-            )),
-            (Annotation::Canonical(tpe), Ok((patterns, body))) => {
-                let linear = Type::to_linear_types(&tpe);
-
-                // Linear is a list of types making the function. Because it includes the return type,
-                // it will always be bigger than the number of patterns by one.
-                if !patterns.is_empty() && (linear.len() - 1 != patterns.len()) {
-                    // TODO Better error message
-                    debug!(
-                        "linear = {:#?}\nbindings = {:#?} (linear.len ({}) != patterns.len ({}))",
-                        linear,
-                        function.bindings,
-                        linear.len(),
-                        patterns.len()
-                    );
-                    return Err(Rejected::new(
-                        function,
-                        Some(tpe),
-                        vec![Error::BindingPatternsInvalidLen(function.span)],
-                    ));
-                }
-
-                let patterns = patterns.into_iter().zip(linear).collect();
-
-                Ok((
-                    function.name.clone(),
-                    Value::TypedValue {
-                        name: function.name.clone(),
-                        patterns,
-                        body,
-                        tpe,
-                        // `do_values` only runs for a module that is not a facade,
-                        // and `canonicalize` has already rejected a marked
-                        // annotation there.
-                        marked_unsafe: false,
-                        span: function.span,
-                        annotation_span: function.annotation_span,
-                    },
-                ))
+    for function in functions {
+        let mut unresolved = Vec::new();
+        match value_declaration(env, function, unparsed, &mut unresolved) {
+            Ok(value) => {
+                values.insert(function.name.clone(), value);
             }
-            (Annotation::Absent, Err(body_error)) => {
-                Err(Rejected::new(function, None, vec![body_error]))
-            }
-            (Annotation::Canonical(tpe), Err(body_error)) => {
-                Err(Rejected::new(function, Some(tpe), vec![body_error]))
-            }
-            (Annotation::Failed(annotation_error), body) => {
-                let mut errors = vec![annotation_error];
-                errors.extend(body.err());
-                Err(Rejected::new(function, None, errors))
+            Err(rejected) => {
+                broken.push(rejected.broken);
+                errors.extend(rejected.errors);
             }
         }
-    });
-
-    let (values, rejected): (HashMap<Name, Value>, Vec<Box<Rejected>>) = collect_partial(iter);
-    let (broken, errors) = Rejected::split(rejected);
+        errors.extend(unresolved);
+    }
 
     Values {
         values,
         broken,
         errors,
+    }
+}
+
+/// One value declaration of [`do_values`], or the declaration recorded as broken beside
+/// the errors that say why. Every name its body could not resolve is pushed onto
+/// `unresolved`, whichever it is.
+fn value_declaration(
+    env: &RootEnvironment,
+    function: &parser::Function,
+    unparsed: &HashMap<Name, NodeSpan>,
+    unresolved: &mut Vec<Error>,
+) -> Result<Value, Box<Rejected>> {
+    let annotation = match &function.tpe {
+        Some(t) => match Type::from_parser_type(env, t) {
+            Ok(tpe) => Annotation::Canonical(tpe),
+            Err(error) => Annotation::Failed(error),
+        },
+        None => Annotation::Absent,
+    };
+
+    // A declaration a failed chunk names is broken whatever parsed of it. Its body
+    // is not read: a binding that parsed may be one of several, and a missing one
+    // may be the chunk that failed, so nothing said about it would be news.
+    if let Some(chunk) = unparsed.get(&function.name) {
+        return Err(match annotation {
+            Annotation::Absent => Rejected::unparsed(function, None, vec![], *chunk),
+            Annotation::Canonical(tpe) => Rejected::unparsed(function, Some(tpe), vec![], *chunk),
+            Annotation::Failed(error) => Rejected::unparsed(function, None, vec![error], *chunk),
+        });
+    }
+
+    match (annotation, value_body(env, function, unresolved)) {
+        (Annotation::Absent, Ok((patterns, body))) => Ok(Value::Value {
+            name: function.name.clone(),
+            patterns,
+            body,
+            span: function.span,
+        }),
+        (Annotation::Canonical(tpe), Ok((patterns, body))) => {
+            let linear = Type::to_linear_types(&tpe);
+
+            // Linear is a list of types making the function. Because it includes the return type,
+            // it will always be bigger than the number of patterns by one.
+            if !patterns.is_empty() && (linear.len() - 1 != patterns.len()) {
+                // TODO Better error message
+                debug!(
+                    "linear = {:#?}\nbindings = {:#?} (linear.len ({}) != patterns.len ({}))",
+                    linear,
+                    function.bindings,
+                    linear.len(),
+                    patterns.len()
+                );
+                return Err(Rejected::new(
+                    function,
+                    Some(tpe),
+                    vec![Error::BindingPatternsInvalidLen(function.span)],
+                ));
+            }
+
+            let patterns = patterns.into_iter().zip(linear).collect();
+
+            Ok(Value::TypedValue {
+                name: function.name.clone(),
+                patterns,
+                body,
+                tpe,
+                // `do_values` only runs for a module that is not a facade,
+                // and `canonicalize` has already rejected a marked
+                // annotation there.
+                marked_unsafe: false,
+                span: function.span,
+                annotation_span: function.annotation_span,
+            })
+        }
+        (Annotation::Absent, Err(body_error)) => {
+            Err(Rejected::new(function, None, vec![body_error]))
+        }
+        (Annotation::Canonical(tpe), Err(body_error)) => {
+            Err(Rejected::new(function, Some(tpe), vec![body_error]))
+        }
+        (Annotation::Failed(annotation_error), body) => {
+            let mut errors = vec![annotation_error];
+            errors.extend(body.err());
+            Err(Rejected::new(function, None, errors))
+        }
     }
 }
 
@@ -3194,10 +3341,12 @@ enum Annotation {
 }
 
 /// The parameters and the body of `function`, a value declaration of a module that is
-/// not a facade, or the first error that kept them from canonicalizing.
+/// not a facade, or the first error that kept them from canonicalizing. Every name they
+/// could not resolve is a hole, with its error pushed onto `unresolved`.
 fn value_body(
     env: &RootEnvironment,
     function: &parser::Function,
+    unresolved: &mut Vec<Error>,
 ) -> Result<(Vec<Pattern>, Expression), Error> {
     // TODO Better error message with position of mismatch
     let bindings_size = function
@@ -3220,7 +3369,7 @@ fn value_body(
             let patterns: Vec<Pattern> = binding
                 .patterns
                 .iter()
-                .map(|p| Pattern::from_parser(p, env))
+                .map(|p| Pattern::from_parser(p, env, unresolved))
                 .collect::<Result<Vec<_>, Error>>()?;
 
             for p in &patterns {
@@ -3231,7 +3380,7 @@ fn value_body(
             // Or maybe not at the case_branch level, as here we can have multiple patterns
             // whereas cases cannot.
             // eg. a: Int -> Int -> Int  ==>  a b c = b + c
-            let body = Expression::from_parser(&binding.body, &scoped)?;
+            let body = Expression::from_parser(&binding.body, &scoped, unresolved)?;
 
             Ok((patterns, body))
         }

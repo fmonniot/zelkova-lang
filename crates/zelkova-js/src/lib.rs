@@ -186,7 +186,8 @@
 //! with no IR ([`ir::Module::unchecked`]), for a facade declaration with no type signature,
 //! for a facade signature not marked `unsafe` whose result is not `Task (Result Failure a)`,
 //! for a facade with no companion for the target being built, for a facade result no
-//! predicate can decide, and for a construct it does not emit yet ([`Construct`]).
+//! predicate can decide, and for a construct it does not emit ([`Construct`]), a name that
+//! did not resolve among them.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -248,7 +249,8 @@ pub enum Error {
         found: Unpredicated,
         constructor: Option<QualName>,
     },
-    /// A construct this backend does not emit yet.
+    /// A construct this backend does not emit: one the front end does not accept yet,
+    /// or a name that did not resolve.
     Unsupported {
         construct: Construct,
         /// The declaration it was written in.
@@ -266,6 +268,13 @@ pub enum Construct {
     /// A function nested inside a declaration's body. The language has no lambda and
     /// [`ir::build`] takes every parameter off the body, so the IR never holds one either.
     Lambda,
+    /// A name that did not resolve: an [`ir::TypedTermKind::Hole`], or a pattern of a
+    /// `case` or a parameter holding an [`ir::TermPatternKind::Hole`] at any depth. The
+    /// error that the name does not resolve stands behind it, so a module holding one
+    /// never reaches emission through the driver; this keeps one that is handed to
+    /// [`emit`] anyway from being emitted ([`DEC-23` decision
+    /// 6](../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
+    Hole,
 }
 
 impl Construct {
@@ -273,6 +282,7 @@ impl Construct {
         match self {
             Construct::Let => "a `let` expression",
             Construct::Lambda => "an anonymous function",
+            Construct::Hole => "a name that did not resolve",
         }
     }
 }
@@ -1526,6 +1536,7 @@ impl Emitter {
             TypedTermKind::Unit => "undefined".to_string(),
             TypedTermKind::Let { .. } => self.unsupported(Construct::Let, term.span),
             TypedTermKind::Fun { .. } => self.unsupported(Construct::Lambda, term.span),
+            TypedTermKind::Hole => self.unsupported(Construct::Hole, term.span),
         }
     }
 
@@ -1702,6 +1713,15 @@ impl Emitter {
         branches: &[(ir::TermPattern, Box<TypedTerm>)],
         form: CaseForm,
     ) -> String {
+        // A constructor that did not resolve has no case to test for, so the tree is not
+        // built at all.
+        if let Some(hole) = branches
+            .iter()
+            .find_map(|(pattern, _)| pattern_hole(pattern))
+        {
+            return self.unsupported(Construct::Hole, hole);
+        }
+
         let declaration = self.declaration.clone().unwrap_or_else(|| Name::new(""));
         let tree = decision_tree(&scrutinee.tpe, branches, &declaration);
         let scrutinee_expr = self.expression(scrutinee);
@@ -1836,6 +1856,24 @@ fn abort_description(declaration: &Name, form: CaseForm) -> String {
             "\"`{}`'s parameter pattern matched no branch\"",
             declaration.as_str()
         ),
+    }
+}
+
+/// Where `pattern` holds an [`ir::TermPatternKind::Hole`], at any depth, when it holds
+/// one: the outermost, leftmost one's span.
+fn pattern_hole(pattern: &ir::TermPattern) -> Option<NodeSpan> {
+    match &pattern.kind {
+        ir::TermPatternKind::Hole { .. } => Some(pattern.span),
+        ir::TermPatternKind::Constructor { args, .. } => {
+            args.iter().find_map(|arg| pattern_hole(&arg.pattern))
+        }
+        ir::TermPatternKind::Tuple { elements } => elements
+            .iter()
+            .find_map(|element| pattern_hole(&element.pattern)),
+        ir::TermPatternKind::Anything
+        | ir::TermPatternKind::Bind(_)
+        | ir::TermPatternKind::Literal { .. }
+        | ir::TermPatternKind::Unit => None,
     }
 }
 

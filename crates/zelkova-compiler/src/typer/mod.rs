@@ -1201,6 +1201,9 @@ fn canonical_expr_to_term(
                 form: CaseForm::Expression,
             }
         }
+        // A name that did not resolve. Its error is canonicalization's, and the term
+        // stands where the name was written so the rest of the body is still checked.
+        canonical::ExpressionKind::Hole => TermKind::Hole,
         // Not yet supported: VarKernel
         _ => return None,
     };
@@ -1352,6 +1355,21 @@ fn translate_pattern(
                 .ok()?;
 
             TermPatternKind::Tuple { elements }
+        }
+        // A constructor that did not resolve: nothing says what type it builds or takes,
+        // so each argument is at a fresh type, held to the limit a resolved constructor's
+        // argument is (see `translate_sub_pattern`).
+        canonical::PatternKind::Hole(args) => {
+            let args = args
+                .iter()
+                .map(|arg| {
+                    *counter += 1;
+                    let tpe = Type::Variable(TypeVariable { id: *counter });
+                    translate_sub_pattern(arg, tpe, translation, counter)
+                })
+                .collect::<Option<Vec<_>>>()?;
+
+            TermPatternKind::Hole { args }
         }
         _ => return None, // Float and String patterns — not yet supported
     };
@@ -2012,7 +2030,8 @@ impl Substitution {
             | TypedTermKind::String(_)
             | TypedTermKind::Float(_)
             | TypedTermKind::Unit
-            | TypedTermKind::Identifier(_)) => kind,
+            | TypedTermKind::Identifier(_)
+            | TypedTermKind::Hole) => kind,
             TypedTermKind::Fun { param, body } => TypedTermKind::Fun {
                 param: self.apply_binder(param),
                 body: Box::new(self.apply_term(*body)),
@@ -2108,6 +2127,12 @@ impl Substitution {
             },
             TermPatternKind::Tuple { elements } => TermPatternKind::Tuple {
                 elements: elements.map(|element| self.apply_sub_pattern(element.clone())),
+            },
+            TermPatternKind::Hole { args } => TermPatternKind::Hole {
+                args: args
+                    .into_iter()
+                    .map(|arg| self.apply_sub_pattern(arg))
+                    .collect(),
             },
         };
 

@@ -1123,7 +1123,9 @@ impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
                     self.expose_pattern(pattern);
                 }
             }
-            PatternKind::Constructor { args, .. } => {
+            // A constructor that did not resolve still binds what its arguments bind, so
+            // a use of one of those names is not reported as a second missing name.
+            PatternKind::Constructor { args, .. } | PatternKind::Hole(args) => {
                 for arg in args {
                     self.expose_pattern(arg);
                 }

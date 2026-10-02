@@ -1,0 +1,9 @@
+module A exposing (T(..), f, g)
+
+type T = T
+
+f : T -> T
+f x = x
+
+g : T
+g = f nope

@@ -18,6 +18,9 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
         TermKind::String(value) => (types.fresh_var(), TypedTermKind::String(value)),
         TermKind::Float(value) => (types.fresh_var(), TypedTermKind::Float(value)),
         TermKind::Unit => (types.fresh_var(), TypedTermKind::Unit),
+        // A name that did not resolve has no type to look up: a fresh variable takes
+        // whatever type the node around it requires.
+        TermKind::Hole => (types.fresh_var(), TypedTermKind::Hole),
         TermKind::Fun { param, body } => {
             let param = TypeBinder::new(param, types.fresh_var());
             types.add_binder(param.clone());

@@ -616,8 +616,8 @@ fn unknown_constructor_pattern_is_error() {
     "#};
 
     let errors = canonicalize_standalone(source).expect_err("unknown constructor should error");
-    // The error is nested in `Error::Many` because it originates inside a
-    // `collect_accumulate` over case branches.
+    // It is one error among several: nothing is imported, so `Bool`, `true` and `false`
+    // do not resolve either.
     assert!(
         format!("{:?}", errors).contains("VariantNotFound"),
         "expected a VariantNotFound error, got {:?}",
@@ -1522,7 +1522,7 @@ fn unresolved_constructor_suggests_a_near_miss() {
     let source = indoc::indoc! {r#"
         module Test exposing ()
         type Color = Red | Green | Blue
-        isRed Reed = true
+        isRed Reed = 1
     "#};
 
     let errors = canonicalize_standalone(source)
@@ -1545,7 +1545,7 @@ fn unresolved_constructor_with_no_near_miss_has_no_suggestion() {
     let source = indoc::indoc! {r#"
         module Test exposing ()
         type Color = Red | Green | Blue
-        isRed Zzzzzzzzzzzz = true
+        isRed Zzzzzzzzzzzz = 1
     "#};
 
     let errors = canonicalize_standalone(source)
@@ -4987,4 +4987,227 @@ fn a_facade_signature_named_by_a_failed_chunk_still_reports_its_own_errors() {
         "got {:?}",
         module.broken
     );
+}
+
+// ── TOOL-12: an unresolved name inside a sound body is a hole ───────────────
+
+/// The body of `name`, a value `module` holds, or a panic listing what it holds instead.
+fn body_of<'m>(module: &'m canonical::Module, name: &str) -> &'m canonical::Expression {
+    match module.values.get(&name.into()) {
+        Some(canonical::Value::Value { body, .. })
+        | Some(canonical::Value::TypedValue { body, .. }) => body,
+        None => panic!(
+            "expected `{}` to be a value, got values {:?} and broken {:?}",
+            name,
+            sorted_value_names(module),
+            module.broken
+        ),
+    }
+}
+
+/// A value that does not resolve is a hole, and its declaration is kept: `g` is reported
+/// once, is a value and not broken, and its body is the application of `f` to a hole
+/// written where `nope` is.
+///
+/// Mutation-checked by returning the `VariableNotFound` from `Expression::from_parser`'s
+/// `Variable` arm instead of pushing it: `g` is then broken and the assertion on
+/// `broken` goes red.
+#[test]
+fn an_unresolved_value_in_a_sound_body_is_a_hole() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (g)
+
+        f : Int -> Int
+        f x = x
+
+        g : Int
+        g = f nope
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::VariableNotFound(..)]),
+        "got {:?}",
+        errors
+    );
+    assert!(module.broken.is_empty(), "got {:?}", module.broken);
+
+    match &body_of(&module, "g").kind {
+        canonical::ExpressionKind::Apply(_, argument) => {
+            assert!(
+                matches!(argument.kind, canonical::ExpressionKind::Hole),
+                "got {:?}",
+                argument
+            );
+            assert_eq!(argument.span.to_range(), Some(range_of(source, "nope")));
+        }
+        other => panic!("expected `g` to apply `f`, got {:?}", other),
+    }
+}
+
+/// A constructor that does not resolve, written as an expression, is a hole too.
+///
+/// Mutation-checked by returning the `VariantNotFound` from `Expression::from_parser`'s
+/// `TypeConstructor` arm instead of pushing it: `g` has no body to read and the test
+/// panics.
+#[test]
+fn an_unresolved_constructor_in_a_sound_body_is_a_hole() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (g)
+
+        g : Int
+        g = Nope
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::VariantNotFound(..)]),
+        "got {:?}",
+        errors
+    );
+    let body = body_of(&module, "g");
+    assert!(
+        matches!(body.kind, canonical::ExpressionKind::Hole),
+        "got {:?}",
+        body
+    );
+    assert_eq!(body.span.to_range(), Some(range_of(source, "Nope")));
+}
+
+/// A constructor pattern that does not resolve is a hole holding its arguments, and the
+/// names they bind are in scope in the branch: `y` is not reported.
+///
+/// Mutation-checked by not exposing a pattern hole's arguments in
+/// `ScopedEnvironment::expose_pattern`: `y` is then a second missing name, and the
+/// assertion on the errors goes red.
+#[test]
+fn an_unresolved_constructor_pattern_binds_its_arguments() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (h)
+
+        h : Int -> Int
+        h x =
+          case x of
+            Nope y -> y
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::VariantNotFound(..)]),
+        "got {:?}",
+        errors
+    );
+
+    match &body_of(&module, "h").kind {
+        canonical::ExpressionKind::Case(_, branches) => match branches.as_slice() {
+            [branch] => {
+                match &branch.pattern.kind {
+                    canonical::PatternKind::Hole(args) => assert!(
+                        matches!(args.as_slice(), [arg] if matches!(&arg.kind, canonical::PatternKind::Variable(y) if y.as_str() == "y")),
+                        "got {:?}",
+                        args
+                    ),
+                    other => panic!("expected a pattern hole, got {:?}", other),
+                }
+                assert_eq!(
+                    branch.pattern.span.to_range(),
+                    Some(range_of(source, "Nope y"))
+                );
+                assert!(
+                    matches!(&branch.expression.kind, canonical::ExpressionKind::VarLocal(y) if y.as_str() == "y"),
+                    "got {:?}",
+                    branch.expression
+                );
+            }
+            other => panic!("expected one branch, got {:?}", other),
+        },
+        other => panic!("expected `h` to be a `case`, got {:?}", other),
+    }
+}
+
+/// The control for the three above: an operator that does not resolve is no hole. It
+/// leaves its infix chain with nothing to associate by, so the declaration is broken as
+/// before.
+///
+/// Mutation-checked by answering an operator `resolve_infix_operator` cannot resolve with
+/// a hole standing for the whole chain, in the `InfixChain` arm of
+/// `Expression::from_parser`: `g` is then a value and the assertion on `values` goes
+/// red.
+#[test]
+fn an_unresolved_operator_still_breaks_its_declaration() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (g)
+
+        g : Int
+        g = 1 <+> 2
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::VariableNotFound(..)]),
+        "got {:?}",
+        errors
+    );
+    assert!(module.values.is_empty(), "got {:?}", module.values);
+    assert_eq!(
+        module
+            .broken
+            .iter()
+            .map(|broken| broken.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["g"]
+    );
+}
+
+/// In a scope an unresolved import made incomplete, a hole's error is dropped like any
+/// other missing name's, and the declaration is still kept: the import's error is the
+/// only one, and `g` holds a hole where `Nope.y` is.
+///
+/// Mutation-checked by extending `canonicalize_recovering`'s errors with `do_values`'
+/// unfiltered, skipping `without_restated`: the `VariableNotFound` for `Nope.y` comes
+/// back and the assertion on the errors goes red.
+#[test]
+fn a_hole_in_an_incomplete_scope_drops_its_error_and_keeps_its_declaration() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (g)
+
+        import Nope
+
+        f : Int -> Int
+        f x = x
+
+        g : Int
+        g = f Nope.y
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    assert!(
+        matches!(errors.as_slice(), [canonical::Error::EnvironmentErrors(..)]),
+        "got {:?}",
+        errors
+    );
+    assert!(module.broken.is_empty(), "got {:?}", module.broken);
+    assert!(module.incomplete);
+
+    match &body_of(&module, "g").kind {
+        canonical::ExpressionKind::Apply(_, argument) => {
+            assert!(
+                matches!(argument.kind, canonical::ExpressionKind::Hole),
+                "got {:?}",
+                argument
+            );
+            assert_eq!(argument.span.to_range(), Some(range_of(source, "Nope.y")));
+        }
+        other => panic!("expected `g` to apply `f`, got {:?}", other),
+    }
 }
