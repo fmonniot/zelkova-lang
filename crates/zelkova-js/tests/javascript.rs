@@ -2027,8 +2027,11 @@ fn a_case_matching_a_pattern_hole_is_refused() {
 }
 
 /// A declaration holding a record is one the typer leaves unchecked until `LANG-51`, so
-/// its module is refused: a record, an update, and a record type in an annotation over a
-/// body the typer could otherwise check.
+/// its module is refused: a record, and a record type in an annotation over a body the
+/// typer could otherwise check.
+///
+/// Mutation-checked by restoring `value_to_term_and_annotation`'s `.map` over the
+/// annotation: `annotated` then checks against no annotation and emits.
 #[test]
 fn a_declaration_holding_a_record_is_refused() {
     let errors = refused(indoc! {r#"
@@ -2057,8 +2060,9 @@ fn a_declaration_holding_a_record_is_refused() {
 /// facade's type through the typer's, which has no record type until `LANG-51`, so the
 /// signature is a declaration the typer could not check.
 ///
-/// Mutation-checked by making `ir::build` treat a facade signature whose type does not
-/// translate as `Typed` with the type `()`: both facades then emit and `refused` panics.
+/// Mutation-checked by making `canonical_type_to_typer_type` read a record type as `()`:
+/// `ir::build` then reads both signatures, `take` emits and `point` is refused as
+/// `NoPredicate` instead, and the match panics.
 #[test]
 fn a_facade_signature_holding_a_record_is_refused() {
     let errors = refused(indoc! {r#"

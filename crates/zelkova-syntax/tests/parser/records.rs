@@ -112,9 +112,9 @@ fn a_record_type_is_its_fields_in_written_order() {
 /// A record type is atomic: it is an argument with no parentheses around it, it may be
 /// either side of an arrow, and a field's type may be another record.
 ///
-/// Mutation-checked by moving the record production from `AtomicType` to `Type`: the
-/// grammar then has no way to read it as `Box`'s argument and LALRPOP reports the
-/// annotation rejected at the `{`.
+/// Mutation-checked by moving the record production from `AtomicType` to `Type`: an
+/// application's argument is an `AtomicType`, so the annotation is then rejected at the
+/// `{` after `Box`.
 #[test]
 fn a_record_type_is_an_argument_without_parentheses() {
     let tpe = annotation(indoc::indoc! {r#"
@@ -140,6 +140,9 @@ fn a_record_type_is_an_argument_without_parentheses() {
 
 /// A record inside a variant is the constructor's argument, which is how a recursive
 /// shape holds a record.
+///
+/// Mutation-checked with the test above, by deleting `AtomicType`'s record production
+/// and by moving it to `Type`: either way the variant is rejected at its `{`.
 #[test]
 fn a_record_type_is_a_constructors_argument() {
     let module = parsed(indoc::indoc! {r#"
@@ -191,6 +194,9 @@ fn a_record_keeps_its_fields_in_written_order() {
 
 /// A record is atomic, so it is an argument with no parentheses: `f { a = 1 }` applies
 /// `f` to the record.
+///
+/// Mutation-checked by making `AtomicExpr`'s brace production read `{ {` before its
+/// fields: the source is then rejected.
 #[test]
 fn a_record_is_an_argument_without_parentheses() {
     let expr = body(indoc::indoc! {r#"
@@ -239,6 +245,8 @@ fn an_update_is_its_record_and_its_fields() {
 /// The left operand of an update's `|` is a whole expression rather than a name:
 /// `{ f x | a = 1 }` updates whatever `f x` returns, and `{ a + b | c = 1 }` whatever the
 /// operator returns.
+///
+/// Mutation-checked as the test above is, by dropping the head in the update arm.
 #[test]
 fn an_updates_record_is_any_expression() {
     assert_eq!(
@@ -271,6 +279,9 @@ fn an_updates_record_is_any_expression() {
 
 /// A record written across several lines with the separator leading each line, inside a
 /// `case` branch so the layout pass's blocks are around it, is the same record.
+///
+/// Mutation-checked by dropping the head in the update arm, as above: the nested update
+/// then reads as a record.
 #[test]
 fn a_record_may_lead_each_line_with_its_separator() {
     let expr = body(indoc::indoc! {r#"
@@ -306,6 +317,9 @@ fn a_record_may_lead_each_line_with_its_separator() {
 
 /// A label is spelled the way a value name is, so a soft keyword is a label like any
 /// other lowercase name.
+///
+/// Mutation-checked by spelling `ExprField`'s label `"lo_ident"` in place of `VarIdent`:
+/// the source is then rejected at `left`.
 #[test]
 fn a_soft_keyword_is_a_label() {
     assert_eq!(
@@ -412,6 +426,9 @@ fn a_record_with_no_field_is_rejected() {
 
 /// The two spellings belong to their own grammars: `:` is a field of a record type and
 /// `=` a field of a record, and neither is read in the other's position.
+///
+/// Mutation-checked by giving `ExprField` a second alternative reading `label : expr`: the
+/// first source then parses.
 #[test]
 fn a_field_is_spelled_for_its_grammar() {
     let expression = "module Main exposing (..)\n\nf = { a : 1 }\n";

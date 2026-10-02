@@ -5246,10 +5246,9 @@ fn labels_of(fields: &[canonical::Field]) -> Vec<&str> {
 /// differently canonicalize to one value, and each field's type is resolved as any
 /// other type is.
 ///
-/// Mutation-checked by making `Type::Record` hold the fields as a `Vec<(Name, Type)>`
-/// in written order (the `BTreeMap` swapped for a `Vec` in the type and in
-/// `from_parser_type`'s collect): `first` and `second` then differ and the first
-/// assertion goes red.
+/// Mutation-checked by keying each field in `from_parser_type` by its written position
+/// as well as its label (`0low`, `1high`), which makes the map remember the source
+/// order: `first` and `second` then differ and the first assertion goes red.
 #[test]
 fn a_record_type_is_the_same_type_in_any_field_order() {
     let module = canonicalize_with_scalars(indoc::indoc! {r#"
@@ -5278,6 +5277,9 @@ fn a_record_type_is_the_same_type_in_any_field_order() {
 
 /// The canonical field set is walked in label order — the order two spellings of one
 /// record type agree on — whatever order the source wrote.
+///
+/// Mutation-checked by the position-keyed map described on the test above: the keys
+/// then come back as written.
 #[test]
 fn a_record_types_fields_are_in_label_order() {
     let module = canonicalize_with_scalars(indoc::indoc! {r#"
@@ -5308,6 +5310,9 @@ fn a_record_types_fields_are_in_label_order() {
 
 /// A field's type that names nothing in scope is reported as any other type is, at its
 /// own span.
+///
+/// Mutation-checked by replacing a field type that fails to canonicalize with `()` in
+/// `from_parser_type`: the module then canonicalizes.
 #[test]
 fn a_record_types_field_resolves_its_type() {
     let source = indoc::indoc! {r#"
@@ -5479,6 +5484,9 @@ fn a_label_repeated_in_a_record_is_an_error_at_the_repeat() {
 }
 
 /// The same in an update.
+///
+/// Mutation-checked as the record's test is, by removing the `repeated_labels` call
+/// from `Field::from_parser`, which the two share.
 #[test]
 fn a_label_repeated_in_an_update_is_an_error_at_the_repeat() {
     let source = indoc::indoc! {r#"
@@ -5570,6 +5578,9 @@ fn a_record_type_is_not_a_variant() {
 }
 
 /// A record type is not a constraint: one written before `=>` is rejected at itself.
+///
+/// Mutation-checked by reporting it as `InvalidConstraintKind::Unit` in `validate_context`:
+/// the match then falls through to its panic.
 #[test]
 fn a_record_type_is_not_a_constraint() {
     let source = indoc::indoc! {r#"

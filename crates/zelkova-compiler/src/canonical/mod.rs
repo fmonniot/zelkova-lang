@@ -1689,7 +1689,7 @@ pub struct CycleMember {
 /// A variant is a constructor name followed by zero or more type arguments, and
 /// nothing else. The grammar does not enforce that: it parses a variant list with
 /// the general `Type` production, so every shape a type expression can take reaches
-/// `do_types`. This enum names the four that are not a variant, one per remaining
+/// `do_types`. This enum names the five that are not a variant, one per remaining
 /// [`parser::TypeKind`], so each can say what it is in the words of the source.
 #[derive(Debug, PartialEq, Clone)]
 pub enum InvalidVariantKind {
@@ -3649,7 +3649,7 @@ fn do_types(
 
         // A variant is a constructor name and its arguments, which the parser spells
         // `TypeKind::Unqualified`. It is the grammar's general `Type` production that
-        // parses a variant list, though, so the four other kinds arrive here too —
+        // parses a variant list, though, so the five other kinds arrive here too —
         // and each is a declaration the user wrote that has no meaning, not a variant
         // this pass may leave out. Skipping one deletes a constructor from the
         // declaration and reports nothing, which was `BUG-18`.
