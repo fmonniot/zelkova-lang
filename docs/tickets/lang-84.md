@@ -88,5 +88,8 @@ typer leaves them unchecked. After this they are checked, and every one of them 
 each stays green; one that goes red is a bug in this ticket and not a tag to change. `cargo test --workspace` is green and
 `cargo run -- compile std/core` still lists all ten modules as checked.
 
+The **Known gap:** paragraph under [Record patterns](../spec/records.md#record-patterns) in
+[Records](../spec/records.md) is deleted.
+
 **Found:** while ordering the record tickets for *Active work: records* in
 [the index](README.md). Not fixed there because that section orders tickets and writes no code.
