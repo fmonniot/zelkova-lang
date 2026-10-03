@@ -1,0 +1,209 @@
+-- A record built, read, updated, matched and compared, each by the value it computes.
+module RecordTests exposing (..)
+
+import Basics exposing (..)
+import Records
+import Source
+import Test exposing (Test)
+import Wrapper exposing (Wrapper(..))
+
+
+-- BUILDING AND READING
+
+readsTheFieldItWasBuiltWith : Test
+readsTheFieldItWasBuiltWith =
+  Test.equal (Records.getX (Records.point 3 4)) 3
+
+
+readsEachField : Test
+readsEachField =
+  Test.equal (Records.point 3 4).y 4
+
+
+-- UPDATING
+
+updateReplacesTheField : Test
+updateReplacesTheField =
+  Test.equal (Records.getX (Records.moveX 10 (Records.point 3 4))) 13
+
+
+updateKeepsTheOtherField : Test
+updateKeepsTheOtherField =
+  Test.equal (Records.moveX 10 (Records.point 3 4)).y 4
+
+
+updateLeavesTheOriginalAlone : Test
+updateLeavesTheOriginalAlone =
+  Test.equal (Records.originalAfterUpdate (Records.point 3 4)) 3
+
+
+-- ACCESSORS
+
+accessorThroughAHigherOrderFunction : Test
+accessorThroughAHigherOrderFunction =
+  Test.equal (Records.readX (Records.point 7 8)) 7
+
+
+-- RECORD PATTERNS
+
+patternInAParameter : Test
+patternInAParameter =
+  Test.equal (Records.parameterSum (Records.point 3 4)) 7
+
+
+patternInACaseBindsAField : Test
+patternInACaseBindsAField =
+  Test.equal (Records.classify (Records.point 0 5)) 5
+
+
+patternInACaseTriesTheNextBranch : Test
+patternInACaseTriesTheNextBranch =
+  Test.equal (Records.classify (Records.point 4 0)) 40
+
+
+patternInACaseFallsThrough : Test
+patternInACaseFallsThrough =
+  Test.equal (Records.classify (Records.point 4 5)) 9
+
+
+-- NESTED
+
+chainedAccess : Test
+chainedAccess =
+  Test.equal (Records.centreX { centre = Records.point 6 7, radius = 1 }) 6
+
+
+nestedPatternInAParameter : Test
+nestedPatternInAParameter =
+  Test.equal (Records.nestedParameter { centre = Records.point 6 7, radius = 1 }) 7
+
+
+recordInAConstructorMatchedOnItsLiteral : Test
+recordInAConstructorMatchedOnItsLiteral =
+  Test.equal (Records.describe (Records.circle 0 9 5)) 5
+
+
+recordInAConstructorMatchedPastIt : Test
+recordInAConstructorMatchedPastIt =
+  Test.equal (Records.describe (Records.circle 1 9 5)) 10
+
+
+recordInAnotherConstructor : Test
+recordInAnotherConstructor =
+  Test.equal (Records.describe (Records.Dot { x = 2, y = 3 })) 5
+
+
+-- EQUALITY
+
+equalRecordsAreEqual : Test
+equalRecordsAreEqual =
+  Test.check (Records.point 1 2 == Records.point 1 2)
+
+
+recordsDifferingInOneFieldAreNotEqual : Test
+recordsDifferingInOneFieldAreNotEqual =
+  Test.equal (Records.point 1 2 == Records.point 1 3) False
+
+
+recordsAreEqualWhateverOrderTheyWereWrittenIn : Test
+recordsAreEqualWhateverOrderTheyWereWrittenIn =
+  Test.check ({ y = 2, x = 1 } == Records.point 1 2)
+
+
+nestedRecordsAreCompared : Test
+nestedRecordsAreCompared =
+  Test.check
+    ({ centre = Records.point 1 2, radius = 3 } == { centre = Records.point 1 2, radius = 3 })
+
+
+nestedRecordsDifferingDeepAreNotEqual : Test
+nestedRecordsDifferingDeepAreNotEqual =
+  Test.equal
+    ({ centre = Records.point 1 2, radius = 3 } == { centre = Records.point 1 9, radius = 3 })
+    False
+
+
+recordsInAConstructorAreCompared : Test
+recordsInAConstructorAreCompared =
+  Test.check (Records.circle 1 2 3 == Records.circle 1 2 3)
+
+
+-- LABELS A JAVASCRIPT OBJECT HAS A MEANING FOR
+
+reservedAndInheritedLabelsAreFields : Test
+reservedAndInheritedLabelsAreFields =
+  Test.equal (Records.readKeyed (Records.keyed 1)) 4321
+
+
+accessorOfAnInheritedName : Test
+accessorOfAnInheritedName =
+  Test.equal (Records.reachConstructor (Records.keyed 1)) 3
+
+
+updateOfAnInheritedName : Test
+updateOfAnInheritedName =
+  Test.equal (Records.readKeyed (Records.replaceConstructor (Records.keyed 1))) 13021
+
+
+patternOnReservedAndInheritedNames : Test
+patternOnReservedAndInheritedNames =
+  Test.equal (Records.patternKeyed (Records.keyed 1)) 13
+
+
+reservedAndInheritedLabelsAreCompared : Test
+reservedAndInheritedLabelsAreCompared =
+  Test.equal (Records.keyed 1 == Records.keyed 2) False
+
+
+-- THE ORDER FIELDS ARE EVALUATED IN
+
+recordFieldsRunInTheOrderWritten : Test
+recordFieldsRunInTheOrderWritten =
+  Test.check (Records.runsInOrderWritten 0)
+
+
+updateEvaluatesItsRecordBeforeItsFields : Test
+updateEvaluatesItsRecordBeforeItsFields =
+  Test.check (Records.updateEvaluatesRecordFirst 0)
+
+
+updateFieldsRunInTheOrderWritten : Test
+updateFieldsRunInTheOrderWritten =
+  Test.check (Records.updateRunsInOrderWritten 0)
+
+
+updateEvaluatesItsRecordOnce : Test
+updateEvaluatesItsRecordOnce =
+  Test.equal (Records.updatedOnce 0) 2
+
+
+-- A RECORD ACROSS A FACADE
+
+companionReceivesAPlainObject : Test
+companionReceivesAPlainObject =
+  Test.equal (Source.sumFields (Records.point 3 4)) 7
+
+
+recordReturnedByACompanionIsTheRecordTheTypeSays : Test
+recordReturnedByACompanionIsTheRecordTheTypeSays =
+  Test.equal (Source.rightPoint 3) (Records.point 3 4)
+
+
+unitFieldIsPresent : Test
+unitFieldIsPresent =
+  Test.equal (Source.rightUnit 6) { done = (), n = 6 }
+
+
+nestedRecordReturnedByACompanion : Test
+nestedRecordReturnedByACompanion =
+  Test.equal (Source.rightNested 1).inner.x 1
+
+
+recordInAConstructorReturnedByACompanion : Test
+recordInAConstructorReturnedByACompanion =
+  Test.equal (Source.rightWrapped 8) (Wrapper { n = 8 })
+
+
+keyedRecordReturnedByACompanion : Test
+keyedRecordReturnedByACompanion =
+  Test.equal (Records.readKeyed (Source.rightKeyed 1)) 4321

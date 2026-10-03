@@ -132,7 +132,8 @@ export function compareRefusesAnArray() {
 
 // PINS compare refuses a record
 export function compareRefusesARecord() {
-    // _Utils_update builds plain untagged objects of the record's own fields.
+    // A record is a plain untagged object of the record's own fields (zelkova-js's
+    // `Representations`).
     assert.throws(() => compare({ x: 1, y: 2 }, { x: 1, y: 3 }), cmpError);
 }
 

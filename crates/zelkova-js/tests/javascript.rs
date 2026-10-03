@@ -1613,8 +1613,8 @@ fn a_union_holding_a_function_has_no_predicate() {
 /// of the same signature before a record had a predicate.
 ///
 /// Mutation-checked by reading the record's fields off the union value itself, `$v0`,
-/// instead of off the argument the record sits in (passing `value` unchanged where
-/// `union_function` builds `$v0.a`): the text no longer matches.
+/// instead of off the argument the record sits in (building `value` as `"$v0"` in
+/// `union_function`): the text no longer matches.
 #[test]
 fn a_union_holding_a_record_is_checked_through_its_argument() {
     let text = facade_across(
@@ -1651,8 +1651,8 @@ fn a_union_holding_a_record_is_checked_through_its_argument() {
 /// is: canonicalization reads the facade signature and not the declarations of the unions
 /// it names (`BUG-45`), so the function type is found in the walk into the record.
 ///
-/// Mutation-checked by answering `Ok("true".to_string())` for a record's fields, in the
-/// `Type::Record` arm of `Predicates::test`: the facade then emits and `expect_err` fails.
+/// Mutation-checked by testing none of a record's fields in the `Type::Record` arm of
+/// `Predicates::test`: the facade then emits and `expect_err` fails.
 #[test]
 fn a_union_holding_a_record_holding_a_function_has_no_predicate() {
     let errors = facade_across(
@@ -2376,10 +2376,9 @@ fn an_update_spreads_the_record_and_then_writes_its_fields() {
 /// other function value, and called one argument at a time — and parenthesised where it is
 /// the function of a call, since `(r) => r.x(r)` would read the call as the body.
 ///
-/// Mutation-checked by emitting the accessor as `r => r.x(…)`'s unparenthesised form, that
-/// is by dropping `Accessor` from the parenthesised forms of `Emitter::operand`: `direct`
-/// then reads `(r) => r.x(s)` and the text goes red; and by emitting the accessor as the
-/// string `".x"`: `passed` goes red.
+/// Mutation-checked by dropping `Accessor` from the parenthesised forms of
+/// `Emitter::operand`: `direct` then reads `(r) => r.x(s)` and the text goes red; and by
+/// emitting the accessor as the string `".x"`: the text goes red.
 #[test]
 fn an_accessor_is_a_function_of_one_parameter() {
     let text = emitted(indoc! {r#"
@@ -2423,8 +2422,8 @@ fn an_accessor_is_a_function_of_one_parameter() {
 /// nothing, so there is no `if`. This replaced the refusal of a record pattern in a
 /// parameter, as `Construct::RecordType` or `Construct::RecordPattern`.
 ///
-/// Mutation-checked by answering `Step::Field(_)` with the empty string in
-/// `occurrence_expr`: the bindings read `$scrutinee` alone and the text goes red.
+/// Mutation-checked by reading `Step::Field(_)` as `base` alone in `occurrence_expr`: the
+/// bindings read `$scrutinee` itself and the text goes red.
 #[test]
 fn a_record_pattern_in_a_parameter_binds_each_field() {
     let text = emitted(indoc! {r#"
@@ -2544,9 +2543,10 @@ fn a_record_pattern_in_a_case_is_read_through_its_fields() {
 /// holding a record, as `Construct::RecordType`.
 ///
 /// Mutation-checked by deleting the `Reflect.ownKeys` count from `Predicates::test`: the
-/// extra-field check is gone and the text goes red; by testing `"x" in v` in place of
-/// `Object.hasOwn(v, "x")`: an inherited name is found and the text goes red; and by
-/// emitting the fields in the order the signature wrote them: the text goes red.
+/// extra-field check is gone and the text goes red; by counting `Object.keys` instead: the
+/// text goes red; by testing `"x" in v` in place of `Object.hasOwn(v, "x")`: an inherited
+/// name is found and the text goes red; and by dropping the `!Array.isArray` test: the text
+/// goes red.
 #[test]
 fn a_facade_result_that_is_a_record_is_checked_by_its_labels() {
     let text = emitted(indoc! {r#"
@@ -2615,9 +2615,8 @@ fn a_record_field_of_type_unit_is_present_and_nested_records_are_walked() {
 /// the predicate of the `Task`'s payload type, so a record payload that carries a field
 /// to spare is `Err (Malformed ..)` there.
 ///
-/// Mutation-checked by building no predicate for a record payload (`None` where the
-/// `Task`'s `check` is built in `facade_declaration`): `$effect` is handed `null` and the
-/// text goes red.
+/// Mutation-checked by handing `$effect` `null` where `facade_declaration` builds the
+/// `Task`'s `check` from the payload's predicate: the text goes red.
 #[test]
 fn an_effectful_facade_with_a_record_payload_checks_it() {
     let text = emitted_effectful(indoc! {r#"
