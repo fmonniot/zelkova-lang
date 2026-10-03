@@ -171,8 +171,8 @@ type something else supplies, and each is an error where nothing does.
 Decision 3 had said this of the accessor alone. The other three forms were left to be read by
 analogy, and the chapter's own examples did not survive the reading: `nameOf person =
 person.name` and `nameOf { name } = name` were written without annotations, and under the
-accessor's rule both are errors. `LANG-51` and
-[`LANG-84`](../tickets/lang-84.md) could not be implemented without knowing which was meant.
+accessor's rule both are errors. `LANG-51` and `LANG-84` could not be implemented without
+knowing which was meant.
 
 **Inferring a closed record of exactly the fields touched** was the alternative. It needs no
 annotation, and it is wrong in the way that is hardest to see: `person.name` would make `nameOf`
