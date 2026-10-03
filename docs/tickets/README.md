@@ -170,11 +170,12 @@ declarations it is about, and not closed by it.
 
 ## Active work: records
 
-Two tickets remain of one body of work — `LANG-84` and `GEN-25`. The goal is that **a value of
-several parts can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says
-which part is which by position and stops at three.
+One ticket remains of one body of work — `GEN-25`. The goal is that **a value of several parts
+can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says which part is
+which by position and stops at three.
 
-They get a section for the reason the type classes do: none of them is a record on its own. A
+The work gets a section for the reason the type classes do: none of its tickets is a record on
+its own. A
 record has a spelling in the type, expression and pattern grammars and a rule in the typer, and
 the tickets are cut along those lines, with the emitter last.
 
@@ -198,28 +199,25 @@ is reported as `canonical::Error::RepeatedLabel`.
 `LANG-16`, which the order took as a prerequisite, has landed too: a pattern nests to any depth,
 an applied constructor written as a sub-pattern being parenthesised, and the typer checks a
 nested pattern as it does one at the top. That is what the first record-pattern block in two
-chapters needs, since it matches a constructor inside a field, and what `LANG-84` relies on.
+chapters needs, since it matches a constructor inside a field, and what `LANG-84` built on.
 
 `LANG-49` has landed: a record pattern parses and reaches the canonical module, the `{ x }`
 shorthand desugared in the grammar to `x = x`, and a repeated label in one is the
-`RepeatedLabel` the other three forms report. Until `LANG-84` a declaration holding a record
-pattern is one the typer leaves unchecked, so the emitter refuses its module.
+`RepeatedLabel` the other three forms report.
 
 `LANG-51` has landed: the typer has a record type, two of which unify when they carry the same
 labels and each pair of field types unifies, and it checks a record, an update, a field access
 and an accessor. The last three are read once unification has run over the declaration, and are an error where
-nothing in it supplies the record type; `FieldConstraint` in `typer/mod.rs` is the mechanism and
-says where a record pattern fits in it. A module holding a record type checks, and the emitter
-refuses it until `GEN-25`.
+nothing in it supplies the record type; `FieldConstraint` in `typer/mod.rs` is the mechanism. A
+module holding a record type checks, and the emitter refuses it until `GEN-25`.
 
-The rest land in this order, one at a time:
+`LANG-84` has landed: the typer checks a record pattern, each entry read against the matched
+record type by that same mechanism, and it is an error where that type lacks a label the
+pattern names or nothing supplies the type. The emitter refuses a record pattern until `GEN-25`.
+
+What remains:
 
 ```
-LANG-84  a record pattern is type checked
-  │      ← written against the constraint LANG-51 gives an accessor:
-  │        both are answered once unification has said what the
-  │        record is
-  │
 GEN-25   a record, an access, an update, an accessor and a record
          pattern are emitted, and a record may cross a facade
          ← the first point at which a program using a record runs
@@ -313,6 +311,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-17](err-17.md) | task | — | open | A mistyped bare identifier or constructor body gets no caret of its own |
 | [ERR-18](err-18.md) | task | — | open | An unexpected-token error names the token by its Rust variant, not as the user wrote it |
 | [ERR-19](err-19.md) | task | — | open | A module name used as a constructor is reported as a missing constructor of the current module |
+| [ERR-20](err-20.md) | task | — | open | A body using a name a record pattern binds at the wrong type is reported at the pattern |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
@@ -434,7 +433,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-81](lang-81.md) | task | — | open | A `Float` or `String` literal pattern is not checked by the typer and not emitted |
 | [LANG-82](lang-82.md) | task | — | open | A character literal recognises no escape sequence |
 | [LANG-83](lang-83.md) | task | — | open | A derivation is not checked, and a `derived` instance has no members |
-| [LANG-84](lang-84.md) | task | — | open | A record pattern is not type checked |
+| LANG-84 | task | — | closed 2026-10-02 | A record pattern is not type checked |
 | [LANG-85](lang-85.md) | task | — | open | An obligation at a record type is never discharged, so no derivation walks a record |
 | [LANG-86](lang-86.md) | task | — | open | There is no `type alias` production, so a type cannot be given a second name |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
