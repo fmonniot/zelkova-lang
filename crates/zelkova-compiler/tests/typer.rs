@@ -2260,10 +2260,13 @@ fn an_update_keeps_the_type_of_its_record() {
 }
 
 /// An update naming a label its record type lacks is the update that adds a field, and
-/// is an error under that label alone.
+/// is an error under that label, with a secondary label under the annotation the record
+/// type came from.
 ///
 /// Mutation-checked by giving `FieldConstraint`'s update arm `label_span: span` (the
-/// whole update): the range assertion goes red.
+/// whole update): the range assertion goes red. The secondary label is mutation-checked
+/// by having `FieldConstraint::read` give `MissingField` `because: None`: the labels
+/// assertion goes red.
 #[test]
 fn an_update_naming_an_absent_field_fails_under_that_field() {
     let source = indoc::indoc! {r#"
@@ -2293,6 +2296,13 @@ fn an_update_naming_an_absent_field_fails_under_that_field() {
         "the record type `{ taken : Int }` has no field `expected`"
     );
     assert_eq!(primary_range(&error), range_of(source, "expected"));
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_of(source, "expected"),
+            range_of(source, "added : { taken : Int } -> { taken : Int }"),
+        ]
+    );
 }
 
 /// An update giving a field a value of another type is an error under that value, and
@@ -2666,11 +2676,14 @@ fn variable_of(term: &TypedTerm) -> String {
     }
 }
 
-/// A field read off a type that is not a record is an error under the label.
+/// A field read off a type that is not a record is an error under the label, with a
+/// secondary label under the annotation the type came from.
 ///
 /// Mutation-checked by answering `Ok(None)` from `FieldConstraint::read` for a type of
 /// any other form: the access then waits forever and is reported as
-/// `RecordTypeUnknown`, and the variant assertion goes red.
+/// `RecordTypeUnknown`, and the variant assertion goes red. The secondary label is
+/// mutation-checked by having `FieldConstraint::read` give `NotARecord` `because: None`:
+/// the labels assertion goes red.
 #[test]
 fn a_field_of_a_type_that_is_not_a_record_is_an_error() {
     let source = indoc::indoc! {r#"
@@ -2688,6 +2701,13 @@ fn a_field_of_a_type_that_is_not_a_record_is_an_error() {
         error.kind
     );
     assert_eq!(primary_range(&error), range_within(source, "n.x", "x"));
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(source, "n.x", "x"),
+            range_of(source, "f : Int -> Int"),
+        ]
+    );
 }
 
 /// An annotation's own type variable written for the record supplies no record type:
