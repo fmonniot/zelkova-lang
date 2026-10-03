@@ -1,0 +1,8 @@
+module Wrapper exposing (Wrapper(..))
+
+
+{-| A union holding a record, which a facade's boundary check reaches through a
+constructor's argument rather than through a signature naming the record itself.
+-}
+type Wrapper
+  = Wrapper { n : Int }

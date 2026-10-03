@@ -45,6 +45,38 @@
 //! constructor's arguments past the 26th continue `aa`, `ab`, … — see `field`. A tuple
 //! is an array.
 //!
+//! **A record is a plain object keyed by its labels and by nothing else**: `{ x = 1, y = 2 }`
+//! is `{x: 1n, y: 2n}`, with no `$` to tell it from a union value — a label is never `$`,
+//! and a record is never read by `$`. The key is the label as the source spells it. A label
+//! is not a binding, so `mangle` never touches it: `{ class = 1 }` is `{class: 1n}` and
+//! `r.class` reads it, `constructor` and `toString` are the record's own fields where
+//! every object inherits a property of that name, and a label that is not a bare ASCII
+//! identifier is a string-literal key, `r["é"]` (see `property` and `key`). The
+//! fields stand in the order they were written, which is the order they are evaluated in
+//! ([Order of evaluation](../docs/spec/evaluation-semantics.md#order-of-evaluation)): an
+//! object literal evaluates its entries as they stand.
+//!
+//! - A **field access** is a property read, `r.name`, and chains as one: `r.centre.x`.
+//! - An **accessor** is a function of one parameter, `(r) => r.name`, called one argument at
+//!   a time like any function value, so [*Calls*](#calls) needs no rule of its own for it;
+//!   as the function of a call it is parenthesised.
+//! - An **update** is an object literal that begins by spreading the record updated and
+//!   continues with the fields written, `{...r, x: 1n}`. The record is evaluated once, ahead
+//!   of every field, and the spread copies its own enumerable properties into a new
+//!   object, so the one it was copied from is never written to. A record the emitter built
+//!   has only enumerable own properties, and one a companion returned has been checked to
+//!   have them for each label ([*The boundary check*](#the-boundary-check)). A label the
+//!   update names replaces the copied one.
+//! - A **record pattern** tests nothing of its own: a record has one shape, so
+//!   [`ir::decision_tree`] holds a test for an entry's sub-pattern only, and reaches it by
+//!   a [`Step::Field`], which `occurrence_expr` writes as the same property read an access
+//!   is.
+//!
+//! [Equality is structural](../docs/spec/evaluation-semantics.md#what-structural-equality-computes),
+//! and until `LANG-42` replaces the forwarding it is `Js.Utils`'s companion walking an
+//! object's keys, so two records of this representation compare field by field, whatever
+//! order their fields were written in.
+//!
 //! A constructor is not exported. An importer that builds one builds its own object of
 //! the same shape, and hoists its own constant for one of no arguments. [Equality is
 //! structural](../docs/spec/evaluation-semantics.md#what-structural-equality-computes),
@@ -150,6 +182,24 @@
 //! terminates because a Zelkova value holds no cycle; the walk costs the size of the
 //! value at every crossing.
 //!
+//! A record is decided by what it has and by what it has not: an object that is not an
+//! array and not `null`, whose own keys are the record's labels and no others, each
+//! field passing the predicate of its own type. "No others" is `Reflect.ownKeys(v).length`
+//! — which counts symbol keys and non-enumerable properties as well as the enumerable
+//! strings `Object.keys` lists — equal to the number of labels, and each label is then
+//! found by `Object.hasOwn`, which looks at the value's own properties and so never finds
+//! the `toString` every object inherits. `Object.keys(v).length` is asked to equal the
+//! number of labels too, so every label is an enumerable own property: the update's
+//! spread copies only those, and so does the walk `==` makes. A field of type `()` is present, holding
+//! `undefined`: `Object.hasOwn` is what tells it from one that is missing, which
+//! `v.f === undefined` could not ([`DEC-21`](../docs/decisions/dec-21.md)). Nothing else
+//! is asked of the object: one with a prototype of its own or one that is frozen is
+//! admitted when its own keys are right. A field's value is read where it is tested and
+//! again where the program reads it, so a getter or a `Proxy` that answers differently
+//! the second time is admitted all the same: the predicate decides the value it saw, not
+//! that a property keeps it. Fields are tested in label order, the order
+//! `canonical::Type::Record` holds them in.
+//!
 //! The declaration a union predicate is read off is the one its declaring module
 //! canonicalized — every constructor of it, whether or not the module exposes them —
 //! which is why [`emit`] is handed [`Unions`], every union of the build, rather than
@@ -169,7 +219,9 @@
 //! walks the tree into an `if`/`else` chain inside an immediately invoked function,
 //! since a `case` is an expression and JavaScript's `if` is a statement. A
 //! [`Decision::Test`] becomes an `if` on the value `occurrence_expr` reads off
-//! `$scrutinee`: `.$ === "Ctor"` for a constructor, an equality check for a literal. A
+//! `$scrutinee`: `.$ === "Ctor"` for a constructor, an equality check for a literal;
+//! the value it reads is `.a` for a constructor's argument, `[0]` for a tuple's element and
+//! `.label` for a record's field, and a record pattern is no test of its own. A
 //! [`Decision::Leaf`] declares its bindings as `const`s ahead of a `return`, all of it
 //! inside its own block — a binding may repeat a name the scrutinee expression reads
 //! ([Variable patterns](../docs/spec/patterns.md#variable-patterns)), and without
@@ -275,33 +327,6 @@ pub enum Construct {
     /// [`emit`] anyway from being emitted ([`DEC-23` decision
     /// 6](../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
     Hole,
-    /// A declaration whose type holds a record type, anywhere in it — a parameter, a
-    /// result, a field of a tuple's element. This backend has no representation of a
-    /// record yet ([`GEN-25`](../docs/tickets/gen-25.md)), so neither a value of one nor a
-    /// facade signature naming one is emitted, and the declaration is refused whole
-    /// before its body is read, at the declaration's span.
-    ///
-    /// Read off the declaration's own type alone, so a body that builds or reads a record
-    /// whose type its declaration does not mention is refused by the four constructs
-    /// below. A union whose constructor holds a record is not refused here; a facade
-    /// result reaching one is [`Unpredicated::Record`].
-    RecordType,
-    /// A record, `{ label = value, … }` ([`ir::TypedTermKind::Record`]).
-    Record,
-    /// An update, `{ record | label = value, … }` ([`ir::TypedTermKind::Update`]).
-    Update,
-    /// A field access, `record.label` ([`ir::TypedTermKind::Access`]).
-    Access,
-    /// An accessor, `.label` ([`ir::TypedTermKind::Accessor`]).
-    Accessor,
-    /// A record pattern, `{ label = pattern, … }` ([`ir::TermPatternKind::Record`]), in a
-    /// `case` or a parameter, at any depth. A declaration whose own type holds a record
-    /// type is refused as [`RecordType`](Self::RecordType) before its body is read; this
-    /// is the pattern in one whose type does not — matched against a union's argument, or
-    /// against a value its body computes. It is refused before the `case`'s decision
-    /// tree is built, at the outermost, leftmost record pattern's span, so no tree
-    /// holding an [`ir::Step::Field`] reaches `occurrence_expr`.
-    RecordPattern,
 }
 
 impl Construct {
@@ -310,27 +335,7 @@ impl Construct {
             Construct::Let => "a `let` expression",
             Construct::Lambda => "an anonymous function",
             Construct::Hole => "a name that did not resolve",
-            Construct::RecordType => "a record type",
-            Construct::Record => "a record",
-            Construct::Update => "a record update",
-            Construct::Access => "a field access",
-            Construct::Accessor => "an accessor",
-            Construct::RecordPattern => "a record pattern",
         }
-    }
-}
-
-/// Whether `tpe` holds a record type anywhere in it — see [`Construct::RecordType`].
-fn holds_record(tpe: &Type) -> bool {
-    match tpe {
-        Type::Record(_) => true,
-        Type::Fun {
-            param_tpe,
-            return_tpe,
-        } => holds_record(param_tpe) || holds_record(return_tpe),
-        Type::Tuple(elements) => elements.iter().any(holds_record),
-        Type::Adt(_, args) => args.iter().any(holds_record),
-        Type::Literal(_) | Type::Number | Type::Variable(_) | Type::Unit => false,
     }
 }
 
@@ -347,17 +352,6 @@ pub enum Unpredicated {
     /// A union no module of the build declares, so there are no constructors to read
     /// `$` against. [`Unions::of`] over every checked module leaves none.
     Undeclared(QualName),
-    /// A record type. [Which types may cross the
-    /// boundary](../docs/spec/interop.md#which-types-may-cross-the-boundary) admits one,
-    /// and canonicalization does too, but this backend has no representation of a record
-    /// to build its predicate over ([`GEN-25`](../docs/tickets/gen-25.md)).
-    ///
-    /// Reached through a union's constructor argument only: a facade signature naming a
-    /// record itself is refused as [`Construct::RecordType`] before any predicate is
-    /// built. A signature naming a union such as `type Shape = Box { x : Int }` names no
-    /// record type of its own, and the predicate walk then reaches the record in `Box`'s
-    /// argument.
-    Record,
 }
 
 impl Unpredicated {
@@ -374,9 +368,6 @@ impl Unpredicated {
                 "`{}`, whose declaration is not part of this build",
                 union.to_name().as_str()
             ),
-            Unpredicated::Record => {
-                "a record type, which the JavaScript backend does not emit yet".to_string()
-            }
         }
     }
 }
@@ -668,6 +659,51 @@ fn field(index: usize) -> String {
     letters.iter().rev().collect()
 }
 
+/// Whether `label` can be written as a bare property name, in `r.label` and `{label: …}`:
+/// ASCII letters, digits and `_`, starting with a letter or `_`, and not `__proto__`.
+///
+/// A reserved word passes — `r.class` and `{class: 1n}` are legal ECMAScript — and so does a
+/// name every object inherits, `constructor` or `toString`: written as a property of a
+/// record it is that record's own, and a record never renames a label the way [`mangle`]
+/// renames a binding. A label of any other character is written as a string literal rather
+/// than trusting what a Zelkova identifier may hold to be what ECMAScript's identifiers
+/// do. `__proto__` is the one name that is bare-legal and still wrong in an object literal,
+/// where `{__proto__: v}` sets the object's prototype instead of a property: it is
+/// written `["__proto__"]: v` — no Zelkova label can be spelled that way, since an
+/// identifier starts with a letter, and nothing here relies on that.
+fn is_bare_property(label: &str) -> bool {
+    let mut chars = label.chars();
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && label != "__proto__"
+}
+
+/// How a record's field named `label` is read off an expression: `.label`, or
+/// `["label"]` where [`is_bare_property`] says the label cannot be written bare.
+fn property(label: &str) -> String {
+    if is_bare_property(label) {
+        format!(".{}", label)
+    } else {
+        format!("[{}]", string_literal(label))
+    }
+}
+
+/// How a record's field named `label` is written in an object literal, ahead of the
+/// `:`: the label itself, a string literal where [`is_bare_property`] says it cannot be
+/// bare, and a computed key for `__proto__`, which only a computed key makes an own
+/// property.
+fn key(label: &str) -> String {
+    if is_bare_property(label) {
+        label.to_string()
+    } else if label == "__proto__" {
+        format!("[{}]", string_literal(label))
+    } else {
+        string_literal(label)
+    }
+}
+
 // ── Paths ─────────────────────────────────────────────────────────────────────
 //
 // The output of a build is one tree, `build/out/js/` beside the root package's manifest
@@ -940,11 +976,6 @@ pub fn emit(
 
     for declaration in &ir.declarations {
         emitter.declaration = Some(declaration.name.clone());
-
-        if holds_record(&declaration.tpe) {
-            emitter.unsupported(Construct::RecordType, declaration.span);
-            continue;
-        }
 
         if ir.foreign {
             emitter.facade_declaration(
@@ -1229,7 +1260,40 @@ impl Predicates<'_> {
                 None => Err(Box::new((Unpredicated::Variable(name.clone()), None))),
             },
             canonical::Type::Arrow(..) => Err(Box::new((Unpredicated::Function, None))),
-            canonical::Type::Record(_) => Err(Box::new((Unpredicated::Record, None))),
+            canonical::Type::Record(fields) => {
+                // `Reflect.ownKeys` counts every own key — symbols and non-enumerable
+                // properties as well as the enumerable strings `Object.keys` lists — and
+                // `Object.hasOwn` finds a label only among the value's own, so a name every
+                // object inherits, `toString`, is not mistaken for a field. With the count
+                // equal to the number of labels and each label found, the own keys are the
+                // labels and no others. `Object.keys` counting the same number then makes
+                // every one of them enumerable, which the update's spread and the equality
+                // walk (`for (var key in x)`) rely on: a label that is a non-enumerable own
+                // property would be found by `hasOwn`, read by an access, and lost by the
+                // next update. A field of type `()` is told from a missing one by `hasOwn`,
+                // which `=== undefined` could not do.
+                let mut tests = vec![
+                    format!("typeof {} === \"object\"", value),
+                    format!("{} !== null", value),
+                    format!("!Array.isArray({})", value),
+                    format!("Reflect.ownKeys({}).length === {}", value, fields.len()),
+                    format!("Object.keys({}).length === {}", value, fields.len()),
+                ];
+                for (label, tpe) in fields {
+                    tests.push(format!(
+                        "Object.hasOwn({}, {})",
+                        value,
+                        string_literal(label.as_str())
+                    ));
+                    tests.push(self.test(
+                        tpe,
+                        &format!("{}{}", value, property(label.as_str())),
+                        depth,
+                        parameters,
+                    )?);
+                }
+                Ok(tests.join(" && "))
+            }
             canonical::Type::Type(name, arguments) => match scalars::scalar_of(name) {
                 Some(scalars::INT) => Ok(format!(
                     "typeof {v} === \"bigint\" && BigInt.asIntN(64, {v}) === {v}",
@@ -1604,19 +1668,49 @@ impl Emitter {
             TypedTermKind::Let { .. } => self.unsupported(Construct::Let, term.span),
             TypedTermKind::Fun { .. } => self.unsupported(Construct::Lambda, term.span),
             TypedTermKind::Hole => self.unsupported(Construct::Hole, term.span),
-            TypedTermKind::Record(_) => self.unsupported(Construct::Record, term.span),
-            TypedTermKind::Update { .. } => self.unsupported(Construct::Update, term.span),
-            TypedTermKind::Access { .. } => self.unsupported(Construct::Access, term.span),
-            TypedTermKind::Accessor { .. } => self.unsupported(Construct::Accessor, term.span),
+            TypedTermKind::Record(fields) => {
+                format!("{{{}}}", self.record_fields(fields).join(", "))
+            }
+            TypedTermKind::Update { record, fields } => {
+                // The record updated is evaluated first, once, by the spread; the fields
+                // follow in the order written, and a label the update names replaces the
+                // one the spread copied.
+                let record = self.expression(record);
+                let mut entries = vec![format!("...{}", record)];
+                entries.extend(self.record_fields(fields));
+                format!("{{{}}}", entries.join(", "))
+            }
+            TypedTermKind::Access { record, label, .. } => {
+                let record = self.operand(record);
+                format!("{}{}", record, property(label.as_str()))
+            }
+            TypedTermKind::Accessor { label, .. } => {
+                format!("(r) => r{}", property(label.as_str()))
+            }
         }
     }
 
-    /// An expression in a position where a conditional has to be parenthesised: the
-    /// condition of another conditional, and the function of a call.
+    /// The `label: value` entries of a record or an update, in the order the source wrote
+    /// the fields, each value emitted as it is reached: an object literal evaluates its
+    /// entries in the order they stand ([Order of
+    /// evaluation](../docs/spec/evaluation-semantics.md#order-of-evaluation)).
+    fn record_fields(&mut self, fields: &[ir::Field<TypedTerm>]) -> Vec<String> {
+        fields
+            .iter()
+            .map(|field| {
+                let value = self.expression(&field.value);
+                format!("{}: {}", key(field.label.as_str()), value)
+            })
+            .collect()
+    }
+
+    /// An expression in a position where a conditional or an arrow function has to be
+    /// parenthesised: the condition of another conditional, the function of a call, and
+    /// the record a field is read off.
     fn operand(&mut self, term: &TypedTerm) -> String {
         let text = self.expression(term);
         match term.kind {
-            TypedTermKind::If { .. } => format!("({})", text),
+            TypedTermKind::If { .. } | TypedTermKind::Accessor { .. } => format!("({})", text),
             _ => text,
         }
     }
@@ -1793,15 +1887,6 @@ impl Emitter {
             return self.unsupported(Construct::Hole, hole);
         }
 
-        // Nor is a record's representation decided, so a field step has nothing to read
-        // (`GEN-25`).
-        if let Some(record) = branches
-            .iter()
-            .find_map(|(pattern, _)| pattern_record(pattern))
-        {
-            return self.unsupported(Construct::RecordPattern, record);
-        }
-
         let declaration = self.declaration.clone().unwrap_or_else(|| Name::new(""));
         let tree = decision_tree(&scrutinee.tpe, branches, &declaration);
         let scrutinee_expr = self.expression(scrutinee);
@@ -1851,9 +1936,7 @@ impl Emitter {
                 matched,
                 default,
             } => {
-                let Some(condition) = test_condition(root, scrutinee, outcome) else {
-                    return self.unsupported(Construct::RecordPattern, NodeSpan::none());
-                };
+                let condition = test_condition(root, scrutinee, outcome);
                 let matched = self.decision(matched, root, depth + 1, form);
                 let default = self.decision(default, root, depth + 1, form);
                 format!(
@@ -1866,20 +1949,17 @@ impl Emitter {
             }
             Decision::Leaf { bindings, body } => {
                 let inner_pad = "  ".repeat(depth + 1);
-                let Some(mut lines) = bindings
+                let mut lines: Vec<String> = bindings
                     .iter()
                     .map(|binding| {
-                        Some(format!(
+                        format!(
                             "{}const {} = {};",
                             inner_pad,
                             mangle(&binding.name),
-                            occurrence_expr(root, &binding.occurrence)?
-                        ))
+                            occurrence_expr(root, &binding.occurrence)
+                        )
                     })
-                    .collect::<Option<Vec<String>>>()
-                else {
-                    return self.unsupported(Construct::RecordPattern, NodeSpan::none());
-                };
+                    .collect();
                 lines.push(format!("{}return {};", inner_pad, self.expression(body)));
                 format!("{pad}{{\n{}\n{pad}}}", lines.join("\n"), pad = pad)
             }
@@ -1900,38 +1980,34 @@ impl Emitter {
 /// `Bool`'s constructors never reach here, since `typer::translate_pattern` turns
 /// `True`/`False` into an [`Outcome::Literal`] — and a literal by the value itself,
 /// which is also how a `case` on a `Bool` tests it (see this module's doc comment,
-/// "Representations"). `None` where [`occurrence_expr`] is.
-fn test_condition(root: &str, occurrence: &Occurrence, outcome: &Outcome) -> Option<String> {
-    let value = occurrence_expr(root, occurrence)?;
+/// "Representations"). A record is never tested: it has one shape, so a record pattern
+/// reaches here only through the tests of its entries.
+fn test_condition(root: &str, occurrence: &Occurrence, outcome: &Outcome) -> String {
+    let value = occurrence_expr(root, occurrence);
 
-    Some(match outcome {
+    match outcome {
         Outcome::Literal(LiteralValue::Bool(b)) => format!("{} === {}", value, b),
         Outcome::Literal(LiteralValue::Int(i)) => format!("{} === {}n", value, i),
         Outcome::Literal(LiteralValue::Char(c)) => format!("{} === {}", value, char_literal(*c)),
         Outcome::Constructor(ctor) => format!("{}.$ === \"{}\"", value, ctor.name.as_str()),
-    })
+    }
 }
 
 /// The JavaScript expression reading the value at `occurrence` off `root`, the name the
 /// scrutinee is bound to: a constructor argument is a field ([`field`], the same one
-/// [`tagged`] builds an object under), a tuple element an index — the representations
-/// [A union crosses as a tagged
-/// value](../docs/spec/interop.md#a-union-crosses-as-a-tagged-value) gives them.
-///
-/// `None` for a path through a record's field ([`Step::Field`]): this backend has no
-/// representation of a record to read one off (`GEN-25`). [`Emitter::case_expression`]
-/// refuses a `case` holding a record pattern as [`Construct::RecordPattern`] before it
-/// builds the tree, so no such path reaches here from it; a caller meeting `None` refuses
-/// the same construct rather than writing a read.
-fn occurrence_expr(root: &str, occurrence: &Occurrence) -> Option<String> {
+/// [`tagged`] builds an object under), a tuple element an index and a record's field a
+/// property read by its label ([`property`]) — the representations [A union crosses as a
+/// tagged value](../docs/spec/interop.md#a-union-crosses-as-a-tagged-value) gives the
+/// first two and *Representations* the third.
+fn occurrence_expr(root: &str, occurrence: &Occurrence) -> String {
     match occurrence {
-        Occurrence::Root => Some(root.to_string()),
+        Occurrence::Root => root.to_string(),
         Occurrence::At(base, step) => {
-            let base = occurrence_expr(root, base)?;
+            let base = occurrence_expr(root, base);
             match step {
-                Step::ConstructorArgument(index) => Some(format!("{}.{}", base, field(*index))),
-                Step::TupleElement(index) => Some(format!("{}[{}]", base, index)),
-                Step::Field(_) => None,
+                Step::ConstructorArgument(index) => format!("{}.{}", base, field(*index)),
+                Step::TupleElement(index) => format!("{}[{}]", base, index),
+                Step::Field(label) => format!("{}{}", base, property(label.as_str())),
             }
         }
     }
@@ -1970,24 +2046,6 @@ fn pattern_hole(pattern: &ir::TermPattern) -> Option<NodeSpan> {
         ir::TermPatternKind::Record { fields } => fields
             .iter()
             .find_map(|field| pattern_hole(&field.value.pattern)),
-        ir::TermPatternKind::Anything
-        | ir::TermPatternKind::Bind(_)
-        | ir::TermPatternKind::Literal { .. }
-        | ir::TermPatternKind::Unit => None,
-    }
-}
-
-/// Where `pattern` holds an [`ir::TermPatternKind::Record`], at any depth, when it holds
-/// one: the outermost, leftmost one's span. See [`Construct::RecordPattern`].
-fn pattern_record(pattern: &ir::TermPattern) -> Option<NodeSpan> {
-    match &pattern.kind {
-        ir::TermPatternKind::Record { .. } => Some(pattern.span),
-        ir::TermPatternKind::Constructor { args, .. } | ir::TermPatternKind::Hole { args } => {
-            args.iter().find_map(|arg| pattern_record(&arg.pattern))
-        }
-        ir::TermPatternKind::Tuple { elements } => elements
-            .iter()
-            .find_map(|element| pattern_record(&element.pattern)),
         ir::TermPatternKind::Anything
         | ir::TermPatternKind::Bind(_)
         | ir::TermPatternKind::Literal { .. }
@@ -2042,6 +2100,33 @@ mod tests {
                 &Name::new("Small")
             ),
             "$acme_widgets$Page$Size$Small"
+        );
+    }
+
+    /// A label is written bare when it is a plain ASCII identifier — a reserved word and a
+    /// name every object inherits included — and as a string literal otherwise; `__proto__`
+    /// is a computed key in an object literal, where a bare one would set the prototype.
+    ///
+    /// Mutation-checked by dropping the `label != "__proto__"` test from
+    /// `is_bare_property`: `key("__proto__")` is then `__proto__` and the test goes red.
+    #[test]
+    fn a_label_is_bare_only_when_it_is_a_plain_identifier() {
+        assert_eq!(
+            (key("class"), property("class")),
+            ("class".into(), ".class".into())
+        );
+        assert_eq!(
+            (key("toString"), property("toString")),
+            ("toString".into(), ".toString".into())
+        );
+        assert_eq!((key("a_1"), property("a_1")), ("a_1".into(), ".a_1".into()));
+        assert_eq!(
+            (key("café"), property("café")),
+            ("\"café\"".into(), "[\"café\"]".into())
+        );
+        assert_eq!(
+            (key("__proto__"), property("__proto__")),
+            ("[\"__proto__\"]".into(), "[\"__proto__\"]".into())
         );
     }
 
