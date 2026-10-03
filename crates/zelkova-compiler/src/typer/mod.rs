@@ -1071,9 +1071,9 @@ pub(super) fn bool_type() -> Type {
 /// Convert a canonical expression to a Term, keeping the position it was written at.
 ///
 /// Returns None for constructs the inference engine doesn't yet handle (a `VarKernel`
-/// reference, complex patterns inside a `Case`, a record, an update, a field access or
-/// an accessor), and for a constructor of a union neither this module nor an interface in
-/// [`Translation`] declares.
+/// reference, complex patterns inside a `Case`, a record, an update, a field access, an
+/// accessor or a record pattern), and for a constructor of a union neither this module
+/// nor an interface in [`Translation`] declares.
 ///
 /// Every arm attaches `expr.span` to the term it builds. That is the whole of what
 /// `ERR-4` needed from this function: a constraint can only point at a
@@ -1248,7 +1248,7 @@ fn spine(expr: &canonical::Expression) -> (&canonical::Expression, Vec<&canonica
 }
 
 /// Translate a canonical pattern into a `TermPattern`. Returns `None` for unsupported
-/// pattern shapes.
+/// pattern shapes: a float, a string and a record pattern.
 ///
 /// The pattern keeps its own span, separate from the branch body's: a `case` branch
 /// whose pattern does not match what is being matched on is about the pattern, and
@@ -1380,7 +1380,11 @@ fn translate_pattern(
 
             TermPatternKind::Hole { args }
         }
-        _ => return None, // Float and String patterns — not yet supported
+        // Float and String patterns — not yet supported.
+        canonical::PatternKind::Float(_) | canonical::PatternKind::String(_) => return None,
+        // The term language has no record pattern until `LANG-84`, so a declaration
+        // holding one, at any depth, is left unchecked as one holding a record is.
+        canonical::PatternKind::Record(_) => return None,
     };
 
     Some(TermPattern {

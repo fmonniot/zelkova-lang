@@ -21,15 +21,15 @@
 //!   [`typer::type_check`] raises no error for a declaration whose function head holds
 //!   a constructor or tuple pattern, one that names a constructor of a union this
 //!   module does not declare, one whose body uses an expression form its term language
-//!   does not model, one holding a record type, a record, an update, a field access or
-//!   an accessor, one that refers to a value or constructor whose type holds a record,
-//!   one that hits an
+//!   does not model, one holding a record type, a record, an update, a field access,
+//!   an accessor or a record pattern, one that refers to a value or constructor whose
+//!   type holds a record, one that hits an
 //!   `ErrorKind::UnboundVariable` — every reference to another module's value does — or
 //!   any `binding_foreign` module whole. It marks each of those in the types it returns —
 //!   an `ir::Solved` that is not `Typed` — and this harness reads only the errors, so the
-//!   distinction does not reach a verdict. Across `docs/spec/` that is roughly one in six
-//!   of the declarations with a body (42 of 244, counting each `Typed`, `UnboundName` and
-//!   `Untranslatable` entry `spec_chapters_pass` returns): two in three of those reach an
+//!   distinction does not reach a verdict. Across `docs/spec/` that is nearly one in five
+//!   of the declarations with a body (46 of 248, counting each `Typed`, `UnboundName` and
+//!   `Untranslatable` entry `spec_chapters_pass` returns): three in five of those reach an
 //!   unannotated declaration and the rest hold a record. So a green
 //!   `expect=ok` block may still hold an annotation its body contradicts —
 //!   `docs/spec/conventions.md`'s row carries the same caveat for chapter authors.

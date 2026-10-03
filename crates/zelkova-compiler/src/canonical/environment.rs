@@ -1130,6 +1130,14 @@ impl<'root, 'parent> ScopedEnvironment<'root, 'parent> {
                     self.expose_pattern(arg);
                 }
             }
+            // A record pattern binds what its entries' patterns bind, and nothing for its
+            // labels: a label is not a value, and `{ x }` binds `x` only because the
+            // grammar made it `x = x`.
+            PatternKind::Record(fields) => {
+                for field in fields {
+                    self.expose_pattern(&field.pattern);
+                }
+            }
         }
     }
 }

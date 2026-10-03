@@ -709,7 +709,7 @@ A record pattern names fields rather than positions. Each entry is `label = patt
 field's value is matched against that pattern; `{ x }` is shorthand for `{ x = x }`, the field
 matched against a variable pattern of its own label.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius, describe)
 
 type Celsius
@@ -724,9 +724,6 @@ describe reading =
     { expected } ->
       expected
 ```
-
-**Not implemented:** the pattern grammar has no brace production
-([`LANG-49`](../tickets/lang-49.md)).
 
 A record pattern names a **subset** of the record's fields, so it is refutable exactly when one
 of its sub-patterns is and a pattern of shorthand entries alone can never fail. Sub-patterns are

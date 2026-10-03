@@ -2164,6 +2164,39 @@ fn a_declaration_holding_a_record_is_refused() {
     assert_eq!(names, vec!["annotated", "built"]);
 }
 
+/// A declaration holding a record pattern is one the typer leaves unchecked until
+/// `LANG-84`, so its module is refused, the pattern a parameter or nested in a constructor
+/// inside a tuple element, under annotations the typer can read.
+///
+/// Mutation-checked by translating a record pattern as `TermPatternKind::Anything` in
+/// `translate_pattern`: both declarations then check, the module emits, and `refused`
+/// panics.
+#[test]
+fn a_declaration_holding_a_record_pattern_is_refused() {
+    let errors = refused(indoc! {r#"
+        module Test exposing ()
+
+        type Box
+          = Box Int
+
+        parameter : Int -> Int
+        parameter { a } = 1
+
+        nested : (Box, Int) -> Int
+        nested ((Box { a }), b) = b
+    "#});
+
+    let mut names: Vec<&str> = errors
+        .iter()
+        .map(|error| match error {
+            Error::Unchecked { name, .. } => name.as_str(),
+            other => panic!("expected only Unchecked refusals, got {:?}", other),
+        })
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["nested", "parameter"]);
+}
+
 /// A facade signature holding a record type is refused, as a parameter or inside a
 /// result: canonicalization admits a record of admitted fields, but `ir::build` reads a
 /// facade's type through the typer's, which has no record type until `LANG-51`, so the

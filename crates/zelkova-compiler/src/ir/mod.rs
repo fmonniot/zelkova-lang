@@ -679,9 +679,10 @@ pub enum Solved {
     /// what reads it back out.
     NoBody,
     /// `value_to_term_and_annotation` could not translate the declaration into the
-    /// typer's term language — a `VarKernel` reference, a float or string pattern at
-    /// any depth, whether a `case` branch or a parameter wrote it, or a record type, a
-    /// record, an update, a field access or an accessor, in the annotation or the body.
+    /// typer's term language — a `VarKernel` reference, a float, string or record
+    /// pattern at any depth, whether a `case` branch or a parameter wrote it, or a
+    /// record type, a record, an update, a field access or an accessor, in the
+    /// annotation or the body.
     /// Nothing about the declaration was checked.
     ///
     /// Not an [`Error`](crate::typer::Error): it is a gap in the typer rather
