@@ -2,7 +2,8 @@ module foreign Source exposing
   ( tick, sumFields, say
   , rightPoint, wrongExtra, wrongMissing, wrongType, wrongNull, wrongArray, wrongArrayLength
   , rightUnit, wrongUnitMissing
-  , rightKeyed, wrongInherited, wrongSymbol, wrongHidden
+  , rightKeyed, wrongInherited, wrongSymbol, wrongHidden, wrongHiddenLabel
+  , rightFrozen, rightInstance, rightNullPrototype
   , rightNested, wrongNested
   , rightWrapped, wrongWrapped
   )
@@ -33,6 +34,10 @@ unsafe rightKeyed : Int -> { class : Int, new : Int, constructor : Int, toString
 unsafe wrongInherited : Int -> { toString : Int }
 unsafe wrongSymbol : Int -> { x : Int }
 unsafe wrongHidden : Int -> { x : Int }
+unsafe wrongHiddenLabel : Int -> { x : Int, y : Int }
+unsafe rightFrozen : Int -> { x : Int, y : Int }
+unsafe rightInstance : Int -> { x : Int, y : Int }
+unsafe rightNullPrototype : Int -> { x : Int, y : Int }
 
 unsafe rightNested : Int -> { inner : { x : Int }, pair : (Int, { y : Int }) }
 unsafe wrongNested : Int -> { inner : { x : Int }, pair : (Int, { y : Int }) }

@@ -79,6 +79,33 @@ export function wrongHidden(n) {
   return Object.defineProperty({ x: n }, "hidden", { value: n, enumerable: false });
 }
 
+// A label that is an own property but not an enumerable one: `hasOwn` finds it and the field
+// passes its type, but a spread would not copy it, so an update would lose it.
+export function wrongHiddenLabel(n) {
+  return Object.defineProperty({ x: n }, "y", { value: n + 1n, enumerable: false });
+}
+
+// Admitted, because only a value's own keys are asked of it: a frozen object, an instance of a
+// class, and an object with no prototype at all, each with exactly the record's labels.
+export function rightFrozen(n) {
+  return Object.freeze({ x: n, y: n + 1n });
+}
+
+class Point {
+  constructor(n) {
+    this.x = n;
+    this.y = n + 1n;
+  }
+}
+
+export function rightInstance(n) {
+  return new Point(n);
+}
+
+export function rightNullPrototype(n) {
+  return Object.assign(Object.create(null), { x: n, y: n + 1n });
+}
+
 export function rightNested(n) {
   return { inner: { x: n }, pair: [n + 1n, { y: n + 2n }] };
 }

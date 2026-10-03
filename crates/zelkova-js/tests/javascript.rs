@@ -1638,7 +1638,8 @@ fn a_union_holding_a_record_is_checked_through_its_argument() {
         text.contains(
             "    case \"Box\":\n      return typeof $v0.a === \"object\" && $v0.a !== null \
              && !Array.isArray($v0.a) && Reflect.ownKeys($v0.a).length === 1 \
-             && Object.hasOwn($v0.a, \"x\") && typeof $v0.a.x === \"bigint\" \
+             && Object.keys($v0.a).length === 1 && Object.hasOwn($v0.a, \"x\") \
+             && typeof $v0.a.x === \"bigint\" \
              && BigInt.asIntN(64, $v0.a.x) === $v0.a.x;\n"
         ),
         "got:\n{}",
@@ -2537,14 +2538,15 @@ fn a_record_pattern_in_a_case_is_read_through_its_fields() {
 }
 
 /// A facade whose result is a record emits a predicate that names each label: an object that
-/// is not an array and not `null`, whose own keys number the labels, each label found among
-/// them by `Object.hasOwn` and each field passing its type's predicate — in label order, not
-/// the order the signature wrote them in. This replaced the refusal of a facade signature
-/// holding a record, as `Construct::RecordType`.
+/// is not an array and not `null`, whose own keys number the labels and are all enumerable,
+/// each label found among them by `Object.hasOwn` and each field passing its type's
+/// predicate — in label order, not the order the signature wrote them in. This replaced the
+/// refusal of a facade signature holding a record, as `Construct::RecordType`.
 ///
 /// Mutation-checked by deleting the `Reflect.ownKeys` count from `Predicates::test`: the
 /// extra-field check is gone and the text goes red; by counting `Object.keys` instead: the
-/// text goes red; by testing `"x" in v` in place of `Object.hasOwn(v, "x")`: an inherited
+/// text goes red; by deleting the `Object.keys` count: a label that is not enumerable is
+/// admitted and the text goes red; by testing `"x" in v` in place of `Object.hasOwn(v, "x")`: an inherited
 /// name is found and the text goes red; and by dropping the `!Array.isArray` test: the text
 /// goes red.
 #[test]
@@ -2563,7 +2565,7 @@ fn a_facade_result_that_is_a_record_is_checked_by_its_labels() {
 
             function point(a) {
               const $returned = $companion$point(a);
-              return typeof $returned === "object" && $returned !== null && !Array.isArray($returned) && Reflect.ownKeys($returned).length === 2 && Object.hasOwn($returned, "x") && typeof $returned.x === "string" && $returned.x.length === ($returned.x.codePointAt(0) > 0xFFFF ? 2 : 1) && Object.hasOwn($returned, "y") && typeof $returned.y === "bigint" && BigInt.asIntN(64, $returned.y) === $returned.y ? $returned : $abort("`Test.point`'s companion returned a value its declared type, `{ x : Char, y : Int }`, does not admit");
+              return typeof $returned === "object" && $returned !== null && !Array.isArray($returned) && Reflect.ownKeys($returned).length === 2 && Object.keys($returned).length === 2 && Object.hasOwn($returned, "x") && typeof $returned.x === "string" && $returned.x.length === ($returned.x.codePointAt(0) > 0xFFFF ? 2 : 1) && Object.hasOwn($returned, "y") && typeof $returned.y === "bigint" && BigInt.asIntN(64, $returned.y) === $returned.y ? $returned : $abort("`Test.point`'s companion returned a value its declared type, `{ x : Char, y : Int }`, does not admit");
             }
 
             export { point };
@@ -2590,7 +2592,7 @@ fn a_record_field_of_type_unit_is_present_and_nested_records_are_walked() {
     "#});
 
     let both = "typeof $returned === \"object\" && $returned !== null && !Array.isArray($returned) \
-                && Reflect.ownKeys($returned).length === 2 \
+                && Reflect.ownKeys($returned).length === 2 && Object.keys($returned).length === 2 \
                 && Object.hasOwn($returned, \"done\") && $returned.done === undefined \
                 && Object.hasOwn($returned, \"toString\") && Array.isArray($returned.toString) \
                 && $returned.toString.length === 2 && typeof $returned.toString[0] === \"bigint\" \
@@ -2598,14 +2600,16 @@ fn a_record_field_of_type_unit_is_present_and_nested_records_are_walked() {
                 && typeof $returned.toString[1] === \"object\" && $returned.toString[1] !== null \
                 && !Array.isArray($returned.toString[1]) \
                 && Reflect.ownKeys($returned.toString[1]).length === 1 \
+                && Object.keys($returned.toString[1]).length === 1 \
                 && Object.hasOwn($returned.toString[1], \"n\") \
                 && typeof $returned.toString[1].n === \"bigint\" \
                 && BigInt.asIntN(64, $returned.toString[1].n) === $returned.toString[1].n ? $returned";
     let inner = "typeof $returned === \"object\" && $returned !== null && !Array.isArray($returned) \
-                 && Reflect.ownKeys($returned).length === 1 && Object.hasOwn($returned, \"r\") \
+                 && Reflect.ownKeys($returned).length === 1 && Object.keys($returned).length === 1 \
+                 && Object.hasOwn($returned, \"r\") \
                  && typeof $returned.r === \"object\" && $returned.r !== null \
                  && !Array.isArray($returned.r) && Reflect.ownKeys($returned.r).length === 1 \
-                 && Object.hasOwn($returned.r, \"done\") && $returned.r.done === undefined ? $returned";
+                 && Object.keys($returned.r).length === 1 && Object.hasOwn($returned.r, \"done\") && $returned.r.done === undefined ? $returned";
 
     assert!(text.contains(both), "got:\n{}", text);
     assert!(text.contains(inner), "got:\n{}", text);
@@ -2631,7 +2635,8 @@ fn an_effectful_facade_with_a_record_payload_checks_it() {
         text.contains(
             "$effect(() => $companion$read(a), ($returned) => typeof $returned === \"object\" \
              && $returned !== null && !Array.isArray($returned) \
-             && Reflect.ownKeys($returned).length === 1 && Object.hasOwn($returned, \"x\") \
+             && Reflect.ownKeys($returned).length === 1 && Object.keys($returned).length === 1 \
+             && Object.hasOwn($returned, \"x\") \
              && typeof $returned.x === \"bigint\" \
              && BigInt.asIntN(64, $returned.x) === $returned.x, \"Test.read\", $k)"
         ),
