@@ -1072,8 +1072,8 @@ pub(super) fn bool_type() -> Type {
 ///
 /// Returns None for constructs the inference engine doesn't yet handle (a `VarKernel`
 /// reference, complex patterns inside a `Case`, a record, an update, a field access, an
-/// accessor or a record pattern), and for a constructor of a union neither this module nor an interface in
-/// [`Translation`] declares.
+/// accessor or a record pattern), and for a constructor of a union neither this module
+/// nor an interface in [`Translation`] declares.
 ///
 /// Every arm attaches `expr.span` to the term it builds. That is the whole of what
 /// `ERR-4` needed from this function: a constraint can only point at a
