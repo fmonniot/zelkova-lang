@@ -2893,15 +2893,17 @@ fn entry_types(pattern: &zelkova_compiler::ir::TermPattern) -> Vec<(String, Stri
 }
 
 /// A parameter annotated with a record type and written `{ name }` binds `name` at the
-/// field's type, and the declaration's type is the annotation's.
+/// field's type, and the declaration's type is the annotation's. `name`'s type is also
+/// the body's, which the annotation fixes, so `ageless` binds `age` too, whose type
+/// nothing but its field gives.
 ///
 /// Mutation-checked by having `FieldConstraint::read` answer, for a decided entry, an
 /// equation between the entry's type and itself, so that the field's type is never
-/// unified with it: the entry's type and the body's are then an unsolved `t…`, and the
-/// entry assertion goes red.
+/// unified with it: `age`'s type is then an unsolved `t…`, and the last assertion goes
+/// red.
 #[test]
 fn a_record_pattern_parameter_binds_its_field_at_the_fields_type() {
-    let solved = solved(indoc::indoc! {r#"
+    let named = solved(indoc::indoc! {r#"
         module Test exposing ()
 
         nameOf : { name : Char } -> Char
@@ -2909,7 +2911,7 @@ fn a_record_pattern_parameter_binds_its_field_at_the_fields_type() {
           name
     "#});
 
-    let name_of = typed_declaration(&solved, "nameOf");
+    let name_of = typed_declaration(&named, "nameOf");
     assert_eq!(format!("{}", name_of.tpe), "{ name : Char } -> Char");
     assert_eq!(
         entry_types(first_pattern(name_of, 1)),
@@ -2921,6 +2923,21 @@ fn a_record_pattern_parameter_binds_its_field_at_the_fields_type() {
         }
         other => panic!("expected a match, got {:?}", other),
     }
+
+    let ageless = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        ageless : { name : Char, age : Int } -> Char
+        ageless { name, age } =
+          name
+    "#});
+    assert_eq!(
+        entry_types(first_pattern(typed_declaration(&ageless, "ageless"), 1)),
+        vec![
+            ("name".to_string(), "Char".to_string()),
+            ("age".to_string(), "Int".to_string())
+        ]
+    );
 }
 
 /// A record pattern names a subset of a record's fields: two of three check, each bound
@@ -3008,20 +3025,21 @@ fn a_record_pattern_naming_an_absent_label_fails_under_it() {
     );
 }
 
-/// `{ centre = { x } }` against a record holding a record binds `x` at the inner field's
-/// type: the inner pattern's record type is the outer entry's field type, read in turn.
+/// `{ centre = { x, y } }` against a record holding a record binds `x` and `y` at the
+/// inner fields' types: the inner pattern's record type is the outer entry's field type,
+/// read in turn. `x` is also the body, so `y` is the one only its field types.
 ///
 /// Mutation-checked by having `constraint::pattern_constraints` not recurse into a
-/// record pattern's entries (no sub-patterns for the `Record` arm): the inner `{ x }` is
-/// then never read, `x` is an unsolved `t…`, and the assertion on the inner entry goes
-/// red.
+/// record pattern's entries (no sub-patterns for the `Record` arm): the inner `{ x, y }`
+/// is then never read, `y` is an unsolved `t…`, and the assertion on the inner entries
+/// goes red.
 #[test]
 fn a_record_pattern_in_a_field_binds_at_the_inner_fields_type() {
     let solved = solved(indoc::indoc! {r#"
         module Test exposing ()
 
         centreX : { centre : { x : Char, y : Int }, radius : Int } -> Char
-        centreX { centre = { x } } =
+        centreX { centre = { x, y } } =
           x
     "#});
 
@@ -3036,7 +3054,10 @@ fn a_record_pattern_in_a_field_binds_at_the_inner_fields_type() {
     };
     assert_eq!(
         entry_types(&fields[0].value.pattern),
-        vec![("x".to_string(), "Char".to_string())]
+        vec![
+            ("x".to_string(), "Char".to_string()),
+            ("y".to_string(), "Int".to_string())
+        ]
     );
 }
 
@@ -3245,9 +3266,8 @@ fn a_record_pattern_does_not_decide_its_record_type() {
 /// whose scrutinee is a tuple element, and as an element of a parameter's tuple pattern.
 ///
 /// Mutation-checked by translating a record pattern as `TermPatternKind::Anything` in
-/// `translate_pattern`: the two bodies' types are then unrelated to the fields, `x` an
-/// unsolved `t…`, and `solved` panics on the annotation's `Char` meeting nothing that
-/// says so — or, where the annotation alone decides it, the entry assertion goes red.
+/// `translate_pattern`: neither tuple pattern then holds a record pattern, and the search
+/// for one panics.
 #[test]
 fn a_record_pattern_nests_in_a_tuple_and_heads_a_branch() {
     let solved = solved(indoc::indoc! {r#"
