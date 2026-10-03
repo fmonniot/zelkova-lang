@@ -246,7 +246,7 @@ An update **has the type of the record it updates**. Each label it names must al
 of that type, and each value must have the type that field already has. An update can therefore
 neither add a field, remove one, nor change one's type.
 
-```zel expect=type-error
+```zel expect=type-error:MissingField
 module Example exposing (Celsius, added)
 
 type Celsius
@@ -439,7 +439,7 @@ Where nothing supplies it, the form is an error. A record type is never worked o
 fields a declaration happens to touch: that would read `person.name` as taking a record with
 exactly one field.
 
-```zel expect=type-error
+```zel expect=type-error:RecordTypeUnknown
 module Example exposing (Text)
 
 type Text

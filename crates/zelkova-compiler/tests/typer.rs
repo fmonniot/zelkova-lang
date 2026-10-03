@@ -2100,6 +2100,80 @@ fn two_record_types_of_different_labels_do_not_unify() {
     );
 }
 
+/// Two record types whose label sets differ on one side only: the note names that side
+/// alone, by the headline's order, and says "fields" for more than one.
+///
+/// Mutation-checked twice, once per one-sided arm of `label_difference`: swapping
+/// "first" and "second" in the `(false, true)` arm turns `missing`'s note red, and in the
+/// `(true, false)` arm `extra`'s.
+#[test]
+fn a_label_set_differing_on_one_side_names_that_side() {
+    let extra = one_type_error(indoc::indoc! {r#"
+        module Test exposing ()
+
+        extra : { x : Int }
+        extra =
+          { x = 1, y = 2 }
+    "#});
+    assert!(
+        extra.notes().contains(
+            &"the second record type has a field `y` that the first does not".to_string()
+        ),
+        "got {:?}",
+        extra.notes()
+    );
+
+    let missing = one_type_error(indoc::indoc! {r#"
+        module Test exposing ()
+
+        missing : { x : Int, y : Int, z : Int }
+        missing =
+          { x = 1 }
+    "#});
+    assert!(
+        missing.notes().contains(
+            &"the first record type has fields `y`, `z` that the second does not".to_string()
+        ),
+        "got {:?}",
+        missing.notes()
+    );
+}
+
+/// The occurs check goes into a record's fields: a record holding the value it is the
+/// type of would be the infinite type `a = { x : a }`, annotated or not.
+///
+/// Mutation-checked by giving `occurs` the arm `Type::Record(_fields) => false`: `loop`
+/// and `wrapped` then both type check, and `one_type_error` panics.
+#[test]
+fn a_record_cannot_hold_its_own_type() {
+    for source in [
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            loop : a -> a
+            loop r =
+              { x = r }
+        "#},
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            same : a -> a -> a
+            same x y =
+              x
+
+            wrapped r =
+              same r { x = r }
+        "#},
+    ] {
+        let error = one_type_error(source);
+        assert!(
+            matches!(&error.kind, typer::ErrorKind::CircularType { .. }),
+            "got {:?}",
+            error.kind
+        );
+    }
+}
+
 /// An access has the type of the field it reads, and a field read at another type is
 /// an error under the access, explained by the annotation the record type came from.
 ///
