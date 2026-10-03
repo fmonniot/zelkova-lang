@@ -344,8 +344,24 @@ depth r =
       x
 ```
 
-A record pattern names each label once. Repeating one is an error, reported at the repeated
-label, the shorthand included:
+A record pattern has **one or more entries**, as a record has at least one field, and a trailing
+comma is an error, as it is in a record expression. `{}` is therefore not a pattern, and neither
+is `{ x, }`:
+
+```zel expect=parse-error:UnexpectedToken
+module Example exposing (f)
+
+f {} = 1
+```
+
+```zel expect=parse-error:UnexpectedToken
+module Example exposing (f)
+
+f { x, } = 1
+```
+
+A record pattern names each label once. Repeating one is an error, whether either entry is
+written `label = pattern` or as the shorthand:
 
 ```zel expect=canonical-error:RepeatedLabel
 module Example exposing (Celsius, describe)
@@ -363,6 +379,11 @@ record's fields. The type comes from the value being matched, the same way an
 [accessor's](#the-accessor) does, and a pattern naming a label the matched type does not have is
 an error. So is a pattern matched against a value
 [whose record type nothing supplies](#a-use-does-not-decide-a-records-type).
+
+**Known gap:** the typer has no record pattern, so it leaves `describe`, `nameOf` and `depth`
+unchecked, and a pattern naming a label the matched type does not have is accepted, as is one
+matched against a value whose record type nothing supplies
+([`LANG-84`](../tickets/lang-84.md)).
 
 ## Labels are not values
 

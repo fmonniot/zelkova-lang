@@ -29,11 +29,14 @@ The rule the chapter states is therefore unenforced everywhere it applies.
 Found while writing [`docs/spec/patterns.md`](../spec/patterns.md) (`SPEC-7`).
 
 **Approach:** implement coverage over `canonical::Module`'s `case` branches. Scope it to what
-the language has: wildcard, variable, literal, tuple and constructor patterns, over a union
-type whose variants are known from the module's own types or from an imported `Interface`. A
-literal pattern never covers a type on its own, so a `case` over a numeric or character type
-needs a wildcard or a variable branch; a tuple is covered when the product of its elements'
-coverage is.
+the language has: wildcard, variable, literal, tuple, record and constructor patterns, over a
+union type whose variants are known from the module's own types or from an imported
+`Interface`. A literal pattern never covers a type on its own, so a `case` over a numeric or
+character type needs a wildcard or a variable branch; a tuple is covered when the product of
+its elements' coverage is, and a record pattern when the product of its entries' is, a field it
+does not name counting as covered
+([Records](../spec/records.md#record-patterns)). A record pattern is refutable exactly when one
+of its entries is, so nothing may treat it as irrefutable for being a record.
 
 Sequence after [LANG-17](lang-17.md): an unchecked arity would make a pattern's shape disagree
 with the constructor it names. Nested constructor patterns, the case the algorithm is hardest
