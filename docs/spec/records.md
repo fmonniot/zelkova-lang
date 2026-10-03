@@ -363,13 +363,31 @@ describe { taken, taken = t } =
 A record pattern says nothing about which record type it matches, since it names a subset of some
 record's fields. The type comes from the value being matched, the same way an
 [accessor's](#the-accessor) does, and a pattern naming a label the matched type does not have is
-an error. So is a pattern matched against a value
-[whose record type nothing supplies](#a-use-does-not-decide-a-records-type).
+an error:
 
-**Known gap:** the typer has no record pattern, so it leaves `describe`, `nameOf` and `depth`
-unchecked, and a pattern naming a label the matched type does not have is accepted, as is one
-matched against a value whose record type nothing supplies
-([`LANG-84`](../tickets/lang-84.md)).
+```zel expect=type-error:MissingField
+module Example exposing (Celsius, describe)
+
+type Celsius
+  = Celsius
+
+describe : { taken : Celsius } -> Celsius
+describe { expected } =
+  expected
+```
+
+So is a pattern matched against a value
+[whose record type nothing supplies](#a-use-does-not-decide-a-records-type):
+
+```zel expect=type-error:RecordTypeUnknown
+module Example exposing (Text)
+
+type Text
+  = Text
+
+nameOf { name } =
+  name
+```
 
 ## Labels are not values
 

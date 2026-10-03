@@ -440,11 +440,13 @@ pub enum TermKind {
 
 /// One field of a record or an update — [`TermKind::Record`], [`TermKind::Update`] and
 /// their [typed](TypedTermKind::Record) counterparts — over the term type `T` of the
-/// tree it is in.
+/// tree it is in; and, as a `Field<SubPattern>`, one entry of a
+/// [record pattern](TermPatternKind::Record).
 #[derive(Debug, Clone)]
 pub struct Field<T> {
     pub label: Name,
-    /// Where the label alone was written; the value carries its own span.
+    /// Where the label alone was written; the value carries its own span. For a record
+    /// pattern's `{ label }` shorthand the two are the same text.
     pub label_span: NodeSpan,
     pub value: T,
 }
@@ -539,10 +541,23 @@ pub enum TermPatternKind {
     /// do. [`decision_tree`] tests nothing for it, as for
     /// [`Anything`](Self::Anything), and no backend emits a tree built from one.
     Hole { args: Vec<SubPattern> },
+    /// A [record pattern](../../docs/spec/records.md#record-patterns): one entry per label
+    /// it writes, in the order written, each the label, where the label alone was written,
+    /// and the sub-pattern that field's value is matched against, at the field's type.
+    /// The `{ label }` shorthand arrives here as `label = label`.
+    ///
+    /// It names a **subset** of the record's fields, so no record type is built from
+    /// its entries: the type of the value it is matched against comes from elsewhere in
+    /// the declaration, and each entry is read against it once it is known
+    /// (`typer::FieldConstraint`). A record has one shape, so [`decision_tree`] tests
+    /// nothing for the pattern itself and goes on to each entry by a
+    /// [`Step::Field`]. It is refutable exactly when one of its entries is, and nothing
+    /// reads it as irrefutable for being a record.
+    Record { fields: Vec<Field<SubPattern>> },
 }
 
-/// A pattern written in a position inside another one — a constructor's argument or a
-/// tuple's element — and the type of the value found there.
+/// A pattern written in a position inside another one — a constructor's argument, a
+/// tuple's element or a record pattern's entry — and the type of the value found there.
 ///
 /// The position's type travels with the pattern because a sub-pattern has no scrutinee
 /// of its own to take one from: a variable written there binds a value of this type, and
@@ -580,6 +595,17 @@ impl TermPattern {
             TermPatternKind::Tuple { elements } => {
                 for element in elements.iter() {
                     element.pattern.collect_bindings(&element.tpe, bindings);
+                }
+            }
+            // At the field's type, which is the entry's own: a name bound here is not
+            // known to be of any type until the record type is, and is solved when the
+            // entry is read against it.
+            TermPatternKind::Record { fields } => {
+                for field in fields {
+                    field
+                        .value
+                        .pattern
+                        .collect_bindings(&field.value.tpe, bindings);
                 }
             }
         }
@@ -735,8 +761,8 @@ pub enum Solved {
     /// what reads it back out.
     NoBody,
     /// `value_to_term_and_annotation` could not translate the declaration into the
-    /// typer's term language — a `VarKernel` reference, or a float, string or record
-    /// pattern at any depth, whether a `case` branch or a parameter wrote it.
+    /// typer's term language — a `VarKernel` reference, or a float or string pattern at
+    /// any depth, whether a `case` branch or a parameter wrote it.
     /// Nothing about the declaration was checked.
     ///
     /// Not an [`Error`](crate::typer::Error): it is a gap in the typer rather

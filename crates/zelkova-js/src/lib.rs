@@ -294,6 +294,14 @@ pub enum Construct {
     Access,
     /// An accessor, `.label` ([`ir::TypedTermKind::Accessor`]).
     Accessor,
+    /// A record pattern, `{ label = pattern, … }` ([`ir::TermPatternKind::Record`]), in a
+    /// `case` or a parameter, at any depth. A declaration whose own type holds a record
+    /// type is refused as [`RecordType`](Self::RecordType) before its body is read; this
+    /// is the pattern in one whose type does not — matched against a union's argument, or
+    /// against a value its body computes. It is refused before the `case`'s decision
+    /// tree is built, at the outermost, leftmost record pattern's span, so no tree
+    /// holding an [`ir::Step::Field`] reaches `occurrence_expr`.
+    RecordPattern,
 }
 
 impl Construct {
@@ -307,6 +315,7 @@ impl Construct {
             Construct::Update => "a record update",
             Construct::Access => "a field access",
             Construct::Accessor => "an accessor",
+            Construct::RecordPattern => "a record pattern",
         }
     }
 }
@@ -1784,6 +1793,15 @@ impl Emitter {
             return self.unsupported(Construct::Hole, hole);
         }
 
+        // Nor is a record's representation decided, so a field step has nothing to read
+        // (`GEN-25`).
+        if let Some(record) = branches
+            .iter()
+            .find_map(|(pattern, _)| pattern_record(pattern))
+        {
+            return self.unsupported(Construct::RecordPattern, record);
+        }
+
         let declaration = self.declaration.clone().unwrap_or_else(|| Name::new(""));
         let tree = decision_tree(&scrutinee.tpe, branches, &declaration);
         let scrutinee_expr = self.expression(scrutinee);
@@ -1833,7 +1851,9 @@ impl Emitter {
                 matched,
                 default,
             } => {
-                let condition = test_condition(root, scrutinee, outcome);
+                let Some(condition) = test_condition(root, scrutinee, outcome) else {
+                    return self.unsupported(Construct::RecordPattern, NodeSpan::none());
+                };
                 let matched = self.decision(matched, root, depth + 1, form);
                 let default = self.decision(default, root, depth + 1, form);
                 format!(
@@ -1846,17 +1866,20 @@ impl Emitter {
             }
             Decision::Leaf { bindings, body } => {
                 let inner_pad = "  ".repeat(depth + 1);
-                let mut lines: Vec<String> = bindings
+                let Some(mut lines) = bindings
                     .iter()
                     .map(|binding| {
-                        format!(
+                        Some(format!(
                             "{}const {} = {};",
                             inner_pad,
                             mangle(&binding.name),
-                            occurrence_expr(root, &binding.occurrence)
-                        )
+                            occurrence_expr(root, &binding.occurrence)?
+                        ))
                     })
-                    .collect();
+                    .collect::<Option<Vec<String>>>()
+                else {
+                    return self.unsupported(Construct::RecordPattern, NodeSpan::none());
+                };
                 lines.push(format!("{}return {};", inner_pad, self.expression(body)));
                 format!("{pad}{{\n{}\n{pad}}}", lines.join("\n"), pad = pad)
             }
@@ -1877,16 +1900,16 @@ impl Emitter {
 /// `Bool`'s constructors never reach here, since `typer::translate_pattern` turns
 /// `True`/`False` into an [`Outcome::Literal`] — and a literal by the value itself,
 /// which is also how a `case` on a `Bool` tests it (see this module's doc comment,
-/// "Representations").
-fn test_condition(root: &str, occurrence: &Occurrence, outcome: &Outcome) -> String {
-    let value = occurrence_expr(root, occurrence);
+/// "Representations"). `None` where [`occurrence_expr`] is.
+fn test_condition(root: &str, occurrence: &Occurrence, outcome: &Outcome) -> Option<String> {
+    let value = occurrence_expr(root, occurrence)?;
 
-    match outcome {
+    Some(match outcome {
         Outcome::Literal(LiteralValue::Bool(b)) => format!("{} === {}", value, b),
         Outcome::Literal(LiteralValue::Int(i)) => format!("{} === {}n", value, i),
         Outcome::Literal(LiteralValue::Char(c)) => format!("{} === {}", value, char_literal(*c)),
         Outcome::Constructor(ctor) => format!("{}.$ === \"{}\"", value, ctor.name.as_str()),
-    }
+    })
 }
 
 /// The JavaScript expression reading the value at `occurrence` off `root`, the name the
@@ -1894,14 +1917,21 @@ fn test_condition(root: &str, occurrence: &Occurrence, outcome: &Outcome) -> Str
 /// [`tagged`] builds an object under), a tuple element an index — the representations
 /// [A union crosses as a tagged
 /// value](../docs/spec/interop.md#a-union-crosses-as-a-tagged-value) gives them.
-fn occurrence_expr(root: &str, occurrence: &Occurrence) -> String {
+///
+/// `None` for a path through a record's field ([`Step::Field`]): this backend has no
+/// representation of a record to read one off (`GEN-25`). [`Emitter::case_expression`]
+/// refuses a `case` holding a record pattern as [`Construct::RecordPattern`] before it
+/// builds the tree, so no such path reaches here from it; a caller meeting `None` refuses
+/// the same construct rather than writing a read.
+fn occurrence_expr(root: &str, occurrence: &Occurrence) -> Option<String> {
     match occurrence {
-        Occurrence::Root => root.to_string(),
+        Occurrence::Root => Some(root.to_string()),
         Occurrence::At(base, step) => {
-            let base = occurrence_expr(root, base);
+            let base = occurrence_expr(root, base)?;
             match step {
-                Step::ConstructorArgument(index) => format!("{}.{}", base, field(*index)),
-                Step::TupleElement(index) => format!("{}[{}]", base, index),
+                Step::ConstructorArgument(index) => Some(format!("{}.{}", base, field(*index))),
+                Step::TupleElement(index) => Some(format!("{}[{}]", base, index)),
+                Step::Field(_) => None,
             }
         }
     }
@@ -1937,6 +1967,27 @@ fn pattern_hole(pattern: &ir::TermPattern) -> Option<NodeSpan> {
         ir::TermPatternKind::Tuple { elements } => elements
             .iter()
             .find_map(|element| pattern_hole(&element.pattern)),
+        ir::TermPatternKind::Record { fields } => fields
+            .iter()
+            .find_map(|field| pattern_hole(&field.value.pattern)),
+        ir::TermPatternKind::Anything
+        | ir::TermPatternKind::Bind(_)
+        | ir::TermPatternKind::Literal { .. }
+        | ir::TermPatternKind::Unit => None,
+    }
+}
+
+/// Where `pattern` holds an [`ir::TermPatternKind::Record`], at any depth, when it holds
+/// one: the outermost, leftmost one's span. See [`Construct::RecordPattern`].
+fn pattern_record(pattern: &ir::TermPattern) -> Option<NodeSpan> {
+    match &pattern.kind {
+        ir::TermPatternKind::Record { .. } => Some(pattern.span),
+        ir::TermPatternKind::Constructor { args, .. } | ir::TermPatternKind::Hole { args } => {
+            args.iter().find_map(|arg| pattern_record(&arg.pattern))
+        }
+        ir::TermPatternKind::Tuple { elements } => elements
+            .iter()
+            .find_map(|element| pattern_record(&element.pattern)),
         ir::TermPatternKind::Anything
         | ir::TermPatternKind::Bind(_)
         | ir::TermPatternKind::Literal { .. }

@@ -14,7 +14,8 @@ boundary check*, *A `case`* and *What is refused* sections of the module doc com
 admitted.
 
 **Depends on:** `LANG-51` (closed): the typer is what produces the IR, and it is what puts a
-record there. [`LANG-84`](lang-84.md) for the pattern half.
+record there. `LANG-84` (closed) for the pattern half: `ir::TermPatternKind::Record` and
+`ir::Step::Field`.
 
 **Decided:** a construct that lands after the first emitter gets a sibling `GEN-` ticket and its
 `LANG-` ticket grows no code-generation half
@@ -27,11 +28,12 @@ A field of type `()` is present, holding `undefined`
 
 **Problem:** nothing owns the emission of a record. A module holding one type checks and cannot
 be built: `zelkova_js::emit` refuses each of `TypedTermKind`'s record forms as an
-`Error::Unsupported` naming `Construct::Record`, `Update`, `Access` or `Accessor`, and a
-declaration whose own type holds a record type — a facade signature included — as
-`Construct::RecordType`. Those refusals are what this ticket replaces. A facade result reaching
-a record through a union's constructor gets as far as `Predicates::test`, which builds nothing
-for one: it answers `Unpredicated::Record`.
+`Error::Unsupported` naming `Construct::Record`, `Update`, `Access` or `Accessor`, a `case` or a
+parameter holding a record pattern as `Construct::RecordPattern`, and a declaration whose own
+type holds a record type — a facade signature included — as `Construct::RecordType`. Those
+refusals are what this ticket replaces. A facade result reaching a record through a union's
+constructor gets as far as `Predicates::test`, which builds nothing for one: it answers
+`Unpredicated::Record`.
 
 **What the result has to be:**
 
@@ -61,8 +63,9 @@ for one: it answers `Unpredicated::Record`.
    *Calls* section needs no new rule: `.name` is called one argument at a time like any other
    function value.
 
-5. **A record pattern tests nothing of its own.** `LANG-84` gives `Step` a field step;
-   `occurrence_expr` reads it as a property, and a leaf binds from it.
+5. **A record pattern tests nothing of its own.** `decision_tree` reaches each entry by a
+   `Step::Field`; `occurrence_expr` answers `None` for one today and reads it as a property
+   once this lands, and a leaf binds from it.
 
 6. **The predicate decides exactly the record's fields**: an object that is not an array and
    not `null`, whose own keys are the record's labels and no others, each field passing its own

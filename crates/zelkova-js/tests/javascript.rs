@@ -2221,37 +2221,107 @@ fn a_module_holding_a_record_is_refused() {
     );
 }
 
-/// A declaration holding a record pattern is one the typer leaves unchecked until
-/// `LANG-84`, so its module is refused, the pattern a parameter or nested in a constructor
-/// inside a tuple element, under annotations the typer can read.
+/// A declaration holding a record pattern type checks, and its module is still refused,
+/// since this backend has no representation of a record to read a field off (`GEN-25`):
+/// as `Construct::RecordType` when the declaration's own type holds the record, before its
+/// body is read, and otherwise as `Construct::RecordPattern`, at the record pattern,
+/// before the `case`'s decision tree is built — the pattern a parameter's constructor
+/// argument, nested in a tuple element, or at a branch head over a value the body
+/// computes (`make` is refused for the record it builds). Exactly one refusal each, so
+/// none reached the field step the tree would hold: that one would carry no position.
 ///
-/// Mutation-checked by translating a record pattern as `TermPatternKind::Anything` in
-/// `translate_pattern`: both declarations then check, the module emits, and `refused`
-/// panics.
+/// Mutation-checked by deleting the `pattern_record` check in `case_expression`: the
+/// three are then refused from `decision` with no position instead, and the range
+/// assertion goes red. And by giving `pattern_record` no `Tuple` arm: `nested` then has
+/// no position, and the assertion goes red.
 #[test]
 fn a_declaration_holding_a_record_pattern_is_refused() {
-    let errors = refused(indoc! {r#"
+    let source = indoc! {r#"
         module Test exposing ()
 
         type Box
-          = Box Int
+          = Box { a : Int }
 
-        parameter : Int -> Int
-        parameter { a } = 1
+        annotated : { a : Int } -> Int
+        annotated { a } = a
+
+        unboxed : Box -> Int
+        unboxed (Box { a }) = a
 
         nested : (Box, Int) -> Int
-        nested ((Box { a }), b) = b
-    "#});
+        nested ((Box { a = 1 }), b) = b
 
-    let mut names: Vec<&str> = errors
+        make : Int -> Box
+        make n =
+          Box { a = n }
+
+        computed : Int -> Int
+        computed n =
+          case make n of
+            Box { a } ->
+              a
+    "#};
+    let errors = refused(source);
+
+    let mut found: Vec<(&str, Construct, Option<std::ops::Range<usize>>)> = errors
         .iter()
         .map(|error| match error {
-            Error::Unchecked { name, .. } => name.as_str(),
-            other => panic!("expected only Unchecked refusals, got {:?}", other),
+            Error::Unsupported {
+                construct,
+                declaration,
+                span,
+            } => (declaration.as_str(), *construct, span.to_range()),
+            other => panic!("expected only Unsupported refusals, got {:?}", other),
         })
         .collect();
-    names.sort();
-    assert_eq!(names, vec!["nested", "parameter"]);
+    found.sort_by(|left, right| left.0.cmp(right.0));
+
+    let range = |context: &str, needle: &str| {
+        let start = position(source, context) + position(context, needle);
+        Some(start..start + needle.len())
+    };
+    assert_eq!(
+        found,
+        vec![
+            (
+                "annotated",
+                Construct::RecordType,
+                range(
+                    "annotated : { a : Int } -> Int\nannotated { a } = a",
+                    "annotated : { a : Int } -> Int\nannotated { a } = a"
+                )
+            ),
+            (
+                "computed",
+                Construct::RecordPattern,
+                range("Box { a } ->", "{ a }")
+            ),
+            (
+                "make",
+                Construct::Record,
+                range("Box { a = n }", "{ a = n }")
+            ),
+            (
+                "nested",
+                Construct::RecordPattern,
+                range("((Box { a = 1 }), b)", "{ a = 1 }")
+            ),
+            (
+                "unboxed",
+                Construct::RecordPattern,
+                range("unboxed (Box { a })", "{ a }")
+            ),
+        ]
+    );
+
+    let unboxed = errors
+        .iter()
+        .find(|error| matches!(error, Error::Unsupported { declaration, .. } if declaration.as_str() == "unboxed"))
+        .expect("`unboxed` is refused");
+    assert_eq!(
+        unboxed.message(),
+        "`unboxed` cannot be compiled to JavaScript yet: it uses a record pattern"
+    );
 }
 
 /// A facade signature holding a record type is refused, as a parameter or inside a
