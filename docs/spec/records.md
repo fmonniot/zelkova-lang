@@ -292,7 +292,7 @@ correct reading =
 A record pattern matches a record by naming fields. Each entry is `label = pattern`, and the
 field's value is matched against that pattern:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius, describe)
 
 type Celsius
@@ -305,9 +305,6 @@ describe reading =
       e
 ```
 
-**Not implemented:** no record production exists in the pattern grammar
-([`LANG-49`](../tickets/lang-49.md)).
-
 `{ name }` is shorthand for `{ name = name }`: the field matched against a
 [variable pattern](patterns.md#variable-patterns) of its own label.
 
@@ -316,7 +313,7 @@ bound. It is therefore [refutable](patterns.md#a-pattern-that-can-fail-and-one-t
 exactly when one of its sub-patterns is, and a pattern of shorthand entries alone can never fail
 — so one may be written where a pattern must not fail, as a parameter or in a `let` binding:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Text, nameOf)
 
 type Text
@@ -327,13 +324,11 @@ nameOf { name } =
   name
 ```
 
-**Not implemented:** [`LANG-49`](../tickets/lang-49.md).
-
 Sub-patterns are whole patterns, so record patterns [nest](patterns.md#patterns-nest) the way
 every other form does, in both directions — a record pattern inside a constructor pattern, and a
 constructor or record pattern inside a field.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius, Reading, depth)
 
 type Celsius
@@ -349,13 +344,46 @@ depth r =
       x
 ```
 
-**Not implemented:** [`LANG-49`](../tickets/lang-49.md).
+A record pattern has **one or more entries**, as a record has at least one field, and a trailing
+comma is an error, as it is in a record expression. `{}` is therefore not a pattern, and neither
+is `{ x, }`:
+
+```zel expect=parse-error:UnexpectedToken
+module Example exposing (f)
+
+f {} = 1
+```
+
+```zel expect=parse-error:UnexpectedToken
+module Example exposing (f)
+
+f { x, } = 1
+```
+
+A record pattern names each label once. Repeating one is an error, whether either entry is
+written `label = pattern` or as the shorthand:
+
+```zel expect=canonical-error:RepeatedLabel
+module Example exposing (Celsius, describe)
+
+type Celsius
+  = Celsius
+
+describe : { taken : Celsius, expected : Celsius } -> Celsius
+describe { taken, taken = t } =
+  t
+```
 
 A record pattern says nothing about which record type it matches, since it names a subset of some
 record's fields. The type comes from the value being matched, the same way an
 [accessor's](#the-accessor) does, and a pattern naming a label the matched type does not have is
 an error. So is a pattern matched against a value
 [whose record type nothing supplies](#a-use-does-not-decide-a-records-type).
+
+**Known gap:** the typer has no record pattern, so it leaves `describe`, `nameOf` and `depth`
+unchecked, and a pattern naming a label the matched type does not have is accepted, as is one
+matched against a value whose record type nothing supplies
+([`LANG-84`](../tickets/lang-84.md)).
 
 ## Labels are not values
 

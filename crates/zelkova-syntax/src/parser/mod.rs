@@ -287,8 +287,9 @@ pub enum TypeKind {
     Record(Vec<Field<Type>>),
 }
 
-/// One field of a record type, a record or an update: a label and what it was given,
-/// `label : Type` or `label = expr`.
+/// One field of a record type, a record or an update, or one entry of a record
+/// pattern: a label and what it was given, `label : Type`, `label = expr` or `label =
+/// pattern`.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Field<T> {
     pub label: Name,
@@ -773,7 +774,6 @@ pub struct Match {
 /// or as part of the `case of` syntax.
 ///
 /// ## Missing Patterns
-/// - `Record [Name]`
 /// - `Alias Pattern (Name)`
 /// - `Ctor Name [Pattern]`
 /// - `CtorQual Name Name [Pattern]`
@@ -795,6 +795,15 @@ pub enum PatternKind {
     Unit,
     Constructor(Name, Vec<Pattern>),
     Anything,
+    /// A record pattern, `{ label = pattern, … }`, its entries in the order they were
+    /// written. The grammar never builds one with no entry.
+    ///
+    /// The shorthand `{ label }` arrives here already desugared to `label = label`, a
+    /// [`Variable`](PatternKind::Variable) of the label's own name spanned at the
+    /// label, so this is the one shape a record pattern has. A pattern names a subset
+    /// of a record's fields (`docs/spec/records.md`), so the entries are not a record
+    /// type's whole set; canonicalization is where a repeated label is reported.
+    Record(Vec<Field<Pattern>>),
 }
 
 impl Pattern {

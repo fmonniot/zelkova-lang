@@ -4,24 +4,24 @@
 could make it bigger is that the constraint is not an equation: it is solved late, the way
 [`LANG-51`](lang-51.md)'s accessor is, and it is small only if that mechanism is reused.
 
-**Location:** `crates/zelkova-compiler/src/typer/mod.rs` — `translate_pattern`, whose catch-all
+**Location:** `crates/zelkova-compiler/src/typer/mod.rs` — `translate_pattern`, whose record
 arm answers `None`, and `translate_sub_pattern`; `crates/zelkova-compiler/src/typer/constraint.rs`
 — `pattern_constraints`; `crates/zelkova-compiler/src/ir/mod.rs` — `TermPatternKind`,
 `SubPattern` and `TermPattern::bindings`; `crates/zelkova-compiler/src/ir/decision.rs` —
 `Step` and `decision_tree`.
 
-**Depends on:** [`LANG-49`](lang-49.md), hard — there is no record pattern to type until the
-grammar builds one — and [`LANG-51`](lang-51.md), hard, for the record type and for the
-late-solved constraint its accessor needs.
+**Depends on:** `LANG-49` (closed), which builds the record pattern there is to type, and
+[`LANG-51`](lang-51.md), hard, for the record type and for the late-solved constraint its
+accessor needs.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decisions 5 and
 10):** a record pattern names a **subset** of a record's fields, takes its record type from the
 value being matched, is an error when it names a label that type does not have, and is an error
 when nothing supplies that type. [Records](../spec/records.md#record-patterns) is the rule.
 
-**Not implemented:** neither ticket above owns this. `LANG-49` stops at canonicalization, and
-`LANG-51` cites decisions 2, 3, 4 and 6 with no pattern among its acceptance cases. So once both
-have landed, `translate_pattern` meets a `canonical::PatternKind` it has no arm for and answers
+**Not implemented:** neither ticket above owns this. `LANG-49` stopped at canonicalization, and
+`LANG-51` cites decisions 2, 3, 4 and 6 with no pattern among its acceptance cases. So once
+`LANG-51` has landed, `translate_pattern`'s arm for `canonical::PatternKind::Record` still answers
 `None`: the declaration is left unchecked, which raises no error, and `zelkova_js::emit` refuses
 the module that holds it. A pattern naming a label the record does not have is accepted.
 
@@ -30,7 +30,7 @@ the module that holds it. A pattern naming a label the record does not have is a
 1. **`TermPatternKind` gains a record form**: one entry per label the pattern writes, each a
    label and a `SubPattern`, which already carries the type of the value found at a position.
    `TermPattern::bindings` walks the entries the way it walks a tuple's elements. The shorthand
-   needs nothing: `LANG-49` desugars `{ x }` in the grammar action.
+   needs nothing: the grammar desugars `{ x }` to `x = x`.
 
 2. **The constraint is not `own == against`.** A tuple pattern builds its whole type from its
    elements and equates it with the type it is matched against. A record pattern cannot: it
@@ -87,6 +87,9 @@ The record-pattern blocks in [Records](../spec/records.md#record-patterns) and
 typer leaves them unchecked. After this they are checked, and every one of them is annotated, so
 each stays green; one that goes red is a bug in this ticket and not a tag to change. `cargo test --workspace` is green and
 `cargo run -- compile std/core` still lists all ten modules as checked.
+
+The **Known gap:** paragraph under [Record patterns](../spec/records.md#record-patterns) in
+[Records](../spec/records.md) is deleted.
 
 **Found:** while ordering the record tickets for *Active work: records* in
 [the index](README.md). Not fixed there because that section orders tickets and writes no code.
