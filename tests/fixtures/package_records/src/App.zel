@@ -1,0 +1,22 @@
+module App exposing (main)
+
+import Records
+import Source
+import Task exposing (Task, Failure)
+
+
+ignore : Result Failure () -> ()
+ignore result =
+  case result of
+    Ok _ ->
+      ()
+
+    Err _ ->
+      ()
+
+
+{-| Builds a record, updates it and reads it through an accessor, and says what it read.
+-}
+main : Task ()
+main =
+  Task.map ignore (Source.say (Records.readX (Records.moveX 40 (Records.point 1 2))))

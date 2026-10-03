@@ -1,0 +1,175 @@
+module Records exposing (..)
+
+import Source
+
+
+type Shape
+  = Circle { centre : { x : Int, y : Int }, radius : Int }
+  | Dot { x : Int, y : Int }
+
+
+-- BUILDING AND READING
+
+point : Int -> Int -> { x : Int, y : Int }
+point a b =
+  { x = a, y = b }
+
+
+getX : { x : Int, y : Int } -> Int
+getX p =
+  p.x
+
+
+-- UPDATING
+
+moveX : Int -> { x : Int, y : Int } -> { x : Int, y : Int }
+moveX dx p =
+  { p | x = p.x + dx }
+
+
+-- The original, read after an update has been made of it.
+originalAfterUpdate : { x : Int, y : Int } -> Int
+originalAfterUpdate p =
+  case (moveX 10 p, p) of
+    (_, original) ->
+      original.x
+
+
+-- ACCESSORS
+
+apply : (a -> b) -> a -> b
+apply f a =
+  f a
+
+
+readX : { x : Int, y : Int } -> Int
+readX p =
+  apply .x p
+
+
+-- RECORD PATTERNS
+
+parameterSum : { x : Int, y : Int } -> Int
+parameterSum { x, y } =
+  x + y
+
+
+classify : { x : Int, y : Int } -> Int
+classify p =
+  case p of
+    { x = 0, y } ->
+      y
+
+    { x, y = 0 } ->
+      x * 10
+
+    { x, y } ->
+      x + y
+
+
+-- NESTED
+
+circle : Int -> Int -> Int -> Shape
+circle a b r =
+  Circle { centre = point a b, radius = r }
+
+
+centreX : { centre : { x : Int, y : Int }, radius : Int } -> Int
+centreX c =
+  c.centre.x
+
+
+nestedParameter : { centre : { x : Int, y : Int }, radius : Int } -> Int
+nestedParameter { centre = { x }, radius } =
+  x + radius
+
+
+describe : Shape -> Int
+describe shape =
+  case shape of
+    Circle { centre = { x = 0 }, radius } ->
+      radius
+
+    Circle { radius } ->
+      radius * 2
+
+    Dot { x, y } ->
+      x + y
+
+
+-- LABELS A JAVASCRIPT OBJECT HAS A MEANING FOR
+
+keyed : Int -> { class : Int, new : Int, constructor : Int, toString : Int }
+keyed n =
+  { class = n, new = n + 1, constructor = n + 2, toString = n + 3 }
+
+
+readKeyed : { class : Int, new : Int, constructor : Int, toString : Int } -> Int
+readKeyed r =
+  r.class + r.new * 10 + r.constructor * 100 + r.toString * 1000
+
+
+reachConstructor : { class : Int, new : Int, constructor : Int, toString : Int } -> Int
+reachConstructor r =
+  apply .constructor r
+
+
+replaceConstructor : { class : Int, new : Int, constructor : Int, toString : Int } -> { class : Int, new : Int, constructor : Int, toString : Int }
+replaceConstructor r =
+  { r | constructor = 90 }
+
+
+patternKeyed : { class : Int, new : Int, constructor : Int, toString : Int } -> Int
+patternKeyed { class, constructor } =
+  class * 10 + constructor
+
+
+-- THE ORDER FIELDS ARE EVALUATED IN
+
+stamped : Int -> { a : Int, b : Int }
+stamped n =
+  { b = Source.tick n, a = Source.tick n }
+
+
+base : Int -> { a : Int, b : Int, c : Int }
+base n =
+  { a = 0, b = 0, c = n }
+
+
+stampedUpdate : Int -> { a : Int, b : Int, c : Int }
+stampedUpdate n =
+  { base (Source.tick n) | b = Source.tick n, a = Source.tick n }
+
+
+-- Whether the field written first ran first: one record, one call, so the answer is what
+-- that call did and not what two calls happen to return.
+runsInOrderWritten : Int -> Bool
+runsInOrderWritten n =
+  case stamped n of
+    { a, b } ->
+      b < a
+
+
+-- Whether an update evaluated the record it updates before the fields it names.
+updateEvaluatesRecordFirst : Int -> Bool
+updateEvaluatesRecordFirst n =
+  case stampedUpdate n of
+    { b, c } ->
+      c < b
+
+
+-- Whether an update ran the fields it names in the order they were written.
+updateRunsInOrderWritten : Int -> Bool
+updateRunsInOrderWritten n =
+  case stampedUpdate n of
+    { a, b } ->
+      b < a
+
+
+-- How many calls ran between a call before an update and one after it, with the call the
+-- update's own record is built from in between: two when the record updated ran once.
+updatedOnce : Int -> Int
+updatedOnce n =
+  case (Source.tick n, ({ base (Source.tick n) | a = 1 }).c, Source.tick n) of
+    (before, _, after) ->
+      after - before
