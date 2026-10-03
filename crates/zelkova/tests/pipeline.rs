@@ -1443,14 +1443,15 @@ fn unknown_variable_labels_the_identifier() {
 /// name was written.
 ///
 /// The variable case above goes through `Expression::from_parser`; this is the other
-/// conversion, `Pattern::from_parser`, and the other grammar site — `DeclPattern`,
-/// which spans a bare constructor used as a function argument. Taking it from a
+/// conversion, `Pattern::from_parser`, and the other grammar site — `Pattern`'s
+/// nullary-constructor alternative, which spans a bare constructor used as a function
+/// argument. Taking it from a
 /// binding pattern rather than a `case` branch keeps this error out of
 /// `Error::Many`, so it pins the pattern span on its own; the grouping is
 /// `grouped_canonical_error_keeps_every_label` below.
 ///
-/// Mutation-checked two ways, each red on its own: making the `DeclPattern`
-/// `QualTypeIdent` production emit `NodeSpan::none()`, and dropping the span from
+/// Mutation-checked two ways, each red on its own: making `Pattern`'s nullary
+/// `QualTypeIdent` alternative emit `NodeSpan::none()`, and dropping the span from
 /// `canonical::Error::VariantNotFound`'s `labels` arm.
 #[test]
 fn unknown_constructor_labels_the_pattern() {
@@ -6981,8 +6982,8 @@ fn a_pattern_hole_with_a_unit_argument_is_held_to_unit() {
 
 /// A declaration that holds a hole but that the typer cannot type is `reported`: the
 /// hole's error stands behind it, though the typer walked past it rather than rejecting
-/// it. The first is `Solved::Untranslatable` (the literal argument of the unresolved
-/// constructor is refused), the second `Solved::UnboundName` (`u` has no annotation, so
+/// it. The first is `Solved::Untranslatable` (the float literal argument of the
+/// unresolved constructor is refused), the second `Solved::UnboundName` (`u` has no annotation, so
 /// the typer's environment does not hold it). A declaration the typer walks past with no
 /// hole in it stays unreported.
 ///
@@ -6996,7 +6997,7 @@ fn a_hole_the_typer_cannot_type_is_a_reported_unchecked_declaration() {
         h : Int -> Int
         h x =
           case x of
-            Nope 1 -> 1
+            Nope 1.5 -> 1
             _ -> 2
 
         u x = x

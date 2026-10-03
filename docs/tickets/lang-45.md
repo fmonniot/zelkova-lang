@@ -4,8 +4,8 @@
 change* applies — `grammar.lalrpop`, the `parser` AST and the `canonical` conversion land
 together.
 
-**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `Pattern`, `CasePattern` and
-`DeclPattern`, none of which has a bracket or a `::` alternative;
+**Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop` — `Pattern` and `CasePattern`,
+neither of which has a bracket or a `::` alternative;
 `crates/zelkova-syntax/src/parser/mod.rs`'s `PatternKind`; and `canonical`'s pattern conversion.
 
 **Depends on:** [`LANG-46`](lang-46.md), hard, for the same reason as
@@ -46,9 +46,8 @@ are the type's two constructors — which is what
 surviving canonicalization would take away.
 
 Note that `Cons first rest` is a constructor pattern *nested inside* another one for any
-literal past length one, so [`LANG-16`](lang-16.md) — a constructor pattern may not appear
-inside another pattern — is a soft prerequisite: without it `[a, b]` desugars to something the
-canonical AST cannot hold, even though it parses. `[]`, `[a]` and a single `::` do not hit it.
+literal past length one. A nested constructor pattern parses and type checks (`LANG-16`,
+closed), so `[a, b]` desugars to a pattern every later phase already handles.
 
 **Acceptance:** `[]`, `[a]`, `[_, b]`, `first :: rest` and `a :: b :: rest` all parse in a
 `case` branch, and the parenthesised forms parse in a declaration head. Tests in the parser's

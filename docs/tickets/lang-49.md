@@ -6,11 +6,10 @@ the canonical conversion land together.
 **Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop`'s pattern productions;
 `crates/zelkova-syntax/src/parser/mod.rs`'s `PatternKind`; `canonical::Pattern::from_parser_pattern`.
 
-**Depends on:** [`LANG-16`](lang-16.md), hard for the acceptance below: the first record-pattern
+**Depends on:** `LANG-16` (closed), hard for the acceptance below: the first record-pattern
 block in [Records](../spec/records.md#record-patterns) and the one in
 [Patterns](../spec/patterns.md#record-patterns) both write `{ taken = Celsius, … }`, a
-constructor as a sub-pattern, which `Pattern` has no alternative for until `LANG-16` gives it
-one — so neither block can go red before then.
+constructor as a sub-pattern, which `Pattern` admits.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decision 5):** a
 record pattern is `{ label = pattern, … }`, `{ label }` is shorthand for `{ label = label }`, and

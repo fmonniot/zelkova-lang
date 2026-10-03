@@ -900,6 +900,73 @@ fn a_case_on_a_three_constructor_union_is_nested_ifs_naming_each_tag() {
     );
 }
 
+/// A constructor nested inside another is tested where it sits: `Wrapper (Circle n)` is
+/// an `if` on the scrutinee's tag, inside it an `if` on the tag of `Wrapper`'s argument,
+/// read off the scrutinee as a field, and `n` is read two fields down. Each `if`'s
+/// `else` is the wildcard branch, its own copy of it.
+///
+/// This pins the text. That it computes the right answer when run is what a scratch
+/// package under `cargo run -- run` was used to check while writing it, not something
+/// this test can see.
+///
+/// Mutation-checked by having `decision::lower`'s `Constructor` arm push each argument
+/// at `occurrence` itself rather than at `occurrence.field(..)`: the inner test then
+/// reads `$scrutinee.$` a second time, and the text no longer matches.
+#[test]
+fn a_nested_constructor_pattern_is_an_if_inside_an_if() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (Count, Shape, Wrapper, inner)
+
+        type Count
+          = One
+          | Many
+
+        type Shape
+          = Dot
+          | Circle Count
+
+        type Wrapper
+          = Wrapper Shape
+
+        inner : Wrapper -> Count
+        inner w =
+          case w of
+            Wrapper (Circle n) ->
+              n
+
+            _ ->
+              One
+    "#});
+
+    assert!(
+        text.contains(indoc! {r#"
+            function inner(w) {
+              return (() => {
+              const $scrutinee = w;
+              if ($scrutinee.$ === "Wrapper") {
+                if ($scrutinee.a.$ === "Circle") {
+                  {
+                    const n = $scrutinee.a.a;
+                    return n;
+                  }
+                } else {
+                  {
+                    return $test_project$Test$One;
+                  }
+                }
+              } else {
+                {
+                  return $test_project$Test$One;
+                }
+              }
+            })();
+            }
+        "#}),
+        "got:\n{}",
+        text
+    );
+}
+
 /// The scrutinee is bound to `$scrutinee` once, even though the tree tests it more than
 /// once (`Red`, then `Green`, then the fall-through to `Blue`): re-emitting it at every
 /// test would call `next` once per test, evaluating it more than once — [Order of
@@ -1248,8 +1315,8 @@ fn a_failing_parameter_pattern_describes_itself_as_a_parameter_not_a_case() {
 }
 
 /// A module holding a declaration the typer could not check is refused rather than
-/// emitted without it. `helper` matches a tuple pattern nested inside another tuple
-/// pattern, which the typer does not translate.
+/// emitted without it. `helper` matches a float pattern, which the typer does not
+/// translate.
 ///
 /// Mutation-checked by starting `emit`'s errors empty instead of from `ir.unchecked`:
 /// the module is then emitted with `helper` missing.
@@ -1262,11 +1329,14 @@ fn a_declaration_with_no_ir_is_refused() {
         answer =
           1
 
-        helper : ((Int, Int), Int) -> Int
-        helper pair =
-          case pair of
-            ((a, b), c) ->
-              a
+        helper : Float -> Int
+        helper x =
+          case x of
+            1.5 ->
+              1
+
+            _ ->
+              0
     "#});
 
     // `NodeSpan`'s equality ignores the span, so this compares the variant and the name.

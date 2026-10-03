@@ -53,9 +53,9 @@ instance Eq a => Eq (Box a) where
 **`class` and `instance` cannot be soft keywords.** The soft ones — `left`, `right`, `non`,
 `foreign`, `unsafe` — work because each sits where one token of context says which reading is
 meant, so the grammar can re-admit them as identifiers (`PlainVarIdent`, `VarIdent`). `class`
-would sit at the *start* of a declaration, where `FunBinding` also starts, and `DeclPattern` can
-begin with an uppercase name. On lookahead `up_ident` the parser can neither reduce `"class"` to
-a name nor shift it as a keyword. Both become hard keywords, and `class : Int` / `instance = 1`
+would sit at the *start* of a declaration, where `FunBinding` also starts, and a parameter's
+`Pattern` can begin with an uppercase name. On lookahead `up_ident` the parser can neither
+reduce `"class"` to a name nor shift it as a keyword. Both become hard keywords, and `class : Int` / `instance = 1`
 stop compiling — both compile on `main`, which the chapter's `expect=ok` block under *The words
 this reserves* pins.
 
@@ -74,7 +74,7 @@ instance Comparable Colour where
 ```
 
 `instance` is read as a function name and `Comparable`, `Colour`, `where`, `compare`, `a` and `b`
-as its parameters, because `DeclPattern` admits a bare `QualTypeIdent` as a nullary constructor
+as its parameters, because `Pattern` admits a bare `QualTypeIdent` as a nullary constructor
 pattern. So the failure mode for someone writing an instance before this ticket lands is not a
 syntax error they can act on — it is a different program that happens to compile whenever the
 names resolve. That is the sharpest argument for reserving both words.
