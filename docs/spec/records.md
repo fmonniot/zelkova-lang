@@ -13,7 +13,7 @@ union type behind bracket syntax; a record is a form of its own in each of the t
 
 A record type is a brace-enclosed, comma-separated list of `label : Type` fields.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius, reading)
 
 type Celsius
@@ -24,16 +24,24 @@ reading =
   { taken = Celsius, expected = Celsius }
 ```
 
-**Not implemented:** no production consumes a record in a type or an expression, so the parser
-stops at the `{` ([`LANG-48`](../tickets/lang-48.md)).
-
 A label is a lowercase-initial identifier, spelled the way a
 [value name](lexical-structure.md#identifiers) is. A field's type is any
 [type expression](types.md#the-forms-of-a-type-expression), so a field may hold a function, a
 tuple, a type variable or another record, and a record type may itself be written wherever a
 type expression may.
 
-Repeating a label in one record type is an error.
+Repeating a label in one record type is an error, reported at the repeated label:
+
+```zel expect=canonical-error:RepeatedLabel
+module Example exposing (Celsius, first)
+
+type Celsius
+  = Celsius
+
+first : { taken : Celsius, taken : Celsius } -> Celsius
+first reading =
+  Celsius
+```
 
 A record has **at least one field**. `{}` is neither a type nor an expression: the
 [unit type](types.md#the-unit-type) already names the type with a single value.
@@ -43,7 +51,7 @@ itself**. There is no name in `{ value : Int, next : … }` for the `next` field
 recursive shape goes through a `type` declaration, which introduces the name the recursion turns
 on, and the record sits inside a variant:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Chain)
 
 type Chain
@@ -51,31 +59,29 @@ type Chain
   | Link { value : Chain, next : Chain }
 ```
 
-**Not implemented:** the same ([`LANG-48`](../tickets/lang-48.md)).
-
 ## A record type is a set of fields
 
 Two record types are the same type when they carry the **same labels with the same field types**.
 Field order is not part of a record type, so the two annotations below name one type and either
 declaration satisfies either annotation.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius, swapped)
 
 type Celsius
   = Celsius
 
-taken : { at : Celsius, of : Celsius }
+taken : { low : Celsius, high : Celsius }
 taken =
-  { at = Celsius, of = Celsius }
+  { low = Celsius, high = Celsius }
 
-swapped : { of : Celsius, at : Celsius }
+swapped : { high : Celsius, low : Celsius }
 swapped =
   taken
 ```
 
-**Not implemented:** no production consumes a record ([`LANG-48`](../tickets/lang-48.md)), and
-the typer has no record type to compare field sets of ([`LANG-51`](../tickets/lang-51.md)).
+**Known gap:** the typer has no record type, so it leaves both declarations unchecked and the
+block is accepted without the two field sets being compared ([`LANG-51`](../tickets/lang-51.md)).
 
 This makes a record type **structural**: it is described entirely by what it holds. Two modules
 that separately annotate `{ x : Int, y : Int }` have written one type, and a value of it crosses
@@ -107,7 +113,7 @@ A record expression is a brace-enclosed, comma-separated list of `label = expres
 its type is the record type its labels and its values' types spell out. Every field of the type
 is given a value.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius)
 
 type Celsius
@@ -117,14 +123,22 @@ reading =
   { taken = Celsius, expected = Celsius }
 ```
 
-**Not implemented:** [`LANG-48`](../tickets/lang-48.md).
-
 Each field's value is an ordinary expression, so anything an expression may be a field may hold.
-Repeating a label is an error here too.
+Repeating a label is an error here too, as it is in an [update](#updating-a-record):
+
+```zel expect=canonical-error:RepeatedLabel
+module Example exposing (Celsius)
+
+type Celsius
+  = Celsius
+
+reading =
+  { taken = Celsius, expected = Celsius, taken = Celsius }
+```
 
 A record may be written across several lines with the separator leading each line:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius)
 
 type Celsius
@@ -136,8 +150,6 @@ reading =
   }
 ```
 
-**Not implemented:** [`LANG-48`](../tickets/lang-48.md).
-
 A trailing comma is an error, following the [variant list](types.md#a-variant-list-has-at-least-one-variant)
 and the [list literal](lists.md#list-literals) rather than the
 [`exposing` list](modules.md#the-exposing-list). The leading-comma layout above already buys what
@@ -148,10 +160,6 @@ module Example exposing (f)
 
 f = { a = 1, }
 ```
-
-**Not implemented:** that block is rejected at the `{`, which no production consumes yet
-([`LANG-48`](../tickets/lang-48.md)), so it does not yet distinguish the rule it illustrates from
-the missing production around it.
 
 ## Reading a field
 
@@ -169,9 +177,8 @@ nameOf person =
   person.name
 ```
 
-**Not implemented:** no production consumes a record type ([`LANG-48`](../tickets/lang-48.md)),
-and `.` is punctuation for a qualified name, so the grammar rejects `person.name` at the `.`
-([`LANG-50`](../tickets/lang-50.md)).
+**Not implemented:** `.` is punctuation for a qualified name, so the grammar rejects
+`person.name` at the `.` ([`LANG-50`](../tickets/lang-50.md)).
 
 Access binds tighter than [application](expressions.md#application), so `f r.name` is
 `f (r.name)`. It chains left to right: `r.centre.x` is `(r.centre).x`.
@@ -232,7 +239,7 @@ f =
 the value it had, and the result is a new record: [evaluation](evaluation-semantics.md) has no
 mutation in it.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius, correct)
 
 type Celsius
@@ -243,13 +250,11 @@ correct reading =
   { reading | taken = Celsius }
 ```
 
-**Not implemented:** [`LANG-48`](../tickets/lang-48.md).
-
 An update **has the type of the record it updates**. Each label it names must already be a field
 of that type, and each value must have the type that field already has. An update can therefore
 neither add a field, remove one, nor change one's type.
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius, added)
 
 type Celsius
@@ -260,11 +265,25 @@ added reading =
   { reading | expected = Celsius }
 ```
 
-**Not implemented:** rejected at the brace today ([`LANG-48`](../tickets/lang-48.md)); the rule
-that rejects it is the typer's ([`LANG-51`](../tickets/lang-51.md)).
+**Known gap:** that block should be rejected and is accepted. The rule that rejects it is the
+typer's, which has no record type and leaves `added` unchecked
+([`LANG-51`](../tickets/lang-51.md)).
 
 The expression left of the `|` is an ordinary expression rather than a name, so
 `{ f x | taken = Celsius }` updates whatever `f x` returns.
+
+An update names each label once. Repeating one is an error, reported at the repeated label:
+
+```zel expect=canonical-error:RepeatedLabel
+module Example exposing (Celsius, correct)
+
+type Celsius
+  = Celsius
+
+correct : { taken : Celsius } -> { taken : Celsius }
+correct reading =
+  { reading | taken = Celsius, taken = Celsius }
+```
 
 ## Record patterns
 
@@ -348,7 +367,7 @@ scope. A label is never imported, exposed or shadowed — an `exposing` list hol
 and no declaration ever introduced a label. A value and a field of one spelling have nothing to
 do with each other:
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing (Celsius, x)
 
 type Celsius
@@ -360,8 +379,6 @@ x = Celsius
 origin =
   { x = Celsius }
 ```
-
-**Not implemented:** [`LANG-48`](../tickets/lang-48.md).
 
 The shorthand pattern is where the two namespaces meet, in one direction only: `{ x }` reads the
 label `x` and binds the **value** `x`, which then shadows an outer value of that name like any
@@ -386,7 +403,7 @@ greet person =
   person.name
 ```
 
-**Not implemented:** [`LANG-48`](../tickets/lang-48.md), [`LANG-50`](../tickets/lang-50.md).
+**Not implemented:** [`LANG-50`](../tickets/lang-50.md).
 
 Opening records up means a variable standing for "the rest of the fields", a second kind of thing
 a type variable may be: today [a type variable stands for a type](types.md#type-variables) and

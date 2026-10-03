@@ -21,11 +21,13 @@
 //!   [`typer::type_check`] raises no error for a declaration whose function head holds
 //!   a constructor or tuple pattern, one that names a constructor of a union this
 //!   module does not declare, one whose body uses an expression form its term language
-//!   does not model, one that hits an `ErrorKind::UnboundVariable` — every reference to
-//!   another module's value does — or any `binding_foreign` module whole. It marks each
-//!   of those in the types it returns — an `ir::Solved` that is not `Typed` — and
-//!   this harness reads only the errors, so the distinction does not reach a verdict.
-//!   Across `docs/spec/` that is roughly one declaration in ten, so a green
+//!   does not model, one holding a record type, a record or an update, one that refers
+//!   to a value or constructor whose type holds a record, one that hits an
+//!   `ErrorKind::UnboundVariable` — every reference to another module's value does — or
+//!   any `binding_foreign` module whole. It marks each of those in the types it returns —
+//!   an `ir::Solved` that is not `Typed` — and this harness reads only the errors, so the
+//!   distinction does not reach a verdict. Across `docs/spec/` that is roughly one
+//!   declaration in seven, so a green
 //!   `expect=ok` block may still hold an annotation its body contradicts —
 //!   `docs/spec/conventions.md`'s row carries the same caveat for chapter authors.
 //!   Exhaustiveness is not run at all — it is a stub that accepts every module.
@@ -398,6 +400,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             InvalidVariant(..) => vec!["InvalidVariant"],
             InvalidScalarDeclaration(..) => vec!["InvalidScalarDeclaration"],
             InvalidConstraint(..) => vec!["InvalidConstraint"],
+            RepeatedLabel(..) => vec!["RepeatedLabel"],
             SelfDependency(..) => vec!["SelfDependency"],
         }
     }
@@ -1883,7 +1886,7 @@ fn unimplemented_block_that_compiles_is_a_failure() {
 /// red the moment its construct parsed and canonicalized; it now stays green if the
 /// block is rejected anywhere, including for a type error unrelated to the feature the
 /// chapter says is missing. `BUG-26` was an example of such an incidental error, and
-/// the day `LANG-48` lands a `records.md` block carrying one would stay green as
+/// the day `LANG-48` landed a `records.md` block carrying one would have stayed green as
 /// `unimplemented` instead of announcing that records arrived.
 ///
 /// It is still the right reading: `expect=ok` now means "and type checks", so the tag

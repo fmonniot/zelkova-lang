@@ -681,9 +681,10 @@ pub enum Solved {
     /// what reads it back out.
     NoBody,
     /// `value_to_term_and_annotation` could not translate the declaration into the
-    /// typer's term language — a `VarKernel` reference, a float pattern, or a pattern
+    /// typer's term language — a `VarKernel` reference, a float pattern, a pattern
     /// nested inside a constructor or tuple pattern, whether a `case` branch or a
-    /// parameter wrote it. Nothing about the declaration was checked.
+    /// parameter wrote it, or a record type, a record or an update, in the annotation or
+    /// the body. Nothing about the declaration was checked.
     ///
     /// Not an [`Error`](crate::typer::Error): it is a gap in the typer rather
     /// than a mistake in the source. What it wants is a warning, which the compiler does not have yet (`ERR-8`, see
@@ -700,9 +701,10 @@ pub enum Solved {
     /// Inference reached a name the typer's environment does not hold, and nothing
     /// about the declaration was checked.
     ///
-    /// That environment holds a declared type for every value in reach that has one:
-    /// the values and constructors every imported interface exposes, and this module's
-    /// own constructors and annotated declarations. A declaration of this module
+    /// That environment holds a declared type for every value in reach that has one the
+    /// typer can represent, which a type holding a record is not: the values and
+    /// constructors every imported interface exposes, and this module's own
+    /// constructors and annotated declarations. A declaration of this module
     /// written without an annotation has no declared type, and a name reaching one
     /// lands here. That is not a mistake in the source, which is why this is not an
     /// [`Error`](crate::typer::Error) either. A name that genuinely does not
@@ -911,8 +913,12 @@ fn peel(term: TypedTerm, arity: usize) -> (Vec<TypeBinder>, TypedTerm) {
 /// constant](../../docs/spec/interop.md#facade-constants). That is the count a module
 /// importing the facade reads from its interface too.
 ///
-/// `None` is a facade declaration carrying no annotation, which nothing produces today —
-/// a facade's declarations are signatures — and which would have no type to emit against.
+/// `None` is a signature whose type the typer cannot read, and the only one it cannot is
+/// one holding a record type: `typer::canonical_type_to_typer_type` answers
+/// `None` for it, the typer having no record type. A declaration carrying no annotation
+/// also answers `None`, which nothing produces today — a facade's declarations are
+/// signatures. `build` records either as an [`Unchecked`] with `reported: false`, since
+/// no error stands behind it.
 fn facade_signature(value: &canonical::Value, counter: &mut u32) -> Option<Type> {
     match value {
         canonical::Value::Value { .. } => None,

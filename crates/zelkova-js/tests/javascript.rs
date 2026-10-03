@@ -1536,6 +1536,45 @@ fn a_union_holding_a_function_has_no_predicate() {
     assert_eq!(errors, vec![refusal("first"), refusal("second")]);
 }
 
+/// A facade signature that names no record itself can still lead its result's predicate
+/// to one, through the argument of a union's constructor: `ir::build` reads the facade's
+/// signature, which is `Int -> Shape`, without trouble, so it is a declaration, and
+/// `Predicates` then walks `Shape`'s constructor into the record. That is refused as
+/// `NoPredicate`, naming the constructor, rather than emitted with a predicate for a type
+/// this backend has no representation of.
+///
+/// Mutation-checked by making the `Type::Record` arm of `Predicates::test` answer
+/// `Ok("true".to_string())`: the facade then emits and `expect_err` fails.
+#[test]
+fn a_union_holding_a_record_has_no_predicate() {
+    let errors = facade_across(
+        indoc! {r#"
+            module Shape exposing (Shape(..))
+
+            type Shape
+              = Box { x : Int }
+        "#},
+        indoc! {r#"
+            module foreign Test exposing (f)
+
+            import Shape exposing (Shape)
+
+            unsafe f : Int -> Shape
+        "#},
+    )
+    .expect_err("expected the facade to be refused");
+
+    assert_eq!(
+        errors,
+        vec![Error::NoPredicate {
+            name: Name::new("f"),
+            span: NodeSpan::none(),
+            found: Unpredicated::Record,
+            constructor: Some(test_qual("Shape.Box")),
+        }]
+    );
+}
+
 /// The text an effectful facade `source` emits as, with `Task`, `Failure` and `Result` in
 /// the build.
 fn emitted_effectful(source: &str) -> String {
@@ -2024,4 +2063,61 @@ fn a_case_matching_a_pattern_hole_is_refused() {
             other => panic!("expected one refused hole, got {:?}", other),
         },
     }
+}
+
+/// A declaration holding a record is one the typer leaves unchecked until `LANG-51`, so
+/// its module is refused: a record, and a record type in an annotation over a body the
+/// typer could otherwise check.
+///
+/// Mutation-checked by restoring `value_to_term_and_annotation`'s `.map` over the
+/// annotation: `annotated` then checks against no annotation and emits.
+#[test]
+fn a_declaration_holding_a_record_is_refused() {
+    let errors = refused(indoc! {r#"
+        module Test exposing ()
+
+        annotated : { a : Int } -> Int
+        annotated r = 1
+
+        built x =
+          { a = x }
+    "#});
+
+    let mut names: Vec<&str> = errors
+        .iter()
+        .map(|error| match error {
+            Error::Unchecked { name, .. } => name.as_str(),
+            other => panic!("expected only Unchecked refusals, got {:?}", other),
+        })
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["annotated", "built"]);
+}
+
+/// A facade signature holding a record type is refused, as a parameter or inside a
+/// result: canonicalization admits a record of admitted fields, but `ir::build` reads a
+/// facade's type through the typer's, which has no record type until `LANG-51`, so the
+/// signature is a declaration the typer could not check.
+///
+/// Mutation-checked by making `canonical_type_to_typer_type` read a record type as `()`:
+/// `ir::build` then reads both signatures, `take` emits and `point` is refused as
+/// `NoPredicate` instead, and the match panics.
+#[test]
+fn a_facade_signature_holding_a_record_is_refused() {
+    let errors = refused(indoc! {r#"
+        module foreign Test exposing (point, take)
+
+        unsafe point : Int -> (Int, { x : Int })
+        unsafe take : { x : Int } -> Int
+    "#});
+
+    let mut names: Vec<&str> = errors
+        .iter()
+        .map(|error| match error {
+            Error::Unchecked { name, .. } => name.as_str(),
+            other => panic!("expected only Unchecked refusals, got {:?}", other),
+        })
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["point", "take"]);
 }

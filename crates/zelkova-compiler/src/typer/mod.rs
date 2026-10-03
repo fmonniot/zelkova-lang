@@ -953,12 +953,15 @@ fn constructors_of(unions: &Unions) -> HashMap<QualName, Constructor> {
 }
 
 /// Convert a canonical type to the typer's simplified Type representation.
-/// The match covers all five `canonical::Type` variants — `Variable`, `Arrow`, `Tuple`
-/// (either arity), `Unit`, and `Type` including named types with parameters — and every arm's
-/// own base case returns `Some`; a `None` only ever arises by propagating up from a
-/// nested recursive call. As of today no `canonical::Type` shape actually reaches such
-/// a case, so the function always returns `Some`. The `Option` return stays in place for
-/// when a genuinely unrepresentable variant (e.g. records, aliases) is added.
+///
+/// `None` exactly when `tpe` is or holds a [`canonical::Type::Record`]: the typer has no
+/// record type ([`LANG-51`](../../docs/tickets/lang-51.md)). Every other variant —
+/// `Variable`, `Arrow`, `Tuple` (either arity), `Unit`, and `Type` including named types
+/// with parameters — converts, so `None` otherwise only propagates up from a nested
+/// record. A declaration whose annotation is `None` here is left unchecked
+/// ([`value_to_term_and_annotation`]), and a value or a constructor whose declared type
+/// is `None` is not in the environment inference reads, so a name reaching one is
+/// [`Solved::UnboundName`].
 ///
 /// `var_map` maps named type variables (e.g. "a") to consistent TypeVariable
 /// ids, so that `a -> a` produces the same variable on both sides.
@@ -1008,6 +1011,8 @@ pub(crate) fn canonical_type_to_typer_type(
             Some(Type::Tuple(elements))
         }
         canonical::Type::Unit => Some(Type::Unit),
+        // The typer has no record type until `LANG-51`.
+        canonical::Type::Record(_) => None,
         canonical::Type::Type(name, args) => {
             if args.is_empty() {
                 if let Some(literal) = scalar_literal(name) {
@@ -1066,8 +1071,9 @@ pub(super) fn bool_type() -> Type {
 /// Convert a canonical expression to a Term, keeping the position it was written at.
 ///
 /// Returns None for constructs the inference engine doesn't yet handle (a `VarKernel`
-/// reference, complex patterns inside a `Case`), and for a constructor of a union
-/// neither this module nor an interface in [`Translation`] declares.
+/// reference, complex patterns inside a `Case`, a record or an update), and for a
+/// constructor of a union neither this module nor an interface in [`Translation`]
+/// declares.
 ///
 /// Every arm attaches `expr.span` to the term it builds. That is the whole of what
 /// `ERR-4` needed from this function: a constraint can only point at a
@@ -1204,6 +1210,11 @@ fn canonical_expr_to_term(
         // A name that did not resolve. Its error is canonicalization's, and the term
         // stands where the name was written so the rest of the body is still checked.
         canonical::ExpressionKind::Hole => TermKind::Hole,
+        // The term language has no record until `LANG-51`, so a declaration holding one
+        // is left unchecked.
+        canonical::ExpressionKind::Record(_) | canonical::ExpressionKind::Update(..) => {
+            return None
+        }
         // Not yet supported: VarKernel
         _ => return None,
     };
@@ -1422,7 +1433,9 @@ struct Annotation {
 /// Convert a canonical Value into a (Term, optional annotation) pair.
 /// The body is wrapped in nested Fun nodes for each parameter — see
 /// [`wrap_with_patterns`].
-/// Returns None if any part of the value cannot be translated.
+/// Returns None if any part of the value cannot be translated, its annotation included:
+/// a body checked without the annotation it was written with would be checked against
+/// less than the source says, and pass where the annotation should have failed it.
 fn value_to_term_and_annotation(
     value: &canonical::Value,
     translation: &Translation,
@@ -1445,12 +1458,11 @@ fn value_to_term_and_annotation(
             let pattern_iter = patterns.iter().map(|(p, _)| p);
             let term = wrap_with_patterns(pattern_iter, body_term, translation, counter)?;
             let mut var_map = HashMap::new();
-            let annotation =
-                canonical_type_to_typer_type(tpe, &mut var_map, counter).map(|tpe| Annotation {
-                    tpe,
-                    span: *annotation_span,
-                });
-            Some((term, annotation))
+            let annotation = Annotation {
+                tpe: canonical_type_to_typer_type(tpe, &mut var_map, counter)?,
+                span: *annotation_span,
+            };
+            Some((term, Some(annotation)))
         }
     }
 }

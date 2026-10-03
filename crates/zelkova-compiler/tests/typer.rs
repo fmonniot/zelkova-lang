@@ -1791,3 +1791,42 @@ fn outside_core_the_task_constructor_and_done_cannot_be_named() {
         }
     }
 }
+
+/// The typer has no record type until `LANG-51`, so a declaration holding a record — in
+/// its annotation, in its body as a record, or as an update — is left unchecked and says
+/// so, and raises no error.
+///
+/// `annotated` holds a record in its annotation alone, and its body is one the typer
+/// can check. Leaving it unchecked is what keeps the emitter from compiling a body that
+/// was never held to the type it was written with.
+///
+/// Mutation-checked by restoring `value_to_term_and_annotation`'s `.map` over the
+/// annotation, which checked the body with no annotation when the annotation did not
+/// translate: `annotated` then comes back typed and its assertion goes red.
+#[test]
+fn a_declaration_holding_a_record_is_left_unchecked() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        annotated : { a : Int } -> Int
+        annotated r = 1
+
+        built x =
+          { a = x }
+
+        updated r =
+          { r | a = 1 }
+    "#});
+
+    for name in ["annotated", "built", "updated"] {
+        assert!(
+            matches!(
+                solved.get(&Name::new(name)),
+                Some(Solved::Untranslatable { .. })
+            ),
+            "expected `{}` to be marked untranslatable, got {:?}",
+            name,
+            solved.get(&Name::new(name))
+        );
+    }
+}

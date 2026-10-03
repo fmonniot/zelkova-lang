@@ -549,16 +549,16 @@ module Example exposing (f)
 f = [1, 2]
 ```
 
-```zel expect=unimplemented
+```zel expect=ok
 module Example exposing ()
 
 f = { a = 1 }
 ```
 
-**Not implemented:** lists and records are part of the language and neither is implemented.
-Brackets and braces are tokenized but no construct consumes them
-([`LANG-44`](../tickets/lang-44.md), [`LANG-45`](../tickets/lang-45.md) for brackets;
-[`LANG-48`](../tickets/lang-48.md), [`LANG-49`](../tickets/lang-49.md) for braces).
+**Not implemented:** lists are part of the language and are not implemented. Brackets are
+tokenized but no construct consumes them ([`LANG-44`](../tickets/lang-44.md),
+[`LANG-45`](../tickets/lang-45.md)), and no pattern consumes a brace
+([`LANG-49`](../tickets/lang-49.md)).
 [Lists](lists.md) and [Records](records.md) specify their syntax; what this section fixes is
 that the characters are spoken for, and so unavailable as operator characters.
 

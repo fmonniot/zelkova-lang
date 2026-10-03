@@ -232,34 +232,3 @@ test_parse_ok!(
         )),
     ))
 );
-
-/// A brace reaches the grammar as a token: `f = { a = 1 }` is rejected by the parser, at
-/// the `{`, and not by the tokenizer as a character it does not know. No production
-/// consumes a brace yet, so the grammar is where this stops.
-///
-/// Verified to fail by deleting the `'{'` arm that emits `Token::LBrace` from the
-/// tokenizer's `consume_char`: the source is then rejected as `Error::Tokenizer` and
-/// this match falls through to its panic.
-#[test]
-fn a_brace_is_rejected_by_the_grammar_and_not_the_tokenizer() {
-    use codespan_reporting::files::SimpleFile;
-    use zelkova_syntax::parser;
-    use zelkova_syntax::parser::tokenizer::Token;
-
-    let source = indoc::indoc! {r#"
-    module Example exposing (f)
-
-    f = { a = 1 }
-    "#}
-    .to_string();
-    let file = SimpleFile::new("a_brace_is_rejected".to_owned(), source);
-
-    match parser::parse(&file).expect_err("no production consumes a brace") {
-        parser::Error::UnexpectedToken { token, .. } => {
-            assert_eq!(token.value, Token::LBrace);
-            // `f = {` — the `{` is the byte after `module Example exposing (f)\n\nf = `.
-            assert_eq!(token.span.start.0, 33);
-        }
-        other => panic!("expected UnexpectedToken at `{{`, got {:?}", other),
-    }
-}

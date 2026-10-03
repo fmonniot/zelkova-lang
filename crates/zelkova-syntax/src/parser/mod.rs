@@ -243,6 +243,36 @@ pub enum TypeKind {
     Tuple(Tuple<Type>),
     /// The unit type, `()`. Not a tuple: [`Tuple`] has no arity of zero.
     Unit,
+    /// A record type, `{ label : Type, … }`, its fields in the order they were
+    /// written. The grammar never builds one with no field.
+    ///
+    /// The order means nothing — a record type is a set of fields
+    /// (`docs/spec/records.md`) — and it is kept only because this is the source as
+    /// written: canonicalization is where the list becomes a set and where a repeated
+    /// label is reported.
+    Record(Vec<Field<Type>>),
+}
+
+/// One field of a record type, a record or an update: a label and what it was given,
+/// `label : Type` or `label = expr`.
+#[derive(Debug, PartialEq, Clone)]
+pub struct Field<T> {
+    pub label: Name,
+    /// Where the label alone was written. A diagnostic about the label — a repeated
+    /// one — points here, and the value carries a span of its own.
+    pub label_span: NodeSpan,
+    pub value: T,
+}
+
+impl<T> Field<T> {
+    /// A field the parser built, its label at `label_span`.
+    pub fn new(label: Name, label_span: NodeSpan, value: T) -> Field<T> {
+        Field {
+            label,
+            label_span,
+            value,
+        }
+    }
 }
 
 impl Type {
@@ -784,6 +814,17 @@ pub enum ExpressionKind {
     /// once it has resolved every operator through the infix environment. See
     /// `canonical::Expression::from_parser`'s `InfixChain` arm.
     InfixChain(Box<Expression>, Vec<(Name, NodeSpan, Expression)>),
+    /// A record, `{ label = expr, … }`. The grammar never builds one with no field.
+    ///
+    /// The fields stay in the order they were written, here and in the canonical
+    /// AST. Unlike a record type's, that order means something: each field is a
+    /// subexpression, and subexpressions are evaluated left to right
+    /// (`docs/spec/evaluation-semantics.md`).
+    Record(Vec<Field<Expression>>),
+    /// An update, `{ expr | label = expr, … }`: the record `expr` evaluates to, with
+    /// the named fields replaced. The fields keep their written order, as a
+    /// [`Record`](ExpressionKind::Record)'s do.
+    Update(Box<Expression>, Vec<Field<Expression>>),
 }
 
 impl Expression {

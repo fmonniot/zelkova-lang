@@ -140,9 +140,11 @@ returning a list of a thousand tuples checks a thousand tuples on the way out, o
 crossing; the same facade on a WebAssembly target checks nothing at the call, because the
 interface was checked when the component loaded.
 
-**Not implemented:** records have no production ([`LANG-48`](../tickets/lang-48.md)) and lists
-no literal production ([`LANG-44`](../tickets/lang-44.md)) — so two of those rows are about types
-a program cannot write today. Both constructs are specified, in [Records](records.md) and [Lists](lists.md), and
+**Not implemented:** lists have no literal production ([`LANG-44`](../tickets/lang-44.md)), so
+that row is about a type a program cannot write today. A facade signature naming a record is
+refused when its module is compiled to JavaScript: the type checker has no record type
+([`LANG-51`](../tickets/lang-51.md)) and no predicate is built for one
+([`GEN-25`](../tickets/gen-25.md)). Both constructs are specified, in [Records](records.md) and [Lists](lists.md), and
 neither chapter publishes an encoding: what a record and a list look like across either boundary
 belongs to code generation. Nothing reads a WIT interface either, since no WebAssembly is
 produced ([`GEN-15`](../tickets/gen-15.md)).

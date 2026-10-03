@@ -170,8 +170,8 @@ declarations it is about, and not closed by it.
 
 ## Active work: records
 
-Six tickets remain of one body of work — `LANG-48` through `LANG-51`, `LANG-84` and `GEN-25` —
-and a seventh, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
+Five tickets remain of one body of work — `LANG-49` through `LANG-51`, `LANG-84` and `GEN-25` —
+and a sixth, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
 parts can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says which part
 is which by position and stops at three.
 
@@ -191,18 +191,17 @@ choosing again. The reason is in the doc comment on `consume_operator` in
 `crates/zelkova-syntax/src/parser/tokenizer.rs`. Anything else that looks like a decision is a gap
 to report, not to fill.
 
-They land in this order, one at a time:
+`LANG-48` has landed: a record type, a record and an update parse and reach the canonical
+module, the type as a set of fields, and a repeated label is reported as
+`canonical::Error::RepeatedLabel`. Until `LANG-51` a declaration holding a record is one the typer
+leaves unchecked, so the emitter refuses its module.
+
+The rest land in this order, one at a time:
 
 ```
-LANG-48  a record type, a record and an update parse, and reach the
-  │      canonical module as a set of fields
-  │      ← a repeated label is reported from here on. Until LANG-51 a
-  │        declaration holding a record is one the typer leaves
-  │        unchecked, so the emitter refuses its module
-  │
 LANG-50  `r.name` and `.name` parse
-  │      ← needs LANG-48 before the chapter's blocks turn: each
-  │        annotates with a record type
+  │      ← each of the chapter's blocks annotates with a record type,
+  │        which parses
   │
 LANG-16  a pattern nests, and is type checked where it does
   │      ← not a record ticket. Here because the first record-pattern
@@ -211,7 +210,7 @@ LANG-16  a pattern nests, and is type checked where it does
   │        typer's refusal of a nested pattern, which LANG-84 relies on
   │
 LANG-49  a record pattern parses, the `{ x }` shorthand included
-  │      ← needs LANG-48 for how a repeated label is reported
+  │      ← reports a repeated label the way the other three forms do
   │
 LANG-51  the typer has a record type: a field, an update and an
   │      accessor are checked
@@ -400,7 +399,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-45](lang-45.md) | task | — | open | There is no list pattern, so neither `[]` nor `first :: rest` can be matched |
 | [LANG-46](lang-46.md) | task | — | open | `std/core` declares `List`, opaquely, with `(::)` over it |
 | LANG-47 | task | — | closed 2026-10-02 | `{` and `}` are not tokens, so nothing in a record reaches the grammar |
-| [LANG-48](lang-48.md) | task | — | open | There is no record production, so a record type, a record and an update do not parse |
+| LANG-48 | task | — | closed 2026-10-02 | There is no record production, so a record type, a record and an update do not parse |
 | [LANG-49](lang-49.md) | task | — | open | There is no record pattern production |
 | [LANG-50](lang-50.md) | task | — | open | Field access `r.name` and the accessor `.name` do not parse |
 | [LANG-51](lang-51.md) | task | — | open | The typer has no record type, so nothing checks a field, an update or an accessor |

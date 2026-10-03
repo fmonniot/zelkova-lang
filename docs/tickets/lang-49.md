@@ -10,8 +10,7 @@ the canonical conversion land together.
 block in [Records](../spec/records.md#record-patterns) and the one in
 [Patterns](../spec/patterns.md#record-patterns) both write `{ taken = Celsius, … }`, a
 constructor as a sub-pattern, which `Pattern` has no alternative for until `LANG-16` gives it
-one — so neither block can go red before then. [`LANG-48`](lang-48.md), for the
-`canonical::Error` variant a repeated label is reported with.
+one — so neither block can go red before then.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decision 5):** a
 record pattern is `{ label = pattern, … }`, `{ label }` is shorthand for `{ label = label }`, and
@@ -28,7 +27,7 @@ Each entry is `"lo_ident" "=" Pattern`, or a bare `"lo_ident"` desugaring to
 shape and no later phase learns about the shorthand.
 
 Sub-patterns are whole patterns, so nesting falls out with no extra work; a repeated label is
-reported the way [`LANG-48`](lang-48.md) reports one in a record expression.
+reported as `canonical::Error::RepeatedLabel`, the way one in a record expression is.
 
 **Refutability needs no code here.** A record pattern is refutable exactly when one of its
 sub-patterns is, so `{ x }` and `{ x, y }` can never fail and `{ x = 0 }` can. Nothing in the
@@ -40,8 +39,7 @@ one in that treats a record pattern as irrefutable for being a record.
 **Acceptance:** every `expect=unimplemented` block in
 [Records](../spec/records.md#record-patterns) goes red and is retagged; the same for the block in
 [Patterns](../spec/patterns.md#record-patterns), whose **Not implemented:** paragraph goes. Every
-one of those blocks annotates with a record type, so [`LANG-48`](lang-48.md) is what lets them
-parse at all. Typing a record pattern is not this ticket's: it is [`LANG-84`](lang-84.md)'s, and
+one of those blocks annotates with a record type, which parses. Typing a record pattern is not this ticket's: it is [`LANG-84`](lang-84.md)'s, and
 until then the typer leaves a declaration holding one unchecked. A parser test asserts the
 desugared `PatternKind` for `{ x }` rather than only that it parsed, and a canonicalization test
 asserts the bindings a nested record pattern produces.

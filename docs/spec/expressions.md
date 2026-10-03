@@ -685,6 +685,7 @@ f r =
   r.name
 ```
 
-**Not implemented:** no production consumes a record type
-([`LANG-48`](../tickets/lang-48.md)), and `.` is punctuation for qualified names only, so
-`r.name` is rejected rather than read as a projection ([`LANG-50`](../tickets/lang-50.md)).
+**Not implemented:** `.` is punctuation for qualified names only, so `r.name` is rejected rather
+than read as a projection ([`LANG-50`](../tickets/lang-50.md)). The type checker has no record
+type, so a declaration holding a record or an update is left unchecked
+([`LANG-51`](../tickets/lang-51.md)).

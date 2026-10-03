@@ -35,7 +35,7 @@ and for a stray close brace, `f = 1 }`, ``unexpected token: `RBrace` ``. The sam
 ``unexpected token: `LowerIdentifier("alias")` `` for `type alias Pair = ...` (quoted in
 [LANG-86](lang-86.md)) and, per [LANG-71](lang-71.md), `Comma` for a stray comma. `LBrace`,
 `RBrace`, `Comma` and `LowerIdentifier("alias")` are names in the compiler's source; the user
-wrote `{`, `}`, `,` and `alias`. `LANG-48` will not remove the need: the trailing-comma form
+wrote `{`, `}`, `,` and `alias`. `LANG-48` did not remove the need: the trailing-comma form
 `f = { a = 1, }` in `docs/spec/records.md` is rejected at an `RBrace`, which reaches this arm.
 
 **Approach:** implement `std::fmt::Display` for `Token`, so each variant prints as its source

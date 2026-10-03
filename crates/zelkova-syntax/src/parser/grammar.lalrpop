@@ -30,6 +30,8 @@ extern {
         // Symbol
         "("  => Token::LPar,
         ")"  => Token::RPar,
+        "{"  => Token::LBrace,
+        "}"  => Token::RBrace,
         ":"  => Token::Colon,
         "."  => Token::Dot,
         // No production consumes this one; it is declared so that the parser reports it
@@ -76,6 +78,18 @@ Comma<T>: Vec<T> = {
             v.push(e);
             v
         }
+    }
+}
+
+// One or more `T`, separated by commas, with no comma after the last. A record's
+// fields are read with it: a record has at least one field, and a trailing comma is
+// an error (`docs/spec/records.md`), so both rules are the shape of this macro
+// rather than a check after it.
+CommaOne<T>: Vec<T> = {
+    <first:T> <rest:("," <T>)*> => {
+        let mut v = vec![first];
+        v.extend(rest);
+        v
     }
 }
 
@@ -206,7 +220,34 @@ AtomicExpr: Expression = {
     // "[" <elems: Comma<Expr>> "]" =>
     //     Expression::List { elems },
 
-    // TODO record
+    // A record, `{ label = expr, … }`, and an update, `{ expr | label = expr, … }`, as
+    // one production with an optional head. The update's head is a whole expression
+    // and not a name, so after the `{` the parser cannot know which of the two it is
+    // reading until the token after the first component: `=` makes that component a
+    // label, `|` makes it the head. Two productions, one per form, are no conflict
+    // either: LR(1) decides at the token after the identifier, shifting into a field on
+    // `=` and reducing the identifier towards an expression on anything else. One
+    // production is a choice, not a necessity: the span is computed once and a single
+    // `match` builds both nodes.
+    //
+    // A record is delimited on both sides, so it is atomic: `f { a = 1 }` applies `f`
+    // to a record with no parentheses needed.
+    <l:@L> "{" <head: (<Expr> "|")?> <fields: CommaOne<ExprField>> "}" <r:@R> => {
+        let span = NodeSpan::new(l, r);
+
+        match head {
+            None => Expression::new(span, ExpressionKind::Record(fields)),
+            Some(head) => Expression::new(span, ExpressionKind::Update(Box::new(head), fields)),
+        }
+    },
+};
+
+// One field of a record or an update, `label = expr`. The span the field carries is
+// the label's alone, which is where a diagnostic about the label — a repeated one —
+// puts its caret.
+ExprField: Field<Expression> = {
+    <l:@L> <label: VarIdent> <r:@R> "=" <value: Expr> =>
+        Field::new(label, NodeSpan::new(l, r), value),
 };
 
 
@@ -400,8 +441,8 @@ Expr = {
 // TODO This is actually unqualified OR qualified, depending on the underlying name
 // Let's change the function to take that into account
 //
-// A type that can stand as an argument without being split: a name, a variable, or
-// anything in parentheses. The parenthesised forms live here rather than in `Type`
+// A type that can stand as an argument without being split: a name, a variable,
+// anything in parentheses, or a record type in braces. The parenthesised forms live here rather than in `Type`
 // so that `Maybe (Maybe Int)` and `Box (Int -> Int)` are applications like any
 // other, nested to any depth, and so that `(Int, Char) -> Int` needs no special
 // case — the tuple is an `ArgType` and `Type`'s arrow production takes it.
@@ -424,6 +465,17 @@ AtomicType: Type = {
 
     <l:@L> "(" <a: Type> "," <b: Type> "," <c: Type> ")" <r:@R> =>
         Type::new(NodeSpan::new(l, r), TypeKind::Tuple(Tuple::three(a, b, c))),
+
+    // A record type, `{ label : Type, … }`. Delimited on both sides, so it is atomic
+    // like a tuple: `Box { a : Int }` applies `Box` to a record type.
+    <l:@L> "{" <fields: CommaOne<TypeField>> "}" <r:@R> =>
+        Type::new(NodeSpan::new(l, r), TypeKind::Record(fields)),
+}
+
+// One field of a record type, `label : Type`, spanned at its label as `ExprField` is.
+TypeField: Field<Type> = {
+    <l:@L> <label: VarIdent> <r:@R> ":" <tpe: Type> =>
+        Field::new(label, NodeSpan::new(l, r), tpe),
 }
 
 // An application binds tighter than an arrow, and its arguments are atomic: `Maybe
