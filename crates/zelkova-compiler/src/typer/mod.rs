@@ -2484,7 +2484,7 @@ pub enum Supplier {
 /// pattern binds is solved by the body's use of it before the entry is read. A body that
 /// uses `name` at another type than its field's is therefore reported at the entry, as a
 /// mismatch of the field's type with the use's, and not at the body, as it would be under
-/// a tuple pattern, whose equation comes first.
+/// a tuple pattern, whose equation comes first ([`ERR-20`](../../docs/tickets/err-20.md)).
 ///
 /// # What else is read late
 ///
