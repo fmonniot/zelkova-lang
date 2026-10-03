@@ -231,9 +231,9 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
 /// depth first. A variable or `_` constrains nothing: a variable's type is `against`
 /// already, as `TermPattern::bindings` gives it. A constructor that did not resolve
 /// constrains nothing of its own either, and its arguments are constrained as a
-/// constructor's are. Today the only other sub-pattern
-/// admitted is `()` (`LANG-16`), so the recursion's only constraint is a nested `()`'s;
-/// the rest of it is here so a nested pattern is constrained the day one is admitted.
+/// constructor's are. A sub-pattern is held to the type of its position exactly as a
+/// branch's pattern is held to the scrutinee's, so a nested constructor of the wrong
+/// type is blamed on the nested pattern, at its own span.
 fn pattern_constraints(
     pattern: &TermPattern,
     against: &Type,

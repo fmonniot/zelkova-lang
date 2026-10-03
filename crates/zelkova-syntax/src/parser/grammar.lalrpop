@@ -392,6 +392,18 @@ InfixExpr = {
     }
 }
 
+// A whole pattern, as every position inside another pattern takes one, and as a
+// function declaration's parameter is written.
+//
+// A constructor applied to arguments is written parenthesised here, as
+// `docs/spec/patterns.md`'s *Patterns nest* requires of every sub-pattern. For a
+// constructor's argument and a parameter that is because juxtaposition already
+// separates one pattern from the next. A tuple's element is not such a position —
+// commas separate tuple elements, so `(Just x, y)` has one reading and is rejected only
+// because the tuple alternatives below take their elements from this same production.
+// A nullary constructor is not parenthesised, since there is nothing for juxtaposition
+// to be ambiguous about. `CasePattern` below is the one position that also takes the
+// applied form bare.
 Pattern: Pattern = {
     <l:@L> "_" <r:@R> => Pattern::new(NodeSpan::new(l, r), PatternKind::Anything),
 
@@ -399,9 +411,20 @@ Pattern: Pattern = {
 
     <l:@L> <lit: Lit> <r:@R> => Pattern::new(NodeSpan::new(l, r), PatternKind::Literal(lit)),
 
+    <l:@L> <n: QualTypeIdent> <r:@R> =>
+        Pattern::new(NodeSpan::new(l, r), PatternKind::Constructor(n, vec![])),
+
     // One production per tuple arity, as in `AtomicExpr` above. As there, the
-    // parenthesised form builds no node and keeps the inner pattern's span.
+    // parenthesised form builds no node and keeps the inner pattern's span — a
+    // parenthesised nullary constructor included, which is this alternative's and not
+    // the applied one's below: that one takes at least one argument, so `(Dot)` has
+    // exactly one reading.
     "(" <p: Pattern> ")" => p,
+
+    // The span covers the parentheses as well as the constructor and its arguments,
+    // the extent `canonical::Error::VariantNotFound`'s caret sits under.
+    <l:@L> "(" <n: QualTypeIdent> <p: Pattern+> ")" <r:@R> =>
+        Pattern::new(NodeSpan::new(l, r), PatternKind::Constructor(n, p)),
 
     // The unit pattern, a node of its own for the reason `AtomicExpr` gives.
     <l:@L> "(" ")" <r:@R> => Pattern::new(NodeSpan::new(l, r), PatternKind::Unit),
@@ -413,23 +436,14 @@ Pattern: Pattern = {
         Pattern::new(NodeSpan::new(l, r), PatternKind::Tuple(Tuple::three(a, b, c))),
 }
 
+// The left-hand side of a `case` branch: a whole pattern, or an applied constructor
+// written without parentheses, since a branch's head is one pattern and nothing beside
+// it can be mistaken for another argument. At least one argument, so that a bare
+// nullary constructor is `Pattern`'s alone.
 CasePattern: Pattern = {
     Pattern,
 
-    <l:@L> <n:QualTypeIdent> <p:Pattern*> <r:@R> =>
-        Pattern::new(NodeSpan::new(l, r), PatternKind::Constructor(n, p)),
-}
-
-// DeclPattern is for function binding. The syntax require parenthesis when there are multiple
-// patterns. I'm sure we are missing quite a bit of legal syntax, so I'll need to go back on that
-// later on.
-DeclPattern: Pattern = {
-    Pattern,
-
-    <l:@L> <n: QualTypeIdent> <r:@R> =>
-        Pattern::new(NodeSpan::new(l, r), PatternKind::Constructor(n, vec![])),
-
-    <l:@L> "(" <n:QualTypeIdent> <p:Pattern*> ")" <r:@R> =>
+    <l:@L> <n:QualTypeIdent> <p:Pattern+> <r:@R> =>
         Pattern::new(NodeSpan::new(l, r), PatternKind::Constructor(n, p)),
 }
 
@@ -608,10 +622,10 @@ FunType: FunType = {
 // reachable without the parser reducing the word to a name in a state where the
 // modifier is still possible.
 FunBinding: FunBinding = {
-    <l:@L> <name:PlainVarIdent> <ml:@L> <patterns: DeclPattern*> "=" <expr:Expr> =>
+    <l:@L> <name:PlainVarIdent> <ml:@L> <patterns: Pattern*> "=" <expr:Expr> =>
         FunBinding::assemble(name, l, ml, patterns, expr),
 
-    <l:@L> "unsafe" <ml:@L> <patterns: DeclPattern*> "=" <expr:Expr> =>
+    <l:@L> "unsafe" <ml:@L> <patterns: Pattern*> "=" <expr:Expr> =>
         FunBinding::assemble(Name::new("unsafe"), l, ml, patterns, expr),
 };
 

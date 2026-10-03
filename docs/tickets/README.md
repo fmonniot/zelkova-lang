@@ -170,10 +170,10 @@ declarations it is about, and not closed by it.
 
 ## Active work: records
 
-Four tickets remain of one body of work — `LANG-49`, `LANG-51`, `LANG-84` and `GEN-25` — and a
-fifth, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
-parts can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says which part
-is which by position and stops at three.
+Four tickets remain of one body of work — `LANG-49`, `LANG-51`, `LANG-84` and `GEN-25`. The
+goal is that **a value of several parts can name them** —
+`{ taken : Celsius, expected : Celsius }` where a tuple says which part is which by position
+and stops at three.
 
 They get a section for the reason the type classes do: none of them is a record on its own. A
 record has a spelling in the type, expression and pattern grammars and a rule in the typer, and
@@ -197,15 +197,14 @@ accessor parse and reach the canonical module, the type as a set of fields, and 
 is reported as `canonical::Error::RepeatedLabel`. Until `LANG-51` a declaration holding a record
 or reading a field is one the typer leaves unchecked, so the emitter refuses its module.
 
+`LANG-16`, which the order took as a prerequisite, has landed too: a pattern nests to any depth,
+an applied constructor written as a sub-pattern being parenthesised, and the typer checks a
+nested pattern as it does one at the top. That is what the first record-pattern block in two
+chapters needs, since it matches a constructor inside a field, and what `LANG-84` relies on.
+
 The rest land in this order, one at a time:
 
 ```
-LANG-16  a pattern nests, and is type checked where it does
-  │      ← not a record ticket. Here because the first record-pattern
-  │        block in two chapters matches a constructor inside a field,
-  │        which no sub-pattern may be today, and because it lifts the
-  │        typer's refusal of a nested pattern, which LANG-84 relies on
-  │
 LANG-49  a record pattern parses, the `{ x }` shorthand included
   │      ← reports a repeated label the way the other three forms do
   │
@@ -350,6 +349,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | SPEC-35 | task | — | closed 2026-09-27 | A package cannot be tested with a library that depends on it |
 | [SPEC-36](spec-36.md) | task | — | open | The `double` block in `expressions.md` cannot go red for the reason its paragraph gives |
 | SPEC-37 | task | — | closed 2026-09-28 | How a `Task` is represented and run is undesigned, on either target |
+| [SPEC-38](spec-38.md) | task | — | open | `patterns.md` parenthesises every sub-pattern and also writes `Circle n :: rest` bare |
 | LANG-1 | task | — | closed 2026-10-01 | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -365,7 +365,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-13 | task | — | closed 2026-09-19 | A package has no manifest, and its name is hardcoded |
 | LANG-14 | task | — | closed 2026-09-20 | Nothing implements a package boundary |
 | LANG-15 | task | — | closed 2026-09-20 | A package has no test root, and nothing runs a package's tests |
-| [LANG-16](lang-16.md) | task | — | open | A constructor pattern may not nest, and may not be parenthesised in a `case` branch |
+| LANG-16 | task | — | closed 2026-10-02 | A constructor pattern may not nest, and may not be parenthesised in a `case` branch |
 | [LANG-17](lang-17.md) | task | — | open | A constructor pattern's arity is never checked |
 | [LANG-18](lang-18.md) | task | — | open | A pattern may bind the same name more than once |
 | [LANG-19](lang-19.md) | task | — | open | Nothing checks that a `case` covers its type |
@@ -464,6 +464,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [GEN-23](gen-23.md) | task | — | open | An `unsafe` facade's forwarding code does not catch what its companion throws |
 | [GEN-24](gen-24.md) | task | — | open | A class member, an instance and a constrained function are not emitted |
 | [GEN-25](gen-25.md) | task | — | open | A record, a field access, an update, an accessor and a record pattern are not emitted |
+| [GEN-26](gen-26.md) | task | — | open | A `case` over a tuple of constructors emits code exponential in its number of branches |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
 | AST-3 | task | — | closed 2026-08-26 | Unify the typer's tuple representation with `Tuple<T>` |

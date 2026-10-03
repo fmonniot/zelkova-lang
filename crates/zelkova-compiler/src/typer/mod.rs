@@ -1352,11 +1352,8 @@ fn translate_pattern(
             }
         }
         // Each element gets a fresh type, and the matched value has to be the tuple of
-        // them. An element is held to the same limit a constructor's argument is (see
-        // `translate_sub_pattern`). A tuple nested in a tuple is the stand-in for an
-        // untranslatable declaration in `crates/zelkova-compiler/tests/typer.rs`, `crates/zelkova-compiler/tests/ir.rs` and
-        // `crates/zelkova-js/tests/javascript.rs` — the only nested shape that parses today — so lifting
-        // this limit turns all three red, and each needs a new stand-in.
+        // them. An element is translated as a constructor's argument is (see
+        // `translate_sub_pattern`).
         canonical::PatternKind::Tuple(elements) => {
             let elements = elements
                 .try_map(|element| {
@@ -1369,7 +1366,7 @@ fn translate_pattern(
             TermPatternKind::Tuple { elements }
         }
         // A constructor that did not resolve: nothing says what type it builds or takes,
-        // so each argument is at a fresh type, held to the limit a resolved constructor's
+        // so each argument is at a fresh type, and translated as a resolved constructor's
         // argument is (see `translate_sub_pattern`).
         canonical::PatternKind::Hole(args) => {
             let args = args
@@ -1395,25 +1392,18 @@ fn translate_pattern(
 /// A pattern written as a constructor's argument or a tuple's element, matched against
 /// a value of type `tpe`.
 ///
-/// It is translated by [`translate_pattern`] like a pattern anywhere else, so the
-/// [`SubPattern`] it becomes can hold any pattern at all — but only a variable, `_` or
-/// `()` is admitted here today, and anything else is refused with `None`: lifting that
-/// is `LANG-16`'s, and the typer's handling of a refutable sub-pattern would have to be
-/// written with it. All three admitted shapes are irrefutable, `()` because its type has
-/// one value; `()` still constrains the position's type, which `pattern_constraints`
-/// does at any depth.
+/// It is translated by [`translate_pattern`] like a pattern anywhere else, so any
+/// pattern that translates at the top of a branch translates here too, at any depth, and
+/// one that does not — a float pattern, say — answers `None` here as it does there. A
+/// refutable sub-pattern needs nothing of its own: `pattern_constraints` holds it to
+/// `tpe` the way a branch's pattern is held to the scrutinee's type, and
+/// `ir::decision_tree` tests it at its occurrence.
 fn translate_sub_pattern(
     pattern: &canonical::Pattern,
     tpe: Type,
     translation: &Translation,
     counter: &mut u32,
 ) -> Option<SubPattern> {
-    match &pattern.kind {
-        canonical::PatternKind::Variable(_)
-        | canonical::PatternKind::Anything
-        | canonical::PatternKind::Unit => {}
-        _ => return None,
-    }
     Some(SubPattern {
         tpe,
         pattern: translate_pattern(pattern, translation, counter)?,

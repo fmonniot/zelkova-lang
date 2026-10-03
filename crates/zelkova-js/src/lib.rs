@@ -1772,6 +1772,11 @@ impl Emitter {
     /// binds would throw `ReferenceError` before ever reaching the leaf. A
     /// [`Decision::Fail`] returns the runtime's `$abort`, importing it the way `$curry`
     /// is imported; it carries no binding, so it needs no block of its own.
+    ///
+    /// Each `Test`'s `default` is emitted where it stands, and [`Decision`] copies the tree
+    /// for the later branches into the `default` of every test an earlier branch holds, so
+    /// the text grows with the product of the branches' refutable parts, and a leaf's
+    /// body is written once per copy of its leaf. `GEN-26` tracks it.
     fn decision(&mut self, tree: &Decision, root: &str, depth: usize, form: CaseForm) -> String {
         let pad = "  ".repeat(depth);
 
