@@ -2,12 +2,22 @@
 //! (`docs/spec/records.md`, *Whitespace before a `.` decides which form it is*).
 //!
 //! `Widget.size` is one name. `Widget . size`, `Widget .size` and `Widget. size` are not,
-//! in an expression, in a type, in an `import` and in a module header, and each is
-//! reported as `parser::Error::SpacedDot` pointing at the `.`.
+//! in an expression, in a type, in a pattern, in an `import` and in a module header.
+//! Each is reported as `parser::Error::SpacedDot` pointing at the `.`, but for
+//! `Widget .size` in an expression, which is `Widget` applied to the accessor `.size`
+//! (`a_constructor_before_a_spaced_dot_is_applied_to_an_accessor` in `field_access.rs`),
+//! and which canonicalization rejects where `Widget` is a module and not a constructor.
+//! The lowercase spelling `Widget .size` is covered in a type, a pattern, an `import` and
+//! a module header, where the tokenizer yields an `AccessorDot` and not a `SpacedDot`.
 //!
 //! Every rejection test below was verified to fail by making `consume_operator` in
 //! `tokenizer.rs` yield `Token::Dot` for every lone `.`, which returns the parser to
 //! accepting the spacing: the source then parses, and `spaced_dot` panics on `Ok`.
+//!
+//! The lowercase spellings (`Widget .size`, `Ui .widget`) were verified to fail by
+//! deleting `| Token::AccessorDot` from the arm of `From<ParseError>` in `error.rs` that
+//! builds `Error::SpacedDot`: the type, pattern, `import` and module-header tests then
+//! get an `UnexpectedToken` on `AccessorDot` and fail on the variant.
 
 use super::support::*;
 use codespan_reporting::files::SimpleFile;
@@ -76,7 +86,7 @@ fn assert_rejected_at_dot(source: &str, needle: &str) {
 
 #[test]
 fn a_name_in_an_expression_takes_no_space_around_its_dot() {
-    for spelling in ["Widget . size", "Widget .size", "Widget. size"] {
+    for spelling in ["Widget . size", "Widget. size"] {
         assert_rejected_at_dot(
             &format!("module Main exposing (..)\n\nmain = {}\n", spelling),
             spelling,
@@ -96,7 +106,12 @@ fn a_constructor_in_an_expression_takes_no_space_around_its_dot() {
 
 #[test]
 fn a_type_takes_no_space_around_its_dot() {
-    for spelling in ["Widget . Size", "Widget .Size", "Widget. Size"] {
+    for spelling in [
+        "Widget . Size",
+        "Widget .Size",
+        "Widget. Size",
+        "Widget .size",
+    ] {
         assert_rejected_at_dot(
             &format!(
                 "module Main exposing (..)\n\nmain : {}\nmain = Widget.Small\n",
@@ -109,15 +124,20 @@ fn a_type_takes_no_space_around_its_dot() {
 
 #[test]
 fn a_pattern_takes_no_space_around_its_dot() {
-    assert_rejected_at_dot(
-        "module Main exposing (..)\n\nmain x =\n  case x of\n    Widget . Small -> 1\n",
-        "Widget . Small",
-    );
+    for spelling in ["Widget . Small", "Widget .small"] {
+        assert_rejected_at_dot(
+            &format!(
+                "module Main exposing (..)\n\nmain x =\n  case x of\n    {} -> 1\n",
+                spelling
+            ),
+            spelling,
+        );
+    }
 }
 
 #[test]
 fn an_import_takes_no_space_around_its_dot() {
-    for spelling in ["Ui . Widget", "Ui .Widget", "Ui. Widget"] {
+    for spelling in ["Ui . Widget", "Ui .Widget", "Ui. Widget", "Ui .widget"] {
         assert_rejected_at_dot(
             &format!("module Main exposing (..)\n\nimport {}\n", spelling),
             spelling,
@@ -127,17 +147,16 @@ fn an_import_takes_no_space_around_its_dot() {
 
 #[test]
 fn a_module_header_takes_no_space_around_its_dot() {
-    for spelling in ["Ui . Widget", "Ui .Widget", "Ui. Widget"] {
+    for spelling in ["Ui . Widget", "Ui .Widget", "Ui. Widget", "Ui .widget"] {
         assert_rejected_at_dot(&format!("module {} exposing (..)\n", spelling), spelling);
     }
 }
 
+/// A comment after a `.` separates it from the name as a space does. One before it does
+/// too, and makes `Widget{- a -}.size` an application to an accessor, as `Widget .size`
+/// is (`a_constructor_before_a_spaced_dot_is_applied_to_an_accessor` in `field_access.rs`).
 #[test]
 fn a_comment_next_to_a_dot_is_whitespace() {
-    assert_rejected_at_dot(
-        "module Main exposing (..)\n\nmain = Widget{- a -}.size\n",
-        "-}.size",
-    );
     assert_rejected_at_dot(
         "module Main exposing (..)\n\nmain = Widget.{- a -}size\n",
         "Widget.{",
@@ -189,19 +208,37 @@ fn the_unspaced_spelling_of_each_parses() {
 }
 
 /// A `.` that interrupts no qualified name gets no advice about one: there is no name in
-/// `.name`, `f .name`, `(.name)`, `1 .` or `a . b` to write in one piece. The message is
-/// the neutral one, with no note, and still labels exactly the `.`.
+/// `. name`, `(. name)`, `1 .`, `a . b`, `r. name`, `(f x) .1` or `type Widget . a` to
+/// write in one piece. The message is the neutral one, with no note, and still labels
+/// exactly the `.`.
+///
+/// The grammar would have accepted a `Dot` after `1`, `a`, `r` and `)`, each of which a
+/// field access may be written on, so the expected tokens alone would call each of
+/// those a qualified name; what keeps them neutral is that no uppercase name stands
+/// before the `.`. `type Widget . a` is the other half: an uppercase name stands before
+/// its `.`, and a declaration's own name is never qualified, so no `Dot` was expected.
+///
+/// `case x of .name -> 1` is the one of these where the tokenizer yields an `AccessorDot`
+/// (a `.` against a lowercase label, here in a pattern, which has no accessor form), and
+/// it is reported as `SpacedDot` too.
 ///
 /// Verified to fail by making `From<ParseError>` set `continues_a_name` to `true`
-/// unconditionally: every source below then gets the qualified-name message.
+/// unconditionally: `type Widget . a` then gets the qualified-name message. And by
+/// making `after_a_name` in `parser/mod.rs` return its error unchanged: `1 .`, `a . b` and
+/// `r. name` then get it. And by deleting `| Token::AccessorDot` from the arm of
+/// `From<ParseError>` that builds `Error::SpacedDot`: `case x of .name -> 1` is then an
+/// `UnexpectedToken` on `AccessorDot`.
 #[test]
 fn a_dot_that_interrupts_no_name_is_not_called_a_qualified_name() {
     for source in [
-        "module Main exposing (..)\n\nmain = .name\n",
-        "module Main exposing (..)\n\nmain = f .name\n",
-        "module Main exposing (..)\n\nmain = (.name)\n",
+        "module Main exposing (..)\n\nmain = . name\n",
+        "module Main exposing (..)\n\nmain = (. name)\n",
         "module Main exposing (..)\n\nmain = 1 .\n",
         "module Main exposing (..)\n\nmain = a . b\n",
+        "module Main exposing (..)\n\nmain = r. name\n",
+        "module Main exposing (..)\n\nmain = (f x) .1\n",
+        "module Main exposing (..)\n\ntype Widget . a = A\n",
+        "module Main exposing (..)\n\nmain x =\n  case x of\n    .name -> 1\n",
     ] {
         let (message, notes, start, text) = rejected_dot(source);
 

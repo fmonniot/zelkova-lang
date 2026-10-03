@@ -2121,3 +2121,34 @@ fn a_facade_signature_holding_a_record_is_refused() {
     names.sort();
     assert_eq!(names, vec!["point", "take"]);
 }
+
+/// A declaration reading a field is one the typer leaves unchecked until `LANG-51`, so
+/// its module is refused, by an access and by an accessor alike.
+///
+/// Mutation-checked by the translation described on the typer's
+/// `a_declaration_reading_a_field_is_left_unchecked`: both declarations then check and
+/// the module emits, and `refused` panics.
+#[test]
+fn a_declaration_reading_a_field_is_refused() {
+    let errors = refused(indoc! {r#"
+        module Test exposing ()
+
+        read : Int -> Int
+        read r =
+          r.a
+
+        pick : Int
+        pick =
+          .a
+    "#});
+
+    let mut names: Vec<&str> = errors
+        .iter()
+        .map(|error| match error {
+            Error::Unchecked { name, .. } => name.as_str(),
+            other => panic!("expected only Unchecked refusals, got {:?}", other),
+        })
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["pick", "read"]);
+}

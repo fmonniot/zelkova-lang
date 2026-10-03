@@ -170,8 +170,8 @@ declarations it is about, and not closed by it.
 
 ## Active work: records
 
-Five tickets remain of one body of work — `LANG-49` through `LANG-51`, `LANG-84` and `GEN-25` —
-and a sixth, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
+Four tickets remain of one body of work — `LANG-49`, `LANG-51`, `LANG-84` and `GEN-25` — and a
+fifth, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
 parts can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says which part
 is which by position and stops at three.
 
@@ -182,27 +182,24 @@ the tickets are cut along those lines, with the emitter last.
 [`docs/spec/records.md`](../spec/records.md) is the normative record and
 [DEC-8](../decisions/dec-8.md) holds the ten decisions behind it, which the tickets cite by
 number. **No ticket in the order leaves a language decision open**, and none re-argues one.
-Where a ticket says a choice is the implementer's, it means that and names the constraints:
-`LANG-50` on how an accessor's own `.` is told from a spaced one (`.name` from `. name`) and on
-what an access takes as its left operand. `LANG-52` has landed and chose the tokenizer for the
-rest: it reads a `.` written against an operand on its left and against the character after it as
-`Dot`, and any other, `(.name)` included, as `SpacedDot`, and `LANG-50` inherits that rather than
-choosing again. The reason is in the doc comment on `consume_operator` in
-`crates/zelkova-syntax/src/parser/tokenizer.rs`. Anything else that looks like a decision is a gap
-to report, not to fill.
+Where a ticket says a choice is the implementer's, it means that and names the constraints.
+`LANG-52` and `LANG-50` have landed and put the whitespace rule in the tokenizer: it reads a `.`
+written against an operand on its left and against the character after it as `Dot`, any other
+`.` written against a lowercase name after it as the `AccessorDot` an accessor begins with,
+`(.name)` included, and the rest as `SpacedDot`. An access may be written on every atomic
+expression but a bare constructor name, so `Widget.size` stays a qualified name. The reasons are
+in the doc comments on `consume_operator` in `crates/zelkova-syntax/src/parser/tokenizer.rs` and
+on `Accessible` in `grammar.lalrpop`. Anything else that looks like a decision is a gap to report,
+not to fill.
 
-`LANG-48` has landed: a record type, a record and an update parse and reach the canonical
-module, the type as a set of fields, and a repeated label is reported as
-`canonical::Error::RepeatedLabel`. Until `LANG-51` a declaration holding a record is one the typer
-leaves unchecked, so the emitter refuses its module.
+`LANG-48` and `LANG-50` have landed: a record type, a record, an update, a field access and an
+accessor parse and reach the canonical module, the type as a set of fields, and a repeated label
+is reported as `canonical::Error::RepeatedLabel`. Until `LANG-51` a declaration holding a record
+or reading a field is one the typer leaves unchecked, so the emitter refuses its module.
 
 The rest land in this order, one at a time:
 
 ```
-LANG-50  `r.name` and `.name` parse
-  │      ← each of the chapter's blocks annotates with a record type,
-  │        which parses
-  │
 LANG-16  a pattern nests, and is type checked where it does
   │      ← not a record ticket. Here because the first record-pattern
   │        block in two chapters matches a constructor inside a field,
@@ -315,6 +312,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-16](err-16.md) | task | — | open | `ModuleNameCollision` and `ReservedModuleName` have a file to point at and don't |
 | [ERR-17](err-17.md) | task | — | open | A mistyped bare identifier or constructor body gets no caret of its own |
 | [ERR-18](err-18.md) | task | — | open | An unexpected-token error names the token by its Rust variant, not as the user wrote it |
+| [ERR-19](err-19.md) | task | — | open | A module name used as a constructor is reported as a missing constructor of the current module |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
@@ -401,7 +399,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-47 | task | — | closed 2026-10-02 | `{` and `}` are not tokens, so nothing in a record reaches the grammar |
 | LANG-48 | task | — | closed 2026-10-02 | There is no record production, so a record type, a record and an update do not parse |
 | [LANG-49](lang-49.md) | task | — | open | There is no record pattern production |
-| [LANG-50](lang-50.md) | task | — | open | Field access `r.name` and the accessor `.name` do not parse |
+| LANG-50 | task | — | closed 2026-10-02 | Field access `r.name` and the accessor `.name` do not parse |
 | [LANG-51](lang-51.md) | task | — | open | The typer has no record type, so nothing checks a field, an update or an accessor |
 | LANG-52 | task | — | closed 2026-10-02 | Whitespace around a qualification dot is accepted, and records need it not to be |
 | LANG-53 | task | — | closed 2026-09-13 | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |

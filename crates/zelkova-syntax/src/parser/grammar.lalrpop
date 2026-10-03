@@ -34,6 +34,8 @@ extern {
         "}"  => Token::RBrace,
         ":"  => Token::Colon,
         "."  => Token::Dot,
+        // The `.` of an accessor, `.name`. Only `Accessible` consumes it.
+        "accessor dot" => Token::AccessorDot,
         // No production consumes this one; it is declared so that the parser reports it
         // as an unexpected token, which `Error::from` turns into `Error::SpacedDot`.
         "spaced dot" => Token::SpacedDot,
@@ -185,20 +187,68 @@ Lit: Literal = {
 // component of an `Expression` or a `Pattern`, and the `@L`/`@R` those productions
 // capture around it *is* the literal's extent.
 
-// Base expression
+// Base expression: what an application takes as an argument without parentheses.
+//
+// A constructor, and every other atomic expression, which are `Accessible`. The two are
+// apart because a constructor is the one atomic expression a field access cannot take
+// as its left operand.
 AtomicExpr: Expression = {
-    <l:@L> <id: QualVarIdent> <r:@R> =>
-        Expression::new(NodeSpan::new(l, r), ExpressionKind::Variable(id)),
-
     <l:@L> <n: QualTypeIdent> <r:@R> =>
         Expression::new(NodeSpan::new(l, r), ExpressionKind::TypeConstructor(n)),
+
+    Accessible,
+};
+
+// The atomic expressions a field access may be written on: every one but a bare
+// constructor name.
+//
+// `Widget.size` is a qualified name (`docs/spec/records.md`, *Whitespace before a `.`
+// decides which form it is*), and so is `Widget.Size.x`, so an uppercase name followed
+// by a `Dot` always continues into one. Were a constructor an operand of access as
+// well, `Widget.size` would have two parses, and an LR(1) parser cannot tell them apart
+// at the `.`: LALRPOP reports the pair as a local ambiguity between this production and
+// `QualTypeIdent`. Leaving the constructor out loses no program: a constructor is not a
+// record and has no fields, and one in parentheses, `(Just r).name`, is an access of the
+// parenthesised expression like any other.
+//
+// Everything else is in: a variable, qualified or not (`Basics.r.x` reads `x` off
+// `Basics.r`, and `Widget.size.x` reads `x` off `Widget.size`), a literal, a
+// parenthesised expression, a tuple, the unit value, a record, an update, an accessor
+// and an access. The tokenizer reads a `.` after each of their last tokens as `Dot`
+// (`Token::ends_an_operand`). Whether the field exists is the typer's question, so `"s".y`
+// and `(.name).x` parse.
+Accessible: Expression = {
+    <l:@L> <id: QualVarIdent> <r:@R> =>
+        Expression::new(NodeSpan::new(l, r), ExpressionKind::Variable(id)),
 
     <l:@L> <lit: Lit> <r:@R> =>
         Expression::new(NodeSpan::new(l, r), ExpressionKind::Lit(lit)),
 
-    // <expr: AtomicExpr> "." <id: Ident> =>
-    //     Expression::Projection(Box::new(expr), id),
+    // A field access, `r.name`. Postfix on an atomic expression, so it binds tighter
+    // than application — `f r.name` is `f (r.name)` — and left-recursive, so it chains
+    // left to right: `r.centre.x` is `(r.centre).x`. The `.` is the tokenizer's `Dot`,
+    // which is written against the operand and the label both; with whitespace before
+    // it the `.` begins an accessor instead, and with whitespace after it it is a
+    // `SpacedDot` no production takes.
     //
+    // The node spans the whole `r.name`, and the label carries its own span, which is
+    // where a diagnostic about the field puts its caret.
+    <l:@L> <record: Accessible> "." <ll:@L> <label: VarIdent> <r:@R> =>
+        Expression::new(
+            NodeSpan::new(l, r),
+            ExpressionKind::Access(Box::new(record), label, NodeSpan::new(ll, r)),
+        ),
+
+    // An accessor, `.name`: the function reading that field. Its `.` is the tokenizer's
+    // `AccessorDot`, a `.` that is not a `Dot` and is written against the start of a
+    // lowercase name after it, so `. name` is never one (`consume_operator` in
+    // `tokenizer.rs`). Every accessor starts with that token, one opening an expression
+    // included: `(.name)` and `f .name` alike.
+    <l:@L> "accessor dot" <ll:@L> <label: VarIdent> <r:@R> =>
+        Expression::new(
+            NodeSpan::new(l, r),
+            ExpressionKind::Accessor(label, NodeSpan::new(ll, r)),
+        ),
 
     // A tuple has two or three elements, so it gets one production per arity:
     // `(1, 2, 3, 4)` is a parse error rather than something a later phase has to

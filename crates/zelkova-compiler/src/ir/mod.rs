@@ -683,8 +683,8 @@ pub enum Solved {
     /// `value_to_term_and_annotation` could not translate the declaration into the
     /// typer's term language — a `VarKernel` reference, a float pattern, a pattern
     /// nested inside a constructor or tuple pattern, whether a `case` branch or a
-    /// parameter wrote it, or a record type, a record or an update, in the annotation or
-    /// the body. Nothing about the declaration was checked.
+    /// parameter wrote it, or a record type, a record, an update, a field access or an
+    /// accessor, in the annotation or the body. Nothing about the declaration was checked.
     ///
     /// Not an [`Error`](crate::typer::Error): it is a gap in the typer rather
     /// than a mistake in the source. What it wants is a warning, which the compiler does not have yet (`ERR-8`, see
