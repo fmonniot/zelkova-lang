@@ -41,6 +41,11 @@ with no hint that parentheses are the fix, and `((Full x), y)` is the spelling t
 Elm accepts both `(Just x, y)` and `Circle n :: rest`. (The error above is from a scratch
 package at this branch's tip.)
 
+A record pattern's entry (`LANG-49`, closed) is a fourth such position. Its pattern comes from
+the same production, and a `,` or a `}` ends it as a comma ends a tuple's element, so
+`{ taken = Celsius t }` has one reading and is rejected, and `{ taken = (Celsius t) }` is the
+spelling that compiles. The question this ticket asks is the same for it.
+
 **Approach:** the ticket does not choose; it is a question for the language owner, because it
 settles what the language is. The two readings:
 

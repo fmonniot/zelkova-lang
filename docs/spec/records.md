@@ -344,6 +344,20 @@ depth r =
       x
 ```
 
+A record pattern names each label once. Repeating one is an error, reported at the repeated
+label, the shorthand included:
+
+```zel expect=canonical-error:RepeatedLabel
+module Example exposing (Celsius, describe)
+
+type Celsius
+  = Celsius
+
+describe : { taken : Celsius, expected : Celsius } -> Celsius
+describe { taken, taken = t } =
+  t
+```
+
 A record pattern says nothing about which record type it matches, since it names a subset of some
 record's fields. The type comes from the value being matched, the same way an
 [accessor's](#the-accessor) does, and a pattern naming a label the matched type does not have is
