@@ -13,8 +13,8 @@ boundary check*, *A `case`* and *What is refused* sections of the module doc com
 `crates/zelkova-compiler/src/canonical/mod.rs` already admits a record whose every field is
 admitted.
 
-**Depends on:** [`LANG-51`](lang-51.md), hard: the typer is what produces the IR, and until it
-has a record type no record reaches `ir::Module`. [`LANG-84`](lang-84.md) for the pattern half.
+**Depends on:** `LANG-51` (closed): the typer is what produces the IR, and it is what puts a
+record there. [`LANG-84`](lang-84.md) for the pattern half.
 
 **Decided:** a construct that lands after the first emitter gets a sibling `GEN-` ticket and its
 `LANG-` ticket grows no code-generation half
@@ -25,12 +25,13 @@ fields ([Which types may cross the boundary](../spec/interop.md#which-types-may-
 A field of type `()` is present, holding `undefined`
 ([`DEC-21`](../decisions/dec-21.md)).
 
-**Problem:** nothing owns the emission of a record. After `LANG-51` a module holding one type
-checks and cannot be built: `zelkova_js::emit` matches on `TypedTermKind` and has no arm for a
-form that does not exist yet, so whatever `LANG-51` adds has to be refused there until this
-lands — `Construct` is where the existing refusals are named. A facade signature
-naming a record type is admitted by canonicalization, and `Predicates::test` builds nothing for
-one: it answers `Unpredicated::Record`.
+**Problem:** nothing owns the emission of a record. A module holding one type checks and cannot
+be built: `zelkova_js::emit` refuses each of `TypedTermKind`'s record forms as an
+`Error::Unsupported` naming `Construct::Record`, `Update`, `Access` or `Accessor`, and a
+declaration whose own type holds a record type — a facade signature included — as
+`Construct::RecordType`. Those refusals are what this ticket replaces. A facade result reaching
+a record through a union's constructor gets as far as `Predicates::test`, which builds nothing
+for one: it answers `Unpredicated::Record`.
 
 **What the result has to be:**
 
@@ -49,8 +50,8 @@ one: it answers `Unpredicated::Record`.
    ([Order of evaluation](../spec/evaluation-semantics.md#order-of-evaluation)). A record
    *type* is a set, and canonicalization makes its field list order-independent
    (`canonical::Type::Record`). The *expression* must not go the same way: `{ b = f x, a = g y }` calls
-   `f` first. If the term `LANG-51` built keeps only a map, restoring the written order is the
-   first step here.
+   `f` first. The term `LANG-51` built keeps it: `ir::TypedTermKind::Record` and `Update` hold
+   their fields in the order they were written.
 
 3. **An update evaluates the record it updates once** and answers a new object; the old one is
    untouched. `_Utils_update` in `Js/Utils.mjs` is Elm's kernel helper for this, exported by
