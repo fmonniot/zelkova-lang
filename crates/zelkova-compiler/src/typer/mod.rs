@@ -378,6 +378,8 @@ pub enum ErrorKind {
         label: Name,
         form: RecordUse,
         span: NodeSpan,
+        /// What could supply the record type, which is what the note says.
+        supplier: Supplier,
     },
     /// A field access, an update or an accessor naming a label the record type it is
     /// read against does not have. An update naming one is the update that would add a
@@ -588,15 +590,25 @@ impl PhaseError for Error {
                     notes.push(difference);
                 }
             }
-            ErrorKind::RecordTypeUnknown { .. } => {
+            ErrorKind::RecordTypeUnknown { supplier, .. } => {
                 notes.push(
                     "a record's type is never worked out from the fields a declaration uses"
                         .to_string(),
                 );
-                notes.push(format!(
-                    "a type annotation on `{}` would supply it",
-                    self.declaration
-                ));
+                notes.push(match supplier {
+                    Supplier::Annotation => format!(
+                        "a type annotation on `{}` would supply it",
+                        self.declaration
+                    ),
+                    Supplier::AnnotationVariable => format!(
+                        "the annotation on `{}` does not say which record type this is: it writes a type variable where the record type would be spelled out",
+                        self.declaration
+                    ),
+                    Supplier::Body => format!(
+                        "it is not part of `{}`'s type, so no annotation on `{}` could supply it",
+                        self.declaration, self.declaration
+                    ),
+                });
             }
             ErrorKind::MissingField {
                 form: RecordUse::Update,
@@ -2265,6 +2277,28 @@ impl RecordUse {
     }
 }
 
+/// What could supply the record type an [`ErrorKind::RecordTypeUnknown`] is missing —
+/// which is what its note tells the reader to do about it. `unifier::unknown` decides it.
+///
+/// "Part of the declaration's type" means a variable of the declaration's solved type
+/// — a parameter's, the result's, or inside either — or the field type of another use
+/// whose record type is one: an annotation, unified with that type, would solve the
+/// variable, and reading the use would solve the next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Supplier {
+    /// The declaration has no annotation, and the record type is part of its type: an
+    /// annotation writing a record type there would supply it.
+    Annotation,
+    /// The record type is part of the declaration's type, and the declaration's
+    /// annotation writes a type variable there — `f : a -> Int` with body `r.x` — or
+    /// around it.
+    AnnotationVariable,
+    /// The record type is not part of the declaration's type — `.x` passed where any
+    /// value is taken, as in `first n .x` — so no annotation on the declaration could
+    /// supply it, and only its body can.
+    Body,
+}
+
 /// A type said to be a record holding `label`, with that field at `field`: what a field
 /// access, an update and an accessor each say about the record they use.
 ///
@@ -2304,17 +2338,18 @@ impl RecordUse {
 ///   r).b` it is the accessor's result. So the constraints are read in passes, in the
 ///   order they were collected — which is the order their labels were written — each
 ///   pass seeing what the ones before it solved. A pass that decides none of the
-///   constraints left is the end: nothing will ever supply their record types, and the
-///   first of them is [`ErrorKind::RecordTypeUnknown`], with the caret on the whole form
-///   — unless its record type is a hole's, a name that did not resolve, whose own error
-///   already explains it (`constraint::Constraints::holes`). Every pass decides at least
-///   one constraint or is the last, so the passes stop.
+///   constraints left is the end: nothing will ever supply their record types, and one
+///   of them is [`ErrorKind::RecordTypeUnknown`], with the caret on the whole form —
+///   unless a name that did not resolve, a hole, explains every one of them, its own
+///   error standing already. `unifier::unknown` says which one and when a hole explains
+///   it. Every pass decides at least one constraint or is the last, so the passes stop.
 ///
 /// A record type only becomes *more* known as the passes go, never less, so whether a
 /// declaration's field constraints are all satisfied does not depend on the order they
-/// are read in. The order picks which of several errors a declaration is reported for,
-/// and makes that the same on every run: in an unannotated `r.a.b` it is `r.a`, the
-/// access the other waits on.
+/// are read in. Which of several unknown ones is reported does not depend on it either
+/// as long as one is the root the others wait on — `r.a` in an unannotated `r.a.b` or
+/// `.b r.a` — and otherwise the order picks it, the same on every run. Only that one is
+/// reported, as only a declaration's first failed equation is.
 ///
 /// # Why there is nothing to generalise past
 ///
@@ -2328,6 +2363,14 @@ impl RecordUse {
 /// record type and not a record type's variable, so `r.x` reads it; one written for the
 /// record itself, `f : a -> Int` with body `r.x`, supplies no record type and is
 /// [`ErrorKind::RecordTypeUnknown`].
+///
+/// That rests on there being no generalisation step. One that generalised a type still
+/// carrying a waiting field constraint — a `let`-bound `get r = r.x` used as `get { x =
+/// 1 }`, once [`LANG-33`](../../docs/tickets/lang-33.md) brings `let` — would copy the
+/// constraint's variable at each use, and the constraint, waiting on the original, would
+/// never be decided: it would fail safe, as a `RecordTypeUnknown`, but not by the rule.
+/// So a generalisation step must read the field constraints first, or refuse to
+/// generalise over a variable one of them is still waiting on.
 ///
 /// # What else is read late
 ///
@@ -2401,11 +2444,12 @@ impl FieldConstraint {
     }
 
     /// The error this constraint is when nothing ever supplied its record type.
-    fn unknown(&self) -> ErrorKind {
+    fn unknown(&self, supplier: Supplier) -> ErrorKind {
         ErrorKind::RecordTypeUnknown {
             label: self.label.clone(),
             form: self.form,
             span: self.form_span,
+            supplier,
         }
     }
 }
@@ -2891,6 +2935,7 @@ fn infer_annotated(
     debug!("typed term: {:#?}", typed_term);
 
     let mut constraints = Vec::new();
+    let annotated = annotation.is_some();
 
     if let Some(annotation) = annotation {
         // Left is the annotation's type, because left is the type of the text the
@@ -2914,7 +2959,12 @@ fn infer_annotated(
     let substitution = unifier::unify(constraints)?;
     // Read only now, with every equation of the declaration solved: see
     // `FieldConstraint`.
-    let substitution = unifier::read_fields(substitution, fields, &holes)?;
+    let declaration = unifier::Declaration {
+        holes: &holes,
+        declared: &typed_term.tpe,
+        annotated,
+    };
+    let substitution = unifier::read_fields(substitution, fields, &declaration)?;
 
     Ok(substitution.apply_term(typed_term))
 }
