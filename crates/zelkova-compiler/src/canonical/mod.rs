@@ -1635,9 +1635,9 @@ pub enum Error {
     /// parenthesised list rather than the whole context, so the caret sits under
     /// the part that is wrong.
     ///
-    /// The grammar parses a context as a type (see `parser::FunType::context`),
-    /// so every shape a type can take arrives here; `validate_context` is what
-    /// narrows it to one constraint or a tuple of them.
+    /// The grammar parses each element of a context as a type (see
+    /// `parser::Context`), so every shape a type can take arrives here;
+    /// `validate_context` is what narrows each one to a constraint.
     InvalidConstraint(InvalidConstraintKind, NodeSpan),
     /// A label given to two fields of one record type, record, update or record
     /// pattern: the label, which of the four forms it was found in, where the repeat
@@ -1792,9 +1792,9 @@ pub enum InvalidVariantKind {
 /// [`Error::InvalidConstraint`].
 ///
 /// A constraint is an uppercase name applied to one or more type arguments, and a
-/// context is one constraint or a parenthesised, comma-separated list of them,
-/// which the grammar reads as a tuple type. This names every other shape, one per
-/// remaining [`parser::TypeKind`] case.
+/// context is one constraint or a parenthesised, comma-separated list of them
+/// ([`parser::Context`]). This names every other shape an element of that list can
+/// take, one per remaining [`parser::TypeKind`] case.
 #[derive(Debug, PartialEq, Clone)]
 pub enum InvalidConstraintKind {
     /// A type variable on its own — `a => a`.
@@ -1805,7 +1805,8 @@ pub enum InvalidConstraintKind {
     /// A function type — `Int -> Int => a`.
     Arrow,
     /// A tuple inside the parenthesised list — `((Eq a, Eq b), Eq c) => a`. The
-    /// outermost tuple *is* the list, so only one nested in it reaches here.
+    /// parser reads the outermost parentheses as the list, so only a tuple nested
+    /// in it reaches here.
     Tuple,
     /// The unit type — `() => a`.
     Unit,
@@ -2660,23 +2661,19 @@ fn check_facade_signature(function: &parser::Function, tpe: &Type) -> Result<(),
     Ok(())
 }
 
-/// Check that `context` — what an annotation wrote in front of `=>` — is one
-/// constraint or a parenthesised list of them, and hand back each constraint's
-/// class name and arguments.
+/// Check that every element of `context` — what an annotation wrote in front of
+/// `=>`, already split into a list by the parser — is shaped like a constraint,
+/// and hand back each constraint's class name and arguments.
 ///
 /// A constraint here is an uppercase name applied to one or more arguments.
 /// Nothing is resolved: whether the name is a class, and whether its arguments
-/// are types in scope, is not checked, because no class can be declared yet. A
-/// two- or three-tuple is the list; the grammar has no tuple of any other size,
-/// so a single constraint and a list of two or three are the shapes that reach
-/// here. Every malformed constraint of a list is reported, each at its own span.
-fn validate_context(context: &parser::Type) -> Result<Vec<(&Name, &[parser::Type])>, Vec<Error>> {
-    let constraints: Vec<&parser::Type> = match &context.kind {
-        parser::TypeKind::Tuple(tuple) => tuple.iter().collect(),
-        _ => vec![context],
-    };
-
-    collect_accumulate(constraints.into_iter().map(|constraint| {
+/// are types in scope, is not checked, because no class can be declared yet. The
+/// list may be of any length. Every malformed element is reported, each at its
+/// own span.
+fn validate_context(
+    context: &parser::Context,
+) -> Result<Vec<(&Name, &[parser::Type])>, Vec<Error>> {
+    collect_accumulate(context.constraints.iter().map(|constraint| {
         let kind = match &constraint.kind {
             parser::TypeKind::Unqualified(class, args) if !args.is_empty() => {
                 return Ok((class, args.as_slice()));

@@ -597,14 +597,26 @@ Type: Type = {
 // parse error. Folding `<ctx:Type> "=>" <t:Type>` into `Type` itself is ambiguous
 // for LALRPOP, which reports it as a precedence error on `Type`.
 //
-// The context is parsed *as a type*, and that is forced rather than convenient: at
-// the `(` of `(Comparable k, Eq v) =>` an LALR(1) parser cannot tell a list of
-// constraints from a two-tuple type, since they are the same tokens. So `Int -> Int
-// => a` parses here too, and canonicalization is what decides whether the left of
-// `=>` is shaped like a context (`canonical::Error::InvalidConstraint`).
-ConstrainedType: (Option<Type>, Type) = {
+// A context of one to three constraints is parsed *as a type*, and that is forced
+// rather than convenient: at the `(` of `(Comparable k, Eq v) =>` an LALR(1) parser
+// cannot tell a list of constraints from a two-tuple type, since they are the same
+// tokens. So `Int -> Int => a` parses here too, `Context::from_type` turns the type
+// into a list, and canonicalization is what decides whether each element is shaped
+// like a constraint (`canonical::Error::InvalidConstraint`).
+//
+// A list of four or more has a production of its own, because `AtomicType` has no
+// tuple of that size and must not grow one: from the fourth `,` on, this is the only
+// production still viable, so it builds beside the tuple productions with no
+// conflict. Its elements are `Type`s for the same reason the shorter forms are.
+ConstrainedType: (Option<Context>, Type) = {
     <Type> => (None, <>),
-    <ctx:Type> "=>" <t:Type> => (Some(ctx), t),
+    <ctx:Type> "=>" <t:Type> => (Some(Context::from_type(ctx)), t),
+    <l:@L> "(" <a:Type> "," <b:Type> "," <c:Type> "," <d:Type> <rest:("," <Type>)*> ")" <r:@R>
+        "=>" <t:Type> => {
+        let mut constraints = vec![a, b, c, d];
+        constraints.extend(rest);
+        (Some(Context { constraints, span: NodeSpan::new(l, r) }), t)
+    },
 }
 
 // `@L`/`@R` are captured *inside* each declaration production, never around the

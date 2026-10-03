@@ -34,7 +34,7 @@ exists for. A production of its own for four or more was probed and builds besid
 productions without a conflict: from the fourth element on it is the only one still viable.
 
 The consequence is on the parser AST. A context stops being a type that canonicalization takes
-apart and becomes a list of constraints, which is why [`LANG-71`](../tickets/lang-71.md) moved
+apart and becomes a list of constraints, which is why [`LANG-71`](../tickets/README.md) moved
 to the front of the order: the class and instance heads parse a context too.
 
 ## 2 — An instance head is a declared type, a tuple or `()`, over distinct variables

@@ -781,6 +781,8 @@ impl<I> FusedIterator for Layout<I> where I: Iterator<Item = Result<Spanned<Posi
 #[cfg(test)]
 mod tests {
     use super::*;
+    // The layout pass's own `Context`, not the parser's constraint `parser::Context`.
+    use super::Context;
     use crate::parser::*;
     use crate::position::Position;
     use tokenizer::Token;

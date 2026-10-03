@@ -18,10 +18,10 @@ it parses, and [LANG-39](lang-39.md) is where a class first means something.
 `editors/vscode/syntaxes/zelkova.tmLanguage.json` and
 `crates/zelkova-syntax/tests/editor_grammar.rs`, which holds the two together.
 
-**Depends on:** [LANG-71](lang-71.md), for the shape of a context: a class head and an instance
-head each carry one, as `parser::Context`. [LANG-37](README.md) and [LANG-9](README.md) are
-closed, so `=>` is a token and `instance Comparable (List a)` already has a type argument it can
-parse.
+**Depends on:** nothing open. [LANG-71](README.md) settled the shape of a context: a class head
+and an instance head each carry one, as `parser::Context`. [LANG-37](README.md) and
+[LANG-9](README.md) are closed, so `=>` is a token and `instance Comparable (List a)` already
+has a type argument it can parse.
 
 **Decided (`SPEC-12` and `SPEC-14`, by the language owner; [DEC-2](../decisions/dec-2.md)
 decision 2 and [DEC-24](../decisions/dec-24.md) decisions 2 to 4):** members live in a `where`

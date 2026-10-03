@@ -12,7 +12,7 @@ validates a context and then drops it, `Value::TypedValue`, `Broken`, `Module::t
 
 **Depends on:** [LANG-39](lang-39.md), for a class table to resolve against and for the
 canonical constraint type it introduces for class heads and instance contexts.
-[LANG-71](lang-71.md), closed by then, is why the context arrives as a list.
+[LANG-71](README.md), closed, is why the context arrives as a list.
 
 **Found while:** working [LANG-37](README.md), which made `Comparable a => a -> a` parse and
 validated its *shape* only. It left three things undone on purpose, because each needs a class
