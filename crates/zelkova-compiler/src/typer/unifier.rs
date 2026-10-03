@@ -5,6 +5,10 @@
 //! inherits it, and the two errors raised here hand it to the caller. That is the
 //! whole of "propagate the origin of the constraint it failed on".
 //!
+//! [`read_fields`] is the second step, run once [`unify`] has solved every equation of a
+//! declaration: it reads the field constraints an access, an update and an accessor
+//! wrote, and raises the three errors about a record's use — see `FieldConstraint`.
+//!
 //! The one place unification's symmetry is broken is [`unify_variable`], which is
 //! told which *side* of the constraint the type it is solving to was read from. That
 //! is not inference — the solution is the same either way — it is what lets a
@@ -12,7 +16,10 @@
 
 use log::debug;
 
-use super::{occurs, Constraint, ErrorKind, Side, Substitution, Type, TypeLiteral, TypeVariable};
+use super::{
+    occurs, Constraint, ErrorKind, FieldConstraint, Side, Substitution, Type, TypeLiteral,
+    TypeVariable,
+};
 use zelkova_syntax::tuple::Tuple;
 
 /// Returns true if `tpe` is a numeric type (Int, Float, or Number).
@@ -112,6 +119,23 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
                 .collect();
             unify(constraints)
         }
+        // Records: the same label set, then each label's two field types pairwise, in
+        // label order. A label one side has and the other lacks is a mismatch of the
+        // two whole types, as a `Two` against a `Three` is — there is no row variable
+        // for the missing fields to be solved into (see `Type::Record`).
+        (Type::Record(fields1), Type::Record(fields2))
+            if fields1.len() == fields2.len()
+                && fields1.keys().all(|label| fields2.contains_key(label)) =>
+        {
+            let constraints = fields1
+                .iter()
+                .filter_map(|(label, tpe1)| {
+                    let tpe2 = fields2.get(label)?;
+                    Some(constraint.component(tpe1.clone(), tpe2.clone()))
+                })
+                .collect();
+            unify(constraints)
+        }
         // `Side` names where `tpe` was read from, not where the variable was: it is
         // the solved *type* whose provenance the solution carries.
         (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe, Side::Right, constraint),
@@ -122,6 +146,64 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
             origin: Box::new(constraint.origin.clone()),
         }),
     }
+}
+
+/// Read every [`FieldConstraint`] of a declaration against `substitution`, the solution
+/// of all of its equations, and hand back that solution extended by what reading them
+/// solved.
+///
+/// The constraints are read in passes, in the order given; a pass reads every one still
+/// undecided, and each sees what the ones before it solved. One whose record type is a
+/// record becomes an equation, solved here and merged in; one whose record type is
+/// still a variable waits for the next pass. A pass that decides nothing ends the
+/// reading, and the first constraint still waiting is the error — so every pass either
+/// shrinks what is left or is the last, and none repeats. `FieldConstraint` has the
+/// design this implements.
+///
+/// A constraint still waiting whose record type is the type of one of `holes` is not
+/// that error: its record is a name that did not resolve, which has its own. The
+/// declaration holds the hole, so it is never emitted either way.
+pub(super) fn read_fields(
+    substitution: Substitution,
+    fields: Vec<FieldConstraint>,
+    holes: &[Type],
+) -> Result<Substitution, ErrorKind> {
+    let mut substitution = substitution;
+    let mut pending = fields;
+
+    while !pending.is_empty() {
+        let before = pending.len();
+        let mut waiting = Vec::new();
+
+        for field in pending {
+            match field.read(&substitution)? {
+                Some(equation) => {
+                    let solved = unify(vec![equation])?;
+                    substitution = substitution.merge(solved);
+                }
+                None => waiting.push(field),
+            }
+        }
+
+        if waiting.len() == before {
+            // Nothing this pass decided can change what the next one would read.
+            let holes: Vec<Type> = holes
+                .iter()
+                .map(|hole| substitution.apply_type(hole))
+                .collect();
+            let unexplained = waiting
+                .iter()
+                .find(|field| !holes.contains(&substitution.apply_type(&field.record)));
+            return match unexplained {
+                Some(field) => Err(field.unknown()),
+                None => Ok(substitution),
+            };
+        }
+
+        pending = waiting;
+    }
+
+    Ok(substitution)
 }
 
 /// Solve `tvar` to `tpe`, remembering on the solution where `tpe` came from.

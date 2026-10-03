@@ -685,5 +685,3 @@ f r =
   r.name
 ```
 
-**Known gap:** the type checker has no record type, so a declaration holding a record, an
-update, a field access or an accessor is left unchecked ([`LANG-51`](../tickets/lang-51.md)).

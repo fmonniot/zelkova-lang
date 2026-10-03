@@ -39,14 +39,14 @@ use super::canonical;
 use super::canonical::Module;
 use super::scalars;
 use crate::ir::{
-    pattern_parameter, CaseForm, Constructor, LiteralValue, Reference, ReferenceKind, Saturation,
-    Solved, SubPattern, Term, TermKind, TermPattern, TermPatternKind, TypeBinder, TypedTerm,
-    TypedTermKind,
+    pattern_parameter, CaseForm, Constructor, Field, LiteralValue, Reference, ReferenceKind,
+    Saturation, Solved, SubPattern, Term, TermKind, TermPattern, TermPatternKind, TypeBinder,
+    TypedTerm, TypedTermKind,
 };
 use crate::name::{Name, QualName};
 use crate::{Interface, ModuleName, PhaseError, SpanLabel};
 use log::debug;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use zelkova_syntax::position::NodeSpan;
 use zelkova_syntax::tuple::Tuple;
 
@@ -91,6 +91,20 @@ pub enum Reason {
     TupleElements,
     /// `()` is the unit type's one value.
     Unit,
+    /// A record's type is the record type of its fields' types.
+    RecordFields,
+    /// An update has the type of the record it updates.
+    Update,
+    /// A field's new value in an update has the type the field already has. Carried by
+    /// the equation a `FieldConstraint` of an update becomes once its record type is
+    /// known, at the value's span.
+    UpdateField,
+    /// A field access has the type of the field it reads. Carried by the equation a
+    /// `FieldConstraint` of an access becomes, at the access's span.
+    Access,
+    /// An accessor's result has the type of the field it reads. Carried by the equation
+    /// a `FieldConstraint` of an accessor becomes, at the accessor's span.
+    Accessor,
 }
 
 impl Reason {
@@ -122,6 +136,11 @@ impl Reason {
             Reason::LetBody => "the body of this `let`",
             Reason::TupleElements => "this tuple",
             Reason::Unit => "this unit value",
+            Reason::RecordFields => "this record",
+            Reason::Update => "this update",
+            Reason::UpdateField => "this field's new value",
+            Reason::Access => "this field access",
+            Reason::Accessor => "this accessor",
         }
     }
 
@@ -148,6 +167,11 @@ impl Reason {
             Reason::LetBody => "expected because of this `let` body",
             Reason::TupleElements => "expected because of this tuple",
             Reason::Unit => "expected because of this unit value",
+            Reason::RecordFields => "expected because of this record",
+            Reason::Update => "expected because of this update",
+            Reason::UpdateField => "expected because of this field's new value",
+            Reason::Access => "expected because of this field access",
+            Reason::Accessor => "expected because of this accessor",
         }
     }
 
@@ -166,6 +190,12 @@ impl Reason {
             Reason::ParameterPattern => {
                 Some("a parameter's pattern must match the type of the argument it takes")
             }
+            Reason::Update => Some("an update has the type of the record it updates"),
+            Reason::UpdateField => {
+                Some("an update cannot change a field's type: each new value must have the type its field already has")
+            }
+            Reason::Access => Some("a field access has the type of the field it reads"),
+            Reason::Accessor => Some("an accessor returns the type of the field it reads"),
             _ => None,
         }
     }
@@ -337,6 +367,42 @@ pub enum ErrorKind {
         /// Where the name was written.
         span: NodeSpan,
     },
+    /// A field access, an update or an accessor whose record type nothing else in the
+    /// declaration supplied: once unification had run over the whole declaration, the
+    /// type it reads a field of was still a variable
+    /// ([A use does not decide a record's type](../../docs/spec/records.md#a-use-does-not-decide-a-records-type)).
+    ///
+    /// `span` is the whole form — `person.name`, `{ r | x = 1 }`, `.name` — since what
+    /// is missing is a type for it, not a label in one.
+    RecordTypeUnknown {
+        label: Name,
+        form: RecordUse,
+        span: NodeSpan,
+    },
+    /// A field access, an update or an accessor naming a label the record type it is
+    /// read against does not have. An update naming one is the update that would add a
+    /// field ([Updating a record](../../docs/spec/records.md#updating-a-record)).
+    ///
+    /// `span` is the label for an access and for an update's field, and the whole
+    /// accessor for an accessor, whose label is all of it but the `.`.
+    MissingField {
+        /// The record type, as solved. Boxed for the reason `UnificationFailed`'s
+        /// types are.
+        record: Box<Type>,
+        label: Name,
+        form: RecordUse,
+        span: NodeSpan,
+    },
+    /// A field access, an update or an accessor whose record is not a record at all:
+    /// the type it reads a field of was solved to a type of another form.
+    ///
+    /// `span` is where [`MissingField`](Self::MissingField)'s would be.
+    NotARecord {
+        tpe: Box<Type>,
+        label: Name,
+        form: RecordUse,
+        span: NodeSpan,
+    },
 }
 
 impl ErrorKind {
@@ -346,7 +412,10 @@ impl ErrorKind {
         match self {
             ErrorKind::UnificationFailed { origin, .. }
             | ErrorKind::CircularType { origin, .. } => Some(origin.as_ref()),
-            ErrorKind::UnboundVariable { .. } => None,
+            ErrorKind::UnboundVariable { .. }
+            | ErrorKind::RecordTypeUnknown { .. }
+            | ErrorKind::MissingField { .. }
+            | ErrorKind::NotARecord { .. } => None,
         }
     }
 
@@ -393,6 +462,66 @@ impl ErrorKind {
             ErrorKind::UnboundVariable { name, .. } => {
                 format!("cannot find a value named `{}`", name)
             }
+            ErrorKind::RecordTypeUnknown { label, form, .. } => match form {
+                RecordUse::Access => format!(
+                    "cannot read the field `{}`: nothing in this declaration says which record type it is read from",
+                    label.as_str()
+                ),
+                RecordUse::Accessor => format!(
+                    "cannot type the accessor `.{}`: nothing in this declaration says which record type it reads",
+                    label.as_str()
+                ),
+                RecordUse::Update => {
+                    "cannot type this update: nothing in this declaration says which record type it updates"
+                        .to_string()
+                }
+            },
+            ErrorKind::MissingField { record, label, .. } => format!(
+                "the record type `{}` has no field `{}`",
+                Spelled(record, spellings),
+                label.as_str()
+            ),
+            ErrorKind::NotARecord { tpe, label, .. } => format!(
+                "`{}` is not a record type, so it has no field `{}`",
+                Spelled(tpe, spellings),
+                label.as_str()
+            ),
+        }
+    }
+
+    /// The caret of one of the three errors a `FieldConstraint` raises itself, which
+    /// carry a span and no [`Origin`]: each is about a form rather than about two types.
+    fn record_use_label(&self) -> Option<(NodeSpan, String)> {
+        match self {
+            ErrorKind::RecordTypeUnknown { span, .. } => {
+                Some((*span, "its record type is not known here".to_string()))
+            }
+            ErrorKind::MissingField { label, span, .. } => Some((
+                *span,
+                format!("the record has no field `{}`", label.as_str()),
+            )),
+            ErrorKind::NotARecord { label, span, .. } => Some((
+                *span,
+                format!(
+                    "`{}` is read from a type that is not a record",
+                    label.as_str()
+                ),
+            )),
+            _ => None,
+        }
+    }
+}
+
+/// A [`Type`] written the way a message about one type writes it: bare, unless two of
+/// the unions it names share a spelling, and then each by its module (see [`AdtNames`]).
+struct Spelled<'a>(&'a Type, &'a Spellings);
+
+impl std::fmt::Display for Spelled<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if AdtNames::collide([self.0]) {
+            self.0.write(f, AdtNames::Qualified(self.1))
+        } else {
+            self.0.write(f, AdtNames::Unqualified)
         }
     }
 }
@@ -453,6 +582,32 @@ impl PhaseError for Error {
             }
         }
 
+        match &self.kind {
+            ErrorKind::UnificationFailed { left, right, .. } => {
+                if let Some(difference) = label_difference(left, right) {
+                    notes.push(difference);
+                }
+            }
+            ErrorKind::RecordTypeUnknown { .. } => {
+                notes.push(
+                    "a record's type is never worked out from the fields a declaration uses"
+                        .to_string(),
+                );
+                notes.push(format!(
+                    "a type annotation on `{}` would supply it",
+                    self.declaration
+                ));
+            }
+            ErrorKind::MissingField {
+                form: RecordUse::Update,
+                ..
+            } => notes.push(
+                "an update cannot add a field: each label it names must already be a field of the record it updates"
+                    .to_string(),
+            ),
+            _ => (),
+        }
+
         notes
     }
 
@@ -474,6 +629,20 @@ impl PhaseError for Error {
                         primary: true,
                         file: None,
                     });
+                }
+            }
+            kind @ (ErrorKind::RecordTypeUnknown { .. }
+            | ErrorKind::MissingField { .. }
+            | ErrorKind::NotARecord { .. }) => {
+                if let Some((span, message)) = kind.record_use_label() {
+                    if let Some(span) = span.span() {
+                        labels.push(SpanLabel {
+                            span,
+                            message,
+                            primary: true,
+                            file: None,
+                        });
+                    }
                 }
             }
             kind => {
@@ -519,6 +688,58 @@ impl PhaseError for Error {
         }
 
         labels
+    }
+}
+
+/// The note for two record types that failed to unify because their label sets
+/// differ, naming the labels each has that the other lacks; `None` for any other pair,
+/// two record types of one label set included — they failed on a field's type, which
+/// the headline names.
+///
+/// "First" and "second" are the headline's order, which is the constraint's.
+fn label_difference(left: &Type, right: &Type) -> Option<String> {
+    let (Type::Record(left), Type::Record(right)) = (left, right) else {
+        return None;
+    };
+
+    let only = |of: &BTreeMap<Name, Type>, other: &BTreeMap<Name, Type>| -> Vec<String> {
+        of.keys()
+            .filter(|label| !other.contains_key(*label))
+            .map(|label| format!("`{}`", label.as_str()))
+            .collect()
+    };
+    let only_left = only(left, right);
+    let only_right = only(right, left);
+
+    let clause = |which: &str, labels: &[String], other: &str| {
+        let fields = if labels.len() == 1 {
+            "a field"
+        } else {
+            "fields"
+        };
+        format!(
+            "the {} record type has {} {} that the {} does not",
+            which,
+            fields,
+            labels.join(", "),
+            other
+        )
+    };
+
+    match (only_left.is_empty(), only_right.is_empty()) {
+        (true, true) => None,
+        (false, true) => Some(clause("first", &only_left, "second")),
+        (true, false) => Some(clause("second", &only_right, "first")),
+        (false, false) => Some(format!(
+            "{}, and the second has {} {} that the first does not",
+            clause("first", &only_left, "second"),
+            if only_right.len() == 1 {
+                "a field"
+            } else {
+                "fields"
+            },
+            only_right.join(", ")
+        )),
     }
 }
 
@@ -954,14 +1175,12 @@ fn constructors_of(unions: &Unions) -> HashMap<QualName, Constructor> {
 
 /// Convert a canonical type to the typer's simplified Type representation.
 ///
-/// `None` exactly when `tpe` is or holds a [`canonical::Type::Record`]: the typer has no
-/// record type ([`LANG-51`](../../docs/tickets/lang-51.md)). Every other variant —
-/// `Variable`, `Arrow`, `Tuple` (either arity), `Unit`, and `Type` including named types
-/// with parameters — converts, so `None` otherwise only propagates up from a nested
-/// record. A declaration whose annotation is `None` here is left unchecked
-/// ([`value_to_term_and_annotation`]), and a value or a constructor whose declared type
-/// is `None` is not in the environment inference reads, so a name reaching one is
-/// [`Solved::UnboundName`].
+/// Every variant of [`canonical::Type`] converts, so this answers `None` for no type
+/// today. The `Option` is what a type form the typer cannot read would answer, and the
+/// callers keep their handling of it: a declaration whose annotation is `None` here is
+/// left unchecked ([`value_to_term_and_annotation`]), and a value or a constructor whose
+/// declared type is `None` is not in the environment inference reads, so a name reaching
+/// one is [`Solved::UnboundName`].
 ///
 /// `var_map` maps named type variables (e.g. "a") to consistent TypeVariable
 /// ids, so that `a -> a` produces the same variable on both sides.
@@ -1011,8 +1230,17 @@ pub(crate) fn canonical_type_to_typer_type(
             Some(Type::Tuple(elements))
         }
         canonical::Type::Unit => Some(Type::Unit),
-        // The typer has no record type until `LANG-51`.
-        canonical::Type::Record(_) => None,
+        // Label for label: the canonical map is already the set the typer's is.
+        canonical::Type::Record(fields) => {
+            let fields = fields
+                .iter()
+                .map(|(label, field)| {
+                    let field = canonical_type_to_typer_type(field, var_map, counter)?;
+                    Some((label.clone(), field))
+                })
+                .collect::<Option<BTreeMap<_, _>>>()?;
+            Some(Type::Record(fields))
+        }
         canonical::Type::Type(name, args) => {
             if args.is_empty() {
                 if let Some(literal) = scalar_literal(name) {
@@ -1071,9 +1299,9 @@ pub(super) fn bool_type() -> Type {
 /// Convert a canonical expression to a Term, keeping the position it was written at.
 ///
 /// Returns None for constructs the inference engine doesn't yet handle (a `VarKernel`
-/// reference, complex patterns inside a `Case`, a record, an update, a field access, an
-/// accessor or a record pattern), and for a constructor of a union neither this module
-/// nor an interface in [`Translation`] declares.
+/// reference, and a float, string or record pattern inside a `Case`), and for a
+/// constructor of a union neither this module nor an interface in [`Translation`]
+/// declares.
 ///
 /// Every arm attaches `expr.span` to the term it builds. That is the whole of what
 /// `ERR-4` needed from this function: a constraint can only point at a
@@ -1210,12 +1438,24 @@ fn canonical_expr_to_term(
         // A name that did not resolve. Its error is canonicalization's, and the term
         // stands where the name was written so the rest of the body is still checked.
         canonical::ExpressionKind::Hole => TermKind::Hole,
-        // The term language has no record until `LANG-51`, so a declaration holding one,
-        // or reading a field of one, is left unchecked.
-        canonical::ExpressionKind::Record(_)
-        | canonical::ExpressionKind::Update(..)
-        | canonical::ExpressionKind::Access(..)
-        | canonical::ExpressionKind::Accessor(..) => return None,
+        // The fields stay in the order they were written: only the record's type is a
+        // set, and that is built from them by `constraint::collect`.
+        canonical::ExpressionKind::Record(fields) => {
+            TermKind::Record(translate_fields(fields, translation, counter)?)
+        }
+        canonical::ExpressionKind::Update(record, fields) => TermKind::Update {
+            record: Box::new(canonical_expr_to_term(record, translation, counter)?),
+            fields: translate_fields(fields, translation, counter)?,
+        },
+        canonical::ExpressionKind::Access(record, label, label_span) => TermKind::Access {
+            record: Box::new(canonical_expr_to_term(record, translation, counter)?),
+            label: label.clone(),
+            label_span: *label_span,
+        },
+        canonical::ExpressionKind::Accessor(label, label_span) => TermKind::Accessor {
+            label: label.clone(),
+            label_span: *label_span,
+        },
         // Not yet supported: VarKernel
         _ => return None,
     };
@@ -1224,6 +1464,25 @@ fn canonical_expr_to_term(
         span: expr.span,
         kind,
     })
+}
+
+/// The fields of a record or an update, in the order they were written, each with the
+/// span of its label.
+fn translate_fields(
+    fields: &[canonical::Field],
+    translation: &Translation,
+    counter: &mut u32,
+) -> Option<Vec<Field<Term>>> {
+    fields
+        .iter()
+        .map(|field| {
+            Some(Field {
+                label: field.label.clone(),
+                label_span: field.label_span,
+                value: canonical_expr_to_term(&field.value, translation, counter)?,
+            })
+        })
+        .collect()
 }
 
 /// An application spine: what is being applied, and the `Apply` nodes that apply it,
@@ -1383,7 +1642,7 @@ fn translate_pattern(
         // Float and String patterns — not yet supported.
         canonical::PatternKind::Float(_) | canonical::PatternKind::String(_) => return None,
         // The term language has no record pattern until `LANG-84`, so a declaration
-        // holding one, at any depth, is left unchecked as one holding a record is.
+        // holding one, at any depth, is left unchecked.
         canonical::PatternKind::Record(_) => return None,
     };
 
@@ -1430,7 +1689,10 @@ struct Annotation {
 /// [`wrap_with_patterns`].
 /// Returns None if any part of the value cannot be translated, its annotation included:
 /// a body checked without the annotation it was written with would be checked against
-/// less than the source says, and pass where the annotation should have failed it.
+/// less than the source says, and pass where the annotation should have failed it. No
+/// annotation fails to translate today — [`canonical_type_to_typer_type`] reads every
+/// canonical type — so it is the body alone that can make this `None`; the annotation's
+/// `?` is kept for the type form that would not.
 fn value_to_term_and_annotation(
     value: &canonical::Value,
     translation: &Translation,
@@ -1614,6 +1876,32 @@ pub enum Type {
     /// [`Display`](std::fmt::Display) still writes the unqualified half, since that is
     /// how a module's source spells its own types.
     Adt(QualName, Vec<Type>),
+    /// A [record type](../../docs/spec/records.md#a-record-type-is-a-set-of-fields): each
+    /// label, and the type of the field it names.
+    ///
+    /// A map, for the reason `canonical::Type::Record` is one: a record type is a set of
+    /// fields, so `{ x : Int, y : Int }` and `{ y : Int, x : Int }` are one value here and
+    /// nothing downstream can tell the two spellings apart. The map is ordered by label,
+    /// which is the order [`Display`](std::fmt::Display) writes the fields in.
+    ///
+    /// # How two record types unify
+    ///
+    /// They unify when they carry **the same set of labels** and each label's two field
+    /// types unify; see `unify_one_constraint`. There is no row variable, and nothing
+    /// ever adds a field to a record type: [records are
+    /// closed](../../docs/spec/records.md#records-are-closed), so a variable only ever
+    /// stands for a whole type, a record type included. Two record types with different
+    /// label sets are a plain [`ErrorKind::UnificationFailed`], and its diagnostic names
+    /// the labels each side has that the other lacks (see [`Error`]'s `notes`).
+    ///
+    /// Every walk over a type — substitution, the occurs check, instantiation, the zonk,
+    /// and both renderings — goes into each field's type as it goes into a tuple's
+    /// elements, and nothing else about a record is special to any of them.
+    ///
+    /// What does *not* produce one is a use of a record: an access, an update or an
+    /// accessor says of a type only that it has some label, and is read against a record
+    /// type something else supplied — see `FieldConstraint`.
+    Record(BTreeMap<Name, Type>),
 }
 
 /// How the name of a [`Type::Adt`] is written out.
@@ -1736,6 +2024,13 @@ impl std::fmt::Debug for Type {
             Type::Unit => write!(f, "()"),
             Type::Adt(name, args) if args.is_empty() => write!(f, "{}", name.to_name()),
             Type::Adt(name, args) => write!(f, "{}({:?})", name.to_name(), args),
+            Type::Record(fields) => {
+                let fields: Vec<String> = fields
+                    .iter()
+                    .map(|(label, tpe)| format!("{}: {:?}", label.as_str(), tpe))
+                    .collect();
+                write!(f, "{{{}}}", fields.join(", "))
+            }
         }
     }
 }
@@ -1782,6 +2077,11 @@ impl Type {
                 out.push(name);
                 for arg in args {
                     arg.collect_adt_names(out);
+                }
+            }
+            Type::Record(fields) => {
+                for tpe in fields.values() {
+                    tpe.collect_adt_names(out);
                 }
             }
         }
@@ -1857,6 +2157,20 @@ impl Type {
                 }
                 Ok(())
             }
+            // The spelling [Records](../../docs/spec/records.md#the-type) uses, the
+            // fields in label order. The braces delimit it, so no position needs it
+            // parenthesised, and a field's type is written as it is anywhere else.
+            Type::Record(fields) => {
+                write!(f, "{{ ")?;
+                for (position, (label, tpe)) in fields.iter().enumerate() {
+                    if position > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{} : ", label.as_str())?;
+                    tpe.write(f, names)?;
+                }
+                write!(f, " }}")
+            }
         }
     }
 }
@@ -1923,6 +2237,175 @@ impl Constraint {
             left,
             right,
             origin: self.origin.clone(),
+        }
+    }
+}
+
+/// Which use of a record wrote a `FieldConstraint`. It decides what the constraint's
+/// errors say and which text their carets are under; nothing about how the constraint
+/// is solved depends on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordUse {
+    /// `record.label`.
+    Access,
+    /// `.label`, applied or not.
+    Accessor,
+    /// One field of `{ record | label = value }`.
+    Update,
+}
+
+impl RecordUse {
+    /// The reason the equation this use becomes carries, once its record type is known.
+    fn reason(self) -> Reason {
+        match self {
+            RecordUse::Access => Reason::Access,
+            RecordUse::Accessor => Reason::Accessor,
+            RecordUse::Update => Reason::UpdateField,
+        }
+    }
+}
+
+/// A type said to be a record holding `label`, with that field at `field`: what a field
+/// access, an update and an accessor each say about the record they use.
+///
+/// # Why it is not a [`Constraint`]
+///
+/// `person.name` says of `person`'s type only that it has a `name`. That is not an
+/// equation between two types this unifier can write: a record type names every field it
+/// has ([records are closed](../../docs/spec/records.md#records-are-closed)), and there is
+/// no row variable to stand for the fields `person.name` does not mention. Solving it
+/// would mean inventing a record type out of the labels the declaration happens to touch,
+/// which is exactly what [the language rules
+/// out](../../docs/spec/records.md#a-use-does-not-decide-a-records-type): `nameOf person =
+/// person.name` would take a record with one field. So a field constraint is never an
+/// equation while its record type is unknown, and **nothing here ever solves a variable
+/// standing for a record type**. The type has to come from somewhere else in the
+/// declaration — its annotation, a record expression, a function of known type, a
+/// constructor's argument — and the constraint only reads it.
+///
+/// # When it is read
+///
+/// After [`unifier::unify`] has solved every ordinary constraint of the declaration, by
+/// `unifier::read_fields`. What supplies the record type may be written after the form
+/// as well as before it, so a field constraint cannot be decided at the point
+/// `constraint::collect` meets it; with the whole declaration solved, it can. Then, with
+/// the substitution applied to `record`:
+///
+/// - **A record type holding `label`**: the constraint becomes the ordinary equation
+///   between that field's type and `field`, solved at once and merged into the
+///   substitution. A mismatch there is an [`ErrorKind::UnificationFailed`] with the
+///   caret at `field_span` and the reason [`RecordUse::reason`] names.
+/// - **A record type without it**: [`ErrorKind::MissingField`], at `label_span`. For an
+///   update that is the update that would add a field.
+/// - **Another type that is not a variable**: [`ErrorKind::NotARecord`], at
+///   `label_span`.
+/// - **Still a variable**: not decided yet. Reading another field constraint may solve
+///   it: in `r.a.b` the record type of `.b` is the field type `.a` reads, and in `(.a
+///   r).b` it is the accessor's result. So the constraints are read in passes, in the
+///   order they were collected — which is the order their labels were written — each
+///   pass seeing what the ones before it solved. A pass that decides none of the
+///   constraints left is the end: nothing will ever supply their record types, and the
+///   first of them is [`ErrorKind::RecordTypeUnknown`], with the caret on the whole form
+///   — unless its record type is a hole's, a name that did not resolve, whose own error
+///   already explains it (`constraint::Constraints::holes`). Every pass decides at least
+///   one constraint or is the last, so the passes stop.
+///
+/// A record type only becomes *more* known as the passes go, never less, so whether a
+/// declaration's field constraints are all satisfied does not depend on the order they
+/// are read in. The order picks which of several errors a declaration is reported for,
+/// and makes that the same on every run: in an unannotated `r.a.b` it is `r.a`, the
+/// access the other waits on.
+///
+/// # Why there is nothing to generalise past
+///
+/// A declaration is put in the environment other declarations are checked against by
+/// its annotation alone, and one with no annotation is not put there at all
+/// ([`Solved::UnboundName`]). So a field constraint is always read inside the one
+/// declaration that wrote it, and a use of that declaration from another one never
+/// supplies its record type — which is the rule as
+/// [Records](../../docs/spec/records.md#a-use-does-not-decide-a-records-type) states it.
+/// A type variable an annotation writes, `get : { x : a } -> a`, is a variable inside a
+/// record type and not a record type's variable, so `r.x` reads it; one written for the
+/// record itself, `f : a -> Int` with body `r.x`, supplies no record type and is
+/// [`ErrorKind::RecordTypeUnknown`].
+///
+/// # What else is read late
+///
+/// A record pattern ([`LANG-84`](../../docs/tickets/lang-84.md)) names a subset of a
+/// record's fields and says the same thing about the type it is matched against, one
+/// field constraint per entry; it is meant to be a fourth [`RecordUse`] and nothing more.
+/// A class constraint ([`LANG-40`](../../docs/tickets/lang-40.md)) is the other kind of
+/// constraint the solver can only answer once unification has run. It would be a second
+/// list beside this one in `constraint::Constraints`, and a second step after
+/// `unifier::read_fields` in `infer_annotated` — after, because reading a field can
+/// solve the variable an instance is looked up by. Whether reading an instance's context
+/// can in turn decide a field constraint is that ticket's to settle.
+#[derive(Debug, Clone)]
+struct FieldConstraint {
+    /// The type said to be a record. Usually still a variable when collected.
+    record: Type,
+    label: Name,
+    /// The type the field is used at: the access's own type, an update's new value's, or
+    /// an accessor's result.
+    field: Type,
+    form: RecordUse,
+    /// The whole form — the caret of [`ErrorKind::RecordTypeUnknown`].
+    form_span: NodeSpan,
+    /// The label for an access and an update, and the whole accessor for an accessor —
+    /// the caret of [`ErrorKind::MissingField`] and [`ErrorKind::NotARecord`].
+    label_span: NodeSpan,
+    /// The text whose type is `field` — the access, the new value, the accessor — and the
+    /// caret of a mismatch between it and the field's declared type.
+    field_span: NodeSpan,
+}
+
+impl FieldConstraint {
+    /// This constraint read against everything solved so far: the equation it has
+    /// become, `None` while its record type is still a variable, or the error it is.
+    ///
+    /// The equation is written declared-first, as `Constraint` asks: the field's type in
+    /// the record, then the type it is used at. Its origin is the one
+    /// [`Substitution::apply`] gives a constraint between `record` and `field`, so the
+    /// declared side is explained by whatever brought the record type in — the
+    /// annotation, typically — and a mismatch can say so.
+    fn read(&self, substitution: &Substitution) -> Result<Option<Constraint>, ErrorKind> {
+        let probe = substitution.apply(&Constraint::new(
+            self.record.clone(),
+            self.field.clone(),
+            self.form.reason(),
+            self.field_span,
+        ));
+
+        match &probe.left {
+            Type::Variable(_) => Ok(None),
+            Type::Record(fields) => match fields.get(&self.label) {
+                Some(declared) => Ok(Some(Constraint {
+                    left: declared.clone(),
+                    right: probe.right,
+                    origin: probe.origin,
+                })),
+                None => Err(ErrorKind::MissingField {
+                    record: Box::new(probe.left.clone()),
+                    label: self.label.clone(),
+                    form: self.form,
+                    span: self.label_span,
+                }),
+            },
+            other => Err(ErrorKind::NotARecord {
+                tpe: Box::new(other.clone()),
+                label: self.label.clone(),
+                form: self.form,
+                span: self.label_span,
+            }),
+        }
+    }
+
+    /// The error this constraint is when nothing ever supplied its record type.
+    fn unknown(&self) -> ErrorKind {
+        ErrorKind::RecordTypeUnknown {
+            label: self.label.clone(),
+            form: self.form,
+            span: self.form_span,
         }
     }
 }
@@ -2095,6 +2578,21 @@ impl Substitution {
                     .collect(),
                 form,
             },
+            TypedTermKind::Record(fields) => TypedTermKind::Record(self.apply_fields(fields)),
+            TypedTermKind::Update { record, fields } => TypedTermKind::Update {
+                record: Box::new(self.apply_term(*record)),
+                fields: self.apply_fields(fields),
+            },
+            TypedTermKind::Access {
+                record,
+                label,
+                label_span,
+            } => TypedTermKind::Access {
+                record: Box::new(self.apply_term(*record)),
+                label,
+                label_span,
+            },
+            kind @ TypedTermKind::Accessor { .. } => kind,
         };
 
         TypedTerm {
@@ -2102,6 +2600,17 @@ impl Substitution {
             tpe: self.apply_type(&term.tpe),
             kind,
         }
+    }
+
+    fn apply_fields(&self, fields: Vec<Field<TypedTerm>>) -> Vec<Field<TypedTerm>> {
+        fields
+            .into_iter()
+            .map(|field| Field {
+                label: field.label,
+                label_span: field.label_span,
+                value: self.apply_term(field.value),
+            })
+            .collect()
     }
 
     fn apply_binder(&self, binder: TypeBinder) -> TypeBinder {
@@ -2181,6 +2690,12 @@ impl Substitution {
                     .map(|a| Substitution::substitute(a, tvar, replacement))
                     .collect(),
             ),
+            Type::Record(fields) => Type::Record(
+                fields
+                    .into_iter()
+                    .map(|(label, tpe)| (label, Substitution::substitute(tpe, tvar, replacement)))
+                    .collect(),
+            ),
             Type::Variable(tvar2) if tvar == &tvar2 => replacement.clone(),
             tpe @ Type::Variable(_) => tpe,
         }
@@ -2226,6 +2741,7 @@ fn occurs(tvar: &TypeVariable, tpe: &Type) -> bool {
         } => occurs(tvar, param_tpe) || occurs(tvar, return_tpe),
         Type::Tuple(tuple) => tuple.iter().any(|t| occurs(tvar, t)),
         Type::Adt(_, args) => args.iter().any(|a| occurs(tvar, a)),
+        Type::Record(fields) => fields.values().any(|t| occurs(tvar, t)),
         Type::Variable(tvar2) => tvar == tvar2,
         _ => false,
     }
@@ -2334,6 +2850,12 @@ impl Types {
                     .map(|arg| self.instantiate(arg, fresh))
                     .collect(),
             ),
+            Type::Record(fields) => Type::Record(
+                fields
+                    .into_iter()
+                    .map(|(label, tpe)| (label, self.instantiate(tpe, fresh)))
+                    .collect(),
+            ),
         }
     }
 }
@@ -2381,10 +2903,18 @@ fn infer_annotated(
         ));
     }
 
-    constraints.extend(constraint::collect(&typed_term));
+    let constraint::Constraints {
+        equations,
+        fields,
+        holes,
+    } = constraint::collect(&typed_term);
+    constraints.extend(equations);
     debug!("Constraints: {:#?}", constraints);
 
     let substitution = unifier::unify(constraints)?;
+    // Read only now, with every equation of the declaration solved: see
+    // `FieldConstraint`.
+    let substitution = unifier::read_fields(substitution, fields, &holes)?;
 
     Ok(substitution.apply_term(typed_term))
 }
@@ -2499,6 +3029,15 @@ mod tests {
                     let arg_strs: Vec<String> =
                         args.into_iter().map(|a| self.type_signature(a)).collect();
                     format!("{} {}", name.unqualified_name(), arg_strs.join(" "))
+                }
+                Type::Record(fields) => {
+                    let fields: Vec<String> = fields
+                        .into_iter()
+                        .map(|(label, tpe)| {
+                            format!("{} : {}", label.as_str(), self.type_signature(tpe))
+                        })
+                        .collect();
+                    format!("{{ {} }}", fields.join(", "))
                 }
             }
         }

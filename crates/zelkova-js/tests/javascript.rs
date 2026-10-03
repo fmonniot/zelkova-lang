@@ -2135,33 +2135,90 @@ fn a_case_matching_a_pattern_hole_is_refused() {
     }
 }
 
-/// A declaration holding a record is one the typer leaves unchecked until `LANG-51`, so
-/// its module is refused: a record, and a record type in an annotation over a body the
-/// typer could otherwise check.
+/// A module holding a record type checks and is not built: each record form in a body
+/// is refused by name under the form, and a declaration whose own type holds a record
+/// type is refused whole under the declaration, before its body is read
+/// ([`GEN-25`](../../../docs/tickets/gen-25.md) is what emits them). This is how a `let`
+/// or a hole is refused — `Error::Unsupported` naming a `Construct` — and not
+/// `Error::Unchecked`: every one of these declarations type checked.
 ///
-/// Mutation-checked by restoring `value_to_term_and_annotation`'s `.map` over the
-/// annotation: `annotated` then checks against no annotation and emits.
+/// Every declaration but `annotated` has a type naming no record, which is what makes
+/// its body the thing refused: the record each reads is `Box`'s argument.
+///
+/// Mutation-checked by emitting each of the four term forms as `undefined` in
+/// `Emitter::expression` (the assertion goes red, one form at a time), and by deleting
+/// the `holds_record` check in `emit` (`annotated` emits, and the assertion goes red).
 #[test]
-fn a_declaration_holding_a_record_is_refused() {
-    let errors = refused(indoc! {r#"
+fn a_module_holding_a_record_is_refused() {
+    let source = indoc! {r#"
         module Test exposing ()
+
+        type Box
+          = Box { a : Int }
+
+        first : a -> b -> a
+        first x y =
+          x
 
         annotated : { a : Int } -> Int
         annotated r = 1
 
-        built x =
-          { a = x }
-    "#});
+        built : Box
+        built =
+          Box (first { a = 1 } 2)
 
-    let mut names: Vec<&str> = errors
+        updated : Box -> Box
+        updated b =
+          case b of
+            Box r ->
+              Box { r | a = 2 }
+
+        read : Box -> Int
+        read b =
+          case b of
+            Box r ->
+              r.a
+
+        pick : Box -> Int
+        pick b =
+          case b of
+            Box r ->
+              .a r
+    "#};
+    let errors = refused(source);
+
+    let mut found: Vec<(&str, Construct, Option<std::ops::Range<usize>>)> = errors
         .iter()
         .map(|error| match error {
-            Error::Unchecked { name, .. } => name.as_str(),
-            other => panic!("expected only Unchecked refusals, got {:?}", other),
+            Error::Unsupported {
+                construct,
+                declaration,
+                span,
+            } => (declaration.as_str(), *construct, span.to_range()),
+            other => panic!("expected only Unsupported refusals, got {:?}", other),
         })
         .collect();
-    names.sort();
-    assert_eq!(names, vec!["annotated", "built"]);
+    found.sort_by(|left, right| left.0.cmp(right.0));
+
+    // The range of `needle`, the first `len` bytes of it when given.
+    let range = |needle: &str, len: Option<usize>| {
+        let start = position(source, needle);
+        Some(start..start + len.unwrap_or(needle.len()))
+    };
+    assert_eq!(
+        found,
+        vec![
+            (
+                "annotated",
+                Construct::RecordType,
+                range("annotated : { a : Int } -> Int\nannotated r = 1", None)
+            ),
+            ("built", Construct::Record, range("{ a = 1 }", None)),
+            ("pick", Construct::Accessor, range(".a r", Some(2))),
+            ("read", Construct::Access, range("r.a\n", Some(3))),
+            ("updated", Construct::Update, range("{ r | a = 2 }", None)),
+        ]
+    );
 }
 
 /// A declaration holding a record pattern is one the typer leaves unchecked until
@@ -2198,13 +2255,12 @@ fn a_declaration_holding_a_record_pattern_is_refused() {
 }
 
 /// A facade signature holding a record type is refused, as a parameter or inside a
-/// result: canonicalization admits a record of admitted fields, but `ir::build` reads a
-/// facade's type through the typer's, which has no record type until `LANG-51`, so the
-/// signature is a declaration the typer could not check.
+/// result: canonicalization admits a record of admitted fields, and the typer reads it,
+/// but no record crosses a boundary until this backend has a representation for one, so
+/// the signature is refused as `Construct::RecordType` before any predicate is built.
 ///
-/// Mutation-checked by making `canonical_type_to_typer_type` read a record type as `()`:
-/// `ir::build` then reads both signatures, `take` emits and `point` is refused as
-/// `NoPredicate` instead, and the match panics.
+/// Mutation-checked by deleting the `holds_record` check in `emit`: `take` then emits and
+/// `point` is refused as `NoPredicate` instead, and the match panics.
 #[test]
 fn a_facade_signature_holding_a_record_is_refused() {
     let errors = refused(indoc! {r#"
@@ -2217,41 +2273,14 @@ fn a_facade_signature_holding_a_record_is_refused() {
     let mut names: Vec<&str> = errors
         .iter()
         .map(|error| match error {
-            Error::Unchecked { name, .. } => name.as_str(),
-            other => panic!("expected only Unchecked refusals, got {:?}", other),
+            Error::Unsupported {
+                construct: Construct::RecordType,
+                declaration,
+                ..
+            } => declaration.as_str(),
+            other => panic!("expected only record-type refusals, got {:?}", other),
         })
         .collect();
     names.sort();
     assert_eq!(names, vec!["point", "take"]);
-}
-
-/// A declaration reading a field is one the typer leaves unchecked until `LANG-51`, so
-/// its module is refused, by an access and by an accessor alike.
-///
-/// Mutation-checked by the translation described on the typer's
-/// `a_declaration_reading_a_field_is_left_unchecked`: both declarations then check and
-/// the module emits, and `refused` panics.
-#[test]
-fn a_declaration_reading_a_field_is_refused() {
-    let errors = refused(indoc! {r#"
-        module Test exposing ()
-
-        read : Int -> Int
-        read r =
-          r.a
-
-        pick : Int
-        pick =
-          .a
-    "#});
-
-    let mut names: Vec<&str> = errors
-        .iter()
-        .map(|error| match error {
-            Error::Unchecked { name, .. } => name.as_str(),
-            other => panic!("expected only Unchecked refusals, got {:?}", other),
-        })
-        .collect();
-    names.sort();
-    assert_eq!(names, vec!["pick", "read"]);
 }

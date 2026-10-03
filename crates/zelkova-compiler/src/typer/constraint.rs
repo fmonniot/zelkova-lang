@@ -18,15 +18,27 @@
 //! - the sides of a constraint are ordered declared-first where the source has a
 //!   declared side, because that is the order the headline reads them out in (see
 //!   [`Constraint`]).
+//!
+//! A field access, an update's fields and an accessor say something about a record type
+//! that is not an equation, and are collected into a list of their own, read after the
+//! equations are solved — see [`FieldConstraint`]. That list is in the order the labels
+//! were written, which is not the first rule's order: an access's record comes before
+//! its own label.
 
 use super::{
-    bool_type, CaseForm, Constraint, Reason, SubPattern, TermPattern, TermPatternKind, Type,
-    TypeLiteral, TypedTerm, TypedTermKind,
+    bool_type, CaseForm, Constraint, FieldConstraint, Reason, RecordUse, SubPattern, TermPattern,
+    TermPatternKind, Type, TypeLiteral, TypedTerm, TypedTermKind,
 };
 use zelkova_syntax::tuple::Tuple;
 
-pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
-    let mut constraints = Vec::new();
+pub(super) fn collect(term: &TypedTerm) -> Constraints {
+    let mut constraints = Constraints::default();
+    walk(term, &mut constraints);
+    constraints
+}
+
+/// Push `term`'s constraints, then its children's, onto `out`.
+fn walk(term: &TypedTerm, out: &mut Constraints) {
     let tpe = &term.tpe;
     let span = term.span;
 
@@ -34,7 +46,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
         TypedTermKind::Int(_) => {
             // Integer literals are polymorphic numeric values: they can unify
             // with Int or Float (but not Bool, Char, etc.).
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 tpe.clone(),
                 Type::Number,
                 Reason::Literal,
@@ -42,7 +54,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             ));
         }
         TypedTermKind::Char(_) => {
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 tpe.clone(),
                 Type::Literal(TypeLiteral::Char),
                 Reason::Literal,
@@ -50,7 +62,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             ));
         }
         TypedTermKind::String(_) => {
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 tpe.clone(),
                 Type::Literal(TypeLiteral::String),
                 Reason::Literal,
@@ -58,7 +70,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             ));
         }
         TypedTermKind::Float(_) => {
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 tpe.clone(),
                 Type::Literal(TypeLiteral::Float),
                 Reason::Literal,
@@ -66,12 +78,13 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             ));
         }
         TypedTermKind::Unit => {
-            constraints.push(Constraint::new(tpe.clone(), Type::Unit, Reason::Unit, span));
+            out.equations
+                .push(Constraint::new(tpe.clone(), Type::Unit, Reason::Unit, span));
         }
         TypedTermKind::Fun { param, body } => {
             let param_tpe = Box::new(param.tpe.clone());
             let return_tpe = Box::new(body.tpe.clone());
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 tpe.clone(),
                 Type::Fun {
                     param_tpe,
@@ -81,19 +94,20 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                 span,
             ));
 
-            constraints.extend(collect(body));
+            walk(body, out);
         }
         TypedTermKind::Identifier(_) => (),
         // A name that did not resolve constrains nothing: its type is solved by whatever
-        // constrains the node around it.
-        TypedTermKind::Hole => (),
+        // constrains the node around it. Its type is remembered all the same, for the one
+        // question asked of it later (see `Constraints::holes`).
+        TypedTermKind::Hole => out.holes.push(tpe.clone()),
         TypedTermKind::Apply { fun, arg, .. } => {
             let param_tpe = Box::new(arg.tpe.clone());
             let return_tpe = Box::new(tpe.clone());
             // The span is the *applied* expression's, not the whole application's:
             // "the expression being applied" is only useful pointing at the thing
             // being applied.
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 fun.tpe.clone(),
                 Type::Fun {
                     param_tpe,
@@ -103,8 +117,8 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                 fun.span,
             ));
 
-            constraints.extend(collect(fun));
-            constraints.extend(collect(arg));
+            walk(fun, out);
+            walk(arg, out);
         }
         TypedTermKind::If {
             cond,
@@ -112,28 +126,28 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             false_branch,
         } => {
             // If put a constraint on the condition and the branches should resolve to the same type
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 cond.tpe.clone(),
                 bool_type(),
                 Reason::IfCondition,
                 cond.span,
             ));
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 true_branch.tpe.clone(),
                 tpe.clone(),
                 Reason::IfBranch,
                 true_branch.span,
             ));
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 false_branch.tpe.clone(),
                 tpe.clone(),
                 Reason::IfBranch,
                 false_branch.span,
             ));
 
-            constraints.extend(collect(cond));
-            constraints.extend(collect(true_branch));
-            constraints.extend(collect(false_branch));
+            walk(cond, out);
+            walk(true_branch, out);
+            walk(false_branch, out);
         }
         TypedTermKind::Let {
             binding,
@@ -141,7 +155,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             body,
         } => {
             // The let expression has the body type.
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 tpe.clone(),
                 body.tpe.clone(),
                 Reason::LetBody,
@@ -149,15 +163,15 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             ));
             // The binding type is the one of the value. Written value-first so that
             // the side named by the span — the value — is `left`.
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 value.tpe.clone(),
                 binding.tpe.clone(),
                 Reason::LetBinding,
                 value.span,
             ));
 
-            constraints.extend(collect(value));
-            constraints.extend(collect(body));
+            walk(value, out);
+            walk(body, out);
         }
         TypedTermKind::Case {
             scrutinee,
@@ -182,13 +196,13 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             for (pattern, body) in branches {
                 // Each pattern constrains the scrutinee type. The pattern is what the
                 // caret should sit under, so the pattern's type is `left`.
-                pattern_constraints(pattern, &scrutinee.tpe, pattern_reason, &mut constraints);
+                pattern_constraints(pattern, &scrutinee.tpe, pattern_reason, &mut out.equations);
                 // Every branch must return the case expression's type. Pushed after the
                 // pattern's constraint, which is what links the names the pattern binds
                 // to the scrutinee: a tuple pattern's elements are fresh variables until
                 // it is solved, and a branch constraint solved first would settle them
                 // from the `case`'s type and blame the pattern for a wrong body.
-                constraints.push(Constraint::new(
+                out.equations.push(Constraint::new(
                     body.tpe.clone(),
                     tpe.clone(),
                     branch_reason,
@@ -196,9 +210,9 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                 ));
             }
 
-            constraints.extend(collect(scrutinee));
+            walk(scrutinee, out);
             for (_, body) in branches {
-                constraints.extend(collect(body));
+                walk(body, out);
             }
         }
         TypedTermKind::Tuple(elements) => {
@@ -207,7 +221,7 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
                 Tuple::Two(a, b) => Tuple::two(a.tpe.clone(), b.tpe.clone()),
                 Tuple::Three(a, b, c) => Tuple::three(a.tpe.clone(), b.tpe.clone(), c.tpe.clone()),
             };
-            constraints.push(Constraint::new(
+            out.equations.push(Constraint::new(
                 tpe.clone(),
                 Type::Tuple(element_types),
                 Reason::TupleElements,
@@ -215,12 +229,111 @@ pub(super) fn collect(term: &TypedTerm) -> Vec<Constraint> {
             ));
 
             for elem in elements.iter() {
-                constraints.extend(collect(elem));
+                walk(elem, out);
+            }
+        }
+        TypedTermKind::Record(fields) => {
+            // The record's type is the set of its fields' types. Labels are unique —
+            // canonicalization reports a repeated one — so no field is lost to the map.
+            let field_types = fields
+                .iter()
+                .map(|field| (field.label.clone(), field.value.tpe.clone()))
+                .collect();
+            out.equations.push(Constraint::new(
+                tpe.clone(),
+                Type::Record(field_types),
+                Reason::RecordFields,
+                span,
+            ));
+
+            for field in fields {
+                walk(&field.value, out);
+            }
+        }
+        TypedTermKind::Update { record, fields } => {
+            // The one equation an update writes: it has the type of the record it
+            // updates. What it says about that type's fields is not an equation, and is
+            // read once unification has run (see `FieldConstraint`).
+            out.equations.push(Constraint::new(
+                tpe.clone(),
+                record.tpe.clone(),
+                Reason::Update,
+                span,
+            ));
+
+            walk(record, out);
+            for field in fields {
+                out.fields.push(FieldConstraint {
+                    record: record.tpe.clone(),
+                    label: field.label.clone(),
+                    field: field.value.tpe.clone(),
+                    form: RecordUse::Update,
+                    form_span: span,
+                    label_span: field.label_span,
+                    field_span: field.value.span,
+                });
+                walk(&field.value, out);
+            }
+        }
+        TypedTermKind::Access {
+            record,
+            label,
+            label_span,
+        } => {
+            // No equation at all: the access's type is the field's, and the field is
+            // only known once the record's type is (see `FieldConstraint`). The record
+            // is walked first, so that the field constraints of a chain `r.a.b` are in
+            // the order their labels were written.
+            walk(record, out);
+            out.fields.push(FieldConstraint {
+                record: record.tpe.clone(),
+                label: label.clone(),
+                field: tpe.clone(),
+                form: RecordUse::Access,
+                form_span: span,
+                label_span: *label_span,
+                field_span: span,
+            });
+        }
+        TypedTermKind::Accessor { label, .. } => {
+            // `annotate` gives an accessor the type `record -> field` and no other, so
+            // the two halves are read back off it here.
+            if let Type::Fun {
+                param_tpe,
+                return_tpe,
+            } = tpe
+            {
+                out.fields.push(FieldConstraint {
+                    record: *param_tpe.clone(),
+                    label: label.clone(),
+                    field: *return_tpe.clone(),
+                    form: RecordUse::Accessor,
+                    form_span: span,
+                    label_span: span,
+                    field_span: span,
+                });
             }
         }
     };
+}
 
-    constraints
+/// Everything a declaration's term requires of its types: the equations `unify` solves
+/// in order, and the field constraints read after them.
+///
+/// The two are kept apart because they are solved apart — see [`FieldConstraint`] for
+/// why a field constraint is not an equation. Each list is in the order it was
+/// collected, which for the equations is the order the module doc states, and for the
+/// field constraints the order their labels were written.
+#[derive(Debug, Default)]
+pub(super) struct Constraints {
+    pub(super) equations: Vec<Constraint>,
+    pub(super) fields: Vec<FieldConstraint>,
+    /// The type of every hole in the term. A field constraint whose record type nothing
+    /// supplied because it is a hole's type is not reported: the error that the name did
+    /// not resolve already stands behind it, and is the one the user has to fix
+    /// ([`DEC-23` decisions 3 and
+    /// 6](../../../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
+    pub(super) holes: Vec<Type>,
 }
 
 /// The constraints a pattern places on `against`, the type of the value it is matched
@@ -291,6 +404,10 @@ mod tests {
         typed(tpe, TypedTermKind::Identifier(Reference::local(name)))
     }
 
+    fn collect_equations(term: &TypedTerm) -> Vec<Constraint> {
+        collect(term).equations
+    }
+
     fn constraint(left: Type, right: Type, reason: Reason) -> Constraint {
         Constraint::new(left, right, reason, NodeSpan::none())
     }
@@ -317,7 +434,7 @@ mod tests {
 
         let int = typed(t1, TypedTermKind::Int(42));
 
-        assert_eq!(collect(&int), expected);
+        assert_eq!(collect_equations(&int), expected);
     }
 
     #[test]
@@ -345,7 +462,7 @@ mod tests {
             },
         );
 
-        assert_eq!(collect(&fun), expected);
+        assert_eq!(collect_equations(&fun), expected);
     }
 
     #[test]
@@ -354,7 +471,7 @@ mod tests {
 
         let b = identifier(t1, "a");
 
-        assert_eq!(collect(&b), vec![]);
+        assert_eq!(collect_equations(&b), vec![]);
     }
 
     #[test]
@@ -384,7 +501,7 @@ mod tests {
             },
         );
 
-        assert_eq!(collect(&apply), expected);
+        assert_eq!(collect_equations(&apply), expected);
     }
 
     #[test]
@@ -419,7 +536,7 @@ mod tests {
             },
         );
 
-        assert_eq!(collect(&if_else), expected);
+        assert_eq!(collect_equations(&if_else), expected);
     }
 
     #[test]
@@ -447,6 +564,6 @@ mod tests {
             },
         );
 
-        assert_eq!(collect(&let_), expected);
+        assert_eq!(collect_equations(&let_), expected);
     }
 }

@@ -275,6 +275,25 @@ pub enum Construct {
     /// [`emit`] anyway from being emitted ([`DEC-23` decision
     /// 6](../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
     Hole,
+    /// A declaration whose type holds a record type, anywhere in it — a parameter, a
+    /// result, a field of a tuple's element. This backend has no representation of a
+    /// record yet ([`GEN-25`](../docs/tickets/gen-25.md)), so neither a value of one nor a
+    /// facade signature naming one is emitted, and the declaration is refused whole
+    /// before its body is read, at the declaration's span.
+    ///
+    /// Read off the declaration's own type alone, so a body that builds or reads a record
+    /// whose type its declaration does not mention is refused by the four constructs
+    /// below. A union whose constructor holds a record is not refused here; a facade
+    /// result reaching one is [`Unpredicated::Record`].
+    RecordType,
+    /// A record, `{ label = value, … }` ([`ir::TypedTermKind::Record`]).
+    Record,
+    /// An update, `{ record | label = value, … }` ([`ir::TypedTermKind::Update`]).
+    Update,
+    /// A field access, `record.label` ([`ir::TypedTermKind::Access`]).
+    Access,
+    /// An accessor, `.label` ([`ir::TypedTermKind::Accessor`]).
+    Accessor,
 }
 
 impl Construct {
@@ -283,7 +302,26 @@ impl Construct {
             Construct::Let => "a `let` expression",
             Construct::Lambda => "an anonymous function",
             Construct::Hole => "a name that did not resolve",
+            Construct::RecordType => "a record type",
+            Construct::Record => "a record",
+            Construct::Update => "a record update",
+            Construct::Access => "a field access",
+            Construct::Accessor => "an accessor",
         }
+    }
+}
+
+/// Whether `tpe` holds a record type anywhere in it — see [`Construct::RecordType`].
+fn holds_record(tpe: &Type) -> bool {
+    match tpe {
+        Type::Record(_) => true,
+        Type::Fun {
+            param_tpe,
+            return_tpe,
+        } => holds_record(param_tpe) || holds_record(return_tpe),
+        Type::Tuple(elements) => elements.iter().any(holds_record),
+        Type::Adt(_, args) => args.iter().any(holds_record),
+        Type::Literal(_) | Type::Number | Type::Variable(_) | Type::Unit => false,
     }
 }
 
@@ -305,12 +343,11 @@ pub enum Unpredicated {
     /// and canonicalization does too, but this backend has no representation of a record
     /// to build its predicate over ([`GEN-25`](../docs/tickets/gen-25.md)).
     ///
-    /// Reached through a union's constructor argument: a facade signature naming a record
-    /// itself is one `ir::build` cannot read through the typer's types, since the typer has
-    /// no record type, so it leaves the declaration in [`ir::Module::unchecked`], which
-    /// [`emit`] refuses as [`Error::Unchecked`] before any predicate is built. A signature
-    /// naming a union such as `type Shape = Box { x : Int }` reads fine, and the predicate
-    /// walk then reaches the record in `Box`'s argument.
+    /// Reached through a union's constructor argument only: a facade signature naming a
+    /// record itself is refused as [`Construct::RecordType`] before any predicate is
+    /// built. A signature naming a union such as `type Shape = Box { x : Int }` names no
+    /// record type of its own, and the predicate walk then reaches the record in `Box`'s
+    /// argument.
     Record,
 }
 
@@ -894,6 +931,11 @@ pub fn emit(
 
     for declaration in &ir.declarations {
         emitter.declaration = Some(declaration.name.clone());
+
+        if holds_record(&declaration.tpe) {
+            emitter.unsupported(Construct::RecordType, declaration.span);
+            continue;
+        }
 
         if ir.foreign {
             emitter.facade_declaration(
@@ -1553,6 +1595,10 @@ impl Emitter {
             TypedTermKind::Let { .. } => self.unsupported(Construct::Let, term.span),
             TypedTermKind::Fun { .. } => self.unsupported(Construct::Lambda, term.span),
             TypedTermKind::Hole => self.unsupported(Construct::Hole, term.span),
+            TypedTermKind::Record(_) => self.unsupported(Construct::Record, term.span),
+            TypedTermKind::Update { .. } => self.unsupported(Construct::Update, term.span),
+            TypedTermKind::Access { .. } => self.unsupported(Construct::Access, term.span),
+            TypedTermKind::Accessor { .. } => self.unsupported(Construct::Accessor, term.span),
         }
     }
 
