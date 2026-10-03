@@ -1,0 +1,82 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="The Zelkova compiler"><title>zelkova_compiler - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-0c87338a.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="zelkova_compiler" data-themes="" data-resource-suffix="" data-rustdoc-version="1.99.0 (b940084d7 2026-09-28)" data-channel="1.99.0" data-search-js="search-cf4fc35e.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate zelkova_compiler</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../zelkova_compiler/index.html">zelkova_<wbr>compiler</a><span class="version">0.3.0</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#how-to-compile-a-package-" title="How to compile a package ?">How to compile a package ?</a></li></ul><h3><a href="#modules">Crate Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#traits" title="Traits">Traits</a></li><li><a href="#functions" title="Functions">Functions</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1>Crate <span>zelkova_<wbr>compiler</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/zelkova_compiler/lib.rs.html#1-2364">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>The Zelkova compiler</p>
+<h2 id="how-to-compile-a-package-"><a class="doc-anchor" href="#how-to-compile-a-package-">§</a>How to compile a package ?</h2>
+<p>Note: an interface is built for every module that canonicalizes and kept for whatever
+imports it within its package; a package that checks also offers its modules’
+interfaces to the packages that depend on it. What is still missing is emitting one,
+so a dependency is compiled from source on every build.</p>
+<ol>
+<li>Read the package’s <code>zelkova.toml</code> manifest, and resolve the build: every package
+reachable through <code>dependencies</code>, plus the root package’s <code>test-dependencies</code>, each
+ordered after the packages it depends on. Steps 2 to 6 then run once per package —
+bar the ones only <code>test-dependencies</code> reaches, which a build that did not ask for
+the tests resolves and leaves uncompiled — over the two source roots: <code>src/</code> and,
+for the root package when its tests were asked for, <code>tests/</code>, beside its own
+manifest. The root’s <code>tests/</code> is compiled last, after the packages only
+<code>test-dependencies</code> reach, since one of those may depend on the root’s <code>src/</code>.
+Before a package’s modules are checked, the whole map of module names it can
+import is built — its own, plus each
+direct dependency’s public modules under that package’s namespace or, unwrapped,
+under their own names — and a name two modules both answer to stops that package
+there.</li>
+<li>Collect all <code>*.zelkova</code> files with their path name relatives to the root.</li>
+<li>Create a <code>SourceFiles</code> mapping from <code>ModuleName</code> to <code>parser::Module</code>.
+<ol>
+<li>module names are deduced from file name</li>
+<li>parsing is done through <code>parser::parse_recovering</code>, which reports every
+declaration that fails rather than only the first. A file whose header parsed
+keeps its module, with a record of each declaration that failed; one whose
+header did not is still a module its importers find, holding nothing</li>
+<li>Verify that <code>parser::Module.name</code> match the one from the file system</li>
+</ol>
+</li>
+<li>Build a dependency graphs from the modules import
+<ol>
+<li>build it</li>
+<li>Verify there is no cyclic relation between modules</li>
+</ol>
+</li>
+<li>Following the deps graph,
+<ol>
+<li>canonicalize each modules. A declaration that does not canonicalize costs the
+module that declaration and nothing else, an import that does not resolve costs
+it that import and nothing else, and the module publishes its <code>Interface</code> to
+the modules checked after it, whatever the checks find in it. A not-found
+error that only restates one of those failures is not reported again
+(<code>canonical::canonicalize_recovering</code>)</li>
+<li>check each module (type check, exhaustiveness, etc…), and build the <code>ir::Module</code>
+a backend reads out of the canonical module and what the typer solved. The IR
+is built whether or not a declaration was broken or rejected, and lists each
+such one as unchecked</li>
+<li>Bonus point to parallelize the tree branches which are not dependent on each others</li>
+</ol>
+</li>
+<li>Report. Each phase returns every error it found, <code>check_module_recovering</code> tags those with
+the module they came from, and <code>check_package</code> accumulates them across modules and
+hands them back with the file database and every status line, printing nothing.
+See the <code>PhaseError</code> trait for what a phase error owes the <code>Diagnostic</code> it renders
+as.</li>
+</ol>
+<p>Every step is <code>check_package</code>’s, which writes nothing anywhere. Emitting a build that
+checked, writing it and printing what the check found are the <code>driver</code> module’s.</p>
+</div></details><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="canonical/index.html" title="mod zelkova_compiler::canonical">canonical</a></dt><dd>The canonical representation of a zelkova programs is a translation of a local
+source into the broader world.</dd><dt><a class="mod" href="default_imports/index.html" title="mod zelkova_compiler::default_imports">default_<wbr>imports</a></dt><dd>The imports every module gets without writing them.</dd><dt><a class="mod" href="dependencies/index.html" title="mod zelkova_compiler::dependencies">dependencies</a></dt><dd>Walk package’s module dependencies</dd><dt><a class="mod" href="exhaustiveness/index.html" title="mod zelkova_compiler::exhaustiveness">exhaustiveness</a></dt><dd>This module contains the exhaustiveness checker for pattern matching.</dd><dt><a class="mod" href="ir/index.html" title="mod zelkova_compiler::ir">ir</a></dt><dd>The intermediate representation code generation reads.</dd><dt><a class="mod" href="manifest/index.html" title="mod zelkova_compiler::manifest">manifest</a></dt><dd><code>zelkova.toml</code>, the package manifest.</dd><dt><a class="mod" href="name/index.html" title="mod zelkova_compiler::name">name</a></dt><dd>Home to the <code>Name</code> and <code>QualName</code> primitives</dd><dt><a class="mod" href="program/index.html" title="mod zelkova_compiler::program">program</a></dt><dd>A program’s entry point: the module a manifest’s <code>main</code> names, held to
+<a href="../../docs/spec/packages.md#programs"><em>Programs</em></a>.</dd><dt><a class="mod" href="resolve/index.html" title="mod zelkova_compiler::resolve">resolve</a></dt><dd>The packages a build is made from, and the module names each of them sees.</dd><dt><a class="mod" href="scalars/index.html" title="mod zelkova_compiler::scalars">scalars</a></dt><dd>The five type names the compiler knows.</dd><dt><a class="mod" href="source/index.html" title="mod zelkova_compiler::source">source</a></dt><dt><a class="mod" href="typer/index.html" title="mod zelkova_compiler::typer">typer</a></dt><dd>This module contains the type checker pass of the language</dd></dl><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.CheckedModule.html" title="struct zelkova_compiler::CheckedModule">Checked<wbr>Module</a></dt><dd>One module the checks built a tree for, in both the forms the compiler still needs
+it. Whether it passed them is said beside it: by <a href="fn.check_module.html" title="fn zelkova_compiler::check_module"><code>check_module</code></a>’s <code>Ok</code>, or by the
+empty error list of <a href="fn.check_module_recovering.html" title="fn zelkova_compiler::check_module_recovering"><code>check_module_recovering</code></a>’s
+<a href="dependencies/enum.Outcome.html#variant.Module" title="variant zelkova_compiler::dependencies::Outcome::Module"><code>Outcome::Module</code></a>.</dd><dt><a class="struct" href="struct.CheckedSource.html" title="struct zelkova_compiler::CheckedSource">Checked<wbr>Source</a></dt><dd>One module of a build the check built a tree for, with the file it was read from and
+the source root it was read under. Which list of <a href="struct.PackageCheck.html" title="struct zelkova_compiler::PackageCheck"><code>PackageCheck</code></a> holds it says
+whether it checked.</dd><dt><a class="struct" href="struct.Interface.html" title="struct zelkova_compiler::Interface">Interface</a></dt><dd>An interface is trim down version of a module.</dd><dt><a class="struct" href="struct.InvalidPackageName.html" title="struct zelkova_compiler::InvalidPackageName">Invalid<wbr>Package<wbr>Name</a></dt><dd><code>PackageName::new</code> refused this string; it names the input so a caller can report it.</dd><dt><a class="struct" href="struct.ModuleName.html" title="struct zelkova_compiler::ModuleName">Module<wbr>Name</a></dt><dd>A module name represent</dd><dt><a class="struct" href="struct.PackageCheck.html" title="struct zelkova_compiler::PackageCheck">Package<wbr>Check</a></dt><dd>What <a href="fn.check_package.html" title="fn zelkova_compiler::check_package"><code>check_package</code></a> found: everything a build needs to emit, and everything that
+went wrong, with nothing printed and nothing written.</dd><dt><a class="struct" href="struct.PackageName.html" title="struct zelkova_compiler::PackageName">Package<wbr>Name</a></dt><dd>A package name: one flat identifier, ASCII lowercase letters, digits and hyphens,
+starting with a letter, with every hyphen followed by a letter —
+<a href="../docs/spec/packages.md#the-manifest"><code>docs/spec/packages.md</code></a>’s whole rule for
+<code>name</code>. That shape is what keeps a package name and a module name from ever being
+confused (one is lowercase-with-hyphens, the other uppercase-with-dots), and what makes
+the namespace a package’s name derives unambiguous.</dd><dt><a class="struct" href="struct.SourceSpan.html" title="struct zelkova_compiler::SourceSpan">Source<wbr>Span</a></dt><dd>A byte span paired with the file it was written in.</dd><dt><a class="struct" href="struct.SpanLabel.html" title="struct zelkova_compiler::SpanLabel">Span<wbr>Label</a></dt><dd>One underlined region of the user’s source, and what to say about it.</dd><dt><a class="struct" href="struct.Status.html" title="struct zelkova_compiler::Status">Status</a></dt><dd>One status line of a check, in the order the check reached it: <code>parsed 8 modules</code>,
+<code>checked modules: [..]</code>, or what failed in either.</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.CompilationError.html" title="enum zelkova_compiler::CompilationError">Compilation<wbr>Error</a></dt><dd>Every way checking a package can fail, tagged with the phase that failed.</dd></dl><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><dl class="item-table"><dt><a class="trait" href="trait.Checked.html" title="trait zelkova_compiler::Checked">Checked</a></dt><dd>What <a href="dependencies/struct.ModuleWalker.html#method.check_in_order" title="method zelkova_compiler::dependencies::ModuleWalker::check_in_order"><code>dependencies::ModuleWalker::check_in_order</code></a> needs of whatever its checker
+hands back: a name to key the module by, and the interface the modules after it are
+checked against.</dd><dt><a class="trait" href="trait.PhaseError.html" title="trait zelkova_compiler::PhaseError">Phase<wbr>Error</a></dt><dd>What a compiler phase owes the diagnostic reporter.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.check_module.html" title="fn zelkova_compiler::check_module">check_<wbr>module</a></dt><dd>Take a parsed module file within the ecosystem and apply all checks to it</dd><dt><a class="fn" href="fn.check_module_recovering.html" title="fn zelkova_compiler::check_module_recovering">check_<wbr>module_<wbr>recovering</a></dt><dd>Apply every check to one parsed module, and hand back the module the checks built
+beside everything they found wrong with it.</dd><dt><a class="fn" href="fn.check_package.html" title="fn zelkova_compiler::check_package">check_<wbr>package</a></dt><dd>Check the package rooted at <code>package_dir</code> and every package it depends on, as
+<code>zelkova::compile_package</code> does, and hand back what was found without printing
+or writing anything.</dd><dt><a class="fn" href="fn.check_package_with_tests.html" title="fn zelkova_compiler::check_package_with_tests">check_<wbr>package_<wbr>with_<wbr>tests</a></dt><dd><a href="fn.check_package.html" title="fn zelkova_compiler::check_package"><code>check_package</code></a>, checking the root package’s <code>tests/</code> as well as its <code>src/</code>, as
+<code>zelkova::compile_package_with_tests</code> does.</dd><dt><a class="fn" href="fn.phase_diagnostic.html" title="fn zelkova_compiler::phase_diagnostic">phase_<wbr>diagnostic</a></dt><dd>Render the errors one phase produced for one module.</dd><dt><a class="fn" href="fn.plain_diagnostic.html" title="fn zelkova_compiler::plain_diagnostic">plain_<wbr>diagnostic</a></dt><dd>Render an error that is about no place in any source — a path on disk, a program that
+could not be started — as its message and its notes, with no label.</dd></dl></section></div></main></body></html>

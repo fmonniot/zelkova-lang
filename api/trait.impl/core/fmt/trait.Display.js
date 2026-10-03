@@ -1,0 +1,9 @@
+(function() {
+    const implementors = Object.fromEntries([["zelkova_compiler",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.99.0/core/fmt/trait.Display.html\" title=\"trait core::fmt::Display\">Display</a> for <a class=\"struct\" href=\"zelkova_compiler/struct.PackageName.html\" title=\"struct zelkova_compiler::PackageName\">PackageName</a>",0],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.99.0/core/fmt/trait.Display.html\" title=\"trait core::fmt::Display\">Display</a> for <a class=\"enum\" href=\"zelkova_compiler/source/files/enum.SourceRoot.html\" title=\"enum zelkova_compiler::source::files::SourceRoot\">SourceRoot</a>",0],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.99.0/core/fmt/trait.Display.html\" title=\"trait core::fmt::Display\">Display</a> for <a class=\"enum\" href=\"zelkova_compiler/typer/enum.Type.html\" title=\"enum zelkova_compiler::typer::Type\">Type</a>",0],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.99.0/core/fmt/trait.Display.html\" title=\"trait core::fmt::Display\">Display</a> for <a class=\"struct\" href=\"zelkova_compiler/manifest/struct.Version.html\" title=\"struct zelkova_compiler::manifest::Version\">Version</a>",0]]],["zelkova_syntax",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.99.0/core/fmt/trait.Display.html\" title=\"trait core::fmt::Display\">Display</a> for <a class=\"struct\" href=\"zelkova_syntax/name/struct.Name.html\" title=\"struct zelkova_syntax::name::Name\">Name</a>",0]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":59,"fragment_lengths":[1170,291]}

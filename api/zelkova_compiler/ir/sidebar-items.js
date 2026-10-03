@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["CaseForm","Decision","LiteralValue","Occurrence","Outcome","ReferenceKind","Saturation","Solved","Step","TermKind","TermPatternKind","TypedTermKind"],"fn":["build","decision_tree"],"struct":["Binding","Body","Constructor","Declaration","Module","Reference","SubPattern","Term","TermPattern","TypeBinder","TypedTerm","Unchecked","Union","Variant"]};

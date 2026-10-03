@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["TEST_PACKAGE"],"fn":["collect"],"struct":["ModuleTests"]};
