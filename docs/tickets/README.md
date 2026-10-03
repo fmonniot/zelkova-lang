@@ -170,7 +170,7 @@ declarations it is about, and not closed by it.
 
 ## Active work: records
 
-Four tickets remain of one body of work — `LANG-49`, `LANG-51`, `LANG-84` and `GEN-25`. The
+Three tickets remain of one body of work — `LANG-51`, `LANG-84` and `GEN-25`. The
 goal is that **a value of several parts can name them** —
 `{ taken : Celsius, expected : Celsius }` where a tuple says which part is which by position
 and stops at three.
@@ -202,12 +202,14 @@ an applied constructor written as a sub-pattern being parenthesised, and the typ
 nested pattern as it does one at the top. That is what the first record-pattern block in two
 chapters needs, since it matches a constructor inside a field, and what `LANG-84` relies on.
 
+`LANG-49` has landed: a record pattern parses and reaches the canonical module, the `{ x }`
+shorthand desugared in the grammar to `x = x`, and a repeated label in one is the
+`RepeatedLabel` the other three forms report. Until `LANG-84` a declaration holding a record
+pattern is one the typer leaves unchecked, so the emitter refuses its module.
+
 The rest land in this order, one at a time:
 
 ```
-LANG-49  a record pattern parses, the `{ x }` shorthand included
-  │      ← reports a repeated label the way the other three forms do
-  │
 LANG-51  the typer has a record type: a field, an update and an
   │      accessor are checked
   │      ← the first ticket that needs another's nodes. Deletes the
@@ -234,11 +236,11 @@ a language decision open; `LANG-85` leaves one choice to the implementer and say
 
 Three more sit beside the order. [`LANG-33`](lang-33.md) is `let`, the second place an
 irrefutable record pattern may be written. [`LANG-19`](lang-19.md) scopes exhaustiveness to the
-patterns the language has today, and whichever of it and `LANG-49` lands second adds the record
-pattern to it. [`LANG-40`](lang-40.md) adds a constraint the solver answers only once
-unification has run, which is what `LANG-51`'s accessor is too: the two are written in the same
-files of `typer/` and are not worked at the same time, and the second to land is written against
-the first's mechanism.
+patterns the language has today, and `LANG-49` landed first, so `LANG-19` is the one that adds
+the record pattern to them. [`LANG-40`](lang-40.md) adds a constraint the solver answers only
+once unification has run, which is what `LANG-51`'s accessor is too: the two are written in the
+same files of `typer/` and are not worked at the same time, and the second to land is written
+against the first's mechanism.
 
 ## Tickets
 
@@ -398,7 +400,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-46](lang-46.md) | task | — | open | `std/core` declares `List`, opaquely, with `(::)` over it |
 | LANG-47 | task | — | closed 2026-10-02 | `{` and `}` are not tokens, so nothing in a record reaches the grammar |
 | LANG-48 | task | — | closed 2026-10-02 | There is no record production, so a record type, a record and an update do not parse |
-| [LANG-49](lang-49.md) | task | — | open | There is no record pattern production |
+| LANG-49 | task | — | closed 2026-10-02 | There is no record pattern production |
 | LANG-50 | task | — | closed 2026-10-02 | Field access `r.name` and the accessor `.name` do not parse |
 | [LANG-51](lang-51.md) | task | — | open | The typer has no record type, so nothing checks a field, an update or an accessor |
 | LANG-52 | task | — | closed 2026-10-02 | Whitespace around a qualification dot is accepted, and records need it not to be |

@@ -557,8 +557,7 @@ f = { a = 1 }
 
 **Not implemented:** lists are part of the language and are not implemented. Brackets are
 tokenized but no construct consumes them ([`LANG-44`](../tickets/lang-44.md),
-[`LANG-45`](../tickets/lang-45.md)), and no pattern consumes a brace
-([`LANG-49`](../tickets/lang-49.md)).
+[`LANG-45`](../tickets/lang-45.md)).
 [Lists](lists.md) and [Records](records.md) specify their syntax; what this section fixes is
 that the characters are spoken for, and so unavailable as operator characters.
 
