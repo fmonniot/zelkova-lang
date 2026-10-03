@@ -2469,16 +2469,18 @@ pub enum Supplier {
 /// the one its sub-pattern is held to and a name it binds is bound at. `form_span` is the
 /// whole pattern, `label_span` the entry's label and `field_span` the entry's own pattern,
 /// so a mismatch between that pattern and the field's declared type is blamed on the
-/// sub-pattern. `constraint::pattern_constraints` writes them, in the order the entries
-/// were written, outer entries before the ones nested in them; so the field types of a
-/// pattern nested in an entry, `{ centre = { x } }`, are read in turn as `r.a.b`'s are.
+/// sub-pattern. `constraint::pattern_constraints` writes them in the order the labels were
+/// written at any depth: each entry just before the entries of a record pattern nested in
+/// it, and those before the next entry, so `{ a = { b }, d }` gives `a`, `b`, `d`. The
+/// field types of a pattern nested in an entry, `{ centre = { x } }`, are therefore read
+/// in turn as `r.a.b`'s are.
 ///
-/// That is the mechanism unchanged, but not quite nothing more than a variant: the pattern
-/// arms of `constraint::collect` push onto the field list as well as onto the equations,
-/// the equation a decided entry becomes carries a [`Reason`] of its own, and the argument
-/// types of a constructor pattern that did not resolve count as holes, since that
-/// constructor's real type is what would have supplied a record pattern written as one
-/// of its arguments.
+/// That is the mechanism unchanged, but not quite nothing more than a variant:
+/// `constraint::pattern_constraints`, which `constraint::collect` reaches through `walk`,
+/// pushes onto the field list as well as onto the equations, the equation a decided entry
+/// becomes carries a [`Reason`] of its own, and the argument types of a constructor
+/// pattern that did not resolve count as holes, since that constructor's real type is
+/// what would have supplied a record pattern written as one of its arguments.
 ///
 /// The read comes after every equation, the branch body's included, so a name a record
 /// pattern binds is solved by the body's use of it before the entry is read. A body that

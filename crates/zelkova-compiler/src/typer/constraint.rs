@@ -22,8 +22,8 @@
 //! A field access, an update's fields, an accessor and a record pattern's entries say
 //! something about a record type that is not an equation, and are collected into a list of
 //! their own, read after the equations are solved — see [`FieldConstraint`]. That list is
-//! in the order the labels were written, which is not the first rule's order: an access's
-//! record comes before its own label.
+//! in the order the labels were written, a nested record pattern's included, which is not
+//! the first rule's order: an access's record comes before its own label.
 
 use super::{
     bool_type, CaseForm, Constraint, FieldConstraint, Reason, RecordUse, SubPattern, TermPattern,
@@ -352,8 +352,9 @@ pub(super) struct Constraints {
 ///
 /// A record pattern's own constraint is not an equation: it names a subset of the
 /// record's fields, so it cannot build the record type `against` has to equal. Each entry
-/// is a [`FieldConstraint`] on `against` instead, pushed onto the field list in the order
-/// the entries were written, read once the equations are solved.
+/// is a [`FieldConstraint`] on `against` instead, read once the equations are solved, and
+/// pushed onto the field list just before its own sub-pattern's constraints and after the
+/// previous entry's: the field list is in the order the labels were written at any depth.
 fn pattern_constraints(
     pattern: &TermPattern,
     against: &Type,
@@ -384,6 +385,11 @@ fn pattern_constraints(
             out.holes.extend(args.iter().map(|arg| arg.tpe.clone()));
             (None, args.iter().collect())
         }
+        // Each entry's own field constraint, then its sub-pattern's constraints, before
+        // the next entry's: pre-order, as for the equations, so that in `{ a = { b }, d }`
+        // the field list holds `a`, `b`, `d` — the order the labels were written — and
+        // a failure of `b`'s is the one reported before `d`'s, as in the tuple
+        // `({ b }, { d })`.
         TermPatternKind::Record { fields } => {
             for field in fields {
                 out.fields.push(FieldConstraint {
@@ -395,8 +401,9 @@ fn pattern_constraints(
                     label_span: field.label_span,
                     field_span: field.value.pattern.span,
                 });
+                pattern_constraints(&field.value.pattern, &field.value.tpe, reason, out);
             }
-            (None, fields.iter().map(|field| &field.value).collect())
+            (None, vec![])
         }
     };
 

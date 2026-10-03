@@ -3025,6 +3025,36 @@ fn a_record_pattern_naming_an_absent_label_fails_under_it() {
     );
 }
 
+/// When two entries of a record pattern both name an absent label, the one written first
+/// is reported, even when it is nested in an earlier entry: in `{ a = { b }, d }` that is
+/// `b`, as in the tuple `({ b }, { d })`. The field constraints are collected pre-order,
+/// each entry just before the entries nested in it, and the first failed read is the
+/// error.
+///
+/// Mutation-checked by moving the recursion in `constraint::pattern_constraints`'
+/// `Record` arm back after the loop that pushes the entries, so that `d` is collected
+/// before `b`: the error is then `d`'s, and the label assertion goes red.
+#[test]
+fn a_record_pattern_reports_the_absent_label_written_first_at_any_depth() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        f : { a : { x : Int }, c : Int } -> Int
+        f { a = { b }, d } =
+          1
+    "#};
+
+    let error = one_type_error(source);
+    match &error.kind {
+        typer::ErrorKind::MissingField { record, label, .. } => {
+            assert_eq!(label.as_str(), "b");
+            assert_eq!(format!("{}", record), "{ x : Int }");
+        }
+        other => panic!("expected a missing field, got {:?}", other),
+    }
+    assert_eq!(primary_range(&error), range_within(source, "{ b }", "b"));
+}
+
 /// `{ centre = { x, y } }` against a record holding a record binds `x` and `y` at the
 /// inner fields' types: the inner pattern's record type is the outer entry's field type,
 /// read in turn. `x` is also the body, so `y` is the one only its field types.
