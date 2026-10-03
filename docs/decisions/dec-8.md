@@ -56,11 +56,10 @@ record is built by writing its fields out.
 `.name` alone is `\r -> r.name`. A `.` written against the expression to its left is an access; a
 `.` with whitespace before it, or one opening an expression, is an accessor.
 
-The whitespace rule is forced rather than chosen. `f .name` and `f.name` produce the same token
-stream, and once a bare accessor exists the two spellings have to mean different things — so
-adjacency is the only signal left. It reaches the qualification dot as a consequence, which today
-accepts spaces on both sides: `Widget . size` currently parses as a qualified name and must stop
-([`LANG-52`](../tickets/lang-52.md)).
+The whitespace rule is forced rather than chosen. `f .name` and `f.name` differ in nothing but
+whitespace, and once a bare accessor exists the two spellings have to mean different things — so
+adjacency is the only signal left. It reaches the qualification dot as a consequence:
+`Widget . size` is not a qualified name.
 
 Dropping the bare accessor was the alternative, and it is cheaper in exactly one place — the
 typer, where decision 1 leaves `.name` with no type of its own. It is rejected because the

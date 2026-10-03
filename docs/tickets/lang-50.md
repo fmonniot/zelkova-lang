@@ -8,37 +8,45 @@ worth being careful about.
 specified; `crates/zelkova-syntax/src/parser/mod.rs`'s `ExpressionKind`;
 `canonical::Expression::from_parser_expression`.
 
-**Depends on:** [`LANG-52`](lang-52.md), hard. A `.` with whitespace before it is an accessor, so
-the qualification dot has to stop accepting whitespace before either form can be told from the
-other.
+**Depends on:** `LANG-52`, hard, and landed ([the index](README.md)). A `.` with whitespace before it
+is an accessor, so the qualification dot had to stop accepting whitespace before either form could
+be told from the other.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decision 3):**
 `r.name` reads a field, `.name` on its own is `\r -> r.name`, and whitespace before the `.` is
 what separates the two. [Records](../spec/records.md#reading-a-field) is the rule.
 
 **Not implemented:** `.` is consumed only by the qualified-name productions, both of which want an
-uppercase identifier to its left. `f r = r.name` is `UnexpectedToken` at the `Dot`, and so is
-`f = .name`.
+uppercase identifier to its left. `f r = r.name` is `UnexpectedToken` at the `Dot`, and `f =
+.name` is `Error::SpacedDot` at the `SpacedDot`.
 
 **Approach:** two productions. Access is postfix on `AtomicExpr` and binds tighter than
 application, so `f r.name` is `f (r.name)` and `r.centre.x` is `(r.centre).x`. The accessor is an
-atomic expression of its own: `"." "lo_ident"`.
+atomic expression of its own, and it begins with the `SpacedDot` token: `"spaced dot" VarIdent`.
 
 **The whitespace rule is the whole difficulty**, because the grammar cannot see whitespace. `f
-.name` is an application of `f` to an accessor and `f.name` is an access, and the two token
-streams are identical. Two ways out, and the choice is the implementer's:
+.name` is an application of `f` to an accessor and `f.name` is an access, and a grammar fed one
+token for both cannot tell them apart.
 
-- **Adjacency in the grammar action**, comparing the `@R` of the left operand against the `@L` of
-  the `Dot`. Cheap, and keeps one token.
-- **Two tokens from the tokenizer** — a `Dot` that was written against the previous token and one
-  that was not — which moves the rule to where the whitespace actually is and makes the grammar
-  unambiguous without position arithmetic.
+The choice of mechanism is made: `LANG-52` put the left-hand half in the tokenizer.
+`consume_operator` in `crates/zelkova-syntax/src/parser/tokenizer.rs` reads a `.` as `Dot` only
+when it is written against an operand on its left — an identifier, a literal, `)` or `]`, and `}`
+once `LANG-47` lands — and against the character after it. Every other `.` is `SpacedDot`, which no
+production consumes, and that includes a `.` opening an expression after `(`, `[`, `,`, an operator
+or a keyword: `(.name)` begins with `SpacedDot`, as `f .name` does. A `.` opening an expression is
+an accessor, so every accessor starts with `SpacedDot` and needs no `Dot` production; the doc
+comment on `consume_operator` has the reasons. A scratch `"spaced dot" VarIdent` production in
+`AtomicExpr` builds without a conflict.
 
-A `.` opening an expression is an accessor under either. The accessor's own `.` is written against
-its label with no space after it, which the same mechanism decides.
+What is left to this ticket is the rest of the whitespace rule. The accessor's own `.` is written
+against its label with no space after it, but `.name` and `. name` are both a `SpacedDot` followed
+by a name, so telling them apart means looking at the spans in an action or splitting the token
+further; which, is the implementer's to choose. And the access production: a scratch `AtomicExpr
+"." VarIdent` reports a local ambiguity against `QualTypeIdent` after an uppercase name, so what
+an access may take as its left operand is this ticket's to settle.
 
-**`Just .name` becomes an application.** [`LANG-52`](lang-52.md) lands first and rejects every
-detached `.` after an uppercase name, `Widget .size` included, because no accessor exists yet.
+**`Just .name` becomes an application.** `LANG-52` landed first and rejects every detached `.`
+after an uppercase name, `Widget .size` included, because no accessor exists yet.
 Once one does, an uppercase name followed by a detached `.` and an attached label is that name
 applied to an accessor — a constructor taking a function, or a canonicalization error where the
 name is a module and no constructor. `Widget . size` and `Widget. size` stay parse errors, and
