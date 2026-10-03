@@ -1,7 +1,7 @@
 # DEC-8 · Records: ten decisions
 
 **Settled:** 2026-09-07, by the language owner (`SPEC-21`); decision 10 on 2026-10-02, when the
-[record tickets](../tickets/README.md#active-work-records) were put in order.
+record tickets were put in order.
 **Status:** live.
 **Where the rule lives:** [Records](../spec/records.md), with the pattern half also stated in
 [Patterns](../spec/patterns.md#record-patterns) and the label namespace in
