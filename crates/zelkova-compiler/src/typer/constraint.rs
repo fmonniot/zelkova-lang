@@ -329,9 +329,10 @@ pub(super) struct Constraints {
     pub(super) equations: Vec<Constraint>,
     pub(super) fields: Vec<FieldConstraint>,
     /// The type of every hole in the term. A field constraint whose record type nothing
-    /// supplied because it is a hole's type is not reported: the error that the name did
-    /// not resolve already stands behind it, and is the one the user has to fix
-    /// ([`DEC-23` decisions 3 and
+    /// supplied, and which the name's real type could have, is not reported: the error
+    /// that the name did not resolve already stands behind it, and is the one the user
+    /// has to fix. `unifier::unknown` says which constraints those are, and why only
+    /// those ([`DEC-23` decisions 3 and
     /// 6](../../../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
     pub(super) holes: Vec<Type>,
 }

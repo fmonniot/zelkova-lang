@@ -2573,28 +2573,45 @@ fn a_field_of_a_field_is_read_in_turn() {
     );
 }
 
-/// An unannotated chain is reported at the first access written, the one whose record
-/// type the rest wait on.
+/// An unannotated chain is reported at its root, the access whose record type the rest
+/// wait on, in whichever order the two are collected: `r.a.b` collects `r.a` first, and
+/// `.b r.a` collects `.b` first, since an application walks its function before its
+/// argument.
 ///
-/// Mutation-checked by walking an access's record *after* pushing its own field
-/// constraint in `constraint::collect`: `.b`'s constraint is then first and the caret
-/// spans `r.a.b`.
+/// Mutation-checked by having `unifier::unknown` blame the first constraint left instead
+/// of the first root (`unexplained.first()` alone): `.b r.a` is then reported at `.b`,
+/// and its label assertion goes red.
 #[test]
-fn an_unannotated_chain_is_reported_at_its_first_access() {
-    let source = indoc::indoc! {r#"
-        module Test exposing ()
+fn an_unannotated_chain_is_reported_at_its_root() {
+    for (source, root) in [
+        (
+            indoc::indoc! {r#"
+                module Test exposing ()
 
-        g r =
-          r.a.b
-    "#};
+                g r =
+                  r.a.b
+            "#},
+            "r.a.b",
+        ),
+        (
+            indoc::indoc! {r#"
+                module Test exposing ()
 
-    let error = one_type_error(source);
-    assert!(
-        matches!(&error.kind, typer::ErrorKind::RecordTypeUnknown { label, .. } if label.as_str() == "a"),
-        "got {:?}",
-        error.kind
-    );
-    assert_eq!(primary_range(&error), range_within(source, "r.a.b", "r.a"));
+                g r =
+                  .b r.a
+            "#},
+            ".b r.a",
+        ),
+    ] {
+        let error = one_type_error(source);
+        assert!(
+            matches!(&error.kind, typer::ErrorKind::RecordTypeUnknown { label, .. } if label.as_str() == "a"),
+            "in {:?}, got {:?}",
+            root,
+            error.kind
+        );
+        assert_eq!(primary_range(&error), range_within(source, root, "r.a"));
+    }
 }
 
 /// A type variable inside a record type is instantiated afresh at each use, like one
@@ -2674,10 +2691,13 @@ fn a_field_of_a_type_that_is_not_a_record_is_an_error() {
 }
 
 /// An annotation's own type variable written for the record supplies no record type:
-/// `r.x` against `a` is as unknown as against no annotation at all.
+/// `r.x` against `a` is as unknown as against no annotation at all, and the note says
+/// the annotation writes a type variable there rather than asking for one.
 ///
 /// Mutation-checked as [`a_use_does_not_decide_a_records_type`] is: letting a field
-/// constraint solve its record type makes `f` check.
+/// constraint solve its record type makes `f` check. The note is mutation-checked by
+/// having `infer_annotated` pass `annotated: false` to `unifier::read_fields`: the
+/// supplier is then `Annotation`, and the variant assertion goes red.
 #[test]
 fn a_type_variable_is_not_a_record_type() {
     let error = one_type_error(indoc::indoc! {r#"
@@ -2688,10 +2708,79 @@ fn a_type_variable_is_not_a_record_type() {
           r.x
     "#});
     assert!(
-        matches!(&error.kind, typer::ErrorKind::RecordTypeUnknown { .. }),
+        matches!(
+            &error.kind,
+            typer::ErrorKind::RecordTypeUnknown {
+                supplier: typer::Supplier::AnnotationVariable,
+                ..
+            }
+        ),
         "got {:?}",
         error.kind
     );
+    let notes = error.notes();
+    assert!(
+        notes.contains(&"the annotation on `f` does not say which record type this is: it writes a type variable where the record type would be spelled out".to_string()),
+        "got {:?}",
+        notes
+    );
+    assert!(
+        !notes.iter().any(|note| note.contains("would supply it")),
+        "got {:?}",
+        notes
+    );
+}
+
+/// A record type that is not part of the declaration's type — an accessor handed to a
+/// parameter that takes any value — is one no annotation on the declaration could
+/// supply, annotated or not, and the note says so instead of asking for one.
+///
+/// Mutation-checked by having `unifier::unknown` take every record type as part of the
+/// declaration's (`declared.contains(&record) || true`): `annotated`'s supplier is then
+/// `AnnotationVariable`, and the variant assertion goes red.
+#[test]
+fn a_record_type_outside_the_declarations_type_is_the_bodys_to_supply() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        first : a -> b -> a
+        first x y =
+          x
+
+        annotated : Int -> Int
+        annotated n =
+          first n .x
+
+        unannotated n =
+          first n .x
+    "#};
+
+    let errors = type_errors(source);
+    assert_eq!(errors.len(), 2, "got {:?}", errors);
+    for error in &errors {
+        let name = error.declaration.as_str();
+        assert!(
+            matches!(
+                &error.kind,
+                typer::ErrorKind::RecordTypeUnknown {
+                    supplier: typer::Supplier::Body,
+                    ..
+                }
+            ),
+            "for {}, got {:?}",
+            name,
+            error.kind
+        );
+        assert!(
+            error.notes().contains(&format!(
+                "it is not part of `{}`'s type, so no annotation on `{}` could supply it",
+                name, name
+            )),
+            "for {}, got {:?}",
+            name,
+            error.notes()
+        );
+    }
 }
 
 /// A constructor whose argument is a record is typed like any other, so a `case` on it
@@ -2733,15 +2822,17 @@ fn a_constructor_holding_a_record_is_typed() {
     );
 }
 
-/// A field read off a name that did not resolve raises no type error of its own: its
-/// record type is the hole's, which nothing supplies because the name's own error — the
-/// one to fix — is reported already ([`DEC-23` decisions 3 and
-/// 6](../../../docs/decisions/dec-23.md)). A record type nothing supplies for any other
-/// reason is still reported beside it.
+/// A field read off a name that did not resolve raises no type error of its own when
+/// the name's real type could have supplied its record type — the record is the name
+/// (`f`), the result of applying it (`h`), or a field read off either (`chained`,
+/// `accessed`) — because the name's own error, the one to fix, is reported already
+/// ([`DEC-23` decisions 3 and 6](../../../docs/decisions/dec-23.md)). A record type
+/// nothing the name could be would supply is still reported beside it (`g`).
 ///
-/// Mutation-checked by passing `&[]` for the holes to `unifier::read_fields` in
-/// `infer_annotated`: `f` is then rejected as `RecordTypeUnknown` and the first assertion
-/// goes red.
+/// Mutation-checked three ways, in `unifier`, each turning the first assertion red: by
+/// passing `&[]` for the holes in `unknown`, at `f`; by having `reach` return its seeds'
+/// variables without the rounds, at `chained`; and by seeding it with only those holes'
+/// types that are a bare variable (the hole's type, not its variables), at `h`.
 #[test]
 fn a_field_of_an_unresolved_name_is_not_reported_again() {
     let interfaces = HashMap::from([basics_interface(), char_interface()]);
@@ -2752,6 +2843,18 @@ fn a_field_of_an_unresolved_name_is_not_reported_again() {
             f : Int
             f =
               missing.x
+
+            h : Int -> Int
+            h z =
+              (missing z).x
+
+            chained : Int
+            chained =
+              missing.x.y
+
+            accessed : Int
+            accessed =
+              (.x missing).y
 
             g person =
               first missing person.name
@@ -2765,11 +2868,14 @@ fn a_field_of_an_unresolved_name_is_not_reported_again() {
     assert!(!canonical.errors.is_empty(), "`missing` does not resolve");
 
     let check = typer::type_check_recovering(&canonical.module, &interfaces);
-    assert!(
-        matches!(check.solved.get(&Name::new("f")), Some(Solved::Typed(_))),
-        "got {:?}",
-        check.solved.get(&Name::new("f"))
-    );
+    for name in ["f", "h", "chained", "accessed"] {
+        assert!(
+            matches!(check.solved.get(&Name::new(name)), Some(Solved::Typed(_))),
+            "for {}, got {:?}",
+            name,
+            check.solved.get(&Name::new(name))
+        );
+    }
     let declarations: Vec<&str> = check
         .errors
         .iter()
