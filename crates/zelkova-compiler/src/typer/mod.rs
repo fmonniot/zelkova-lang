@@ -107,9 +107,21 @@ pub enum Reason {
     Accessor,
     /// A record pattern's entry matches a value of the type its field has. Carried by the
     /// equation a `FieldConstraint` of a record pattern becomes, at the span of the
-    /// entry's own pattern — `Celsius` in `{ taken = Celsius }`, the binding in
-    /// `{ taken }`.
+    /// entry's own pattern — `Celsius` in `{ taken = Celsius }` — when that pattern binds
+    /// no name, so that nothing but the pattern decides the entry's type and a mismatch
+    /// is the pattern's.
     RecordPatternEntry,
+    /// [`RecordPatternEntry`](Self::RecordPatternEntry) for an entry whose pattern is a
+    /// name, the binding in `{ taken }` or `{ taken = t }`. That name's type is constrained
+    /// by nothing but the body's uses of it, so when the equation fails the pattern is
+    /// not what disagrees with the field: a use is, and the note says so. The caret is
+    /// still under the binding ([`ERR-20`](../../docs/tickets/err-20.md)).
+    RecordPatternBinding,
+    /// [`RecordPatternEntry`](Self::RecordPatternEntry) for an entry whose pattern is
+    /// neither a name nor binding-free, `Box x` in `{ taken = Box x }`: either the pattern
+    /// or a use of a name it binds can be what disagrees with the field, and nothing here
+    /// tells which, so the note names both.
+    RecordPatternEntryWithBindings,
 }
 
 impl Reason {
@@ -146,7 +158,9 @@ impl Reason {
             Reason::UpdateField => "this field's new value",
             Reason::Access => "this field access",
             Reason::Accessor => "this accessor",
-            Reason::RecordPatternEntry => "this field's pattern",
+            Reason::RecordPatternEntry
+            | Reason::RecordPatternBinding
+            | Reason::RecordPatternEntryWithBindings => "this field's pattern",
         }
     }
 
@@ -178,7 +192,9 @@ impl Reason {
             Reason::UpdateField => "expected because of this field's new value",
             Reason::Access => "expected because of this field access",
             Reason::Accessor => "expected because of this accessor",
-            Reason::RecordPatternEntry => "expected because of this field's pattern",
+            Reason::RecordPatternEntry
+            | Reason::RecordPatternBinding
+            | Reason::RecordPatternEntryWithBindings => "expected because of this field's pattern",
         }
     }
 
@@ -206,6 +222,12 @@ impl Reason {
             Reason::RecordPatternEntry => {
                 Some("each entry of a record pattern must match the type of the field it names")
             }
+            Reason::RecordPatternBinding => Some(
+                "a name a record pattern binds has the type of the field it names, and the body uses this one at another type",
+            ),
+            Reason::RecordPatternEntryWithBindings => Some(
+                "either this entry does not match the type of the field it names, or the body uses a name it binds at another type than that field gives the name",
+            ),
             _ => None,
         }
     }
@@ -2349,18 +2371,6 @@ pub enum RecordUse {
     Pattern,
 }
 
-impl RecordUse {
-    /// The reason the equation this use becomes carries, once its record type is known.
-    fn reason(self) -> Reason {
-        match self {
-            RecordUse::Access => Reason::Access,
-            RecordUse::Accessor => Reason::Accessor,
-            RecordUse::Update => Reason::UpdateField,
-            RecordUse::Pattern => Reason::RecordPatternEntry,
-        }
-    }
-}
-
 /// What could supply the record type an [`ErrorKind::RecordTypeUnknown`] is missing —
 /// which is what its note tells the reader to do about it. `unifier::unknown` decides it.
 ///
@@ -2413,7 +2423,7 @@ pub enum Supplier {
 /// - **A record type holding `label`**: the constraint becomes the ordinary equation
 ///   between that field's type and `field`, solved at once and merged into the
 ///   substitution. A mismatch there is an [`ErrorKind::UnificationFailed`] with the
-///   caret at `field_span` and the reason [`RecordUse::reason`] names.
+///   caret at `field_span` and the constraint's own `reason`.
 /// - **A record type without it**: [`ErrorKind::MissingField`], at `label_span`. For an
 ///   update that is the update that would add a field.
 /// - **Another type that is not a variable**: [`ErrorKind::NotARecord`], at
@@ -2478,15 +2488,18 @@ pub enum Supplier {
 /// That is the mechanism unchanged, but not quite nothing more than a variant:
 /// `constraint::pattern_constraints`, which `constraint::collect` reaches through `walk`,
 /// pushes onto the field list as well as onto the equations, the equation a decided entry
-/// becomes carries a [`Reason`] of its own, and the argument types of a constructor
-/// pattern that did not resolve count as holes, since that constructor's real type is
-/// what would have supplied a record pattern written as one of its arguments.
+/// becomes carries a [`Reason`] of its own — one of three, by whether the entry's pattern
+/// is a name, binds none or binds some, since that decides what a failure of it can mean
+/// and so what its note says — and the argument types of a constructor pattern that did
+/// not resolve count as holes, since that constructor's real type is what would have
+/// supplied a record pattern written as one of its arguments.
 ///
 /// The read comes after every equation, the branch body's included, so a name a record
 /// pattern binds is solved by the body's use of it before the entry is read. A body that
 /// uses `name` at another type than its field's is therefore reported at the entry, as a
 /// mismatch of the field's type with the use's, and not at the body, as it would be under
 /// a tuple pattern, whose equation comes first ([`ERR-20`](../../docs/tickets/err-20.md)).
+/// Only the note, [`Reason::RecordPatternBinding`]'s, says that a use is what failed.
 ///
 /// # What else is read late
 ///
@@ -2505,6 +2518,11 @@ struct FieldConstraint {
     /// accessor's result, or a record pattern's entry's.
     field: Type,
     form: RecordUse,
+    /// The reason the equation this constraint becomes carries, once its record type is
+    /// known: [`Reason::Access`], [`Reason::Accessor`] or [`Reason::UpdateField`] for the
+    /// first three forms, and for a record pattern's entry one of the three record
+    /// pattern reasons, chosen by what the entry's own pattern binds.
+    reason: Reason,
     /// The whole form — the caret of [`ErrorKind::RecordTypeUnknown`].
     form_span: NodeSpan,
     /// The label for an access, an update and a record pattern's entry, and the whole
@@ -2530,7 +2548,7 @@ impl FieldConstraint {
         let probe = substitution.apply(&Constraint::new(
             self.record.clone(),
             self.field.clone(),
-            self.form.reason(),
+            self.reason,
             self.field_span,
         ));
 

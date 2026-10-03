@@ -268,6 +268,7 @@ fn walk(term: &TypedTerm, out: &mut Constraints) {
                     label: field.label.clone(),
                     field: field.value.tpe.clone(),
                     form: RecordUse::Update,
+                    reason: Reason::UpdateField,
                     form_span: span,
                     label_span: field.label_span,
                     field_span: field.value.span,
@@ -290,6 +291,7 @@ fn walk(term: &TypedTerm, out: &mut Constraints) {
                 label: label.clone(),
                 field: tpe.clone(),
                 form: RecordUse::Access,
+                reason: Reason::Access,
                 form_span: span,
                 label_span: *label_span,
                 field_span: span,
@@ -308,6 +310,7 @@ fn walk(term: &TypedTerm, out: &mut Constraints) {
                     label: label.clone(),
                     field: *return_tpe.clone(),
                     form: RecordUse::Accessor,
+                    reason: Reason::Accessor,
                     form_span: span,
                     label_span: span,
                     field_span: span,
@@ -397,6 +400,7 @@ fn pattern_constraints(
                     label: field.label.clone(),
                     field: field.value.tpe.clone(),
                     form: RecordUse::Pattern,
+                    reason: entry_reason(&field.value),
                     form_span: pattern.span,
                     label_span: field.label_span,
                     field_span: field.value.pattern.span,
@@ -413,6 +417,22 @@ fn pattern_constraints(
     }
     for sub in subs {
         pattern_constraints(&sub.pattern, &sub.tpe, reason, out);
+    }
+}
+
+/// The reason a record pattern's entry's equation carries, which decides the note of a
+/// failure of it.
+///
+/// A name written as the entry is constrained by nothing but the body's uses of it, since
+/// a variable constrains nothing (see [`pattern_constraints`]): the entry's equation can
+/// only fail because a use needs another type than the field's. A pattern that binds no
+/// name has nothing but itself deciding its type, so a failure is its own. Any other
+/// pattern can fail either way.
+fn entry_reason(entry: &SubPattern) -> Reason {
+    match &entry.pattern.kind {
+        TermPatternKind::Bind(_) => Reason::RecordPatternBinding,
+        _ if entry.pattern.bindings(&entry.tpe).is_empty() => Reason::RecordPatternEntry,
+        _ => Reason::RecordPatternEntryWithBindings,
     }
 }
 
