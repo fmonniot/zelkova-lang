@@ -105,6 +105,11 @@ pub enum Reason {
     /// An accessor's result has the type of the field it reads. Carried by the equation
     /// a `FieldConstraint` of an accessor becomes, at the accessor's span.
     Accessor,
+    /// A record pattern's entry matches a value of the type its field has. Carried by the
+    /// equation a `FieldConstraint` of a record pattern becomes, at the span of the
+    /// entry's own pattern — `Celsius` in `{ taken = Celsius }`, the binding in
+    /// `{ taken }`.
+    RecordPatternEntry,
 }
 
 impl Reason {
@@ -141,6 +146,7 @@ impl Reason {
             Reason::UpdateField => "this field's new value",
             Reason::Access => "this field access",
             Reason::Accessor => "this accessor",
+            Reason::RecordPatternEntry => "this field's pattern",
         }
     }
 
@@ -172,6 +178,7 @@ impl Reason {
             Reason::UpdateField => "expected because of this field's new value",
             Reason::Access => "expected because of this field access",
             Reason::Accessor => "expected because of this accessor",
+            Reason::RecordPatternEntry => "expected because of this field's pattern",
         }
     }
 
@@ -196,6 +203,9 @@ impl Reason {
             }
             Reason::Access => Some("a field access has the type of the field it reads"),
             Reason::Accessor => Some("an accessor returns the type of the field it reads"),
+            Reason::RecordPatternEntry => {
+                Some("each entry of a record pattern must match the type of the field it names")
+            }
             _ => None,
         }
     }
@@ -367,13 +377,13 @@ pub enum ErrorKind {
         /// Where the name was written.
         span: NodeSpan,
     },
-    /// A field access, an update or an accessor whose record type nothing else in the
-    /// declaration supplied: once unification had run over the whole declaration, the
-    /// type it reads a field of was still a variable
+    /// A field access, an update, an accessor or a record pattern whose record type
+    /// nothing else in the declaration supplied: once unification had run over the whole
+    /// declaration, the type it reads a field of was still a variable
     /// ([A use does not decide a record's type](../../docs/spec/records.md#a-use-does-not-decide-a-records-type)).
     ///
-    /// `span` is the whole form — `person.name`, `{ r | x = 1 }`, `.name` — since what
-    /// is missing is a type for it, not a label in one.
+    /// `span` is the whole form — `person.name`, `{ r | x = 1 }`, `.name`, `{ name }` —
+    /// since what is missing is a type for it, not a label in one.
     RecordTypeUnknown {
         label: Name,
         form: RecordUse,
@@ -381,12 +391,12 @@ pub enum ErrorKind {
         /// What could supply the record type, which is what the note says.
         supplier: Supplier,
     },
-    /// A field access, an update or an accessor naming a label the record type it is
-    /// read against does not have. An update naming one is the update that would add a
-    /// field ([Updating a record](../../docs/spec/records.md#updating-a-record)).
+    /// A field access, an update, an accessor or a record pattern naming a label the
+    /// record type it is read against does not have. An update naming one is the update
+    /// that would add a field ([Updating a record](../../docs/spec/records.md#updating-a-record)).
     ///
-    /// `span` is the label for an access and for an update's field, and the whole
-    /// accessor for an accessor, whose label is all of it but the `.`.
+    /// `span` is the label for an access, an update's field and a record pattern's entry,
+    /// and the whole accessor for an accessor, whose label is all of it but the `.`.
     MissingField {
         /// The record type, as solved. Boxed for the reason `UnificationFailed`'s
         /// types are.
@@ -398,8 +408,8 @@ pub enum ErrorKind {
         /// brought it in; the secondary label goes under it.
         because: Option<Cause>,
     },
-    /// A field access, an update or an accessor whose record is not a record at all:
-    /// the type it reads a field of was solved to a type of another form.
+    /// A field access, an update, an accessor or a record pattern whose record is not a
+    /// record at all: the type it reads a field of was solved to a type of another form.
     ///
     /// `span` is where [`MissingField`](Self::MissingField)'s would be, and `because` is
     /// as there.
@@ -482,6 +492,10 @@ impl ErrorKind {
                     "cannot type this update: nothing in this declaration says which record type it updates"
                         .to_string()
                 }
+                RecordUse::Pattern => {
+                    "cannot type this record pattern: nothing in this declaration says which record type it matches"
+                        .to_string()
+                }
             },
             ErrorKind::MissingField { record, label, .. } => format!(
                 "the record type `{}` has no field `{}`",
@@ -517,6 +531,18 @@ impl ErrorKind {
             ErrorKind::MissingField { label, span, .. } => Some((
                 *span,
                 format!("the record has no field `{}`", label.as_str()),
+            )),
+            ErrorKind::NotARecord {
+                label,
+                form: RecordUse::Pattern,
+                span,
+                ..
+            } => Some((
+                *span,
+                format!(
+                    "`{}` is matched against a type that is not a record",
+                    label.as_str()
+                ),
             )),
             ErrorKind::NotARecord { label, span, .. } => Some((
                 *span,
@@ -631,6 +657,13 @@ impl PhaseError for Error {
                 ..
             } => notes.push(
                 "an update cannot add a field: each label it names must already be a field of the record it updates"
+                    .to_string(),
+            ),
+            ErrorKind::MissingField {
+                form: RecordUse::Pattern,
+                ..
+            } => notes.push(
+                "a record pattern names some of the fields of the record it matches, and each label it names must be one of them"
                     .to_string(),
             ),
             _ => (),
@@ -1342,9 +1375,8 @@ pub(super) fn bool_type() -> Type {
 /// Convert a canonical expression to a Term, keeping the position it was written at.
 ///
 /// Returns None for constructs the inference engine doesn't yet handle (a `VarKernel`
-/// reference, and a float, string or record pattern inside a `Case`), and for a
-/// constructor of a union neither this module nor an interface in [`Translation`]
-/// declares.
+/// reference, and a float or string pattern inside a `Case`), and for a constructor of a
+/// union neither this module nor an interface in [`Translation`] declares.
 ///
 /// Every arm attaches `expr.span` to the term it builds. That is the whole of what
 /// `ERR-4` needed from this function: a constraint can only point at a
@@ -1550,7 +1582,7 @@ fn spine(expr: &canonical::Expression) -> (&canonical::Expression, Vec<&canonica
 }
 
 /// Translate a canonical pattern into a `TermPattern`. Returns `None` for unsupported
-/// pattern shapes: a float, a string and a record pattern.
+/// pattern shapes: a float and a string.
 ///
 /// The pattern keeps its own span, separate from the branch body's: a `case` branch
 /// whose pattern does not match what is being matched on is about the pattern, and
@@ -1684,9 +1716,27 @@ fn translate_pattern(
         }
         // Float and String patterns — not yet supported.
         canonical::PatternKind::Float(_) | canonical::PatternKind::String(_) => return None,
-        // The term language has no record pattern until `LANG-84`, so a declaration
-        // holding one, at any depth, is left unchecked.
-        canonical::PatternKind::Record(_) => return None,
+        // Each entry's field gets a fresh type, and its pattern is translated as a
+        // constructor's argument is (see `translate_sub_pattern`). Nothing is built here
+        // for the record itself: the pattern names a subset of its fields, so its record
+        // type is whatever the matched value turns out to be, and each entry is read
+        // against it once the declaration's equations are solved (`FieldConstraint`).
+        canonical::PatternKind::Record(entries) => {
+            let fields = entries
+                .iter()
+                .map(|entry| {
+                    *counter += 1;
+                    let tpe = Type::Variable(TypeVariable { id: *counter });
+                    Some(Field {
+                        label: entry.label.clone(),
+                        label_span: entry.label_span,
+                        value: translate_sub_pattern(&entry.pattern, tpe, translation, counter)?,
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?;
+
+            TermPatternKind::Record { fields }
+        }
     };
 
     Some(TermPattern {
@@ -1695,8 +1745,8 @@ fn translate_pattern(
     })
 }
 
-/// A pattern written as a constructor's argument or a tuple's element, matched against
-/// a value of type `tpe`.
+/// A pattern written as a constructor's argument, a tuple's element or a record
+/// pattern's entry, matched against a value of type `tpe`.
 ///
 /// It is translated by [`translate_pattern`] like a pattern anywhere else, so any
 /// pattern that translates at the top of a branch translates here too, at any depth, and
@@ -2295,6 +2345,8 @@ pub enum RecordUse {
     Accessor,
     /// One field of `{ record | label = value }`.
     Update,
+    /// One entry of a record pattern, `{ label = pattern }` or `{ label }`.
+    Pattern,
 }
 
 impl RecordUse {
@@ -2304,6 +2356,7 @@ impl RecordUse {
             RecordUse::Access => Reason::Access,
             RecordUse::Accessor => Reason::Accessor,
             RecordUse::Update => Reason::UpdateField,
+            RecordUse::Pattern => Reason::RecordPatternEntry,
         }
     }
 }
@@ -2331,7 +2384,8 @@ pub enum Supplier {
 }
 
 /// A type said to be a record holding `label`, with that field at `field`: what a field
-/// access, an update and an accessor each say about the record they use.
+/// access, an update, an accessor and each entry of a record pattern say about the record
+/// they use.
 ///
 /// # Why it is not a [`Constraint`]
 ///
@@ -2405,11 +2459,35 @@ pub enum Supplier {
 /// So a generalisation step must read the field constraints first, or refuse to
 /// generalise over a variable one of them is still waiting on.
 ///
+/// # A record pattern
+///
+/// A record pattern names a subset of a record's fields and says of the type it is matched
+/// against what an accessor says of its argument's, once per entry: it is the fourth
+/// [`RecordUse`], one field constraint per entry, whose `record` is the type the pattern
+/// is matched against — a `case`'s scrutinee, a parameter's, or the type of the position
+/// it is written in inside another pattern — and whose `field` is the entry's own type,
+/// the one its sub-pattern is held to and a name it binds is bound at. `form_span` is the
+/// whole pattern, `label_span` the entry's label and `field_span` the entry's own pattern,
+/// so a mismatch between that pattern and the field's declared type is blamed on the
+/// sub-pattern. `constraint::pattern_constraints` writes them, in the order the entries
+/// were written, outer entries before the ones nested in them; so the field types of a
+/// pattern nested in an entry, `{ centre = { x } }`, are read in turn as `r.a.b`'s are.
+///
+/// That is the mechanism unchanged, but not quite nothing more than a variant: the pattern
+/// arms of `constraint::collect` push onto the field list as well as onto the equations,
+/// the equation a decided entry becomes carries a [`Reason`] of its own, and the argument
+/// types of a constructor pattern that did not resolve count as holes, since that
+/// constructor's real type is what would have supplied a record pattern written as one
+/// of its arguments.
+///
+/// The read comes after every equation, the branch body's included, so a name a record
+/// pattern binds is solved by the body's use of it before the entry is read. A body that
+/// uses `name` at another type than its field's is therefore reported at the entry, as a
+/// mismatch of the field's type with the use's, and not at the body, as it would be under
+/// a tuple pattern, whose equation comes first.
+///
 /// # What else is read late
 ///
-/// A record pattern ([`LANG-84`](../../docs/tickets/lang-84.md)) names a subset of a
-/// record's fields and says the same thing about the type it is matched against, one
-/// field constraint per entry; it is meant to be a fourth [`RecordUse`] and nothing more.
 /// A class constraint ([`LANG-40`](../../docs/tickets/lang-40.md)) is the other kind of
 /// constraint the solver can only answer once unification has run. It would be a second
 /// list beside this one in `constraint::Constraints`, and a second step after
@@ -2421,17 +2499,19 @@ struct FieldConstraint {
     /// The type said to be a record. Usually still a variable when collected.
     record: Type,
     label: Name,
-    /// The type the field is used at: the access's own type, an update's new value's, or
-    /// an accessor's result.
+    /// The type the field is used at: the access's own type, an update's new value's, an
+    /// accessor's result, or a record pattern's entry's.
     field: Type,
     form: RecordUse,
     /// The whole form — the caret of [`ErrorKind::RecordTypeUnknown`].
     form_span: NodeSpan,
-    /// The label for an access and an update, and the whole accessor for an accessor —
-    /// the caret of [`ErrorKind::MissingField`] and [`ErrorKind::NotARecord`].
+    /// The label for an access, an update and a record pattern's entry, and the whole
+    /// accessor for an accessor — the caret of [`ErrorKind::MissingField`] and
+    /// [`ErrorKind::NotARecord`].
     label_span: NodeSpan,
-    /// The text whose type is `field` — the access, the new value, the accessor — and the
-    /// caret of a mismatch between it and the field's declared type.
+    /// The text whose type is `field` — the access, the new value, the accessor, the
+    /// entry's own pattern — and the caret of a mismatch between it and the field's
+    /// declared type.
     field_span: NodeSpan,
 }
 
@@ -2727,6 +2807,16 @@ impl Substitution {
                 args: args
                     .into_iter()
                     .map(|arg| self.apply_sub_pattern(arg))
+                    .collect(),
+            },
+            TermPatternKind::Record { fields } => TermPatternKind::Record {
+                fields: fields
+                    .into_iter()
+                    .map(|field| Field {
+                        label: field.label,
+                        label_span: field.label_span,
+                        value: self.apply_sub_pattern(field.value),
+                    })
                     .collect(),
             },
         };

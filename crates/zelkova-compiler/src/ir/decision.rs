@@ -32,7 +32,9 @@
 //! wildcard tests nothing and binds nothing, and neither does `()`, whose type has
 //! one value, nor a constructor that did not resolve, which has no case to test for and
 //! is never emitted. A variable binds the value at its occurrence. A tuple tests nothing,
-//! since a value of a tuple type is always a tuple, and goes on to its elements. A
+//! since a value of a tuple type is always a tuple, and goes on to its elements; a record
+//! pattern tests nothing either, a record having one shape, and goes on to each entry's
+//! field by its label, in the order the entries were written. A
 //! literal or a constructor is a `Test` at its occurrence; a constructor then goes on
 //! to its arguments. Every `Test` on the way down falls back, as its `default`, to the
 //! tree for the branches after this one: a pattern that fails part-way through fails as
@@ -71,19 +73,28 @@ pub enum Occurrence {
 }
 
 impl Occurrence {
-    /// The occurrence one step further in: `self` is a constructor or a tuple, and
-    /// `step` says which of its positions.
+    /// The occurrence one step further in: `self` is a constructor, a tuple or a record,
+    /// and `step` says which of its positions.
     pub fn field(&self, step: Step) -> Occurrence {
         Occurrence::At(Box::new(self.clone()), step)
     }
 }
 
-/// One step of an [`Occurrence`]: which sub-value of a constructor or a tuple, counted
-/// from zero the way [`Constructor::index`] counts a case.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// One step of an [`Occurrence`]: which sub-value of a constructor, a tuple or a record.
+/// A constructor's argument and a tuple's element are counted from zero the way
+/// [`Constructor::index`] counts a case; a record's field is named by its label.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Step {
     ConstructorArgument(usize),
     TupleElement(usize),
+    /// The field of a record with this label: where a [record
+    /// pattern](super::TermPatternKind::Record)'s entry is matched.
+    ///
+    /// By label and not by position, since a record type is a set of fields with no
+    /// order of its own (`typer::Type::Record`). Reading one is a backend's to emit, and
+    /// `zelkova_js::emit` refuses a `case` holding a record pattern before it builds the
+    /// tree that would hold this step (`GEN-25`).
+    Field(Name),
 }
 
 /// The value a [`Decision::Test`] checks for.
@@ -264,6 +275,18 @@ fn lower<'a>(
                     occurrence.field(Step::TupleElement(position)),
                     element.tpe.clone(),
                     &element.pattern,
+                ));
+            }
+            lower(pending, bindings, body, on_fail)
+        }
+        // Reversed for the reason a tuple's elements are: the next entry walked is the
+        // first written.
+        TermPatternKind::Record { fields } => {
+            for field in fields.iter().rev() {
+                pending.push((
+                    occurrence.field(Step::Field(field.label.clone())),
+                    field.value.tpe.clone(),
+                    &field.value.pattern,
                 ));
             }
             lower(pending, bindings, body, on_fail)
