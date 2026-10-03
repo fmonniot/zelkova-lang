@@ -170,9 +170,9 @@ declarations it is about, and not closed by it.
 
 ## Active work: records
 
-One ticket remains of one body of work — `GEN-25`. The goal is that **a value of several parts
-can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says which part is
-which by position and stops at three.
+The order is complete: its last ticket, `GEN-25`, has landed. The goal was that **a value of
+several parts can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says
+which part is which by position and stops at three.
 
 The work gets a section for the reason the type classes do: none of its tickets is a record on
 its own. A
@@ -208,20 +208,22 @@ shorthand desugared in the grammar to `x = x`, and a repeated label in one is th
 `LANG-51` has landed: the typer has a record type, two of which unify when they carry the same
 labels and each pair of field types unifies, and it checks a record, an update, a field access
 and an accessor. The last three are read once unification has run over the declaration, and are an error where
-nothing in it supplies the record type; `FieldConstraint` in `typer/mod.rs` is the mechanism. A
-module holding a record type checks, and the emitter refuses it until `GEN-25`.
+nothing in it supplies the record type; `FieldConstraint` in `typer/mod.rs` is the mechanism.
 
 `LANG-84` has landed: the typer checks a record pattern, each entry read against the matched
 record type by that same mechanism, and it is an error where that type lacks a label the
-pattern names or nothing supplies the type. The emitter refuses a record pattern until `GEN-25`.
+pattern names or nothing supplies the type.
 
-What remains:
-
-```
-GEN-25   a record, an access, an update, an accessor and a record
-         pattern are emitted, and a record may cross a facade
-         ← the first point at which a program using a record runs
-```
+`GEN-25` has landed, and a program using a record runs. A record is a plain JavaScript object
+keyed by its labels, its fields in the order they were written; an update spreads the record it
+updates into a new object; an access and an accessor are a property read; and a record pattern
+tests nothing of its own, reading each entry as a property. A record crosses a facade when it
+holds exactly its labels as own keys, each field passing its own type's predicate. The
+representation is written in `zelkova-js`'s module doc comment, *Representations*, and not in
+a chapter: [Interop](../spec/interop.md) leaves a record's encoding to code generation, and
+whether it publishes one is the language owner's. `==` on two records works today because
+`Js.Utils`'s companion walks an object's keys; `LANG-42` replaces that forwarding and
+`LANG-85` is the walk that takes its place.
 
 Two tickets follow from records and are outside the order. [`LANG-85`](lang-85.md) is a record
 under a derivation — what `==` on two records computes once [`LANG-42`](lang-42.md) lands — and
@@ -463,7 +465,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-22 | task | — | closed 2026-09-29 | There is no `zelkova run`: nothing runs a program's `main` |
 | [GEN-23](gen-23.md) | task | — | open | An `unsafe` facade's forwarding code does not catch what its companion throws |
 | [GEN-24](gen-24.md) | task | — | open | A class member, an instance and a constrained function are not emitted |
-| [GEN-25](gen-25.md) | task | — | open | A record, a field access, an update, an accessor and a record pattern are not emitted |
+| GEN-25 | task | — | closed 2026-10-02 | A record, a field access, an update, an accessor and a record pattern are not emitted |
 | [GEN-26](gen-26.md) | task | — | open | A `case` over a tuple of constructors emits code exponential in its number of branches |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |
 | AST-2 | task | — | closed 2026-08-26 | Unify the tuple representation across the parser and canonical ASTs |
