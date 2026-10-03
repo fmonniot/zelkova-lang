@@ -170,10 +170,9 @@ declarations it is about, and not closed by it.
 
 ## Active work: records
 
-Three tickets remain of one body of work — `LANG-51`, `LANG-84` and `GEN-25`. The
-goal is that **a value of several parts can name them** —
-`{ taken : Celsius, expected : Celsius }` where a tuple says which part is which by position
-and stops at three.
+Two tickets remain of one body of work — `LANG-84` and `GEN-25`. The goal is that **a value of
+several parts can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says
+which part is which by position and stops at three.
 
 They get a section for the reason the type classes do: none of them is a record on its own. A
 record has a spelling in the type, expression and pattern grammars and a rule in the typer, and
@@ -194,8 +193,7 @@ not to fill.
 
 `LANG-48` and `LANG-50` have landed: a record type, a record, an update, a field access and an
 accessor parse and reach the canonical module, the type as a set of fields, and a repeated label
-is reported as `canonical::Error::RepeatedLabel`. Until `LANG-51` a declaration holding a record
-or reading a field is one the typer leaves unchecked, so the emitter refuses its module.
+is reported as `canonical::Error::RepeatedLabel`.
 
 `LANG-16`, which the order took as a prerequisite, has landed too: a pattern nests to any depth,
 an applied constructor written as a sub-pattern being parenthesised, and the typer checks a
@@ -207,15 +205,16 @@ shorthand desugared in the grammar to `x = x`, and a repeated label in one is th
 `RepeatedLabel` the other three forms report. Until `LANG-84` a declaration holding a record
 pattern is one the typer leaves unchecked, so the emitter refuses its module.
 
+`LANG-51` has landed: the typer has a record type, two of which unify when they carry the same
+labels and each pair of field types unifies, and it checks a record, an update, a field access
+and an accessor. The last three are read once unification has run over the declaration, and are an error where
+nothing in it supplies the record type; `FieldConstraint` in `typer/mod.rs` is the mechanism and
+says where a record pattern fits in it. A module holding a record type checks, and the emitter
+refuses it until `GEN-25`.
+
 The rest land in this order, one at a time:
 
 ```
-LANG-51  the typer has a record type: a field, an update and an
-  │      accessor are checked
-  │      ← the first ticket that needs another's nodes. Deletes the
-  │        Known gap paragraphs LANG-48 and LANG-50 attached. The
-  │        emitter refuses a module holding a record from here on
-  │
 LANG-84  a record pattern is type checked
   │      ← written against the constraint LANG-51 gives an accessor:
   │        both are answered once unification has said what the
@@ -239,8 +238,8 @@ irrefutable record pattern may be written. [`LANG-19`](lang-19.md) scopes exhaus
 patterns the language has today, and `LANG-49` landed first, so `LANG-19` is the one that adds
 the record pattern to them. [`LANG-40`](lang-40.md) adds a constraint the solver answers only
 once unification has run, which is what `LANG-51`'s accessor is too: the two are written in the
-same files of `typer/` and are not worked at the same time, and the second to land is written
-against the first's mechanism.
+same files of `typer/`, `LANG-51` landed first, and `LANG-40` is written against its mechanism,
+whose doc comment says where a class constraint would sit.
 
 ## Tickets
 
@@ -402,7 +401,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-48 | task | — | closed 2026-10-02 | There is no record production, so a record type, a record and an update do not parse |
 | LANG-49 | task | — | closed 2026-10-02 | There is no record pattern production |
 | LANG-50 | task | — | closed 2026-10-02 | Field access `r.name` and the accessor `.name` do not parse |
-| [LANG-51](lang-51.md) | task | — | open | The typer has no record type, so nothing checks a field, an update or an accessor |
+| LANG-51 | task | — | closed 2026-10-02 | The typer has no record type, so nothing checks a field, an update or an accessor |
 | LANG-52 | task | — | closed 2026-10-02 | Whitespace around a qualification dot is accepted, and records need it not to be |
 | LANG-53 | task | — | closed 2026-09-13 | A facade signature cannot be marked `unsafe`, and an unmarked one is held to nothing |
 | LANG-54 | task | — | closed 2026-09-13 | The interop modifier is `foreign`, not `javascript` |

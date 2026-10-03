@@ -53,7 +53,8 @@ pub enum Error {
         /// The type `main` was judged to have: the one inference solved, or, when the typer
         /// marked `main` unchecked rather than failing it, the one its annotation
         /// declares. `None` only when the annotation cannot be read as a typer type, which
-        /// is an annotation holding a record type: the typer has no record type yet.
+        /// no annotation is today: `typer::canonical_type_to_typer_type` reads every
+        /// canonical type.
         found: Option<Type>,
         /// `main`'s annotation, which every exposed value has
         /// ([*An exposed declaration must be

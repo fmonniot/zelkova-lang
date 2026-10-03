@@ -5,7 +5,7 @@
 //! them off the typed term when it decides what each constraint is about, so nothing
 //! below this point ever has to go looking for a position again.
 
-use super::{ErrorKind, Term, TermKind, TypeBinder, TypedTerm, TypedTermKind, Types};
+use super::{ErrorKind, Field, Term, TermKind, Type, TypeBinder, TypedTerm, TypedTermKind, Types};
 use zelkova_syntax::tuple::Tuple;
 
 pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, ErrorKind> {
@@ -146,7 +146,61 @@ pub(super) fn annotate(term: Term, types: &mut Types) -> Result<TypedTerm, Error
                 },
             )
         }
+        TermKind::Record(fields) => (
+            types.fresh_var(),
+            TypedTermKind::Record(annotate_fields(fields, types)?),
+        ),
+        TermKind::Update { record, fields } => {
+            let record = Box::new(annotate(*record, types)?);
+            let fields = annotate_fields(fields, types)?;
+            (types.fresh_var(), TypedTermKind::Update { record, fields })
+        }
+        TermKind::Access {
+            record,
+            label,
+            label_span,
+        } => {
+            let record = Box::new(annotate(*record, types)?);
+            (
+                types.fresh_var(),
+                TypedTermKind::Access {
+                    record,
+                    label,
+                    label_span,
+                },
+            )
+        }
+        // An accessor is a function, from a record type it cannot name to the type of a
+        // field of it, so its type is built here as that arrow between two fresh
+        // variables rather than equated with one by a constraint. `constraint::collect`
+        // reads the two halves back off it for the `FieldConstraint` that relates them,
+        // which is the only thing that does: nothing else knows they are a record and
+        // one of its fields.
+        TermKind::Accessor { label, label_span } => (
+            Type::Fun {
+                param_tpe: Box::new(types.fresh_var()),
+                return_tpe: Box::new(types.fresh_var()),
+            },
+            TypedTermKind::Accessor { label, label_span },
+        ),
     };
 
     Ok(TypedTerm { span, tpe, kind })
+}
+
+/// The fields of a record or an update, each value annotated, in the order written.
+fn annotate_fields(
+    fields: Vec<Field<Term>>,
+    types: &mut Types,
+) -> Result<Vec<Field<TypedTerm>>, ErrorKind> {
+    fields
+        .into_iter()
+        .map(|field| {
+            Ok(Field {
+                label: field.label,
+                label_span: field.label_span,
+                value: annotate(field.value, types)?,
+            })
+        })
+        .collect()
 }
