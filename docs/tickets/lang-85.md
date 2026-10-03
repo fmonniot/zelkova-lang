@@ -12,7 +12,7 @@ specialisation pass [`GEN-24`](gen-24.md) adds. None of the three exists yet.
 
 **Depends on:** `LANG-51` (closed) for the record type; [`LANG-40`](lang-40.md) and
 [`LANG-83`](lang-83.md) for obligations and for what a derivation is; [`GEN-24`](gen-24.md) and
-[`GEN-25`](gen-25.md) before a program using it runs. It is the one ticket that needs both
+`GEN-25` (closed) before a program using it runs. It is the one ticket that needs both
 *Active work* orders in [the index](README.md) finished.
 
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decision 8):** a
