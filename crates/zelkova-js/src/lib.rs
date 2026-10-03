@@ -300,7 +300,7 @@ pub enum Construct {
     /// is the pattern in one whose type does not — matched against a union's argument, or
     /// against a value its body computes. It is refused before the `case`'s decision
     /// tree is built, at the outermost, leftmost record pattern's span, so no tree
-    /// holding an [`ir::Step::Field`] reaches [`occurrence_expr`].
+    /// holding an [`ir::Step::Field`] reaches `occurrence_expr`.
     RecordPattern,
 }
 
