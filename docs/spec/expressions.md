@@ -685,6 +685,6 @@ f r =
   r.name
 ```
 
-**Not implemented:** braces are not tokens ([`LANG-47`](../tickets/lang-47.md)), and `.` is
-punctuation for qualified names only, so `r.name` is rejected rather than read as a projection
-([`LANG-50`](../tickets/lang-50.md)).
+**Not implemented:** no production consumes a record type
+([`LANG-48`](../tickets/lang-48.md)), and `.` is punctuation for qualified names only, so
+`r.name` is rejected rather than read as a projection ([`LANG-50`](../tickets/lang-50.md)).

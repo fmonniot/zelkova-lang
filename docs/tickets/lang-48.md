@@ -8,15 +8,15 @@ together — and it adds a form to three of the grammar's languages at once.
 and `ExpressionKind`; `canonical::Type::from_parser_type` and
 `canonical::Expression::from_parser_expression` in `crates/zelkova-compiler/src/canonical/`.
 
-**Depends on:** [`LANG-47`](lang-47.md), hard. There is no brace token to consume.
-
 **Decided (`SPEC-21`, by the language owner; [`DEC-8`](../decisions/dec-8.md) decisions 1, 2 and
 4):** a record type is `{ label : Type, … }`, a record is `{ label = expr, … }`, an update is
 `{ expr | label = expr, … }`, each has at least one field, no field is repeated and no trailing
 comma is permitted. [Records](../spec/records.md) is the rule.
 
 **Not implemented:** no production consumes a brace in any position, so every record example in
-[Records](../spec/records.md) is rejected in the tokenizer today.
+[Records](../spec/records.md) is rejected at its first brace today. `{` and `}` are the tokens
+`Token::LBrace` and `Token::RBrace`, which the grammar's `extern` block does not yet name; naming
+them is part of this ticket.
 
 **Approach:** three productions, all delimited on both sides and therefore all at the atomic
 level — a record needs no parenthesising in argument position, the same argument

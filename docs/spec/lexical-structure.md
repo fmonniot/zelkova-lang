@@ -556,11 +556,11 @@ f = { a = 1 }
 ```
 
 **Not implemented:** lists and records are part of the language and neither is implemented.
-Brackets are tokenized but no construct consumes them ([`LANG-44`](../tickets/lang-44.md),
-[`LANG-45`](../tickets/lang-45.md)); braces are not tokenized at all
-([`LANG-47`](../tickets/lang-47.md)). [Lists](lists.md) and [Records](records.md) specify
-their syntax; what this section fixes is that the characters are spoken for, and so unavailable
-as operator characters.
+Brackets and braces are tokenized but no construct consumes them
+([`LANG-44`](../tickets/lang-44.md), [`LANG-45`](../tickets/lang-45.md) for brackets;
+[`LANG-48`](../tickets/lang-48.md), [`LANG-49`](../tickets/lang-49.md) for braces).
+[Lists](lists.md) and [Records](records.md) specify their syntax; what this section fixes is
+that the characters are spoken for, and so unavailable as operator characters.
 
 ## Numeric literals that are rejected
 

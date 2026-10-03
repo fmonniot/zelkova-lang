@@ -170,8 +170,8 @@ declarations it is about, and not closed by it.
 
 ## Active work: records
 
-Seven tickets remain of one body of work — `LANG-47` through `LANG-51`, `LANG-84` and `GEN-25` —
-and an eighth, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
+Six tickets remain of one body of work — `LANG-48` through `LANG-51`, `LANG-84` and `GEN-25` —
+and a seventh, `LANG-16`, is in their order as a prerequisite. The goal is that **a value of several
 parts can name them** — `{ taken : Celsius, expected : Celsius }` where a tuple says which part
 is which by position and stops at three.
 
@@ -194,9 +194,6 @@ to report, not to fill.
 They land in this order, one at a time:
 
 ```
-LANG-47  `{` and `}` become tokens
-  │      ← needs nothing. No block in the chapter turns on it alone
-  │
 LANG-48  a record type, a record and an update parse, and reach the
   │      canonical module as a set of fields
   │      ← a repeated label is reported from here on. Until LANG-51 a
@@ -214,8 +211,7 @@ LANG-16  a pattern nests, and is type checked where it does
   │        typer's refusal of a nested pattern, which LANG-84 relies on
   │
 LANG-49  a record pattern parses, the `{ x }` shorthand included
-  │      ← needs LANG-47, and LANG-48 for how a repeated label is
-  │        reported
+  │      ← needs LANG-48 for how a repeated label is reported
   │
 LANG-51  the typer has a record type: a field, an update and an
   │      accessor are checked
@@ -319,6 +315,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-15](err-15.md) | task | — | open | `TypeNotFound` carries no "did you mean …?" suggestion |
 | [ERR-16](err-16.md) | task | — | open | `ModuleNameCollision` and `ReservedModuleName` have a file to point at and don't |
 | [ERR-17](err-17.md) | task | — | open | A mistyped bare identifier or constructor body gets no caret of its own |
+| [ERR-18](err-18.md) | task | — | open | An unexpected-token error names the token by its Rust variant, not as the user wrote it |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |
@@ -402,7 +399,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-44](lang-44.md) | task | — | open | There is no list-literal production, so `[1, 2]` does not parse |
 | [LANG-45](lang-45.md) | task | — | open | There is no list pattern, so neither `[]` nor `first :: rest` can be matched |
 | [LANG-46](lang-46.md) | task | — | open | `std/core` declares `List`, opaquely, with `(::)` over it |
-| [LANG-47](lang-47.md) | task | — | open | `{` and `}` are not tokens, so nothing in a record reaches the grammar |
+| LANG-47 | task | — | closed 2026-10-02 | `{` and `}` are not tokens, so nothing in a record reaches the grammar |
 | [LANG-48](lang-48.md) | task | — | open | There is no record production, so a record type, a record and an update do not parse |
 | [LANG-49](lang-49.md) | task | — | open | There is no record pattern production |
 | [LANG-50](lang-50.md) | task | — | open | Field access `r.name` and the accessor `.name` do not parse |

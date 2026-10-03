@@ -732,8 +732,7 @@ describe reading =
 ```
 
 **Not implemented:** the pattern grammar has no brace production
-([`LANG-49`](../tickets/lang-49.md)), and braces are not tokens at all
-([`LANG-47`](../tickets/lang-47.md)).
+([`LANG-49`](../tickets/lang-49.md)).
 
 A record pattern names a **subset** of the record's fields, so it is refutable exactly when one
 of its sub-patterns is and a pattern of shorthand entries alone can never fail. Sub-patterns are

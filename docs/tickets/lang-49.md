@@ -6,9 +6,8 @@ the canonical conversion land together.
 **Location:** `crates/zelkova-syntax/src/parser/grammar.lalrpop`'s pattern productions;
 `crates/zelkova-syntax/src/parser/mod.rs`'s `PatternKind`; `canonical::Pattern::from_parser_pattern`.
 
-**Depends on:** [`LANG-47`](lang-47.md), hard — there is no brace token.
-[`LANG-16`](lang-16.md), hard for the acceptance below: the first record-pattern block in
-[Records](../spec/records.md#record-patterns) and the one in
+**Depends on:** [`LANG-16`](lang-16.md), hard for the acceptance below: the first record-pattern
+block in [Records](../spec/records.md#record-patterns) and the one in
 [Patterns](../spec/patterns.md#record-patterns) both write `{ taken = Celsius, … }`, a
 constructor as a sub-pattern, which `Pattern` has no alternative for until `LANG-16` gives it
 one — so neither block can go red before then. [`LANG-48`](lang-48.md), for the
