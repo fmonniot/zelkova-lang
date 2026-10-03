@@ -1,0 +1,49 @@
+module foreign Source exposing
+  ( tick, sumFields, say
+  , rightPoint, wrongExtra, wrongMissing, wrongType, wrongNull, wrongArray, wrongArrayLength
+  , rightUnit, wrongUnitMissing
+  , rightKeyed, wrongInherited, wrongSymbol, wrongHidden, wrongHiddenLabel
+  , rightFrozen, rightInstance, rightNullPrototype
+  , rightNested, wrongNested
+  , rightWrapped, wrongWrapped
+  )
+
+import Task exposing (Task, Failure)
+import Wrapper exposing (Wrapper)
+
+
+-- The next number of a counter nothing else touches, so the order two calls ran in is the
+-- order of what they returned.
+unsafe tick : Int -> Int
+
+-- A record handed to a companion crosses as a plain object of its fields.
+unsafe sumFields : { x : Int, y : Int } -> Int
+
+unsafe rightPoint : Int -> { x : Int, y : Int }
+unsafe wrongExtra : Int -> { x : Int, y : Int }
+unsafe wrongMissing : Int -> { x : Int, y : Int }
+unsafe wrongType : Int -> { x : Int, y : Int }
+unsafe wrongNull : Int -> { x : Int, y : Int }
+unsafe wrongArray : Int -> { x : Int, y : Int }
+unsafe wrongArrayLength : Int -> { length : Float }
+
+unsafe rightUnit : Int -> { done : (), n : Int }
+unsafe wrongUnitMissing : Int -> { done : (), n : Int }
+
+unsafe rightKeyed : Int -> { class : Int, new : Int, constructor : Int, toString : Int }
+unsafe wrongInherited : Int -> { toString : Int }
+unsafe wrongSymbol : Int -> { x : Int }
+unsafe wrongHidden : Int -> { x : Int }
+unsafe wrongHiddenLabel : Int -> { x : Int, y : Int }
+unsafe rightFrozen : Int -> { x : Int, y : Int }
+unsafe rightInstance : Int -> { x : Int, y : Int }
+unsafe rightNullPrototype : Int -> { x : Int, y : Int }
+
+unsafe rightNested : Int -> { inner : { x : Int }, pair : (Int, { y : Int }) }
+unsafe wrongNested : Int -> { inner : { x : Int }, pair : (Int, { y : Int }) }
+
+unsafe rightWrapped : Int -> Wrapper
+unsafe wrongWrapped : Int -> Wrapper
+
+-- Not `unsafe`, so an effect: writes a line to standard output, which a program `main` runs.
+say : Int -> Task (Result Failure ())

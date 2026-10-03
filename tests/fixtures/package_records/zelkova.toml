@@ -1,0 +1,19 @@
+# The fixture `tests/js/RecordChecks.mjs` compiles, loads and runs `zelkova test` against. A
+# record, an access, an update, an accessor and a record pattern in `src/Records.zel`;
+# `src/Source.zel` is an `unsafe` facade whose companion, `src/Source.mjs`, returns records
+# of the declared shape from the exports named `right…` and of a wrong one from those named
+# `wrong…`, and counts calls so a test can observe the order fields are evaluated in;
+# `tests/RecordTests.zel` holds the Zelkova tests, and `src/App.zel` is a program that builds,
+# updates and reads a record and writes what it read, for `zelkova run`.
+# `cargo test` never loads it; `cargo run -- test` and `node --test 'tests/js/**/*.mjs'` do.
+name = "package-records"
+version = "0.1.0"
+main = "App"
+private-modules = []
+
+[dependencies.zelkova-core]
+path = "../../../std/core"
+
+[test-dependencies.zelkova-test]
+path = "../../../std/test"
+wrapped = false

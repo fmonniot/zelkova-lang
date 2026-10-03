@@ -1607,22 +1607,61 @@ fn a_union_holding_a_function_has_no_predicate() {
 }
 
 /// A facade signature that names no record itself can still lead its result's predicate
-/// to one, through the argument of a union's constructor: `ir::build` reads the facade's
-/// signature, which is `Int -> Shape`, without trouble, so it is a declaration, and
-/// `Predicates` then walks `Shape`'s constructor into the record. That is refused as
-/// `NoPredicate`, naming the constructor, rather than emitted with a predicate for a type
-/// this backend has no representation of.
+/// to one, through the argument of a union's constructor, and the union's function decides
+/// the record where it sits: the constructor's argument, `$v0.a`, is an object with exactly
+/// the record's fields. This replaced the test that pinned the refusal, as `NoPredicate`,
+/// of the same signature before a record had a predicate.
 ///
-/// Mutation-checked by making the `Type::Record` arm of `Predicates::test` answer
-/// `Ok("true".to_string())`: the facade then emits and `expect_err` fails.
+/// Mutation-checked by reading the record's fields off the union value itself, `$v0`,
+/// instead of off the argument the record sits in (building `value` as `"$v0"` in
+/// `union_function`): the text no longer matches.
 #[test]
-fn a_union_holding_a_record_has_no_predicate() {
-    let errors = facade_across(
+fn a_union_holding_a_record_is_checked_through_its_argument() {
+    let text = facade_across(
         indoc! {r#"
             module Shape exposing (Shape(..))
 
             type Shape
               = Box { x : Int }
+        "#},
+        indoc! {r#"
+            module foreign Test exposing (f)
+
+            import Shape exposing (Shape)
+
+            unsafe f : Int -> Shape
+        "#},
+    )
+    .unwrap_or_else(|errors| panic!("expected the facade to emit, got {:?}", errors));
+
+    assert!(
+        text.contains(
+            "    case \"Box\":\n      return typeof $v0.a === \"object\" && $v0.a !== null \
+             && !Array.isArray($v0.a) && Reflect.ownKeys($v0.a).length === 1 \
+             && Object.keys($v0.a).length === 1 && Object.hasOwn($v0.a, \"x\") \
+             && typeof $v0.a.x === \"bigint\" \
+             && BigInt.asIntN(64, $v0.a.x) === $v0.a.x;\n"
+        ),
+        "got:\n{}",
+        text
+    );
+}
+
+/// A union whose constructor holds a record holding a function type is still refused where
+/// its predicate is built, naming the constructor, as a union holding a function directly
+/// is: canonicalization reads the facade signature and not the declarations of the unions
+/// it names (`BUG-45`), so the function type is found in the walk into the record.
+///
+/// Mutation-checked by testing none of a record's fields in the `Type::Record` arm of
+/// `Predicates::test`: the facade then emits and `expect_err` fails.
+#[test]
+fn a_union_holding_a_record_holding_a_function_has_no_predicate() {
+    let errors = facade_across(
+        indoc! {r#"
+            module Shape exposing (Shape(..))
+
+            type Shape
+              = Box { run : Int -> Int }
         "#},
         indoc! {r#"
             module foreign Test exposing (f)
@@ -1639,7 +1678,7 @@ fn a_union_holding_a_record_has_no_predicate() {
         vec![Error::NoPredicate {
             name: Name::new("f"),
             span: NodeSpan::none(),
-            found: Unpredicated::Record,
+            found: Unpredicated::Function,
             constructor: Some(test_qual("Shape.Box")),
         }]
     );
@@ -2135,222 +2174,519 @@ fn a_case_matching_a_pattern_hole_is_refused() {
     }
 }
 
-/// A module holding a record type checks and is not built: each record form in a body
-/// is refused by name under the form, and a declaration whose own type holds a record
-/// type is refused whole under the declaration, before its body is read
-/// ([`GEN-25`](../../../docs/tickets/gen-25.md) is what emits them). This is how a `let`
-/// or a hole is refused — `Error::Unsupported` naming a `Construct` — and not
-/// `Error::Unchecked`: every one of these declarations type checked.
+// ── Records ───────────────────────────────────────────────────────────────────
+
+/// A record is a plain object keyed by its labels, with no `$`, whose fields stand in the
+/// order the source wrote them — `b` before `a` here, which is not label order — since an
+/// object literal evaluates its entries as they stand. This is what the refusal of
+/// `Construct::Record` was replaced by.
 ///
-/// Every declaration but `annotated` has a type naming no record, which is what makes
-/// its body the thing refused: the record each reads is `Box`'s argument.
-///
-/// Mutation-checked by emitting each of the four term forms as `undefined` in
-/// `Emitter::expression` (the assertion goes red, one form at a time), and by deleting
-/// the `holds_record` check in `emit` (`annotated` emits, and the assertion goes red).
+/// Mutation-checked by emitting the fields in label order (sorting `fields` in
+/// `Emitter::record_fields`): `b` and `a` swap and the text no longer matches; and by
+/// emitting a `$: "Record"` entry ahead of them.
 #[test]
-fn a_module_holding_a_record_is_refused() {
-    let source = indoc! {r#"
-        module Test exposing ()
+fn a_record_is_an_object_of_its_fields_in_the_order_written() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (make)
 
-        type Box
-          = Box { a : Int }
-
-        first : a -> b -> a
-        first x y =
-          x
-
-        annotated : { a : Int } -> Int
-        annotated r = 1
-
-        built : Box
-        built =
-          Box (first { a = 1 } 2)
-
-        updated : Box -> Box
-        updated b =
-          case b of
-            Box r ->
-              Box { r | a = 2 }
-
-        read : Box -> Int
-        read b =
-          case b of
-            Box r ->
-              r.a
-
-        pick : Box -> Int
-        pick b =
-          case b of
-            Box r ->
-              .a r
-    "#};
-    let errors = refused(source);
-
-    let mut found: Vec<(&str, Construct, Option<std::ops::Range<usize>>)> = errors
-        .iter()
-        .map(|error| match error {
-            Error::Unsupported {
-                construct,
-                declaration,
-                span,
-            } => (declaration.as_str(), *construct, span.to_range()),
-            other => panic!("expected only Unsupported refusals, got {:?}", other),
-        })
-        .collect();
-    found.sort_by(|left, right| left.0.cmp(right.0));
-
-    // The range of `needle`, the first `len` bytes of it when given.
-    let range = |needle: &str, len: Option<usize>| {
-        let start = position(source, needle);
-        Some(start..start + len.unwrap_or(needle.len()))
-    };
-    assert_eq!(
-        found,
-        vec![
-            (
-                "annotated",
-                Construct::RecordType,
-                range("annotated : { a : Int } -> Int\nannotated r = 1", None)
-            ),
-            ("built", Construct::Record, range("{ a = 1 }", None)),
-            ("pick", Construct::Accessor, range(".a r", Some(2))),
-            ("read", Construct::Access, range("r.a\n", Some(3))),
-            ("updated", Construct::Update, range("{ r | a = 2 }", None)),
-        ]
-    );
-}
-
-/// A declaration holding a record pattern type checks, and its module is still refused,
-/// since this backend has no representation of a record to read a field off (`GEN-25`):
-/// as `Construct::RecordType` when the declaration's own type holds the record, before its
-/// body is read, and otherwise as `Construct::RecordPattern`, at the record pattern,
-/// before the `case`'s decision tree is built — the pattern a parameter's constructor
-/// argument, nested in a tuple element, or at a branch head over a value the body
-/// computes (`make` is refused for the record it builds). Exactly one refusal each, so
-/// none reached the field step the tree would hold: that one would carry no position.
-///
-/// Mutation-checked by deleting the `pattern_record` check in `case_expression`: the
-/// three are then refused from `decision` with no position instead, and the range
-/// assertion goes red. And by giving `pattern_record` no `Tuple` arm: `nested` then has
-/// no position, and the assertion goes red.
-#[test]
-fn a_declaration_holding_a_record_pattern_is_refused() {
-    let source = indoc! {r#"
-        module Test exposing ()
-
-        type Box
-          = Box { a : Int }
-
-        annotated : { a : Int } -> Int
-        annotated { a } = a
-
-        unboxed : Box -> Int
-        unboxed (Box { a }) = a
-
-        nested : (Box, Int) -> Int
-        nested ((Box { a = 1 }), b) = b
-
-        make : Int -> Box
+        make : Int -> { a : Int, b : Int }
         make n =
-          Box { a = n }
-
-        computed : Int -> Int
-        computed n =
-          case make n of
-            Box { a } ->
-              a
-    "#};
-    let errors = refused(source);
-
-    let mut found: Vec<(&str, Construct, Option<std::ops::Range<usize>>)> = errors
-        .iter()
-        .map(|error| match error {
-            Error::Unsupported {
-                construct,
-                declaration,
-                span,
-            } => (declaration.as_str(), *construct, span.to_range()),
-            other => panic!("expected only Unsupported refusals, got {:?}", other),
-        })
-        .collect();
-    found.sort_by(|left, right| left.0.cmp(right.0));
-
-    let range = |context: &str, needle: &str| {
-        let start = position(source, context) + position(context, needle);
-        Some(start..start + needle.len())
-    };
-    assert_eq!(
-        found,
-        vec![
-            (
-                "annotated",
-                Construct::RecordType,
-                range(
-                    "annotated : { a : Int } -> Int\nannotated { a } = a",
-                    "annotated : { a : Int } -> Int\nannotated { a } = a"
-                )
-            ),
-            (
-                "computed",
-                Construct::RecordPattern,
-                range("Box { a } ->", "{ a }")
-            ),
-            (
-                "make",
-                Construct::Record,
-                range("Box { a = n }", "{ a = n }")
-            ),
-            (
-                "nested",
-                Construct::RecordPattern,
-                range("((Box { a = 1 }), b)", "{ a = 1 }")
-            ),
-            (
-                "unboxed",
-                Construct::RecordPattern,
-                range("unboxed (Box { a })", "{ a }")
-            ),
-        ]
-    );
-
-    let unboxed = errors
-        .iter()
-        .find(|error| matches!(error, Error::Unsupported { declaration, .. } if declaration.as_str() == "unboxed"))
-        .expect("`unboxed` is refused");
-    assert_eq!(
-        unboxed.message(),
-        "`unboxed` cannot be compiled to JavaScript yet: it uses a record pattern"
-    );
-}
-
-/// A facade signature holding a record type is refused, as a parameter or inside a
-/// result: canonicalization admits a record of admitted fields, and the typer reads it,
-/// but no record crosses a boundary until this backend has a representation for one, so
-/// the signature is refused as `Construct::RecordType` before any predicate is built.
-///
-/// Mutation-checked by deleting the `holds_record` check in `emit`: `take` then emits and
-/// `point` is refused as `NoPredicate` instead, and the match panics.
-#[test]
-fn a_facade_signature_holding_a_record_is_refused() {
-    let errors = refused(indoc! {r#"
-        module foreign Test exposing (point, take)
-
-        unsafe point : Int -> (Int, { x : Int })
-        unsafe take : { x : Int } -> Int
+          { b = n, a = 1 }
     "#});
 
-    let mut names: Vec<&str> = errors
-        .iter()
-        .map(|error| match error {
-            Error::Unsupported {
-                construct: Construct::RecordType,
-                declaration,
-                ..
-            } => declaration.as_str(),
-            other => panic!("expected only record-type refusals, got {:?}", other),
-        })
-        .collect();
-    names.sort();
-    assert_eq!(names, vec!["point", "take"]);
+    assert_eq!(
+        text,
+        indoc! {r#"
+            function make(n) {
+              return {b: n, a: 1n};
+            }
+
+            export { make };
+        "#}
+    );
+}
+
+/// A label is a property name and never a binding's: a reserved word is not renamed (`class`
+/// is `{class: …}` and `r.class`, not `$class`), a name every object inherits is the
+/// record's own field, and a label that is not a bare ASCII identifier is a string-literal
+/// key and a bracketed read. The record pattern's shorthand binds the *value* `class` under
+/// the binding's own name, `$class`, and reads the label.
+///
+/// Mutation-checked by applying `mangle` to the label in `key` and `property`: `class` is
+/// emitted as `$class` and the text goes red; and by making `is_bare_property` answer `true`
+/// for every label: `café` is emitted bare and the text goes red.
+#[test]
+fn a_label_is_the_property_it_is_whatever_it_is_called() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (make, read, accent, bind)
+
+        make : Int -> { class : Int, constructor : Int, toString : Int }
+        make n =
+          { class = n, constructor = n, toString = n }
+
+        read : { class : Int, constructor : Int, toString : Int } -> Int
+        read r =
+          r.toString
+
+        accent : Int -> Int
+        accent n =
+          { café = n }.café
+
+        bind : { class : Int } -> Int
+        bind { class } =
+          class
+    "#});
+
+    assert_eq!(
+        text,
+        indoc! {r#"
+            function accent(n) {
+              return {"café": n}["café"];
+            }
+
+            function bind($0) {
+              return (() => {
+              const $scrutinee = $0;
+              {
+                const $class = $scrutinee.class;
+                return $class;
+              }
+            })();
+            }
+
+            function make(n) {
+              return {class: n, constructor: n, toString: n};
+            }
+
+            function read(r) {
+              return r.toString;
+            }
+
+            export { accent, bind, make, read };
+        "#}
+    );
+}
+
+/// An access is a property read, and a chain of them is a chain of reads. The record read
+/// is parenthesised only where it is a conditional.
+///
+/// Mutation-checked by emitting `r.x` as `r["x"]` for every label (`property` always
+/// bracketing): `read` and `chained` go red; and by dropping `If` from the parenthesised
+/// forms of `Emitter::operand`: `chosen` is emitted as `c ? r : s.x`, which reads `s.x` and
+/// not the chosen record.
+#[test]
+fn an_access_is_a_property_read() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (read, chained, called, chosen)
+
+        read : { x : Int } -> Int
+        read r =
+          r.x
+
+        chained : { centre : { x : Int } } -> Int
+        chained r =
+          r.centre.x
+
+        make : Int -> { x : Int }
+        make n =
+          { x = n }
+
+        called : Int -> Int
+        called n =
+          (make n).x
+
+        chosen : Bool -> { x : Int } -> { x : Int } -> Int
+        chosen c r s =
+          (if c then r else s).x
+    "#});
+
+    assert_eq!(
+        text,
+        indoc! {r#"
+            function called(n) {
+              return make(n).x;
+            }
+
+            function chained(r) {
+              return r.centre.x;
+            }
+
+            function chosen(c, r, s) {
+              return (c ? r : s).x;
+            }
+
+            function make(n) {
+              return {x: n};
+            }
+
+            function read(r) {
+              return r.x;
+            }
+
+            export { called, chained, chosen, read };
+        "#}
+    );
+}
+
+/// An update spreads the record it updates, once and ahead of the fields, into a new object
+/// and then writes the fields in the order they were written; the object updated is never
+/// the one written to. The record updated is any expression, here a call.
+///
+/// Mutation-checked by emitting the update as an object of its fields alone (no spread): the
+/// text goes red; by evaluating the record after the fields (the spread moved to the end):
+/// the text goes red; and by emitting `Object.assign(r, …)`: the text goes red.
+#[test]
+fn an_update_spreads_the_record_and_then_writes_its_fields() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (moved, replaced)
+
+        moved : { x : Int, y : Int } -> { x : Int, y : Int }
+        moved r =
+          { r | x = 1 }
+
+        make : Int -> { a : Int, b : Int }
+        make n =
+          { a = n, b = n }
+
+        replaced : Int -> { a : Int, b : Int }
+        replaced n =
+          { make n | b = 2, a = 3 }
+    "#});
+
+    assert_eq!(
+        text,
+        indoc! {r#"
+            function make(n) {
+              return {a: n, b: n};
+            }
+
+            function moved(r) {
+              return {...r, x: 1n};
+            }
+
+            function replaced(n) {
+              return {...make(n), b: 2n, a: 3n};
+            }
+
+            export { moved, replaced };
+        "#}
+    );
+}
+
+/// An accessor is a function of one parameter, `(r) => r.x`, handed to a function like any
+/// other function value, and called one argument at a time — and parenthesised where it is
+/// the function of a call, since `(r) => r.x(r)` would read the call as the body.
+///
+/// Mutation-checked by dropping `Accessor` from the parenthesised forms of
+/// `Emitter::operand`: `direct` then reads `(r) => r.x(s)` and the text goes red; and by
+/// emitting the accessor as the string `".x"`: the text goes red.
+#[test]
+fn an_accessor_is_a_function_of_one_parameter() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (passed, direct)
+
+        apply : (a -> b) -> a -> b
+        apply f a =
+          f a
+
+        passed : { x : Int } -> Int
+        passed r =
+          apply .x r
+
+        direct : { x : Int } -> Int
+        direct s =
+          .x s
+    "#});
+
+    assert_eq!(
+        text,
+        indoc! {r#"
+            function apply(f, a) {
+              return f(a);
+            }
+
+            function direct(s) {
+              return ((r) => r.x)(s);
+            }
+
+            function passed(r) {
+              return apply((r) => r.x, r);
+            }
+
+            export { direct, passed };
+        "#}
+    );
+}
+
+/// A declaration whose parameter is the record pattern `{ x, y }` takes the one parameter
+/// the IR gives a pattern and binds each field off it by a property read: the pattern tests
+/// nothing, so there is no `if`. This replaced the refusal of a record pattern in a
+/// parameter, as `Construct::RecordType` or `Construct::RecordPattern`.
+///
+/// Mutation-checked by reading `Step::Field(_)` as `base` alone in `occurrence_expr`: the
+/// bindings read `$scrutinee` itself and the text goes red.
+#[test]
+fn a_record_pattern_in_a_parameter_binds_each_field() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (first)
+
+        first : { x : Int, y : Int } -> Int
+        first { x, y } =
+          x
+    "#});
+
+    assert_eq!(
+        text,
+        indoc! {r#"
+            function first($0) {
+              return (() => {
+              const $scrutinee = $0;
+              {
+                const x = $scrutinee.x;
+                const y = $scrutinee.y;
+                return x;
+              }
+            })();
+            }
+
+            export { first };
+        "#}
+    );
+}
+
+/// A record pattern in a `case` tests nothing of its own — there is no `.$` check and no
+/// `if` for the record — and an entry whose sub-pattern is refutable is tested at the
+/// property it reads, `$scrutinee.x === 0n`; one nested in a constructor's argument reads
+/// the argument first, `$scrutinee.a.n`, and then the field. The two shapes are one `case`
+/// each, so each branch's binding shows where its entry was read.
+///
+/// Mutation-checked by emitting a `Step::Field` read as `base` alone: the entry's test reads
+/// `$scrutinee === 0n`, the binding `$scrutinee`, and both assertions go red.
+#[test]
+fn a_record_pattern_in_a_case_is_read_through_its_fields() {
+    let text = emitted(indoc! {r#"
+        module Test exposing (direct, boxed)
+
+        type Box
+          = Box { n : Int }
+
+        direct : { x : Int, y : Int } -> Int
+        direct r =
+          case r of
+            { x = 0, y } ->
+              y
+
+            { x, y = 1 } ->
+              x
+
+            { x } ->
+              x
+
+        boxed : Box -> Int
+        boxed b =
+          case b of
+            Box { n } ->
+              n
+    "#});
+
+    assert_eq!(
+        text,
+        indoc! {r#"
+            import { $abort } from "../zelkova.mjs";
+
+            function boxed(b) {
+              return (() => {
+              const $scrutinee = b;
+              if ($scrutinee.$ === "Box") {
+                {
+                  const n = $scrutinee.a.n;
+                  return n;
+                }
+              } else {
+                return $abort("`boxed`'s case matched no branch");
+              }
+            })();
+            }
+
+            function direct(r) {
+              return (() => {
+              const $scrutinee = r;
+              if ($scrutinee.x === 0n) {
+                {
+                  const y = $scrutinee.y;
+                  return y;
+                }
+              } else {
+                if ($scrutinee.y === 1n) {
+                  {
+                    const x = $scrutinee.x;
+                    return x;
+                  }
+                } else {
+                  {
+                    const x = $scrutinee.x;
+                    return x;
+                  }
+                }
+              }
+            })();
+            }
+
+            export { boxed, direct };
+        "#}
+    );
+}
+
+/// A facade whose result is a record emits a predicate that names each label: an object that
+/// is not an array and not `null`, whose own keys number the labels and are all enumerable,
+/// each label found among them by `Object.hasOwn` and each field passing its type's
+/// predicate — in label order, not the order the signature wrote them in. This replaced the
+/// refusal of a facade signature holding a record, as `Construct::RecordType`.
+///
+/// Mutation-checked by deleting the `Reflect.ownKeys` count from `Predicates::test`: the
+/// extra-field check is gone and the text goes red; by counting `Object.keys` instead: the
+/// text goes red; by deleting the `Object.keys` count: a label that is not enumerable is
+/// admitted and the text goes red; by testing `"x" in v` in place of `Object.hasOwn(v, "x")`: an inherited
+/// name is found and the text goes red; and by dropping the `!Array.isArray` test: the text
+/// goes red.
+#[test]
+fn a_facade_result_that_is_a_record_is_checked_by_its_labels() {
+    let text = emitted(indoc! {r#"
+        module foreign Test exposing (point)
+
+        unsafe point : Int -> { y : Int, x : Char }
+    "#});
+
+    assert_eq!(
+        text,
+        indoc! {r#"
+            import { $abort } from "../zelkova.mjs";
+            import { point as $companion$point } from "./Test.companion.mjs";
+
+            function point(a) {
+              const $returned = $companion$point(a);
+              return typeof $returned === "object" && $returned !== null && !Array.isArray($returned) && Reflect.ownKeys($returned).length === 2 && Object.keys($returned).length === 2 && Object.hasOwn($returned, "x") && typeof $returned.x === "string" && $returned.x.length === ($returned.x.codePointAt(0) > 0xFFFF ? 2 : 1) && Object.hasOwn($returned, "y") && typeof $returned.y === "bigint" && BigInt.asIntN(64, $returned.y) === $returned.y ? $returned : $abort("`Test.point`'s companion returned a value its declared type, `{ x : Char, y : Int }`, does not admit");
+            }
+
+            export { point };
+        "#}
+    );
+}
+
+/// A field of type `()` is present, holding `undefined`: it is tested for being its own
+/// property and for being `undefined`, so a record missing it is told from one that has it.
+/// A record in a tuple and a record in a record are reached through the element and the
+/// field that hold them, and a label a Zelkova binding could not be — `toString` — is read as
+/// the property it is.
+///
+/// Mutation-checked by dropping the `Object.hasOwn` test of a field in `Predicates::test`:
+/// `done` is then tested by `=== undefined` alone, which a missing field passes, and the
+/// text goes red.
+#[test]
+fn a_record_field_of_type_unit_is_present_and_nested_records_are_walked() {
+    let text = emitted(indoc! {r#"
+        module foreign Test exposing (both, inner)
+
+        unsafe both : Int -> { done : (), toString : (Int, { n : Int }) }
+        unsafe inner : Int -> { r : { done : () } }
+    "#});
+
+    let both = "typeof $returned === \"object\" && $returned !== null && !Array.isArray($returned) \
+                && Reflect.ownKeys($returned).length === 2 && Object.keys($returned).length === 2 \
+                && Object.hasOwn($returned, \"done\") && $returned.done === undefined \
+                && Object.hasOwn($returned, \"toString\") && Array.isArray($returned.toString) \
+                && $returned.toString.length === 2 && typeof $returned.toString[0] === \"bigint\" \
+                && BigInt.asIntN(64, $returned.toString[0]) === $returned.toString[0] \
+                && typeof $returned.toString[1] === \"object\" && $returned.toString[1] !== null \
+                && !Array.isArray($returned.toString[1]) \
+                && Reflect.ownKeys($returned.toString[1]).length === 1 \
+                && Object.keys($returned.toString[1]).length === 1 \
+                && Object.hasOwn($returned.toString[1], \"n\") \
+                && typeof $returned.toString[1].n === \"bigint\" \
+                && BigInt.asIntN(64, $returned.toString[1].n) === $returned.toString[1].n ? $returned";
+    let inner = "typeof $returned === \"object\" && $returned !== null && !Array.isArray($returned) \
+                 && Reflect.ownKeys($returned).length === 1 && Object.keys($returned).length === 1 \
+                 && Object.hasOwn($returned, \"r\") \
+                 && typeof $returned.r === \"object\" && $returned.r !== null \
+                 && !Array.isArray($returned.r) && Reflect.ownKeys($returned.r).length === 1 \
+                 && Object.keys($returned.r).length === 1 && Object.hasOwn($returned.r, \"done\") && $returned.r.done === undefined ? $returned";
+
+    assert!(text.contains(both), "got:\n{}", text);
+    assert!(text.contains(inner), "got:\n{}", text);
+}
+
+/// An effectful facade's payload is decided by the same expression, handed to `$effect` as
+/// the predicate of the `Task`'s payload type, so a record payload that carries a field
+/// to spare is `Err (Malformed ..)` there.
+///
+/// Mutation-checked by handing `$effect` `null` where `facade_declaration` builds the
+/// `Task`'s `check` from the payload's predicate: the text goes red.
+#[test]
+fn an_effectful_facade_with_a_record_payload_checks_it() {
+    let text = emitted_effectful(indoc! {r#"
+        module foreign Test exposing (read)
+
+        import Task exposing (Task, Failure)
+
+        read : Int -> Task (Result Failure { x : Int })
+    "#});
+
+    assert!(
+        text.contains(
+            "$effect(() => $companion$read(a), ($returned) => typeof $returned === \"object\" \
+             && $returned !== null && !Array.isArray($returned) \
+             && Reflect.ownKeys($returned).length === 1 && Object.keys($returned).length === 1 \
+             && Object.hasOwn($returned, \"x\") \
+             && typeof $returned.x === \"bigint\" \
+             && BigInt.asIntN(64, $returned.x) === $returned.x, \"Test.read\", $k)"
+        ),
+        "got:\n{}",
+        text
+    );
+}
+
+/// A facade signature naming a record with a function-typed field is refused, as one
+/// naming a function anywhere else is: canonicalization reads the record's fields, so the
+/// refusal is `FacadeTypeNotAdmitted` naming the function type, in a parameter as in a
+/// result, and nothing reaches the emitter. A record of admitted fields is not refused.
+///
+/// Mutation-checked by making the `Type::Record` arm of `check_facade_admitted_type` answer
+/// `Ok(())`: both signatures are then admitted and `expect_err` fails.
+#[test]
+fn a_facade_record_holding_a_function_is_refused() {
+    use zelkova_compiler::canonical::{Error as CanonicalError, FacadeRejectedKind};
+    use zelkova_compiler::CompilationError;
+
+    for (signature, name) in [
+        ("unsafe take : { run : Int -> Int } -> Int", "take"),
+        (
+            "unsafe give : Int -> (Int, { x : Int, run : Int -> Int })",
+            "give",
+        ),
+    ] {
+        let source = format!("module foreign Test exposing ({})\n\n{}\n", name, signature);
+        let error = check_module(
+            &test_package(),
+            &HashMap::from([basics_interface(), char_interface(), maybe_interface()]),
+            &parse_source(&source),
+        )
+        .expect_err("expected the signature to be refused");
+
+        match error {
+            CompilationError::Canonical(errors, _) => match errors.as_slice() {
+                [CanonicalError::FacadeTypeNotAdmitted(refused, kind, _)] => {
+                    assert_eq!(refused.as_str(), name);
+                    assert_eq!(*kind, FacadeRejectedKind::Function);
+                }
+                other => panic!("expected FacadeTypeNotAdmitted, got {:?}", other),
+            },
+            other => panic!("expected a canonicalization error, got {:?}", other),
+        }
+    }
+
+    emitted(indoc! {r#"
+        module foreign Test exposing (point)
+
+        unsafe point : { x : Int } -> { y : Int }
+    "#});
 }

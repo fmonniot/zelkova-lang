@@ -267,19 +267,3 @@ function _Utils_Tuple3__DEBUG(a, b, c) { return { $: '#3', a: a, b: b, c: c }; }
 function _Utils_chr__PROD(c) { return c; }
 function _Utils_chr__DEBUG(c) { return new String(c); }
 
-
-// RECORDS
-
-function _Utils_update(oldRecord, updatedFields) {
-    var newRecord = {};
-
-    for (var key in oldRecord) {
-        newRecord[key] = oldRecord[key];
-    }
-
-    for (var key in updatedFields) {
-        newRecord[key] = updatedFields[key];
-    }
-
-    return newRecord;
-}

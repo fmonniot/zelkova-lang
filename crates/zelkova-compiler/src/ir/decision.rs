@@ -91,9 +91,9 @@ pub enum Step {
     /// pattern](super::TermPatternKind::Record)'s entry is matched.
     ///
     /// By label and not by position, since a record type is a set of fields with no
-    /// order of its own (`typer::Type::Record`). Reading one is a backend's to emit, and
-    /// `zelkova_js::emit` refuses a `case` holding a record pattern before it builds the
-    /// tree that would hold this step (`GEN-25`).
+    /// order of its own (`typer::Type::Record`); the `ir` module's doc comment, *What
+    /// this shape owes WebAssembly*, says which order a positional target reads them in.
+    /// Reading one is a backend's to emit: `zelkova_js::emit` writes it as a property read.
     Field(Name),
 }
 
