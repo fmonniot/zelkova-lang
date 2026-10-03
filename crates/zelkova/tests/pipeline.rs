@@ -7136,3 +7136,87 @@ fn a_repeated_label_renders_under_the_repeat() {
         vec![first..first + "taken".len()]
     );
 }
+
+/// `LANG-51`: the three errors a use of a record raises render in prose, each with its
+/// one primary caret under the text the rule is about, in the module's own file — the
+/// whole accessor or access whose record type nothing supplied, and the label an update
+/// would add — and with the notes that say what to do about it.
+///
+/// The fixture is `package_private_module_parse_failure` with its one module replaced
+/// through the overlay, as in [`a_repeated_label_renders_under_the_repeat`]. It has no
+/// `std/core` in reach, so the update's record holds a type the module declares.
+///
+/// Mutation-checked by having `ErrorKind::record_use_label` answer `None` for all three:
+/// the diagnostic then falls back to the declaration's span and the range assertion goes
+/// red for each.
+#[test]
+fn a_records_use_renders_under_the_form() {
+    let cases = [
+        (
+            "module Broken exposing ()\n\npick =\n  .name\n",
+            "cannot type the accessor `.name`: nothing in this declaration says which record type it reads",
+            ".name",
+            vec![
+                "in the declaration of `pick`",
+                "a record's type is never worked out from the fields a declaration uses",
+                "a type annotation on `pick` would supply it",
+            ],
+        ),
+        (
+            "module Broken exposing ()\n\nnameOf person =\n  person.name\n",
+            "cannot read the field `name`: nothing in this declaration says which record type it is read from",
+            "person.name",
+            vec![
+                "in the declaration of `nameOf`",
+                "a record's type is never worked out from the fields a declaration uses",
+                "a type annotation on `nameOf` would supply it",
+            ],
+        ),
+        (
+            "module Broken exposing ()\n\ntype Count\n  = Count\n\nadded : { taken : Count } -> { taken : Count }\nadded r =\n  { r | expected = Count }\n",
+            "the record type `{ taken : Count }` has no field `expected`",
+            "expected",
+            vec![
+                "in the declaration of `added`",
+                "an update cannot add a field: each label it names must already be a field of the record it updates",
+            ],
+        ),
+    ];
+
+    for (source, message, caret, notes) in cases {
+        let root = fixture_package("package_private_module_parse_failure");
+        let mut overlay = Overlay::new();
+        overlay.insert(root.join("src").join("Broken.zel"), source.into());
+
+        let check = check_package(&root, &overlay).expect("the manifest and the build resolve");
+        let [error] = check.errors.as_slice() else {
+            panic!("expected one error, got {:?}", check.errors);
+        };
+        assert!(
+            matches!(unwrap_in_file(error), CompilationError::Type(..)),
+            "expected a type error, got {:?}",
+            error
+        );
+
+        let diagnostic = error.as_diagnostic();
+        assert_eq!(diagnostic.severity, Severity::Error);
+        assert_eq!(diagnostic.message, format!("[Broken] {}", message));
+        assert_eq!(diagnostic.notes, notes);
+
+        let start = source
+            .find(caret)
+            .expect("the source holds the caret's text");
+        let primary: Vec<_> = diagnostic
+            .labels
+            .iter()
+            .filter(|label| label.style == LabelStyle::Primary)
+            .map(|label| label.range.clone())
+            .collect();
+        assert_eq!(
+            primary,
+            vec![start..start + caret.len()],
+            "for {:?}",
+            source
+        );
+    }
+}

@@ -21,16 +21,14 @@
 //!   [`typer::type_check`] raises no error for a declaration whose function head holds
 //!   a constructor or tuple pattern, one that names a constructor of a union this
 //!   module does not declare, one whose body uses an expression form its term language
-//!   does not model, one holding a record type, a record, an update, a field access,
-//!   an accessor or a record pattern, one that refers to a value or constructor whose
-//!   type holds a record, one that hits an
+//!   does not model, one holding a record pattern, one that hits an
 //!   `ErrorKind::UnboundVariable` — every reference to another module's value does — or
 //!   any `binding_foreign` module whole. It marks each of those in the types it returns —
 //!   an `ir::Solved` that is not `Typed` — and this harness reads only the errors, so the
-//!   distinction does not reach a verdict. Across `docs/spec/` that is nearly one in five
-//!   of the declarations with a body (46 of 248, counting each `Typed`, `UnboundName` and
-//!   `Untranslatable` entry `spec_chapters_pass` returns): three in five of those reach an
-//!   unannotated declaration and the rest hold a record. So a green
+//!   distinction does not reach a verdict. Across `docs/spec/` that is about one in eight
+//!   of the declarations with a body (31 of 246, counting each `Typed`, `UnboundName` and
+//!   `Untranslatable` entry `spec_chapters_pass` returns): nearly nine in ten of those
+//!   reach an unannotated declaration and the rest hold a record pattern. So a green
 //!   `expect=ok` block may still hold an annotation its body contradicts —
 //!   `docs/spec/conventions.md`'s row carries the same caveat for chapter authors.
 //!   Exhaustiveness is not run at all — it is a stub that accepts every module.
@@ -262,6 +260,9 @@ fn error_kind_names(errors: &[typer::Error]) -> Vec<&'static str> {
             typer::ErrorKind::UnificationFailed { .. } => "UnificationFailed",
             typer::ErrorKind::CircularType { .. } => "CircularType",
             typer::ErrorKind::UnboundVariable { .. } => "UnboundVariable",
+            typer::ErrorKind::RecordTypeUnknown { .. } => "RecordTypeUnknown",
+            typer::ErrorKind::MissingField { .. } => "MissingField",
+            typer::ErrorKind::NotARecord { .. } => "NotARecord",
         })
         .collect()
 }
