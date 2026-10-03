@@ -1932,49 +1932,6 @@ fn outside_core_the_task_constructor_and_done_cannot_be_named() {
     }
 }
 
-/// The term language has no record pattern until `LANG-84`, so a declaration holding one
-/// is left unchecked and says so, and raises no error, wherever the pattern is written: a
-/// parameter, a constructor's argument inside a tuple element, and a constructor's
-/// argument at a branch head. Every annotation here is one the typer can read, so the
-/// record pattern is the whole reason each is skipped.
-///
-/// Mutation-checked by translating a record pattern as `TermPatternKind::Anything` in
-/// `translate_pattern`: all three then check and come back typed, and the assertion goes
-/// red.
-#[test]
-fn a_declaration_holding_a_record_pattern_is_left_unchecked() {
-    let solved = solved(indoc::indoc! {r#"
-        module Test exposing ()
-
-        type Box
-          = Box Int
-
-        parameter : Int -> Int
-        parameter { a } = 1
-
-        nested : (Box, Int) -> Int
-        nested ((Box { a }), b) = b
-
-        branch : Box -> Int
-        branch x =
-          case x of
-            Box { a = _ } ->
-              1
-    "#});
-
-    for name in ["parameter", "nested", "branch"] {
-        assert!(
-            matches!(
-                solved.get(&Name::new(name)),
-                Some(Solved::Untranslatable { .. })
-            ),
-            "expected `{}` to be marked untranslatable, got {:?}",
-            name,
-            solved.get(&Name::new(name))
-        );
-    }
-}
-
 // ── Records (`LANG-51`) ───────────────────────────────────────────────────────
 
 /// The label sets of `labels`, in order — what a record term's fields are written in.
@@ -2906,4 +2863,624 @@ fn a_field_of_an_unresolved_name_is_not_reported_again() {
         check.errors[0].kind,
         typer::ErrorKind::RecordTypeUnknown { .. }
     ));
+}
+
+// ── Record patterns (`LANG-84`) ───────────────────────────────────────────────
+
+/// The first branch's pattern of the `case` a declaration of `arity` parameters has for
+/// its body — which, for a parameter written as a pattern, is the match it became.
+fn first_pattern(term: &TypedTerm, arity: usize) -> &zelkova_compiler::ir::TermPattern {
+    match &body_of(term, arity).kind {
+        TypedTermKind::Case { branches, .. } => &branches[0].0,
+        other => panic!("expected a match, got {:?}", other),
+    }
+}
+
+/// The entries of a record pattern, each label beside the type its field was solved to.
+fn entry_types(pattern: &zelkova_compiler::ir::TermPattern) -> Vec<(String, String)> {
+    match &pattern.kind {
+        zelkova_compiler::ir::TermPatternKind::Record { fields } => fields
+            .iter()
+            .map(|field| {
+                (
+                    field.label.as_str().to_string(),
+                    format!("{}", field.value.tpe),
+                )
+            })
+            .collect(),
+        other => panic!("expected a record pattern, got {:?}", other),
+    }
+}
+
+/// A parameter annotated with a record type and written `{ name }` binds `name` at the
+/// field's type, and the declaration's type is the annotation's.
+///
+/// Mutation-checked by having `FieldConstraint::read` answer, for a decided entry, an
+/// equation between the entry's type and itself, so that the field's type is never
+/// unified with it: the entry's type and the body's are then an unsolved `t…`, and the
+/// entry assertion goes red.
+#[test]
+fn a_record_pattern_parameter_binds_its_field_at_the_fields_type() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        nameOf : { name : Char } -> Char
+        nameOf { name } =
+          name
+    "#});
+
+    let name_of = typed_declaration(&solved, "nameOf");
+    assert_eq!(format!("{}", name_of.tpe), "{ name : Char } -> Char");
+    assert_eq!(
+        entry_types(first_pattern(name_of, 1)),
+        vec![("name".to_string(), "Char".to_string())]
+    );
+    match &body_of(name_of, 1).kind {
+        TypedTermKind::Case { branches, .. } => {
+            assert_eq!(format!("{}", branches[0].1.tpe), "Char")
+        }
+        other => panic!("expected a match, got {:?}", other),
+    }
+}
+
+/// A record pattern names a subset of a record's fields: two of three check, each bound
+/// at its own field's type, and the third is neither matched nor bound.
+///
+/// Mutation-checked by having `constraint::pattern_constraints` give a record pattern the
+/// own equation a tuple has — the record type of its entries' types, held to `against` —
+/// on top of its field constraints: `{ x : Int, y : Char }` then fails to unify with the
+/// annotation's three fields, and `solved` panics.
+#[test]
+fn a_record_pattern_names_a_subset_of_the_fields() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        pair : { x : Int, y : Char, z : Bool } -> (Int, Char)
+        pair { x, y } =
+          (x, y)
+    "#});
+
+    let pair = typed_declaration(&solved, "pair");
+    assert_eq!(
+        format!("{}", pair.tpe),
+        "{ x : Int, y : Char, z : Bool } -> ( Int, Char )"
+    );
+    assert_eq!(
+        entry_types(first_pattern(pair, 1)),
+        vec![
+            ("x".to_string(), "Int".to_string()),
+            ("y".to_string(), "Char".to_string())
+        ]
+    );
+}
+
+/// A record pattern naming a label the matched record type lacks is an error under that
+/// label, with a secondary label under the annotation the record type came from.
+///
+/// Mutation-checked by giving the record pattern's `FieldConstraint` `label_span:
+/// pattern.span` (the whole pattern) in `constraint::pattern_constraints`: the range
+/// assertions go red. And by having `FieldConstraint::read` skip the label lookup,
+/// answering a field of a record type with the equation between the entry's type and
+/// itself whether or not the label is there: `absent` checks and `one_type_error` panics.
+#[test]
+fn a_record_pattern_naming_an_absent_label_fails_under_it() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        absent : { x : Int, y : Int } -> Int
+        absent { x, wide } =
+          x
+    "#};
+
+    let error = one_type_error(source);
+    match &error.kind {
+        typer::ErrorKind::MissingField {
+            record,
+            label,
+            form,
+            ..
+        } => {
+            assert_eq!(format!("{}", record), "{ x : Int, y : Int }");
+            assert_eq!(label.as_str(), "wide");
+            assert_eq!(*form, typer::RecordUse::Pattern);
+        }
+        other => panic!("expected a missing field, got {:?}", other),
+    }
+    assert_eq!(
+        error.message(),
+        "the record type `{ x : Int, y : Int }` has no field `wide`"
+    );
+    assert_eq!(primary_range(&error), range_of(source, "wide"));
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_of(source, "wide"),
+            range_of(source, "absent : { x : Int, y : Int } -> Int"),
+        ]
+    );
+    assert!(
+        error.notes().contains(
+            &"a record pattern names some of the fields of the record it matches, and each label it names must be one of them"
+                .to_string()
+        ),
+        "got {:?}",
+        error.notes()
+    );
+}
+
+/// `{ centre = { x } }` against a record holding a record binds `x` at the inner field's
+/// type: the inner pattern's record type is the outer entry's field type, read in turn.
+///
+/// Mutation-checked by having `constraint::pattern_constraints` not recurse into a
+/// record pattern's entries (no sub-patterns for the `Record` arm): the inner `{ x }` is
+/// then never read, `x` is an unsolved `t…`, and the assertion on the inner entry goes
+/// red.
+#[test]
+fn a_record_pattern_in_a_field_binds_at_the_inner_fields_type() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        centreX : { centre : { x : Char, y : Int }, radius : Int } -> Char
+        centreX { centre = { x } } =
+          x
+    "#});
+
+    let centre_x = typed_declaration(&solved, "centreX");
+    let pattern = first_pattern(centre_x, 1);
+    assert_eq!(
+        entry_types(pattern),
+        vec![("centre".to_string(), "{ x : Char, y : Int }".to_string())]
+    );
+    let zelkova_compiler::ir::TermPatternKind::Record { fields } = &pattern.kind else {
+        panic!("expected a record pattern, got {:?}", pattern);
+    };
+    assert_eq!(
+        entry_types(&fields[0].value.pattern),
+        vec![("x".to_string(), "Char".to_string())]
+    );
+}
+
+/// A record pattern inside a constructor pattern takes its record type from the
+/// constructor's argument, at a branch head and in a parameter alike, and a label that
+/// argument's record type lacks is an error.
+///
+/// Mutation-checked by having `translate_pattern` give each constructor argument a fresh
+/// type variable instead of the constructor's declared parameter type: the record
+/// pattern's type is then unknown, both declarations are `RecordTypeUnknown`, and
+/// `solved` panics.
+#[test]
+fn a_record_pattern_in_a_constructor_takes_the_arguments_type() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Reading
+          = Reading { taken : Char, depth : Int }
+          | Missing
+
+        taken : Reading -> Char
+        taken r =
+          case r of
+            Reading { taken } ->
+              taken
+
+            Missing ->
+              'c'
+
+        depth : Reading -> Int
+        depth (Reading { depth }) =
+          depth
+    "#});
+
+    let taken = typed_declaration(&solved, "taken");
+    assert_eq!(format!("{}", taken.tpe), "Reading -> Char");
+    let zelkova_compiler::ir::TermPatternKind::Constructor { args, .. } =
+        &first_pattern(taken, 1).kind
+    else {
+        panic!("expected a constructor pattern");
+    };
+    assert_eq!(format!("{}", args[0].tpe), "{ depth : Int, taken : Char }");
+    assert_eq!(
+        entry_types(&args[0].pattern),
+        vec![("taken".to_string(), "Char".to_string())]
+    );
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "depth").tpe),
+        "Reading -> Int"
+    );
+
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Reading
+          = Reading { taken : Char }
+
+        other : Reading -> Char
+        other (Reading { expected }) =
+          expected
+    "#};
+    let error = one_type_error(source);
+    assert!(
+        matches!(&error.kind, typer::ErrorKind::MissingField { record, label, .. } if format!("{}", record) == "{ taken : Char }" && label.as_str() == "expected"),
+        "got {:?}",
+        error.kind
+    );
+    assert_eq!(
+        primary_range(&error),
+        range_within(source, "{ expected }", "expected")
+    );
+}
+
+/// `{ taken = Celsius, expected = e }` checks, `e` bound at the field's type, and a
+/// constructor of the wrong type in a field is an error under that constructor — the
+/// entry's own pattern — explained by the annotation the record type came from.
+///
+/// Mutation-checked by giving the record pattern's `FieldConstraint` `field_span:
+/// pattern.span` (the whole pattern) in `constraint::pattern_constraints`: the range
+/// assertion goes red.
+#[test]
+fn a_constructor_in_a_field_is_checked_against_the_fields_type() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Celsius
+          = Celsius
+
+        describe : { taken : Celsius, expected : Celsius } -> Celsius
+        describe reading =
+          case reading of
+            { taken = Celsius, expected = e } ->
+              e
+    "#});
+    let describe = typed_declaration(&solved, "describe");
+    assert_eq!(
+        format!("{}", describe.tpe),
+        "{ expected : Celsius, taken : Celsius } -> Celsius"
+    );
+    assert_eq!(
+        entry_types(first_pattern(describe, 1)),
+        vec![
+            ("taken".to_string(), "Celsius".to_string()),
+            ("expected".to_string(), "Celsius".to_string())
+        ]
+    );
+
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Celsius
+          = Celsius
+
+        type Kelvin
+          = Kelvin
+
+        describe : { taken : Celsius, expected : Celsius } -> Celsius
+        describe reading =
+          case reading of
+            { taken = Kelvin, expected = e } ->
+              e
+    "#};
+    let error = one_type_error(source);
+    match &error.kind {
+        typer::ErrorKind::UnificationFailed {
+            left,
+            right,
+            origin,
+        } => {
+            assert_eq!(format!("{}", left), "Celsius");
+            assert_eq!(format!("{}", right), "Kelvin");
+            assert_eq!(origin.reason, typer::Reason::RecordPatternEntry);
+        }
+        other => panic!("expected a unification failure, got {:?}", other),
+    }
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(source, "taken = Kelvin", "Kelvin"),
+            range_of(
+                source,
+                "describe : { taken : Celsius, expected : Celsius } -> Celsius"
+            ),
+        ]
+    );
+}
+
+/// An unannotated `nameOf { name } = name` is an error with the caret on the whole
+/// pattern, saying an annotation would supply the record type — the pattern does not
+/// decide it — and the same declaration annotated checks.
+///
+/// Mutation-checked by letting a record pattern's field constraint solve its record type:
+/// in `FieldConstraint::read`, a record type still a variable answered, for
+/// `RecordUse::Pattern`, with the equation between it and `{ label : field }`. `nameOf`
+/// then checks as the one-field record its pattern names, and `one_type_error` panics.
+#[test]
+fn a_record_pattern_does_not_decide_its_record_type() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        nameOf { name } =
+          name
+    "#};
+
+    let error = one_type_error(source);
+    assert!(
+        matches!(
+            &error.kind,
+            typer::ErrorKind::RecordTypeUnknown {
+                label,
+                form: typer::RecordUse::Pattern,
+                supplier: typer::Supplier::Annotation,
+                ..
+            } if label.as_str() == "name"
+        ),
+        "got {:?}",
+        error.kind
+    );
+    assert_eq!(
+        error.message(),
+        "cannot type this record pattern: nothing in this declaration says which record type it matches"
+    );
+    assert_eq!(primary_range(&error), range_of(source, "{ name }"));
+    assert!(
+        error
+            .notes()
+            .contains(&"a type annotation on `nameOf` would supply it".to_string()),
+        "got {:?}",
+        error.notes()
+    );
+
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        nameOf : { name : Char } -> Char
+        nameOf { name } =
+          name
+    "#});
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "nameOf").tpe),
+        "{ name : Char } -> Char"
+    );
+}
+
+/// A record pattern is checked wherever a pattern is written: at a `case` branch head
+/// whose scrutinee is a tuple element, and as an element of a parameter's tuple pattern.
+///
+/// Mutation-checked by translating a record pattern as `TermPatternKind::Anything` in
+/// `translate_pattern`: the two bodies' types are then unrelated to the fields, `x` an
+/// unsolved `t…`, and `solved` panics on the annotation's `Char` meeting nothing that
+/// says so — or, where the annotation alone decides it, the entry assertion goes red.
+#[test]
+fn a_record_pattern_nests_in_a_tuple_and_heads_a_branch() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        swap : ({ x : Char }, Int) -> Char
+        swap ({ x }, _) =
+          x
+
+        branch : (Int, { x : Char }) -> Char
+        branch pair =
+          case pair of
+            (_, { x }) ->
+              x
+    "#});
+
+    for name in ["swap", "branch"] {
+        let term = typed_declaration(&solved, name);
+        let zelkova_compiler::ir::TermPatternKind::Tuple { elements } =
+            &first_pattern(term, 1).kind
+        else {
+            panic!("expected a tuple pattern in `{}`", name);
+        };
+        let record = elements
+            .iter()
+            .find(|element| {
+                matches!(
+                    element.pattern.kind,
+                    zelkova_compiler::ir::TermPatternKind::Record { .. }
+                )
+            })
+            .unwrap_or_else(|| panic!("expected a record pattern in `{}`", name));
+        assert_eq!(format!("{}", record.tpe), "{ x : Char }");
+        assert_eq!(
+            entry_types(&record.pattern),
+            vec![("x".to_string(), "Char".to_string())]
+        );
+    }
+}
+
+/// A record pattern matched against a type that is not a record is an error under the
+/// label of its first entry, with a secondary label under the annotation the type came
+/// from.
+///
+/// Mutation-checked by having `FieldConstraint::read` answer `Ok(None)` for a type of any
+/// other form: the entry then waits forever, is reported as `RecordTypeUnknown`, and the
+/// variant assertion goes red.
+#[test]
+fn a_record_pattern_against_a_type_that_is_not_a_record_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        f : Int -> Int
+        f { x } =
+          x
+    "#};
+
+    let error = one_type_error(source);
+    assert!(
+        matches!(&error.kind, typer::ErrorKind::NotARecord { tpe, form: typer::RecordUse::Pattern, .. } if format!("{}", tpe) == "Int"),
+        "got {:?}",
+        error.kind
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(source, "{ x }", "x"),
+            range_of(source, "f : Int -> Int"),
+        ]
+    );
+    assert_eq!(
+        error.labels()[0].message,
+        "`x` is matched against a type that is not a record"
+    );
+}
+
+/// What supplies a record pattern's type may be written after it: the record the
+/// branch's body builds decides the scrutinee's type, and the pattern is read once the
+/// whole declaration is solved.
+///
+/// Mutation-checked by reading the field constraints in `infer_annotated` against the
+/// substitution of the annotation alone, before the body's equations are solved: the
+/// pattern's record type is then still a variable, and `read` is rejected.
+#[test]
+fn a_record_written_after_a_record_pattern_supplies_its_type() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        first : a -> b -> a
+        first x y =
+          x
+
+        same : a -> a -> a
+        same x y =
+          x
+
+        read r =
+          case r of
+            { a } ->
+              first a (same r { a = 'c', b = 1 })
+    "#});
+
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "read").tpe),
+        "{ a : Char, b : number } -> Char"
+    );
+}
+
+/// A field read off a name a record pattern bound reads the type the pattern's entry was
+/// solved to: the entry is read first, then the access whose record type it decided.
+///
+/// Mutation-checked by having `unifier::read_fields` drop the equation a decided field
+/// constraint becomes instead of solving it, so that `centre` is never bound at its
+/// field's type: `centre.x` then waits forever, and `solved` panics on its
+/// `RecordTypeUnknown`.
+#[test]
+fn a_field_of_a_name_a_record_pattern_binds_is_read_in_turn() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        centreX : { centre : { x : Char } } -> Char
+        centreX { centre } =
+          centre.x
+    "#});
+
+    let centre_x = typed_declaration(&solved, "centreX");
+    assert_eq!(
+        format!("{}", centre_x.tpe),
+        "{ centre : { x : Char } } -> Char"
+    );
+    assert_eq!(
+        entry_types(first_pattern(centre_x, 1)),
+        vec![("centre".to_string(), "{ x : Char }".to_string())]
+    );
+}
+
+/// A record pattern whose record type a name that did not resolve would have supplied
+/// raises no type error of its own: written as the argument of a constructor that did
+/// not resolve (`f`), or matched against an unresolved value (`g`). The unresolved
+/// name's own error is the one reported ([`DEC-23` decisions 3 and
+/// 6](../../../docs/decisions/dec-23.md)). One nothing the name could be would supply is
+/// still reported beside it (`h`).
+///
+/// Mutation-checked by having `constraint::pattern_constraints` leave a hole pattern's
+/// argument types out of `Constraints::holes`: `f` is then `RecordTypeUnknown`, and the
+/// declarations assertion goes red.
+#[test]
+fn a_record_pattern_an_unresolved_name_explains_is_not_reported_again() {
+    let interfaces = HashMap::from([basics_interface(), char_interface()]);
+    let canonical = canonicalize_recovering_with_interfaces(
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            f : Int -> Int
+            f (Missing { x }) =
+              x
+
+            g : Int
+            g =
+              case missing of
+                { x } ->
+                  x
+
+            h n =
+              case n of
+                ((Missing _), { y }) ->
+                  y
+        "#},
+        &interfaces,
+    );
+    assert!(
+        !canonical.errors.is_empty(),
+        "`Missing` and `missing` do not resolve"
+    );
+
+    let check = typer::type_check_recovering(&canonical.module, &interfaces);
+    for name in ["f", "g"] {
+        assert!(
+            matches!(check.solved.get(&Name::new(name)), Some(Solved::Typed(_))),
+            "for {}, got {:?}",
+            name,
+            check.solved.get(&Name::new(name))
+        );
+    }
+    let declarations: Vec<&str> = check
+        .errors
+        .iter()
+        .map(|e| e.declaration.as_str())
+        .collect();
+    assert_eq!(declarations, vec!["h"], "got {:?}", check.errors);
+    assert!(matches!(
+        check.errors[0].kind,
+        typer::ErrorKind::RecordTypeUnknown {
+            form: typer::RecordUse::Pattern,
+            ..
+        }
+    ));
+}
+
+/// A body using a name a record pattern binds at another type than its field's is
+/// reported at the entry, since the entry is read after every equation, the body's
+/// included: the caret is under the binding in the pattern and the annotation is what
+/// explains the field's type. A tuple pattern is reported at the body instead, its own
+/// equation coming before the body's. This pins the place the record pattern's error is
+/// reported at today; `ERR-20` is where the body would be the place.
+///
+/// Mutation-checked by giving the record pattern's `FieldConstraint` `field_span:
+/// pattern.span`: the primary range goes red.
+#[test]
+fn a_body_using_a_bound_field_at_another_type_is_reported_at_the_entry() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        nameOf : { name : Char, age : Int } -> Int
+        nameOf { name } =
+          name
+    "#};
+
+    let error = one_type_error(source);
+    match &error.kind {
+        typer::ErrorKind::UnificationFailed {
+            left,
+            right,
+            origin,
+        } => {
+            assert_eq!(format!("{}", left), "Char");
+            assert_eq!(format!("{}", right), "Int");
+            assert_eq!(origin.reason, typer::Reason::RecordPatternEntry);
+        }
+        other => panic!("expected a unification failure, got {:?}", other),
+    }
+    assert_eq!(
+        primary_range(&error),
+        range_within(source, "{ name }", "name")
+    );
 }

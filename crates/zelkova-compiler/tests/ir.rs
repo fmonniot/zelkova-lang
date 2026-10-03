@@ -1292,3 +1292,76 @@ fn a_unit_branch_is_a_leaf_with_no_bindings() {
     assert!(matches!(bodies[0].kind, TypedTermKind::Int(1)));
     assert_eq!(tree, leaf(vec![], bodies[0]));
 }
+
+// ── LANG-84: a record pattern's entries are reached by their labels ─────────────
+
+/// A record pattern tests nothing — a record has one shape — so a `case` over a record
+/// with one branch `{ x, y }` is one leaf, with no `Decision::Test`, binding each entry
+/// at the occurrence its label reaches, at its field's type.
+///
+/// Mutation-checked by having `decision::lower`'s `Record` arm push each entry at
+/// `occurrence` itself rather than at `occurrence.field(Step::Field(..))`, which makes
+/// the field step a no-op: both bindings then sit at the root, and the assertion goes
+/// red.
+#[test]
+fn a_record_pattern_is_a_leaf_that_binds_each_entry_by_its_label() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (sum)
+
+        sum : { x : Int, y : Char } -> Int
+        sum r =
+          case r of
+            { x, y } ->
+              x
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "sum"), "sum");
+
+    let field = |label: &str| Occurrence::Root.field(Step::Field(Name::new(label)));
+    assert_eq!(
+        tree,
+        leaf(
+            vec![
+                binding("x", field("x"), int()),
+                binding("y", field("y"), Type::Literal(TypeLiteral::Char)),
+            ],
+            bodies[0],
+        )
+    );
+}
+
+/// A refutable entry is a `Test` below the record, at the occurrence its label reaches,
+/// falling back to the next branch like any other `Test`; the record itself is still not
+/// tested, and an irrefutable entry beside it binds once the test has passed.
+///
+/// Mutation-checked by having `decision::lower`'s `Record` arm push none of the entries,
+/// as if a record pattern were irrefutable for being a record: the `Test` on `x` is gone,
+/// and the assertion goes red.
+#[test]
+fn a_refutable_entry_is_a_test_below_its_field() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (pick)
+
+        pick : { x : Int, y : Int } -> Int
+        pick r =
+          case r of
+            { x = 0, y } ->
+              y
+
+            _ ->
+              1
+    "#});
+
+    let (tree, bodies) = case_tree(declaration(&module, "pick"), "pick");
+
+    let field = |label: &str| Occurrence::Root.field(Step::Field(Name::new(label)));
+    assert_eq!(
+        tree,
+        Decision::Test {
+            scrutinee: field("x"),
+            outcome: Outcome::Literal(LiteralValue::Int(0)),
+            matched: Box::new(leaf(vec![binding("y", field("y"), int())], bodies[0])),
+            default: Box::new(leaf(vec![], bodies[1])),
+        }
+    );
+}
