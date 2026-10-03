@@ -849,6 +849,11 @@ fn tuple_pattern_of_four_is_a_parse_error() {
 
 /// The arity rule moved into three grammar sites; this pins the `Type` one.
 ///
+/// The tuple is a function's result rather than the whole annotation: at the
+/// front of an annotation, `(Int, Int, Int, Int)` is also the start of a
+/// four-constraint context, which `ConstrainedType` accepts, so the parser only
+/// fails at the missing `=>` there and not at the fourth `,`.
+///
 /// Verified by adding a four-element production to `Type` in
 /// `grammar.lalrpop`, which makes the parse succeed and the test go red.
 #[test]
@@ -857,7 +862,7 @@ fn tuple_type_of_four_is_a_parse_error() {
 
     let source = indoc::indoc! {r#"
         module Test exposing (..)
-        f : (Int, Int, Int, Int)
+        f : Int -> (Int, Int, Int, Int)
         f = 1
     "#};
 
@@ -3566,10 +3571,9 @@ fn function_type_as_constraint_context_is_rejected() {
 /// one is reported at its own span: `(Int, Char)` is a perfectly good tuple
 /// type and two errors as a context.
 ///
-/// Verified to fail by validating the context as a single constraint (dropping
-/// the `Tuple` arm that splits the list in `validate_context`): one
-/// `InvalidConstraint(Tuple, …)` spanning the whole list is then reported
-/// instead of two.
+/// Verified to fail by making `parser::Context::from_type` keep a tuple whole
+/// instead of splitting it into the list: one `InvalidConstraint(Tuple, …)`
+/// spanning the whole list is then reported instead of two.
 #[test]
 fn every_malformed_constraint_of_a_list_is_reported_at_its_own_span() {
     use zelkova_compiler::PhaseError;
@@ -3600,6 +3604,71 @@ fn every_malformed_constraint_of_a_list_is_reported_at_its_own_span() {
         assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
         assert_eq!(labels[0].span.to_range(), range_of(source, written));
     }
+}
+
+/// A list of four constraints is checked element by element like a shorter one,
+/// and a malformed fourth is reported with its caret under the fourth alone.
+///
+/// Verified to fail by deleting `ConstrainedType`'s four-or-more production: the
+/// module then fails to parse and `canonicalize_with_scalars` panics.
+#[test]
+fn malformed_fourth_constraint_of_four_is_reported_at_its_own_span() {
+    use zelkova_compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+        f : (Eq a, Eq b, Eq c, Bool) => a -> b -> c -> a
+        f x y z =
+          x
+    "#};
+
+    let errors = canonicalize_with_scalars(source)
+        .expect_err("a bare type name as the fourth constraint must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::InvalidConstraint(canonical::InvalidConstraintKind::Unapplied(n), _) => {
+            assert_eq!(n.as_str(), "Bool")
+        }
+        other => panic!("expected InvalidConstraint(Unapplied), got {:?}", other),
+    }
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(labels[0].span.to_range(), range_of(source, "Bool"));
+}
+
+/// Only the outermost parentheses in front of `=>` are the list: a tuple nested
+/// in it is an element, and a tuple is not a constraint.
+///
+/// Verified to fail by making `parser::Context::from_type` flatten nested tuples
+/// as well as the outermost one: the context is then three good constraints and
+/// the module canonicalizes, so `expect_err` panics.
+#[test]
+fn tuple_nested_in_a_constraint_list_is_rejected() {
+    use zelkova_compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing (f)
+        f : ((Eq a, Eq b), Eq c) => a -> b -> c -> a
+        f x y z =
+          x
+    "#};
+
+    let errors =
+        canonicalize_with_scalars(source).expect_err("a tuple nested in the list must not compile");
+    assert_eq!(errors.len(), 1, "got {:?}", errors);
+
+    match &errors[0] {
+        canonical::Error::InvalidConstraint(kind, _) => {
+            assert_eq!(*kind, canonical::InvalidConstraintKind::Tuple)
+        }
+        other => panic!("expected InvalidConstraint(Tuple), got {:?}", other),
+    }
+
+    let labels = errors[0].labels();
+    assert_eq!(labels.len(), 1, "expected one label, got {:?}", labels);
+    assert_eq!(labels[0].span.to_range(), range_of(source, "(Eq a, Eq b)"));
 }
 
 /// A facade signature may not be constrained, however well-formed the

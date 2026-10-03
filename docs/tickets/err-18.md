@@ -33,7 +33,7 @@ error: unexpected token: `LBrace`
 
 and for a stray close brace, `f = 1 }`, ``unexpected token: `RBrace` ``. The same arm prints
 ``unexpected token: `LowerIdentifier("alias")` `` for `type alias Pair = ...` (quoted in
-[LANG-86](lang-86.md)) and, per [LANG-71](lang-71.md), `Comma` for a stray comma. `LBrace`,
+[LANG-86](lang-86.md)) and `Comma` for a stray comma. `LBrace`,
 `RBrace`, `Comma` and `LowerIdentifier("alias")` are names in the compiler's source; the user
 wrote `{`, `}`, `,` and `alias`. `LANG-48` did not remove the need: the trailing-comma form
 `f = { a = 1, }` in `docs/spec/records.md` is rejected at an `RBrace`, which reaches this arm.
@@ -64,5 +64,5 @@ Choices this ticket does not make:
 - a test in `error.rs` or `tokenizer.rs` that matches `Token` exhaustively and fails to compile if
   a variant has no spelling;
 - `cargo run -- compile` on the package from *Problem* prints the user's `{`;
-- the two tickets that quote the old form ([LANG-86](lang-86.md), [LANG-71](lang-71.md)) are
-  updated to the new message in the same diff, where they still quote it.
+- the ticket that quotes the old form ([LANG-86](lang-86.md)) is updated to the new message in
+  the same diff, where it still quotes it.

@@ -121,7 +121,7 @@ tests pass:
 ```
 LANG-37  `=>` becomes a token; a constrained annotation parses   ← closed
   │
-LANG-71  a context holds any number of constraints, as a list
+LANG-71  a context holds any number of constraints, as a list   ← closed
   │      ← first, because a class head and an instance head parse a
   │        context too, and LANG-38 is written against this shape
   │
@@ -350,7 +350,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-68 | task | — | closed 2026-09-28 | An unmarked facade signature is not held to the `Task (Result Failure a)` result shape |
 | LANG-69 | task | — | closed 2026-09-27 | There is no `zelkova test`: nothing runs a package's tests |
 | [LANG-70](lang-70.md) | task | — | open | A constraint in an annotation is resolved, and its context reaches the canonical module |
-| [LANG-71](lang-71.md) | task | — | open | A constraint context of four or more constraints does not parse |
+| LANG-71 | task | — | closed 2026-10-03 | A constraint context of four or more constraints does not parse |
 | LANG-72 | task | — | closed 2026-09-28 | `()` is not recognised as a type, an expression or a pattern |
 | LANG-73 | task | — | closed 2026-09-28 | `std/core` declares no `String`, so no annotation can name one |
 | LANG-74 | task | — | closed 2026-09-28 | `std/core` declares no `Task` and no `Failure` |

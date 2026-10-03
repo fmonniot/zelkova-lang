@@ -555,16 +555,9 @@ describe a b =
   Zero
 ```
 
-**Not implemented:** a constraint is checked to be shaped like one and then ignored. Its class
-name is not resolved, and a constrained annotation is checked exactly as it would be without its
-constraint, so neither block above asks anything of a caller
-([`LANG-70`](../tickets/lang-70.md), [`LANG-40`](../tickets/lang-40.md)).
+The list may be of any length:
 
-**Known gap:** a list of any length is a valid context, and one of four or more constraints is
-rejected. The compiler reads the list as a tuple type, and a tuple has two or three elements
-([`LANG-71`](../tickets/lang-71.md)):
-
-```zel expect=parse-error:UnexpectedToken
+```zel expect=ok
 module Example exposing (Bit, four)
 
 type Bit
@@ -574,6 +567,11 @@ four : (Eq a, Eq b, Eq c, Eq d) => a -> b -> c -> d -> Bit
 four a b c d =
   Zero
 ```
+
+**Not implemented:** a constraint is checked to be shaped like one and then ignored. Its class
+name is not resolved, and a constrained annotation is checked exactly as it would be without its
+constraint, so none of the blocks above asks anything of a caller
+([`LANG-70`](../tickets/lang-70.md), [`LANG-40`](../tickets/lang-40.md)).
 
 ### A constraint is never inferred
 

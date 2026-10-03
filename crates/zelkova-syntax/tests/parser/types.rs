@@ -20,7 +20,11 @@ fn module_function_type(tpe: Type) -> Module {
     module_constrained_function_type("main", None, tpe)
 }
 
-fn module_constrained_function_type(function: &str, context: Option<Type>, tpe: Type) -> Module {
+fn module_constrained_function_type(
+    function: &str,
+    context: Option<Vec<Type>>,
+    tpe: Type,
+) -> Module {
     Module {
         name: name("Main"),
         binding_foreign: false,
@@ -32,7 +36,10 @@ fn module_constrained_function_type(function: &str, context: Option<Type>, tpe: 
         functions: vec![Function {
             name: function.into(),
             tpe: Some(tpe),
-            context,
+            context: context.map(|constraints| Context {
+                constraints,
+                span: no_span(),
+            }),
             marked_unsafe: false,
             bindings: vec![],
             span: no_span(),
@@ -342,14 +349,15 @@ test_parse_ok!(
 
 // Constraint contexts (`Class a =>`)
 //
-// The context is parsed as a type and carried beside the annotation's type on
-// `FunType::context`; nothing here checks that it is shaped like a constraint,
-// which is canonicalization's job. Every unconstrained annotation above pins the
-// other half: `module_function_type` expects `context: None`.
+// The context is carried beside the annotation's type on `FunType::context`, as a
+// list of types; nothing here checks that each is shaped like a constraint, which
+// is canonicalization's job. Every unconstrained annotation above pins the other
+// half: `module_function_type` expects `context: None`.
 //
 // Verified to fail by making `ConstrainedType`'s `=>` alternative return
 // `(None, t)`: both tests then see `context: None`. Deleting that alternative
-// instead turns both into an `UnexpectedToken` at `=>`.
+// instead turns both into an `UnexpectedToken` at `=>`. And by making
+// `Context::from_type` keep a tuple whole: the list test then sees one element.
 
 test_parse_ok!(
     type_annotation_single_constraint,
@@ -360,10 +368,10 @@ test_parse_ok!(
     "#,
     module_constrained_function_type(
         "min",
-        Some(type_unqualified_with(
+        Some(vec![type_unqualified_with(
             name("Comparable"),
             vec![type_variable(name("a"))],
-        )),
+        )]),
         type_arrow(
             type_variable(name("a")),
             type_arrow(type_variable(name("a")), type_variable(name("a"))),
@@ -380,13 +388,75 @@ test_parse_ok!(
     "#,
     module_constrained_function_type(
         "lookup",
-        Some(type_tuple2(
+        Some(vec![
             type_unqualified_with(name("Comparable"), vec![type_variable(name("k"))]),
             type_unqualified_with(name("Eq"), vec![type_variable(name("v"))]),
-        )),
+        ]),
         type_arrow(
             type_variable(name("k")),
             type_arrow(type_variable(name("v")), type_unqualified(name("Bool"))),
         ),
     )
 );
+
+/// A context holds any number of constraints: four and five reach
+/// `FunType::context` as four and five elements, each spanned at its own text, and
+/// the context spanned from its `(` to its `)`.
+///
+/// Verified to fail by deleting `ConstrainedType`'s four-or-more production: both
+/// annotations are then an `UnexpectedToken` at the fourth `,` and `parse` fails.
+#[test]
+fn a_context_of_four_or_five_constraints_is_a_list() {
+    use codespan_reporting::files::SimpleFile;
+
+    let source = indoc::indoc! {r#"
+    module Main exposing (..)
+
+    four : (Eq a, Eq b, Eq c, Eq d) => a -> b -> c -> d -> Bool
+
+    five : (Eq e, Eq f, Eq g, Eq h, Show i) => e -> f -> g -> h -> i -> Bool
+    "#}
+    .to_string();
+    let file = SimpleFile::new(
+        "a_context_of_four_or_five_constraints_is_a_list".to_owned(),
+        source.clone(),
+    );
+    let module = parse(&file).expect("a context of four or five constraints parses");
+
+    let range_of = |needle: &str| {
+        let start = source.find(needle).expect("source contains the needle");
+        start..start + needle.len()
+    };
+
+    for (function, list, written) in [
+        (
+            "four",
+            "(Eq a, Eq b, Eq c, Eq d)",
+            vec!["Eq a", "Eq b", "Eq c", "Eq d"],
+        ),
+        (
+            "five",
+            "(Eq e, Eq f, Eq g, Eq h, Show i)",
+            vec!["Eq e", "Eq f", "Eq g", "Eq h", "Show i"],
+        ),
+    ] {
+        let context = module
+            .functions
+            .iter()
+            .find(|f| f.name.as_str() == function)
+            .and_then(|f| f.context.as_ref())
+            .unwrap_or_else(|| panic!("`{}` has a context", function));
+
+        assert_eq!(context.span.to_range(), Some(range_of(list)));
+        assert_eq!(context.constraints.len(), written.len());
+
+        for (constraint, text) in context.constraints.iter().zip(written) {
+            let (class, variable) = text.split_once(' ').unwrap();
+            assert_eq!(
+                *constraint,
+                type_unqualified_with(name(class), vec![type_variable(name(variable))])
+            );
+            assert_eq!(constraint.span.to_range(), Some(range_of(text)));
+        }
+    }
+}

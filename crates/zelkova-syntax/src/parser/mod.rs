@@ -478,7 +478,7 @@ pub struct Function {
     pub tpe: Option<Type>,
     /// What the annotation wrote in front of `=>`, if anything — see
     /// [`FunType::context`]. Always `None` when `tpe` is.
-    pub context: Option<Type>,
+    pub context: Option<Context>,
     /// True when this function's annotation was written `unsafe name : Type`.
     ///
     /// Read off the [`FunType`] that contributed the annotation, so a function
@@ -601,14 +601,7 @@ pub struct FunType {
     pub tpe: Type,
     /// What was written in front of `=>` — `Comparable a` in
     /// `min : Comparable a => a -> a -> a` — or `None` for an unconstrained
-    /// annotation.
-    ///
-    /// It is a [`Type`] and not yet a list of constraints, because the grammar
-    /// cannot tell the two apart: `(Comparable k, Eq v)` is the same tokens as a
-    /// two-tuple type, so the `ConstrainedType` production parses the context as a
-    /// type and anything type-shaped reaches here, `Int -> Int` included.
-    /// Canonicalization is what checks that it is one constraint or a tuple of
-    /// them, where its errors carry a span like every other.
+    /// annotation. See [`Context`] for why its elements are types.
     ///
     /// A context is a property of a *signature*, so it lives on the signature
     /// rather than as a [`TypeKind`] variant. `TypeKind` is the shape of every type
@@ -617,7 +610,7 @@ pub struct FunType {
     /// while only ever being legal at the top of an annotation. Here the grammar
     /// cannot put one anywhere else, and a `class` or `instance` head — the other
     /// place `=>` is written — reuses the same production and the same pair.
-    pub context: Option<Type>,
+    pub context: Option<Context>,
     /// True when the annotation was written `unsafe name : Type`.
     ///
     /// The word only means something on a [facade](../../docs/spec/interop.md)
@@ -628,6 +621,45 @@ pub struct FunType {
     /// Where the annotation — `unsafe name : Type`, modifier included — was
     /// written.
     pub span: NodeSpan,
+}
+
+/// The constraints written in front of an annotation's `=>`: one, or a
+/// parenthesised, comma-separated list of any length.
+///
+/// Each element is a [`Type`] and not yet a constraint, because the grammar cannot
+/// tell the two apart: `(Comparable k, Eq v)` is the same tokens as a two-tuple
+/// type, so a context of up to three is parsed as a type and split here by
+/// `Context::from_type`, and anything type-shaped can be an element, `Int -> Int`
+/// included. Canonicalization is what checks that each one is shaped like a
+/// constraint.
+///
+/// A list of any length rather than a [`Tuple`]: a context has no arity limit,
+/// and a tuple type keeps its own.
+#[derive(Debug, PartialEq)]
+pub struct Context {
+    /// What was written between the parentheses, in order, or the one constraint
+    /// written without them.
+    pub constraints: Vec<Type>,
+    /// Where the context was written: a list's parentheses included, a single
+    /// constraint's own span otherwise.
+    pub span: NodeSpan,
+}
+
+impl Context {
+    /// Read a context the grammar parsed as a type. A tuple type is the list, its
+    /// elements the constraints; any other type is one constraint. Only the
+    /// outermost tuple is the list — one nested inside it stays an element, for
+    /// canonicalization to reject.
+    fn from_type(context: Type) -> Context {
+        let span = context.span;
+        let constraints = match context.kind {
+            TypeKind::Tuple(Tuple::Two(a, b)) => vec![*a, *b],
+            TypeKind::Tuple(Tuple::Three(a, b, c)) => vec![*a, *b, *c],
+            kind => vec![Type { kind, span }],
+        };
+
+        Context { constraints, span }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -711,7 +743,7 @@ impl FunType {
     /// produced, the context first.
     fn assemble(
         name: Name,
-        constrained: (Option<Type>, Type),
+        constrained: (Option<Context>, Type),
         marked_unsafe: bool,
         span: NodeSpan,
     ) -> FunType {
