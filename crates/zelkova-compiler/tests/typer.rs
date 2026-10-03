@@ -3504,8 +3504,14 @@ fn a_record_pattern_an_unresolved_name_explains_is_not_reported_again() {
 /// equation coming before the body's. This pins the place the record pattern's error is
 /// reported at today; `ERR-20` is where the body would be the place.
 ///
+/// The note does not say the entry fails to match its field, which a name cannot do: it
+/// says the body uses the name at another type, which is what failed.
+///
 /// Mutation-checked by giving the record pattern's `FieldConstraint` `field_span:
-/// pattern.span`: the primary range goes red.
+/// pattern.span`: the primary range goes red. By having `entry_reason` in
+/// `constraint.rs` answer `Reason::RecordPatternEntry` for a `Bind`: the reason assertion
+/// goes red. And by deleting `Reason::RecordPatternBinding`'s arm of `Reason::note`: the
+/// notes assertion goes red.
 #[test]
 fn a_body_using_a_bound_field_at_another_type_is_reported_at_the_entry() {
     let source = indoc::indoc! {r#"
@@ -3525,12 +3531,66 @@ fn a_body_using_a_bound_field_at_another_type_is_reported_at_the_entry() {
         } => {
             assert_eq!(format!("{}", left), "Char");
             assert_eq!(format!("{}", right), "Int");
-            assert_eq!(origin.reason, typer::Reason::RecordPatternEntry);
+            assert_eq!(origin.reason, typer::Reason::RecordPatternBinding);
         }
         other => panic!("expected a unification failure, got {:?}", other),
     }
     assert_eq!(
         primary_range(&error),
         range_within(source, "{ name }", "name")
+    );
+    assert_eq!(
+        error.notes(),
+        vec![
+            "in the declaration of `nameOf`".to_string(),
+            "a name a record pattern binds has the type of the field it names, and the body uses this one at another type"
+                .to_string(),
+        ]
+    );
+}
+
+/// An entry whose pattern binds a name without being one, `(Box x)`, can fail either
+/// because the pattern does not match the field or because the body uses `x` at another
+/// type — here the second: `x` is a `Char` and is returned as an `Int` — and the note
+/// names both rather than blaming the pattern.
+///
+/// Mutation-checked by having `entry_reason` in `constraint.rs` answer
+/// `Reason::RecordPatternEntry` for every entry that is not a `Bind`: the reason assertion
+/// goes red. And by deleting `Reason::RecordPatternEntryWithBindings`' arm of
+/// `Reason::note`: the notes assertion goes red.
+#[test]
+fn an_entry_binding_a_name_inside_another_pattern_names_both_causes() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Box a
+          = Box a
+
+        unbox : { content : Box Char } -> Int
+        unbox { content = (Box x) } =
+          x
+    "#};
+
+    let error = one_type_error(source);
+    match &error.kind {
+        typer::ErrorKind::UnificationFailed {
+            left,
+            right,
+            origin,
+        } => {
+            assert_eq!(format!("{}", left), "Char");
+            assert_eq!(format!("{}", right), "Int");
+            assert_eq!(origin.reason, typer::Reason::RecordPatternEntryWithBindings);
+        }
+        other => panic!("expected a unification failure, got {:?}", other),
+    }
+    assert_eq!(primary_range(&error), range_of(source, "(Box x)"));
+    assert_eq!(
+        error.notes(),
+        vec![
+            "in the declaration of `unbox`".to_string(),
+            "either this entry does not match the type of the field it names, or the body uses a name it binds at another type than that field gives the name"
+                .to_string(),
+        ]
     );
 }
