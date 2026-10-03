@@ -7220,3 +7220,74 @@ fn a_records_use_renders_under_the_form() {
         );
     }
 }
+
+/// `LANG-84`: the two errors a record pattern raises of its own render in prose, in the
+/// module's own file — the label the matched record type lacks, under that label, and a
+/// record pattern whose record type nothing supplied, under the whole pattern — each
+/// with the notes that say what to do about it.
+///
+/// The fixture is the one [`a_records_use_renders_under_the_form`] overlays.
+///
+/// Mutation-checked by having `ErrorKind::record_use_label` answer `None` for all three
+/// of a record use's errors: the diagnostic then falls back to the declaration's span and
+/// the range assertion goes red for each. The missing label's note is mutation-checked
+/// by deleting the `RecordUse::Pattern` arm of `MissingField` in `notes`: the notes
+/// assertion goes red.
+#[test]
+fn a_record_pattern_renders_under_the_label_or_the_pattern() {
+    let cases = [
+        (
+            "module Broken exposing ()\n\ntype Count\n  = Count\n\ntaken : { taken : Count } -> Count\ntaken { expected } =\n  expected\n",
+            "the record type `{ taken : Count }` has no field `expected`",
+            "expected }",
+            "expected".len(),
+            vec![
+                "in the declaration of `taken`",
+                "a record pattern names some of the fields of the record it matches, and each label it names must be one of them",
+            ],
+        ),
+        (
+            "module Broken exposing ()\n\nnameOf { name } =\n  name\n",
+            "cannot type this record pattern: nothing in this declaration says which record type it matches",
+            "{ name }",
+            "{ name }".len(),
+            vec![
+                "in the declaration of `nameOf`",
+                "a record's type is never worked out from the fields a declaration uses",
+                "a type annotation on `nameOf` would supply it",
+            ],
+        ),
+    ];
+
+    for (source, message, caret, len, notes) in cases {
+        let root = fixture_package("package_private_module_parse_failure");
+        let mut overlay = Overlay::new();
+        overlay.insert(root.join("src").join("Broken.zel"), source.into());
+
+        let check = check_package(&root, &overlay).expect("the manifest and the build resolve");
+        let [error] = check.errors.as_slice() else {
+            panic!("expected one error, got {:?}", check.errors);
+        };
+        assert!(
+            matches!(unwrap_in_file(error), CompilationError::Type(..)),
+            "expected a type error, got {:?}",
+            error
+        );
+
+        let diagnostic = error.as_diagnostic();
+        assert_eq!(diagnostic.severity, Severity::Error);
+        assert_eq!(diagnostic.message, format!("[Broken] {}", message));
+        assert_eq!(diagnostic.notes, notes);
+
+        let start = source
+            .find(caret)
+            .expect("the source holds the caret's text");
+        let primary: Vec<_> = diagnostic
+            .labels
+            .iter()
+            .filter(|label| label.style == LabelStyle::Primary)
+            .map(|label| label.range.clone())
+            .collect();
+        assert_eq!(primary, vec![start..start + len], "for {:?}", source);
+    }
+}
