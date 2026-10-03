@@ -10,7 +10,7 @@ at the step that reads an obligation with the final substitution applied;
 [`LANG-83`](lang-83.md) adds for a `derived` instance; `crates/zelkova-compiler/src/ir/` — the
 specialisation pass [`GEN-24`](gen-24.md) adds. None of the three exists yet.
 
-**Depends on:** [`LANG-51`](lang-51.md) for the record type; [`LANG-40`](lang-40.md) and
+**Depends on:** `LANG-51` (closed) for the record type; [`LANG-40`](lang-40.md) and
 [`LANG-83`](lang-83.md) for obligations and for what a derivation is; [`GEN-24`](gen-24.md) and
 [`GEN-25`](gen-25.md) before a program using it runs. It is the one ticket that needs both
 *Active work* orders in [the index](README.md) finished.
@@ -28,8 +28,8 @@ type is a declared type, a tuple or `()`, rejects one at a function, and resolve
 variable; a record is none of those. `LANG-83` walks a union, a tuple and `()`, and infers a
 derived instance's context from each variant's arguments, with no case for an argument that is a
 record. So `r == s` on two records has no rule, and neither does `instance Eq Reading where
-derived` for `type Reading = Reading { taken : Celsius }`. Whichever of `LANG-40` and `LANG-51`
-lands second meets the gap first, and until this ticket it is an error.
+derived` for `type Reading = Reading { taken : Celsius }`. `LANG-51` has landed,
+so `LANG-40` meets the gap first, and until this ticket it is an error.
 
 **Approach:**
 
