@@ -52,12 +52,33 @@
 //!   either way. WebAssembly has no closure primitive, so how a partial application is
 //!   represented there is open — and an IR that made a call site's saturation something
 //!   to re-derive would make that question harder rather than leaving it open.
+//! - **A record's fields by label, and the order a positional target reads them in.** A
+//!   record crosses as a WIT `record`, which reaches a field by position ([Which types may
+//!   cross the boundary](../../docs/spec/interop.md#which-types-may-cross-the-boundary)),
+//!   and a record type is a set of fields with no order of its own ([a record type is a
+//!   set of fields](../../docs/spec/records.md#a-record-type-is-a-set-of-fields)), so
+//!   nothing in the IR numbers them: [`TypedTermKind::Access`], [`TypedTermKind::Accessor`],
+//!   [`TypedTermKind::Update`] and a record pattern's entries
+//!   ([`Step::Field`]) name a field by its label, and JavaScript reads it as the property
+//!   of that name. A positional target reads the order off the type, which is on the
+//!   access node already — the [`Type::Record`] of the `record` operand, of the
+//!   accessor's parameter, of the update's own type, of the value a pattern is matched
+//!   against. That order is **label order**: the labels sorted by their characters, each
+//!   compared by its code point, a label that another begins with first. It is the order
+//!   a `Type::Record`'s map iterates in, and the one two spellings of one type agree on —
+//!   `{ a : Int, b : Int }` and `{ b : Int, a : Int }` are one type and have one layout —
+//!   which is why [Records and
+//!   derivation](../../docs/spec/records.md#records-and-derivation) walks a record's
+//!   fields in it too: sorting is the only order available that does. The order a
+//!   record *expression*'s fields were written in is not a position. It is on the term
+//!   ([`TypedTermKind::Record`], [`TypedTermKind::Update`]) as an order of evaluation, and
+//!   a target evaluates in it and lays the value out in label order.
 //!
 //! [`GEN-15`](../../docs/tickets/gen-15.md) holds the questions a WebAssembly backend
 //! still has to answer — linear memory or WasmGC, how a partial application is
 //! represented, whether monomorphisation is whole-program — and is unscheduled. Nothing
-//! in this module is a JavaScript decision, and a change that makes one of the four
-//! facts above unavailable is a change that closes that ticket's options.
+//! in this module is a JavaScript decision, and a change that makes one of the facts
+//! above unavailable is a change that closes that ticket's options.
 //!
 //! # What is not here yet
 //!
