@@ -854,8 +854,12 @@ fn tuple_pattern_of_four_is_a_parse_error() {
 /// four-constraint context, which `ConstrainedType` accepts, so the parser only
 /// fails at the missing `=>` there and not at the fourth `,`.
 ///
-/// Verified by adding a four-element production to `Type` in
-/// `grammar.lalrpop`, which makes the parse succeed and the test go red.
+/// Adding a four-element tuple production to `AtomicType` no longer guards this:
+/// beside `ConstrainedType`'s four-or-more production it is a shift/reduce conflict
+/// on `"=>"`, so the grammar does not build and this test never runs. Verified by
+/// adding `<tpe1:ArgType> "->" "(" <a:Type> "," <b:Type> "," <c:Type> "," <t:Type> ")"`
+/// to `Type`'s arrow productions, which builds, makes the parse succeed and turns
+/// this test red.
 #[test]
 fn tuple_type_of_four_is_a_parse_error() {
     use zelkova_syntax::parser::tokenizer::Token;
