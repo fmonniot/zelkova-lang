@@ -48,10 +48,10 @@
 //! **A record is a plain object keyed by its labels and by nothing else**: `{ x = 1, y = 2 }`
 //! is `{x: 1n, y: 2n}`, with no `$` to tell it from a union value — a label is never `$`,
 //! and a record is never read by `$`. The key is the label as the source spells it. A label
-//! is not a binding, so [`mangle`] never touches it: `{ class = 1 }` is `{class: 1n}` and
+//! is not a binding, so `mangle` never touches it: `{ class = 1 }` is `{class: 1n}` and
 //! `r.class` reads it, `constructor` and `toString` are the record's own fields where
 //! every object inherits a property of that name, and a label that is not a bare ASCII
-//! identifier is a string-literal key, `r["é"]` (see [`property`] and [`key`]). The
+//! identifier is a string-literal key, `r["é"]` (see `property` and `key`). The
 //! fields stand in the order they were written, which is the order they are evaluated in
 //! ([Order of evaluation](../docs/spec/evaluation-semantics.md#order-of-evaluation)): an
 //! object literal evaluates its entries as they stand.
