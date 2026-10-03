@@ -23,11 +23,11 @@ Resolve a **tier** per ticket with [`.claude/model-policy.md`](../../model-polic
 before spawning anything. The default is `standard` (sonnet); `deep` (opus) needs one of the
 policy's named triggers to fire, and the trigger gets reported at launch.
 
-Every signal is on the ticket you just read in Step 0 — its `Sizing:` line, its `Severity:` if
-it is a bug, whether its *Approach* leaves a decision unmade, whether it is a fragment of a
-chain, and whether the files it names are the cross-cutting ones (the `grammar.lalrpop` triad,
-`typer/`, `compile_package`'s error accumulation). Note that `Sizing` alone does not decide it:
-`LANG-4` is small and still fires trigger 1.
+One signal decides it, and it is on the ticket you just read in Step 0: whether its *Approach*
+leaves a decision unmade. `Sizing`, `Severity`, the files it names and whether it is a fragment
+of a chain do not. When a ticket does leave a decision open,
+name it to the user before spawning and ask whether to settle it in the ticket first and run
+`standard`, or to hand the call to a `deep` agent.
 
 If the user names a model — globally ("use opus for these") or per ticket ("BUG-2 with opus,
 TIDY-3 with sonnet") — that overrides the policy for those tickets and no trigger need fire; a
@@ -148,7 +148,11 @@ round trip on its first turn.
 >    which is the set of rules that outlive individual tickets. Every one of them is there
 >    because breaking it produced a bad diff.
 > 2. Follow any cross-reference the ticket actually makes. Another ticket is just
->    `docs/tickets/<other-id-lower>.md`; `docs/tickets/README.md` lists them all.
+>    `docs/tickets/<other-id-lower>.md`; `docs/tickets/README.md` lists them all. If that index
+>    lists `<ID>` under an *Active work* section, the ticket is one fragment of a chain: read
+>    the section, then the spec chapter and the decision entries it names, before anything
+>    else. They are where this ticket's choices were already made, and a choice that looks
+>    open in the ticket and is not settled there either is a gap to report, not to fill.
 > 3. Explore the relevant files and confirm the current state before editing. The ticket was
 >    written at some point in the past and the tree has moved since; if what you find
 >    contradicts the ticket, say so in the PR body rather than quietly working around it.
@@ -181,10 +185,13 @@ round trip on its first turn.
 >
 >    **Stop rather than guess.** If finishing means making a decision the ticket does not make —
 >    choosing what a construct desugars to, picking one of two error shapes, settling where a
->    check belongs — stop there. Do not pick one and carry on. Commit nothing, and report
+>    check belongs — stop there. Do not pick one and carry on. Commit only work that is finished
+>    and independent of the question, do not push or open a PR, and report
 >    `NEEDS-ESCALATION:` followed by what you found, the options as you now understand them, and
 >    what you had already established before stopping. The same applies if the change cannot
->    stay inside the ticket's stated scope. Being handed back a well-framed question is a good
+>    stay inside the ticket's stated scope, and if three different attempts have not made the
+>    ticket's Acceptance check pass — report what each attempt was and how it failed instead of
+>    trying a fourth. Being handed back a well-framed question is a good
 >    outcome; a merged PR that quietly decided a language question is not.
 >
 > 5. Rename the branch: `git branch -m <branch-prefix>/<id-lower>-<slug>`.
@@ -231,7 +238,11 @@ round trip on its first turn.
 > 9. Push: `git push -u origin <branch-prefix>/<id-lower>-<slug>`.
 > 10. Open the PR: `gh pr create --repo fmonniot/zelkova-lang --base main --head
 >     <branch-prefix>/<id-lower>-<slug>` with a title referencing `<ID>` and a body covering
->     root cause / approach, the fix, and how it was verified.
+>     root cause / approach, the fix, and how it was verified. End the body with a
+>     **Decisions the ticket did not make** section: each choice you made that the ticket's
+>     text did not dictate, however small — a name, where a check sits, which error variant —
+>     one line each with the alternative you passed over, or `None.` The reviewer checks this
+>     list against the diff, so a choice left off it is a finding.
 >
 > Report back the branch name, the PR URL, and anything you deliberately left unfixed.
 
@@ -270,7 +281,9 @@ gh pr list --repo fmonniot/zelkova-lang --head "<branch>" --json number,url -q '
 | No | No | No | Not started | Re-spawn with the same prompt into the same empty worktree |
 | — | — | No | Reported `NEEDS-ESCALATION` | Re-spawn at `deep` into the **same** worktree (see below) |
 
-An agent that reported `NEEDS-ESCALATION` did the right thing — it is not a failed run. Re-spawn
+An agent that reported `NEEDS-ESCALATION` did the right thing — it is not a failed run. Check
+for it before reading the rows above: its worktree may hold local commits, and they are the
+next agent's starting point, not a partial run to push. Re-spawn
 it with the same prompt at the `deep` tier, into the **same** worktree (its `target/` is warm),
 with its report pasted in under a line saying it is a prior attempt's findings rather than
 instructions — that report is the exploration the deep agent would otherwise redo. Say in the report which tickets escalated and why:

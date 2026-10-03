@@ -95,15 +95,17 @@ the other way round, upgrading unless everything was mechanical, which meant alm
 took the expensive tier for a handful of renames.
 
 A finding here arrives already localized: the reviewer named the file, the line and what is
-wrong with it. That is `standard` work. Go `deep` only when one of these holds:
+wrong with it. That is `standard` work, whichever files it lands in. Go `deep` only when a
+finding asks the agent to decide — the policy's trigger 1 — which here means one of these:
 
 - **A `[blocking]` finding disputes the approach**, rather than pointing at a defect within it —
   "this belongs in the unifier, not the annotator", "this error should not exist as its own
   variant". Implementing that is making the decision, not applying one.
-- **The fix lands in the cross-cutting paths** named in the policy: the `grammar.lalrpop` triad,
-  `crates/zelkova-compiler/src/typer/`, or `compile_package`'s error accumulation.
 - **A finding reverses an earlier round's decision** (`[blocking] Reversing round N-1's decision
   on …`). Two rounds disagreeing about the same code is the case where the tier is worth it.
+
+As the policy says for a ticket, name the decision to the user before spawning: answering the
+finding yourselves and running `standard` is usually the better spend.
 
 Volume is not a trigger. Eight mechanical comments are still eight mechanical comments.
 
@@ -263,6 +265,8 @@ Single message, multiple `Agent` calls, using the model picked in Step 0 for eac
 > where, or two findings can only be satisfied by picking one of two designs — stop on that
 > finding. Implement the others, commit them, and report `NEEDS-ESCALATION:` naming the one
 > finding, the options as you now understand them, and what you established before stopping.
+> Do the same for a finding that three different attempts have not fixed: report what each
+> attempt was and how it failed instead of trying a fourth.
 > Do not silently decline it as "not relevant": a decline is a judgment that the comment is
 > wrong, which is a different claim from "this needs a decision I am not the one to make."
 >

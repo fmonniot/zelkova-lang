@@ -29,15 +29,17 @@ The pick cannot be made until **after Step 0.5**, because the round is part of i
 
 - **Round ≥ 2 is always `standard`.** It reviews a bounded delta against findings that are
   already written down and replied to. Nothing about that is a search problem.
-- **Round 1 is `standard` unless the diff reaches the cross-cutting paths.** Check with
-  `gh pr diff <PR> --repo fmonniot/zelkova-lang --name-only`: `crates/zelkova-syntax/src/parser/grammar.lalrpop`
-  together with the `parser`/`canonical` ASTs, anything under `crates/zelkova-compiler/src/typer/`, or the
-  error accumulation in `crates/zelkova-compiler/src/lib.rs`. Those are the three areas where a defect is
-  subtle enough to survive a `standard` read, and each is on the list because it already
-  produced one.
-- **Round 1 is also `deep` when the ticket itself was a design-decision ticket** — the same
-  trigger `work-ticket` uses. A PR that made a call the ticket left open needs a reviewer who
-  can tell whether it made the right one.
+- **Round 1 is `standard` unless one of the policy's three review triggers fires.**
+  - *The diff changes how a type is inferred or how a type error is blamed.* If
+    `gh pr diff <PR> --repo fmonniot/zelkova-lang --name-only` lists a file under
+    `crates/zelkova-compiler/src/typer/`, read those hunks of the diff for: what
+    `constraint.rs` generates, what `unifier.rs` solves, or which `Origin` a constraint
+    carries. A new case in `annotate.rs`, a node threaded through, or a change to the typer's
+    tests does not count. The `grammar.lalrpop` triad and the error accumulation do not count
+    either — the prompt below already tells the reviewer what to check there.
+  - *The ticket was `Severity: high`.*
+  - *The ticket left a decision unmade and the PR made it* — a PR that made a call the ticket
+    left open needs a reviewer who can tell whether it made the right one.
 
 Honor a model the user names, globally or per PR; `--deep`/`--cheap` force the tier for the
 whole run. Valid: `sonnet`, `opus`, `fable`, `haiku`. `/code-review ultra` remains the
@@ -168,6 +170,11 @@ Single message, multiple `Agent` calls. For each:
 > Focus on, roughly in order of value:
 >
 > - **Does the diff satisfy the ticket's Acceptance, and did it stay in scope?**
+> - **Decisions the ticket did not make.** The PR body ends with a section of that name. Check
+>   it against the diff both ways: an entry that settles what the language does, rather than how
+>   the compiler does it, was not the author's to make and is `[blocking]`; and a choice in the
+>   diff that the ticket's text does not dictate and the list leaves out is a finding of its
+>   own. A PR body with no such section is a `[should-fix]`.
 > - **New `panic!`, `unwrap()`, `expect()` or `todo!()` on a non-test path.** This is the
 >   repo's first standing invariant and an entire past ticket (`ERR-1`) was spent removing
 >   them. `unwrap()` under `#[cfg(test)]` is fine.
