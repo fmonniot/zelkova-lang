@@ -412,6 +412,41 @@ pub enum TermKind {
     /// is whatever the node around it requires ([`DEC-23` decision
     /// 6](../../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
     Hole,
+    /// A [record](../../docs/spec/records.md#building-a-record), its fields in the order
+    /// they were written. Only its type is a set of fields; the term keeps the order,
+    /// since [fields are evaluated in it](../../docs/spec/evaluation-semantics.md#order-of-evaluation).
+    Record(Vec<Field<Term>>),
+    /// An [update](../../docs/spec/records.md#updating-a-record): the record updated, and
+    /// the fields replaced in it in the order they were written.
+    Update {
+        record: Box<Term>,
+        fields: Vec<Field<Term>>,
+    },
+    /// A [field access](../../docs/spec/records.md#reading-a-field), `record.label`.
+    Access {
+        record: Box<Term>,
+        label: Name,
+        /// Where the label alone was written.
+        label_span: NodeSpan,
+    },
+    /// An [accessor](../../docs/spec/records.md#the-accessor), `.label`: the function
+    /// reading that field of whichever record it is applied to.
+    Accessor {
+        label: Name,
+        /// Where the label alone was written; the term's own span covers the `.` too.
+        label_span: NodeSpan,
+    },
+}
+
+/// One field of a record or an update — [`TermKind::Record`], [`TermKind::Update`] and
+/// their [typed](TypedTermKind::Record) counterparts — over the term type `T` of the
+/// tree it is in.
+#[derive(Debug, Clone)]
+pub struct Field<T> {
+    pub label: Name,
+    /// Where the label alone was written; the value carries its own span.
+    pub label_span: NodeSpan,
+    pub value: T,
 }
 
 /// What the source wrote that a `Case` term was built from.
@@ -641,6 +676,27 @@ pub enum TypedTermKind {
     /// An error stands behind every hole, so a declaration holding one is never emitted:
     /// `zelkova_js::emit` refuses it by name.
     Hole,
+    /// A record ([`TermKind::Record`]), its fields in the order they were written. Its
+    /// type is the [`Type::Record`] of its fields' types, which has no order.
+    Record(Vec<Field<TypedTerm>>),
+    /// An update ([`TermKind::Update`]). Its type is the type of `record`.
+    Update {
+        record: Box<TypedTerm>,
+        fields: Vec<Field<TypedTerm>>,
+    },
+    /// A field access ([`TermKind::Access`]). Its type is the field's; the record's
+    /// type, a [`Type::Record`] holding `label`, is on `record`.
+    Access {
+        record: Box<TypedTerm>,
+        label: Name,
+        label_span: NodeSpan,
+    },
+    /// An accessor ([`TermKind::Accessor`]). Its type is a function from the record
+    /// type it reads to the field's type.
+    Accessor {
+        label: Name,
+        label_span: NodeSpan,
+    },
 }
 
 // ── What the typer answers with ───────────────────────────────────────────────
@@ -679,10 +735,8 @@ pub enum Solved {
     /// what reads it back out.
     NoBody,
     /// `value_to_term_and_annotation` could not translate the declaration into the
-    /// typer's term language — a `VarKernel` reference, a float, string or record
-    /// pattern at any depth, whether a `case` branch or a parameter wrote it, or a
-    /// record type, a record, an update, a field access or an accessor, in the
-    /// annotation or the body.
+    /// typer's term language — a `VarKernel` reference, or a float, string or record
+    /// pattern at any depth, whether a `case` branch or a parameter wrote it.
     /// Nothing about the declaration was checked.
     ///
     /// Not an [`Error`](crate::typer::Error): it is a gap in the typer rather
@@ -700,9 +754,8 @@ pub enum Solved {
     /// Inference reached a name the typer's environment does not hold, and nothing
     /// about the declaration was checked.
     ///
-    /// That environment holds a declared type for every value in reach that has one the
-    /// typer can represent, which a type holding a record is not: the values and
-    /// constructors every imported interface exposes, and this module's own
+    /// That environment holds a declared type for every value in reach that has one: the
+    /// values and constructors every imported interface exposes, and this module's own
     /// constructors and annotated declarations. A declaration of this module
     /// written without an annotation has no declared type, and a name reaching one
     /// lands here. That is not a mistake in the source, which is why this is not an
@@ -912,12 +965,11 @@ fn peel(term: TypedTerm, arity: usize) -> (Vec<TypeBinder>, TypedTerm) {
 /// constant](../../docs/spec/interop.md#facade-constants). That is the count a module
 /// importing the facade reads from its interface too.
 ///
-/// `None` is a signature whose type the typer cannot read, and the only one it cannot is
-/// one holding a record type: `typer::canonical_type_to_typer_type` answers
-/// `None` for it, the typer having no record type. A declaration carrying no annotation
-/// also answers `None`, which nothing produces today — a facade's declarations are
-/// signatures. `build` records either as an [`Unchecked`] with `reported: false`, since
-/// no error stands behind it.
+/// `None` is a signature whose type the typer cannot read, which none is today:
+/// `typer::canonical_type_to_typer_type` reads every canonical type, a record type
+/// included. A declaration carrying no annotation also answers `None`, which nothing
+/// produces today — a facade's declarations are signatures. `build` records either as an
+/// [`Unchecked`] with `reported: false`, since no error stands behind it.
 fn facade_signature(value: &canonical::Value, counter: &mut u32) -> Option<Type> {
     match value {
         canonical::Value::Value { .. } => None,

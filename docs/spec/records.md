@@ -80,9 +80,6 @@ swapped =
   taken
 ```
 
-**Known gap:** the typer has no record type, so it leaves both declarations unchecked and the
-block is accepted without the two field sets being compared ([`LANG-51`](../tickets/lang-51.md)).
-
 This makes a record type **structural**: it is described entirely by what it holds. Two modules
 that separately annotate `{ x : Int, y : Int }` have written one type, and a value of it crosses
 between them with no conversion and no shared declaration.
@@ -177,10 +174,6 @@ nameOf person =
   person.name
 ```
 
-**Known gap:** the typer has no record type, so it leaves `nameOf` unchecked: an access
-naming a label the record's type does not have is accepted, and so is a field used at a type
-other than its own ([`LANG-51`](../tickets/lang-51.md)).
-
 Access binds tighter than [application](expressions.md#application), so `f r.name` is
 `f (r.name)`. It chains left to right: `r.centre.x` is `(r.centre).x`.
 
@@ -203,9 +196,6 @@ nameOf : { name : Text } -> Text
 nameOf person =
   apply .name person
 ```
-
-**Known gap:** the typer has no record type, so it leaves `apply` and `nameOf` unchecked, and
-nothing types the accessor from where it is written ([`LANG-51`](../tickets/lang-51.md)).
 
 `.name` names a field of *some* record, and
 [a record type is written out in full](#records-are-closed), so there is no type an accessor can
@@ -256,7 +246,7 @@ An update **has the type of the record it updates**. Each label it names must al
 of that type, and each value must have the type that field already has. An update can therefore
 neither add a field, remove one, nor change one's type.
 
-```zel expect=ok
+```zel expect=type-error:MissingField
 module Example exposing (Celsius, added)
 
 type Celsius
@@ -266,10 +256,6 @@ added : { taken : Celsius } -> { taken : Celsius }
 added reading =
   { reading | expected = Celsius }
 ```
-
-**Known gap:** that block should be rejected and is accepted. The rule that rejects it is the
-typer's, which has no record type and leaves `added` unchecked
-([`LANG-51`](../tickets/lang-51.md)).
 
 The expression left of the `|` is an ordinary expression rather than a name, so
 `{ f x | taken = Celsius }` updates whatever `f x` returns.
@@ -453,7 +439,7 @@ Where nothing supplies it, the form is an error. A record type is never worked o
 fields a declaration happens to touch: that would read `person.name` as taking a record with
 exactly one field.
 
-```zel expect=ok
+```zel expect=type-error:RecordTypeUnknown
 module Example exposing (Text)
 
 type Text
@@ -462,11 +448,6 @@ type Text
 nameOf person =
   person.name
 ```
-
-**Known gap:** that block should be rejected and is accepted. The rule that rejects it is the
-typer's, which has no record type and leaves `nameOf` unchecked
-([`LANG-51`](../tickets/lang-51.md)), and for a record pattern it is
-[`LANG-84`](../tickets/lang-84.md)'s.
 
 What supplies the type may be written anywhere in the declaration, before the form or after it.
 A use of the declaration from another one does not: `nameOf` above is an error however it is

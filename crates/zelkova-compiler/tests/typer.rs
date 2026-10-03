@@ -1932,45 +1932,6 @@ fn outside_core_the_task_constructor_and_done_cannot_be_named() {
     }
 }
 
-/// The typer has no record type until `LANG-51`, so a declaration holding a record — in
-/// its annotation, in its body as a record, or as an update — is left unchecked and says
-/// so, and raises no error.
-///
-/// `annotated` holds a record in its annotation alone, and its body is one the typer
-/// can check. Leaving it unchecked is what keeps the emitter from compiling a body that
-/// was never held to the type it was written with.
-///
-/// Mutation-checked by restoring `value_to_term_and_annotation`'s `.map` over the
-/// annotation, which checked the body with no annotation when the annotation did not
-/// translate: `annotated` then comes back typed and its assertion goes red.
-#[test]
-fn a_declaration_holding_a_record_is_left_unchecked() {
-    let solved = solved(indoc::indoc! {r#"
-        module Test exposing ()
-
-        annotated : { a : Int } -> Int
-        annotated r = 1
-
-        built x =
-          { a = x }
-
-        updated r =
-          { r | a = 1 }
-    "#});
-
-    for name in ["annotated", "built", "updated"] {
-        assert!(
-            matches!(
-                solved.get(&Name::new(name)),
-                Some(Solved::Untranslatable { .. })
-            ),
-            "expected `{}` to be marked untranslatable, got {:?}",
-            name,
-            solved.get(&Name::new(name))
-        );
-    }
-}
-
 /// The term language has no record pattern until `LANG-84`, so a declaration holding one
 /// is left unchecked and says so, and raises no error, wherever the pattern is written: a
 /// parameter, a constructor's argument inside a tuple element, and a constructor's
@@ -2014,37 +1975,935 @@ fn a_declaration_holding_a_record_pattern_is_left_unchecked() {
     }
 }
 
-/// The term language has no record until `LANG-51`, so a declaration reading a field —
-/// by an access or an accessor — is left unchecked and says so, and raises no error.
-/// `read`'s annotation is one the typer can read, so the access in its body is the whole
-/// reason it is skipped.
+// ── Records (`LANG-51`) ───────────────────────────────────────────────────────
+
+/// The label sets of `labels`, in order — what a record term's fields are written in.
+fn field_labels(fields: &[zelkova_compiler::ir::Field<TypedTerm>]) -> Vec<&str> {
+    fields.iter().map(|field| field.label.as_str()).collect()
+}
+
+/// The body of a declaration of `arity` parameters: the term under its `Fun`s.
+fn body_of(term: &TypedTerm, arity: usize) -> &TypedTerm {
+    let mut term = term;
+    for _ in 0..arity {
+        match &term.kind {
+            TypedTermKind::Fun { body, .. } => term = body,
+            other => panic!("expected a parameter, got {:?}", other),
+        }
+    }
+    term
+}
+
+/// The primary label's range, which every error below has exactly one of.
+fn primary_range(error: &typer::Error) -> Range<usize> {
+    let primary: Vec<_> = error.labels().into_iter().filter(|l| l.primary).collect();
+    assert_eq!(
+        primary.len(),
+        1,
+        "expected one primary label, got {:?}",
+        primary
+    );
+    primary[0].span.to_range()
+}
+
+/// A record's type is the record type its fields spell out, and the term keeps the
+/// fields in the order they were written while the type writes them in label order —
+/// only the type is a set.
 ///
-/// Mutation-checked by translating an access in `canonical_expr_to_term` as its record's
-/// term and an accessor as a hole: `read` is then checked as `r` against `Int -> Int`
-/// and comes back typed, and `pick` likewise, and the assertion goes red.
+/// Mutation-checked by dropping the `Reason::RecordFields` equation from
+/// `constraint::collect`'s record arm: `point`'s type is then an unsolved `t…` and the
+/// first assertion goes red.
 #[test]
-fn a_declaration_reading_a_field_is_left_unchecked() {
+fn a_record_has_the_record_type_of_its_fields() {
     let solved = solved(indoc::indoc! {r#"
         module Test exposing ()
 
-        read : Int -> Int
-        read r =
-          r.a
-
-        pick : Int
-        pick =
-          .a
+        point =
+          { y = 'c', x = True }
     "#});
 
-    for name in ["read", "pick"] {
+    let point = typed_declaration(&solved, "point");
+    assert_eq!(format!("{}", point.tpe), "{ x : Bool, y : Char }");
+    match &point.kind {
+        TypedTermKind::Record(fields) => assert_eq!(field_labels(fields), vec!["y", "x"]),
+        other => panic!("expected a record, got {:?}", other),
+    }
+}
+
+/// `{ low : Int, high : Char }` and `{ high : Char, low : Int }` are one type, so either
+/// declaration satisfies either annotation.
+///
+/// Mutation-checked by pairing the two records' field types in opposite orders in the
+/// `Record`/`Record` arm of `unify_one_constraint` (`fields2.values().rev()` zipped with
+/// `fields1`'s): `Int` meets `Char` and `swapped` is rejected.
+#[test]
+fn the_two_spellings_of_one_record_type_unify() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        taken : { low : Int, high : Char }
+        taken =
+          { low = 1, high = 'c' }
+
+        swapped : { high : Char, low : Int }
+        swapped =
+          taken
+    "#});
+
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "swapped").tpe),
+        "{ high : Char, low : Int }"
+    );
+}
+
+/// Two record types with different labels do not unify, and the diagnostic names the
+/// labels each has that the other lacks, in the headline's order.
+///
+/// Mutation-checked by dropping the label-set guard of the `Record`/`Record` arm of
+/// `unify_one_constraint`, which then unifies the labels the two share and nothing else:
+/// `point` checks and `one_type_error` panics.
+#[test]
+fn two_record_types_of_different_labels_do_not_unify() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        point : { x : Int, z : Int }
+        point =
+          { y = 1, z = 2 }
+    "#};
+
+    let error = one_type_error(source);
+    match &error.kind {
+        // The fields' own types are not solved yet when the record's equation fails —
+        // a term's equations come before its children's — so the labels are what is
+        // compared.
+        typer::ErrorKind::UnificationFailed { left, right, .. } => {
+            let labels = |tpe: &typer::Type| match tpe {
+                typer::Type::Record(fields) => fields
+                    .keys()
+                    .map(|label| label.as_str().to_string())
+                    .collect::<Vec<_>>(),
+                other => panic!("expected a record type, got {:?}", other),
+            };
+            assert_eq!(labels(left), vec!["x", "z"]);
+            assert_eq!(labels(right), vec!["y", "z"]);
+        }
+        other => panic!("expected a unification failure, got {:?}", other),
+    }
+    assert!(
+        error.notes().contains(
+            &"the first record type has a field `x` that the second does not, and the second has a field `y` that the first does not"
+                .to_string()
+        ),
+        "got {:?}",
+        error.notes()
+    );
+}
+
+/// Two record types whose label sets differ on one side only: the note names that side
+/// alone, by the headline's order, and says "fields" for more than one.
+///
+/// Mutation-checked twice, once per one-sided arm of `label_difference`: swapping
+/// "first" and "second" in the `(false, true)` arm turns `missing`'s note red, and in the
+/// `(true, false)` arm `extra`'s.
+#[test]
+fn a_label_set_differing_on_one_side_names_that_side() {
+    let extra = one_type_error(indoc::indoc! {r#"
+        module Test exposing ()
+
+        extra : { x : Int }
+        extra =
+          { x = 1, y = 2 }
+    "#});
+    assert!(
+        extra.notes().contains(
+            &"the second record type has a field `y` that the first does not".to_string()
+        ),
+        "got {:?}",
+        extra.notes()
+    );
+
+    let missing = one_type_error(indoc::indoc! {r#"
+        module Test exposing ()
+
+        missing : { x : Int, y : Int, z : Int }
+        missing =
+          { x = 1 }
+    "#});
+    assert!(
+        missing.notes().contains(
+            &"the first record type has fields `y`, `z` that the second does not".to_string()
+        ),
+        "got {:?}",
+        missing.notes()
+    );
+}
+
+/// The occurs check goes into a record's fields: a record holding the value it is the
+/// type of would be the infinite type `a = { x : a }`, annotated or not.
+///
+/// Mutation-checked by giving `occurs` the arm `Type::Record(_fields) => false`: `loop`
+/// and `wrapped` then both type check, and `one_type_error` panics.
+#[test]
+fn a_record_cannot_hold_its_own_type() {
+    for source in [
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            loop : a -> a
+            loop r =
+              { x = r }
+        "#},
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            same : a -> a -> a
+            same x y =
+              x
+
+            wrapped r =
+              same r { x = r }
+        "#},
+    ] {
+        let error = one_type_error(source);
         assert!(
-            matches!(
-                solved.get(&Name::new(name)),
-                Some(Solved::Untranslatable { .. })
-            ),
-            "expected `{}` to be marked untranslatable, got {:?}",
-            name,
-            solved.get(&Name::new(name))
+            matches!(&error.kind, typer::ErrorKind::CircularType { .. }),
+            "got {:?}",
+            error.kind
         );
     }
+}
+
+/// An access has the type of the field it reads, and a field read at another type is
+/// an error under the access, explained by the annotation the record type came from.
+///
+/// Mutation-checked by having `FieldConstraint::read` answer an equation between the
+/// field's type and itself, which skips the lookup's equation: `wrong` then checks and
+/// `one_type_error` panics, and `nameOf`'s body is an unsolved `t…`.
+#[test]
+fn a_field_access_has_the_type_of_its_field() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        nameOf : { name : Char, age : Int } -> Char
+        nameOf person =
+          person.name
+    "#});
+    let body = body_of(typed_declaration(&solved, "nameOf"), 1);
+    assert!(
+        matches!(body.kind, TypedTermKind::Access { .. }),
+        "got {:?}",
+        body
+    );
+    assert_eq!(format!("{}", body.tpe), "Char");
+
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        wrong : { name : Char } -> Int
+        wrong person =
+          person.name
+    "#};
+    let error = one_type_error(source);
+    match &error.kind {
+        typer::ErrorKind::UnificationFailed { origin, .. } => {
+            assert_eq!(origin.reason, typer::Reason::Access)
+        }
+        other => panic!("expected a unification failure, got {:?}", other),
+    }
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_of(source, "person.name"),
+            range_of(source, "wrong : { name : Char } -> Int"),
+        ]
+    );
+}
+
+/// An update has the type of the record it updates, whatever its fields' new values are
+/// written as.
+///
+/// Mutation-checked by dropping the `Reason::Update` equation from
+/// `constraint::collect`'s update arm: `bump`'s body is then free to be a `Bool`, `bump`
+/// checks, and `one_type_error` panics.
+#[test]
+fn an_update_keeps_the_type_of_its_record() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        correct : { a : Int, b : Char } -> { a : Int, b : Char }
+        correct r =
+          { r | a = 1 }
+    "#});
+    let body = body_of(typed_declaration(&solved, "correct"), 1);
+    match &body.kind {
+        TypedTermKind::Update { record, fields } => {
+            assert_eq!(format!("{}", record.tpe), "{ a : Int, b : Char }");
+            assert_eq!(field_labels(fields), vec!["a"]);
+        }
+        other => panic!("expected an update, got {:?}", other),
+    }
+    assert_eq!(format!("{}", body.tpe), "{ a : Int, b : Char }");
+
+    let error = one_type_error(indoc::indoc! {r#"
+        module Test exposing ()
+
+        bump : { a : Int } -> Bool
+        bump r =
+          { r | a = 1 }
+    "#});
+    assert!(
+        matches!(&error.kind, typer::ErrorKind::UnificationFailed { origin, .. } if origin.reason == typer::Reason::Update),
+        "got {:?}",
+        error.kind
+    );
+}
+
+/// An update naming a label its record type lacks is the update that adds a field, and
+/// is an error under that label, with a secondary label under the annotation the record
+/// type came from.
+///
+/// Mutation-checked by giving `FieldConstraint`'s update arm `label_span: span` (the
+/// whole update): the range assertion goes red. The secondary label is mutation-checked
+/// by having `FieldConstraint::read` give `MissingField` `because: None`: the labels
+/// assertion goes red.
+#[test]
+fn an_update_naming_an_absent_field_fails_under_that_field() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        added : { taken : Int } -> { taken : Int }
+        added r =
+          { r | expected = 1 }
+    "#};
+
+    let error = one_type_error(source);
+    match &error.kind {
+        typer::ErrorKind::MissingField {
+            record,
+            label,
+            form,
+            ..
+        } => {
+            assert_eq!(format!("{}", record), "{ taken : Int }");
+            assert_eq!(label.as_str(), "expected");
+            assert_eq!(*form, typer::RecordUse::Update);
+        }
+        other => panic!("expected a missing field, got {:?}", other),
+    }
+    assert_eq!(
+        error.message(),
+        "the record type `{ taken : Int }` has no field `expected`"
+    );
+    assert_eq!(primary_range(&error), range_of(source, "expected"));
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_of(source, "expected"),
+            range_of(source, "added : { taken : Int } -> { taken : Int }"),
+        ]
+    );
+}
+
+/// An update giving a field a value of another type is an error under that value, and
+/// the record type it was held to is explained by the annotation.
+///
+/// Mutation-checked twice: by giving the update's `FieldConstraint` `field_span: span`
+/// (the whole update), and the range assertion goes red; and by having
+/// `unifier::read_fields` drop the equation a decided field constraint becomes instead of
+/// solving it, so that the new value is never unified with the field: `retyped` checks
+/// and `one_type_error` panics.
+#[test]
+fn an_update_retyping_a_field_fails_under_its_new_value() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        retyped : { x : Int } -> { x : Int }
+        retyped r =
+          { r | x = 'c' }
+    "#};
+
+    let error = one_type_error(source);
+    match &error.kind {
+        typer::ErrorKind::UnificationFailed {
+            left,
+            right,
+            origin,
+        } => {
+            assert_eq!(format!("{}", left), "Int");
+            assert_eq!(format!("{}", right), "Char");
+            assert_eq!(origin.reason, typer::Reason::UpdateField);
+        }
+        other => panic!("expected a unification failure, got {:?}", other),
+    }
+    assert_eq!(primary_range(&error), range_of(source, "'c'"));
+}
+
+/// An accessor written as an argument takes its record type from the parameter it is
+/// passed to, annotated or not, one written as a declaration's whole body takes it from
+/// the annotation, and a label that type lacks is an error under the accessor.
+///
+/// Mutation-checked by giving `annotate`'s accessor arm a plain fresh variable for its
+/// type, so that `constraint::collect` finds no arrow to read a field constraint off:
+/// `.age` is then never looked up, `misread` checks, and `one_type_error` panics.
+#[test]
+fn an_accessor_is_typed_from_its_argument_position() {
+    let helpers = indoc::indoc! {r#"
+        module Test exposing ()
+
+        apply : ({ name : Char } -> Char) -> { name : Char } -> Char
+        apply f r =
+          f r
+    "#};
+
+    let solved = solved(&format!(
+        "{}{}",
+        helpers,
+        indoc::indoc! {r#"
+
+            nameOf : { name : Char } -> Char
+            nameOf person =
+              apply .name person
+
+            unannotated person =
+              apply .name person
+
+            direct : { name : Char } -> Char
+            direct =
+              .name
+        "#}
+    ));
+    for name in ["unannotated", "direct"] {
+        assert_eq!(
+            format!("{}", typed_declaration(&solved, name).tpe),
+            "{ name : Char } -> Char"
+        );
+    }
+    let body = body_of(typed_declaration(&solved, "nameOf"), 1);
+    let TypedTermKind::Apply { fun, .. } = &body.kind else {
+        panic!("expected an application, got {:?}", body);
+    };
+    let TypedTermKind::Apply { arg: accessor, .. } = &fun.kind else {
+        panic!("expected an application, got {:?}", fun);
+    };
+    assert!(
+        matches!(accessor.kind, TypedTermKind::Accessor { .. }),
+        "got {:?}",
+        accessor
+    );
+    assert_eq!(format!("{}", accessor.tpe), "{ name : Char } -> Char");
+
+    let source = format!(
+        "{}{}",
+        helpers,
+        indoc::indoc! {r#"
+
+            misread : { name : Char } -> Char
+            misread person =
+              apply .age person
+        "#}
+    );
+    let error = one_type_error(&source);
+    assert!(
+        matches!(
+            &error.kind,
+            typer::ErrorKind::MissingField {
+                form: typer::RecordUse::Accessor,
+                ..
+            }
+        ),
+        "got {:?}",
+        error.kind
+    );
+    assert_eq!(primary_range(&error), range_of(&source, ".age"));
+}
+
+/// An accessor nothing fixes the record type of is an error naming it, under the whole
+/// accessor.
+///
+/// Mutation-checked by having `unifier::read_fields` answer `Ok(substitution)` when a
+/// pass decides nothing: `pick` then checks and `one_type_error` panics.
+#[test]
+fn an_accessor_nothing_fixes_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        pick =
+          .name
+    "#};
+
+    let error = one_type_error(source);
+    assert!(
+        matches!(&error.kind, typer::ErrorKind::RecordTypeUnknown { label, form: typer::RecordUse::Accessor, .. } if label.as_str() == "name"),
+        "got {:?}",
+        error.kind
+    );
+    assert_eq!(
+        error.message(),
+        "cannot type the accessor `.name`: nothing in this declaration says which record type it reads"
+    );
+    assert_eq!(primary_range(&error), range_of(source, ".name"));
+}
+
+/// `f person = person.name` and `f r = { r | x = 1 }` are each an error with the caret
+/// across the form, saying an annotation would supply the type — the use does not decide
+/// the record's type — and each checks once annotated.
+///
+/// Mutation-checked by letting a field constraint solve its record type: in
+/// `FieldConstraint::read`, a record type still a variable answered with the equation
+/// between it and `{ label : field }`. Both unannotated declarations then check, as the
+/// one-field record their use touches, and `one_type_error` panics.
+#[test]
+fn a_use_does_not_decide_a_records_type() {
+    let access = indoc::indoc! {r#"
+        module Test exposing ()
+
+        f person =
+          person.name
+    "#};
+    let update = indoc::indoc! {r#"
+        module Test exposing ()
+
+        f r =
+          { r | x = 1 }
+    "#};
+
+    for (source, form, text) in [
+        (access, typer::RecordUse::Access, "person.name"),
+        (update, typer::RecordUse::Update, "{ r | x = 1 }"),
+    ] {
+        let error = one_type_error(source);
+        assert!(
+            matches!(&error.kind, typer::ErrorKind::RecordTypeUnknown { form: found, .. } if *found == form),
+            "got {:?}",
+            error.kind
+        );
+        assert_eq!(primary_range(&error), range_of(source, text));
+        assert!(
+            error
+                .notes()
+                .contains(&"a type annotation on `f` would supply it".to_string()),
+            "got {:?}",
+            error.notes()
+        );
+    }
+
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        f : { name : Char } -> Char
+        f person =
+          person.name
+
+        g : { x : Int } -> { x : Int }
+        g r =
+          { r | x = 1 }
+    "#});
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "f").tpe),
+        "{ name : Char } -> Char"
+    );
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "g").tpe),
+        "{ x : Int } -> { x : Int }"
+    );
+}
+
+/// A record type supplied by a record expression written *after* the access in the
+/// same declaration counts: the access is read once the whole declaration is solved.
+///
+/// Mutation-checked by reading the field constraints in `infer_annotated` against the
+/// substitution of the annotation alone, before the body's equations are solved:
+/// `r.a`'s record type is then still a variable, and `read` is rejected.
+#[test]
+fn a_record_written_after_an_access_supplies_its_type() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        first : a -> b -> a
+        first x y =
+          x
+
+        same : a -> a -> a
+        same x y =
+          x
+
+        read r =
+          first r.a (same r { a = 'c' })
+    "#});
+
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "read").tpe),
+        "{ a : Char } -> Char"
+    );
+}
+
+/// A field read off a field: `r.a.b` and `(.a r).b` each read the record type the first
+/// read solved, and an access whose record type is only solved by a read written *after*
+/// it waits for that one.
+///
+/// Mutation-checked by reading the field constraints in one pass only, a constraint
+/// whose record type is still a variable being an error at once (`unifier::read_fields`
+/// returning `field.unknown()` instead of keeping it): `later` is then rejected, since
+/// `x.b` is collected before the `.a` that solves `x`.
+#[test]
+fn a_field_of_a_field_is_read_in_turn() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        first : a -> b -> a
+        first x y =
+          x
+
+        same : a -> a -> a
+        same x y =
+          x
+
+        chained : { a : { b : Int } } -> Int
+        chained r =
+          r.a.b
+
+        accessed : { a : { b : Int } } -> Int
+        accessed r =
+          (.a r).b
+
+        later r x =
+          first x.b (same x (same r { a = { b = 'c' } }).a)
+    "#});
+
+    for name in ["chained", "accessed"] {
+        assert_eq!(
+            format!("{}", typed_declaration(&solved, name).tpe),
+            "{ a : { b : Int } } -> Int"
+        );
+    }
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "later").tpe),
+        "{ a : { b : Char } } -> { b : Char } -> Char"
+    );
+}
+
+/// An unannotated chain is reported at its root, the access whose record type the rest
+/// wait on, in whichever order the two are collected: `r.a.b` collects `r.a` first, and
+/// `.b r.a` collects `.b` first, since an application walks its function before its
+/// argument.
+///
+/// Mutation-checked by having `unifier::unknown` blame the first constraint left instead
+/// of the first root (`unexplained.first()` alone): `.b r.a` is then reported at `.b`,
+/// and its label assertion goes red.
+#[test]
+fn an_unannotated_chain_is_reported_at_its_root() {
+    for (source, root) in [
+        (
+            indoc::indoc! {r#"
+                module Test exposing ()
+
+                g r =
+                  r.a.b
+            "#},
+            "r.a.b",
+        ),
+        (
+            indoc::indoc! {r#"
+                module Test exposing ()
+
+                g r =
+                  .b r.a
+            "#},
+            ".b r.a",
+        ),
+    ] {
+        let error = one_type_error(source);
+        assert!(
+            matches!(&error.kind, typer::ErrorKind::RecordTypeUnknown { label, .. } if label.as_str() == "a"),
+            "in {:?}, got {:?}",
+            root,
+            error.kind
+        );
+        assert_eq!(primary_range(&error), range_within(source, root, "r.a"));
+    }
+}
+
+/// A type variable inside a record type is instantiated afresh at each use, like one
+/// anywhere else in a declared type, so one declaration may read `{ x : a }` at two
+/// field types, and a use at the wrong one is an error.
+///
+/// Mutation-checked by having `Types::instantiate` return a record type unchanged: the
+/// two uses in `both` then share `a`, which cannot be both `number` and `Char`, and the
+/// solve panics; and `wrong`'s result is a fresh variable unrelated to its argument, so
+/// it checks.
+#[test]
+fn a_record_type_holding_a_variable_is_instantiated_at_each_use() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        get : { x : a } -> a
+        get r =
+          r.x
+
+        both : (Int, Char)
+        both =
+          (get { x = 1 }, get { x = 'c' })
+    "#});
+    let get = typed_declaration(&solved, "get");
+    let a = variable_of(get);
+    assert_eq!(format!("{}", get.tpe), format!("{{ x : {} }} -> {}", a, a));
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "both").tpe),
+        "( Int, Char )"
+    );
+
+    let error = one_type_error(indoc::indoc! {r#"
+        module Test exposing ()
+
+        get : { x : a } -> a
+        get r =
+          r.x
+
+        wrong : Char
+        wrong =
+          get { x = 1 }
+    "#});
+    assert_eq!(error.declaration.as_str(), "wrong");
+}
+
+/// The text of the single type variable `term`'s type ends in — `get`'s `a`, whose
+/// number is the typer's business.
+fn variable_of(term: &TypedTerm) -> String {
+    match &term.tpe {
+        typer::Type::Fun { return_tpe, .. } => format!("{}", return_tpe),
+        other => panic!("expected a function, got {:?}", other),
+    }
+}
+
+/// A field read off a type that is not a record is an error under the label, with a
+/// secondary label under the annotation the type came from.
+///
+/// Mutation-checked by answering `Ok(None)` from `FieldConstraint::read` for a type of
+/// any other form: the access then waits forever and is reported as
+/// `RecordTypeUnknown`, and the variant assertion goes red. The secondary label is
+/// mutation-checked by having `FieldConstraint::read` give `NotARecord` `because: None`:
+/// the labels assertion goes red.
+#[test]
+fn a_field_of_a_type_that_is_not_a_record_is_an_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        f : Int -> Int
+        f n =
+          n.x
+    "#};
+
+    let error = one_type_error(source);
+    assert!(
+        matches!(&error.kind, typer::ErrorKind::NotARecord { tpe, .. } if format!("{}", tpe) == "Int"),
+        "got {:?}",
+        error.kind
+    );
+    assert_eq!(primary_range(&error), range_within(source, "n.x", "x"));
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(source, "n.x", "x"),
+            range_of(source, "f : Int -> Int"),
+        ]
+    );
+}
+
+/// An annotation's own type variable written for the record supplies no record type:
+/// `r.x` against `a` is as unknown as against no annotation at all, and the note says
+/// the annotation writes a type variable there rather than asking for one.
+///
+/// Mutation-checked as [`a_use_does_not_decide_a_records_type`] is: letting a field
+/// constraint solve its record type makes `f` check. The note is mutation-checked by
+/// having `infer_annotated` pass `annotated: false` to `unifier::read_fields`: the
+/// supplier is then `Annotation`, and the variant assertion goes red.
+#[test]
+fn a_type_variable_is_not_a_record_type() {
+    let error = one_type_error(indoc::indoc! {r#"
+        module Test exposing ()
+
+        f : a -> Int
+        f r =
+          r.x
+    "#});
+    assert!(
+        matches!(
+            &error.kind,
+            typer::ErrorKind::RecordTypeUnknown {
+                supplier: typer::Supplier::AnnotationVariable,
+                ..
+            }
+        ),
+        "got {:?}",
+        error.kind
+    );
+    let notes = error.notes();
+    assert!(
+        notes.contains(&"the annotation on `f` does not say which record type this is: it writes a type variable where the record type would be spelled out".to_string()),
+        "got {:?}",
+        notes
+    );
+    assert!(
+        !notes.iter().any(|note| note.contains("would supply it")),
+        "got {:?}",
+        notes
+    );
+}
+
+/// A record type that is not part of the declaration's type — an accessor handed to a
+/// parameter that takes any value — is one no annotation on the declaration could
+/// supply, annotated or not, and the note says so instead of asking for one.
+///
+/// Mutation-checked by having `unifier::unknown` take every record type as part of the
+/// declaration's (`declared.contains(&record) || true`): `annotated`'s supplier is then
+/// `AnnotationVariable`, and the variant assertion goes red.
+#[test]
+fn a_record_type_outside_the_declarations_type_is_the_bodys_to_supply() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        first : a -> b -> a
+        first x y =
+          x
+
+        annotated : Int -> Int
+        annotated n =
+          first n .x
+
+        unannotated n =
+          first n .x
+    "#};
+
+    let errors = type_errors(source);
+    assert_eq!(errors.len(), 2, "got {:?}", errors);
+    for error in &errors {
+        let name = error.declaration.as_str();
+        assert!(
+            matches!(
+                &error.kind,
+                typer::ErrorKind::RecordTypeUnknown {
+                    supplier: typer::Supplier::Body,
+                    ..
+                }
+            ),
+            "for {}, got {:?}",
+            name,
+            error.kind
+        );
+        assert!(
+            error.notes().contains(&format!(
+                "it is not part of `{}`'s type, so no annotation on `{}` could supply it",
+                name, name
+            )),
+            "for {}, got {:?}",
+            name,
+            error.notes()
+        );
+    }
+}
+
+/// A constructor whose argument is a record is typed like any other, so a `case` on it
+/// reads the record's fields.
+///
+/// Mutation-checked by having `canonical_type_to_typer_type` answer `None` for a record
+/// type again: `Link` then drops out of the environment, `value` comes back
+/// `Untranslatable`, and `typed_declaration` panics.
+#[test]
+fn a_constructor_holding_a_record_is_typed() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Chain
+          = End
+          | Link { value : Int, next : Chain }
+
+        value : Chain -> Int
+        value c =
+          case c of
+            Link r ->
+              r.value
+
+            End ->
+              0
+
+        link : Chain
+        link =
+          Link { value = 1, next = End }
+    "#});
+
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "value").tpe),
+        "Chain -> Int"
+    );
+    assert_eq!(
+        format!("{}", typed_declaration(&solved, "link").tpe),
+        "Chain"
+    );
+}
+
+/// A field read off a name that did not resolve raises no type error of its own when
+/// the name's real type could have supplied its record type — the record is the name
+/// (`f`), the result of applying it (`h`), or a field read off either (`chained`,
+/// `accessed`) — because the name's own error, the one to fix, is reported already
+/// ([`DEC-23` decisions 3 and 6](../../../docs/decisions/dec-23.md)). A record type
+/// nothing the name could be would supply is still reported beside it (`g`).
+///
+/// Mutation-checked three ways, in `unifier`, each turning the first assertion red: by
+/// passing `&[]` for the holes in `unknown`, at `f`; by having `reach` return its seeds'
+/// variables without the rounds, at `chained`; and by seeding it with only those holes'
+/// types that are a bare variable (the hole's type, not its variables), at `h`.
+#[test]
+fn a_field_of_an_unresolved_name_is_not_reported_again() {
+    let interfaces = HashMap::from([basics_interface(), char_interface()]);
+    let canonical = canonicalize_recovering_with_interfaces(
+        indoc::indoc! {r#"
+            module Test exposing ()
+
+            f : Int
+            f =
+              missing.x
+
+            h : Int -> Int
+            h z =
+              (missing z).x
+
+            chained : Int
+            chained =
+              missing.x.y
+
+            accessed : Int
+            accessed =
+              (.x missing).y
+
+            g person =
+              first missing person.name
+
+            first : a -> b -> a
+            first x y =
+              x
+        "#},
+        &interfaces,
+    );
+    assert!(!canonical.errors.is_empty(), "`missing` does not resolve");
+
+    let check = typer::type_check_recovering(&canonical.module, &interfaces);
+    for name in ["f", "h", "chained", "accessed"] {
+        assert!(
+            matches!(check.solved.get(&Name::new(name)), Some(Solved::Typed(_))),
+            "for {}, got {:?}",
+            name,
+            check.solved.get(&Name::new(name))
+        );
+    }
+    let declarations: Vec<&str> = check
+        .errors
+        .iter()
+        .map(|e| e.declaration.as_str())
+        .collect();
+    assert_eq!(declarations, vec!["g"], "got {:?}", check.errors);
+    assert!(matches!(
+        check.errors[0].kind,
+        typer::ErrorKind::RecordTypeUnknown { .. }
+    ));
 }

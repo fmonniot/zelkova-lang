@@ -5,6 +5,10 @@
 //! inherits it, and the two errors raised here hand it to the caller. That is the
 //! whole of "propagate the origin of the constraint it failed on".
 //!
+//! [`read_fields`] is the second step, run once [`unify`] has solved every equation of a
+//! declaration: it reads the field constraints an access, an update and an accessor
+//! wrote, and raises the three errors about a record's use — see `FieldConstraint`.
+//!
 //! The one place unification's symmetry is broken is [`unify_variable`], which is
 //! told which *side* of the constraint the type it is solving to was read from. That
 //! is not inference — the solution is the same either way — it is what lets a
@@ -12,7 +16,11 @@
 
 use log::debug;
 
-use super::{occurs, Constraint, ErrorKind, Side, Substitution, Type, TypeLiteral, TypeVariable};
+use super::{
+    occurs, Constraint, ErrorKind, FieldConstraint, Side, Substitution, Supplier, Type,
+    TypeLiteral, TypeVariable,
+};
+use std::collections::HashSet;
 use zelkova_syntax::tuple::Tuple;
 
 /// Returns true if `tpe` is a numeric type (Int, Float, or Number).
@@ -112,6 +120,23 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
                 .collect();
             unify(constraints)
         }
+        // Records: the same label set, then each label's two field types pairwise, in
+        // label order. A label one side has and the other lacks is a mismatch of the
+        // two whole types, as a `Two` against a `Three` is — there is no row variable
+        // for the missing fields to be solved into (see `Type::Record`).
+        (Type::Record(fields1), Type::Record(fields2))
+            if fields1.len() == fields2.len()
+                && fields1.keys().all(|label| fields2.contains_key(label)) =>
+        {
+            let constraints = fields1
+                .iter()
+                .filter_map(|(label, tpe1)| {
+                    let tpe2 = fields2.get(label)?;
+                    Some(constraint.component(tpe1.clone(), tpe2.clone()))
+                })
+                .collect();
+            unify(constraints)
+        }
         // `Side` names where `tpe` was read from, not where the variable was: it is
         // the solved *type* whose provenance the solution carries.
         (Type::Variable(tvar), tpe) => unify_variable(tvar, tpe, Side::Right, constraint),
@@ -121,6 +146,202 @@ fn unify_one_constraint(constraint: &Constraint) -> Result<Substitution, ErrorKi
             right: Box::new(right.clone()),
             origin: Box::new(constraint.origin.clone()),
         }),
+    }
+}
+
+/// Read every [`FieldConstraint`] of a declaration against `substitution`, the solution
+/// of all of its equations, and hand back that solution extended by what reading them
+/// solved.
+///
+/// The constraints are read in passes, in the order given; a pass reads every one still
+/// undecided, and each sees what the ones before it solved. One whose record type is a
+/// record becomes an equation, solved here and merged in; one whose record type is
+/// still a variable waits for the next pass. A pass that decides nothing ends the
+/// reading, and one of the constraints still waiting is the error — so every pass either
+/// shrinks what is left or is the last, and none repeats. `FieldConstraint` has the
+/// design this implements.
+///
+/// Which constraint still waiting is the error, whether a hole explains them all so
+/// that none is, and what its note says, are [`unknown`]'s to decide from `declaration`.
+pub(super) fn read_fields(
+    substitution: Substitution,
+    fields: Vec<FieldConstraint>,
+    declaration: &Declaration,
+) -> Result<Substitution, ErrorKind> {
+    let mut substitution = substitution;
+    let mut pending = fields;
+
+    while !pending.is_empty() {
+        let before = pending.len();
+        let mut waiting = Vec::new();
+
+        for field in pending {
+            match field.read(&substitution)? {
+                Some(equation) => {
+                    let solved = unify(vec![equation])?;
+                    substitution = substitution.merge(solved);
+                }
+                None => waiting.push(field),
+            }
+        }
+
+        if waiting.len() == before {
+            // Nothing this pass decided can change what the next one would read.
+            return match unknown(&waiting, &substitution, declaration) {
+                Some(error) => Err(error),
+                None => Ok(substitution),
+            };
+        }
+
+        pending = waiting;
+    }
+
+    Ok(substitution)
+}
+
+/// What [`read_fields`] needs to know of the declaration beside its field constraints,
+/// to say which waiting one is the error and what would supply its record type.
+pub(super) struct Declaration<'a> {
+    /// The type of every hole in the declaration (`constraint::Constraints::holes`).
+    pub(super) holes: &'a [Type],
+    /// The declaration's own type, before the substitution: its annotation's, once
+    /// solved, when it has one.
+    pub(super) declared: &'a Type,
+    /// Whether the declaration has an annotation.
+    pub(super) annotated: bool,
+}
+
+/// The error `waiting` is — the field constraints a pass of [`read_fields`] decided none
+/// of — or `None` when a hole explains every one of them.
+///
+/// **What a hole explains.** A hole is a name that did not resolve, and its own error
+/// is already reported; a constraint whose record type the name's real type could
+/// have supplied only restates it, and is dropped
+/// ([`DEC-23` decision 3](../../../docs/decisions/dec-23.md#3--an-error-that-restates-a-reported-failure-is-dropped-by-a-flag-on-the-scope)).
+/// That is a constraint whose record type is [`reach`]ed from the holes' types: one of
+/// their variables, as in `missing.x` or `(missing z).x`, or the field type of a use
+/// that is, as in `missing.x.y`. Every other constraint is still reported, holes or no
+/// holes in the declaration, because a hole "takes whatever type its surroundings
+/// require and the rest of the body is checked"
+/// ([decision 6](../../../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)):
+/// in `first missing person.name`, nothing the name could resolve to would say what
+/// `person` is.
+///
+/// **Which one is the error.** Of the constraints left, the first one whose record type
+/// no *other* of them reaches as part of its field type — the root a chain waits on:
+/// `r.a` in both `r.a.b` and `.b r.a`, though `.b` is collected first in the second.
+/// If every one is reached by another, the first. Only that one is reported, and the
+/// others surface once it is fixed — as `unify` stops at a declaration's first failed
+/// equation, so a declaration is rejected for one error.
+///
+/// **What its note says** is [`Supplier`]: whether the record type is reached from the
+/// declaration's own type, so that an annotation on the declaration could supply it.
+fn unknown(
+    waiting: &[FieldConstraint],
+    substitution: &Substitution,
+    declaration: &Declaration,
+) -> Option<ErrorKind> {
+    let record_of = |field: &FieldConstraint| match substitution.apply_type(&field.record) {
+        Type::Variable(tvar) => Some(tvar),
+        _ => None,
+    };
+
+    let explained = reach(declaration.holes, waiting, substitution);
+    let unexplained: Vec<(usize, &FieldConstraint)> = waiting
+        .iter()
+        .enumerate()
+        .filter(|(_, field)| match record_of(field) {
+            Some(record) => !explained.contains(&record),
+            None => true,
+        })
+        .collect();
+
+    let fed = |at: usize, record: &TypeVariable| {
+        unexplained.iter().any(|(other, field)| {
+            let mut variables = HashSet::new();
+            free_variables(&substitution.apply_type(&field.field), &mut variables);
+            *other != at && variables.contains(record)
+        })
+    };
+    let (_, blamed) = unexplained
+        .iter()
+        .find(|(at, field)| match record_of(field) {
+            Some(record) => !fed(*at, &record),
+            None => true,
+        })
+        .or(unexplained.first())?;
+
+    let declared = reach(
+        std::slice::from_ref(declaration.declared),
+        waiting,
+        substitution,
+    );
+    let supplier = match record_of(blamed) {
+        Some(record) if declared.contains(&record) => {
+            if declaration.annotated {
+                Supplier::AnnotationVariable
+            } else {
+                Supplier::Annotation
+            }
+        }
+        _ => Supplier::Body,
+    };
+
+    Some(blamed.unknown(supplier))
+}
+
+/// The variables of `seeds` once solved, and every variable a waiting constraint would
+/// solve if the type it reads were supplied: the field type of each constraint whose
+/// record type is one of them, and so on until nothing is added.
+///
+/// Supplying a type for any of these variables decides exactly the constraints whose
+/// record types are among them, and no other: that is the question [`unknown`] asks
+/// twice, of the holes' types and of the declaration's.
+///
+/// Each round adds at least one variable or is the last, and there are only so many
+/// variables in `waiting`'s field types, so the rounds stop.
+fn reach(
+    seeds: &[Type],
+    waiting: &[FieldConstraint],
+    substitution: &Substitution,
+) -> HashSet<TypeVariable> {
+    let mut reached = HashSet::new();
+    for seed in seeds {
+        free_variables(&substitution.apply_type(seed), &mut reached);
+    }
+
+    loop {
+        let before = reached.len();
+        for field in waiting {
+            if let Type::Variable(record) = substitution.apply_type(&field.record) {
+                if reached.contains(&record) {
+                    free_variables(&substitution.apply_type(&field.field), &mut reached);
+                }
+            }
+        }
+        if reached.len() == before {
+            return reached;
+        }
+    }
+}
+
+/// Every type variable in `tpe`, added to `into`.
+fn free_variables(tpe: &Type, into: &mut HashSet<TypeVariable>) {
+    match tpe {
+        Type::Literal(_) | Type::Number | Type::Unit => (),
+        Type::Variable(tvar) => {
+            into.insert(tvar.clone());
+        }
+        Type::Fun {
+            param_tpe,
+            return_tpe,
+        } => {
+            free_variables(param_tpe, into);
+            free_variables(return_tpe, into);
+        }
+        Type::Tuple(tuple) => tuple.iter().for_each(|t| free_variables(t, into)),
+        Type::Adt(_, args) => args.iter().for_each(|t| free_variables(t, into)),
+        Type::Record(fields) => fields.values().for_each(|t| free_variables(t, into)),
     }
 }
 
