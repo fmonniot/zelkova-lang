@@ -394,16 +394,21 @@ pub enum ErrorKind {
         label: Name,
         form: RecordUse,
         span: NodeSpan,
+        /// Where the record type came from — the annotation, typically — when something
+        /// brought it in; the secondary label goes under it.
+        because: Option<Cause>,
     },
     /// A field access, an update or an accessor whose record is not a record at all:
     /// the type it reads a field of was solved to a type of another form.
     ///
-    /// `span` is where [`MissingField`](Self::MissingField)'s would be.
+    /// `span` is where [`MissingField`](Self::MissingField)'s would be, and `because` is
+    /// as there.
     NotARecord {
         tpe: Box<Type>,
         label: Name,
         form: RecordUse,
         span: NodeSpan,
+        because: Option<Cause>,
     },
 }
 
@@ -488,6 +493,17 @@ impl ErrorKind {
                 Spelled(tpe, spellings),
                 label.as_str()
             ),
+        }
+    }
+
+    /// Where the type `MissingField` and `NotARecord` read a field of came from, when
+    /// something brought it in: the secondary label of each, as a mismatch's is.
+    fn record_use_because(&self) -> Option<Cause> {
+        match self {
+            ErrorKind::MissingField { because, .. } | ErrorKind::NotARecord { because, .. } => {
+                *because
+            }
+            _ => None,
         }
     }
 
@@ -654,6 +670,21 @@ impl PhaseError for Error {
                             primary: true,
                             file: None,
                         });
+                    }
+                }
+
+                // As a mismatch's below, and for the same two reasons drawn only beside
+                // a primary label on other text.
+                if let (Some(primary), Some(because)) = (labels.first(), kind.record_use_because())
+                {
+                    match because.span.span() {
+                        Some(span) if span != primary.span => labels.push(SpanLabel {
+                            span,
+                            message: because.reason.explains().to_owned(),
+                            primary: false,
+                            file: None,
+                        }),
+                        _ => (),
                     }
                 }
             }
@@ -2332,7 +2363,9 @@ pub enum Supplier {
 /// - **A record type without it**: [`ErrorKind::MissingField`], at `label_span`. For an
 ///   update that is the update that would add a field.
 /// - **Another type that is not a variable**: [`ErrorKind::NotARecord`], at
-///   `label_span`.
+///   `label_span`. Each of these two carries what brought the record type in — the
+///   probe's origin's cause for its left side — for a secondary label, as a mismatch's
+///   explanation is.
 /// - **Still a variable**: not decided yet. Reading another field constraint may solve
 ///   it: in `r.a.b` the record type of `.b` is the field type `.a` reads, and in `(.a
 ///   r).b` it is the accessor's result. So the constraints are read in passes, in the
@@ -2432,6 +2465,7 @@ impl FieldConstraint {
                     label: self.label.clone(),
                     form: self.form,
                     span: self.label_span,
+                    because: probe.origin.left_from,
                 }),
             },
             other => Err(ErrorKind::NotARecord {
@@ -2439,6 +2473,7 @@ impl FieldConstraint {
                 label: self.label.clone(),
                 form: self.form,
                 span: self.label_span,
+                because: probe.origin.left_from,
             }),
         }
     }
