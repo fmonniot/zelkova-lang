@@ -23,8 +23,12 @@
 //   - `Object.assign` in place of the spread: "an update answers a new object";
 //   - `mangle` applied to a label in `key` and `property`: "a reserved word and an inherited
 //     name are fields of the record" and `zelkova test`'s `reservedAndInheritedLabelsAreFields`;
-//   - `Predicates::test` for a record with the `Reflect.ownKeys` count deleted: "an extra
-//     field", "a symbol key" and "a non-enumerable property" abort tests;
+//   - `Predicates::test` for a record with the `Reflect.ownKeys` count deleted: "a symbol key"
+//     and "a non-enumerable property" abort tests (an extra field still aborts, by the
+//     `Object.keys` count that stays);
+//   - the `Object.keys` count deleted: "a label that is a non-enumerable own property";
+//   - a test that the prototype is `Object.prototype` added: "may be frozen, an instance of a
+//     class, or have no prototype";
 //   - `Object.hasOwn` replaced by `in`: "a field only the prototype has";
 //   - `Object.hasOwn` deleted: "a missing field of type ()" and the same abort test;
 //   - the `!Array.isArray` and `!== null` tests deleted: the abort test "on null, and on an array".
@@ -165,6 +169,17 @@ describe("a record a companion returns of its declared type", () => {
     assert.deepEqual(Source.rightKeyed(1n), { class: 1n, new: 2n, constructor: 3n, toString: 4n });
   });
 
+  test("may be frozen, an instance of a class, or have no prototype", () => {
+    for (const right of [Source.rightFrozen, Source.rightInstance, Source.rightNullPrototype]) {
+      const record = right(3n);
+      assert.equal(record.x, 3n);
+      assert.equal(record.y, 4n);
+    }
+    assert.equal(Object.getPrototypeOf(Source.rightNullPrototype(3n)), null);
+    assert.equal(Source.rightInstance(3n).constructor.name, "Point");
+    assert.ok(Object.isFrozen(Source.rightFrozen(3n)));
+  });
+
   test("is handed to a companion as the plain object it is", () => {
     assert.equal(Source.sumFields(Records.point(3n, 4n)), 7n);
   });
@@ -208,6 +223,10 @@ describe("a value a companion returns that is not the record its signature decla
 
   test("aborts on a non-enumerable property beside the fields", () => {
     assert.throws(() => Source.wrongHidden(1n), aborted("wrongHidden", "{ x : Int }"));
+  });
+
+  test("aborts on a label that is a non-enumerable own property", () => {
+    assert.throws(() => Source.wrongHiddenLabel(1n), aborted("wrongHiddenLabel", point));
   });
 
   test("aborts on a record that is wrong in a tuple in a record", () => {
