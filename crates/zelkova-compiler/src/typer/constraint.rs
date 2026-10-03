@@ -19,11 +19,11 @@
 //!   declared side, because that is the order the headline reads them out in (see
 //!   [`Constraint`]).
 //!
-//! A field access, an update's fields and an accessor say something about a record type
-//! that is not an equation, and are collected into a list of their own, read after the
-//! equations are solved — see [`FieldConstraint`]. That list is in the order the labels
-//! were written, which is not the first rule's order: an access's record comes before
-//! its own label.
+//! A field access, an update's fields, an accessor and a record pattern's entries say
+//! something about a record type that is not an equation, and are collected into a list of
+//! their own, read after the equations are solved — see [`FieldConstraint`]. That list is
+//! in the order the labels were written, which is not the first rule's order: an access's
+//! record comes before its own label.
 
 use super::{
     bool_type, CaseForm, Constraint, FieldConstraint, Reason, RecordUse, SubPattern, TermPattern,
@@ -196,7 +196,7 @@ fn walk(term: &TypedTerm, out: &mut Constraints) {
             for (pattern, body) in branches {
                 // Each pattern constrains the scrutinee type. The pattern is what the
                 // caret should sit under, so the pattern's type is `left`.
-                pattern_constraints(pattern, &scrutinee.tpe, pattern_reason, &mut out.equations);
+                pattern_constraints(pattern, &scrutinee.tpe, pattern_reason, out);
                 // Every branch must return the case expression's type. Pushed after the
                 // pattern's constraint, which is what links the names the pattern binds
                 // to the scrutinee: a tuple pattern's elements are fresh variables until
@@ -328,10 +328,10 @@ fn walk(term: &TypedTerm, out: &mut Constraints) {
 pub(super) struct Constraints {
     pub(super) equations: Vec<Constraint>,
     pub(super) fields: Vec<FieldConstraint>,
-    /// The type of every hole in the term. A field constraint whose record type nothing
-    /// supplied, and which the name's real type could have, is not reported: the error
-    /// that the name did not resolve already stands behind it, and is the one the user
-    /// has to fix. `unifier::unknown` says which constraints those are, and why only
+    /// The type of every hole in the term, and of every argument of a constructor pattern
+    /// that did not resolve. A field constraint whose record type nothing supplied, and
+    /// which the name's real type could have, is not reported: the error that the name
+    /// did not resolve already stands behind it, and is the one the user has to fix. `unifier::unknown` says which constraints those are, and why only
     /// those ([`DEC-23` decisions 3 and
     /// 6](../../../docs/decisions/dec-23.md#6--an-unresolved-name-inside-a-sound-body-is-a-typed-hole)).
     pub(super) holes: Vec<Type>,
@@ -339,20 +339,26 @@ pub(super) struct Constraints {
 
 /// The constraints a pattern places on `against`, the type of the value it is matched
 /// against: the scrutinee's for a branch's own pattern, and the type its position
-/// carries for a constructor's argument or a tuple's element.
+/// carries for a constructor's argument, a tuple's element or a record pattern's entry.
 ///
 /// The pattern's own constraint comes first, then its sub-patterns', left to right and
 /// depth first. A variable or `_` constrains nothing: a variable's type is `against`
 /// already, as `TermPattern::bindings` gives it. A constructor that did not resolve
-/// constrains nothing of its own either, and its arguments are constrained as a
-/// constructor's are. A sub-pattern is held to the type of its position exactly as a
-/// branch's pattern is held to the scrutinee's, so a nested constructor of the wrong
-/// type is blamed on the nested pattern, at its own span.
+/// constrains nothing of its own either, its arguments are constrained as a
+/// constructor's are, and their types are holes (see [`Constraints::holes`]). A
+/// sub-pattern is held to the type of its position exactly as a branch's pattern is held
+/// to the scrutinee's, so a nested constructor of the wrong type is blamed on the nested
+/// pattern, at its own span.
+///
+/// A record pattern's own constraint is not an equation: it names a subset of the
+/// record's fields, so it cannot build the record type `against` has to equal. Each entry
+/// is a [`FieldConstraint`] on `against` instead, pushed onto the field list in the order
+/// the entries were written, read once the equations are solved.
 fn pattern_constraints(
     pattern: &TermPattern,
     against: &Type,
     reason: Reason,
-    constraints: &mut Vec<Constraint>,
+    out: &mut Constraints,
 ) {
     let (own, subs): (Option<Type>, Vec<&SubPattern>) = match &pattern.kind {
         TermPatternKind::Literal { tpe, .. } => (Some(tpe.clone()), vec![]),
@@ -371,15 +377,35 @@ fn pattern_constraints(
         ),
         TermPatternKind::Bind(_) | TermPatternKind::Anything => (None, vec![]),
         // A constructor that did not resolve says nothing about the type it would have
-        // built, and its arguments are constrained as a constructor's are.
-        TermPatternKind::Hole { args } => (None, args.iter().collect()),
+        // built, and its arguments are constrained as a constructor's are. What it would
+        // have said about each argument is the hole's: a record pattern written as one
+        // has its record type in what the constructor's real type would have supplied.
+        TermPatternKind::Hole { args } => {
+            out.holes.extend(args.iter().map(|arg| arg.tpe.clone()));
+            (None, args.iter().collect())
+        }
+        TermPatternKind::Record { fields } => {
+            for field in fields {
+                out.fields.push(FieldConstraint {
+                    record: against.clone(),
+                    label: field.label.clone(),
+                    field: field.value.tpe.clone(),
+                    form: RecordUse::Pattern,
+                    form_span: pattern.span,
+                    label_span: field.label_span,
+                    field_span: field.value.pattern.span,
+                });
+            }
+            (None, fields.iter().map(|field| &field.value).collect())
+        }
     };
 
     if let Some(own) = own {
-        constraints.push(Constraint::new(own, against.clone(), reason, pattern.span));
+        out.equations
+            .push(Constraint::new(own, against.clone(), reason, pattern.span));
     }
     for sub in subs {
-        pattern_constraints(&sub.pattern, &sub.tpe, reason, constraints);
+        pattern_constraints(&sub.pattern, &sub.tpe, reason, out);
     }
 }
 
