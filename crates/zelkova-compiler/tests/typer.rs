@@ -257,9 +257,9 @@ fn a_mistyped_bare_constructor_body_is_blamed_only_through_the_annotation() {
 /// differently, and swapping them would tell the reader to go and change the
 /// annotation.
 ///
-/// The `1` in the true branch is deliberately not named anywhere: it is a `number`,
-/// which unifies with `Int` happily, so only one of the two branches is wrong and only
-/// one caret is right.
+/// The `1` in the true branch is deliberately not named anywhere: it is an `Int`,
+/// which the `Int` the other branch is annotated with accepts, so only one of the two
+/// branches is wrong and only one caret is right.
 ///
 /// Mutation-checked three ways, each red on its own: giving every `Term` built by
 /// `canonical_expr_to_term` a `NodeSpan::none()` (the labels fall back to the whole
@@ -908,8 +908,7 @@ fn a_module_declaring_its_own_bool_annotates_with_it() {
 /// type, so the positive half above is not passing because the annotation stopped
 /// constraining anything.
 ///
-/// An integer literal is still `number` until `LANG-41`, which is the type the
-/// message names.
+/// An integer literal is an `Int`, which is the type the message names.
 ///
 /// Mutation-checked by the same restoration: the annotation is then the literal
 /// `Bool`, which the `True` pattern already fails to match, so the one error is no
@@ -935,12 +934,12 @@ fn a_module_declaring_its_own_bool_still_rejects_a_wrong_branch() {
 
     assert_eq!(
         one_type_error(source).message(),
-        "cannot match `Bool` with `number`"
+        "cannot match `Bool` with `Int`"
     );
 }
 
 /// A module's own `Int` and `Basics`' `Int` are two types: an integer literal can
-/// be the second (it is `number` until `LANG-41`) and is never the first.
+/// be the second and is never the first.
 ///
 /// Mutation-checked by restoring the match on the unqualified half in
 /// `scalars::Scalar::declares`: the local `Int` becomes the literal `Int` and the
@@ -956,7 +955,7 @@ fn a_module_declaring_its_own_int_does_not_get_the_scalar() {
 
     assert_eq!(
         one_type_error(source).message(),
-        "cannot match `Int` with `number`"
+        "cannot match `Int` with `Int`"
     );
 }
 
@@ -1002,8 +1001,7 @@ fn basics_own_bool_is_the_union_its_constructors_build() {
 /// The negative half: `Basics`' `Bool` still rejects a value of another type, so the
 /// test above is not passing because the annotation stopped constraining anything.
 ///
-/// An integer literal is still `number` until `LANG-41`, which is the type the
-/// message names.
+/// An integer literal is an `Int`, which is the type the message names.
 #[test]
 fn basics_own_bool_still_rejects_a_wrong_value() {
     let source = indoc::indoc! {r#"
@@ -1019,7 +1017,7 @@ fn basics_own_bool_still_rejects_a_wrong_value() {
 
     assert_eq!(
         one_type_error(source).message(),
-        "cannot match `Bool` with `number`"
+        "cannot match `Bool` with `Int`"
     );
 }
 
@@ -1102,7 +1100,7 @@ fn a_declaration_the_typer_cannot_resolve_comes_back_marked() {
 
     assert_eq!(
         format!("{}", typed_declaration(&solved, "helper").tpe),
-        "number"
+        "Int"
     );
 }
 
@@ -1487,7 +1485,7 @@ fn a_facade_declaration_comes_back_with_no_body() {
 /// [`Int` is 64 bits](../docs/spec/evaluation-semantics.md#numbers) (`DEC-16`), and the
 /// typed term is what code is generated from, so a literal that arrives at the backend
 /// narrowed is a program that computes a different number than the one written.
-/// Inference cannot notice: every integer literal is a `number` whatever its value, so
+/// Inference cannot notice: every integer literal is an `Int` whatever its value, so
 /// the module type checks either way.
 ///
 /// Mutation-checked by putting the old truncation back in `canonical_expr_to_term`
@@ -2586,7 +2584,7 @@ fn an_unannotated_chain_is_reported_at_its_root() {
 /// field types, and a use at the wrong one is an error.
 ///
 /// Mutation-checked by having `Types::instantiate` return a record type unchanged: the
-/// two uses in `both` then share `a`, which cannot be both `number` and `Char`, and the
+/// two uses in `both` then share `a`, which cannot be both `Int` and `Char`, and the
 /// solve panics; and `wrong`'s result is a fresh variable unrelated to its argument, so
 /// it checks.
 #[test]
@@ -3402,7 +3400,7 @@ fn a_record_written_after_a_record_pattern_supplies_its_type() {
 
     assert_eq!(
         format!("{}", typed_declaration(&solved, "read").tpe),
-        "{ a : Char, b : number } -> Char"
+        "{ a : Char, b : Int } -> Char"
     );
 }
 
@@ -3593,4 +3591,64 @@ fn an_entry_binding_a_name_inside_another_pattern_names_both_causes() {
                 .to_string(),
         ]
     );
+}
+
+// ── A literal's type is its spelling ──────────────────────────────────────────
+
+/// A literal written without a point is an `Int`, and one written with a point is a
+/// `Float`; nothing else decides either.
+///
+/// Mutation-checked twice: deleting the integer-literal arm's equation in
+/// `constraint::walk` leaves `x` an inference variable, and giving it `Float` makes `x`
+/// a `Float`; each turns the first assertion red.
+#[test]
+fn a_literal_is_typed_by_its_spelling() {
+    let solved = solved(indoc::indoc! {r#"
+        module Test exposing ()
+        x = 1
+        y = 1.5
+    "#});
+
+    assert_eq!(format!("{}", typed_declaration(&solved, "x").tpe), "Int");
+    assert_eq!(format!("{}", typed_declaration(&solved, "y").tpe), "Float");
+}
+
+/// An integer literal is not a `Float`: a declaration annotated `Float` with a body of
+/// `1` is a type error, and `1.0` is what it means.
+///
+/// Mutation-checked by giving the integer-literal arm of `constraint::walk` `Float`
+/// in place of `Int`, which an annotation of `Float` then accepts: the first assertion
+/// goes red.
+#[test]
+fn an_integer_literal_is_not_a_float() {
+    let error = one_type_error(indoc::indoc! {r#"
+        module Test exposing (..)
+        x : Float
+        x = 1
+    "#});
+    assert_eq!(error.message(), "cannot match `Float` with `Int`");
+
+    assert!(run(indoc::indoc! {r#"
+        module Test exposing (..)
+        x : Float
+        x = 1.0
+    "#})
+    .is_ok());
+}
+
+/// The error for an integer literal at the wrong type names `Int`, a spelling no
+/// annotation can read as a type variable.
+///
+/// Mutation-checked by deleting the integer-literal arm's equation: nothing then
+/// constrains the literal, the declaration checks, and `one_type_error` goes red.
+#[test]
+fn a_literal_mismatch_names_no_type_variable() {
+    let message = one_type_error(indoc::indoc! {r#"
+        module Test exposing (..)
+        x : Char
+        x = 1
+    "#})
+    .message();
+
+    assert_eq!(message, "cannot match `Char` with `Int`");
 }

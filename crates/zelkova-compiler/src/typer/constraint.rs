@@ -44,11 +44,10 @@ fn walk(term: &TypedTerm, out: &mut Constraints) {
 
     match &term.kind {
         TypedTermKind::Int(_) => {
-            // Integer literals are polymorphic numeric values: they can unify
-            // with Int or Float (but not Bool, Char, etc.).
+            // A literal written without a point is an `Int`, whatever it is used at.
             out.equations.push(Constraint::new(
                 tpe.clone(),
-                Type::Number,
+                Type::Literal(TypeLiteral::Int),
                 Reason::Literal,
                 span,
             ));
@@ -483,8 +482,12 @@ mod tests {
     fn constrains_int() {
         let t1 = Type::Variable(TypeVariable { id: 1 });
 
-        // Integer literals constrain to Number (polymorphic: can be Int or Float)
-        let expected = vec![constraint(t1.clone(), Type::Number, Reason::Literal)];
+        // An integer literal constrains to `Int`, and to nothing wider.
+        let expected = vec![constraint(
+            t1.clone(),
+            Type::Literal(TypeLiteral::Int),
+            Reason::Literal,
+        )];
 
         let int = typed(t1, TypedTermKind::Int(42));
 

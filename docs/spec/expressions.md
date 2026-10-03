@@ -71,9 +71,12 @@ that declaration is an error: `2` is an `Int`, so `mul x 2` forces `a` to be `In
 annotation promises more than the body supports. `double x = add x x` is the way to write it,
 and a class that wants numeric constants declares them as members.
 
-**Known gap:** the type checker gives an integer literal an internal type that unifies with
-`Int` *and* `Float`, so a declaration annotated `Float` with a body of `1` is accepted today.
-[`LANG-41`](../tickets/lang-41.md) is the ticket. No block here holds it to account.
+```zel expect=type-error
+module Example exposing (ratio)
+
+ratio : Float
+ratio = 1
+```
 
 ### There is no boolean literal
 
