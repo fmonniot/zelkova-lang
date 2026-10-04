@@ -936,9 +936,11 @@ pub fn type_check_recovering(module: &Module, interfaces: &HashMap<Name, Interfa
     // header did not expose by name is in `infix_functions` rather than `values`, and an
     // operator resolves to a `VarForeign` naming it all the same.
     for interface in interfaces.values() {
-        for (name, (_, tpe)) in interface.values.iter().chain(&interface.infix_functions) {
+        for (name, signature) in interface.values.iter().chain(&interface.infix_functions) {
             let mut var_map = HashMap::new();
-            if let Some(typer_tpe) = canonical_type_to_typer_type(tpe, &mut var_map, &mut counter) {
+            if let Some(typer_tpe) =
+                canonical_type_to_typer_type(&signature.tpe, &mut var_map, &mut counter)
+            {
                 let qname = interface.module_name.qualify_name(name);
                 global.insert(environment_key(&qname), typer_tpe);
             }

@@ -24,8 +24,8 @@ use zelkova_syntax::tuple::Tuple;
 
 /// A constraint: a class, resolved to its declaration, and the type variable it is on.
 ///
-/// What a class head's superclasses and an instance's context are made of. A constraint
-/// written in an annotation is not resolved yet, and is not one of these.
+/// What a class head's superclasses, an instance's context and an annotation's context
+/// are made of.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Constraint {
     /// The class, named by the package and module that declared it.
@@ -326,7 +326,12 @@ pub(super) fn class_signature(
 ) -> Result<ClassSignature, Vec<Error>> {
     let mut errors = Vec::new();
 
-    let superclasses = match constraints(env, class.context.as_ref(), &[variable]) {
+    let superclasses = match constraints(
+        env,
+        class.context.as_ref(),
+        &[variable],
+        Error::ConstraintVariableUnbound,
+    ) {
         Ok(superclasses) => superclasses,
         Err(context_errors) => {
             errors.extend(context_errors);
@@ -405,6 +410,36 @@ fn mentions(tpe: &Type, variable: &Name) -> bool {
     }
 }
 
+/// Every type variable `tpe` mentions, each once, in the order first written.
+///
+/// Read off the type as parsed, so an annotation's context can be checked against its
+/// type whether or not the type itself canonicalizes.
+pub(super) fn written_variables(tpe: &parser::Type) -> Vec<&Name> {
+    fn walk<'a>(tpe: &'a parser::Type, into: &mut Vec<&'a Name>) {
+        match &tpe.kind {
+            parser::TypeKind::Variable(name) => {
+                if !into.contains(&name) {
+                    into.push(name);
+                }
+            }
+            parser::TypeKind::Unqualified(_, args) => args.iter().for_each(|arg| walk(arg, into)),
+            parser::TypeKind::Arrow(param, result) => {
+                walk(param, into);
+                walk(result, into);
+            }
+            parser::TypeKind::Tuple(tuple) => tuple.iter().for_each(|element| walk(element, into)),
+            parser::TypeKind::Record(fields) => {
+                fields.iter().for_each(|field| walk(&field.value, into))
+            }
+            parser::TypeKind::Unit => {}
+        }
+    }
+
+    let mut variables = Vec::new();
+    walk(tpe, &mut variables);
+    variables
+}
+
 /// The derivations of `class`, each binding canonicalized as an ordinary value.
 ///
 /// A binding that does not canonicalize is left out and its error returned; every name
@@ -448,11 +483,18 @@ pub(super) fn derivations(
 }
 
 /// The constraints `context` writes, each resolved to a class and checked to be on one
-/// of `bound`, the variables the head it stands in front of binds.
-fn constraints(
+/// of `bound`: the variables the head it stands in front of binds, or the variables the
+/// type of the annotation it stands in front of mentions.
+///
+/// A constraint on a variable outside `bound` is reported as `unbound` builds it, from
+/// the variable and where it was written, since what the variable is missing from is
+/// the caller's to say. Every bad constraint of the context is reported, each at its
+/// own span.
+pub(super) fn constraints(
     env: &RootEnvironment,
     context: Option<&parser::Context>,
     bound: &[&Name],
+    unbound: fn(Name, NodeSpan) -> Error,
 ) -> Result<Vec<Constraint>, Vec<Error>> {
     let Some(context) = context else {
         return Ok(Vec::new());
@@ -476,7 +518,7 @@ fn constraints(
                 if bound.contains(&variable) {
                     Some(variable.clone())
                 } else {
-                    errors.push(Error::ConstraintVariableUnbound(variable.clone(), *span));
+                    errors.push(unbound(variable.clone(), *span));
                     None
                 }
             }
@@ -695,7 +737,12 @@ pub(super) fn do_instances(
         let mut instance_errors = Vec::new();
         let signature = env.class_signature(class);
 
-        let context = match constraints(env, instance.context.as_ref(), &head.variables()) {
+        let context = match constraints(
+            env,
+            instance.context.as_ref(),
+            &head.variables(),
+            Error::ConstraintVariableUnbound,
+        ) {
             Ok(context) => context,
             Err(context_errors) => {
                 instance_errors.extend(context_errors);

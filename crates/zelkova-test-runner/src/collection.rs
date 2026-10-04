@@ -84,7 +84,7 @@ pub fn collect(modules: &[Interface]) -> Vec<ModuleTests> {
             let mut tests: Vec<Name> = interface
                 .values
                 .iter()
-                .filter(|(_, (_, tpe))| is_test(tpe))
+                .filter(|(_, signature)| is_test(&signature.tpe))
                 .map(|(name, _)| name.clone())
                 .collect();
             tests.sort_by(|a, b| a.as_str().cmp(b.as_str()));
@@ -101,6 +101,7 @@ pub fn collect(modules: &[Interface]) -> Vec<ModuleTests> {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use zelkova_compiler::canonical::ValueSignature;
     use zelkova_compiler::PackageName;
     use zelkova_syntax::position::NodeSpan;
 
@@ -109,7 +110,12 @@ mod tests {
             module_name: ModuleName::new(PackageName::new(package).unwrap(), Name::new(module)),
             values: values
                 .into_iter()
-                .map(|(name, tpe)| (Name::new(name), (NodeSpan::none(), tpe)))
+                .map(|(name, tpe)| {
+                    (
+                        Name::new(name),
+                        ValueSignature::unconstrained(NodeSpan::none(), tpe),
+                    )
+                })
                 .collect(),
             unions: HashMap::new(),
             opaque_unions: Default::default(),

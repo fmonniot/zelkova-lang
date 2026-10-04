@@ -82,9 +82,11 @@ pub struct Module {
     /// beside the module says which. It is also here when a declaration chunk that failed
     /// to parse names it ([`parser::Module::failed`]), whatever else of it parsed; the
     /// syntax error says why, and only its annotation, when one parsed, is checked. The
-    /// checks that run on the whole signature list before those (`FacadeConstrained`, a
-    /// malformed context, `UnsafeOutsideFacade`) report an error and leave the
-    /// declaration where the per-declaration checks put it.
+    /// checks that run on the whole signature list before those (`FacadeConstrained` and
+    /// a facade's malformed context, `UnsafeOutsideFacade`) report an error and leave the
+    /// declaration where the per-declaration checks put it. Outside a facade, a context
+    /// is part of its annotation, and a declaration whose context does not resolve is
+    /// here with no type.
     /// Every other value declaration is in [`values`](Self::values), and no name is in
     /// both. What survives of one is its annotation, when that canonicalized:
     /// [`to_interface`](Self::to_interface) exposes it and the typer declares it, so a
@@ -114,26 +116,62 @@ pub struct Broken {
     pub name: Name,
     /// Where the declaration was written, annotation and body together.
     pub span: NodeSpan,
-    /// The declaration's annotation, when it has one and it canonicalized.
+    /// The declaration's annotation, when it has one and it canonicalized, context
+    /// included.
     pub tpe: Option<Type>,
+    /// The constraints written in front of that annotation's `=>`, each resolved, in
+    /// the order written; empty when `tpe` is `None`. Beside the type and not inside
+    /// it, as on [`Value::TypedValue`].
+    pub context: Vec<Constraint>,
     /// Where that annotation was written; `NodeSpan::none()` when `tpe` is `None`.
     pub annotation_span: NodeSpan,
 }
 
 impl Broken {
-    /// `function`, recorded as broken, with `tpe` as its annotation when that
-    /// canonicalized.
-    fn of(function: &parser::Function, tpe: Option<Type>) -> Broken {
-        let annotation_span = match tpe {
-            Some(_) => function.annotation_span,
-            None => NodeSpan::none(),
+    /// `function`, recorded as broken, with `annotation` as its annotation's type and
+    /// context when those canonicalized.
+    fn of(function: &parser::Function, annotation: Option<(Type, Vec<Constraint>)>) -> Broken {
+        let (tpe, context, annotation_span) = match annotation {
+            Some((tpe, context)) => (Some(tpe), context, function.annotation_span),
+            None => (None, Vec::new(), NodeSpan::none()),
         };
 
         Broken {
             name: function.name.clone(),
             span: function.span,
             tpe,
+            context,
             annotation_span,
+        }
+    }
+}
+
+/// What an [`Interface`] publishes of a value: where it was declared, its type, and the
+/// constraints its annotation wrote in front of that type.
+///
+/// One struct rather than a map per field, so an entry cannot have a type and lack the
+/// context it was written with: an importer's call to a constrained function is checked
+/// against this entry, and an empty [`context`](Self::context) here means the function
+/// is unconstrained.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValueSignature {
+    /// Where the declaration (annotation and body together) was written —
+    /// [`Value::span`] — so a diagnostic about a name found in an interface can point at
+    /// the declaration, not just name it.
+    pub span: NodeSpan,
+    /// The annotation's resolved constraints, in the order written.
+    pub context: Vec<Constraint>,
+    pub tpe: Type,
+}
+
+impl ValueSignature {
+    /// The signature of a value declared at `span` with the type `tpe` and no
+    /// constraint.
+    pub fn unconstrained(span: NodeSpan, tpe: Type) -> ValueSignature {
+        ValueSignature {
+            span,
+            context: Vec::new(),
+            tpe,
         }
     }
 }
@@ -223,25 +261,15 @@ impl Module {
     /// kept out of `values` itself so `add` stays unreachable under its own
     /// name.
     pub fn to_interface(&self, file: Option<SourceFileId>) -> super::Interface {
-        let values: HashMap<Name, (NodeSpan, Type)> = self
+        let values: HashMap<Name, ValueSignature> = self
             .values
-            .iter()
-            .filter(|(name, _)| self.exports.exposes(name, &ExportType::Value))
-            .filter_map(|(name, value)| match value {
-                // An exposed, unannotated declaration is an error `do_exports`
-                // has reported (`SPEC-5`, `BUG-14`); it has no type to publish.
-                Value::Value { .. } => None,
-                Value::TypedValue { tpe, span, .. } => Some((name.clone(), (*span, tpe.clone()))),
-            })
-            .chain(
-                self.broken
-                    .iter()
-                    .filter(|broken| self.exports.exposes(&broken.name, &ExportType::Value))
-                    .filter_map(|broken| {
-                        let tpe = broken.tpe.as_ref()?;
-                        Some((broken.name.clone(), (broken.span, tpe.clone())))
-                    }),
-            )
+            .keys()
+            .chain(self.broken.iter().map(|broken| &broken.name))
+            .filter(|name| self.exports.exposes(name, &ExportType::Value))
+            // An exposed, unannotated declaration is an error `do_exports` has reported
+            // (`SPEC-5`, `BUG-14`); it has no type to publish, and neither has a broken
+            // one whose annotation did not canonicalize.
+            .filter_map(|name| self.declared_signature(name))
             .collect();
 
         let mut opaque_unions = HashSet::new();
@@ -277,11 +305,10 @@ impl Module {
         // here — one that is already exposed by name is inserted twice
         // otherwise, which `insert_foreign_value` reads as the same value
         // imported from two places.
-        let infix_functions: HashMap<Name, (NodeSpan, Type)> = infixes
+        let infix_functions: HashMap<Name, ValueSignature> = infixes
             .values()
             .filter(|infix| !values.contains_key(&infix.function_name))
-            .filter_map(|infix| self.declared_type(&infix.function_name))
-            .map(|(name, span, tpe)| (name.clone(), (span, tpe.clone())))
+            .filter_map(|infix| self.declared_signature(&infix.function_name))
             .collect();
 
         // A broken value has no parameters to count, so it gets no entry; an importer
@@ -334,18 +361,30 @@ impl Module {
         }
     }
 
-    /// The annotation this module declares `name` with, and where the declaration was
-    /// written: an annotated value's, or a [`Broken`] one's whose annotation canonicalized.
-    fn declared_type(&self, name: &Name) -> Option<(&Name, NodeSpan, &Type)> {
-        match self.values.get_key_value(name) {
-            Some((name, Value::TypedValue { tpe, span, .. })) => Some((name, *span, tpe)),
-            Some((_, Value::Value { .. })) => None,
-            None => self
-                .broken
-                .iter()
-                .find(|broken| &broken.name == name)
-                .and_then(|broken| Some((&broken.name, broken.span, broken.tpe.as_ref()?))),
-        }
+    /// The annotation this module declares `name` with, context included, and where the
+    /// declaration was written: an annotated value's, or a [`Broken`] one's whose
+    /// annotation canonicalized.
+    fn declared_signature(&self, name: &Name) -> Option<(Name, ValueSignature)> {
+        let signature = match self.values.get(name) {
+            Some(Value::TypedValue {
+                tpe, context, span, ..
+            }) => ValueSignature {
+                span: *span,
+                context: context.clone(),
+                tpe: tpe.clone(),
+            },
+            Some(Value::Value { .. }) => return None,
+            None => {
+                let broken = self.broken.iter().find(|broken| &broken.name == name)?;
+                ValueSignature {
+                    span: broken.span,
+                    context: broken.context.clone(),
+                    tpe: broken.tpe.clone()?,
+                }
+            }
+        };
+
+        Some((name.clone(), signature))
     }
 
     /// How many parameters `value`, one of this module's declarations, is emitted with:
@@ -657,6 +696,16 @@ pub enum Value {
         patterns: Vec<(Pattern, Type)>,
         body: Expression,
         tpe: Type,
+        /// The constraints the annotation wrote in front of `=>`, each resolved to its
+        /// class, in the order written; empty for an annotation with no `=>`.
+        ///
+        /// A field beside `tpe` and not a case of [`Type`],
+        /// which keeps a context out of every match over a type. Nothing needs one
+        /// *inside* a type: a constraint stands only at the front of an annotation, and
+        /// a [member signature carries
+        /// none](../../docs/spec/type-classes.md#declaring-a-class). Always empty in a
+        /// facade, whose context is [`Error::FacadeConstrained`] and is not resolved.
+        context: Vec<Constraint>,
         /// True when the annotation was written `unsafe name : Type`.
         ///
         /// The word is only meaningful on a facade signature, where it declares a
@@ -1660,15 +1709,19 @@ pub enum Error {
     /// other declaration's.
     ClassNameTaken(Name, NameTakenBy, NodeSpan, NodeSpan),
     /// A class name — a superclass, an instance's class, a constraint in an instance's
-    /// context — that nothing in scope declares: the name as written, and the
-    /// constraint or the instance head it was written in.
+    /// or an annotation's context — that nothing in scope declares: the name as
+    /// written, and the constraint or the instance head it was written in.
     ClassNotFound(Name, NodeSpan),
-    /// A constraint in a class head or an instance's context whose argument is not one
-    /// type variable, and the constraint's span.
+    /// A constraint in a class head, an instance's context or an annotation's context
+    /// whose argument is not one type variable, and the constraint's span.
     ConstraintNotOnVariable(NodeSpan),
     /// A constraint in a class head or an instance's context on a type variable the head
     /// does not bind: the variable, and where it was written.
     ConstraintVariableUnbound(Name, NodeSpan),
+    /// A constraint in an annotation's context on a type variable the annotation's type
+    /// does not mention, so no caller could say which type it meant: the variable, and
+    /// where it was written.
+    ConstraintVariableNotInType(Name, NodeSpan),
     /// A member signature written with a context of its own: the member, and the
     /// context's span. A member signature carries no constraint.
     MemberConstrained(Name, NodeSpan),
@@ -2089,11 +2142,14 @@ impl PhaseError for Error {
             }
             Error::ClassNotFound(name, _) => format!("cannot find a class named `{}`", name),
             Error::ConstraintNotOnVariable(_) => {
-                "a constraint in a class or instance head is a class applied to one type variable"
-                    .to_owned()
+                "a constraint is a class applied to one type variable".to_owned()
             }
             Error::ConstraintVariableUnbound(name, _) => format!(
                 "the type variable `{}` is constrained, but the head does not bind it",
+                name
+            ),
+            Error::ConstraintVariableNotInType(name, _) => format!(
+                "the type variable `{}` is constrained, but the annotated type does not mention it",
                 name
             ),
             Error::MemberConstrained(name, _) => format!(
@@ -2504,6 +2560,9 @@ impl PhaseError for Error {
             }
             Error::ConstraintVariableUnbound(_, span) => {
                 primary(span, "not bound by the head")
+            }
+            Error::ConstraintVariableNotInType(_, span) => {
+                primary(span, "not mentioned by the type after `=>`")
             }
             Error::MemberConstrained(_, span) => primary(span, "a constraint on a member signature"),
             Error::MemberUnsafe(_, span) => primary(span, "marked `unsafe` here"),
@@ -3063,10 +3122,10 @@ fn check_facade_signature(function: &parser::Function, tpe: &Type) -> Result<(),
 ///
 /// A constraint here is an uppercase name applied to one or more arguments.
 /// Nothing is resolved here: whether the name is a class, and whether its arguments
-/// are types in scope, is not checked. A class head's and an instance's constraints
-/// are resolved afterwards, by the caller in `classes`; an annotation's are not
-/// resolved at all. The list may be of any length. Every malformed element is
-/// reported, each at its own span.
+/// are types in scope, is not checked. A class head's, an instance's and an
+/// annotation's constraints are resolved afterwards, by `classes::constraints`; a
+/// facade signature's are not resolved at all. The list may be of any length. Every
+/// malformed element is reported, each at its own span.
 fn validate_context(
     context: &parser::Context,
 ) -> Result<Vec<(&Name, &[parser::Type])>, Vec<Error>> {
@@ -3199,20 +3258,19 @@ pub fn canonicalize_recovering(
         );
     }
 
-    // A constraint context is validated here, reported on, and then dropped — the
-    // constraints `validate_context` hands back included. The canonical `Type` has
-    // no place for one and nothing downstream reads a context yet, so the type
-    // checker sees only the type after `=>`. Resolving the class names and keeping
-    // the context on the canonical value is the next step of the type-class
-    // program (`LANG-70`, which reads the class table `classes` builds), not an
-    // oversight here.
-    for function in source.functions.iter() {
-        if let Some(context) = &function.context {
-            if let Err(malformed) = validate_context(context) {
-                errors.extend(malformed);
-            }
+    // A facade signature's context is checked for its shape and rejected here, and is
+    // not resolved: a facade takes no constraint, so the classes it names do not matter.
+    // Every other module's annotation context is resolved with the annotation, in
+    // `annotation`, and kept on the canonical value beside the type
+    // (`Value::TypedValue::context`, `Broken::context`), from where `to_interface`
+    // publishes it. The type checker reads only the type after `=>`.
+    if source.binding_foreign {
+        for function in source.functions.iter() {
+            if let Some(context) = &function.context {
+                if let Err(malformed) = validate_context(context) {
+                    errors.extend(malformed);
+                }
 
-            if source.binding_foreign {
                 errors.push(Error::FacadeConstrained(
                     function.name.clone(),
                     context.span,
@@ -3284,7 +3342,7 @@ pub fn canonicalize_recovering(
                         let errors = check_facade_signature(function, &tpe).err();
                         Rejected::unparsed(
                             function,
-                            Some(tpe),
+                            Some((tpe, Vec::new())),
                             errors.into_iter().collect(),
                             *chunk,
                         )
@@ -3302,7 +3360,9 @@ pub fn canonicalize_recovering(
                 // TODO More specific error
                 let binding = Error::BindingPatternsInvalidLen(function.span);
                 return Err(match tpe {
-                    Some(Ok(tpe)) => Rejected::new(function, Some(tpe), vec![binding]),
+                    Some(Ok(tpe)) => {
+                        Rejected::new(function, Some((tpe, Vec::new())), vec![binding])
+                    }
                     Some(Err(error)) => Rejected::new(function, None, vec![error, binding]),
                     None => Rejected::new(
                         function,
@@ -3330,7 +3390,13 @@ pub fn canonicalize_recovering(
 
             match check_facade_signature(function, &tpe) {
                 Ok(()) => {}
-                Err(error) => return Err(Rejected::new(function, Some(tpe), vec![error])),
+                Err(error) => {
+                    return Err(Rejected::new(
+                        function,
+                        Some((tpe, Vec::new())),
+                        vec![error],
+                    ))
+                }
             }
 
             let name = function.name.clone();
@@ -3346,6 +3412,8 @@ pub fn canonicalize_recovering(
                 // stand-in has nothing to point at (see the TODO above).
                 body: Expression::bare(ExpressionKind::Unit),
                 tpe,
+                // A facade's context is `FacadeConstrained`, reported above.
+                context: Vec::new(),
                 marked_unsafe: function.marked_unsafe,
                 span: function.span,
                 annotation_span: function.annotation_span,
@@ -3508,6 +3576,7 @@ pub fn canonicalize_recovering(
                 name: name.clone(),
                 span: *chunk,
                 tpe: None,
+                context: Vec::new(),
                 annotation_span: NodeSpan::none(),
             }),
     );
@@ -4012,13 +4081,7 @@ fn value_declaration(
     unparsed: &HashMap<Name, NodeSpan>,
     unresolved: &mut Vec<Error>,
 ) -> Result<Value, Box<Rejected>> {
-    let annotation = match &function.tpe {
-        Some(t) => match Type::from_parser_type(env, t) {
-            Ok(tpe) => Annotation::Canonical(tpe),
-            Err(error) => Annotation::Failed(error),
-        },
-        None => Annotation::Absent,
-    };
+    let annotation = annotation(env, function);
 
     // A declaration a failed chunk names is broken whatever parsed of it. Its body
     // is not read: a binding that parsed may be one of several, and a missing one
@@ -4026,8 +4089,10 @@ fn value_declaration(
     if let Some(chunk) = unparsed.get(&function.name) {
         return Err(match annotation {
             Annotation::Absent => Rejected::unparsed(function, None, vec![], *chunk),
-            Annotation::Canonical(tpe) => Rejected::unparsed(function, Some(tpe), vec![], *chunk),
-            Annotation::Failed(error) => Rejected::unparsed(function, None, vec![error], *chunk),
+            Annotation::Canonical(tpe, context) => {
+                Rejected::unparsed(function, Some((tpe, context)), vec![], *chunk)
+            }
+            Annotation::Failed(errors) => Rejected::unparsed(function, None, errors, *chunk),
         });
     }
 
@@ -4038,7 +4103,7 @@ fn value_declaration(
             body,
             span: function.span,
         }),
-        (Annotation::Canonical(tpe), Ok((patterns, body))) => {
+        (Annotation::Canonical(tpe, context), Ok((patterns, body))) => {
             let linear = Type::to_linear_types(&tpe);
 
             // Linear is a list of types making the function. Because it includes the return type,
@@ -4054,7 +4119,7 @@ fn value_declaration(
                 );
                 return Err(Rejected::new(
                     function,
-                    Some(tpe),
+                    Some((tpe, context)),
                     vec![Error::BindingPatternsInvalidLen(function.span)],
                 ));
             }
@@ -4066,6 +4131,7 @@ fn value_declaration(
                 patterns,
                 body,
                 tpe,
+                context,
                 // `do_values` only runs for a module that is not a facade,
                 // and `canonicalize` has already rejected a marked
                 // annotation there.
@@ -4077,11 +4143,12 @@ fn value_declaration(
         (Annotation::Absent, Err(body_error)) => {
             Err(Rejected::new(function, None, vec![body_error]))
         }
-        (Annotation::Canonical(tpe), Err(body_error)) => {
-            Err(Rejected::new(function, Some(tpe), vec![body_error]))
-        }
-        (Annotation::Failed(annotation_error), body) => {
-            let mut errors = vec![annotation_error];
+        (Annotation::Canonical(tpe, context), Err(body_error)) => Err(Rejected::new(
+            function,
+            Some((tpe, context)),
+            vec![body_error],
+        )),
+        (Annotation::Failed(mut errors), body) => {
             errors.extend(body.err());
             Err(Rejected::new(function, None, errors))
         }
@@ -4098,24 +4165,30 @@ struct Rejected {
 }
 
 impl Rejected {
-    /// `function`, recorded as broken with `tpe` as its annotation, because of `errors`.
-    fn new(function: &parser::Function, tpe: Option<Type>, errors: Vec<Error>) -> Box<Rejected> {
+    /// `function`, recorded as broken with `annotation` as its annotation's type and
+    /// context, because of `errors`.
+    fn new(
+        function: &parser::Function,
+        annotation: Option<(Type, Vec<Constraint>)>,
+        errors: Vec<Error>,
+    ) -> Box<Rejected> {
         Box::new(Rejected {
-            broken: Broken::of(function, tpe),
+            broken: Broken::of(function, annotation),
             errors,
         })
     }
 
     /// `function`, which a declaration chunk that failed to parse also declares, recorded
-    /// as broken with `tpe` as its annotation, because of `errors` and of the syntax error
-    /// already reported. Its span covers the failed chunk, `chunk`, as well as what parsed.
+    /// as broken with `annotation` as its annotation's type and context, because of
+    /// `errors` and of the syntax error already reported. Its span covers the failed
+    /// chunk, `chunk`, as well as what parsed.
     fn unparsed(
         function: &parser::Function,
-        tpe: Option<Type>,
+        annotation: Option<(Type, Vec<Constraint>)>,
         errors: Vec<Error>,
         chunk: NodeSpan,
     ) -> Box<Rejected> {
-        let mut rejected = Rejected::new(function, tpe, errors);
+        let mut rejected = Rejected::new(function, annotation, errors);
         rejected.broken.span = rejected.broken.span.merge(chunk);
         rejected
     }
@@ -4136,8 +4209,38 @@ impl Rejected {
 enum Annotation {
     /// The declaration has no annotation.
     Absent,
-    Canonical(Type),
-    Failed(Error),
+    /// The annotation's type, and the constraints of its context, each resolved.
+    Canonical(Type, Vec<Constraint>),
+    /// Every error in the annotation: its context's, in the order written, then its
+    /// type's.
+    Failed(Vec<Error>),
+}
+
+/// What `function`'s annotation canonicalizes to, read apart from its body.
+///
+/// Its context is resolved through the routine a class head's and an instance's go
+/// through ([`classes::constraints`]), each constraint held to a variable the type after
+/// `=>` mentions. An annotation with a bad constraint fails as one with a bad type does.
+fn annotation(env: &RootEnvironment, function: &parser::Function) -> Annotation {
+    let Some(written) = &function.tpe else {
+        return Annotation::Absent;
+    };
+
+    let context = classes::constraints(
+        env,
+        function.context.as_ref(),
+        &classes::written_variables(written),
+        Error::ConstraintVariableNotInType,
+    );
+
+    match (context, Type::from_parser_type(env, written)) {
+        (Ok(context), Ok(tpe)) => Annotation::Canonical(tpe, context),
+        (context, tpe) => {
+            let mut errors = context.err().unwrap_or_default();
+            errors.extend(tpe.err());
+            Annotation::Failed(errors)
+        }
+    }
 }
 
 /// The parameters and the body of `function`, a value declaration of a module that is

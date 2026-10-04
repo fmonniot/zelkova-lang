@@ -396,6 +396,7 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             ClassNotFound(..) => vec!["ClassNotFound"],
             ConstraintNotOnVariable(..) => vec!["ConstraintNotOnVariable"],
             ConstraintVariableUnbound(..) => vec!["ConstraintVariableUnbound"],
+            ConstraintVariableNotInType(..) => vec!["ConstraintVariableNotInType"],
             MemberConstrained(..) => vec!["MemberConstrained"],
             MemberUnsafe(..) => vec!["MemberUnsafe"],
             MemberMissesClassVariable(..) => vec!["MemberMissesClassVariable"],
