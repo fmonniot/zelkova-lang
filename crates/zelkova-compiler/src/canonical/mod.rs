@@ -30,8 +30,13 @@ use zelkova_syntax::parser;
 
 mod classes;
 pub use classes::{
-    Class, ClassSignature, Constraint, DeclarationSite, Derivation, HeadName, Instance,
-    InstanceBody, InstanceHead, InstanceName, InstanceSignature, Member, PublishedInstance,
+    Class, ClassSignature, Constraint, DeclarationSite, Derivation, DerivationBindings,
+    DerivationRole, HeadName, Instance, InstanceHead, InstanceName, InstanceSignature, Member,
+    PublishedInstance,
+};
+mod derivation;
+pub use derivation::{
+    DerivationSignatureProblem, DerivedPart, DerivedRequirement, DerivedShapeProblem,
 };
 mod environment;
 /// Part of [`Error::AmbiguousVariables`] and [`Error::AmbiguousVariants`]'s public
@@ -238,8 +243,8 @@ impl Module {
     ///   `process_import`'s `Privacy::Private` arm reads the arity from — and no
     ///   constructor to build or match one with.
     ///
-    /// A class reaches it, with every member, when the header names it
-    /// ([`ExportType::Class`]).
+    /// A class reaches it, with every member and the derivations it carries, when the
+    /// header names it ([`ExportType::Class`]).
     ///
     /// [`Exports::Everything`] — a `exposing (..)` header — exposes every
     /// declaration with every constructor, so nothing is dropped in that case.
@@ -682,7 +687,7 @@ impl Type {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Value {
         name: Name,
@@ -853,13 +858,13 @@ fn pattern_holds_hole(pattern: &Pattern) -> bool {
 ///
 /// Same shape as [`parser::Pattern`] — a [`NodeSpan`] beside a kind — and for the
 /// same reason: the children stay plain `Pattern`s, so a reader matches `&p.kind`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Pattern {
     pub span: NodeSpan,
     pub kind: PatternKind,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PatternKind {
     Anything,
     Variable(Name), // TODO Name or QualName ?
@@ -910,7 +915,7 @@ pub enum PatternKind {
 
 /// One entry of a [record pattern](PatternKind::Record): the label it names, where the
 /// label alone was written, and the pattern that field's value is matched against.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PatternField {
     pub label: Name,
     /// Where the label alone was written; the pattern carries its own span. For the
@@ -1012,7 +1017,7 @@ impl Pattern {
 ///
 /// Same shape as [`parser::Expression`] — a [`NodeSpan`] beside a kind — and for the
 /// same reason: the children stay `Box<Expression>`, so a reader matches `&e.kind`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Expression {
     pub span: NodeSpan,
     pub kind: ExpressionKind,
@@ -1053,7 +1058,7 @@ pub struct Expression {
 ///   | Unit
 ///   | Tuple Expr Expr (Maybe Expr)
 /// ```
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExpressionKind {
     VarLocal(Name),
     VarTopLevel(QualName),
@@ -1122,7 +1127,7 @@ pub enum ExpressionKind {
 /// One field of a [record](ExpressionKind::Record) or an
 /// [update](ExpressionKind::Update): a label, where the label was written, and the
 /// expression it was given.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     pub label: Name,
     /// Where the label alone was written; the value carries its own span.
@@ -1593,7 +1598,7 @@ impl AmbiguousOperator {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CaseBranch {
     pub pattern: Pattern,
     pub expression: Expression,
@@ -1772,6 +1777,45 @@ pub enum Error {
     /// the same head name in scope: the instance's class and head, the superclass, and
     /// the instance's head line.
     MissingSuperclassInstance(Box<InstanceName>, QualName, NodeSpan),
+    /// A `derived` in a class body for a name the class does not declare as a member: the
+    /// name as written, the class, and where `derived name` was written.
+    DerivationForNonMember(Name, Name, NodeSpan),
+    /// A second `derived` for a member that has one: the member, the second derivation's
+    /// span and the first's. A member has at most one.
+    DerivationRepeated(Name, NodeSpan, NodeSpan),
+    /// A derivation for a member whose signature cannot carry one: the member, what is
+    /// wrong with the signature, where `derived member` was written and where the
+    /// member's signature was.
+    DerivationSignature(Name, DerivationSignatureProblem, NodeSpan, NodeSpan),
+    /// A derivation without a binding its member's signature calls for: the binding, the
+    /// member, and where `derived member` was written.
+    DerivationBindingMissing(Name, Name, NodeSpan),
+    /// A binding in a derivation that its member's signature does not call for: the
+    /// binding, the member, the bindings the derivation takes, and the binding's span.
+    DerivationBindingUnexpected(Name, Name, Vec<Name>, NodeSpan),
+    /// A binding written twice in one derivation: the binding, the member, the second
+    /// one's span and the first's.
+    DerivationBindingRepeated(Name, Name, NodeSpan, NodeSpan),
+    /// A binding in a derivation written with more parameters than the walk supplies it:
+    /// the binding, the member, how many parameters it may take, and the binding's span.
+    /// The compiler's limit rather than the language's: canonical code has no lambda to place
+    /// such a binding with, and `LANG-87` is the ticket.
+    DerivationBindingTakesTooMany(Name, Name, usize, NodeSpan),
+    /// A class that derives some of its members and not the rest: the class, the members
+    /// left out, and the class's head line.
+    DerivationIncomplete(Name, Vec<Name>, NodeSpan),
+    /// An instance asking to be derived for a class that is not derivable — one whose
+    /// members do not all carry a derivation: the class, and the word `derived`.
+    DerivedInstanceNotDerivable(Name, NodeSpan),
+    /// A `derived` instance for a type with no shape for a walk to read: what is wrong, and
+    /// the word `derived`.
+    DerivedInstanceNoShape(DerivedShapeProblem, NodeSpan),
+    /// A `derived` instance for a type holding an argument with no instance of the
+    /// class: which argument, and the word `derived`.
+    DerivedInstanceRequires(Box<DerivedRequirement>, NodeSpan),
+    /// A context written on a `derived` instance, whose context is inferred: the class,
+    /// the written context's span and the word `derived`.
+    DerivedInstanceWritesContext(Name, NodeSpan, NodeSpan),
     /// A type name applied to the wrong number of arguments: the name, its
     /// declaration's own arity, the number of arguments actually written, and
     /// `tpe.span` — the whole application, so the caret covers every argument
@@ -2248,6 +2292,98 @@ impl PhaseError for Error {
                 superclass.unqualified_name(),
                 instance.head.describe()
             ),
+            Error::DerivationForNonMember(member, class, _) => format!(
+                "`derived {}` is in the class `{}`, which has no member `{}`",
+                member, class, member
+            ),
+            Error::DerivationRepeated(member, _, _) => {
+                format!("the member `{}` has a derivation already", member)
+            }
+            Error::DerivationSignature(member, problem, _, _) => match problem {
+                DerivationSignatureProblem::NoClassValue => format!(
+                    "the member `{}` takes no value of the class's type, so there is none for a derivation to walk",
+                    member
+                ),
+                DerivationSignatureProblem::ResultMentionsClassVariable => format!(
+                    "the member `{}` answers with a type that mentions the class variable, which a derivation cannot build",
+                    member
+                ),
+                DerivationSignatureProblem::Shape => format!(
+                    "the signature of `{}` is neither a value of the class's type nor two, followed by an answer",
+                    member
+                ),
+            },
+            Error::DerivationBindingMissing(binding, member, _) => format!(
+                "the derivation of `{}` has no `{}`",
+                member, binding
+            ),
+            Error::DerivationBindingUnexpected(binding, member, takes, _) => format!(
+                "`{}` is not a binding of the derivation of `{}`, which takes {}",
+                binding,
+                member,
+                name_list(takes)
+            ),
+            Error::DerivationBindingRepeated(binding, member, _, _) => format!(
+                "the derivation of `{}` defines `{}` twice",
+                member, binding
+            ),
+            Error::DerivationBindingTakesTooMany(binding, member, most, _) => format!(
+                "`{}` in the derivation of `{}` takes at most {}, the ones the walk gives it",
+                binding,
+                member,
+                parameter_count(*most)
+            ),
+            Error::DerivationIncomplete(class, left_out, _) => format!(
+                "the class `{}` derives some of its members and not {}, and an instance of it could only be half derived",
+                class,
+                name_list(left_out)
+            ),
+            Error::DerivedInstanceNotDerivable(class, _) => format!(
+                "`{}` cannot be derived: not every member of it carries a derivation",
+                class
+            ),
+            Error::DerivedInstanceNoShape(problem, _) => match problem {
+                DerivedShapeProblem::Scalar(tpe) => format!(
+                    "`{}` is a scalar type, which has no shape for a derivation to walk",
+                    tpe
+                ),
+                DerivedShapeProblem::NoConstructors(tpe) => format!(
+                    "the constructors of `{}` are not in scope, and a derivation is read off them",
+                    tpe
+                ),
+                DerivedShapeProblem::UnitHasNoElement(class) => format!(
+                    "`()` has no element for the derivation of `{}` to begin at",
+                    class
+                ),
+            },
+            Error::DerivedInstanceWritesContext(class, _, _) => format!(
+                "the instance of `{}` is derived, and a derived instance's context is inferred rather than written",
+                class
+            ),
+            Error::DerivedInstanceRequires(requirement, _) => {
+                let part = match &requirement.part {
+                    DerivedPart::Variant(variant) => format!("`{}`", variant),
+                    DerivedPart::Element(position) => format!("element {} of the tuple", position),
+                };
+                if requirement.argument == requirement.missing {
+                    if requirement.function {
+                        format!(
+                            "{} holds a function, `{}`, and no instance of `{}` can be declared for one",
+                            part, requirement.missing, requirement.class
+                        )
+                    } else {
+                        format!(
+                            "{} holds a `{}`, which has no instance of `{}`",
+                            part, requirement.missing, requirement.class
+                        )
+                    }
+                } else {
+                    format!(
+                        "{} holds a `{}`, which needs an instance of `{}` for `{}`, and there is none",
+                        part, requirement.argument, requirement.class, requirement.missing
+                    )
+                }
+            }
             Error::TypeArityMismatch(name, declared, written, _) => format!(
                 "`{}` takes {}, but is applied to {} here",
                 name,
@@ -2637,6 +2773,72 @@ impl PhaseError for Error {
                     instance.head.describe()
                 ),
             ),
+            Error::DerivationForNonMember(member, class, span) => {
+                primary(span, &format!("`{}` is not a member of `{}`", member, class))
+            }
+            Error::DerivationRepeated(member, span, first) => {
+                let mut labels = primary(span, &format!("`{}` is derived a second time here", member));
+                labels.extend(secondary(first, format!("`{}` is first derived here", member)));
+                labels
+            }
+            Error::DerivationSignature(_, problem, span, signature) => {
+                let mut labels = primary(
+                    span,
+                    match problem {
+                        DerivationSignatureProblem::NoClassValue => "no value to walk",
+                        DerivationSignatureProblem::ResultMentionsClassVariable => {
+                            "a derivation cannot build a value of the class's type"
+                        }
+                        DerivationSignatureProblem::Shape => "not a shape a derivation walks",
+                    },
+                );
+                labels.extend(secondary(signature, "the signature of the member".to_owned()));
+                labels
+            }
+            Error::DerivationBindingMissing(binding, _, span) => {
+                primary(span, &format!("this derivation has no `{}`", binding))
+            }
+            Error::DerivationBindingUnexpected(binding, _, _, span) => {
+                primary(span, &format!("`{}` is not taken here", binding))
+            }
+            Error::DerivationBindingRepeated(binding, _, span, first) => {
+                let mut labels = primary(span, &format!("`{}` is defined a second time here", binding));
+                labels.extend(secondary(first, format!("`{}` is first defined here", binding)));
+                labels
+            }
+            Error::DerivationBindingTakesTooMany(_, _, most, span) => primary(
+                span,
+                &format!("more than the {} the walk supplies", parameter_count(*most)),
+            ),
+            Error::DerivationIncomplete(_, left_out, span) => primary(
+                span,
+                &format!("no derivation for {}", name_list(left_out)),
+            ),
+            Error::DerivedInstanceNotDerivable(class, span) => primary(
+                span,
+                &format!("`{}` does not say how it is derived", class),
+            ),
+            Error::DerivedInstanceNoShape(_, span) => primary(span, "nothing to walk"),
+            Error::DerivedInstanceWritesContext(_, context, derived) => {
+                let mut labels = primary(context, "this context is written on a derived instance");
+                labels.extend(secondary(
+                    derived,
+                    "the context of this instance is inferred".to_owned(),
+                ));
+                labels
+            }
+            Error::DerivedInstanceRequires(requirement, span) => {
+                let mut labels = primary(
+                    span,
+                    &format!("this instance needs `{}` of `{}`", requirement.class, requirement.missing),
+                );
+                labels.extend(
+                    requirement
+                        .declared
+                        .label("the type is declared here".to_owned()),
+                );
+                labels
+            }
             Error::TypeArityMismatch(name, declared, written, span) => primary(
                 span,
                 &format!(
@@ -2859,6 +3061,26 @@ fn type_argument_count(n: usize) -> String {
         "1 type argument".to_owned()
     } else {
         format!("{} type arguments", n)
+    }
+}
+
+/// "no parameters", "1 parameter" or "N parameters": what a derivation's binding may take.
+fn parameter_count(n: usize) -> String {
+    match n {
+        0 => "no parameters".to_owned(),
+        1 => "1 parameter".to_owned(),
+        n => format!("{} parameters", n),
+    }
+}
+
+/// The names of `names`, each in backticks, joined as a sentence does: `a`, `b` and `c`.
+fn name_list(names: &[Name]) -> String {
+    let quoted: Vec<String> = names.iter().map(|name| format!("`{}`", name)).collect();
+
+    match quoted.split_last() {
+        None => String::new(),
+        Some((only, [])) => only.clone(),
+        Some((last, rest)) => format!("{} and {}", rest.join(", "), last),
     }
 }
 
@@ -3200,7 +3422,8 @@ pub fn canonicalize(
 /// everything after it. A failed `infix` declaration makes the scope incomplete for
 /// everything after the infixes, a failed `type` declaration for everything after the
 /// types, a failed `class` declaration for the values, the bindings of the classes and
-/// the instances, and the `exposing` list, and a failed `instance` declaration for the
+/// the instances, and the `exposing` list, a derivation that failed its checks for the
+/// instances, and the `exposing` list, and a failed `instance` declaration for the
 /// `exposing` list. Dropping an error does not make
 /// its declaration sound. A declaration the dropped error broke is left out all the same;
 /// one whose only error was a name that did not resolve stays in [`Module::values`] holding
@@ -3537,26 +3760,33 @@ pub fn canonicalize_recovering(
         // any value of the module, so they are read once every value is in scope.
         let incomplete = env.is_incomplete();
         let mut unresolved = Vec::new();
-        let mut binding_errors = Vec::new();
+        let mut derivation_errors = Vec::new();
         let mut canonical_classes = HashMap::new();
-        for (class, name, signature) in signatures {
-            let (derivations, derivation_errors) =
-                classes::derivations(&env, class, &mut unresolved);
-            binding_errors.extend(derivation_errors);
-            canonical_classes.insert(
-                name.clone(),
-                Class {
-                    signature,
-                    derivations,
-                },
-            );
+        for (class, name, mut signature) in signatures {
+            let (derivations, errors) =
+                derivation::class_derivations(&env, class, name, &signature, &mut unresolved);
+            signature.derivations_rejected = !errors.is_empty();
+            derivation_errors.extend(errors);
+            signature.derivations = derivations;
+            // An instance of the class, in this module, is read against the derivations.
+            env.insert_class_signature(name, signature.clone());
+            canonical_classes.insert(name.clone(), Class { signature });
         }
+        // A failed derivation removes no name from the scope, so the scope stays as complete
+        // as it was. The class carries that its derivations were rejected, which is what
+        // keeps an instance asking to be derived from restating it.
+        errors.extend(without_restated(derivation_errors, incomplete));
 
+        let incomplete = env.is_incomplete();
+        let mut binding_errors = Vec::new();
         let classes::Instances {
             instances,
             errors: instance_errors,
         } = classes::do_instances(&env, &source.instances, &mut unresolved);
-        if !instance_errors.is_empty() {
+        // An instance left out of the module is one an importer's scope will not have, and
+        // some are left out with no error here: one of a class whose derivations were
+        // rejected.
+        if !instance_errors.is_empty() || instances.len() < source.instances.len() {
             env.set_incomplete();
         }
         binding_errors.extend(instance_errors);

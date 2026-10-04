@@ -1520,12 +1520,9 @@ fn a_module_carries_its_instances_with_their_bodies() {
 
     // One checked body for the one member, with its context carried the way a
     // declaration's is, and no binding left unchecked.
-    let ir::InstanceBody::Bindings { members, unchecked } = &boxed.body else {
-        panic!("expected written-out bindings");
-    };
-    assert!(unchecked.is_empty());
-    let [member] = members.as_slice() else {
-        panic!("expected one member, got {:?}", members);
+    assert!(boxed.unchecked.is_empty());
+    let [member] = boxed.members.as_slice() else {
+        panic!("expected one member, got {:?}", boxed.members);
     };
     assert_eq!(member.name, Name::new("eq"));
     assert_eq!(member.arity, 2);
@@ -1534,11 +1531,13 @@ fn a_module_carries_its_instances_with_their_bodies() {
     assert!(member.body.is_some());
 }
 
-/// An instance whose body is the word `derived` is in the IR as one, with no members.
+/// An instance whose body is the word `derived` is in the IR with the members its class's
+/// derivation stands for, checked like a written instance's and not told apart from one.
 ///
-/// Mutation-checked by building every instance's body as `Bindings`: the match fails.
+/// Mutation-checked by generating no members for a derived instance in
+/// `derivation::derive_all`: `instance.members` is empty and the destructuring panics.
 #[test]
-fn a_derived_instance_is_in_the_ir_without_members() {
+fn a_derived_instance_is_in_the_ir_with_its_members() {
     let module = ir_of(indoc! {r#"
         module Test exposing (..)
 
@@ -1566,7 +1565,13 @@ fn a_derived_instance_is_in_the_ir_without_members() {
     let [instance] = module.instances.as_slice() else {
         panic!("expected one instance, got {:?}", module.instances);
     };
-    assert!(matches!(instance.body, ir::InstanceBody::Derived));
+    assert!(instance.unchecked.is_empty(), "{:?}", instance.unchecked);
+    let [member] = instance.members.as_slice() else {
+        panic!("expected one member, got {:?}", instance.members);
+    };
+    assert_eq!(member.name, Name::new("eq"));
+    assert_eq!(member.arity, 2);
+    assert!(member.body.is_some());
 }
 
 /// A binding of an instance that did not check is accounted for the way a value is: it is
@@ -1600,11 +1605,618 @@ fn an_instance_binding_that_did_not_check_is_unchecked() {
     let [instance] = module.ir.instances.as_slice() else {
         panic!("expected one instance");
     };
-    let ir::InstanceBody::Bindings { members, unchecked } = &instance.body else {
-        panic!("expected written-out bindings");
+    assert!(instance.members.is_empty(), "got {:?}", instance.members);
+    assert_eq!(instance.unchecked.len(), 1);
+    assert_eq!(instance.unchecked[0].name, Name::new("eq"));
+    assert!(instance.unchecked[0].reported);
+}
+
+// ── LANG-83: what a derived instance's members are ──
+
+/// A term as one line, for reading a generated definition: a name is its last segment, an
+/// application is its function and its argument, a `case` is its scrutinee and its
+/// branches.
+fn shown(term: &TypedTerm) -> String {
+    use ir::TermPatternKind;
+
+    fn pattern(p: &ir::TermPattern) -> String {
+        match &p.kind {
+            TermPatternKind::Anything => "_".to_owned(),
+            TermPatternKind::Bind(name) => name.clone(),
+            TermPatternKind::Literal { value, .. } => format!("{:?}", value),
+            TermPatternKind::Constructor { ctor, args, .. } => {
+                let mut parts = vec![ctor.name.to_string()];
+                parts.extend(args.iter().map(|arg| pattern(&arg.pattern)));
+                if args.is_empty() {
+                    parts.remove(0)
+                } else {
+                    format!("({})", parts.join(" "))
+                }
+            }
+            TermPatternKind::Tuple { elements } => format!(
+                "({})",
+                elements
+                    .iter()
+                    .map(|element| pattern(&element.pattern))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            TermPatternKind::Unit => "()".to_owned(),
+            other => format!("{:?}", other),
+        }
+    }
+
+    fn argument(term: &TypedTerm) -> String {
+        match &term.kind {
+            TypedTermKind::Apply { .. } | TypedTermKind::Case { .. } => {
+                format!("({})", shown(term))
+            }
+            _ => shown(term),
+        }
+    }
+
+    match &term.kind {
+        TypedTermKind::Identifier { reference, .. } => match &reference.kind {
+            ReferenceKind::Local => reference.name.clone(),
+            _ => reference
+                .name
+                .rsplit('.')
+                .next()
+                .unwrap_or(&reference.name)
+                .to_owned(),
+        },
+        TypedTermKind::Apply { fun, arg, .. } => format!("{} {}", shown(fun), argument(arg)),
+        TypedTermKind::Case {
+            scrutinee,
+            branches,
+            ..
+        } => format!(
+            "case {} of {{ {} }}",
+            match &scrutinee.kind {
+                TypedTermKind::Case { .. } => format!("({})", shown(scrutinee)),
+                _ => shown(scrutinee),
+            },
+            branches
+                .iter()
+                .map(|(p, body)| format!("{} -> {}", pattern(p), shown(body)))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        TypedTermKind::Int(i) => i.to_string(),
+        TypedTermKind::Unit => "()".to_owned(),
+        TypedTermKind::Tuple(tuple) => format!(
+            "({})",
+            tuple.iter().map(shown).collect::<Vec<_>>().join(", ")
+        ),
+        other => format!("{:?}", other),
+    }
+}
+
+/// The module a test of a derived instance reads: `Comparable` with a derivation whose
+/// `combine` mentions its first parameter twice, an instance at `Int` and at `Position`,
+/// and `declarations` after them.
+fn comparable_with(declarations: &str) -> String {
+    format!(
+        "{}\n{}",
+        indoc! {r#"
+            module Test exposing (..)
+
+            type Order
+              = LT
+              | EQ
+              | GT
+
+            class Comparable a where
+              compare : a -> a -> Order
+
+              derived compare
+                matched = EQ
+                differed i j =
+                  compare i j
+
+                combine x y =
+                  case x of
+                    EQ ->
+                      y
+
+                    _ ->
+                      x
+
+            instance Comparable Int where
+              compare a b =
+                EQ
+
+            instance Comparable Position where
+              compare a b =
+                EQ
+        "#},
+        declarations
+    )
+}
+
+/// The one member of the one instance of `module` that is not written in `comparable_with`.
+fn derived_member(module: &ir::Module, nth: usize) -> &Declaration {
+    let instance = &module.instances[nth];
+    assert!(instance.unchecked.is_empty(), "{:?}", instance.unchecked);
+    let [member] = instance.members.as_slice() else {
+        panic!("expected one member, got {:?}", instance.members);
     };
-    assert!(members.is_empty(), "got {:?}", members);
-    assert_eq!(unchecked.len(), 1);
-    assert_eq!(unchecked[0].name, Name::new("eq"));
-    assert!(unchecked[0].reported);
+    member
+}
+
+/// `shown`, with the serial each fresh name starts with taken off, so that a test can write
+/// what a generated definition says without writing how many names came before: `$3$x` is
+/// `x`.
+fn plain(term: &TypedTerm) -> String {
+    let text = shown(term);
+    let mut out = String::new();
+    let mut rest = text.as_str();
+
+    while let Some(at) = rest.find('$') {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at + 1..];
+        let digits = tail.chars().take_while(|c| c.is_ascii_digit()).count();
+
+        if digits > 0 && tail[digits..].starts_with('$') {
+            // `$3$x`: the serial and its two `$` go.
+            rest = &tail[digits + 1..];
+        } else {
+            out.push('$');
+            rest = tail;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Every term of `term`, itself included, in the order a reader meets them.
+fn walk<'a>(term: &'a TypedTerm, into: &mut Vec<&'a TypedTerm>) {
+    into.push(term);
+    match &term.kind {
+        TypedTermKind::Apply { fun, arg, .. } => {
+            walk(fun, into);
+            walk(arg, into);
+        }
+        TypedTermKind::Case {
+            scrutinee,
+            branches,
+            ..
+        } => {
+            walk(scrutinee, into);
+            for (_, branch) in branches {
+                walk(branch, into);
+            }
+        }
+        TypedTermKind::Tuple(tuple) => tuple.iter().for_each(|element| walk(element, into)),
+        _ => {}
+    }
+}
+
+/// The applications of the member `compare` in `term`, each as the names of its two
+/// arguments.
+fn compare_calls(term: &TypedTerm) -> Vec<(String, String)> {
+    let mut terms = Vec::new();
+    walk(term, &mut terms);
+
+    terms
+        .into_iter()
+        .filter_map(|term| {
+            let TypedTermKind::Apply {
+                fun, arg: second, ..
+            } = &term.kind
+            else {
+                return None;
+            };
+            let TypedTermKind::Apply {
+                fun: head,
+                arg: first,
+                ..
+            } = &fun.kind
+            else {
+                return None;
+            };
+            let TypedTermKind::Identifier { reference, .. } = &head.kind else {
+                return None;
+            };
+            if !reference.name.ends_with("Test.compare") {
+                return None;
+            }
+
+            Some((shown(first), shown(second)))
+        })
+        .collect()
+}
+
+/// For `Comparable`'s `combine` — `case x of EQ -> y; _ -> x`, which mentions `x` twice — the
+/// definition applies `compare` to each pair of arguments **once**: `x` names the value of the
+/// answer for a part, and is not the expression that computes it. Substituted, each level
+/// would compute its comparison twice, and the work of a list would be exponential in its
+/// length ([`DEC-24` decision 8](../docs/decisions/dec-24.md)).
+///
+/// Mutation-checked by binding the answer twice in `Generated::place_combine`, which answers
+/// each pair twice as substituting `x` would at its two mentions: every pair is then compared
+/// twice and the assertion on the calls goes red.
+#[test]
+fn a_derived_member_answers_each_pair_of_arguments_once() {
+    let module = ir_of(&comparable_with(indoc! {r#"
+        type Triple
+          = Triple Int Int Int
+
+        instance Comparable Triple where
+          derived
+    "#}));
+    let member = derived_member(&module, 2);
+
+    // One comparison for each pair of arguments, left to right, and none for anything else
+    // (`Triple` has one constructor, so `differed` is never reached).
+    let calls: Vec<(String, String)> = compare_calls(body(member, "compare"));
+    let expected: Vec<(String, String)> = [("$a1", "$b1"), ("$a2", "$b2"), ("$a3", "$b3")]
+        .iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect();
+    let mut found = calls.clone();
+    found.sort();
+    assert_eq!(found, expected, "got {:?}", calls);
+}
+
+/// The rest of the fold sits inside the branch of `combine`'s body that reaches `y`, and not
+/// ahead of it: the second pair is compared in the `EQ` branch of the case on the first
+/// answer, and the branch that returns `x` compares nothing.
+///
+/// Mutation-checked by binding `y` to the rest of the walk with a `case` ahead of the body in
+/// `place_combine`, so that the rest is computed whether the body reaches it or not: the
+/// second comparison is then no longer under the `EQ` branch.
+#[test]
+fn the_rest_of_the_walk_is_where_the_body_reaches_it() {
+    let module = ir_of(&comparable_with(indoc! {r#"
+        type Pair
+          = Pair Int Int
+
+        instance Comparable Pair where
+          derived
+    "#}));
+    let member = derived_member(&module, 2);
+
+    assert_eq!(
+        plain(body(member, "compare")),
+        "case $left of { (Pair $a1 $a2) -> case $right of { (Pair $b1 $b2) -> \
+         case compare $a1 $b1 of { x -> case x of { EQ -> \
+         case compare $a2 $b2 of { x -> case x of { EQ -> EQ; _ -> x } }; _ -> x } } } }"
+    );
+}
+
+/// A `combine` that binds the names a generated definition uses does not capture them: the
+/// definition's names are ones no source file can write, so `a2` and `b2` in `combine` are
+/// its own. Here the rest of the walk is placed under a branch binding `a2`, and still
+/// compares the second pair of arguments, not the answer.
+///
+/// Mutation-checked by naming the arguments `a1`, `b1`, … (`left_argument` and
+/// `right_argument` without the `$`) and not renaming a class's binders: the second pair is
+/// then compared under the names `combine` bound, the module no longer type checks, and
+/// `ir_of` panics.
+#[test]
+fn a_combine_that_binds_the_names_a_definition_uses_does_not_capture_them() {
+    let module = ir_of(&comparable_with(indoc! {r#"
+        class Ordered a where
+          order : a -> a -> Order
+
+          derived order
+            matched = EQ
+            differed i j =
+              order i j
+
+            combine x y =
+              case x of
+                a2 ->
+                  case y of
+                    b2 ->
+                      a2
+
+        instance Ordered Int where
+          order a b =
+            EQ
+
+        instance Ordered Position where
+          order a b =
+            EQ
+
+        type Pair
+          = Pair Int Int
+
+        instance Ordered Pair where
+          derived
+    "#}));
+    // The instances of the module, in the order written: `Comparable Int`, `Comparable
+    // Position` and `Ordered Int`, `Ordered Position`, and the derived `Ordered Pair`.
+    let instance = &module.instances[4];
+    let [member] = instance.members.as_slice() else {
+        panic!("expected one member, got {:?}", instance.members);
+    };
+
+    // The second pair is compared where `y` is reached, under the branch that binds `a2` —
+    // and what it compares is `$a2` and `$b2`, the arguments the definition took apart,
+    // and not the `a2` the class's own pattern bound.
+    assert_eq!(
+        plain(body(member, "order")),
+        "case $left of { (Pair $a1 $a2) -> case $right of { (Pair $b1 $b2) -> \
+         case order $a1 $b1 of { x -> case x of { a2 -> \
+         case (case order $a2 $b2 of { x -> case x of { a2 -> \
+         case EQ of { b2 -> a2 } } }) of { b2 -> a2 } } } } }"
+    );
+}
+
+/// A member at `a -> R` is derived over one value: `combine p (combine a1 (… an))`, with `p`
+/// the answer `atConstructor` gives for the constructor's place and each `a` the member
+/// applied to one argument, the last standing for the rest of the walk where the one before
+/// it asks for it. A constructor with no argument is `p` alone.
+///
+/// Mutation-checked by placing the constructor's answer last, after the arguments' (the
+/// `answers.push(at_constructor …)` moved below the arguments' loop in
+/// `Generated::walk_single`): the exact text goes red.
+#[test]
+fn a_member_over_one_value_folds_the_constructors_answer_with_each_argument() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (..)
+
+        class Hashable a where
+          hash : a -> Int
+
+          derived hash
+            atConstructor p =
+              seed p
+
+            combine x y =
+              mix x y
+
+        seed : Position -> Int
+        seed p =
+          7
+
+        mix : Int -> Int -> Int
+        mix a b =
+          a
+
+        instance Hashable Int where
+          hash n =
+            n
+
+        type Shape
+          = Two Int Int
+          | One Int
+          | Zero
+
+        instance Hashable Shape where
+          derived
+    "#});
+    let member = derived_member(&module, 1);
+
+    assert_eq!(member.arity, 1);
+    assert_eq!(
+        plain(body(member, "hash")),
+        "case $value of { \
+         (Two $a1 $a2) -> case (case Position 0 of { p -> seed p }) of { \
+         x -> mix x (case hash $a1 of { x -> mix x (hash $a2) }) }; \
+         (One $a1) -> case (case Position 1 of { p -> seed p }) of { x -> mix x (hash $a1) }; \
+         Zero -> case Position 2 of { p -> seed p } }"
+    );
+}
+
+/// `differed` is handed the places the two constructors are declared at, as `Position`
+/// values built by the compiler: the constructor of `Basics.Position`, which no module
+/// exposes, named by its declaration.
+///
+/// Mutation-checked by handing `differed` the places in the opposite order in
+/// `Generated::walk_pair`: the `Red`-then-`Green` definition goes red.
+#[test]
+fn differed_is_handed_the_position_each_constructor_is_declared_at() {
+    let module = ir_of(&comparable_with(indoc! {r#"
+        type Colour
+          = Red
+          | Green
+
+        instance Comparable Colour where
+          derived
+    "#}));
+    let member = derived_member(&module, 2);
+
+    assert_eq!(
+        plain(body(member, "compare")),
+        "case $left of { \
+         Red -> case $right of { Red -> EQ; Green -> \
+         case Position 0 of { i -> case Position 1 of { j -> compare i j } } }; \
+         Green -> case $right of { Green -> EQ; Red -> \
+         case Position 1 of { i -> case Position 0 of { j -> compare i j } } } }"
+    );
+
+    // Each `Position` is the constructor of `Basics.Position`, the first of its one
+    // constructor's, taking an `Int`.
+    let mut terms = Vec::new();
+    walk(body(member, "compare"), &mut terms);
+    let positions: Vec<&Constructor> = terms
+        .iter()
+        .filter_map(|term| match &term.kind {
+            TypedTermKind::Identifier {
+                reference:
+                    Reference {
+                        kind: ReferenceKind::Constructor(constructor),
+                        ..
+                    },
+                ..
+            } if constructor.union == core_qual("Basics.Position") => Some(constructor),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(positions.len(), 4);
+    for constructor in positions {
+        assert_eq!(constructor.name, Name::new("Position"));
+        assert_eq!(constructor.index, 0);
+        assert_eq!(constructor.arity, 1);
+    }
+}
+
+/// A tuple has one shape: the fold of its elements and nothing before it, so there is no
+/// position to hand anyone.
+///
+/// Mutation-checked by giving a tuple a second way to be built in `Shape::alternatives`, which
+/// makes the walk hand `differed` two places: the `Position` in the text goes red.
+#[test]
+fn a_tuple_is_walked_as_one_shape_with_only_the_fold() {
+    let module = ir_of(&comparable_with(indoc! {r#"
+        instance Comparable (a, b) where
+          derived
+    "#}));
+    let instance = &module.instances[2];
+
+    // What the instance needs of the tuple's two elements.
+    let classes: Vec<_> = instance
+        .context
+        .iter()
+        .map(|predicate| predicate.class.unqualified_name().to_string())
+        .collect();
+    assert_eq!(classes, vec!["Comparable", "Comparable"]);
+
+    let member = derived_member(&module, 2);
+    assert_eq!(
+        plain(body(member, "compare")),
+        "case $left of { ($a1, $a2) -> case $right of { ($b1, $b2) -> \
+         case compare $a1 $b1 of { x -> case x of { EQ -> \
+         case compare $a2 $b2 of { x -> case x of { EQ -> EQ; _ -> x } }; _ -> x } } } }"
+    );
+}
+
+/// A tuple walked over one value starts at its first element's answer: with no constructor
+/// there is no `atConstructor` to begin at and no position to hand it, so the fold is
+/// `combine (hash a1) (hash a2)` and nothing before it.
+///
+/// Mutation-checked by answering for a constructor whether or not the alternative has one
+/// (`if true` for `alternative.constructor.is_some()` in `Generated::walk_single`): the fold then
+/// starts at `atConstructor (Position 0)` and the exact text goes red.
+#[test]
+fn a_tuple_walked_over_one_value_starts_at_its_first_elements_answer() {
+    let module = ir_of(indoc! {r#"
+        module Test exposing (..)
+
+        class Hashable a where
+          hash : a -> Int
+
+          derived hash
+            atConstructor p =
+              seed p
+
+            combine x y =
+              mix x y
+
+        seed : Position -> Int
+        seed p =
+          7
+
+        mix : Int -> Int -> Int
+        mix a b =
+          a
+
+        instance Hashable Int where
+          hash n =
+            n
+
+        instance Hashable (a, b) where
+          derived
+    "#});
+    let instance = &module.instances[1];
+
+    let classes: Vec<_> = instance
+        .context
+        .iter()
+        .map(|predicate| predicate.class.unqualified_name().to_string())
+        .collect();
+    assert_eq!(classes, vec!["Hashable", "Hashable"]);
+
+    let member = derived_member(&module, 1);
+    let text = plain(body(member, "hash"));
+    assert_eq!(
+        text,
+        "case $value of { ($a1, $a2) -> case hash $a1 of { x -> mix x (hash $a2) } }"
+    );
+    assert!(!text.contains("Position"), "{}", text);
+}
+
+/// An instance derived in another module than its class names the class's member as it names
+/// any imported value, and carries the context it inferred, given to each member.
+///
+/// Mutation-checked by naming a member `VarTopLevel` whatever module the class is in, in
+/// `Generated::member_reference`: the reference is then a top-level one of a module that is not
+/// this one, and the `Foreign` assertion goes red.
+#[test]
+fn an_instance_derived_beside_its_type_calls_the_members_of_a_class_it_imports() {
+    let classes = indoc! {r#"
+        module Classes exposing (Eq)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              case x of
+                True ->
+                  y
+
+                False ->
+                  False
+    "#};
+    let types = indoc! {r#"
+        module Types exposing (Box(..))
+
+        import Classes exposing (Eq)
+
+        type Box a
+          = Box a
+
+        instance Eq (Box a) where
+          derived
+    "#};
+
+    let mut interfaces = HashMap::from([basics_interface(), char_interface()]);
+    let classes = check_module(&test_package(), &interfaces, &parse_source(classes))
+        .unwrap_or_else(|error| panic!("expected Classes to check, got {:?}", error));
+    interfaces.insert("Classes".into(), classes.to_interface(None));
+    let module = check_module(&test_package(), &interfaces, &parse_source(types))
+        .unwrap_or_else(|error| panic!("expected Types to check, got {:?}", error))
+        .ir;
+
+    let [instance] = module.instances.as_slice() else {
+        panic!("expected one instance, got {:?}", module.instances);
+    };
+    assert!(instance.unchecked.is_empty(), "{:?}", instance.unchecked);
+    let [predicate] = instance.context.as_slice() else {
+        panic!("expected one constraint, got {:?}", instance.context);
+    };
+    assert_eq!(predicate.class, test_qual("Classes.Eq"));
+
+    let [member] = instance.members.as_slice() else {
+        panic!("expected one member, got {:?}", instance.members);
+    };
+    assert_eq!(member.context.len(), 1);
+    assert_eq!(member.context[0].class, test_qual("Classes.Eq"));
+
+    // The member is an imported value, named by the module that declared it.
+    let mut terms = Vec::new();
+    walk(body(member, "eq"), &mut terms);
+    let members: Vec<&Reference> = terms
+        .iter()
+        .filter_map(|term| match &term.kind {
+            TypedTermKind::Identifier { reference, .. }
+                if reference.name.ends_with("Classes.eq") =>
+            {
+                Some(reference)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(members.len(), 1);
+    assert!(
+        matches!(&members[0].kind, ReferenceKind::Foreign(name, _, _) if *name == test_qual("Classes.eq")),
+        "{:?}",
+        members[0]
+    );
 }

@@ -653,8 +653,8 @@ pub struct InstanceDecl {
 /// member. The grammar has no production for both.
 #[derive(Debug, PartialEq)]
 pub enum InstanceBody {
-    /// The body is the word `derived`.
-    Derived,
+    /// The body is the word `derived`, and where that word was written.
+    Derived(NodeSpan),
     /// The bindings in the order written; none when nothing is under the `where`.
     Bindings(Vec<FunBinding>),
 }

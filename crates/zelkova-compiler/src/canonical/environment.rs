@@ -353,6 +353,7 @@ pub(crate) fn new_environment(
         variables: HashMap::new(),
         classes: HashMap::new(),
         class_signatures: HashMap::new(),
+        unions: HashMap::new(),
         instances: Vec::new(),
         incomplete: false,
     };
@@ -464,6 +465,15 @@ fn process_import(
     // ([Type classes](../../../docs/spec/type-classes.md#declaring-an-instance)).
     for published in &interface.instances {
         env.insert_imported_instance(published);
+    }
+
+    // Every union the interface carries is known by its declaration, which is how a
+    // derived instance finds the constructors of a type however it was spelled.
+    for (union_name, union) in &interface.unions {
+        env.unions.insert(
+            interface.module_name.qualify_name(union_name),
+            union.clone(),
+        );
     }
 
     // First we insert all values/types from the module, prefixed with the module name or its alias
@@ -1033,6 +1043,10 @@ pub(crate) struct RootEnvironment {
     /// What each class in scope declares, by its declaration's name. A class of this
     /// module is here once its signature canonicalized, and not before.
     class_signatures: HashMap<QualName, ClassSignature>,
+    /// Every union in reach, by its declaration's name: this module's own, and each one an
+    /// import's interface carries, with no variants when the interface exposes it opaque.
+    /// What a derived instance reads its type's constructors off.
+    unions: HashMap<QualName, UnionType>,
     /// Every instance an import brought into scope, each once however many routes
     /// reached it.
     instances: Vec<PublishedInstance>,
@@ -1127,6 +1141,12 @@ impl RootEnvironment {
         self.class_signatures.get(name)
     }
 
+    /// The union `name` declares, when it is this module's own or an import's interface
+    /// carries it. Its variants are empty when it was imported opaque.
+    pub(crate) fn find_union(&self, name: &QualName) -> Option<&UnionType> {
+        self.unions.get(name)
+    }
+
     /// Every instance the imports brought into scope.
     pub(crate) fn imported_instances(&self) -> &[PublishedInstance] {
         &self.instances
@@ -1145,6 +1165,8 @@ impl RootEnvironment {
 
     // TODO Use insert_foreign_union_type (and rename to remove the foreign part)
     pub(crate) fn insert_union_type(&mut self, name: Name, union: UnionType) {
+        self.unions
+            .insert(self.module_name.qualify_name(&name), union.clone());
         self.insert_declared_type(&name, union.variables);
 
         for tctor in union.variants {

@@ -4230,25 +4230,25 @@ fn a_derived_instance_is_an_instance_that_exists() {
     assert!(run(source).is_ok(), "{:?}", run(source).err());
 }
 
-/// A derived instance's superclasses are not checked: its context is none recorded until
-/// `LANG-83` infers one, and a check against none would reject `derived Comparable (Box a)`
-/// beside `Eq a => Eq (Box a)`, which the derivation is going to make sound. The same
-/// instance written out is `MissingConstraint`, as the second source shows, so the skip is
-/// the only thing the first passes by.
+/// A derived instance's superclasses are held to the context it was inferred, as a written
+/// instance's are. `Comparable (Box a)` beside `Eq a => Eq (Box a)` needs `Eq a`, which the
+/// `Comparable a` its derivation infers provides; `Comparable (Phantom a)` holds no `a`, so it
+/// infers nothing, and `Eq a => Eq (Phantom a)` is not provided: the error names `Eq a`.
 ///
-/// This is the test `LANG-83` turns round: once a derived instance has an inferred context,
-/// its superclass obligations are discharged against it, as a written instance's are.
-///
-/// Mutation-checked by checking the superclasses of a `derived` instance too, with its
-/// context as given (none): the first source is then `MissingConstraint` and `run(..)`
-/// goes red.
+/// Mutation-checked by discharging no superclass obligation in `InstanceCheck::of`: the
+/// `Phantom` source checks and `one_type_error` panics; and by inferring no constraint for a
+/// variable in `derivation::reduce`: `Comparable (Box a)` then infers none and the first
+/// source is a `MissingConstraint`.
 #[test]
-fn a_derived_instance_is_not_held_to_its_superclass_context_until_lang_83() {
+fn a_derived_instance_is_held_to_its_superclass_context() {
     let declarations = indoc::indoc! {r#"
         module Test exposing (..)
 
         type Box a
           = Box a
+
+        type Phantom a
+          = Phantom Int
 
         class Eq a where
           eq : a -> a -> Bool
@@ -4267,20 +4267,53 @@ fn a_derived_instance_is_not_held_to_its_superclass_context_until_lang_83() {
                 False ->
                   False
 
+        instance Eq Int where
+          eq a b =
+            True
+
+        instance Comparable Int where
+          lt a b =
+            True
+
         instance Eq a => Eq (Box a) where
           eq (Box left) (Box right) =
             eq left right
 
+        instance Eq a => Eq (Phantom a) where
+          eq a b =
+            True
+
     "#};
 
-    let derived = format!(
+    let boxed = format!(
         "{}instance Comparable (Box a) where\n  derived\n",
         declarations
     );
-    assert!(run(&derived).is_ok(), "{:?}", run(&derived).err());
+    assert!(run(&boxed).is_ok(), "{:?}", run(&boxed).err());
 
+    let phantom = format!(
+        "{}instance Comparable (Phantom a) where\n  derived\n",
+        declarations
+    );
+    let error = one_type_error(&phantom);
+    match &error.kind {
+        typer::ErrorKind::MissingConstraint {
+            class,
+            variable,
+            written,
+            ..
+        } => {
+            assert_eq!(class.unqualified_name().as_str(), "Eq");
+            assert_eq!(variable, "a");
+            assert_eq!(*written, typer::Written::InstanceContext);
+        }
+        other => panic!("expected MissingConstraint, got {:?}", other),
+    }
+
+    // The same instance written out is the same error, so the derived one is held to
+    // nothing a written one is not.
     let written = format!(
-        "{}instance Comparable (Box a) where\n  lt (Box left) (Box right) =\n    False\n",
+        "{}instance Comparable (Phantom a) where\n  lt a b =\n    True\n",
         declarations
     );
     assert!(matches!(
@@ -4511,7 +4544,8 @@ fn an_obligation_at_a_record_is_accepted_until_lang_85() {
                   False
 
         instance Eq Int where
-          derived
+          eq a b =
+            True
 
         same : { x : Int } -> { x : Int } -> Bool
         same r s =
@@ -4754,4 +4788,424 @@ fn an_instance_of_a_third_module_is_in_scope_through_imports() {
 
     let checked = check_package_module(&[EQS, COLOURS, main], "Main");
     assert!(checked.is_ok(), "{:?}", checked.err());
+}
+
+// ── Derivations ───────────────────────────────────────────────────────────────
+//
+// A class's derivation is checked where it is written, and a derived instance is checked
+// like any other once canonicalization has given it its members.
+
+/// `Order`, and `Comparable` over it, with a derivation whose `differed` compares the two
+/// positions: the `Comparable Position` it needs is the one thing the class has to provide.
+const COMPARABLE_DERIVED: &str = indoc::indoc! {r#"
+    module Test exposing ()
+
+    type Order
+      = LT
+      | EQ
+      | GT
+
+    class Comparable a where
+      compare : a -> a -> Order
+
+      derived compare
+        matched = EQ
+        differed i j =
+          compare i j
+
+        combine x y =
+          case x of
+            EQ ->
+              y
+
+            _ ->
+              x
+
+"#};
+
+/// A `combine` of the wrong type is a type error at the class, where it was written: the
+/// caret is under the body that disagrees, and the note says which binding of which
+/// derivation it is.
+///
+/// Mutation-checked by running no `DerivationCheck` in `type_check_recovering`: the module
+/// checks and `one_type_error` panics.
+#[test]
+fn a_combine_of_the_wrong_type_is_a_type_error_at_the_class() {
+    use zelkova_compiler::PhaseError;
+
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              1
+    "#};
+    let error = one_type_error(source);
+
+    assert!(
+        matches!(error.kind, typer::ErrorKind::UnificationFailed { .. }),
+        "{:?}",
+        error.kind
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(source, "combine x y =\n      1", "1"),
+            range_of(source, "derived eq"),
+        ]
+    );
+    assert!(
+        error
+            .notes()
+            .contains(&"in the binding `combine` of the derivation of `eq`".to_owned()),
+        "{:?}",
+        error.notes()
+    );
+}
+
+/// A derivation's bindings are given no context, so one that needs a class of the member's
+/// own type variable is a `MissingConstraint` written as `Derivation`, at the use, and the note
+/// says the binding holds for every `b`.
+///
+/// Mutation-checked by writing the kind as `InstanceContext` in `DerivationCheck::binding`: the
+/// `written` assertion and the message go red.
+#[test]
+fn a_derivation_that_needs_a_class_of_a_variable_it_is_not_given_is_missing_a_constraint() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        type Maybe2 a
+          = Nothing2
+          | Just2 a
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Pick a where
+          pick : a -> a -> Maybe2 b
+
+          derived pick
+            matched = Nothing2
+            differed _ _ = Nothing2
+            combine x y =
+              case x of
+                Just2 v ->
+                  case eq v v of
+                    True ->
+                      y
+
+                    False ->
+                      y
+
+                Nothing2 ->
+                  y
+    "#};
+    let error = one_type_error(source);
+
+    match &error.kind {
+        typer::ErrorKind::MissingConstraint {
+            class,
+            variable,
+            written,
+            ..
+        } => {
+            assert_eq!(class.unqualified_name().as_str(), "Eq");
+            assert_eq!(variable, "b");
+            assert_eq!(*written, typer::Written::Derivation);
+        }
+        other => panic!("expected `MissingConstraint`, got {:?}", other),
+    }
+    assert_eq!(
+        error.message(),
+        "`Eq b` is required here, and the derivation, which is given no context, does not provide it"
+    );
+    assert_eq!(
+        ranges(&error.labels())[0],
+        range_within(source, "case eq v v of", "eq")
+    );
+    assert!(
+        error
+            .notes()
+            .iter()
+            .any(|note| note.contains("a derivation's bindings carry no context")),
+        "{:?}",
+        error.notes()
+    );
+}
+
+/// A `combine` of the wrong type is reported once, at the class, and not again in the members
+/// of an instance derived from it: the members are generated out of the binding that is wrong, so
+/// an error in one only restates it. A written instance of the same class is still held to its
+/// own errors.
+///
+/// Mutation-checked by reporting a derived instance's binding errors whatever the class's
+/// derivations did (`let restated = false` in `InstanceCheck::of`): the second error, at the
+/// word `derived`, is reported and `one_type_error` panics.
+#[test]
+fn an_instance_derived_from_a_wrong_derivation_does_not_repeat_the_error() {
+    let source = indoc::indoc! {r#"
+        module Test exposing ()
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              1
+
+        type Colour
+          = Red Int
+          | Green
+
+        instance Eq Int where
+          eq a b =
+            True
+
+        instance Eq Colour where
+          derived
+    "#};
+    let error = one_type_error(source);
+
+    assert!(
+        matches!(error.kind, typer::ErrorKind::UnificationFailed { .. }),
+        "{:?}",
+        error.kind
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![
+            range_within(source, "combine x y =\n      1", "1"),
+            range_of(source, "derived eq"),
+        ]
+    );
+
+    // An instance written out is held to its own bindings.
+    let written = source.replace(
+        "instance Eq Colour where\n  derived\n",
+        "instance Eq Colour where\n  eq a b =\n    1\n",
+    );
+    let errors = type_errors(&written);
+    assert_eq!(errors.len(), 2, "{:?}", errors);
+}
+
+/// The same holds across modules: the class's module is where the derivation is wrong, and a
+/// module deriving an instance of the class has nothing to add, because the class's interface
+/// says its derivations were rejected.
+///
+/// Mutation-checked by not recording the rejected classes on the canonical module in
+/// `check_module_recovering` (dropping the `derivations_rejected = true`): the importer reports
+/// the same mistake and the assertion on its errors goes red.
+#[test]
+fn an_instance_derived_in_another_module_from_a_wrong_derivation_does_not_repeat_the_error() {
+    let classes = indoc::indoc! {r#"
+        module Classes exposing (Eq)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              1
+    "#};
+    let mut interfaces = HashMap::from([basics_interface(), char_interface()]);
+    let zelkova_compiler::dependencies::Outcome::Module(declared, errors) =
+        zelkova_compiler::check_module_recovering(
+            &test_package(),
+            &interfaces,
+            &parse_source(classes),
+        )
+    else {
+        panic!("the class module came back whole");
+    };
+    assert_eq!(errors.len(), 1, "{:?}", errors);
+    interfaces.insert(
+        declared.canonical.name.name().clone(),
+        declared.to_interface(None),
+    );
+
+    let importer = indoc::indoc! {r#"
+        module Types exposing (Box(..))
+
+        import Classes exposing (Eq)
+
+        type Box a
+          = Box a
+
+        instance Eq (Box a) where
+          derived
+    "#};
+    let checked = check_module(&test_package(), &interfaces, &parse_source(importer));
+    assert!(checked.is_ok(), "{:?}", checked.err());
+}
+
+/// `differed i j = compare i j` needs `Comparable Position`, so it checks only where that
+/// instance is in scope. The error is `NoInstance`, at the use, and the class is told so
+/// where it was written.
+///
+/// Mutation-checked by running no `DerivationCheck`: the first source checks and
+/// `one_type_error` panics; and by giving `differed` the answer type in place of `Position` in
+/// `DerivationCheck::binding`: the obligation is then at `Order` and the assertion on the type
+/// goes red.
+#[test]
+fn a_differed_that_compares_positions_needs_a_comparable_position() {
+    let without = COMPARABLE_DERIVED;
+    let error = one_type_error(without);
+    assert_eq!(
+        no_instance_of(&error),
+        ("Comparable".to_string(), "Position".to_string())
+    );
+    assert_eq!(
+        ranges(&error.labels())[0],
+        range_within(without, "compare i j", "compare")
+    );
+
+    let with = format!(
+        "{}{}",
+        COMPARABLE_DERIVED,
+        indoc::indoc! {r#"
+            instance Comparable Position where
+              compare a b =
+                EQ
+        "#}
+    );
+    assert!(run(&with).is_ok(), "{:?}", run(&with).err());
+}
+
+/// A derived `Eq` and `Comparable`, on a union with arguments, a recursive type and a tuple
+/// type, check: each instance is checked as written, against the context it was inferred.
+/// A use at a type whose argument has no instance is an error, at the use.
+///
+/// None of the derived instances writes a context, so `List`'s and the tuple's are the ones
+/// inferred: `Eq a` and `Comparable a` on `List a`, and one constraint per element on a tuple.
+///
+/// Mutation-checked by adding no constraint for a variable in `derivation::reduce`: the `List`
+/// and tuple instances are then generated over `a` and `b` with nothing given, and
+/// `run(..).is_ok()` goes red.
+#[test]
+fn derived_instances_on_a_union_a_recursive_type_and_a_tuple_check() {
+    let declarations = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        type Order
+          = LT
+          | EQ
+          | GT
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              case x of
+                True ->
+                  y
+
+                False ->
+                  False
+
+        class Eq a => Comparable a where
+          compare : a -> a -> Order
+
+          derived compare
+            matched = EQ
+            differed i j =
+              compare i j
+
+            combine x y =
+              case x of
+                EQ ->
+                  y
+
+                _ ->
+                  x
+
+        instance Eq Int where
+          eq a b =
+            True
+
+        instance Comparable Int where
+          compare a b =
+            EQ
+
+        instance Eq Position where
+          eq a b =
+            True
+
+        instance Comparable Position where
+          compare a b =
+            EQ
+
+        type Shape
+          = Circle Int
+          | Rect Int Int
+          | Empty
+
+        type List a
+          = Nil
+          | Cons a (List a)
+
+        type Plain
+          = Plain
+
+        instance Eq Shape where
+          derived
+
+        instance Comparable Shape where
+          derived
+
+        instance Eq (List a) where
+          derived
+
+        instance Comparable (List a) where
+          derived
+
+        instance Eq (a, b) where
+          derived
+
+        instance Comparable (a, b) where
+          derived
+
+    "#};
+
+    let uses = indoc::indoc! {r#"
+        same : Bool
+        same =
+          eq (Cons 1 (Cons 2 Nil)) (Cons 1 Nil)
+
+        order : Order
+        order =
+          compare (Rect 1 2) (Circle 3)
+
+        paired : Order
+        paired =
+          compare (Circle 1, Cons 1 Nil) (Empty, Nil)
+    "#};
+    let source = format!("{}{}", declarations, uses);
+    assert!(run(&source).is_ok(), "{:?}", run(&source).err());
+
+    // A list of a type with no instance is not equal to anything.
+    let plain = format!(
+        "{}same : Bool\nsame =\n  eq (Cons Plain Nil) Nil\n",
+        declarations
+    );
+    let error = one_type_error(&plain);
+    assert_eq!(
+        no_instance_of(&error),
+        ("Eq".to_string(), "Plain".to_string())
+    );
+    assert_eq!(
+        ranges(&error.labels())[0],
+        range_within(&plain, "eq (Cons Plain Nil) Nil", "eq")
+    );
 }

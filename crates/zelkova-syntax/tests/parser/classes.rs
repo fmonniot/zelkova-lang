@@ -163,7 +163,10 @@ fn an_instance_may_carry_a_context_and_the_word_derived() {
 
     assert_eq!(constraints(&derived.context), vec!["Eq a"]);
     assert_eq!(show(&derived.head), "Eq (Box a)");
-    assert!(matches!(derived.body, InstanceBody::Derived));
+    let InstanceBody::Derived(word) = &derived.body else {
+        panic!("the word derived, got {:?}", derived.body);
+    };
+    assert_eq!(text_of(EXAMPLE, *word), "derived");
 }
 
 #[test]
@@ -317,7 +320,7 @@ fn a_binding_named_derived_is_not_the_request() {
 }
 
 /// A derivation with no binding parses, as an empty body does. Naming the missing
-/// binding is `LANG-83`'s to do.
+/// binding is canonicalization's.
 ///
 /// Verified to fail by turning the derivation's `*` in `ClassMember` back into `+`.
 #[test]

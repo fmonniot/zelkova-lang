@@ -832,9 +832,10 @@ InstanceDecl: InstanceDecl = {
 // a mixture: the grammar has no production for one. The word `derived` is a block of its
 // own, so after the block opens the token that follows `derived` says whether the block
 // is the request or a binding of a member of that name: `close block`, or a pattern and
-// `=`.
+// `=`. The request keeps where the word was written, which is what a definition generated
+// for it is blamed on.
 InstanceBody: InstanceBody = {
-    "open block" "derived" "close block" => InstanceBody::Derived,
+    "open block" <l:@L> "derived" <r:@R> "close block" => InstanceBody::Derived(NodeSpan::new(l, r)),
 
     <("open block" <FunBinding> "close block")*> => InstanceBody::Bindings(<>),
 };

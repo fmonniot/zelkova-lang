@@ -12,7 +12,7 @@ a table of the whole build handed to `emit`; `crates/zelkova/src/lib.rs` — `co
 
 **Depends on:** [LANG-40](README.md), which puts a context on a declaration, an instantiated
 context on each reference to one, and the instances with their checked bodies in the IR; and
-[LANG-83](lang-83.md), after which a derived instance has bodies like a written one and needs
+[LANG-83](README.md), after which a derived instance has bodies like a written one and needs
 nothing special here.
 
 **Decided (by the language owner):** a constrained function is specialised per instantiation and

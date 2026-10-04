@@ -15,7 +15,7 @@ their types; `std/core/tests/`; `std/test/src/Test.zel` — `equal`; `tests/fixt
 `crates/zelkova-compiler/src/scalars.rs`, for `Position`.
 
 **Depends on:** [LANG-40](README.md), for a solver;
-[LANG-83](lang-83.md), for `derived`; and [GEN-24](gen-24.md), without which none of it can be
+[LANG-83](README.md), for `derived`; and [GEN-24](gen-24.md), without which none of it can be
 emitted and `cargo run -- test std/core` cannot pass.
 
 **Closes:** [BUG-20](bug-20.md) — whose first half made the runtime say so, and whose second,
@@ -77,7 +77,7 @@ ticket is also what unblocks it.
 
 2. **`Position`, in `Basics`**: a type with one constructor holding an `Int`, exposed without
    it, with `positionIndex : Position -> Int` and `Eq` and `Comparable` instances. It is the
-   type [LANG-83](lang-83.md) made the compiler know by qualified name; this is its declaration.
+   type [LANG-83](README.md) made the compiler know by qualified name; this is its declaration.
    Both instances can be `derived` — a `Position` has one constructor, so neither walk ever
    reaches `differed`.
 

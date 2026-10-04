@@ -119,7 +119,7 @@ from, beside the `ir::Module` a backend will read.
 | Layout | `crates/zelkova-syntax/src/parser/layout.rs` | offside rule; injects `OpenBlock`/`CloseBlock`. 2-space indent, no tabs |
 | Parsing | `crates/zelkova-syntax/src/parser/grammar.lalrpop` | LALRPOP grammar → `parser::Module`. Compiled by `crates/zelkova-syntax/build.rs` |
 | Dependency resolution | `crates/zelkova-compiler/src/dependencies.rs` | petgraph; Tarjan SCC for cycles; yields a topological order |
-| Canonicalization | `crates/zelkova-compiler/src/canonical/` | resolves imports against `Interface`s, qualifies names, resolves classes and instances and holds each instance to the orphan rule, validates exports → `canonical::Module` |
+| Canonicalization | `crates/zelkova-compiler/src/canonical/` | resolves imports against `Interface`s, qualifies names, resolves classes and instances and holds each instance to the orphan rule, checks each class's derivations, gives a `derived` instance its inferred context and its generated members, validates exports → `canonical::Module` |
 | Type checking | `crates/zelkova-compiler/src/typer/` | Hindley–Milner: `annotate.rs` → `constraint.rs` → `unifier.rs`, then `classes.rs` answers the class obligations `unify` cannot answer on sight (its module doc comment is the account). **Wired into `check_module`** |
 | Exhaustiveness | `crates/zelkova-compiler/src/exhaustiveness.rs` | **stub** — `check` inspects nothing and accepts every module. `Error::NonExhaustiveMatch` exists and renders, but nothing constructs it yet |
 | Backend IR | `crates/zelkova-compiler/src/ir/` | the shape a backend reads: a type on every node, the four kinds of name apart, arity, saturation and a constructor's place in its declaration, and what a constrained name asks: a context on each reference and declaration, and a module's instances. `ir::build` turns the canonical module and what the typer solved into one `ir::Module`. Its module doc comment is where the WebAssembly constraints are written, and is what to read before changing the shape |
@@ -256,9 +256,12 @@ canonicalization resolves them (`canonical/classes.rs`; its module doc comment i
 a member is a top-level value of its class's module, and an instance reaches every module that
 imports its declaring one, transitively, through `Interface::instances`. A use of a member or of
 a constrained function is checked against the instances in scope, and an instance's bindings
-against its class's signatures; a derivation and a `derived` instance's members are not
-(`LANG-83`), and `zelkova_js::emit` refuses a module holding a class or an instance, and one
-with a constrained declaration or a use of a member. **`class` and
+against its class's signatures. A derivation is checked where it is written, and a `derived`
+instance is given the context its type's arguments need (a context written on one is an error)
+and the members its class's derivation stands for, as canonical code placed where a written
+instance's bindings would be (`canonical/derivation.rs`; its module doc comment is the account),
+so the typer and the IR read it as they read any other instance. `zelkova_js::emit` refuses a module holding a class or an
+instance, and one with a constrained declaration or a use of a member. **`class` and
 `instance` are reserved words, and `where`
 is reserved as a type variable** and nowhere else: it stays an ordinary name wherever a value
 is named, and `derived` is soft, read by the token after it. The layout pass gives each member

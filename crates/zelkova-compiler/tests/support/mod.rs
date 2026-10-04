@@ -200,7 +200,8 @@ pub fn maybe_interface() -> (Name, Interface) {
 }
 
 /// Build a minimal `Basics` interface declaring the three scalars it owns —
-/// `Basics.Int`, `Basics.Float` and `Basics.Bool` — and nothing else.
+/// `Basics.Int`, `Basics.Float` and `Basics.Bool` — and the opaque `Basics.Position` a
+/// derivation hands `differed`, and nothing else.
 ///
 /// A scalar is known by the qualified name of its declaration, so a bare `Int` is the
 /// scalar only in a module whose `Int` resolves to `Basics.Int`. In a real compile
@@ -232,12 +233,20 @@ pub fn basics_interface() -> (Name, Interface) {
     unions.insert("Int".into(), union("Int", &[]));
     unions.insert("Float".into(), union("Float", &[]));
     unions.insert("Bool".into(), union("Bool", &["True", "False"]));
+    // `Position` is declared here, opaque, with no constructor in the interface: the
+    // compiler knows the type, and the one constructor behind it, by name
+    // (`scalars::POSITION`), and no module is handed it.
+    unions.insert("Position".into(), union("Position", &[]));
 
     let interface = Interface {
         module_name: ModuleName::new(PackageName::core(), "Basics".into()),
         values: HashMap::new(),
         unions,
-        opaque_unions: std::collections::HashSet::from(["Int".into(), "Float".into()]),
+        opaque_unions: std::collections::HashSet::from([
+            "Int".into(),
+            "Float".into(),
+            "Position".into(),
+        ]),
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),

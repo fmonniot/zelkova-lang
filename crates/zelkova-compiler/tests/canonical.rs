@@ -6273,11 +6273,8 @@ fn a_class_and_its_instances_are_in_the_module() {
     };
     assert_eq!(context.class, eq);
     assert_eq!(context.variable.as_str(), "a");
-    let canonical::InstanceBody::Bindings(bindings) = &boxed.body else {
-        panic!("a written instance, got {:?}", boxed.body);
-    };
-    let [canonical::Value::Value { name, patterns, .. }] = bindings.as_slice() else {
-        panic!("one binding, got {:?}", bindings);
+    let [canonical::Value::Value { name, patterns, .. }] = boxed.bindings.as_slice() else {
+        panic!("one binding, got {:?}", boxed.bindings);
     };
     assert_eq!(name.as_str(), "eq");
     assert_eq!(patterns.len(), 2);
@@ -7692,4 +7689,1424 @@ fn a_constrained_function_behind_an_exposed_operator_carries_its_context() {
     };
     assert_eq!(eq.class, test_qual("Test.Eq"));
     assert_eq!(eq.variable.as_str(), "a");
+}
+
+// ── LANG-83: a derivation is checked, and a `derived` instance has its members ──
+
+/// A module header and the types the derivation tests below derive for.
+const DERIVATION_TYPES: &str = indoc::indoc! {r#"
+    module Test exposing ()
+
+    type Colour
+      = Red
+      | Green
+
+    type Box a
+      = Box a
+
+"#};
+
+/// `DERIVATION_TYPES`, then `declarations`.
+fn with_derivation(declarations: &str) -> String {
+    format!("{}{}", DERIVATION_TYPES, declarations)
+}
+
+/// `Eq`, derived the way the chapter derives it.
+const EQ_DERIVED: &str = indoc::indoc! {r#"
+    class Eq a where
+      eq : a -> a -> Bool
+
+      derived eq
+        matched = True
+        differed _ _ = False
+        combine x y =
+          case x of
+            True ->
+              y
+
+            False ->
+              False
+
+"#};
+
+/// The one class error `source` is rejected with and the ranges of its labels, primary
+/// first. Anything but one error is a panic, so a test cannot pass on a second error that
+/// nothing looks at.
+fn one_class_error(source: &str) -> (canonical::Error, Vec<(bool, std::ops::Range<usize>)>) {
+    let mut errors = class_errors(source);
+    assert_eq!(errors.len(), 1, "expected one error, got {:?}", errors);
+    let error = errors.remove(0);
+    let labels = label_ranges(&error);
+    (error, labels)
+}
+
+/// A derivation for a name the class does not declare is an error at the derivation.
+///
+/// Mutation-checked by dropping the `DerivationForNonMember` push in `class_derivations`, so
+/// that the derivation is skipped without a word: the module canonicalizes and `class_errors`
+/// panics.
+#[test]
+fn a_derivation_for_a_name_that_is_not_a_member_is_an_error() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived nope
+            matched = True
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivationForNonMember(member, class, _) = &error else {
+        panic!("expected DerivationForNonMember, got {:?}", error);
+    };
+    assert_eq!(member.as_str(), "nope");
+    assert_eq!(class.as_str(), "Eq");
+    assert_eq!(labels, vec![(true, range_of(&source, "derived nope"))]);
+}
+
+/// A member whose signature returns the class variable cannot carry a derivation: the walk
+/// would be asked for a third value of the type it is walking.
+///
+/// Mutation-checked by dropping `!mentions(result, variable)` from the walk over two values
+/// in `walk_of`: `add` is then derived, the module canonicalizes and `class_errors` panics.
+#[test]
+fn a_derivation_on_a_member_returning_the_class_variable_is_an_error() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Number a where
+          add : a -> a -> a
+
+          derived add
+            matched = 0
+            differed _ _ = 0
+            combine x y =
+              x
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivationSignature(member, problem, _, _) = &error else {
+        panic!("expected DerivationSignature, got {:?}", error);
+    };
+    assert_eq!(member.as_str(), "add");
+    assert_eq!(
+        *problem,
+        canonical::DerivationSignatureProblem::ResultMentionsClassVariable
+    );
+    // The derivation is where the error is, and the signature is shown beside it.
+    assert_eq!(
+        labels,
+        vec![
+            (true, range_of(&source, "derived add")),
+            (false, range_of(&source, "add : a -> a -> a")),
+        ]
+    );
+}
+
+/// A member taking no value of the class's type cannot carry one either: it would have to
+/// be built from a description of the type's constructors.
+///
+/// Mutation-checked by answering `Shape` where `walk_of` answers `NoClassValue`: the problem
+/// assertion goes red.
+#[test]
+fn a_derivation_on_a_member_taking_no_class_value_is_an_error() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Bounded a where
+          bottom : a
+
+          derived bottom
+            matched = True
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivationSignature(member, problem, _, _) = &error else {
+        panic!("expected DerivationSignature, got {:?}", error);
+    };
+    assert_eq!(member.as_str(), "bottom");
+    assert_eq!(
+        *problem,
+        canonical::DerivationSignatureProblem::NoClassValue
+    );
+    assert_eq!(labels[0], (true, range_of(&source, "derived bottom")));
+}
+
+/// Any other signature is an error too: here the class value is not the first parameter.
+///
+/// Mutation-checked by letting any first parameter through `walk_of`'s test for the class
+/// variable (`|| true`): `sized` is then derived as a walk of two values and the module
+/// canonicalizes; and by swapping the derivation and the signature spans in
+/// `DerivationSignature`'s `labels()` arm: the range assertion goes red.
+#[test]
+fn a_derivation_on_a_member_whose_first_parameter_is_not_the_class_value_is_an_error() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Sized a where
+          sized : Int -> a -> Bool
+
+          derived sized
+            atConstructor _ = True
+            combine x y =
+              x
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivationSignature(_, problem, _, _) = &error else {
+        panic!("expected DerivationSignature, got {:?}", error);
+    };
+    assert_eq!(*problem, canonical::DerivationSignatureProblem::Shape);
+    assert_eq!(
+        labels,
+        vec![
+            (true, range_of(&source, "derived sized")),
+            (false, range_of(&source, "sized : Int -> a -> Bool")),
+        ]
+    );
+}
+
+/// A derivation without `combine` is an error naming it, at the derivation.
+///
+/// Mutation-checked by dropping the `DerivationBindingMissing` push in `class_derivations`:
+/// the module canonicalizes and `class_errors` panics.
+#[test]
+fn a_derivation_without_combine_is_an_error() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivationBindingMissing(binding, member, _) = &error else {
+        panic!("expected DerivationBindingMissing, got {:?}", error);
+    };
+    assert_eq!(binding.as_str(), "combine");
+    assert_eq!(member.as_str(), "eq");
+    assert_eq!(labels, vec![(true, range_of(&source, "derived eq"))]);
+}
+
+/// A binding the member's signature does not call for is an error under that binding, and
+/// names what the derivation does take. `atConstructor` is not one of the two-value
+/// derivation's.
+///
+/// Mutation-checked by dropping the `DerivationBindingUnexpected` push in
+/// `class_derivations`, so that the binding is ignored: the module canonicalizes and
+/// `class_errors` panics.
+#[test]
+fn an_extra_binding_in_a_derivation_is_an_error() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              y
+
+            atConstructor p =
+              True
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivationBindingUnexpected(binding, member, takes, _) = &error else {
+        panic!("expected DerivationBindingUnexpected, got {:?}", error);
+    };
+    assert_eq!(binding.as_str(), "atConstructor");
+    assert_eq!(member.as_str(), "eq");
+    let takes: Vec<&str> = takes.iter().map(|name| name.as_str()).collect();
+    assert_eq!(takes, vec!["matched", "differed", "combine"]);
+    assert_eq!(labels.len(), 1);
+    assert!(labels[0].0);
+    let binding_text = "atConstructor p =\n      True";
+    assert_eq!(labels[0].1, range_of(&source, binding_text));
+}
+
+/// A binding written twice is an error at the second, and the first is shown beside it.
+///
+/// Mutation-checked by never finding an earlier binding in `class_derivations`'s `written`
+/// lookup: the second `matched` replaces the first and the module canonicalizes; and by
+/// swapping the two spans in `DerivationBindingRepeated`'s `labels()` arm: the range
+/// assertion goes red.
+#[test]
+fn a_repeated_binding_in_a_derivation_is_an_error() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              y
+
+            matched = False
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivationBindingRepeated(binding, member, _, _) = &error else {
+        panic!("expected DerivationBindingRepeated, got {:?}", error);
+    };
+    assert_eq!(binding.as_str(), "matched");
+    assert_eq!(member.as_str(), "eq");
+    // The repeat is where the error is, and the first is shown beside it.
+    assert_eq!(
+        labels,
+        vec![
+            (true, range_of(&source, "matched = False")),
+            (false, range_of(&source, "matched = True")),
+        ]
+    );
+}
+
+/// A binding with more parameters than the walk supplies it cannot be placed, so it is an
+/// error at the binding.
+///
+/// Mutation-checked by never finding a binding with too many parameters in
+/// `class_derivations` (`false &&` in front of the count): the module canonicalizes.
+#[test]
+fn a_derivation_binding_with_too_many_parameters_is_an_error() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y z =
+              y
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivationBindingTakesTooMany(binding, member, most, _) = &error else {
+        panic!("expected DerivationBindingTakesTooMany, got {:?}", error);
+    };
+    assert_eq!(binding.as_str(), "combine");
+    assert_eq!(member.as_str(), "eq");
+    assert_eq!(*most, 2);
+    assert_eq!(labels.len(), 1);
+    assert_eq!(labels[0].1, range_of(&source, "combine x y z =\n      y"));
+}
+
+/// A member has at most one derivation: the second is an error, with the first beside it.
+///
+/// Mutation-checked by never finding an earlier derivation in `class_derivations`'s `first`
+/// lookup: the second is read as the first would be and the module canonicalizes; and by
+/// swapping `span` and `earlier` in `DerivationRepeated`'s `labels()` arm: the primary label
+/// is then on the first derivation and the range assertion goes red.
+#[test]
+fn a_member_with_two_derivations_is_an_error() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              y
+
+          derived eq
+            matched = False
+            differed _ _ = False
+            combine x y =
+              y
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivationRepeated(member, _, _) = &error else {
+        panic!("expected DerivationRepeated, got {:?}", error);
+    };
+    assert_eq!(member.as_str(), "eq");
+    // The second derivation is where the error is, and the first is shown beside it.
+    assert_eq!(
+        labels,
+        vec![
+            (true, nth_range(&source, "derived eq", 1)),
+            (false, nth_range(&source, "derived eq", 0)),
+        ]
+    );
+}
+
+/// A class with two members and a derivation for one is an error naming the other, at the
+/// class's head.
+///
+/// Mutation-checked by switching the coverage check in `class_derivations` off (`false &&`):
+/// the module canonicalizes and `class_errors` panics.
+#[test]
+fn a_class_with_one_of_two_members_derived_is_an_error_naming_the_other() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Bool
+          neq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              y
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivationIncomplete(class, left_out, _) = &error else {
+        panic!("expected DerivationIncomplete, got {:?}", error);
+    };
+    assert_eq!(class.as_str(), "Eq");
+    let left_out: Vec<&str> = left_out.iter().map(|name| name.as_str()).collect();
+    assert_eq!(left_out, vec!["neq"]);
+    assert_eq!(labels, vec![(true, range_of(&source, "class Eq a where"))]);
+}
+
+/// A class whose every member carries a derivation is derivable, and says so on its
+/// signature and in its interface entry, with the bindings: a module that imports the class
+/// reads them from there. A class with none is not derivable, and says that.
+///
+/// Mutation-checked by recording no derivation on the signature in `canonicalize_recovering`
+/// (`signature.derivations = Vec::new()`): the `derivable()` assertion on `Eq` goes red; and by
+/// publishing a class's signature without its derivations in `to_interface`: the interface
+/// assertions go red.
+#[test]
+fn a_class_deriving_every_member_is_derivable_and_publishes_its_bindings() {
+    let source = format!(
+        "{}{}{}",
+        "module Test exposing (Eq, Plain)\n\n",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            class Plain a where
+              plain : a -> Bool
+        "#}
+    );
+    let module = canonicalize_with_scalars(&source).expect("the module canonicalizes");
+
+    let eq = &module.classes[&"Eq".into()].signature;
+    assert!(eq.derivable());
+    let derivation = eq.derivation(&"eq".into()).expect("a derivation of `eq`");
+    assert_eq!(derivation.result, bool_t());
+    assert_eq!(
+        derivation.span.span().map(|span| span.to_range()),
+        Some(range_of(&source, "derived eq"))
+    );
+    let canonical::DerivationBindings::Pair { .. } = &derivation.bindings else {
+        panic!(
+            "a derivation over two values, got {:?}",
+            derivation.bindings
+        );
+    };
+
+    let plain = &module.classes[&"Plain".into()].signature;
+    assert!(!plain.derivable());
+    assert!(plain.derivations.is_empty());
+
+    let interface = module.to_interface(None);
+    assert!(interface.classes[&"Eq".into()].derivable());
+    assert_eq!(interface.classes[&"Eq".into()].derivations.len(), 1);
+    assert!(!interface.classes[&"Plain".into()].derivable());
+}
+
+/// A member at `a -> R` carries a derivation over one value, with `atConstructor`.
+///
+/// Mutation-checked by reading a member at `a -> R` as a walk over two values in `walk_of`
+/// (`Walk::Pair` for it): the derivation then wants `matched` and `differed`, the module is
+/// rejected and `canonicalizes` panics.
+#[test]
+fn a_member_at_a_to_r_carries_a_derivation_over_one_value() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Hashable a where
+          hash : a -> Int
+
+          derived hash
+            atConstructor _ = 1
+            combine x y =
+              x
+    "#});
+    let module = canonicalize_with_scalars(&source).expect("the module canonicalizes");
+
+    let hashable = &module.classes[&"Hashable".into()].signature;
+    assert!(hashable.derivable());
+    assert!(hashable.walks_one_value());
+    let derivation = hashable
+        .derivation(&"hash".into())
+        .expect("a derivation of `hash`");
+    assert_eq!(derivation.result, int_t());
+    assert!(matches!(
+        derivation.bindings,
+        canonical::DerivationBindings::Single { .. }
+    ));
+}
+
+/// `derived` under a class whose declaration carries no derivation is an error naming the
+/// class, at the word.
+///
+/// Mutation-checked by never rejecting a class in `plan` (`false &&` in front of the
+/// `derivable()` test): the instance is kept, the module canonicalizes and `class_errors`
+/// panics.
+#[test]
+fn a_derived_instance_of_a_class_with_no_derivation_is_an_error_naming_the_class() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Bool
+
+        instance Eq Colour where
+          derived
+    "#});
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivedInstanceNotDerivable(class, _) = &error else {
+        panic!("expected DerivedInstanceNotDerivable, got {:?}", error);
+    };
+    assert_eq!(class.as_str(), "Eq");
+    assert_eq!(labels, vec![(true, range_of(&source, "derived"))]);
+}
+
+/// `derived` for a scalar type is an error: a scalar has no shape for a walk to read.
+///
+/// Mutation-checked by switching the `scalar_of` check in `plan` off: `Int` has no union in
+/// scope, the instance is dropped without an error, and `class_errors` panics.
+#[test]
+fn a_derived_instance_for_a_scalar_is_an_error() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            instance Eq Int where
+              derived
+        "#}
+    ));
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivedInstanceNoShape(problem, _) = &error else {
+        panic!("expected DerivedInstanceNoShape, got {:?}", error);
+    };
+    assert_eq!(
+        *problem,
+        canonical::DerivedShapeProblem::Scalar("Int".into())
+    );
+    // The word of the instance, the second `derived` in the source.
+    assert_eq!(labels, vec![(true, nth_range(&source, "derived", 1))]);
+}
+
+/// What `source` canonicalizes to, with `Int`'s instance written beside it: the tests of what
+/// a derived instance needs read the instances' contexts off the module.
+fn derived_module(source: &str) -> canonical::Module {
+    canonicalize_with_scalars(source)
+        .unwrap_or_else(|errors| panic!("expected the module to canonicalize, got {:?}", errors))
+}
+
+/// What an instance needs of its head's variables, as the class and the variable of each
+/// constraint, in order.
+fn context_of(instance: &canonical::Instance) -> Vec<(String, String)> {
+    instance
+        .signature
+        .context
+        .iter()
+        .map(|constraint| {
+            (
+                constraint.class.unqualified_name().to_string(),
+                constraint.variable.to_string(),
+            )
+        })
+        .collect()
+}
+
+/// The instance of the module whose head is the type named `head`.
+fn instance_for<'a>(module: &'a canonical::Module, head: &str) -> &'a canonical::Instance {
+    module
+        .instances
+        .iter()
+        .find(|instance| match &instance.signature.head {
+            canonical::InstanceHead::Type(name, _) => name.unqualified_name().as_str() == head,
+            _ => false,
+        })
+        .unwrap_or_else(|| panic!("an instance for `{}`", head))
+}
+
+fn pairs(constraints: &[(&str, &str)]) -> Vec<(String, String)> {
+    constraints
+        .iter()
+        .map(|(class, variable)| (class.to_string(), variable.to_string()))
+        .collect()
+}
+
+/// `Int` has an `Eq` instance, written out, which a variant holding one needs.
+const EQ_INT: &str = indoc::indoc! {r#"
+    instance Eq Int where
+      eq a b =
+        True
+
+"#};
+
+/// A derived instance for a type imported without its constructors is an error: the walk is
+/// read off the constructors, and there are none to read. Imported with them, the same
+/// instance is fine.
+///
+/// Mutation-checked by switching the check for a union with no variants in `plan` off: the
+/// opaque import is derived, with no alternative to walk, and `expect_err` panics.
+#[test]
+fn a_derived_instance_for_a_type_imported_opaquely_is_an_error() {
+    let mut interfaces = scalar_interfaces();
+    publish(
+        "module Colour exposing (Colour)\n\ntype Colour\n  = Red\n",
+        &mut interfaces,
+    );
+    let source = format!(
+        "module Test exposing (Eq)\n\nimport Colour exposing (Colour)\n\n{}instance Eq Colour where\n  derived\n",
+        EQ_DERIVED
+    );
+    let errors = canonicalize_with_interfaces(&source, &interfaces)
+        .expect_err("expected the module to be rejected");
+
+    let [error @ canonical::Error::DerivedInstanceNoShape(problem, _)] = errors.as_slice() else {
+        panic!("expected one DerivedInstanceNoShape, got {:?}", errors);
+    };
+    assert_eq!(
+        *problem,
+        canonical::DerivedShapeProblem::NoConstructors("Colour".into())
+    );
+    assert_eq!(
+        label_ranges(error),
+        vec![(true, nth_range(&source, "derived", 1))]
+    );
+
+    // With its constructors in reach the same instance has a shape.
+    let mut interfaces = scalar_interfaces();
+    publish(
+        "module Colour exposing (Colour(..))\n\ntype Colour\n  = Red\n",
+        &mut interfaces,
+    );
+    let module = canonicalize_with_interfaces(&source, &interfaces)
+        .expect("a type imported with its constructors is derived");
+    assert_eq!(module.instances.len(), 1);
+}
+
+/// A derived instance for a type imported by name alone, `exposing (Colour)`, or not at all and
+/// named qualified, is accepted when the declaring module exposes `Colour(..)`: "constructors in
+/// scope" is read as what the declaring module exposes and not as what the import list names.
+/// Which reading the language means is `SPEC-39`'s, so this pins the one the compiler has.
+///
+/// Mutation-checked by treating every type of another module as having no constructors in
+/// `plan` (`|| declaring_module(name) != *env.module_name()` added to the test for a union with
+/// no variants): both instances are rejected with `DerivedInstanceNoShape` and the first
+/// assertion goes red.
+#[test]
+fn a_derived_instance_for_a_type_imported_by_name_is_accepted_when_its_module_exposes_the_constructors(
+) {
+    let mut interfaces = scalar_interfaces();
+    publish(
+        "module Colour exposing (Colour(..))\n\ntype Colour\n  = Red\n  | Green\n",
+        &mut interfaces,
+    );
+
+    for (import, head) in [
+        ("import Colour exposing (Colour)", "Colour"),
+        ("import Colour", "Colour.Colour"),
+    ] {
+        let source = format!(
+            "module Test exposing (Eq)\n\n{}\n\n{}instance Eq {} where\n  derived\n",
+            import, EQ_DERIVED, head
+        );
+        let module = canonicalize_with_interfaces(&source, &interfaces).unwrap_or_else(|errors| {
+            panic!(
+                "`{}`: expected it to canonicalize, got {:?}",
+                import, errors
+            )
+        });
+        assert_eq!(module.instances.len(), 1, "`{}`", import);
+        assert_eq!(module.instances[0].bindings.len(), 1, "`{}`", import);
+    }
+}
+
+/// `()` has no element for a derivation over one value to begin at, so a class with such a
+/// member cannot derive it. A class whose derivations walk two values can: its answer is
+/// `matched`.
+///
+/// Mutation-checked by switching the `walks_one_value` check in `plan` off: the first source
+/// canonicalizes and `one_class_error` panics; and by blaming the class's head line instead of
+/// the instance's word for `UnitHasNoElement` in `plan` (`signature.span` for
+/// `candidate.span`): the range assertion goes red.
+#[test]
+fn a_derived_unit_instance_needs_a_class_that_walks_two_values() {
+    let one_value = with_derivation(indoc::indoc! {r#"
+        class Hashable a where
+          hash : a -> Int
+
+          derived hash
+            atConstructor _ = 1
+            combine x y =
+              x
+
+        instance Hashable () where
+          derived
+    "#});
+    let (error, labels) = one_class_error(&one_value);
+    let canonical::Error::DerivedInstanceNoShape(problem, _) = &error else {
+        panic!("expected DerivedInstanceNoShape, got {:?}", error);
+    };
+    assert_eq!(
+        *problem,
+        canonical::DerivedShapeProblem::UnitHasNoElement("Hashable".into())
+    );
+    // The word of the instance, the second `derived` in the source.
+    assert_eq!(labels, vec![(true, nth_range(&one_value, "derived", 1))]);
+
+    let two_values = with_derivation(&format!("{}instance Eq () where\n  derived\n", EQ_DERIVED));
+    let module = derived_module(&two_values);
+    let [instance] = module.instances.as_slice() else {
+        panic!("one instance, got {:?}", module.instances);
+    };
+    assert_eq!(instance.signature.head, canonical::InstanceHead::Unit);
+    assert!(instance.signature.context.is_empty());
+    assert_eq!(instance.bindings.len(), 1);
+}
+
+/// `Box a`, holding an `a`, needs the class of `a`: one constraint on the head's variable,
+/// where the word `derived` was written. A tuple needs it of each element.
+///
+/// Mutation-checked by adding no constraint for a variable in `reduce`: the context is empty
+/// and the first assertion goes red.
+#[test]
+fn a_derived_instance_infers_a_constraint_on_the_variable_it_holds() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            instance Eq (Box a) where
+              derived
+
+            instance Eq (a, b) where
+              derived
+        "#}
+    ));
+    let module = derived_module(&source);
+
+    let boxed = instance_for(&module, "Box");
+    assert_eq!(context_of(boxed), pairs(&[("Eq", "a")]));
+    // The constraint was not written, and its span is the word that asked for it.
+    assert_eq!(
+        boxed.signature.context[0]
+            .span
+            .span()
+            .map(|span| span.to_range()),
+        Some(nth_range(&source, "derived", 1))
+    );
+
+    let tuple = module
+        .instances
+        .iter()
+        .find(|instance| matches!(instance.signature.head, canonical::InstanceHead::Tuple(_)))
+        .expect("the tuple instance");
+    assert_eq!(context_of(tuple), pairs(&[("Eq", "a"), ("Eq", "b")]));
+}
+
+/// A parameter no variant uses carries no constraint: the instance needs nothing of it.
+///
+/// Mutation-checked by constraining every variable of the head, whatever the type holds, in
+/// `derive_all`: the context is `Eq a` and the assertion goes red.
+#[test]
+fn a_parameter_no_variant_uses_infers_no_constraint() {
+    let source = with_derivation(&format!(
+        "{}{}{}",
+        EQ_DERIVED,
+        EQ_INT,
+        indoc::indoc! {r#"
+            type Phantom a
+              = Phantom Int
+
+            instance Eq (Phantom a) where
+              derived
+        "#}
+    ));
+    let module = derived_module(&source);
+
+    assert!(instance_for(&module, "Phantom")
+        .signature
+        .context
+        .is_empty());
+}
+
+/// A variant holding a concrete type with no instance is an error naming the variant and
+/// the type, at the word `derived`, with the type's declaration shown beside it.
+///
+/// Mutation-checked by answering `Ok` for a type with no instance in `reduce`: the module
+/// canonicalizes and `class_errors` panics.
+#[test]
+fn a_variant_holding_a_type_with_no_instance_is_an_error_naming_the_variant_and_the_type() {
+    use zelkova_compiler::PhaseError;
+
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            type Key
+              = Key
+
+            type Entry
+              = Entry Key
+
+            instance Eq Entry where
+              derived
+        "#}
+    ));
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivedInstanceRequires(requirement, _) = &error else {
+        panic!("expected DerivedInstanceRequires, got {:?}", error);
+    };
+    assert_eq!(requirement.class.as_str(), "Eq");
+    assert_eq!(
+        requirement.part,
+        canonical::DerivedPart::Variant("Entry".into())
+    );
+    assert_eq!(requirement.argument, "Key");
+    assert_eq!(requirement.missing, "Key");
+    assert!(!requirement.function);
+
+    let message = error.message();
+    assert!(
+        message.contains("`Entry`") && message.contains("`Key`"),
+        "{}",
+        message
+    );
+
+    assert_eq!(
+        labels,
+        vec![
+            (true, nth_range(&source, "derived", 1)),
+            (false, range_of(&source, "type Entry\n  = Entry Key")),
+        ]
+    );
+}
+
+/// A variant holding a function is that error with no fix: no instance can be declared for a
+/// function type.
+///
+/// Mutation-checked by accepting an arrow in `reduce`: the module canonicalizes and
+/// `class_errors` panics; and by dropping the `declared` label in `DerivedInstanceRequires`'s
+/// `labels()` arm, or blaming no span for the error in `derive_all` (`NodeSpan::none()` for
+/// `candidate.span`): the range assertion goes red.
+#[test]
+fn a_variant_holding_a_function_is_an_error_no_instance_can_fix() {
+    let source = with_derivation(&format!(
+        "{}{}{}",
+        EQ_DERIVED,
+        EQ_INT,
+        indoc::indoc! {r#"
+            type Handler
+              = Handler (Int -> Int)
+
+            instance Eq Handler where
+              derived
+        "#}
+    ));
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivedInstanceRequires(requirement, _) = &error else {
+        panic!("expected DerivedInstanceRequires, got {:?}", error);
+    };
+    assert_eq!(requirement.argument, "Int -> Int");
+    assert!(requirement.function);
+    assert_eq!(
+        labels,
+        vec![
+            (true, nth_range(&source, "derived", 1)),
+            (
+                false,
+                range_of(&source, "type Handler\n  = Handler (Int -> Int)")
+            ),
+        ]
+    );
+}
+
+/// An argument that is an application needs the instance for its head and whatever that
+/// instance's context asks of the arguments, down to the variables: `Maybe2 a` needs
+/// `Eq (Maybe2 a)`, which asks `Eq a`, which is a constraint on the derived instance; and
+/// `Maybe2 Key` needs `Eq Key`, which is missing, and the error says which type was.
+///
+/// Mutation-checked by not reading an instance's context in `reduce`: `Wrap`'s context is
+/// empty and its assertion goes red; and by dropping the `declared` label in
+/// `DerivedInstanceRequires`'s `labels()` arm: the range assertion goes red.
+#[test]
+fn an_argument_that_is_an_application_needs_what_its_instance_asks_of_the_arguments() {
+    let declarations = format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            type Maybe2 a
+              = Nothing2
+              | Just2 a
+
+            instance Eq a => Eq (Maybe2 a) where
+              eq _ _ =
+                True
+
+            type Key
+              = Key
+
+            type Wrap a
+              = Wrap (Maybe2 a)
+
+            instance Eq (Wrap a) where
+              derived
+        "#}
+    );
+    let module = derived_module(&with_derivation(&declarations));
+    assert_eq!(
+        context_of(instance_for(&module, "Wrap")),
+        pairs(&[("Eq", "a")])
+    );
+
+    let source = with_derivation(&format!(
+        "{}\ntype Entry\n  = Entry (Maybe2 Key)\n\ninstance Eq Entry where\n  derived\n",
+        declarations
+    ));
+    // `Wrap` is fine, `Entry` is the one failure.
+    let errors = class_errors(&source);
+    let [canonical::Error::DerivedInstanceRequires(requirement, _)] = errors.as_slice() else {
+        panic!("expected one DerivedInstanceRequires, got {:?}", errors);
+    };
+    assert_eq!(
+        requirement.part,
+        canonical::DerivedPart::Variant("Entry".into())
+    );
+    assert_eq!(requirement.argument, "Maybe2 Key");
+    assert_eq!(requirement.missing, "Key");
+    // The word of `Entry`'s instance, the third `derived` of the source after the class's and
+    // `Wrap`'s, and the type it is for beside it.
+    assert_eq!(
+        label_ranges(&errors[0]),
+        vec![
+            (true, nth_range(&source, "derived", 2)),
+            (
+                false,
+                range_of(&source, "type Entry\n  = Entry (Maybe2 Key)")
+            ),
+        ]
+    );
+}
+
+/// A recursive type asks for its own instance, which counts as in scope: `List a` holding an
+/// `a` and a `List a` infers `Eq a` and nothing more.
+///
+/// Mutation-checked by leaving the instances being derived out of the table in `derive_all`:
+/// the recursive argument has no instance and `derived_module` panics.
+#[test]
+fn a_recursive_type_infers_the_constraint_of_its_parameter_and_nothing_more() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            type List a
+              = Nil
+              | Cons a (List a)
+
+            instance Eq (List a) where
+              derived
+        "#}
+    ));
+    let module = derived_module(&source);
+
+    assert_eq!(
+        context_of(instance_for(&module, "List")),
+        pairs(&[("Eq", "a")])
+    );
+}
+
+/// Two types in one module that hold each other each infer what the other needs: `A` needs
+/// what `B` needs of `a` and `b`, and the other way round.
+///
+/// Mutation-checked by leaving the instances being derived out of the table in `derive_all`:
+/// each holds the other, which has no instance, and `derived_module` panics.
+#[test]
+fn two_mutually_recursive_types_each_infer_what_the_other_needs() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            type A a b
+              = A (B a b)
+
+            type B a b
+              = Next b (A a b)
+              | End a
+
+            instance Eq (A a b) where
+              derived
+
+            instance Eq (B a b) where
+              derived
+        "#}
+    ));
+    let module = derived_module(&source);
+
+    for head in ["A", "B"] {
+        let mut context = context_of(instance_for(&module, head));
+        context.sort();
+        assert_eq!(
+            context,
+            pairs(&[("Eq", "a"), ("Eq", "b")]),
+            "for `{}`",
+            head
+        );
+    }
+}
+
+/// A longer cycle needs the fixed point to go all the way round: `A` holds a `B`, which holds
+/// a `C`, which holds an `A`, each with a parameter of its own the others lack. Whatever order
+/// the instances are read in, each ends with both parameters, which one pass over them in the
+/// order written does not give: `A` is read before `C` has said what it needs.
+///
+/// Mutation-checked by running the fixed point once in `derive_all` (`break` after the first
+/// pass): `A` is then read against a `B` that has not yet heard from `C`, and the assertion
+/// on `A` goes red.
+#[test]
+fn a_cycle_of_three_types_reaches_a_fixed_point() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            type A a b
+              = A (B a b)
+
+            type B a b
+              = B b (C a b)
+
+            type C a b
+              = C a (A a b)
+
+            instance Eq (A a b) where
+              derived
+
+            instance Eq (B a b) where
+              derived
+
+            instance Eq (C a b) where
+              derived
+        "#}
+    ));
+    let module = derived_module(&source);
+
+    for head in ["A", "B", "C"] {
+        let mut context = context_of(instance_for(&module, head));
+        context.sort();
+        assert_eq!(
+            context,
+            pairs(&[("Eq", "a"), ("Eq", "b")]),
+            "for `{}`",
+            head
+        );
+    }
+}
+
+/// An instance derived in another module than its class has its inferred context in its own
+/// module's interface, and what it is made of with it.
+///
+/// Mutation-checked by adding none of the inferred constraints to a derived instance's context
+/// in `do_instances`: the instance is published with the context it wrote, and the context
+/// assertion goes red.
+#[test]
+fn a_derived_instance_in_another_module_than_its_class_publishes_its_context() {
+    let mut interfaces = scalar_interfaces();
+    publish(
+        &format!("module Classes exposing (Eq)\n\n{}", EQ_DERIVED),
+        &mut interfaces,
+    );
+
+    let source = indoc::indoc! {r#"
+        module Types exposing (Box(..))
+
+        import Classes exposing (Eq)
+
+        type Box a
+          = Box a
+
+        instance Eq (Box a) where
+          derived
+    "#};
+    let module =
+        canonicalize_with_interfaces(source, &interfaces).expect("the module canonicalizes");
+    let interface = module.to_interface(None);
+
+    let published = interface
+        .instances
+        .iter()
+        .find(|published| published.signature.module.name().as_str() == "Types")
+        .expect("the instance is in the module's interface");
+    let context: Vec<(String, String)> = published
+        .signature
+        .context
+        .iter()
+        .map(|constraint| {
+            (
+                constraint.class.unqualified_name().to_string(),
+                constraint.variable.to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(context, pairs(&[("Eq", "a")]));
+    assert_eq!(published.signature.class, test_qual("Classes.Eq"));
+
+    // Its members are the class's one member, written out here.
+    let [binding] = instance_for(&module, "Box").bindings.as_slice() else {
+        panic!("one member");
+    };
+    let canonical::Value::Value { name, patterns, .. } = binding else {
+        panic!("a binding without an annotation");
+    };
+    assert_eq!(name.as_str(), "eq");
+    assert_eq!(patterns.len(), 2);
+}
+
+/// Every node of a generated member carries the span of the word `derived`, the placed
+/// bodies of the class included: they were written in another file, and a span carried over
+/// would point at unrelated text.
+///
+/// Mutation-checked by keeping the class's own span on every node `Generated::rewrite` builds
+/// (`expression.span` for `self.span`): the placed `case` of `combine` is then a span of the
+/// class and the assertion goes red.
+#[test]
+fn every_node_of_a_generated_member_is_blamed_on_the_word_derived() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            instance Eq (Box a) where
+              derived
+        "#}
+    ));
+    let module = derived_module(&source);
+    let word = nth_range(&source, "derived", 1);
+
+    fn spans(expression: &canonical::Expression, into: &mut Vec<Option<std::ops::Range<usize>>>) {
+        use canonical::ExpressionKind::*;
+
+        into.push(expression.span.span().map(|span| span.to_range()));
+        match &expression.kind {
+            Apply(function, argument) => {
+                spans(function, into);
+                spans(argument, into);
+            }
+            Case(scrutinee, branches) => {
+                spans(scrutinee, into);
+                for branch in branches {
+                    into.push(branch.pattern.span.span().map(|span| span.to_range()));
+                    into.push(branch.span.span().map(|span| span.to_range()));
+                    spans(&branch.expression, into);
+                }
+            }
+            If(a, b, c) => {
+                spans(a, into);
+                spans(b, into);
+                spans(c, into);
+            }
+            _ => {}
+        }
+    }
+
+    let [canonical::Value::Value {
+        body,
+        span,
+        patterns,
+        ..
+    }] = instance_for(&module, "Box").bindings.as_slice()
+    else {
+        panic!("one member");
+    };
+    let mut found = vec![span.span().map(|span| span.to_range())];
+    found.extend(
+        patterns
+            .iter()
+            .map(|pattern| pattern.span.span().map(|span| span.to_range())),
+    );
+    spans(body, &mut found);
+
+    assert!(
+        found.len() > 10,
+        "a body with some nodes in it: {:?}",
+        found
+    );
+    for span in found {
+        assert_eq!(span, Some(word.clone()));
+    }
+}
+
+/// A context written on a derived instance is an error at the context, with the word `derived`
+/// beside it: the context of a derived instance is inferred, and what a written one would
+/// mean beside the inferred one is not settled. A parenthesised context is underlined with its
+/// parentheses, and the instance is not kept.
+///
+/// Mutation-checked by dropping the `DerivedInstanceWritesContext` push in `do_instances`: the
+/// module canonicalizes and `one_class_error` panics; and by swapping the two spans in the
+/// error's `labels()` arm: the range assertions go red.
+#[test]
+fn a_context_written_on_a_derived_instance_is_an_error() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            class Other a where
+              other : a -> Bool
+
+            instance Other a => Eq (Box a) where
+              derived
+        "#}
+    ));
+    let (error, labels) = one_class_error(&source);
+
+    let canonical::Error::DerivedInstanceWritesContext(class, _, _) = &error else {
+        panic!("expected DerivedInstanceWritesContext, got {:?}", error);
+    };
+    assert_eq!(class.as_str(), "Eq");
+    assert_eq!(
+        labels,
+        vec![
+            (true, nth_range(&source, "Other a", 1)),
+            (false, nth_range(&source, "derived", 1)),
+        ]
+    );
+
+    let parenthesised = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            class Other a where
+              other : a -> Bool
+
+            instance (Other a, Other b) => Eq (a, b) where
+              derived
+        "#}
+    ));
+    let (_, labels) = one_class_error(&parenthesised);
+    assert_eq!(
+        labels,
+        vec![
+            (true, range_of(&parenthesised, "(Other a, Other b)")),
+            (false, nth_range(&parenthesised, "derived", 1)),
+        ]
+    );
+}
+
+/// What a derived instance writes of its own does not seed what another derived instance needs
+/// of it: a `Wrap` of a `Box` whose derived instance wrote `Other a` needs `Eq a` and nothing
+/// of `Other`, since the written context is rejected and is not what the `Box` instance needs.
+///
+/// Mutation-checked by reading the written context of a derived instance in `do_instances`'s
+/// `written` list (the `Bindings` arm's test dropped): `Wrap`'s context gains `Other a` and the
+/// assertion goes red.
+#[test]
+fn a_rejected_written_context_is_not_what_another_derived_instance_needs() {
+    let source = with_derivation(&format!(
+        "{}{}",
+        EQ_DERIVED,
+        indoc::indoc! {r#"
+            class Other a where
+              other : a -> Bool
+
+            instance Other a => Eq (Box a) where
+              derived
+
+            type Wrap a
+              = Wrap (Box a)
+
+            instance Eq (Wrap a) where
+              derived
+        "#}
+    ));
+    let errors = class_errors(&source);
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [canonical::Error::DerivedInstanceWritesContext(..)]
+        ),
+        "{:?}",
+        errors
+    );
+
+    // The module is recovered with `Wrap`'s instance, which needs the one thing `Box` does.
+    let recovered = canonicalize_recovering_with_interfaces(&source, &scalar_interfaces());
+    let wrap = instance_for(&recovered.module, "Wrap");
+    assert_eq!(context_of(wrap), pairs(&[("Eq", "a")]));
+}
+
+/// An instance whose class's declaration did not canonicalize has no members to keep. It is
+/// dropped from the module and from its interface, with nothing said of it here: the class's own
+/// error says it.
+///
+/// Mutation-checked by keeping an instance whose derivation failed silently (dropping
+/// `&& !failed_silently` in `do_instances`): it is kept with no bindings and the first
+/// assertion goes red.
+#[test]
+fn a_derived_instance_of_a_class_that_failed_is_dropped_with_nothing_said_of_it() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Nope
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              y
+
+        instance Eq Colour where
+          derived
+    "#});
+    let canonicalized = canonicalize_recovering_with_interfaces(&source, &scalar_interfaces());
+
+    assert!(
+        matches!(
+            canonicalized.errors.as_slice(),
+            [canonical::Error::TypeNotFound(..)]
+        ),
+        "{:?}",
+        canonicalized.errors
+    );
+    assert!(
+        canonicalized.module.instances.is_empty(),
+        "a memberless instance was kept"
+    );
+    assert!(canonicalized.module.to_interface(None).instances.is_empty());
+}
+
+/// A class whose derivation failed has said so, and an instance asking for it to be derived
+/// does not say it again: the one error is the derivation's. The same holds for the instance
+/// of an importing module, which reads the class from its interface. The instance is left
+/// out of the module that wrote it, whose scope is incomplete for it, so an importer of that
+/// is not told of the instance missing.
+///
+/// Mutation-checked by raising `DerivedInstanceNotDerivable` whatever `derivations_rejected`
+/// says in `plan`: the instance is reported too and `one_class_error` panics, and so does the
+/// importer's; and by dropping the `instances.len() < source.instances.len()` test that marks
+/// the scope incomplete in `canonicalize_recovering`: the importer's `incomplete` assertion goes
+/// red.
+#[test]
+fn an_instance_of_a_class_whose_derivation_failed_is_not_reported_for_it() {
+    let class = indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Bool
+          neq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              y
+
+    "#};
+    let source = with_derivation(&format!("{}instance Eq Colour where\n  derived\n", class));
+    let (error, _) = one_class_error(&source);
+
+    assert!(
+        matches!(error, canonical::Error::DerivationIncomplete(..)),
+        "{:?}",
+        error
+    );
+
+    let mut interfaces = scalar_interfaces();
+    let declared = canonicalize_recovering_with_interfaces(
+        &format!("module Classes exposing (Eq)\n\n{}", class),
+        &interfaces,
+    );
+    assert!(
+        declared.module.classes[&"Eq".into()]
+            .signature
+            .derivations_rejected
+    );
+    let interface = declared.module.to_interface(None);
+    interfaces.insert(interface.module_name.name().clone(), interface);
+
+    let importer = indoc::indoc! {r#"
+        module Types exposing (Colour(..))
+
+        import Classes exposing (Eq)
+
+        type Colour
+          = Red
+
+        instance Eq Colour where
+          derived
+    "#};
+    let canonicalized = canonicalize_recovering_with_interfaces(importer, &interfaces);
+    assert!(
+        canonicalized.errors.is_empty(),
+        "{:?}",
+        canonicalized.errors
+    );
+    assert!(canonicalized.module.instances.is_empty());
+    assert!(canonicalized.module.incomplete);
+}
+
+/// A failed derivation removes no name from the scope, so an error that has nothing to do with
+/// it is still reported: here a name no declaration gives, in an instance of another class,
+/// beside the derivation that has no `combine`. The scope is as complete as it was.
+///
+/// Mutation-checked by marking the scope incomplete after a derivation error in
+/// `canonicalize_recovering` (`env.set_incomplete()`): the `VariableNotFound` is dropped and
+/// the assertion goes red.
+#[test]
+fn a_failed_derivation_does_not_hide_an_unrelated_error() {
+    let source = with_derivation(indoc::indoc! {r#"
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+
+        class Show a where
+          show : a -> Int
+
+        instance Show Bool where
+          show b =
+            nope
+    "#});
+    let errors = class_errors(&source);
+
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, canonical::Error::DerivationBindingMissing(..))),
+        "{:?}",
+        errors
+    );
+    let not_found: Vec<_> = errors
+        .iter()
+        .filter(|error| matches!(error, canonical::Error::VariableNotFound(..)))
+        .collect();
+    assert_eq!(not_found.len(), 1, "{:?}", errors);
+    assert_eq!(
+        label_ranges(not_found[0]),
+        vec![(true, range_of(&source, "nope"))]
+    );
+}
+
+/// A class with no derivation, derived for, is reported whether or not the scope is incomplete
+/// for another reason: here a type declaration that did not canonicalize.
+///
+/// Mutation-checked by adding `DerivedInstanceNotDerivable` to `without_restated`'s list: the
+/// error is dropped in the incomplete scope and the assertion goes red.
+#[test]
+fn a_derived_instance_of_a_class_with_no_derivation_is_reported_in_an_incomplete_scope() {
+    let source = with_derivation(indoc::indoc! {r#"
+        type Broken
+          = Broken Nope
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        instance Eq Colour where
+          derived
+    "#});
+    let errors = class_errors(&source);
+
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, canonical::Error::TypeNotFound(..))),
+        "{:?}",
+        errors
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, canonical::Error::DerivedInstanceNotDerivable(..))),
+        "{:?}",
+        errors
+    );
 }

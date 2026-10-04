@@ -335,8 +335,10 @@ pub struct Interface {
     /// interface in a test leaves out — is read as arity 0, the arity of a parameterless
     /// binding.
     pub arities: HashMap<Name, usize>,
-    /// Every class the module declares and exposes, by name, with its members. A member
-    /// is not in [`values`](Self::values): an importer reaches it through its class.
+    /// Every class the module declares and exposes, by name, with its members and the
+    /// derivations it carries, which are what an importer writes a `derived` instance's
+    /// members out of. A member is not in [`values`](Self::values): an importer reaches it
+    /// through its class.
     pub classes: HashMap<Name, canonical::ClassSignature>,
     /// Every instance in scope in the module: the ones it declares, and every one an
     /// import brought into it.
@@ -2087,7 +2089,7 @@ pub fn check_module_recovering(
     // they are tagged with the module they came from, because a phase only ever sees
     // one module and has no reason to carry its name around.
     let canonical::Canonicalized {
-        module: canonical,
+        module: mut canonical,
         errors: canonical_errors,
     } = canonical::canonicalize_recovering(package, interfaces, source);
 
@@ -2111,8 +2113,16 @@ pub fn check_module_recovering(
     let typer::TypeCheck {
         solved,
         instances,
+        rejected_derivations,
         errors: type_errors,
     } = typer::type_check_recovering(&canonical, interfaces);
+    // The class carries that a derivation of it was rejected into the interface, so a
+    // module deriving an instance from it does not report the same mistake again.
+    for class in rejected_derivations {
+        if let Some(class) = canonical.classes.get_mut(&class) {
+            class.signature.derivations_rejected = true;
+        }
+    }
     if !type_errors.is_empty() {
         errors.push(CompilationError::Type(type_errors, source.name.clone()));
     }
