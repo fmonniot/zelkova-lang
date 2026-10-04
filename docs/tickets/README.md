@@ -103,8 +103,7 @@ type has always actually been.
 
 They get their own section because most tickets each close a complete, independently shippable
 gap on landing, while these are fragments of one mechanism that only works once the chain
-lands. `LANG-41`, closed, was the exception: it stood alone, and sits in the order because `LANG-40`
-needed it gone first.
+lands. `LANG-41`, closed, stood alone and sits in the order because `LANG-40` needed it gone first.
 
 [`docs/spec/type-classes.md`](../spec/type-classes.md) is the normative record and the thing to
 read before picking any of these up: none of them re-argues a decision, and several would look
@@ -160,8 +159,8 @@ LANG-12  an annotation's variables are rigid
 ```
 
 Two tickets sit just outside it. [`LANG-4`](lang-4.md) wants prefix `-` to mean `negate`, and
-has a `Float`-capable `negate` to desugar to once `LANG-42` lands; `LANG-41` made
-`-x` on a `Float` a type error where it used to abort at run time, until then.
+has a `Float`-capable `negate` to desugar to once `LANG-42` lands; until then `-x` on a
+`Float` is a type error.
 [`PERF-2`](perf-2.md) is narrowed by `LANG-42`, which rewrites most of the forwarding
 declarations it is about, and not closed by it.
 
@@ -240,6 +239,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [ERR-19](err-19.md) | task | — | open | A module name used as a constructor is reported as a missing constructor of the current module |
 | [ERR-20](err-20.md) | task | — | open | A body using a name a record pattern binds at the wrong type is reported at the pattern |
 | [ERR-21](err-21.md) | task | — | open | A four-element tuple type at the front of an annotation is reported as a missing `=>` |
+| [ERR-22](err-22.md) | task | — | open | A type error between a scalar and a same-named union spells both types alike |
 | SPEC-1 | task | — | closed 2026-08-28 | Scaffold `docs/spec/` with an executable-example harness, and write the Layout chapter |
 | SPEC-2 | task | — | closed 2026-08-29 | Make `docs/spec/` self-contained, and write the Lexical structure chapter |
 | SPEC-3 | task | — | closed 2026-08-29 | Write the Modules, `exposing` and imports chapter, and settle multi-module examples |

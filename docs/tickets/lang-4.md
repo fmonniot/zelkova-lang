@@ -16,11 +16,9 @@ For `-n` where `n` is an `Int`, or where the surrounding constraints leave the l
 open, this is invisible. For a `Float` it should not be: `-3.14` becomes `0 - 3.14`, an `Int`
 zero subtracted from a `Float`.
 
-Whether that is *observably* wrong today depends on how the typer treats an integer literal —
-if `Literal::Int` is given a `number` type variable rather than `Int`, the unification
-succeeds and the bug is latent rather than live. Establish which it is before writing the fix,
-because it decides whether this ticket has a failing test to open with or is a correctness
-argument about a shape that happens to work. Either way the shape is wrong: the spec says
+An integer literal is an `Int`, so the bug is live: `neg : Float -> Float` / `neg x = -x` is
+rejected with ``cannot match `Float` with `Int` ``, with a caret on the `-` labelled "this
+literal", and that is the failing test this ticket opens with. The shape is also wrong: the spec says
 negation, and a reader of `constraint.rs` should not have to know that `-x` is really a
 subtraction.
 

@@ -258,8 +258,8 @@ fn a_mistyped_bare_constructor_body_is_blamed_only_through_the_annotation() {
 /// annotation.
 ///
 /// The `1` in the true branch is deliberately not named anywhere: it is an `Int`,
-/// which the `Int` the other branch is annotated with accepts, so only one of the two
-/// branches is wrong and only one caret is right.
+/// which the declaration's annotation accepts, so only one of the two branches is
+/// wrong and only one caret is right.
 ///
 /// Mutation-checked three ways, each red on its own: giving every `Term` built by
 /// `canonical_expr_to_term` a `NodeSpan::none()` (the labels fall back to the whole
@@ -944,6 +944,12 @@ fn a_module_declaring_its_own_bool_still_rejects_a_wrong_branch() {
 /// Mutation-checked by restoring the match on the unqualified half in
 /// `scalars::Scalar::declares`: the local `Int` becomes the literal `Int` and the
 /// module checks clean.
+///
+/// The message it pins is a known ambiguity, not the intended output: it names two
+/// different types with one spelling, because `AdtNames::collide` never compares a
+/// union against a scalar of the same name, so neither side is qualified.
+/// `ERR-22` (`docs/tickets/err-22.md`) is the ticket that qualifies them; this
+/// assertion changes with it.
 #[test]
 fn a_module_declaring_its_own_int_does_not_get_the_scalar() {
     let source = indoc::indoc! {r#"

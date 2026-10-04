@@ -14,7 +14,7 @@ form; `std/core/src/Maybe.zel`, `Result.zel` and `Task.zel`, for the instances t
 their types; `std/core/tests/`; `std/test/src/Test.zel` — `equal`; `tests/fixtures/`;
 `crates/zelkova-compiler/src/scalars.rs`, for `Position`.
 
-**Depends on:** [LANG-40](lang-40.md), for a solver; `LANG-41`, already closed;
+**Depends on:** [LANG-40](lang-40.md), for a solver;
 [LANG-83](lang-83.md), for `derived`; and [GEN-24](gen-24.md), without which none of it can be
 emitted and `cargo run -- test std/core` cannot pass.
 

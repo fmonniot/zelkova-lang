@@ -16,8 +16,8 @@ the environment every declaration is checked against; `Types`, `Types::by_name` 
 
 **Depends on:** [LANG-39](lang-39.md), for a class table and an instance table to discharge
 against; [LANG-70](lang-70.md), for an annotation's context on the canonical value and in the
-`Interface`; and `LANG-41` (closed), which made an integer literal an `Int`, so that no obligation is
-raised at a type that is neither `Int` nor `Float` and has no instance.
+`Interface`; and nothing else: an integer literal is an `Int`, so no obligation is raised at a type that is
+neither `Int` nor `Float` and has no instance.
 
 **Not on [LANG-12](lang-12.md), which this ticket used to call a hard prerequisite.** The order
 was turned round ([`DEC-24` decision
@@ -40,7 +40,7 @@ error asking for the annotation
 `Origin`, `unify` solves each one on sight, and the environment `type_check_recovering` builds
 maps a name to a type and nothing else, so a constrained function is checked exactly as it would
 be without its constraint and a class member is not in the environment at all. Nothing in the
-solver resembles a class: `LANG-41` retired `Type::Number`, the one hard-coded case that did.
+solver resembles a class.
 
 **Approach:**
 

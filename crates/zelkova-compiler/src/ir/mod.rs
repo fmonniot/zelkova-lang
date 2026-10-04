@@ -393,7 +393,7 @@ pub enum TermKind {
     // literals
     /// An integer literal, at the width [`Int` *is*](../../docs/spec/evaluation-semantics.md#numbers)
     /// ([`DEC-16`](../../docs/decisions/dec-16.md)). Inference never reads the value
-    /// — every literal is a `number` whatever it says — but code generation does.
+    /// — every integer literal is an `Int` whatever its value — but code generation does.
     Int(i64),
     Char(char),
     /// A string literal's value, its escape sequences already read.
