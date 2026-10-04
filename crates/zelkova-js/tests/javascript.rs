@@ -2691,56 +2691,35 @@ fn a_facade_record_holding_a_function_is_refused() {
     "#});
 }
 
-/// A module holding a class and an instance is refused whole, one error each, in source
-/// order and each under its own head line: the backend emits neither yet, and a module
-/// emitted without them would be missing what its source declares.
-///
-/// Mutation-checked by dropping the early return of the refusals in `emit`: the module
-/// then emits, with the class and the instance missing.
-#[test]
-fn a_module_holding_a_class_is_refused() {
-    let source = indoc! {r#"
-        module Test exposing (Colour, Same)
+// ── Classes, instances and constrained functions ──────────────────────────────────────
 
-        type Colour
-          = Red
+/// Every module of a package of `sources`, checked, specialised together and emitted: the name of
+/// each module with the text it emits as, in dependency order.
+fn emitted_package(sources: &[&str]) -> Vec<(String, String)> {
+    let modules = specialised_package(sources);
+    let unions = Unions::of(modules.iter());
 
-        class Same a where
-          same : a -> a -> Bool
-
-        instance Same Colour where
-          same x y =
-            True
-    "#};
-    let errors = refused(source);
-
-    match errors.as_slice() {
-        [Error::Class { name, span: class }, Error::Instance {
-            class: of,
-            span: instance,
-        }] => {
-            assert_eq!(name.as_str(), "Same");
-            assert_eq!(of.as_str(), "Same");
-            let class_start = position(source, "class Same a where");
-            assert_eq!(
-                class.to_range(),
-                Some(class_start..class_start + "class Same a where".len())
-            );
-            let instance_start = position(source, "instance Same Colour where");
-            assert_eq!(
-                instance.to_range(),
-                Some(instance_start..instance_start + "instance Same Colour where".len())
-            );
-        }
-        other => panic!("expected a class and an instance refused, got {:?}", other),
-    }
+    modules
+        .iter()
+        .map(|module| {
+            let text = zelkova_js::emit(module, true, &unions)
+                .unwrap_or_else(|errors| panic!("expected the module to emit, got {:?}", errors));
+            (module.canonical.name.name().as_str().to_string(), text)
+        })
+        .collect()
 }
 
-// ── What is refused: constraints ──────────────────────────────────────────────────────
+/// The text the module named `name` emitted as.
+fn text_of<'a>(package: &'a [(String, String)], name: &str) -> &'a str {
+    package
+        .iter()
+        .find(|(module, _)| module == name)
+        .map(|(_, text)| text.as_str())
+        .unwrap_or_else(|| panic!("no module named `{}`", name))
+}
 
-/// A module declaring a class, an instance of it at `Int` and a constrained function,
-/// which the modules below import. It is never emitted itself: holding a class, it is
-/// refused whole.
+/// A module declaring a class, an instance of it at `Int` and a constrained function, which the
+/// modules below import.
 const EQS: &str = indoc! {r#"
     module Eqs exposing (Eq, same)
 
@@ -2756,56 +2735,388 @@ const EQS: &str = indoc! {r#"
       eq x y
 "#};
 
-/// The module named `Main` of a package of `EQS` and `main`, insisting that it checks.
-/// It holds neither a class nor an instance, so what refuses it is not that.
-fn main_importing_eqs(main: &str) -> CheckedModule {
-    check_package_module(&[EQS, main], "Main")
-        .unwrap_or_else(|errors| panic!("expected `Main` to check, got {:?}", errors))
-}
+/// The name the function of `Eqs`' instance at `Int` is emitted under.
+const EQ_AT_INT: &str = "$instance$test_project$Eqs$Eq$zelkova_core$Basics$Int$eq";
 
-fn refused_module(module: &CheckedModule) -> Vec<Error> {
-    match zelkova_js::emit(module, true, &unions_of(module)) {
-        Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
-        Err(errors) => errors,
-    }
-}
-
-/// A declaration whose annotation has a constraint is refused, in a module that holds no
-/// class and no instance of its own, with the caret on the declaration.
+/// A module holding a class and an instance emits: a class has no code, and an instance's
+/// member is an ordinary function of its module, emitted once under a name built from the class,
+/// the head and the member, and exported under it.
 ///
-/// Mutation-checked by deleting the `Constrained` push in `emit`: the module is emitted.
+/// Mutation-checked by dropping the loop over `ir.instances` in `emit`: the function is gone.
 #[test]
-fn a_constrained_declaration_is_refused() {
-    let source = indoc! {r#"
-        module Main exposing (always)
+fn a_module_holding_a_class_and_an_instance_emits_the_instances_function() {
+    let package = emitted_package(&[indoc! {r#"
+        module Test exposing (Colour, Same)
+
+        type Colour
+          = Red
+
+        class Same a where
+          same : a -> a -> Bool
+
+        instance Same Colour where
+          same x y =
+            True
+    "#}]);
+
+    assert_eq!(
+        text_of(&package, "Test"),
+        indoc! {r#"
+            const $test_project$Test$Red = {$: "Red"};
+
+            function $instance$test_project$Test$Same$test_project$Test$Colour$same(x, y) {
+              return true;
+            }
+
+            export { $instance$test_project$Test$Same$test_project$Test$Colour$same };
+        "#}
+    );
+}
+
+/// A member used at a type with an instance of no context is a direct reference to the
+/// function of that instance's member, and a call that supplies both its arguments is a direct
+/// call: the instance's own module is where the function is, so the user imports it under
+/// the name it is exported as.
+///
+/// Mutation-checked twice: emitting the member as a call of a value, one argument at a time,
+/// in `Emitter::application`'s `InstanceMember` arm turns the call red; leaving `Saturation`
+/// as the type checker gave it, `Partial`, does the same.
+#[test]
+fn a_member_at_a_known_instance_is_a_direct_call_of_the_instances_function() {
+    let main = indoc! {r#"
+        module Main exposing (equal)
 
         import Eqs exposing (Eq)
 
-        always : Eq a => a -> a -> Bool
-        always x y =
-          True
+        equal : Bool
+        equal =
+          eq 1 2
     "#};
-    let module = main_importing_eqs(source);
-    assert!(module.canonical.classes.is_empty() && module.canonical.instances.is_empty());
+    let package = emitted_package(&[EQS, main]);
 
-    match refused_module(&module).as_slice() {
-        [Error::Constrained { name, span }] => {
-            assert_eq!(name, &Name::new("always"));
-            let start = position(source, "always : Eq a");
-            let end = position(source, "True") + "True".len();
-            assert_eq!(span.to_range(), Some(start..end));
-        }
-        other => panic!("expected one refused declaration, got {:?}", other),
-    }
+    assert_eq!(
+        text_of(&package, "Main"),
+        format!(
+            "import {{ {eq} }} from \"./Eqs.mjs\";\n\nconst equal = {eq}(1n, 2n);\n\nexport {{ equal }};\n",
+            eq = EQ_AT_INT
+        )
+    );
 }
 
-/// A call to a constrained function of another module carries an obligation, and is refused
-/// with the caret under the name.
+/// A member used as a value rather than called is `$curry`'d at two parameters, like any
+/// function of two parameters.
 ///
-/// Mutation-checked by deleting the `refuse_obligations` call in `Emitter::application`'s
-/// saturated-name arm: the call is emitted as a plain call of the imported function.
+/// Mutation-checked by returning the bare name from `Emitter::value`'s `InstanceMember` arm:
+/// the first assertion goes red.
 #[test]
-fn a_call_carrying_an_obligation_is_refused() {
+fn a_member_used_as_a_value_goes_through_the_runtime() {
+    let main = indoc! {r#"
+        module Main exposing (equal)
+
+        import Eqs exposing (Eq)
+
+        equal : Int -> Int -> Bool
+        equal =
+          eq
+    "#};
+    let package = emitted_package(&[EQS, main]);
+    let text = text_of(&package, "Main");
+
+    assert!(
+        text.contains(&format!("const equal = $curry({}, 2);", EQ_AT_INT)),
+        "got:\n{}",
+        text
+    );
+    assert!(text.starts_with("import { $curry } from \"../zelkova.mjs\";\n"));
+}
+
+/// A specialised function takes exactly the parameters its declaration was written with, and
+/// no more: nothing says at run time which instance it is at, since the copy was made for one
+/// and calls it directly.
+///
+/// Mutation-checked by adding a parameter for the instance to the function `Emitter::binding`
+/// writes for a specialisation: the signature then reads `($instance, x, y)`.
+#[test]
+fn a_specialised_function_takes_exactly_its_declared_parameters() {
+    let main = indoc! {r#"
+        module Main exposing (equal)
+
+        import Eqs exposing (same)
+
+        equal : Bool
+        equal =
+          same 1 2
+    "#};
+    let package = emitted_package(&[EQS, main]);
+
+    assert_eq!(
+        text_of(&package, "Main"),
+        format!(
+            indoc! {r#"
+                import {{ {eq} }} from "./Eqs.mjs";
+
+                function $spec$0$same(x, y) {{
+                  return {eq}(x, y);
+                }}
+
+                const equal = $spec$0$same(1n, 2n);
+
+                export {{ equal }};
+            "#},
+            eq = EQ_AT_INT
+        )
+    );
+}
+
+/// A constrained function used as a value is `$curry`'d at the arity it was written with, which
+/// is that of the specialisation; and the call of one that supplies every argument is direct.
+///
+/// Mutation-checked by emitting a specialisation used as a value without `$curry` in
+/// `Emitter::value`'s `Specialised` arm: the assertion goes red.
+#[test]
+fn a_constrained_function_used_as_a_value_goes_through_the_runtime() {
+    let main = indoc! {r#"
+        module Main exposing (equal)
+
+        import Eqs exposing (same)
+
+        equal : Int -> Int -> Bool
+        equal =
+          same
+    "#};
+    let package = emitted_package(&[EQS, main]);
+
+    assert!(
+        text_of(&package, "Main").contains("const equal = $curry($spec$0$same, 2);"),
+        "got:\n{}",
+        text_of(&package, "Main")
+    );
+}
+
+/// A constrained function is emitted for each type it is used at and no more: two uses at one
+/// type are one function, two types are two, numbered in the order they were found.
+///
+/// Mutation-checked by dropping the `table` lookup in `Reader::specialise` (the pass's own, in
+/// `zelkova-compiler`): `$spec$1$same` is then a second copy at `Int`.
+#[test]
+fn a_constrained_function_is_emitted_once_for_each_type_it_is_used_at() {
+    let eqs = EQS.replace(
+        "instance Eq Int where",
+        "instance Eq Bool where\n  eq a b =\n    True\n\ninstance Eq Int where",
+    );
+    let main = indoc! {r#"
+        module Main exposing (a, b, c)
+
+        import Eqs exposing (same)
+
+        a : Bool
+        a =
+          same 1 2
+
+        b : Bool
+        b =
+          same 3 4
+
+        c : Bool
+        c =
+          same True False
+    "#};
+    let package = emitted_package(&[&eqs, main]);
+    let text = text_of(&package, "Main");
+
+    assert_eq!(text.matches("function $spec$").count(), 2, "{}", text);
+    assert!(text.contains("function $spec$0$same(x, y)"), "{}", text);
+    assert!(text.contains("function $spec$1$same(x, y)"), "{}", text);
+    assert!(text.contains("const a = $spec$0$same(1n, 2n);"), "{}", text);
+    assert!(text.contains("const b = $spec$0$same(3n, 4n);"), "{}", text);
+    assert!(
+        text.contains("const c = $spec$1$same(true, false);"),
+        "{}",
+        text
+    );
+}
+
+/// A specialisation is emitted into the module that uses it: the module declaring the function
+/// holds none, and does not import the module that holds the instance — which could not be, since
+/// that module imports it. Here `Main` declares the instance, and the copy of `Lib`'s `smaller`
+/// calls it as one of its own functions.
+///
+/// Mutation-checked by assigning every specialisation to the module that declares the function,
+/// in `World::read_module` (in `zelkova-compiler`): `Lib` then holds the copy and imports `Main`.
+#[test]
+fn a_specialisation_is_emitted_into_the_module_that_uses_it() {
+    let lib = indoc! {r#"
+        module Lib exposing (Ranked, smaller)
+
+        class Ranked a where
+          rank : a -> a -> Bool
+
+        smaller : Ranked a => a -> a -> Bool
+        smaller x y =
+          rank x y
+    "#};
+    let main = indoc! {r#"
+        module Main exposing (check)
+
+        import Lib exposing (Ranked, smaller)
+
+        type Colour
+          = Red
+
+        instance Ranked Colour where
+          rank x y =
+            True
+
+        check : Bool
+        check =
+          smaller Red Red
+    "#};
+    let package = emitted_package(&[lib, main]);
+
+    let lib = text_of(&package, "Lib");
+    assert!(!lib.contains("$spec$"), "{}", lib);
+    assert!(!lib.contains("Main.mjs"), "{}", lib);
+
+    let main = text_of(&package, "Main");
+    let member = "$instance$test_project$Lib$Ranked$test_project$Main$Colour$rank";
+    assert!(
+        main.contains(&format!("function {}(x, y)", member)),
+        "{}",
+        main
+    );
+    assert!(
+        main.contains(&format!(
+            "function $spec$0$smaller(x, y) {{\n  return {}(x, y);\n}}",
+            member
+        )),
+        "{}",
+        main
+    );
+    // It calls the instance's function as a function of its own module: not imported.
+    assert!(!main.contains("Main.mjs"), "{}", main);
+}
+
+/// A module exports what a constrained declaration of it mentions, as well as what its header
+/// lists: a copy of `same` in another module calls `helper`, which the header does not expose.
+/// A constrained declaration is not exported under its own name, whatever the header says, and
+/// the function of each instance member is.
+///
+/// Mutation-checked by returning `mentioned_by_copies` empty from `exports`: `helper` is not
+/// exported, and the text the user imports it from fails to link.
+#[test]
+fn a_module_exports_what_a_constrained_declaration_of_it_mentions() {
+    let lib = indoc! {r#"
+        module Lib exposing (Eq, same, listed)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        instance Eq Int where
+          eq a b =
+            True
+
+        listed : Int
+        listed =
+          1
+
+        helper : Bool -> Bool
+        helper b =
+          b
+
+        unmentioned : Int
+        unmentioned =
+          2
+
+        same : Eq a => a -> a -> Bool
+        same x y =
+          helper (eq x y)
+    "#};
+    let main = indoc! {r#"
+        module Main exposing (equal)
+
+        import Lib exposing (same)
+
+        equal : Bool
+        equal =
+          same 1 2
+    "#};
+    let package = emitted_package(&[lib, main]);
+
+    let lib = text_of(&package, "Lib");
+    assert!(
+        lib.ends_with(
+            "export { helper, listed, $instance$test_project$Lib$Eq$zelkova_core$Basics$Int$eq };\n"
+        ),
+        "{}",
+        lib
+    );
+    assert!(!lib.contains("function same"), "{}", lib);
+
+    // The user imports it from `Lib`, which is why `Lib` has to export it.
+    let main = text_of(&package, "Main");
+    assert!(
+        main.contains("helper as test_project$Lib$helper"),
+        "{}",
+        main
+    );
+    assert!(main.contains("test_project$Lib$helper("), "{}", main);
+}
+
+/// An instance member that takes no parameter is a `const`, initialised after the declaration it
+/// mentions and before the one that mentions it; and a constrained binding with no parameters is a
+/// `const` of each module that uses it, ahead of what uses it.
+///
+/// Mutation-checked by ordering the constants by `Module::initialisation_order` alone in
+/// `emit`: the instance's `const` is then emitted after `value`, which reads it.
+#[test]
+fn a_binding_with_no_parameters_is_initialised_after_what_it_mentions() {
+    let package = emitted_package(&[indoc! {r#"
+            module Defaults exposing (Default, value, again)
+
+            class Default a where
+              def : a
+
+            instance Default Int where
+              def =
+                base
+
+            base : Int
+            base =
+              3
+
+            value : Int
+            value =
+              def
+
+            zero : Default a => a
+            zero =
+              def
+
+            again : Int
+            again =
+              zero
+        "#}]);
+    let text = text_of(&package, "Defaults");
+
+    let member = "$instance$test_project$Defaults$Default$zelkova_core$Basics$Int$def";
+    let base = position(text, "const base = 3n;");
+    let defined = position(text, &format!("const {} = base;", member));
+    let value = position(text, &format!("const value = {};", member));
+    assert!(base < defined && defined < value, "{}", text);
+
+    let zero = position(text, &format!("const $spec$0$zero = {};", member));
+    let again = position(text, "const again = $spec$0$zero;");
+    assert!(zero < again, "{}", text);
+}
+
+/// A module that still asks for an instance is refused: nothing is emitted for a name that has no
+/// function under its own name, so a module that did not go through the pass would be a call of
+/// something that is not there.
+///
+/// Mutation-checked by deleting the push in `Emitter::refuse_obligations`: the call is emitted as a
+/// plain call of the imported function, which does not exist.
+#[test]
+fn a_reference_that_still_asks_for_an_instance_is_refused() {
     let source = indoc! {r#"
         module Main exposing (equal)
 
@@ -2818,13 +3129,13 @@ fn a_call_carrying_an_obligation_is_refused() {
     let module = main_importing_eqs(source);
 
     match refused_module(&module).as_slice() {
-        [Error::Obligation {
+        [Error::Unspecialised {
             declaration,
-            class,
+            name,
             span,
         }] => {
             assert_eq!(declaration, &Name::new("equal"));
-            assert_eq!(class, &Name::new("Eq"));
+            assert!(name.as_str().ends_with("same"), "{}", name);
             let start = position(source, "same 1 2");
             assert_eq!(span.to_range(), Some(start..start + "same".len()));
         }
@@ -2832,65 +3143,142 @@ fn a_call_carrying_an_obligation_is_refused() {
     }
 }
 
-/// A call to a constrained function the module declares itself is refused twice over: the
-/// declaration, and the call that carries what it asks.
-///
-/// Mutation-checked with the one above: the call's error is the one that goes missing.
-#[test]
-fn a_call_of_a_constrained_declaration_of_the_module_is_refused() {
-    let source = indoc! {r#"
-        module Main exposing (always, equal)
-
-        import Eqs exposing (Eq)
-
-        always : Eq a => a -> a -> Bool
-        always x y =
-          True
-
-        equal : Bool
-        equal =
-          always 1 2
-    "#};
-    let module = main_importing_eqs(source);
-
-    let errors = refused_module(&module);
-    assert!(
-        matches!(
-            errors.as_slice(),
-            [
-                Error::Constrained { .. },
-                Error::Obligation { declaration, .. }
-            ] if declaration == &Name::new("equal")
-        ),
-        "got {:?}",
-        errors
-    );
+/// The module named `Main` of a package of `EQS` and `main`, insisting that it checks. It is not
+/// specialised.
+fn main_importing_eqs(main: &str) -> CheckedModule {
+    check_package_module(&[EQS, main], "Main")
+        .unwrap_or_else(|errors| panic!("expected `Main` to check, got {:?}", errors))
 }
 
-/// A member used as a value rather than called carries an obligation too.
+fn refused_module(module: &CheckedModule) -> Vec<Error> {
+    match zelkova_js::emit(module, true, &unions_of(module)) {
+        Ok(text) => panic!("expected the module to be refused, got:\n{}", text),
+        Err(errors) => errors,
+    }
+}
+
+/// An instance binding the type checker did not check, and an instance it rejected, each refuse the
+/// module: emitted without them it would be missing what the source declares.
 ///
-/// Mutation-checked by deleting the `refuse_obligations` call in `Emitter::expression`'s
-/// `Identifier` arm: the reference is emitted.
+/// Mutation-checked by dropping the loop over `ir.instances` that builds the initial errors in
+/// `emit`: the module emits, without the instance.
 #[test]
-fn a_reference_carrying_an_obligation_is_refused() {
-    let source = indoc! {r#"
-        module Main exposing (equal)
+fn an_instance_that_did_not_check_refuses_the_module() {
+    use zelkova_compiler::dependencies::Outcome;
 
-        import Eqs exposing (Eq)
+    let emit_recovering = |source: &str| {
+        let interfaces = HashMap::from([basics_interface(), char_interface(), maybe_interface()]);
+        let Outcome::Module(module, errors) = zelkova_compiler::check_module_recovering(
+            &test_package(),
+            &interfaces,
+            &parse_source(source),
+        ) else {
+            panic!("the module should come back");
+        };
+        assert!(!errors.is_empty(), "the module should have an error");
+        refused_module(&module)
+    };
 
-        equal : Int -> Int -> Bool
-        equal =
-          eq
+    let binding = indoc! {r#"
+        module Test exposing (..)
+
+        type Colour
+          = Red
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        instance Eq Colour where
+          eq a b =
+            1
     "#};
-    let module = main_importing_eqs(source);
+    match emit_recovering(binding).as_slice() {
+        [Error::Unchecked { name, .. }] => assert_eq!(name, &Name::new("eq")),
+        other => panic!("expected the binding refused, got {:?}", other),
+    }
 
-    match refused_module(&module).as_slice() {
-        [Error::Obligation {
-            declaration, class, ..
-        }] => {
-            assert_eq!(declaration, &Name::new("equal"));
-            assert_eq!(class, &Name::new("Eq"));
+    // `Ord (Box a)` needs `Eq a` and the instance's context does not provide it.
+    let source = indoc! {r#"
+        module Test exposing (..)
+
+        type Box a
+          = Box a
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq a => Ord a where
+          lt : a -> a -> Bool
+
+        instance Eq a => Eq (Box a) where
+          eq (Box left) (Box right) =
+            eq left right
+
+        instance Ord (Box a) where
+          lt (Box left) (Box right) =
+            False
+    "#};
+    match emit_recovering(source).as_slice() {
+        [Error::RejectedInstance { class, span }] => {
+            assert_eq!(class, &Name::new("Ord"));
+            let start = position(source, "instance Ord (Box a) where");
+            assert_eq!(
+                span.to_range(),
+                Some(start..start + "instance Ord (Box a) where".len())
+            );
         }
-        other => panic!("expected one refused reference, got {:?}", other),
+        other => panic!("expected the instance refused, got {:?}", other),
+    }
+}
+
+/// The text of a build is the same on every run: the same functions under the same names in the
+/// same order. The three uses below find three different keys.
+///
+/// Mutation-checked by reading the roots of a module in the order of a `HashMap` in
+/// `World::read_module` (in `zelkova-compiler`): the numbering of the copies differs between two of
+/// the eight runs.
+#[test]
+fn the_text_of_a_build_is_the_same_on_every_run() {
+    let eqs = EQS.replace(
+        "instance Eq Int where",
+        "instance Eq Bool where\n  eq a b =\n    True\n\ninstance Eq Int where",
+    );
+    let main = indoc! {r#"
+        module Main exposing (..)
+
+        import Eqs exposing (Eq, same)
+
+        type Colour
+          = Red
+
+        instance Eq Colour where
+          eq a b =
+            True
+
+        a : Bool
+        a =
+          same 1 2
+
+        b : Bool
+        b =
+          same True False
+
+        c : Bool
+        c =
+          same Red Red
+
+        d : Bool
+        d =
+          eq 1 2
+    "#};
+
+    let first = emitted_package(&[&eqs, main]);
+    for run in 1..8 {
+        assert_eq!(
+            emitted_package(&[&eqs, main]),
+            first,
+            "run {} differs from the first",
+            run
+        );
     }
 }

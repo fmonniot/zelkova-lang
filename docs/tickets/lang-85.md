@@ -9,10 +9,10 @@ at the step that reads an obligation with the final substitution applied;
 `crates/zelkova-compiler/src/canonical/derivation.rs` — the context inference
 [`LANG-83`](README.md) added for a `derived` instance, whose `reduce` accepts a record with no
 requirement; `crates/zelkova-compiler/src/ir/` — the specialisation pass
-[`GEN-24`](gen-24.md) adds, which does not exist yet.
+[`GEN-24`](README.md) added.
 
 **Depends on:** `LANG-51` (closed) for the record type; [`LANG-40`](README.md) and
-[`LANG-83`](README.md) for obligations and for what a derivation is; [`GEN-24`](gen-24.md) and
+[`LANG-83`](README.md) for obligations and for what a derivation is; [`GEN-24`](README.md) and
 `GEN-25` (closed) before a program using it runs. It is the one ticket that needs both
 *Active work* orders in [the index](README.md) finished.
 

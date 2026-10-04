@@ -1,0 +1,40 @@
+module Box exposing (Box(..), unbox)
+
+{-| An instance with a context, declared in the type's module: a `Box` is `Same` when what
+it holds is, and `Ranked` when what it holds is.
+-}
+
+import Classes exposing (Same, Ranked)
+
+
+type Box a
+  = Box a
+
+
+unbox : Box a -> a
+unbox box =
+  case box of
+    Box value ->
+      value
+
+
+-- Not exposed, but the instance below names it, and a copy of the instance's `same` in
+-- another module has to reach it.
+confirmed : Bool -> Bool
+confirmed verdict =
+  case verdict of
+    True ->
+      True
+
+    False ->
+      False
+
+
+instance Same a => Same (Box a) where
+  same (Box x) (Box y) =
+    confirmed (same x y)
+
+
+instance Ranked a => Ranked (Box a) where
+  rank (Box x) (Box y) =
+    rank x y

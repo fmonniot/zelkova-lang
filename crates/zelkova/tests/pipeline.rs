@@ -7298,3 +7298,125 @@ fn a_record_pattern_renders_under_the_label_or_the_pattern() {
         assert_eq!(primary, vec![start..start + len], "for {:?}", source);
     }
 }
+
+/// `GEN-24`: a constrained function whose specialisations never end fails the build, as an error
+/// of the driver's own that names the declaration, and nothing is written. The package is its own
+/// `zelkova.toml`, `src/Loop.zel` and nothing else, so what stops it is the pass and not the check.
+///
+/// Mutation-checked by making `specialise_build` drop the errors it was handed: the build is no
+/// longer an error and `expect_err` panics.
+#[test]
+fn a_build_whose_specialisations_never_end_writes_nothing() {
+    let package = fresh_build_dir("a_build_whose_specialisations_never_end_writes_nothing_package");
+    std::fs::create_dir_all(package.join("src")).unwrap();
+    std::fs::write(
+        package.join("zelkova.toml"),
+        "name = \"loops\"\nversion = \"0.1.0\"\nprivate-modules = []\n\n[dependencies]\n\n[test-dependencies]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        package.join("src/Loop.zel"),
+        indoc::indoc! {r#"
+            module Loop exposing (use)
+
+            type Verdict
+              = Yes
+
+            type Box a
+              = Box a
+
+            class Eq a where
+              eq : a -> a -> Verdict
+
+            instance Eq Verdict where
+              eq a b =
+                Yes
+
+            instance Eq a => Eq (Box a) where
+              eq (Box left) (Box right) =
+                eq left right
+
+            f : Eq a => a -> Verdict
+            f x =
+              f (Box x)
+
+            use : Verdict
+            use =
+              f Yes
+        "#},
+    )
+    .unwrap();
+    let build_dir = package.join("build");
+
+    let error = zelkova::compile_package_into(&package, &build_dir)
+        .expect_err("`f` needs itself at ever larger types");
+
+    let BuildError::Many(errors) = &error else {
+        panic!("expected Many, got {:?}", error);
+    };
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [BuildError::InFile(inner, _)]
+                if matches!(
+                    &**inner,
+                    BuildError::Specialise(specialise_errors, module)
+                        if module.as_str() == "Loop"
+                            && matches!(
+                                specialise_errors.as_slice(),
+                                [zelkova_compiler::ir::SpecialiseError::Unbounded { declaration, .. }]
+                                    if declaration.as_str() == "f"
+                            )
+                )
+        ),
+        "got {:?}",
+        errors
+    );
+
+    // The one error is rendered under its own headline, with a caret on the declaration.
+    let diagnostic = errors[0].as_diagnostic();
+    assert_eq!(
+        diagnostic.message,
+        "[Loop] `f` needs itself at ever larger types, so it has no finite set of specialisations to compile"
+    );
+    assert_eq!(diagnostic.labels.len(), 1);
+
+    assert!(!build_dir.exists(), "got {:?}", files_under(&build_dir));
+}
+
+/// `GEN-24`: a build of a package that declares and uses classes writes each module's
+/// specialisations into the module that uses them, in the tree of `src/` and in the tree
+/// of the tests alike, the two being emitted from the one set of specialised modules. `Report`
+/// uses `smaller` at `Colour`, a type of another module than the one declaring `smaller`, so the
+/// copy is `Report`'s; `ClassTests` is a module of `tests/` with copies of its own.
+///
+/// Mutation-checked by running the pass over `checked` alone in `specialise_build`: the
+/// test tree's `ClassTests` still asks for an instance, which `zelkova_js::emit` refuses, and
+/// the build fails.
+#[test]
+fn a_build_writes_the_specialisations_of_both_trees() {
+    let build_dir = fresh_build_dir("a_build_writes_the_specialisations_of_both_trees");
+
+    zelkova::compile_package_with_tests_into(&fixture_package("package_classes"), &build_dir)
+        .expect("the fixture's classes are used in `src/` and in `tests/`");
+
+    let read = |tree: &str, file: &str| {
+        std::fs::read_to_string(build_dir.join(tree).join("js/package-classes").join(file))
+            .unwrap_or_else(|error| panic!("{}/{}: {}", tree, file, error))
+    };
+
+    let report = read("test", "Report.mjs");
+    assert!(report.contains("function $spec$0$"), "{}", report);
+    // The tree of `src/` is the one a program runs from, and is written too, with the same copy.
+    // `tests/` is not in it.
+    assert_eq!(read("out", "Report.mjs"), report);
+    assert!(!build_dir
+        .join("out/js/package-classes/ClassTests.mjs")
+        .exists());
+
+    let classes = read("out", "Classes.mjs");
+    assert!(!classes.contains("$spec$"), "{}", classes);
+    assert!(classes.contains("function $instance$package_classes$Classes$Same$"));
+
+    assert!(read("test", "ClassTests.mjs").contains("function $spec$"));
+}

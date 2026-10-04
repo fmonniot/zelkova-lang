@@ -1,0 +1,128 @@
+module Classes exposing (Same, Ranked, (===), differs, smaller, smallest, sameWhenRanked)
+
+{-| The classes of the fixture, and the functions constrained by them.
+
+`Same` is `Eq` and `Ranked` is `Comparable`, under names `std/core` will not want. Both
+derive: what a derivation walks is the shape of a value, and what it answers is written here.
+-}
+
+class Same a where
+  same : a -> a -> Bool
+
+  derived same
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
+
+
+-- `Basics.Position` has no `Comparable` instance until `LANG-42`, so a derivation here
+-- cannot order two constructors by where they are declared. It answers `LT` for a pair of
+-- different constructors, which is not an ordering, and a test reads only what it computes
+-- for two values of one constructor. `combine` names its first parameter twice, as
+-- `Comparable`'s does, so a derived member that substituted it for the expression that
+-- computes it would answer each part twice.
+class Same a => Ranked a where
+  rank : a -> a -> Order
+
+  derived rank
+    matched = EQ
+    differed _ _ = LT
+    combine x y =
+      case x of
+        EQ ->
+          y
+
+        _ ->
+          x
+
+
+infix non 4 (===) = same
+
+
+instance Same Int where
+  same a b =
+    a == b
+
+
+instance Same Bool where
+  same a b =
+    a == b
+
+
+instance Same (a, b) where
+  derived
+
+
+instance Same (a, b, c) where
+  derived
+
+
+instance Ranked Int where
+  rank a b =
+    orderOfInts a b
+
+
+instance Ranked (a, b) where
+  derived
+
+
+-- `Basics.compare` answers `EQ` for everything until `LANG-42` replaces it.
+orderOfInts : Int -> Int -> Order
+orderOfInts a b =
+  case a < b of
+    True ->
+      LT
+
+    False ->
+      case a == b of
+        True ->
+          EQ
+
+        False ->
+          GT
+
+
+-- A function constrained by one class.
+differs : Same a => a -> a -> Bool
+differs x y =
+  not (same x y)
+
+
+-- Names a helper no `exposing` entry lists, so a copy of `smaller` in another module has to
+-- reach it by an export this module's header does not write.
+isGreater : Order -> Bool
+isGreater order =
+  case order of
+    GT ->
+      True
+
+    _ ->
+      False
+
+
+smaller : Ranked a => a -> a -> a
+smaller x y =
+  case isGreater (rank x y) of
+    True ->
+      y
+
+    False ->
+      x
+
+
+-- A function constrained by a class, calling one at its own variable.
+smallest : Ranked a => a -> a -> a -> a
+smallest x y z =
+  smaller x (smaller y z)
+
+
+-- `same` is a member of `Ranked`'s superclass, used through `Ranked`'s constraint.
+sameWhenRanked : Ranked a => a -> a -> Bool
+sameWhenRanked x y =
+  same x y

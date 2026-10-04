@@ -145,7 +145,7 @@ LANG-40  the solver: obligations are collected, deferred and discharged   ← cl
   │
 LANG-83  a derivation is checked, and a `derived` instance gets members   ← closed
   │
-GEN-24   specialisation: a member, an instance and a constrained
+GEN-24   specialisation: a member, an instance and a constrained   ← closed
   │      function are emitted
   │      ← the first point at which a program using a class runs
   │
@@ -394,7 +394,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | GEN-21 | task | — | closed 2026-09-29 | The JavaScript runtime cannot run a `Task` |
 | GEN-22 | task | — | closed 2026-09-29 | There is no `zelkova run`: nothing runs a program's `main` |
 | [GEN-23](gen-23.md) | task | — | open | An `unsafe` facade's forwarding code does not catch what its companion throws |
-| [GEN-24](gen-24.md) | task | — | open | A class member, an instance and a constrained function are not emitted |
+| GEN-24 | task | — | closed 2026-10-04 | A class member, an instance and a constrained function are not emitted |
 | GEN-25 | task | — | closed 2026-10-02 | A record, a field access, an update, an accessor and a record pattern are not emitted |
 | [GEN-26](gen-26.md) | task | — | open | A `case` over a tuple of constructors emits code exponential in its number of branches |
 | AST-1 | task | — | closed 2026-08-25 | Remove `Box<Vec<_>>` from the parser AST |

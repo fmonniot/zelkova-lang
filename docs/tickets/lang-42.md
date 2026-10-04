@@ -15,7 +15,7 @@ their types; `std/core/tests/`; `std/test/src/Test.zel` — `equal`; `tests/fixt
 `crates/zelkova-compiler/src/scalars.rs`, for `Position`.
 
 **Depends on:** [LANG-40](README.md), for a solver;
-[LANG-83](README.md), for `derived`; and [GEN-24](gen-24.md), without which none of it can be
+[LANG-83](README.md), for `derived`; and [GEN-24](README.md), without which none of it can be
 emitted and `cargo run -- test std/core` cannot pass.
 
 **Closes:** [BUG-20](bug-20.md) — whose first half made the runtime say so, and whose second,

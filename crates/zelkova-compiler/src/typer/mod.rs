@@ -2755,7 +2755,7 @@ mod classes;
 mod constraint;
 mod unifier;
 
-pub(crate) use classes::instance_head_type;
+pub(crate) use classes::{head_of, instance_head_type};
 
 // TODO Copy ?
 #[derive(Clone, Hash, PartialEq, Eq)]

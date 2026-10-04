@@ -25,8 +25,7 @@ class Comparable a where
 ([`LANG-85`](../tickets/lang-85.md)). An annotation's type variables are not rigid
 ([`LANG-12`](../tickets/lang-12.md)), so a body that forces a constrained variable to a concrete
 type is accepted when that type has the instance, and the annotation's constraint is not held
-against the body. A module holding a class, an instance or a constrained declaration does not
-compile to JavaScript ([`GEN-24`](../tickets/gen-24.md)). The type-class ticket program in
+against the body. The type-class ticket program in
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
 land.
 
@@ -1116,11 +1115,6 @@ loop x =
 `loop` at `Colour` needs `loop` at `Box Colour`, which needs it at `Box (Box Colour)`, without
 end. That is an error, reported against the declaration with the type that kept growing. It is
 the same error when the chain runs through two functions that call each other.
-
-**Not implemented:** specialisation is a rule about code generation, and the compiler's code
-generation specialises nothing yet ([`GEN-24`](../tickets/gen-24.md)). When it does, the
-generated JavaScript holds one ordinary function per instantiation, no table of operations is
-built or passed at runtime, and a program is compiled as a whole.
 
 **Known gap:** `Basics.lt`, `compare`, `min`, `max` and friends are ordinary declarations —
 not facade signatures — over any type at all, so a user union type still type-checks where none

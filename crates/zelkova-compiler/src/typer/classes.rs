@@ -410,7 +410,7 @@ fn entail(
 /// The name at the front of `tpe` an instance is looked up by, and the types that name is
 /// applied to — the ones an instance's head variables stand for. `None` for a type no
 /// instance can be declared for.
-fn head_of(tpe: &Type) -> Option<(HeadName, Vec<Type>)> {
+pub(crate) fn head_of(tpe: &Type) -> Option<(HeadName, Vec<Type>)> {
     match tpe {
         Type::Literal(literal) => {
             let scalar = match literal {

@@ -8,7 +8,9 @@
 //!
 //! # Emitting and writing
 //!
-//! Once every module of every package has checked, each one is emitted as JavaScript
+//! Once every module of every package has checked, the specialisations of the whole build
+//! are found (`zelkova_compiler::ir::specialise`, over the modules of both trees at once), and
+//! each module is emitted as JavaScript
 //! (`zelkova_js::emit`) and, if that failed nowhere either, the build is written to
 //! `build/out/js/` (`output::write`). A build with any error writes nothing. A build that
 //! also compiled the tests writes a second, complete tree at `build/test/js/` — the
@@ -25,6 +27,7 @@
 //! Every error is rendered through `as_diagnostic`, and the status lines are printed
 //! before any of them.
 
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -34,13 +37,14 @@ use codespan_reporting::term::{self};
 use log::debug;
 
 use codespan_reporting::diagnostic::Diagnostic;
+use zelkova_compiler::ir::SpecialiseError;
 use zelkova_compiler::name::Name;
 use zelkova_compiler::source::files::SourceFileId;
 use zelkova_compiler::source::Overlay;
 
 use zelkova_compiler::{
     phase_diagnostic, plain_diagnostic, CheckedModule, CheckedSource, CompilationError, Interface,
-    PackageCheck, PhaseError, Status,
+    ModuleName, PackageCheck, PhaseError, Status,
 };
 use zelkova_js::output;
 
@@ -68,6 +72,12 @@ pub enum BuildError {
     /// raised before there was a build to check, the root's manifest or the resolution of
     /// its dependencies, and is unrendered.
     Check(CompilationError),
+    /// The named module checked, and the specialisations the build needs could not be found
+    /// for it: a constrained function whose specialisations never end
+    /// ([`SpecialiseError::Unbounded`]), or one of the errors that can only mean the type
+    /// checker accepted what it should not have. Raised once every module of the build has
+    /// checked, and the build writes nothing.
+    Specialise(Vec<SpecialiseError>, Name),
     /// The named module checked and could not be emitted as JavaScript.
     Emit(Vec<zelkova_js::Error>, Name),
     /// A file of the build's output could not be written. Raised only once every module
@@ -81,10 +91,10 @@ pub enum BuildError {
     /// `main`, or could not write its entry point or could not run `node`. A program that
     /// ran and aborted is not this; it is the exit code of the run.
     ProgramRun(program_runner::Error),
-    /// An [`Emit`](BuildError::Emit) together with the file its module was read from, so
-    /// that its labels have a file to point into. It wraps nothing else: an error of the
-    /// check carries its own file inside [`Check`](BuildError::Check), as a
-    /// [`CompilationError::InFile`].
+    /// An [`Emit`](BuildError::Emit) or a [`Specialise`](BuildError::Specialise) together
+    /// with the file its module was read from, so that its labels have a file to point into.
+    /// It wraps nothing else: an error of the check carries its own file inside
+    /// [`Check`](BuildError::Check), as a [`CompilationError::InFile`].
     InFile(Box<BuildError>, SourceFileId),
     /// Every error a build accumulated, each already rendered to stderr.
     ///
@@ -109,7 +119,7 @@ impl BuildError {
     /// The name of the module this error belongs to, when it has one.
     pub fn module(&self) -> Option<&Name> {
         match self {
-            BuildError::Emit(_, module) => Some(module),
+            BuildError::Emit(_, module) | BuildError::Specialise(_, module) => Some(module),
             BuildError::Check(error) => error.module(),
             BuildError::InFile(inner, _) => inner.module(),
             _ => None,
@@ -122,6 +132,9 @@ impl BuildError {
         match self {
             BuildError::Check(error) => error.as_diagnostic(),
             BuildError::InFile(inner, id) => inner.as_diagnostic_in(Some(*id)),
+            BuildError::Specialise(errors, module) => {
+                phase_diagnostic(module, "specialisation", errors, file)
+            }
             BuildError::Emit(errors, module) => {
                 phase_diagnostic(module, "code generation", errors, file)
             }
@@ -364,7 +377,7 @@ fn compile(
     // both trees is emitted before anything is written, so a module that cannot be
     // emitted — in `src/` or in `tests/` — also leaves the build with no output at all.
     if errors.is_empty() {
-        let checked: Vec<ModuleToEmit> = modules.into_iter().map(to_module_to_emit).collect();
+        let mut checked: Vec<ModuleToEmit> = modules.into_iter().map(to_module_to_emit).collect();
         let mut root_tests_checked: Vec<ModuleToEmit> =
             test_modules.into_iter().map(to_module_to_emit).collect();
 
@@ -408,6 +421,9 @@ fn compile(
             .collect();
         test_tree_modules.extend(root_tests_checked);
 
+        debug!("phase: specialise");
+        let specialised = specialise_build(&mut checked, &mut test_tree_modules, &mut errors);
+
         debug!("phase: codegen");
         // Every union of the build, read by a facade's boundary checks: a facade may name
         // a union any module of the build declares, and a test-only package's or the
@@ -418,7 +434,13 @@ fn compile(
                 .chain(test_tree_modules.iter())
                 .map(|to_emit| &to_emit.module),
         );
-        let files = emit_build(checked, &unions, &mut errors);
+        // A build whose specialisations could not be found has references that still ask
+        // for an instance, and emitting it would only add an error for each.
+        let files = if specialised {
+            emit_build(checked, &unions, &mut errors)
+        } else {
+            Vec::new()
+        };
 
         // A build that also compiled the tests writes a second, complete tree at
         // `<build_dir>/test/js/`, laid out exactly like `<build_dir>/out/js/` — the runtime,
@@ -434,7 +456,9 @@ fn compile(
         let test_files = (tests == TestRoot::Compiled).then(|| {
             debug!("phase: codegen (tests)");
             let mut test_files = files.clone();
-            test_files.extend(emit_modules(test_tree_modules, &unions, &mut errors));
+            if specialised {
+                test_files.extend(emit_modules(test_tree_modules, &unions, &mut errors));
+            }
             test_files
         });
 
@@ -477,6 +501,48 @@ fn compile(
         Ok(root_test_interfaces)
     } else {
         Err(BuildError::Many(errors))
+    }
+}
+
+/// Find the specialisations of the whole build ([`zelkova_compiler::ir::specialise`]) and
+/// resolve every reference that asks for an instance, in the modules of both trees at once:
+/// `checked`, which the plain tree is, and `test_tree_modules`, which the test tree holds as
+/// well. A module's specialisations are made for it alone, so what the plain tree's modules
+/// hold does not depend on the test tree having been read with them; the pass is run once
+/// because both trees are emitted from these modules.
+///
+/// An error is pushed onto `errors`, tagged with the file the module it is written in was read
+/// from, and `false` answers that the modules are not specialised.
+fn specialise_build(
+    checked: &mut [ModuleToEmit],
+    test_tree_modules: &mut [ModuleToEmit],
+    errors: &mut Vec<BuildError>,
+) -> bool {
+    let files: HashMap<ModuleName, Option<SourceFileId>> = checked
+        .iter()
+        .chain(test_tree_modules.iter())
+        .map(|to_emit| (to_emit.module.canonical.name.clone(), to_emit.file))
+        .collect();
+
+    let mut modules: Vec<&mut CheckedModule> = checked
+        .iter_mut()
+        .chain(test_tree_modules.iter_mut())
+        .map(|to_emit| &mut to_emit.module)
+        .collect();
+
+    match zelkova_compiler::ir::specialise(&mut modules) {
+        Ok(()) => true,
+        Err(failures) => {
+            for failure in failures {
+                let file = files.get(&failure.module).copied().flatten();
+                let error = BuildError::Specialise(failure.errors, failure.module.name().clone());
+                errors.push(match file {
+                    Some(id) => BuildError::InFile(Box::new(error), id),
+                    None => error,
+                });
+            }
+            false
+        }
     }
 }
 

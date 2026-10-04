@@ -1,0 +1,292 @@
+-- A class member, an instance and a constrained function, each by the value it computes.
+module ClassTests exposing (..)
+
+import Basics exposing (..)
+import Box exposing (Box(..))
+import Classes exposing (Same, Ranked, (===), differs, smaller, smallest, sameWhenRanked)
+import Colour exposing (Colour(..))
+import Report
+import Shapes exposing (Shape(..), Chain(..), chain)
+import Test exposing (Test)
+
+
+-- A MEMBER AT AN INSTANCE
+
+memberAtAnInstance : Test
+memberAtAnInstance =
+  Test.check (same 3 3)
+
+
+memberAtAnInstanceThatDiffers : Test
+memberAtAnInstanceThatDiffers =
+  Test.check (not (same 3 4))
+
+
+memberAtAnotherInstance : Test
+memberAtAnotherInstance =
+  Test.check (same True True)
+
+
+memberOfAnInstanceDeclaredBesideItsType : Test
+memberOfAnInstanceDeclaredBesideItsType =
+  Test.equal (rank Green Blue) LT
+
+
+-- A CONSTRAINED FUNCTION AT TWO TYPES
+
+functionAtInt : Test
+functionAtInt =
+  Test.equal (smaller 3 2) 2
+
+
+functionAtColour : Test
+functionAtColour =
+  Test.equal (smaller Blue Red) Red
+
+
+functionAtBothKeepsTheFirstWhenEqual : Test
+functionAtBothKeepsTheFirstWhenEqual =
+  Test.equal (smaller 4 4, smaller Green Green) (4, Green)
+
+
+functionOverAnotherClassAtInt : Test
+functionOverAnotherClassAtInt =
+  Test.check (differs 1 2)
+
+
+functionOverAnotherClassAtBool : Test
+functionOverAnotherClassAtBool =
+  Test.check (not (differs True True))
+
+
+functionCallingItselfAtItsOwnVariable : Test
+functionCallingItselfAtItsOwnVariable =
+  Test.equal (smallest 5 3 4) 3
+
+
+functionCallingItselfAtItsOwnVariableAtColour : Test
+functionCallingItselfAtItsOwnVariableAtColour =
+  Test.equal (smallest Blue Green Red) Red
+
+
+-- AN INSTANCE WITH A CONTEXT
+
+instanceWithAContextAtInt : Test
+instanceWithAContextAtInt =
+  Test.check (same (Box 1) (Box 1))
+
+
+instanceWithAContextAtIntThatDiffers : Test
+instanceWithAContextAtIntThatDiffers =
+  Test.check (not (same (Box 1) (Box 2)))
+
+
+instanceWithAContextAtColour : Test
+instanceWithAContextAtColour =
+  Test.check (same (Box Red) (Box Red))
+
+
+instanceWithAContextNested : Test
+instanceWithAContextNested =
+  Test.check (not (same (Box (Box Red)) (Box (Box Green))))
+
+
+derivedOrderingThroughAContext : Test
+derivedOrderingThroughAContext =
+  Test.equal (rank (Box 1) (Box 2)) LT
+
+
+functionAtAnInstanceWithAContext : Test
+functionAtAnInstanceWithAContext =
+  Test.equal (smaller (Box 3) (Box 2)) (Box 2)
+
+
+-- A MEMBER OF A SUPERCLASS, USED THROUGH THE SUBCLASS
+
+superclassMemberAtInt : Test
+superclassMemberAtInt =
+  Test.check (sameWhenRanked 1 1)
+
+
+superclassMemberAtColour : Test
+superclassMemberAtColour =
+  Test.check (not (sameWhenRanked Red Blue))
+
+
+superclassMemberAtAnInstanceWithAContext : Test
+superclassMemberAtAnInstanceWithAContext =
+  Test.check (sameWhenRanked (Box Red) (Box Red))
+
+
+-- A CLASS IN ONE MODULE, THE INSTANCE IN THE TYPE'S, THE USE IN A THIRD
+
+useInAThirdModule : Test
+useInAThirdModule =
+  Test.equal (Report.pickSmaller Blue Green) Green
+
+
+useInAThirdModuleAtInt : Test
+useInAThirdModuleAtInt =
+  Test.equal (Report.pickInts 9 8) 8
+
+
+useInAThirdModuleThroughAContext : Test
+useInAThirdModuleThroughAContext =
+  Test.equal (Report.boxedSmaller (Box Blue) (Box Green)) (Box Green)
+
+
+useInAThirdModuleThroughAFunctionCallingItself : Test
+useInAThirdModuleThroughAFunctionCallingItself =
+  Test.equal (Report.smallestColour Blue Green Red) Red
+
+
+useInAThirdModuleThroughASuperclass : Test
+useInAThirdModuleThroughASuperclass =
+  Test.check (Report.sameShapes (Rect 1 2) (Rect 1 2))
+
+
+useInAThirdModuleThroughAContextOfAFunction : Test
+useInAThirdModuleThroughAContextOfAFunction =
+  Test.check (Report.boxedSameness (Box Green) (Box Green))
+
+
+-- A MEMBER BEHIND AN OPERATOR
+
+operatorAtColour : Test
+operatorAtColour =
+  Test.check (Red === Red)
+
+
+operatorAtColourThatDiffers : Test
+operatorAtColourThatDiffers =
+  Test.check (not (Red === Blue))
+
+
+operatorAtAnInstanceWithAContext : Test
+operatorAtAnInstanceWithAContext =
+  Test.check (Box 3 === Box 3)
+
+
+-- A DERIVED INSTANCE ON A UNION WITH ARGUMENTS
+
+derivedSameOnOneConstructor : Test
+derivedSameOnOneConstructor =
+  Test.check (same (Rect 1 2) (Rect 1 2))
+
+
+derivedSameOnTheFirstArgument : Test
+derivedSameOnTheFirstArgument =
+  Test.check (not (same (Rect 1 2) (Rect 9 2)))
+
+
+derivedSameOnTheLastArgument : Test
+derivedSameOnTheLastArgument =
+  Test.check (not (same (Rect 1 2) (Rect 1 3)))
+
+
+derivedSameOnTwoConstructors : Test
+derivedSameOnTwoConstructors =
+  Test.check (not (same (Circle 1) Dot))
+
+
+derivedSameOnAConstructorWithNoArguments : Test
+derivedSameOnAConstructorWithNoArguments =
+  Test.check (same Dot Dot)
+
+
+derivedRankFirstArgumentDecides : Test
+derivedRankFirstArgumentDecides =
+  Test.equal (rank (Rect 1 9) (Rect 2 0)) LT
+
+
+derivedRankLaterArgumentDecidesWhenTheFirstAreEqual : Test
+derivedRankLaterArgumentDecidesWhenTheFirstAreEqual =
+  Test.equal (rank (Rect 1 2) (Rect 1 1)) GT
+
+
+derivedRankOfEqualValues : Test
+derivedRankOfEqualValues =
+  Test.equal (rank (Rect 1 2) (Rect 1 2)) EQ
+
+
+derivedRankOfOneArgument : Test
+derivedRankOfOneArgument =
+  Test.equal (rank (Circle 3) (Circle 2)) GT
+
+
+-- A DERIVED INSTANCE ON A TUPLE
+
+derivedSameOnATuple : Test
+derivedSameOnATuple =
+  Test.check (same (1, True) (1, True))
+
+
+derivedSameOnATupleThatDiffers : Test
+derivedSameOnATupleThatDiffers =
+  Test.check (not (same (1, True) (1, False)))
+
+
+derivedSameOnATripleThatDiffers : Test
+derivedSameOnATripleThatDiffers =
+  Test.check (not (same (1, True, 3) (1, True, 4)))
+
+
+derivedRankOnATuple : Test
+derivedRankOnATuple =
+  Test.equal (rank (1, 2) (1, 3)) LT
+
+
+derivedRankOnATupleFirstElementDecides : Test
+derivedRankOnATupleFirstElementDecides =
+  Test.equal (rank (2, 0) (1, 9)) GT
+
+
+derivedRankOnTuplesOfEqualElements : Test
+derivedRankOnTuplesOfEqualElements =
+  Test.equal (rank (1, 2) (1, 2)) EQ
+
+
+-- A DERIVED INSTANCE ON A RECURSIVE TYPE
+
+derivedSameOnARecursiveType : Test
+derivedSameOnARecursiveType =
+  Test.check (same (Link 1 (Link 2 End)) (Link 1 (Link 2 End)))
+
+
+derivedSameOnARecursiveTypeThatDiffersAtTheEnd : Test
+derivedSameOnARecursiveTypeThatDiffersAtTheEnd =
+  Test.check (not (same (Link 1 (Link 2 End)) (Link 1 (Link 3 End))))
+
+
+derivedSameOnARecursiveTypeOfDifferentLengths : Test
+derivedSameOnARecursiveTypeOfDifferentLengths =
+  Test.check (not (same (Link 1 End) (Link 1 (Link 2 End))))
+
+
+derivedRankOnARecursiveType : Test
+derivedRankOnARecursiveType =
+  Test.equal (rank (Link 1 (Link 2 End)) (Link 1 (Link 3 End))) LT
+
+
+-- Two chains of forty links that differ only in the last. A derived member answers each part
+-- once, so this takes a pass down the chain; a `combine` whose first parameter was
+-- substituted for the expression that computes it would answer the tail twice at every
+-- link and take 2 to the 40th steps.
+twoLongChainsDifferingAtTheEndAreNotSame : Test
+twoLongChainsDifferingAtTheEndAreNotSame =
+  Test.check (not (same (chain 40 1) (chain 40 2)))
+
+
+twoLongChainsDifferingAtTheEndAreRanked : Test
+twoLongChainsDifferingAtTheEndAreRanked =
+  Test.equal (rank (chain 40 1) (chain 40 2)) LT
+
+
+twoLongChainsDifferingAtTheEndAreRankedTheOtherWay : Test
+twoLongChainsDifferingAtTheEndAreRankedTheOtherWay =
+  Test.equal (rank (chain 40 2) (chain 40 1)) GT
+
+
+twoEqualLongChainsAreSame : Test
+twoEqualLongChainsAreSame =
+  Test.check (same (chain 40 1) (chain 40 1))

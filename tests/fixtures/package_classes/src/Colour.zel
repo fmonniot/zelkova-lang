@@ -1,0 +1,35 @@
+module Colour exposing (Colour(..), index)
+
+{-| A type, and its two instances, declared in the type's module: the class is in `Classes`.
+-}
+
+import Classes exposing (Same, Ranked)
+
+
+type Colour
+  = Red
+  | Green
+  | Blue
+
+
+index : Colour -> Int
+index colour =
+  case colour of
+    Red ->
+      0
+
+    Green ->
+      1
+
+    Blue ->
+      2
+
+
+instance Same Colour where
+  same a b =
+    same (index a) (index b)
+
+
+instance Ranked Colour where
+  rank a b =
+    rank (index a) (index b)

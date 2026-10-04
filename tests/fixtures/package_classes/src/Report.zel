@@ -1,0 +1,40 @@
+module Report exposing (..)
+
+{-| A third module: it declares neither a class nor an instance, and uses what the other
+four declare.
+-}
+
+import Box exposing (Box(..))
+import Classes exposing (Same, Ranked, smaller, smallest, differs, sameWhenRanked)
+import Colour exposing (Colour(..))
+import Shapes exposing (Shape(..))
+
+
+pickSmaller : Colour -> Colour -> Colour
+pickSmaller a b =
+  smaller a b
+
+
+pickInts : Int -> Int -> Int
+pickInts a b =
+  smaller a b
+
+
+boxedSmaller : Box Colour -> Box Colour -> Box Colour
+boxedSmaller a b =
+  smaller a b
+
+
+smallestColour : Colour -> Colour -> Colour -> Colour
+smallestColour a b c =
+  smallest a b c
+
+
+sameShapes : Shape -> Shape -> Bool
+sameShapes a b =
+  sameWhenRanked a b
+
+
+boxedSameness : Box Colour -> Box Colour -> Bool
+boxedSameness a b =
+  not (differs a b)
