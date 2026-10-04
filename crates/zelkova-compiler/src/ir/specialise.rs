@@ -71,9 +71,16 @@
 //! [`LANG-12`](../../../docs/tickets/lang-12.md) — the context holds that type, there is no
 //! variable to bind, and the key is shorter by it.
 //!
-//! A member of an instance with a context is specialised at the ground types of the head's
-//! variables that the context constrains. They are found by reading the use's type against the
-//! instance's head, which the head rule makes a declared type applied to distinct variables.
+//! A member of an instance with a context is specialised at the ground types of the variables
+//! its own context constrains. They are found by reading the member's declared type against
+//! the type of the use, and not by reading the instance's head: the member's IR is over the
+//! variables its own inference gave it, which are the head's only when its patterns happen to
+//! pin them there (`same = sameWrap` does not).
+//!
+//! Only what the key is made of has to be a type. The instance a use asks for is found from
+//! the name at the front of its type, so a use at `Phantom b`, which no one can make ground,
+//! is the instance of `Phantom` all the same; and a variable with no constraint is not in the
+//! key. A constrained variable that is still a variable is [`Error::NotGround`].
 //!
 //! # The limit
 //!
@@ -86,6 +93,11 @@
 //! [`Error::Unbounded`], naming the declaration and the type it had reached. The count is of
 //! one declaration within one chain: a chain through a hundred different functions is a finite
 //! set, and the same loop written through two functions is caught the same way.
+//!
+//! The first such chain stops the module's work: what was waiting to be read is dropped and
+//! nothing new is found, because a loop that grows at two types has a leaf for each way down,
+//! about 2^32 of them, and a build that has failed has no use for any. A declaration is
+//! reported once, however many modules reach its limit.
 //!
 //! # Order
 //!
@@ -126,10 +138,12 @@ pub const SPECIALISATION_LIMIT: usize = 32;
 
 /// Why the specialisations of a build could not be found.
 ///
-/// Only [`Unbounded`](Self::Unbounded) is a mistake in a program. The others are what is left
-/// if a module reaches this pass that the type checker did not accept, which nothing does
-/// today: a build with an error never gets here. They are errors and not panics so that a
-/// caller holding one is told which declaration it was reading.
+/// [`Unbounded`](Self::Unbounded) is a mistake in a program the type checker cannot see.
+/// [`NotGround`](Self::NotGround) is a program it accepted whose use asks for a constrained
+/// function at a type that is still a variable, one that has no copy to make. The other two
+/// are what is left if a module reaches this pass that the type checker did not accept, which
+/// nothing does today: a build with an error never gets here. They are errors and not panics
+/// so that a caller holding one is told which declaration it was reading.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     /// A constrained declaration whose specialisations never end: it needs itself, directly
@@ -156,8 +170,10 @@ pub enum Error {
         used_in: Name,
         span: NodeSpan,
     },
-    /// A use whose obligation was still over a type variable once the declaration it is
-    /// in was specialised, so there is no instance to look up.
+    /// A use of a constrained name whose constrained variable was still a type variable once
+    /// the declaration it is in was specialised, so there is no key to copy at; or a use of a
+    /// class member at a bare variable, which has no name to look an instance up by. A use at
+    /// `Phantom b` is neither, whatever `b` is.
     NotGround {
         class: Name,
         tpe: Type,
@@ -190,7 +206,7 @@ impl PhaseError for Error {
             } => format!(
                 "no instance of `{}` at `{}` was found for the use in `{}`",
                 class.as_str(),
-                tpe,
+                tpe.written_with_letters(),
                 within.as_str()
             ),
             Error::NotGround {
@@ -202,7 +218,7 @@ impl PhaseError for Error {
                 "the use of an instance of `{}` in `{}` is at `{}`, which is not a type yet",
                 class.as_str(),
                 within.as_str(),
-                tpe
+                tpe.written_with_letters()
             ),
             Error::NoDeclaration { name, within, .. } => format!(
                 "`{}` has nothing to specialise, but `{}` uses it as a name that asks for an instance",
@@ -608,6 +624,9 @@ struct Used {
     table: HashMap<(Subject, Vec<Type>), usize>,
     /// The specialisations found and not yet read, the last found on top.
     pending: Vec<usize>,
+    /// Whether a chain of this module has reached the limit. The build has failed by then, so
+    /// nothing more is found: see [`Reader::specialise`].
+    stopped: bool,
 }
 
 /// A specialisation, from the moment it is found until its body has been read.
@@ -905,20 +924,7 @@ impl Reader<'_, '_> {
             })
             .collect();
 
-        let resolved = match ground.iter().find(|predicate| !is_ground(&predicate.tpe)) {
-            Some(predicate) => {
-                let error = Error::NotGround {
-                    class: predicate.class.unqualified_name(),
-                    tpe: predicate.tpe.clone(),
-                    within: self.within.clone(),
-                    used_in: self.used_in(),
-                    span,
-                };
-                self.error(error);
-                None
-            }
-            None => self.resolve(reference, &ground, span),
-        };
+        let resolved = self.resolve(reference, &ground, &tpe, span);
 
         // A reference no obligation could be resolved for keeps its obligations, and an
         // error stands behind it, so the build that holds it writes nothing.
@@ -945,6 +951,7 @@ impl Reader<'_, '_> {
         &mut self,
         reference: &Reference,
         ground: &[Predicate],
+        use_tpe: &Type,
         span: NodeSpan,
     ) -> Option<ReferenceKind> {
         let name = match &reference.kind {
@@ -956,9 +963,54 @@ impl Reader<'_, '_> {
         };
 
         match self.world.members.get(name) {
-            Some(class) => self.resolve_member(name, class, ground, span),
+            Some(class) => self.resolve_member(name, class, ground, use_tpe, span),
             None => self.resolve_declaration(reference, name, ground, span),
         }
+    }
+
+    /// The types `assignment` gives the variables `context` is over, in the order they occur:
+    /// a declaration's key. Only these variables matter, so a type that holds others, or none
+    /// of them, is as good as any: what has to be a type is what the key is made of.
+    ///
+    /// A variable that is still a variable here, or still holds one, is [`Error::NotGround`]
+    /// and `None`. A variable `assignment` has nothing for is left out of the key: where a
+    /// declaration's body forced it to a type, there is nothing to bind.
+    fn bind(
+        &mut self,
+        context: &[Predicate],
+        assignment: &Assignment,
+        span: NodeSpan,
+    ) -> Option<Vec<(TypeVariable, Type)>> {
+        let bound: Vec<(TypeVariable, Type)> = constrained(context)
+            .into_iter()
+            .filter_map(|variable| {
+                let tpe = assignment.get(&variable)?.clone();
+                Some((variable, tpe))
+            })
+            .collect();
+
+        let Some((variable, _)) = bound.iter().find(|(_, tpe)| !is_ground(tpe)) else {
+            return Some(bound);
+        };
+        if let Some(predicate) = context
+            .iter()
+            .find(|predicate| constrained(std::slice::from_ref(predicate)).contains(variable))
+        {
+            let tpe = apply(&predicate.tpe, assignment);
+            self.not_ground(&predicate.class, &tpe, span);
+        }
+        None
+    }
+
+    fn not_ground(&mut self, class: &QualName, tpe: &Type, span: NodeSpan) {
+        let error = Error::NotGround {
+            class: class.unqualified_name(),
+            tpe: tpe.clone(),
+            within: self.within.clone(),
+            used_in: self.used_in(),
+            span,
+        };
+        self.error(error);
     }
 
     fn no_declaration(&mut self, name: Name, span: NodeSpan) {
@@ -989,6 +1041,7 @@ impl Reader<'_, '_> {
         member: &QualName,
         class: &QualName,
         ground: &[Predicate],
+        use_tpe: &Type,
         span: NodeSpan,
     ) -> Option<ReferenceKind> {
         let predicate = ground
@@ -996,8 +1049,14 @@ impl Reader<'_, '_> {
             .find(|predicate| &predicate.class == class)
             .or_else(|| ground.first())?;
 
-        let Some((head, arguments)) = head_of(&predicate.tpe) else {
-            self.no_instance(class, &predicate.tpe, span);
+        // An instance is found by the name at the front of the type and nothing else, so the
+        // rest of the type may still hold variables. A bare variable has no name to look up.
+        let Some((head, _)) = head_of(&predicate.tpe) else {
+            if matches!(predicate.tpe, Type::Variable(_)) {
+                self.not_ground(class, &predicate.tpe, span);
+            } else {
+                self.no_instance(class, &predicate.tpe, span);
+            }
             return None;
         };
         let Some(&(module, instance_index)) =
@@ -1034,25 +1093,13 @@ impl Reader<'_, '_> {
             })));
         }
 
-        // The head's variables are the ones the instance's context is over, and a member
-        // of it is constrained exactly as the context says, so what each is at is what the
-        // head's arguments are at the use. They are read by position: the head rule makes
-        // them distinct variables, one for each argument.
-        let mut at_head = Assignment::new();
-        if let Some((_, variables)) = head_of(&instance.head) {
-            for (variable, argument) in variables.iter().zip(&arguments) {
-                if let Type::Variable(variable) = variable {
-                    at_head.insert(variable.clone(), argument.clone());
-                }
-            }
-        }
-        let bound: Vec<(TypeVariable, Type)> = constrained(&declaration.context)
-            .into_iter()
-            .filter_map(|variable| {
-                let tpe = at_head.get(&variable)?.clone();
-                Some((variable, tpe))
-            })
-            .collect();
+        // What each constrained variable of the member is at comes from the member's own
+        // type read against the type of the use, and not from the instance's head: the
+        // member's IR is over the variables its own inference gave it, which are the head's
+        // only when the member's patterns pinned them to it (`same = sameWrap` does not).
+        let mut assignment = Assignment::new();
+        match_type(&declaration.tpe, use_tpe, &mut assignment);
+        let bound = self.bind(&declaration.context, &assignment, span)?;
 
         let subject = Subject::InstanceMember {
             class: class.clone(),
@@ -1098,13 +1145,7 @@ impl Reader<'_, '_> {
             // and has nothing to bind; a use at another one binds nothing either.
             match_type(&pattern.tpe, &predicate.tpe, &mut assignment);
         }
-        let bound: Vec<(TypeVariable, Type)> = constrained(&declaration.context)
-            .into_iter()
-            .filter_map(|variable| {
-                let tpe = assignment.get(&variable)?.clone();
-                Some((variable, tpe))
-            })
-            .collect();
+        let bound = self.bind(&declaration.context, &assignment, span)?;
 
         let location = Location {
             module,
@@ -1144,14 +1185,30 @@ impl Reader<'_, '_> {
             ancestor = spec.parent;
         }
         if occurrences >= SPECIALISATION_LIMIT {
-            // The declaration is in its own module's file, and its span is that file's.
-            let used_in = self.used_in();
-            self.errors[location.module].push(Error::Unbounded {
-                declaration: declaration.name.clone(),
-                types: key,
-                span: declaration.span,
-                used_in,
+            // The build has failed, and everything still waiting to be read could only add
+            // more of the same: a loop that grows at two types is a tree of keys with a
+            // leaf for each way down, 2^32 of them. So the module's work stops here.
+            self.used.stopped = true;
+            self.used.pending.clear();
+
+            // The declaration is in its own module's file, and its span is that file's. One
+            // declaration is one error, however many modules use it.
+            let reported = self.errors[location.module].iter().any(|error| {
+                matches!(error, Error::Unbounded { declaration: reported, span, .. }
+                    if reported == &declaration.name && span.to_range() == declaration.span.to_range())
             });
+            if !reported {
+                let used_in = self.used_in();
+                self.errors[location.module].push(Error::Unbounded {
+                    declaration: declaration.name.clone(),
+                    types: key,
+                    span: declaration.span,
+                    used_in,
+                });
+            }
+            return None;
+        }
+        if self.used.stopped {
             return None;
         }
 

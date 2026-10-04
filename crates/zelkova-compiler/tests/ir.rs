@@ -2745,6 +2745,270 @@ fn a_function_that_needs_itself_at_a_larger_type_is_the_limits_error() {
     }
 }
 
+/// Run the whole of `check_package_modules` and `specialise_all` on `sources` on a thread of its
+/// own, and give back what each error of the pass says, or the modules' specialisations when it
+/// found none. A pass that never returns is a failure of this test and not of the whole suite:
+/// the thread is left behind and the test panics after `seconds`.
+///
+/// Only text crosses the thread, because a `CheckedModule` is not sent anywhere.
+fn specialise_within(sources: &[&str], seconds: u64) -> Vec<Result<Vec<String>, Vec<String>>> {
+    let sources: Vec<String> = sources.iter().map(|source| source.to_string()).collect();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let sources: Vec<&str> = sources.iter().map(String::as_str).collect();
+        let mut modules = check_package_modules(&sources);
+        let outcome = match specialise_all(&mut modules) {
+            Ok(()) => Ok(modules
+                .iter()
+                .flat_map(|module| module.ir.specialisations.iter().map(spec_text))
+                .collect()),
+            Err(failures) => Err(failures
+                .iter()
+                .flat_map(|failure| &failure.errors)
+                .map(zelkova_compiler::PhaseError::message)
+                .collect()),
+        };
+        let _ = sender.send(outcome);
+    });
+
+    match receiver.recv_timeout(std::time::Duration::from_secs(seconds)) {
+        Ok(outcome) => vec![outcome],
+        Err(_) => panic!(
+            "the pass had not returned after {} seconds: it does not stop at its limit",
+            seconds
+        ),
+    }
+}
+
+/// A loop that grows at two different types is a tree of specialisations with a leaf for each
+/// way down, about 2^32 of them. Reaching the limit once stops the pass: it returns at once with
+/// the one error, and a declaration that two modules each use at the limit is still the one
+/// error.
+///
+/// Mutation-checked twice. Dropping `self.used.pending.clear()` and the `stopped` test in
+/// `Reader::specialise` leaves the limit's error in place and keeps reading every sibling: the
+/// first assertion's call never returns and the test panics after its twenty seconds. Dropping
+/// the `reported` test there makes the error be pushed again by each using module and by each
+/// reference left in the body being read, and the count below is more than one.
+#[test]
+fn reaching_the_limit_stops_the_pass_and_a_declaration_is_reported_once() {
+    let lib = indoc! {r#"
+        module Lib exposing (..)
+
+        class Same a where
+          same : a -> a -> Bool
+
+        instance Same Int where
+          same a b =
+            True
+
+        type Left a
+          = Left a
+
+        type Right a
+          = Right a
+
+        instance Same a => Same (Left a) where
+          same (Left x) (Left y) =
+            same x y
+
+        instance Same a => Same (Right a) where
+          same (Right x) (Right y) =
+            same x y
+
+        grow : Same a => Bool -> a -> Bool
+        grow stop x =
+          case stop of
+            True ->
+              same x x
+
+            False ->
+              case grow True (Left x) of
+                True ->
+                  grow True (Right x)
+
+                False ->
+                  False
+    "#};
+    let first = "module First exposing (..)\n\nimport Lib exposing (..)\n\nstart : Bool\nstart =\n  grow False 1\n";
+    let second = "module Second exposing (..)\n\nimport Lib exposing (..)\n\nstart : Bool\nstart =\n  grow False 2\n";
+
+    let outcome = specialise_within(&[lib, first, second], 20);
+    let [Err(messages)] = outcome.as_slice() else {
+        panic!("expected the limit's error, got {:?}", outcome);
+    };
+    assert_eq!(
+        messages.len(),
+        1,
+        "one declaration is one error, got {:?}",
+        messages
+    );
+    assert!(messages[0].contains("`grow`"), "{:?}", messages);
+}
+
+/// An instance is found by the name at the front of the type, so a use at a type that holds a
+/// variable nobody can make ground — `Phantom b` — is the instance of `Phantom` all the same,
+/// and a variable no constraint is on is not in any key. A module of the standard library's
+/// shape: a derived instance of a type with a phantom parameter gets no context.
+///
+/// Mutation-checked by putting back the whole-type test in `Reader::identifier` (every
+/// predicate of a use must be ground before it is resolved): the build is `NotGround` and
+/// `specialised_package` panics with the message.
+#[test]
+fn a_use_at_a_type_with_a_phantom_variable_is_the_instance_all_the_same() {
+    let source = indoc! {r#"
+        module Phantoms exposing (..)
+
+        class Same a where
+          same : a -> a -> Bool
+
+        type Phantom a
+          = Phantom
+
+        type Pair a b
+          = Pair a b
+
+        instance Same Int where
+          same a b =
+            True
+
+        instance Same (Phantom a) where
+          same _ _ =
+            True
+
+        instance Same a => Same (Pair a b) where
+          same (Pair x _) (Pair y _) =
+            same x y
+
+        alwaysSame : Phantom b -> Bool
+        alwaysSame p =
+          same p p
+
+        ambiguous : Bool
+        ambiguous =
+          same Phantom Phantom
+
+        pairAtAVariable : Pair Int c -> Bool
+        pairAtAVariable p =
+          same p p
+    "#};
+    let modules = specialised_package(&[source]);
+    let module = module_named(&modules, "Phantoms");
+
+    let resolved = |name: &str| {
+        let declaration = module
+            .ir
+            .declarations
+            .iter()
+            .find(|declaration| declaration.name == Name::new(name))
+            .expect("the declaration exists");
+        resolutions(&declaration.body.as_ref().unwrap().expression)
+    };
+    assert_eq!(
+        resolved("alwaysSame"),
+        vec!["Same@Phantom.same of Phantoms".to_string()]
+    );
+    // The two `Phantom` constructors are the other names `ambiguous` mentions.
+    assert_eq!(
+        resolved("ambiguous").first(),
+        Some(&"Same@Phantom.same of Phantoms".to_string())
+    );
+    // The instance with a context is specialised at what its context constrains, `a`, which
+    // the use made `Int`; `b` has no constraint and is not asked for.
+    assert_eq!(resolved("pairAtAVariable"), vec!["spec 0".to_string()]);
+    assert_eq!(specs(&modules, "Phantoms"), vec!["Same@Pair.same [Int]"]);
+}
+
+/// A constrained variable that is still a variable has no key to copy at, and the message says
+/// so in the vocabulary of the source: the variable is a letter and not the typer's `t10122`.
+///
+/// Mutation-checked by making `Reader::bind` accept a non-ground type: the pass returns `Ok`
+/// and the first assertion goes red.
+#[test]
+fn a_constrained_variable_that_is_still_a_variable_says_so_without_a_typer_name() {
+    let source = indoc! {r#"
+        module Open exposing (..)
+
+        class Same a where
+          same : a -> a -> Bool
+
+        type Phantom a
+          = Phantom
+
+        instance Same (Phantom a) where
+          same _ _ =
+            True
+
+        both : Same a => a -> a -> Bool
+        both x y =
+          same x y
+
+        open : Phantom b -> Bool
+        open p =
+          both p p
+    "#};
+    let outcome = specialise_within(&[source], 20);
+    let [Err(messages)] = outcome.as_slice() else {
+        panic!("expected the pass to refuse the use, got {:?}", outcome);
+    };
+    let [message] = messages.as_slice() else {
+        panic!("expected one error, got {:?}", messages);
+    };
+    assert!(
+        message.contains("is at `Phantom a`"),
+        "the type is written with a letter: {}",
+        message
+    );
+    assert!(
+        !message.contains("`t"),
+        "no inference variable in the message: {}",
+        message
+    );
+}
+
+/// A member of an instance with a context that is bound point-free is over the variables its own
+/// inference gave it, which need not be the head's. What it is specialised at is read from its
+/// own type against the type of the use, so `same = sameWrap` is `sameWrap` at `Int`, and the
+/// same member written with parameters agrees with it.
+///
+/// Mutation-checked by reading the member's variables from the instance's head again, as the
+/// code before this did, in `Reader::resolve_member`: the key is empty, the copy cannot resolve
+/// its `same` at a variable, and `specialised_package` panics with the `NotGround` message.
+#[test]
+fn a_point_free_member_of_an_instance_with_a_context_is_specialised_at_its_own_variables() {
+    let source = indoc! {r#"
+        module PointFree exposing (..)
+
+        class Same a where
+          same : a -> a -> Bool
+
+        type Wrap a
+          = Wrap a
+
+        instance Same Int where
+          same a b =
+            True
+
+        instance Same a => Same (Wrap a) where
+          same =
+            sameWrap
+
+        sameWrap : Same a => Wrap a -> Wrap a -> Bool
+        sameWrap (Wrap x) (Wrap y) =
+          same x y
+
+        use : Bool
+        use =
+          same (Wrap 3) (Wrap 3)
+    "#};
+    let modules = specialised_package(&[source]);
+
+    assert_eq!(
+        specs(&modules, "PointFree"),
+        vec!["Same@Wrap.same [Int]", "sameWrap [Int]"]
+    );
+}
+
 /// A chain through many different functions is a finite set and is not the limit's error: the
 /// count is of one declaration in one chain.
 ///

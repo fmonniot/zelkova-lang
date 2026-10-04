@@ -2,7 +2,7 @@
 module ClassTests exposing (..)
 
 import Basics exposing (..)
-import Box exposing (Box(..))
+import Box exposing (Box(..), Wrapped(..), Tagged(..), sameTagged)
 import Classes exposing (Same, Ranked, (===), differs, smaller, smallest, sameWhenRanked)
 import Colour exposing (Colour(..))
 import Report
@@ -290,3 +290,27 @@ twoLongChainsDifferingAtTheEndAreRankedTheOtherWay =
 twoEqualLongChainsAreSame : Test
 twoEqualLongChainsAreSame =
   Test.check (same (chain 40 1) (chain 40 1))
+
+
+-- A MEMBER BOUND POINT-FREE, IN AN INSTANCE WITH A CONTEXT
+
+pointFreeMemberIsSameWhenEqual : Test
+pointFreeMemberIsSameWhenEqual =
+  Test.check (same (Wrapped 3) (Wrapped 3))
+
+
+pointFreeMemberIsNotSameWhenDifferent : Test
+pointFreeMemberIsNotSameWhenDifferent =
+  Test.check (not (same (Wrapped 3) (Wrapped 4)))
+
+
+-- AN INSTANCE USED AT A TYPE WITH A PHANTOM VARIABLE
+
+phantomParameterIsSameWhenEqual : Test
+phantomParameterIsSameWhenEqual =
+  Test.check (sameTagged (Tagged 1) (Tagged 1))
+
+
+phantomParameterIsNotSameWhenDifferent : Test
+phantomParameterIsNotSameWhenDifferent =
+  Test.check (not (sameTagged (Tagged 1) (Tagged 2)))

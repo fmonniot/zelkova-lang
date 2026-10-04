@@ -473,7 +473,7 @@ fn names_for(
 }
 
 /// The `n`th variable name: `a` to `z`, then `a1`, `b1`, and on.
-fn letter(n: usize) -> String {
+pub(super) fn letter(n: usize) -> String {
     let letter = char::from(b'a' + (n % 26) as u8);
     match n / 26 {
         0 => letter.to_string(),
