@@ -48,12 +48,14 @@ checked.
 
 3. **A derived instance's context reads through a record.** A variant argument, or a tuple
    element, whose type is a record needs what each of its fields needs — the same recursion
-   `LANG-83` step 3 runs for an application.
+   `reduce` in `canonical/derivation.rs` runs for an application, whose module doc comment
+   (*What a derived instance requires*) is the account.
 
-4. **The member at a record type is the fold `LANG-83` step 4 describes, with only the fold.**
+4. **The member at a record type is the fold [a derived member](../spec/type-classes.md#what-a-derived-instance-computes) computes, with only the fold.**
    Fields in label order whatever order the type was spelled in — labels compared character by
    character, by code point, a label that another begins with first, which is the chapter's
-   rule; right-nested; `combine`'s body placed and not called, its first parameter bound once
+   rule; right-nested; `combine`'s body placed and not called, as `Generated` in
+   `canonical/derivation.rs` places it, its first parameter bound once
    ([`DEC-24` decision 8](../decisions/dec-24.md#8--combines-first-parameter-is-a-value-and-its-second-is-the-rest-of-the-walk)).
 
 **Where that definition lives is the implementer's choice**, within the three constraints

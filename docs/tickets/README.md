@@ -219,6 +219,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [BUG-46](bug-46.md) | bug | low | open | `Js.Utils.compareInt` and `compareFloat` declare an `Int` result their companion returns as a number |
 | [BUG-47](bug-47.md) | bug | low | open | A qualified name an imported module does not expose is reported as under the importing module |
 | [BUG-48](bug-48.md) | bug | medium | open | `Js.Utils`'s structural equality throws a `ReferenceError` on a value nested more than a hundred deep |
+| [BUG-49](bug-49.md) | bug | medium | open | A pattern variable that shadows an outer name drops the outer binder when its branch ends, so a valid declaration is left unchecked |
 | ERR-2 | task | — | closed 2026-08-26 | Unify the error-handling strategy across compiler phases |
 | ERR-3 | task | — | closed 2026-08-27 | Give the parser and canonical ASTs spans, so diagnostics can point at source |
 | ERR-4 | task | — | closed 2026-08-27 | Type errors point at the sub-expression, not at the whole declaration |
@@ -278,6 +279,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [SPEC-36](spec-36.md) | task | — | open | The `double` block in `expressions.md` cannot go red for the reason its paragraph gives |
 | SPEC-37 | task | — | closed 2026-09-28 | How a `Task` is represented and run is undesigned, on either target |
 | [SPEC-38](spec-38.md) | task | — | open | `patterns.md` parenthesises every sub-pattern and also writes `Circle n :: rest` bare |
+| [SPEC-39](spec-39.md) | task | — | open | The chapter does not say what a context written on a `derived` instance means, or which constructors a `derived` instance needs in scope |
 | LANG-1 | task | — | closed 2026-10-01 | Remove the `true`/`false` keywords; booleans are ordinary constructors |
 | LANG-2 | task | — | closed 2026-09-13 | `javascript` is reserved outright, unlike the other three soft keywords — subsumed by LANG-54 |
 | [LANG-3](lang-3.md) | task | — | open | The tokenizer accepts a titlecase-initial identifier and a float with no digit after the point |
@@ -364,6 +366,8 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | LANG-84 | task | — | closed 2026-10-02 | A record pattern is not type checked |
 | [LANG-85](lang-85.md) | task | — | open | An obligation at a record type is never discharged, so no derivation walks a record |
 | [LANG-86](lang-86.md) | task | — | open | There is no `type alias` production, so a type cannot be given a second name |
+| [LANG-87](lang-87.md) | task | — | open | A derivation binding written with more parameters than the walk supplies is rejected |
+| [LANG-88](lang-88.md) | task | — | open | A derived member's size is exponential in a constructor's arity when `combine` names its second parameter more than once |
 | SITE-1 | task | — | closed 2026-09-11 | Publish a landing page and the rendered spec alongside the rustdoc on GitHub Pages |
 | [SITE-2](site-2.md) | task | — | open | An image reference in a chapter is not rewritten, and has nowhere to land |
 | [SITE-3](site-3.md) | task | — | open | A doc comment's link into `docs/` resolves nowhere, and nothing checks it |

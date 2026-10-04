@@ -320,6 +320,28 @@ written twice and one the signature does not call for are each an error naming t
 so is a derivation for a name the class does not declare as a member, or a second one for a member
 that has one.
 
+**Known gap:** a binding may take more parameters than the walk supplies it, because `R` may
+itself be a function type. A member at `hashWith : a -> Int -> Int` has `R = Int -> Int`, and
+`atConstructor p n = n` has the type `Position -> Int -> Int` that this section gives
+`atConstructor`. That block should be accepted and is rejected, because canonical code has no
+lambda to place a binding with a parameter the walk did not supply it, so a derivation for such a
+member can only be written without the extra parameter.
+[`LANG-87`](../tickets/lang-87.md) is the ticket.
+
+```zel expect=canonical-error:DerivationBindingTakesTooMany
+module Example exposing (HashWith)
+
+class HashWith a where
+  hashWith : a -> Int -> Int
+
+  derived hashWith
+    atConstructor p n =
+      n
+
+    combine x y =
+      x
+```
+
 ### What a derived instance computes
 
 The derivation walks the two values in step, and every answer it collects comes from an instance.
@@ -373,9 +395,8 @@ class Comparable a where
 A derivation for a member at `a -> R` walks **one** value, and asks the class for two bindings
 rather than three.
 
-```zel expect=ok
-module Example exposing (Hashable)
-
+```zel expect=fragment
+-- `positionIndex` and `add` are `Basics`'s, which `LANG-42` declares and puts this block under test
 class Hashable a where
   hash : a -> Int
 
@@ -385,14 +406,6 @@ class Hashable a where
 
     combine x y =
       add x y
-
-positionIndex : Position -> Int
-positionIndex p =
-  0
-
-add : Int -> Int -> Int
-add x y =
-  x
 ```
 
 `atConstructor` is the answer for the constructor the value is of, and receives the position that
@@ -590,6 +603,33 @@ Eq a => Eq (Box a)
 
 Two `Box`es are equal when their contents are, which is only a definition of equality once the
 contents have one. A parameter no variant uses carries no constraint.
+
+The context is never written. A context written on a `derived` instance is an error, and what one
+would mean beside the inferred one is [an open question](#open-questions):
+
+```zel expect=canonical-error:DerivedInstanceWritesContext
+module Example exposing (Box)
+
+type Box a
+  = Box a
+
+class Eq a where
+  eq : a -> a -> Bool
+
+  derived eq
+    matched = True
+    differed _ _ = False
+    combine x y =
+      case x of
+        True ->
+          y
+
+        False ->
+          False
+
+instance Eq a => Eq (Box a) where
+  derived
+```
 
 Where the argument's type is concrete, the requirement is checked at the declaration, and an
 argument whose type has no instance is an error there, naming the variant and the type:
@@ -1205,6 +1245,18 @@ implemented either, so `Appendable`'s `List` instance waits on them.
 
 ## Open questions
 
+- **A context written on a `derived` instance.** `instance Eq a => Eq (Box a) where derived`
+  parses, and the context of a derived instance is
+  [inferred](#what-a-derived-instance-requires). Whether a written context may stand beside the
+  inferred one, has to equal it, bounds it from above or is an error is unanswered. The compiler
+  rejects one, which is the choice a later answer cannot break.
+  [`SPEC-39`](../tickets/spec-39.md) carries it.
+- **Which constructors a derived instance needs in scope.**
+  [*What a derived instance requires*](#what-a-derived-instance-requires) rejects a derived
+  instance for a type imported [without its constructors](modules.md#the-exposing-list). Whether
+  that is read off the import list (`import Colour exposing (Colour)`) or off what the declaring
+  module exposes (`Colour(..)`) is unanswered; the compiler reads the second.
+  [`SPEC-39`](../tickets/spec-39.md) carries it.
 - **What lists add.** Having them makes an n-ary `combine : List R -> R` writable, which would
   let a class see how many answers it is folding and retire
   [the law above](#what-a-derivation-is-trusted-to-keep) by making the fold the class's to

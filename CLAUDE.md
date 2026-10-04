@@ -257,10 +257,10 @@ a member is a top-level value of its class's module, and an instance reaches eve
 imports its declaring one, transitively, through `Interface::instances`. A use of a member or of
 a constrained function is checked against the instances in scope, and an instance's bindings
 against its class's signatures. A derivation is checked where it is written, and a `derived`
-instance is given the context its type's arguments need and the members its class's derivation
-stands for, as canonical code placed where a written instance's bindings would be
-(`canonical/derivation.rs`; its module doc comment is the account), so the typer and the IR read
-it as they read any other instance. `zelkova_js::emit` refuses a module holding a class or an
+instance is given the context its type's arguments need (a context written on one is an error)
+and the members its class's derivation stands for, as canonical code placed where a written
+instance's bindings would be (`canonical/derivation.rs`; its module doc comment is the account),
+so the typer and the IR read it as they read any other instance. `zelkova_js::emit` refuses a module holding a class or an
 instance, and one with a constrained declaration or a use of a member. **`class` and
 `instance` are reserved words, and `where`
 is reserved as a type variable** and nowhere else: it stays an ordinary name wherever a value
