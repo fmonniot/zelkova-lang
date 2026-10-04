@@ -116,6 +116,8 @@ mod tests {
             infixes: HashMap::new(),
             infix_functions: HashMap::new(),
             arities: HashMap::new(),
+            classes: HashMap::new(),
+            instances: Vec::new(),
             file: None,
             incomplete: false,
         }

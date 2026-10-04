@@ -8,9 +8,9 @@ two places [LANG-40](lang-40.md) reads it from, one of which is another module's
 validates a context and then drops it, `Value::TypedValue`, `Broken`, `Module::to_interface`;
 `crates/zelkova-compiler/src/lib.rs` — `Interface::values` and `Interface::infix_functions`;
 `crates/zelkova-compiler/src/canonical/environment.rs` — `RootEnvironment`, which
-[LANG-39](lang-39.md) has given a class table.
+[LANG-39](README.md) has given a class table.
 
-**Depends on:** [LANG-39](lang-39.md), for a class table to resolve against and for the
+**Depends on:** [LANG-39](README.md), for a class table to resolve against and for the
 canonical constraint type it introduces for class heads and instance contexts.
 [LANG-71](README.md), closed, is why the context arrives as a list.
 

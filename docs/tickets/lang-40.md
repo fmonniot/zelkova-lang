@@ -14,7 +14,7 @@ the environment every declaration is checked against; `Types`, `Types::by_name` 
 `ReferenceKind`, `build`, and the module doc comment's *What is not here yet*;
 `crates/zelkova-js/src/lib.rs` — `emit`'s refusals.
 
-**Depends on:** [LANG-39](lang-39.md), for a class table and an instance table to discharge
+**Depends on:** [LANG-39](README.md), for a class table and an instance table to discharge
 against; [LANG-70](lang-70.md), for an annotation's context on the canonical value and in the
 `Interface`; and nothing else: an integer literal is an `Int`, so no obligation is raised at a type that is
 neither `Int` nor `Float` and has no instance.

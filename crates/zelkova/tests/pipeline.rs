@@ -1785,6 +1785,8 @@ fn helper_interface() -> (Name, Interface) {
         infixes: HashMap::new(),
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
+        classes: HashMap::new(),
+        instances: Vec::new(),
         file: None,
         incomplete: false,
     };
@@ -3110,6 +3112,8 @@ fn basics_interface_with_plus() -> (Name, Interface) {
         infixes,
         infix_functions: HashMap::new(),
         arities: HashMap::new(),
+        classes: HashMap::new(),
+        instances: Vec::new(),
         file: None,
         incomplete: false,
     };

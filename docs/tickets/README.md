@@ -131,7 +131,7 @@ LANG-38  `class` / `instance` parse, with a `where` block of members   ← close
   │      ← syntax only: canonicalization rejects each one, the way a
   │        multi-clause declaration is rejected today
   │
-LANG-39  resolution: what a class and an instance are, members in the
+LANG-39  resolution: what a class and an instance are, members in the   ← closed
   │      value namespace, instances across modules, the orphan rule
   │      ← the emitter refuses a module holding a class from here on
   │
@@ -316,7 +316,7 @@ Open tickets link to their file. Rows with a close date are tombstones — the f
 | [LANG-36](lang-36.md) | task | — | open | `std/core`'s `Basics` documents three semantics the language does not have |
 | LANG-37 | task | — | closed 2026-09-27 | A type annotation may carry a constraint context, written `Class a =>` |
 | LANG-38 | task | — | closed 2026-10-03 | `class` and `instance` declarations parse, with a `where` block of members |
-| [LANG-39](lang-39.md) | task | — | open | Resolve classes and instances, and enforce the orphan rule |
+| LANG-39 | task | — | closed 2026-10-03 | Resolve classes and instances, and enforce the orphan rule |
 | [LANG-40](lang-40.md) | task | — | open | Discharge class constraints in the type checker |
 | LANG-41 | task | — | closed 2026-10-03 | Retire `Type::Number`: an integer literal is an `Int` |
 | [LANG-42](lang-42.md) | task | — | open | `std/core` declares `Eq`, `Comparable`, `Number` and `Appendable` |

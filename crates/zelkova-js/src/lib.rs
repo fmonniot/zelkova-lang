@@ -301,6 +301,11 @@ pub enum Error {
         found: Unpredicated,
         constructor: Option<QualName>,
     },
+    /// A `class` declaration. This backend emits no class, member or instance yet, and a
+    /// module emitted without them would be missing what its source declares.
+    Class { name: Name, span: NodeSpan },
+    /// An `instance` declaration of `class`, refused for the reason a class is.
+    Instance { class: Name, span: NodeSpan },
     /// A construct this backend does not emit: one the front end does not accept yet,
     /// or a name that did not resolve.
     Unsupported {
@@ -392,6 +397,14 @@ impl PhaseError for Error {
                 "`{}` cannot be compiled to JavaScript, because the type checker could not check it",
                 name.as_str()
             ),
+            Error::Class { name, .. } => format!(
+                "the class `{}` cannot be compiled to JavaScript yet",
+                name.as_str()
+            ),
+            Error::Instance { class, .. } => format!(
+                "an instance of `{}` cannot be compiled to JavaScript yet",
+                class.as_str()
+            ),
             Error::NoPredicate {
                 name,
                 found,
@@ -434,6 +447,8 @@ impl PhaseError for Error {
             Error::NotAnEffect { span, .. } => (span, "not marked `unsafe`"),
             Error::NoSignature { span, .. } => (span, "this declaration"),
             Error::Unchecked { span, .. } => (span, "this declaration"),
+            Error::Class { span, .. } => (span, "this class"),
+            Error::Instance { span, .. } => (span, "this instance"),
             Error::NoPredicate { span, .. } => (span, "this signature"),
             Error::Unsupported { span, .. } => (span, "not supported by the JavaScript backend"),
         };
@@ -943,6 +958,37 @@ pub fn emit(
             module: ir.name.name().clone(),
             target: "javascript",
         }]);
+    }
+
+    // A class and an instance have no emitted form yet, so a module holding one is
+    // refused whole. Sorted by position, so the errors come out in source order.
+    let mut refused: Vec<Error> = module
+        .canonical
+        .classes
+        .iter()
+        .map(|(name, class)| Error::Class {
+            name: name.clone(),
+            span: class.signature.span,
+        })
+        .chain(
+            module
+                .canonical
+                .instances
+                .iter()
+                .map(|instance| Error::Instance {
+                    class: instance.signature.class.unqualified_name(),
+                    span: instance.signature.span,
+                }),
+        )
+        .collect();
+    if !refused.is_empty() {
+        refused.sort_by_key(|error| match error {
+            Error::Class { span, .. } | Error::Instance { span, .. } => {
+                span.to_range().map(|r| r.start)
+            }
+            _ => None,
+        });
+        return Err(refused);
     }
 
     let mut emitter = Emitter {

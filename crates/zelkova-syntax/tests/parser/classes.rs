@@ -317,7 +317,7 @@ fn a_binding_named_derived_is_not_the_request() {
 }
 
 /// A derivation with no binding parses, as an empty body does. Naming the missing
-/// binding is `LANG-39`'s to do.
+/// binding is `LANG-83`'s to do.
 ///
 /// Verified to fail by turning the derivation's `*` in `ClassMember` back into `+`.
 #[test]
