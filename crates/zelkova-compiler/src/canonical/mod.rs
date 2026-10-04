@@ -3606,7 +3606,8 @@ fn unparsed_values(source: &parser::Module) -> HashMap<Name, NodeSpan> {
 /// An incomplete scope is one where a name could be missing for a reason that has been
 /// reported ([`Module::incomplete`]), so a name that is not found in it says nothing new:
 /// `VariableNotFound`, `VariantNotFound`, `TypeNotFound`, `ClassNotFound`,
-/// `ExportNotFound` and `InfixReferenceInvalidValue` are dropped, and every other error is kept. An
+/// `ExportNotFound`, `InfixReferenceInvalidValue` and `MissingSuperclassInstance` are
+/// dropped, and every other error is kept. An
 /// [`Error::Many`] is flattened into its members first, so a group holding one of each
 /// keeps the member that is not a restatement. With `incomplete` false, `errors` comes
 /// back untouched.
@@ -3616,6 +3617,10 @@ fn unparsed_values(source: &parser::Module) -> HashMap<Name, NodeSpan> {
 /// restates nothing today: in an incomplete scope it is deferred, and the failure that
 /// made the scope incomplete stands in the build. It would restate one if a function that
 /// failed were ever left out of that function list.
+///
+/// `MissingSuperclassInstance` is on it because an instance that failed is published by
+/// no interface, so a superclass instance its module wrote and could not keep is missing
+/// from every importer's scope, and the module that wrote it has already said why.
 ///
 /// Dropping an error does not make its declaration sound. A declaration the error broke
 /// has already been left out of the module by the caller, and stays left out; one whose
@@ -3647,6 +3652,7 @@ fn without_restated(errors: Vec<Error>, incomplete: bool) -> Vec<Error> {
                 | Error::ClassNotFound(..)
                 | Error::ExportNotFound(..)
                 | Error::InfixReferenceInvalidValue(..)
+                | Error::MissingSuperclassInstance(..)
         )
     });
     flat
@@ -4443,6 +4449,10 @@ fn do_infixes(
 //
 // `member_classes` is each member of this module's own classes, to its class. A member is
 // exposed with its class, and an entry naming one alone is an error.
+//
+// A class entry is checked for where the class was declared, which a value or type entry
+// is not yet (`BUG-31`): `find_class` answers with the declaring `QualName`, so a class
+// this module only imported is `ExportNotFound`.
 fn do_exports(
     source_exposing: &parser::Exposing,
     env: &RootEnvironment,
@@ -4537,8 +4547,19 @@ fn do_exports(
                     parser::ExposedKind::Upper(name, parser::Privacy::Private) => {
                         if env.find_type(name).is_some() {
                             Ok((name.clone(), ExportType::UnionPrivate))
-                        } else if env.find_class(name).is_some() {
-                            Ok((name.clone(), ExportType::Class))
+                        } else if let Some(class) = env.find_class(name) {
+                            // A class an import brought into scope is one this module
+                            // may not re-export
+                            // (docs/spec/modules.md#everything-exposed-must-be-declared-here).
+                            if classes::declaring_module(class) == *env.module_name() {
+                                Ok((name.clone(), ExportType::Class))
+                            } else {
+                                Err(Error::ExportNotFound(
+                                    name.clone(),
+                                    ExportType::Class,
+                                    exposed.span,
+                                ))
+                            }
                         } else {
                             Err(Error::ExportNotFound(
                                 name.clone(),

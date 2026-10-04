@@ -662,7 +662,9 @@ pub(super) fn do_instances(
         .collect();
 
     // Every instance whose class and head resolved, own or imported, by what identifies
-    // it. A superclass is satisfied by any of them.
+    // it. A superclass is satisfied by any of them. An imported instance that failed in
+    // its own module is not among them: its interface is incomplete, and so is this
+    // module's scope, which is what lets the caller drop the error that absence raises.
     let mut in_scope: HashSet<(QualName, HeadName)> = heads
         .iter()
         .filter_map(|head| head.as_ref().ok())

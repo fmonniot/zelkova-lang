@@ -6881,6 +6881,95 @@ fn an_instance_without_its_superclass_instance_is_an_error() {
     }
 }
 
+/// `Eq`, declared in a module of its own name.
+const EQ: &str = indoc::indoc! {r#"
+    module E exposing (Eq)
+
+    class Eq a where
+      eq : a -> a -> Bool
+"#};
+
+/// A module declaring `Comparable` with `Eq` as its superclass, and an instance of it for
+/// the `Colour` that `T` declares.
+const COMPARABLE_COLOUR: &str = indoc::indoc! {r#"
+    module K exposing ()
+
+    import E exposing (Eq)
+    import T exposing (Colour)
+
+    class Eq a => Comparable a where
+      compare : a -> a -> Bool
+
+    instance Comparable Colour where
+      compare x y =
+        True
+"#};
+
+/// `T`, declaring `Colour` and an `Eq` instance for it whose bindings are `bindings`.
+fn colour_with_eq(bindings: &str) -> String {
+    format!(
+        "{}{}",
+        indoc::indoc! {r#"
+            module T exposing (Colour)
+
+            import E exposing (Eq)
+
+            type Colour
+              = Red
+
+            instance Eq Colour where
+        "#},
+        bindings
+    )
+}
+
+/// A superclass instance declared in an imported module satisfies an instance of the
+/// subclass: `T` declares `instance Eq Colour`, and `K`'s `instance Comparable Colour`
+/// is accepted on the strength of it.
+///
+/// Mutation-checked by leaving the imported instances out of `do_instances`' `in_scope`:
+/// `K` is then rejected with `MissingSuperclassInstance`.
+#[test]
+fn an_imported_instance_satisfies_a_superclass() {
+    let mut interfaces = scalar_interfaces();
+    publish(EQ, &mut interfaces);
+    publish(&colour_with_eq("  eq x y =\n    True\n"), &mut interfaces);
+
+    let module = canonicalize_with_interfaces(COMPARABLE_COLOUR, &interfaces)
+        .unwrap_or_else(|errors| panic!("expected K to canonicalize, got {:?}", errors));
+    assert_eq!(module.instances.len(), 1);
+}
+
+/// A superclass instance its module wrote and could not keep is not reported missing in
+/// an importer: `T`'s `instance Eq Colour` binds a name `Eq` has no member of, which
+/// `T` reports, and `K`'s `instance Comparable Colour` says nothing more about it.
+///
+/// Mutation-checked by taking `MissingSuperclassInstance` off `without_restated`'s list:
+/// `K` is then rejected with it.
+#[test]
+fn a_superclass_instance_that_failed_in_its_own_module_is_not_reported_missing() {
+    let mut interfaces = scalar_interfaces();
+    publish(EQ, &mut interfaces);
+
+    let t = colour_with_eq("  eq x y =\n    True\n  extra x =\n    True\n");
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(&t, &interfaces);
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [canonical::Error::InstanceBindingNotMember(..)]
+        ),
+        "got {:?}",
+        errors
+    );
+    let interface = module.to_interface(None);
+    interfaces.insert(interface.module_name.name().clone(), interface);
+
+    let canonical::Canonicalized { errors, .. } =
+        canonicalize_recovering_with_interfaces(COMPARABLE_COLOUR, &interfaces);
+    assert!(errors.is_empty(), "got {:?}", errors);
+}
+
 /// The `VarForeign` a value's body is, when it is one.
 fn foreign_body(module: &canonical::Module, name: &str) -> QualName {
     let Some(canonical::Value::TypedValue { body, .. }) = module.values.get(&name.into()) else {
@@ -6960,6 +7049,47 @@ fn a_header_exposing_a_class_with_constructors_is_an_error() {
         }
         other => panic!("expected one ClassExposedWithConstructors, got {:?}", other),
     }
+}
+
+/// A class a module only imported may not be exposed by it, and the entry is an error
+/// under it while the module's own class beside it is exposed.
+///
+/// Mutation-checked by accepting every class `find_class` answers for in `do_exports`:
+/// the module canonicalizes.
+#[test]
+fn a_header_exposing_an_imported_class_is_an_error() {
+    use zelkova_compiler::PhaseError;
+
+    let mut interfaces = scalar_interfaces();
+    publish(EQ, &mut interfaces);
+
+    let source = indoc::indoc! {r#"
+        module K exposing (Comparable, Eq)
+
+        import E exposing (Eq)
+
+        class Eq a => Comparable a where
+          compare : a -> a -> Bool
+    "#};
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &interfaces);
+    let [error @ canonical::Error::ExportNotFound(name, canonical::ExportType::Class, _)] =
+        errors.as_slice()
+    else {
+        panic!("expected one ExportNotFound, got {:?}", errors);
+    };
+    assert_eq!(name.as_str(), "Eq");
+    assert_eq!(
+        error.message(),
+        "`Eq` is exposed by this module but no class of that name is declared in it"
+    );
+    assert_eq!(
+        label_ranges(error),
+        vec![(true, nth_range(source, "Eq", 0))]
+    );
+    let interface = module.to_interface(None);
+    assert!(interface.classes.contains_key(&"Comparable".into()));
+    assert!(!interface.classes.contains_key(&"Eq".into()));
 }
 
 /// An `infix` declaration may name a member of a class its module declares, and a use
