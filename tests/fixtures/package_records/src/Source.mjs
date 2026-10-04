@@ -59,7 +59,7 @@ export function wrongUnitMissing(n) {
 }
 
 export function rightKeyed(n) {
-  return { class: n, new: n + 1n, constructor: n + 2n, toString: n + 3n };
+  return { function: n, new: n + 1n, constructor: n + 2n, toString: n + 3n };
 }
 
 // `toString` is found on this object, as on any object, but through its prototype and not

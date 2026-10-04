@@ -6134,3 +6134,64 @@ fn a_hole_inside_an_access_is_held_by_its_declaration() {
     let value = module.values.get(&"r".into()).expect("`r` is kept");
     assert!(value.holds_hole(), "`r` holds a hole");
 }
+
+// ── LANG-38: a class and an instance parse, and are rejected one error each ──
+
+/// A class and an instance are each one error, on the declaration's head line, and
+/// neither reaches the module. A class's member, used below, is not reported again as a
+/// name that does not resolve: the module's scope is incomplete.
+///
+/// Mutation-checked by dropping each of the two `errors.extend` calls in
+/// `canonicalize_recovering` that report a class and an instance (the matching half of
+/// this test goes red), and by dropping `env.set_incomplete()` after them (`compare` is
+/// then reported as `VariableNotFound`, and the module is not incomplete).
+#[test]
+fn a_class_and_an_instance_are_rejected_one_error_each() {
+    let source = indoc::indoc! {r#"
+        module A exposing (use)
+
+        class Eq a => Comparable a where
+          compare : a -> a -> Int
+
+        instance Comparable Int where
+          compare a b =
+            0
+
+        use : Int
+        use = compare 1 2
+    "#};
+
+    let canonical::Canonicalized { module, errors } =
+        canonicalize_recovering_with_interfaces(source, &HashMap::from([basics_interface()]));
+
+    let [canonical::Error::ClassUnsupported(_), canonical::Error::InstanceUnsupported(_)] =
+        errors.as_slice()
+    else {
+        panic!(
+            "expected one ClassUnsupported and one InstanceUnsupported, got {:?}",
+            errors
+        );
+    };
+
+    let range = |error: &canonical::Error| {
+        use zelkova_compiler::PhaseError;
+
+        let labels = error.labels();
+        assert_eq!(labels.len(), 1, "one label, got {:?}", labels);
+        labels[0].span.to_range()
+    };
+    let class = source.find("class").expect("the source declares a class");
+    let instance = source
+        .find("instance")
+        .expect("the source declares an instance");
+
+    assert_eq!(
+        range(&errors[0]),
+        class..class + "class Eq a => Comparable a where".len()
+    );
+    assert_eq!(
+        range(&errors[1]),
+        instance..instance + "instance Comparable Int where".len()
+    );
+    assert!(module.incomplete);
+}

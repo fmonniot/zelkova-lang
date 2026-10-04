@@ -45,6 +45,10 @@ pub(crate) fn can_start_declaration(token: &Token) -> bool {
             | Token::Non
             | Token::Foreign
             | Token::Unsafe
+            | Token::Where
+            | Token::Derived
+            | Token::Class
+            | Token::Instance
             | Token::Type
             | Token::Import
             | Token::Infix
@@ -396,9 +400,13 @@ mod tests {
             ("non", Token::Non),
             ("foreign", Token::Foreign),
             ("unsafe", Token::Unsafe),
+            ("where", Token::Where),
+            ("derived", Token::Derived),
             ("type", Token::Type),
             ("import", Token::Import),
             ("infix", Token::Infix),
+            ("class", Token::Class),
+            ("instance", Token::Instance),
         ];
 
         for (name, token) in &candidates {

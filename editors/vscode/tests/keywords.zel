@@ -38,13 +38,16 @@ inside = asx + cases + in_
 --             ^^^^^ variable.other.zelkova
 --                     ^^^ variable.other.zelkova
 
--- Not reserved yet (LANG-38), highlighted ahead of the compiler.
+-- `class` and `instance` are reserved; `where` is a keyword at the end of their heads.
 class Eq a where
 -- <- keyword.control.zelkova
---          ^^^^^ keyword.control.zelkova
+--          ^^^^^ keyword.other.soft.zelkova
 instance Eq T where
 -- <- keyword.control.zelkova
---            ^^^^^ keyword.control.zelkova
+--            ^^^^^ keyword.other.soft.zelkova
+instance Eq a => Eq (Box a) where
+-- <- keyword.control.zelkova
+--                          ^^^^^ keyword.other.soft.zelkova
 
 -- Soft keywords: keyword in position.
 infix left 6 (|+|) = combine
@@ -69,6 +72,9 @@ foreign = 4
 -- <- variable.other.zelkova
 -- <- - keyword.other.soft.zelkova
 derived = 5
+-- <- variable.other.zelkova
+-- <- - keyword.other.soft.zelkova
+where = 8
 -- <- variable.other.zelkova
 -- <- - keyword.other.soft.zelkova
 unsafe = 6

@@ -49,9 +49,9 @@ instance Comparable Colour where
 ```
 
 `class` and `instance` **cannot** be soft keywords the way `foreign` is, and the reason is
-structural rather than stylistic: `instance C T where …` already parses today, as a function
-declaration named `instance`, so a soft spelling would misread it rather than reject it.
-[`LANG-38`](../tickets/lang-38.md) carries the detail. `where` is soft in every *value*
+structural rather than stylistic: `instance C T where …` parsed, before the word was reserved,
+as a function declaration named `instance`, so a soft spelling would misread it rather than
+reject it. [`LANG-38`](../tickets/README.md) carries the detail. `where` is soft in every *value*
 position and hard in the *type-variable* position only — a split narrower than what was
 offered, because probing found the wider version ambiguous.
 

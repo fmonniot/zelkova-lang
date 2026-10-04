@@ -13,7 +13,7 @@ another module, and which module is allowed to declare one.
 builds each interface and hands it to the next module; `crates/zelkova-js/src/lib.rs` — `emit`
 and its `Error`.
 
-**Depends on:** [LANG-38](lang-38.md), for the declarations to parse. That ticket leaves
+**Depends on:** [LANG-38](README.md), for the declarations to parse. That ticket leaves
 canonicalization rejecting every class and instance with one error each; this one replaces the
 rejection with the real thing.
 

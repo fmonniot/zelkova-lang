@@ -17,6 +17,8 @@ test_parse_ok!(
         imports: vec![],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![],
         failed: vec![],
     }
@@ -103,6 +105,8 @@ test_parse_ok!(
         imports: vec![],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![],
         failed: vec![],
     }
@@ -139,6 +143,8 @@ test_parse_ok!(
         ],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![],
         failed: vec![],
     }
@@ -173,6 +179,8 @@ test_parse_ok!(
         ],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![],
         failed: vec![],
     }
@@ -223,6 +231,8 @@ test_parse_ok!(
         ],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![],
         failed: vec![],
     }
@@ -251,6 +261,8 @@ test_parse_ok!(
             function_name: name("apL"),
         }],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![],
         failed: vec![],
     }
@@ -277,6 +289,8 @@ test_parse_ok!(
             function_name: name("idiv"),
         }],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![],
         failed: vec![],
     }
@@ -303,6 +317,8 @@ test_parse_ok!(
             function_name: name("eq"),
         }],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![],
         failed: vec![],
     }
@@ -764,6 +780,8 @@ test_parse_ok!(
         imports: vec![],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![Function {
             name: name("idiv"),
             tpe: Some(type_arrow(
@@ -800,6 +818,8 @@ test_parse_ok!(
         imports: vec![],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![Function {
             name: name("unsafe"),
             tpe: Some(type_unqualified(name("Int"))),
@@ -833,6 +853,8 @@ test_parse_ok!(
         imports: vec![],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![Function {
             name: name("unsafe"),
             tpe: None,
@@ -872,6 +894,8 @@ test_parse_ok!(
         imports: vec![],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![Function {
             name: name("unsafe"),
             tpe: None,

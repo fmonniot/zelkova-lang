@@ -391,6 +391,8 @@ fn variant_names(errors: &[canonical::Error]) -> Vec<&'static str> {
             AmbiguousVariants(..) => vec!["AmbiguousVariants"],
             InvalidTupleSize(..) => vec!["InvalidTupleSize"],
             MultipleBindingsUnsupported(..) => vec!["MultipleBindingsUnsupported"],
+            ClassUnsupported(..) => vec!["ClassUnsupported"],
+            InstanceUnsupported(..) => vec!["InstanceUnsupported"],
             InfixDeclared(..) => vec!["InfixDeclared"],
             TypeDeclared(..) => vec!["TypeDeclared"],
             NoTypeInBinding(..) => vec!["NoTypeInBinding"],

@@ -60,6 +60,8 @@ extern {
         "then"     => Token::Then,
         "else"     => Token::Else,
         "infix"    => Token::Infix,
+        "class"    => Token::Class,
+        "instance" => Token::Instance,
 
         // soft keywords (authorized as identifier)
         "left"  => Token::Left,
@@ -67,6 +69,8 @@ extern {
         "non"   => Token::Non,
         "foreign" => Token::Foreign,
         "unsafe" => Token::Unsafe,
+        "where" => Token::Where,
+        "derived" => Token::Derived,
     }
 }
 
@@ -110,6 +114,28 @@ Pipe<T>: Vec<T> = {
 // identities. Some accept the qualified (e.g. variable in expression) while
 // some don't (e.g. type variables).
 
+// Every lowercase name except `unsafe` and `where`, the two soft keywords that need
+// one of the carve-outs below.
+//
+// A soft keyword is a keyword in exactly one position and an ordinary lowercase
+// identifier everywhere else, so every token the lexer's soft-keyword table needs
+// an arm somewhere in `VarIdent`'s closure: `left`/`right`/`non` away from an
+// `infix` declaration's associativity, `foreign` away from a module header, and
+// `derived` away from a class or instance body, are re-admitted right here.
+// `unsafe`'s and `where`'s arms live one level up, each for its own reason.
+// Adding a word to the soft-keyword table without giving it an arm anywhere in
+// `VarIdent`'s closure takes the name out of the language in every position instead
+// of just the one.
+NameIdent: Name = {
+    "left" => Name::new("left"),
+    "right" => Name::new("right"),
+    "non" => Name::new("non"),
+    "foreign" => Name::new("foreign"),
+    "derived" => Name::new("derived"),
+
+    <"lo_ident"> => Name::new(<>),
+};
+
 // Every lowercase name except `unsafe`. Split out of `VarIdent` below purely for
 // the declaration productions: `FunBinding` and `FunType` are the one place where
 // an `unsafe` in name position and an `unsafe` modifier are both possible, and an
@@ -117,22 +143,15 @@ Pipe<T>: Vec<T> = {
 // token that separates `unsafe f : T` from `unsafe f = e` is two ahead). Keeping
 // `unsafe` out of this nonterminal lets those two productions spell the word out
 // as a terminal instead, which moves the decision to a shift the parser can make.
+//
+// `where` is a name here, in every position where a value is named. It is not one
+// as a type variable (`TypeVarIdent`), because a class or instance head is a type
+// followed by `where`, and at that token the parser could not tell one more type
+// argument from the start of the body.
 PlainVarIdent: Name = {
-    // A soft keyword is a keyword in exactly one position and an ordinary lowercase
-    // identifier everywhere else, so every token the lexer's soft-keyword table needs
-    // an arm somewhere in `VarIdent`'s closure: `left`/`right`/`non` away from an
-    // `infix` declaration's associativity, and `foreign` away from a module header,
-    // are re-admitted right here. `unsafe`'s arm lives one level up, in `VarIdent`
-    // itself, because its keyword position is a declaration head — exactly the case
-    // `PlainVarIdent` exists to carve out. Adding a word to the soft-keyword table
-    // without giving it an arm anywhere in `VarIdent`'s closure takes the name out of
-    // the language in every position instead of just the one.
-    "left" => Name::new("left"),
-    "right" => Name::new("right"),
-    "non" => Name::new("non"),
-    "foreign" => Name::new("foreign"),
+    <NameIdent>,
 
-    <"lo_ident"> => Name::new(<>),
+    "where" => Name::new("where"),
 };
 
 VarIdent: Name = {
@@ -141,6 +160,15 @@ VarIdent: Name = {
     // `unsafe` is a keyword only immediately before the name of a facade
     // signature, which is `FunType`'s business alone; everywhere a lowercase name
     // may appear it is that name.
+    "unsafe" => Name::new("unsafe"),
+};
+
+// A type variable: every lowercase name `VarIdent` admits except `where`, the one
+// word the language reserves as a type variable. It is what `AtomicType` and a union's
+// parameter list read.
+TypeVarIdent: Name = {
+    <NameIdent>,
+
     "unsafe" => Name::new("unsafe"),
 };
 
@@ -546,7 +574,7 @@ Expr = {
 // own form rather than a tuple of none.
 AtomicType: Type = {
     <l:@L> <n: QualTypeIdent> <r:@R> => Type::unqualified(NodeSpan::new(l, r), n),
-    <l:@L> <n: VarIdent> <r:@R> => Type::new(NodeSpan::new(l, r), TypeKind::Variable(n)),
+    <l:@L> <n: TypeVarIdent> <r:@R> => Type::new(NodeSpan::new(l, r), TypeKind::Variable(n)),
 
     "(" <Type> ")",
 
@@ -719,7 +747,7 @@ Import:Import = {
 // the canonicalization site can ever catch this shape; only a dedicated `Variant`
 // production, parsing variants before parentheses are erased, could.
 Union: UnionType = {
-    <l:@L> "type" <name: TypeIdent> <type_arguments: VarIdent*> "=" <variants: Pipe<Type>> <r:@R> => {
+    <l:@L> "type" <name: TypeIdent> <type_arguments: TypeVarIdent*> "=" <variants: Pipe<Type>> <r:@R> => {
         UnionType {
             name,
             type_arguments,
@@ -759,12 +787,66 @@ Infix: Infix = {
 }
 
 
+// A class declaration: `class Eq a => Comparable a where`, then one block per member.
+//
+// The head is one `ConstrainedType` and is taken apart afterwards, as a signature's is.
+// Reading the context and the class name as separate pieces, `"class" (<Type> "=>")?
+// <TypeIdent> <TypeVarIdent*>`, does not build: with the context optional the parser
+// cannot tell at an uppercase name whether it is reading the context or the class's name.
+//
+// The layout pass wraps each member in a block (`Layout`'s `Context::Members`), and a
+// member's own bindings, for a derivation, in one block each. `span` is the head line,
+// `class` through `where`.
+ClassDecl: ClassDecl = {
+    <l:@L> "class" <head:ConstrainedType> "where" <r:@R>
+        <members:("open block" <ClassMember> "close block")*> => {
+        let (context, tpe) = head;
+
+        ClassDecl { context, head: tpe, members, span: NodeSpan::new(l, r) }
+    },
+};
+
+// A member of a class body: a signature, or a derivation. `derived` opens a derivation
+// when a name follows it and is the start of a signature, or a binding, when `:` or `=`
+// does, which is the one token of lookahead that separates `derived eq` from `derived :
+// Int`.
+ClassMember: ClassMember = {
+    <FunType> => ClassMember::Signature(<>),
+
+    <l:@L> "derived" <member:VarIdent> <r:@R>
+        <bindings:("open block" <FunBinding> "close block")+> =>
+        ClassMember::Derivation(Derivation { member, bindings, span: NodeSpan::new(l, r) }),
+};
+
+// An instance declaration: `instance Eq a => Eq (Box a) where`, then its body. The head is
+// one `ConstrainedType`, for the reason `ClassDecl` gives.
+InstanceDecl: InstanceDecl = {
+    <l:@L> "instance" <head:ConstrainedType> "where" <r:@R> <body:InstanceBody> => {
+        let (context, tpe) = head;
+
+        InstanceDecl { context, head: tpe, body, span: NodeSpan::new(l, r) }
+    },
+};
+
+// The body of an instance is the one word `derived`, or a binding per member, and never
+// a mixture: the grammar has no production for one. The word `derived` is a block of its
+// own, so after the block opens the token that follows `derived` says whether the block
+// is the request or a binding of a member of that name: `close block`, or a pattern and
+// `=`.
+InstanceBody: InstanceBody = {
+    "open block" "derived" "close block" => InstanceBody::Derived,
+
+    <("open block" <FunBinding> "close block")*> => InstanceBody::Bindings(<>),
+};
+
 Decl: Declaration = {
     "open block" <FunBinding> "close block" => Declaration::Function(<>),
     "open block" <FunType> "close block" => Declaration::FunctionType(<>),
     "open block" <Import> "close block" => Declaration::Import(<>),
     "open block" <Infix> "close block" => Declaration::Infix(<>),
     "open block" <Union> "close block" => Declaration::Union(<>),
+    "open block" <ClassDecl> "close block" => Declaration::Class(<>),
+    "open block" <InstanceDecl> "close block" => Declaration::Instance(<>),
 };
 
 // Entry points

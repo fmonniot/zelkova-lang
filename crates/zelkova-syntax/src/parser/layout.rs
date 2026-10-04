@@ -115,6 +115,31 @@ pub enum Context {
     /// Context for a top level declaration.
     /// Those can be module, custom type, type alias or functions (type annotation/value).
     TopLevelDeclaration,
+
+    /// Context for the members under the `where` of a class or an instance, and for the
+    /// bindings under a `derived <member>` line of a class body, before the first token of
+    /// the list has been read. That token fixes the column every member starts at, and
+    /// turns this context into [`Context::Members`].
+    ///
+    /// The column is not carried here: a second variant holding an `Option<usize>` would
+    /// leave `Context` no niche to share and widen it, which `CaseBlock`'s doc comment says
+    /// not to do.
+    FirstMember,
+
+    /// Context for the members of a class or an instance, or the bindings of a derivation,
+    /// once the column they start at is known: it is the context's `indent`.
+    ///
+    /// It emits nothing itself. Each token on that column opens a [`Context::Member`], whose
+    /// `OpenBlock` and `CloseBlock` are the member's own: the block is what separates one
+    /// member from the next, since `compare : a -> Order` followed by `lt : a -> Bool`
+    /// would otherwise read `Order lt` as a type application. A token left of the column
+    /// ends the list, and ends it silently, because the grammar's production for the
+    /// declaration does not expect a closing token for it.
+    Members,
+
+    /// Context for one member of a [`Context::Members`] list, from its first token to the
+    /// first token of the line that is on the list's column or left of it.
+    Member,
 }
 
 impl Context {
@@ -128,9 +153,15 @@ impl Context {
             Context::CaseBranch => "the body of a `case … of` branch",
             Context::Let => "a `let` block",
             Context::TopLevelDeclaration => "a top level declaration",
+            Context::FirstMember | Context::Members => "the members of a `class` or `instance`",
+            Context::Member => "a member of a `class` or `instance`",
         }
     }
 }
+
+/// How many contexts are open when a member sits directly in the body of a class: the
+/// top level declaration, the list of members, and the member.
+const CLASS_MEMBER_DEPTH: usize = 3;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Offside {
@@ -248,6 +279,17 @@ pub(crate) struct Layout<I> {
     /// `LayoutError::IndentedDeclaration` — and the line the declaration it
     /// continues began on. Read only by `explain`.
     top_level_continuation: Option<(Spanned<Position, Token>, usize)>,
+    /// Set while the declaration this `Layout` is reading has opened on `class` or
+    /// `instance` and has not yet reached its `where`. The `where` that clears it opens the
+    /// declaration's [`Context::Members`]; a `where` met when it is not set is an ordinary
+    /// name, which is what keeps the word soft.
+    awaiting_where: bool,
+    /// Whether the declaration opened on `class`. Only a class body has derivations.
+    in_class: bool,
+    /// Set when the first token of a class's member was `derived`, until the next token
+    /// is read. A name after it makes the member a derivation, and its bindings a
+    /// [`Context::Members`] of their own; `:` makes it a signature of that name.
+    after_derived: bool,
     /// Where the input ends. The blocks still open when `tokens` runs out are
     /// closed here, so a declaration left unfinished is reported where its text
     /// stops rather than at the start of the file.
@@ -270,6 +312,9 @@ where
             last_read: None,
             line_start: None,
             top_level_continuation: None,
+            awaiting_where: false,
+            in_class: false,
+            after_derived: false,
             end,
         }
     }
@@ -348,6 +393,73 @@ where
         }
     }
 
+    /// What the lists of members do with `token`, if anything: the block token they emit
+    /// for it, with `token` itself set aside to be read again, or `token` handed back for
+    /// the rest of `handle_next_token` to read.
+    ///
+    /// Only the innermost context is looked at, and a context that has to go is removed
+    /// before the next one is looked at. A member that has been left is closed with a
+    /// `CloseBlock`; a list that has been left is dropped without emitting anything.
+    fn members_step(
+        &mut self,
+        token: Spanned<Position, Token>,
+    ) -> Result<Spanned<Position, Token>, Spanned<Position, Token>> {
+        let start = token.span.start;
+
+        loop {
+            let Some(top) = self.contexts.last().copied() else {
+                return Err(token);
+            };
+
+            match top.context {
+                Context::FirstMember | Context::Members => {
+                    if start.column < top.indent {
+                        self.contexts.pop();
+                        continue;
+                    }
+
+                    // The first token after the `where` sets the column the members
+                    // start at, and every later one has to sit on it.
+                    if top.context == Context::FirstMember {
+                        if let Some(open) = self.contexts.stack.last_mut() {
+                            open.context = Context::Members;
+                            open.indent = start.column;
+                        }
+                    } else if start.column != top.indent {
+                        return Err(token);
+                    }
+
+                    self.contexts.push(Offside {
+                        context: Context::Member,
+                        indent: start.column,
+                        line: start.line,
+                    });
+                    self.after_derived = false;
+                    self.reprocess_tokens.push(token);
+
+                    return Ok(spanned(start, start, Token::OpenBlock));
+                }
+                Context::Member => {
+                    // A token on the member's column that is not the member's own first
+                    // token starts the next member, and one left of it ends the list.
+                    let left = start.column < top.indent
+                        || (start.column == top.indent && start.line > top.line);
+
+                    if !left {
+                        return Err(token);
+                    }
+
+                    self.contexts.pop();
+                    self.after_derived = false;
+                    self.reprocess_tokens.push(token);
+
+                    return Ok(spanned(start, start, Token::CloseBlock));
+                }
+                _ => return Err(token),
+            }
+        }
+    }
+
     /// A simple function which manage the internal lookahead structure
     /// in tandem with the source iterator.
     ///
@@ -389,6 +501,18 @@ where
         if let Token::EndOfFile = token.value {
             let Span { start, end } = token.span;
 
+            // A list of members has no closing token of its own: its last member's
+            // block is the last thing in it.
+            while matches!(
+                self.contexts.last(),
+                Some(Offside {
+                    context: Context::FirstMember | Context::Members,
+                    ..
+                })
+            ) {
+                self.contexts.pop();
+            }
+
             return match self.contexts.pop() {
                 Some(_) => {
                     self.reprocess_tokens.push(token);
@@ -397,6 +521,13 @@ where
                 None => Ok(token),
             };
         }
+
+        // The members of a class or instance are handled before anything else, since
+        // what they do with a token depends only on its column.
+        let token = match self.members_step(token) {
+            Ok(emitted) => return Ok(emitted),
+            Err(token) => token,
+        };
 
         // Retrieve the current offside and, if none exists, create one,
         // put the current token on the back burner and emit the new block.
@@ -412,6 +543,8 @@ where
                     line: start.line,
                 };
                 self.contexts.push(off);
+                self.awaiting_where = matches!(token.value, Token::Class | Token::Instance);
+                self.in_class = token.value == Token::Class;
 
                 self.reprocess_tokens.push(token);
                 return Ok(spanned(start, start, Token::OpenBlock));
@@ -554,6 +687,8 @@ where
                         line: start.line,
                     };
                     self.contexts.push(off);
+                    self.awaiting_where = matches!(token.value, Token::Class | Token::Instance);
+                    self.in_class = token.value == Token::Class;
 
                     self.reprocess_tokens.push(token);
                     return Ok(spanned(start, start, Token::OpenBlock));
@@ -638,7 +773,36 @@ where
             token.end().column,
             offside.context
         );
+        let derived_follows = std::mem::take(&mut self.after_derived);
+        let in_class_member =
+            offside.context == Context::Member && self.contexts.stack.len() == CLASS_MEMBER_DEPTH;
+
+        if derived_follows && in_class_member && token.value.names_a_value() {
+            // `derived compare`: the member is a derivation, and the bindings under it
+            // are a list of blocks like the members of the class are.
+            self.contexts.push(Offside {
+                context: Context::FirstMember,
+                indent: offside.indent + 1,
+                line: token.start().line,
+            });
+        } else if token.value == Token::Derived
+            && self.in_class
+            && in_class_member
+            && token.start().column == offside.indent
+            && token.start().line == offside.line
+        {
+            self.after_derived = true;
+        }
+
         match (&token.value, &offside.context) {
+            (Token::Where, Context::TopLevelDeclaration) if self.awaiting_where => {
+                self.awaiting_where = false;
+                self.contexts.push(Offside {
+                    context: Context::FirstMember,
+                    indent: offside.indent + 1,
+                    line: token.start().line,
+                });
+            }
             (Token::Case, _) => {
                 self.contexts.push(Offside {
                     context: Context::CaseExpression(token.start().column),

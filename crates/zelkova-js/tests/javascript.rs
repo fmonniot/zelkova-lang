@@ -787,33 +787,33 @@ fn a_binding_reached_through_a_function_is_emitted_first() {
     );
 }
 
-/// A declaration named `class`, a reserved word in JavaScript, is renamed wherever it is
-/// declared and mentioned, and exported under its own name; `classy` is left alone.
+/// A declaration named `new`, a reserved word in JavaScript, is renamed wherever it is
+/// declared and mentioned, and exported under its own name; `newer` is left alone.
 ///
-/// Mutation-checked by making `mangle` return every name unchanged: `function class(a)`
+/// Mutation-checked by making `mangle` return every name unchanged: `function new(a)`
 /// then appears, which is not JavaScript.
 #[test]
 fn a_reserved_word_is_mangled_and_a_name_containing_one_is_not() {
     let text = emitted(indoc! {r#"
-        module Test exposing (class, classy)
+        module Test exposing (new, newer)
 
-        class : Int -> Int
-        class a =
+        new : Int -> Int
+        new a =
           a
 
-        classy : Int -> Int
-        classy a =
-          class a
+        newer : Int -> Int
+        newer a =
+          new a
     "#});
 
-    assert!(text.contains("function $class(a) {"), "got:\n{}", text);
+    assert!(text.contains("function $new(a) {"), "got:\n{}", text);
     assert!(
-        text.contains("function classy(a) {\n  return $class(a);\n}"),
+        text.contains("function newer(a) {\n  return $new(a);\n}"),
         "got:\n{}",
         text
     );
     assert!(
-        text.contains("export { $class as class, classy };"),
+        text.contains("export { $new as new, newer };"),
         "got:\n{}",
         text
     );
@@ -2206,25 +2206,25 @@ fn a_record_is_an_object_of_its_fields_in_the_order_written() {
     );
 }
 
-/// A label is a property name and never a binding's: a reserved word is not renamed (`class`
-/// is `{class: …}` and `r.class`, not `$class`), a name every object inherits is the
+/// A label is a property name and never a binding's: a reserved word is not renamed (`new`
+/// is `{new: …}` and `r.new`, not `$new`), a name every object inherits is the
 /// record's own field, and a label that is not a bare ASCII identifier is a string-literal
-/// key and a bracketed read. The record pattern's shorthand binds the *value* `class` under
-/// the binding's own name, `$class`, and reads the label.
+/// key and a bracketed read. The record pattern's shorthand binds the *value* `new` under
+/// the binding's own name, `$new`, and reads the label.
 ///
-/// Mutation-checked by applying `mangle` to the label in `key` and `property`: `class` is
-/// emitted as `$class` and the text goes red; and by making `is_bare_property` answer `true`
+/// Mutation-checked by applying `mangle` to the label in `key` and `property`: `new` is
+/// emitted as `$new` and the text goes red; and by making `is_bare_property` answer `true`
 /// for every label: `café` is emitted bare and the text goes red.
 #[test]
 fn a_label_is_the_property_it_is_whatever_it_is_called() {
     let text = emitted(indoc! {r#"
         module Test exposing (make, read, accent, bind)
 
-        make : Int -> { class : Int, constructor : Int, toString : Int }
+        make : Int -> { new : Int, constructor : Int, toString : Int }
         make n =
-          { class = n, constructor = n, toString = n }
+          { new = n, constructor = n, toString = n }
 
-        read : { class : Int, constructor : Int, toString : Int } -> Int
+        read : { new : Int, constructor : Int, toString : Int } -> Int
         read r =
           r.toString
 
@@ -2232,9 +2232,9 @@ fn a_label_is_the_property_it_is_whatever_it_is_called() {
         accent n =
           { café = n }.café
 
-        bind : { class : Int } -> Int
-        bind { class } =
-          class
+        bind : { new : Int } -> Int
+        bind { new } =
+          new
     "#});
 
     assert_eq!(
@@ -2248,14 +2248,14 @@ fn a_label_is_the_property_it_is_whatever_it_is_called() {
               return (() => {
               const $scrutinee = $0;
               {
-                const $class = $scrutinee.class;
-                return $class;
+                const $new = $scrutinee.new;
+                return $new;
               }
             })();
             }
 
             function make(n) {
-              return {class: n, constructor: n, toString: n};
+              return {new: n, constructor: n, toString: n};
             }
 
             function read(r) {

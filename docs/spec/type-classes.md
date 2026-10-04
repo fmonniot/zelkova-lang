@@ -21,9 +21,9 @@ class Comparable a where
   compare : a -> a -> Order
 ```
 
-**Not implemented:** of all of this, the compiler reads a constraint and nothing else. A class
-and an instance do not parse, so every block here showing one is tagged `expect=unimplemented`,
-and each goes red the day the construct it shows starts working. A constraint parses and is
+**Not implemented:** of all of this, the compiler checks a constraint and nothing else. A class
+and an instance parse, and canonicalization rejects each one, so every block here showing one is
+tagged `expect=unimplemented`, and each goes red the day the construct it shows starts working. A constraint parses and is
 checked to be shaped like one, and is then ignored: see [Constraining an
 annotation](#constraining-an-annotation). The type-class ticket program in
 [`docs/tickets/README.md`](../tickets/README.md) is the implementation, in the order it has to
@@ -117,25 +117,6 @@ there. A binding that names no member of the class is an error too.
 An instance has no name and is never mentioned by one. It is not exposed, not imported, and
 never written in an `exposing` list. It is in scope wherever its class and its type are, and how
 far "wherever" reaches is [the orphan rule](#where-an-instance-may-be-declared), below.
-
-```zel expect=ok
-module Example exposing (Thing)
-
-type Thing
-  = Comparable
-  | Colour
-  | EQ
-
-instance Comparable Colour where
-  compare a b =
-    EQ
-```
-
-**Known gap:** an `instance` declaration is not rejected today. It is *accepted as something
-else*. `instance` is an ordinary lowercase identifier, so the parser reads the line as a function
-declaration named `instance` whose parameters are `Comparable`, `Colour`, `where`, `compare`, `a`
-and `b` — and when those names happen to resolve. [`LANG-38`](../tickets/lang-38.md) is the ticket,
-and this block goes red when it lands.
 
 ### What an instance is declared for
 
@@ -709,7 +690,7 @@ variable is a type variable, so a class is always over a complete type.
 So classes whose variable stands for a *type constructor* cannot be written. There is no
 `Functor`, no `Monad`, no class over "a thing that takes one type argument".
 
-```zel expect=unimplemented
+```zel expect=parse-error
 module Example exposing (Box)
 
 type Box a
@@ -719,8 +700,7 @@ class Functor f where
   map : (a -> b) -> f a -> f b
 ```
 
-That block fails today because `class` does not parse, and it will still be rejected when it
-does, because `f a` is not a type — it applies a variable. Allowing it would need variables
+That block is rejected because `f a` is not a type — it applies a variable. Allowing it would need variables
 ranging over type constructors as well as types, which is what a kind system is for, and Zelkova
 does not have one.
 
@@ -844,12 +824,10 @@ after it: `derived` alone is [the request](#an-instance-may-be-derived), `derive
 [a derivation](#a-class-says-how-it-is-derived) for the member `eq`, and `derived : …` or
 `derived = …` declares a member called `derived`. One token of lookahead settles it.
 
-**Known gap:** none of the three reservations of `class`, `instance` and `where` exists today,
-and each of these blocks goes red when the ticket naming it lands. `class` and `instance` as
-value names ([`LANG-38`](../tickets/lang-38.md)):
+`class` or `instance` as the name of a value, and `where` as a type variable, are syntax errors. First `class` and `instance` as value names:
 
-```zel expect=ok
-module Example exposing (class, instance)
+```zel expect=parse-error
+module Example exposing (Size)
 
 type Size
   = Small
@@ -863,10 +841,9 @@ instance =
   Small
 ```
 
-`where` as a type variable, the one `where` position the language excludes
-([`LANG-38`](../tickets/lang-38.md)):
+`where` as a type variable, the one `where` position the language excludes:
 
-```zel expect=ok
+```zel expect=parse-error
 module Example exposing (Box)
 
 type Box where

@@ -1594,6 +1594,12 @@ pub enum Error {
     /// A function was declared with multiple bindings (multi-clause definitions),
     /// which the compiler does not support yet.
     MultipleBindingsUnsupported(Name, NodeSpan),
+    /// A `class` declaration. It parses, and nothing checks or keeps it yet: the span is
+    /// the declaration's head line, `class` through `where`.
+    ClassUnsupported(NodeSpan),
+    /// An `instance` declaration, which parses and is not checked or kept yet. The span is
+    /// the declaration's head line, `instance` through `where`.
+    InstanceUnsupported(NodeSpan),
     /// A type name applied to the wrong number of arguments: the name, its
     /// declaration's own arity, the number of arguments actually written, and
     /// `tpe.span` — the whole application, so the caret covers every argument
@@ -1915,6 +1921,12 @@ impl PhaseError for Error {
                 "`{}` is declared over several bindings, which is not supported yet",
                 name
             ),
+            Error::ClassUnsupported(_) => {
+                "a `class` declaration is not supported yet".to_string()
+            }
+            Error::InstanceUnsupported(_) => {
+                "an `instance` declaration is not supported yet".to_string()
+            }
             Error::TypeArityMismatch(name, declared, written, _) => format!(
                 "`{}` takes {}, but is applied to {} here",
                 name,
@@ -2189,6 +2201,8 @@ impl PhaseError for Error {
             Error::BindingPatternsInvalidLen(span) => primary(span, "declared here"),
             Error::NoBindings(span) => primary(span, "this annotation has no body"),
             Error::MultipleBindingsUnsupported(_, span) => primary(span, "declared here"),
+            Error::ClassUnsupported(span) => primary(span, "this class is declared here"),
+            Error::InstanceUnsupported(span) => primary(span, "this instance is declared here"),
             Error::TypeArityMismatch(name, declared, written, span) => primary(
                 span,
                 &format!(
@@ -2781,6 +2795,26 @@ pub fn canonicalize_recovering(
         env.insert_top_level_value(name.clone());
     }
     if source.failed.iter().any(|failed| failed.declares.is_none()) {
+        env.set_incomplete();
+    }
+
+    // A class and an instance parse and are checked by nothing yet, so each is reported
+    // and left out of the module. A class would have declared its members as values, so
+    // the scope is incomplete from the first sub-pass on and a use of one is not
+    // reported a second time as a name that does not resolve.
+    errors.extend(
+        source
+            .classes
+            .iter()
+            .map(|class| Error::ClassUnsupported(class.span)),
+    );
+    errors.extend(
+        source
+            .instances
+            .iter()
+            .map(|instance| Error::InstanceUnsupported(instance.span)),
+    );
+    if !source.classes.is_empty() {
         env.set_incomplete();
     }
 

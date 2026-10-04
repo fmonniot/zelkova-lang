@@ -11,6 +11,8 @@ fn module(body: Expression) -> Module {
         imports: vec![],
         infixes: vec![],
         types: vec![],
+        classes: vec![],
+        instances: vec![],
         functions: vec![Function {
             name: name("main"),
             tpe: None,
