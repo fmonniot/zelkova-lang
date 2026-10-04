@@ -52,7 +52,11 @@
 //! apart because the fix differs.
 //!
 //! - The variable is part of the declaration's type and the declaration has an annotation:
-//!   the annotation is missing the constraint ([`ErrorKind::MissingConstraint`]).
+//!   the annotation is missing the constraint ([`ErrorKind::MissingConstraint`]). An
+//!   instance's binding counts as annotated, by its member's signature at the head. A
+//!   variable of that signature the head does not bind is the same error written as
+//!   [`Written::MemberSignature`](super::Written::MemberSignature), because no context of
+//!   the instance can be on a variable the head does not bind.
 //! - The variable is part of the declaration's type and the declaration has none: it
 //!   needs one, because a constraint is never inferred
 //!   ([`ErrorKind::ConstraintNeedsAnnotation`]).
@@ -196,6 +200,10 @@ pub(super) struct Declared<'a> {
     /// The names the source wrote for the variables it constrained, which a message
     /// writes them by.
     pub(super) names: &'a [(TypeVariable, Name)],
+    /// The variables of the declaration's type that no context of the declaration can be
+    /// on: an instance binding's variables from its member's signature, which the head
+    /// does not bind. Empty for everything else.
+    pub(super) member_variables: &'a [TypeVariable],
     /// What a missing constraint would have to be written in.
     pub(super) written: Written,
 }
@@ -267,10 +275,23 @@ pub(super) fn discharge(
     }
 
     if declared.annotated {
+        // A variable the member's signature binds is the signature's to constrain: adding
+        // it to the instance's context would be a constraint on a variable the head does
+        // not bind.
+        let of_member = declared.member_variables.iter().any(|variable| {
+            substitution.apply_type(&Type::Variable(variable.clone()))
+                == Type::Variable(first.variable.clone())
+        });
+        let written = if of_member {
+            Written::MemberSignature
+        } else {
+            declared.written
+        };
+
         return Err(ErrorKind::MissingConstraint {
             class: first.class.clone(),
             variable: name_of(&first.variable, &names),
-            written: declared.written,
+            written,
             origin,
         });
     }

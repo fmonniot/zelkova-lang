@@ -492,7 +492,9 @@ pub enum ErrorKind {
     },
     /// A class is required of a type variable the declaration's type holds, and the
     /// constraints its annotation (or an instance's context) wrote do not provide it: the
-    /// constraint to add is the fix.
+    /// constraint to add is the fix. The exception is a variable an instance binding's
+    /// member signature binds, which no context of the instance can constrain:
+    /// [`Written::MemberSignature`] says so.
     MissingConstraint {
         class: QualName,
         /// The variable as the source wrote it, `a`.
@@ -528,6 +530,10 @@ pub enum Written {
     Annotation,
     /// An instance's context.
     InstanceContext,
+    /// The signature of the class member an instance's binding defines: the variable is
+    /// one the member's signature binds and the instance's head does not, so no context
+    /// of the instance can constrain it.
+    MemberSignature,
 }
 
 impl ErrorKind {
@@ -636,6 +642,7 @@ impl ErrorKind {
                 match written {
                     Written::Annotation => "the annotation",
                     Written::InstanceContext => "the instance's context",
+                    Written::MemberSignature => "the member's signature",
                 }
             ),
             ErrorKind::ConstraintNeedsAnnotation { class, .. } => format!(
@@ -868,6 +875,13 @@ impl PhaseError for Error {
                 ),
                 Written::InstanceContext => format!(
                     "add `{} {}` to the context of the instance",
+                    class.unqualified_name(),
+                    variable
+                ),
+                Written::MemberSignature => format!(
+                    "`{}` is bound by the signature of the member and not by the head of the instance, so no context of the instance can constrain it: the binding has to hold for every `{}`, and cannot need `{} {}`; change the binding, or the member's signature",
+                    variable,
+                    variable,
                     class.unqualified_name(),
                     variable
                 ),
@@ -1441,6 +1455,7 @@ impl InstanceCheck<'_> {
                     annotated: true,
                     given: &given,
                     names: &names,
+                    member_variables: &[],
                     written: Written::InstanceContext,
                 };
 
@@ -1523,6 +1538,18 @@ impl InstanceCheck<'_> {
         let class_variable = variables.get(class.variable.as_str())?;
         let tpe = Substitution::substitute(signature, class_variable, scope.head);
 
+        // What the signature binds besides the class variable is the member's own, and is
+        // written the way the class wrote it.
+        let mut names = scope.names.to_vec();
+        let mut member_variables = Vec::new();
+        for (written, variable) in &variables {
+            if variable != class_variable {
+                names.push((variable.clone(), Name::new(written.clone())));
+                member_variables.push(variable.clone());
+            }
+        }
+        names.sort_by(|left, right| left.1.cmp(&right.1));
+
         // The head line stands where an annotation would: the span a mismatch with the
         // member's signature draws its second label under.
         let annotation = Annotation {
@@ -1530,7 +1557,8 @@ impl InstanceCheck<'_> {
             span: scope.span,
             reason: Reason::InstanceMember,
             context: scope.given.to_vec(),
-            names: scope.names.to_vec(),
+            names,
+            member_variables,
             written: Written::InstanceContext,
         };
 
@@ -2352,6 +2380,10 @@ struct Annotation {
     /// The name the source wrote for each variable of `tpe`, sorted by name: what a
     /// message about a constraint writes the variable by.
     names: Vec<(TypeVariable, Name)>,
+    /// The variables of `tpe` that `context` cannot be on: the ones a class member's
+    /// signature binds besides the class's own, when `tpe` is an instance binding's. Empty
+    /// for an annotation.
+    member_variables: Vec<TypeVariable>,
     /// What a constraint missing from `context` would have to be written in.
     written: Written,
 }
@@ -2410,6 +2442,7 @@ fn value_to_term_and_annotation(
                 reason: Reason::Annotation,
                 context: given,
                 names,
+                member_variables: Vec::new(),
                 written: Written::Annotation,
             };
             Some((term, Some(annotation)))
@@ -3805,11 +3838,13 @@ fn infer_annotated(
     let annotated = annotation.is_some();
     let mut given = Vec::new();
     let mut names = Vec::new();
+    let mut member_variables = Vec::new();
     let mut written = Written::Annotation;
 
     if let Some(annotation) = annotation {
         given = annotation.context;
         names = annotation.names;
+        member_variables = annotation.member_variables;
         written = annotation.written;
 
         // Left is the annotation's type, because left is the type of the text the
@@ -3851,6 +3886,7 @@ fn infer_annotated(
             annotated,
             given: &given,
             names: &names,
+            member_variables: &member_variables,
             written,
         },
     )?;

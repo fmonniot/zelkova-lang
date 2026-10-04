@@ -4040,6 +4040,10 @@ fn a_class_needed_at_a_type_nothing_determines_is_undetermined() {
         error.message(),
         "`Eq` is required of a type nothing in this declaration determines"
     );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_within(&source, "eq (read n) (read n)", "eq")]
+    );
 }
 
 /// When several obligations fail, the one whose use comes first is named, on every run.
@@ -4188,8 +4192,7 @@ fn an_instance_has_to_provide_its_superclass_context() {
 }
 
 /// A derived instance is an instance that exists: a use at its type is answered by it,
-/// whatever it derives, and nothing checks its superclasses against a context that is
-/// not known yet.
+/// whatever it derives.
 ///
 /// Mutation-checked by leaving a `derived` instance out of `ClassTable::of`: the use then
 /// has no instance and `run(..).is_ok()` goes red.
@@ -4225,6 +4228,260 @@ fn a_derived_instance_is_an_instance_that_exists() {
     "#};
 
     assert!(run(source).is_ok(), "{:?}", run(source).err());
+}
+
+/// A derived instance's superclasses are not checked: its context is none recorded until
+/// `LANG-83` infers one, and a check against none would reject `derived Comparable (Box a)`
+/// beside `Eq a => Eq (Box a)`, which the derivation is going to make sound. The same
+/// instance written out is `MissingConstraint`, as the second source shows, so the skip is
+/// the only thing the first passes by.
+///
+/// This is the test `LANG-83` turns round: once a derived instance has an inferred context,
+/// its superclass obligations are discharged against it, as a written instance's are.
+///
+/// Mutation-checked by checking the superclasses of a `derived` instance too, with its
+/// context as given (none): the first source is then `MissingConstraint` and `run(..)`
+/// goes red.
+#[test]
+fn a_derived_instance_is_not_held_to_its_superclass_context_until_lang_83() {
+    let declarations = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        type Box a
+          = Box a
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Eq a => Comparable a where
+          lt : a -> a -> Bool
+
+          derived lt
+            matched = False
+            differed _ _ = False
+            combine x y =
+              case x of
+                True ->
+                  y
+
+                False ->
+                  False
+
+        instance Eq a => Eq (Box a) where
+          eq (Box left) (Box right) =
+            eq left right
+
+    "#};
+
+    let derived = format!(
+        "{}instance Comparable (Box a) where\n  derived\n",
+        declarations
+    );
+    assert!(run(&derived).is_ok(), "{:?}", run(&derived).err());
+
+    let written = format!(
+        "{}instance Comparable (Box a) where\n  lt (Box left) (Box right) =\n    False\n",
+        declarations
+    );
+    assert!(matches!(
+        one_type_error(&written).kind,
+        typer::ErrorKind::MissingConstraint { .. }
+    ));
+}
+
+/// In an instance's binding, a constraint on a variable the member's signature binds is a
+/// `MissingConstraint` written as `MemberSignature`, and the note does not tell the user to
+/// put it in the instance's context: the head does not bind the variable, so canonicalization
+/// would reject that. The head's own variable is still the instance's context to fix.
+///
+/// Mutation-checked by giving the solver no member variables: the constraint on `b` is then
+/// written as `InstanceContext` and the `written` assertion goes red.
+#[test]
+fn a_constraint_on_a_member_signature_variable_cannot_be_added_to_the_instance() {
+    let declarations = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        type Box a
+          = Box a
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+        class Container a where
+          has : a -> b -> b -> Bool
+
+    "#};
+
+    let source = format!(
+        "{}{}",
+        declarations,
+        indoc::indoc! {r#"
+            instance Container (Box a) where
+              has c x y =
+                eq x y
+        "#}
+    );
+    let error = one_type_error(&source);
+    match &error.kind {
+        typer::ErrorKind::MissingConstraint {
+            class,
+            variable,
+            written,
+            ..
+        } => {
+            assert_eq!(class.unqualified_name().as_str(), "Eq");
+            assert_eq!(variable, "b");
+            assert_eq!(*written, typer::Written::MemberSignature);
+        }
+        other => panic!("expected `MissingConstraint`, got {:?}", other),
+    }
+    assert_eq!(
+        error.message(),
+        "`Eq b` is required here, and the member's signature does not provide it"
+    );
+    assert!(
+        error
+            .notes()
+            .iter()
+            .all(|note| !note.contains("to the context of the instance")),
+        "{:?}",
+        error.notes()
+    );
+    assert!(error
+        .notes()
+        .iter()
+        .any(|note| note.contains("no context of the instance can constrain it")));
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_within(&source, "eq x y", "eq")]
+    );
+
+    // A variable of the head is the instance's context to fix, as before.
+    let head = format!(
+        "{}{}",
+        declarations,
+        indoc::indoc! {r#"
+            instance Container (Box a) where
+              has (Box inner) x y =
+                eq inner inner
+        "#}
+    );
+    let error = one_type_error(&head);
+    assert!(
+        matches!(
+            error.kind,
+            typer::ErrorKind::MissingConstraint {
+                written: typer::Written::InstanceContext,
+                ..
+            }
+        ),
+        "{:?}",
+        error.kind
+    );
+}
+
+/// An instance's context is asked of the type's arguments in position: with `instance (Eq
+/// a, Eq b) => Eq (Pair a b)`, a use at `Pair Colour Plain` fails on `Plain` and a use at
+/// `Pair Plain Colour` on `Plain` too, each with the caret under the use and the use's own
+/// obligation named. The same holds for a tuple head.
+///
+/// Mutation-checked by having the context loop in `entail` always take the first argument:
+/// `Pair Colour Plain` and `( Colour, Plain )` are then answered by `Eq Colour` twice and
+/// check, and `one_type_error` goes red. Taking the last one instead goes red on the other
+/// order.
+#[test]
+fn an_instance_context_is_instantiated_at_each_argument_in_position() {
+    // The head the instance is declared for, and a use at each order of the two arguments.
+    let heads = [
+        (
+            "(Pair a b)",
+            [
+                "eq (Pair Red Plain) (Pair Red Plain)",
+                "eq (Pair Plain Red) (Pair Plain Red)",
+            ],
+        ),
+        (
+            "( a, b )",
+            [
+                "eq ( Red, Plain ) ( Red, Plain )",
+                "eq ( Plain, Red ) ( Plain, Red )",
+            ],
+        ),
+    ];
+
+    for (head, expressions) in heads {
+        for expression in expressions {
+            let source = with_eq(&format!(
+                indoc::indoc! {r#"
+                    type Pair a b
+                      = Pair a b
+
+                    instance (Eq a, Eq b) => Eq {} where
+                      eq x y =
+                        True
+
+                    pair : Bool
+                    pair =
+                      {}
+                "#},
+                head, expression
+            ));
+
+            let error = one_type_error(&source);
+            assert_eq!(
+                no_instance_of(&error),
+                ("Eq".to_string(), "Plain".to_string()),
+                "{}",
+                expression
+            );
+            let typer::ErrorKind::NoInstance { needed_by, .. } = &error.kind else {
+                panic!("expected `NoInstance`");
+            };
+            assert!(needed_by.is_some(), "{}", expression);
+            assert_eq!(
+                ranges(&error.labels()),
+                vec![range_within(&source, expression, "eq")],
+                "{}",
+                expression
+            );
+        }
+    }
+}
+
+/// A variable met before a missing instance wins over it, and a missing instance met before
+/// any variable wins over one after: the first failure in order is reported, but a
+/// `MissingConstraint` is not given up for the `NoInstance` that follows it.
+///
+/// Mutation-checked by returning the missing instance's error at once whatever came before:
+/// the first source is then `NoInstance` and the `MissingConstraint` match goes red.
+#[test]
+fn a_variable_met_before_a_missing_instance_is_reported_first() {
+    let variable_first = with_eq(indoc::indoc! {r#"
+        both : a -> ( Bool, Bool )
+        both x =
+          ( eq x x, eq Plain Plain )
+    "#});
+    let error = one_type_error(&variable_first);
+    assert!(
+        matches!(error.kind, typer::ErrorKind::MissingConstraint { .. }),
+        "{:?}",
+        error.kind
+    );
+    assert_eq!(
+        ranges(&error.labels()),
+        vec![range_within(&variable_first, "eq x x", "eq")]
+    );
+
+    let instance_first = with_eq(indoc::indoc! {r#"
+        both : a -> ( Bool, Bool )
+        both x =
+          ( eq Plain Plain, eq x x )
+    "#});
+    let error = one_type_error(&instance_first);
+    assert_eq!(
+        no_instance_of(&error),
+        ("Eq".to_string(), "Plain".to_string())
+    );
 }
 
 /// An obligation at a record type is accepted and raises no error: a record is no instance's
