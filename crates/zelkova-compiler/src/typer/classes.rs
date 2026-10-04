@@ -21,8 +21,12 @@
 //!   its constraints, instantiated at the type's arguments, are obligations in their
 //!   turn, so `Eq (Maybe Colour)` asks for `Eq Colour`. Each is on a strictly smaller
 //!   type, so the asking stops.
-//! - **A function or a record type.** No instance can be declared for either, so the same
-//!   error.
+//! - **A function type.** No instance can be declared for one, so the same error.
+//! - **A record type.** Accepted, with no further obligation. A record is no instance's
+//!   head, so there is no lookup to make; a class that carries a derivation walks a record
+//!   field by field ([`records.md`](../../../docs/spec/records.md#records-and-derivation)),
+//!   which [`LANG-85`](../../../docs/tickets/lang-85.md) implements. Until it does an
+//!   obligation at a record is neither answered nor refused.
 //! - **A variable.** It is answered if a *given* provides it, and otherwise it is left for
 //!   the declaration to account for: see below.
 //!
@@ -320,8 +324,12 @@ fn entail(
 
     let variable = match &predicate.tpe {
         Type::Variable(variable) => variable,
-        // No instance can be declared for either, by the head rule.
-        Type::Fun { .. } | Type::Record(_) => return Err(no_instance(&predicate)),
+        // No instance can be declared for a function type, by the head rule.
+        Type::Fun { .. } => return Err(no_instance(&predicate)),
+        // A record is no instance's head, so there is nothing to look up. A class with a
+        // derivation walks a record's fields (`docs/spec/records.md`, LANG-85), and nothing
+        // does yet: the obligation is accepted, asks nothing further and raises no error.
+        Type::Record(_) => return Ok(()),
         _ => {
             let Some((head, arguments)) = head_of(&predicate.tpe) else {
                 return Err(no_instance(&predicate));

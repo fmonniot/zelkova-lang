@@ -29,7 +29,9 @@ variable; a record is none of those. `LANG-83` walks a union, a tuple and `()`, 
 derived instance's context from each variant's arguments, with no case for an argument that is a
 record. So `r == s` on two records has no rule, and neither does `instance Eq Reading where
 derived` for `type Reading = Reading { taken : Celsius }`. `LANG-51` has landed,
-so `LANG-40` meets the gap first, and until this ticket it is an error.
+so `LANG-40` meets the gap first: it accepts an obligation at a record, asks nothing further of
+it and raises no error, so until this ticket `r == s` on two records is accepted without being
+checked.
 
 **Approach:**
 

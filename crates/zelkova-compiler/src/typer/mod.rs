@@ -476,8 +476,8 @@ pub enum ErrorKind {
         because: Option<Cause>,
     },
     /// A class is required of a type, and the type has no instance of it: a declared type,
-    /// a tuple or `()` that no instance in reach is declared for, or a function or record
-    /// type, which no instance can be.
+    /// a tuple or `()` that no instance in reach is declared for, or a function type,
+    /// which no instance can be.
     ///
     /// The type is the one the obligation had once unification was done, so it can be
     /// the argument of an instance's context rather than the type the use was at:
@@ -838,10 +838,6 @@ impl PhaseError for Error {
                 notes.push(match tpe.as_ref() {
                     Type::Fun { .. } => {
                         "a function type has no instances: no instance can be declared for one"
-                            .to_string()
-                    }
-                    Type::Record(_) => {
-                        "a record type has no instances: no instance can be declared for one"
                             .to_string()
                     }
                     _ => format!(

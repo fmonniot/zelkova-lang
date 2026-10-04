@@ -4227,6 +4227,43 @@ fn a_derived_instance_is_an_instance_that_exists() {
     assert!(run(source).is_ok(), "{:?}", run(source).err());
 }
 
+/// An obligation at a record type is accepted and raises no error: a record is no instance's
+/// head, a class with a derivation walks its fields once `LANG-85` lands, and until then
+/// nothing answers or refuses the obligation.
+///
+/// Mutation-checked by restoring the error arm, `Type::Record(_) => return
+/// Err(no_instance(&predicate))`, in `entail`: `eq r s` is then a `NoInstance` and
+/// `run(..).is_ok()` goes red.
+#[test]
+fn an_obligation_at_a_record_is_accepted_until_lang_85() {
+    let source = indoc::indoc! {r#"
+        module Test exposing (..)
+
+        class Eq a where
+          eq : a -> a -> Bool
+
+          derived eq
+            matched = True
+            differed _ _ = False
+            combine x y =
+              case x of
+                True ->
+                  y
+
+                False ->
+                  False
+
+        instance Eq Int where
+          derived
+
+        same : { x : Int } -> { x : Int } -> Bool
+        same r s =
+          eq r s
+    "#};
+
+    assert!(run(source).is_ok(), "{:?}", run(source).err());
+}
+
 /// A use through an operator whose `infix` declaration names a member raises the
 /// obligation the member does, at the operator.
 ///
